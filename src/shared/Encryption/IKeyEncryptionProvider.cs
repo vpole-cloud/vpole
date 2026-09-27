@@ -1,5 +1,3 @@
-using Pole.ResultType;
-
 namespace Pole.Encryption;
 
 public sealed record KeyEncryptionKeyIdentity(
@@ -24,13 +22,13 @@ public interface IKeyEncryptionProvider
     string ProviderId { get; }
     KeyEncryptionKeyDescriptor ActiveKey { get; }
 
-    ValueTask<Result<WrappedDataEncryptionKey, DataEncryptionKeyWrappingFailed>> WrapKeyAsync(
+    ValueTask<DataEncryptionKeyWrappingOutcome> WrapKeyAsync(
         KeyEncryptionKeyDescriptor key,
         ReadOnlyMemory<byte> dataEncryptionKey,
         ReadOnlyMemory<byte> associatedData,
         CancellationToken cancellationToken = default);
 
-    ValueTask<Result<byte[], DataEncryptionKeyUnwrappingFailed>> UnwrapKeyAsync(
+    ValueTask<DataEncryptionKeyUnwrappingOutcome> UnwrapKeyAsync(
         KeyEncryptionKeyIdentity key,
         string algorithm,
         int algorithmVersion,

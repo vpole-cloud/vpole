@@ -2,13 +2,17 @@ using Microsoft.Extensions.Logging;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.GitProviders.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.GitProviders.Application.ProviderOperations;
 
+internal union GitProviderOperationOutcome<T>(
+    T,
+    GitProviderRepositoryAccessError)
+    where T : notnull;
+
 internal static class GitProviderOperation
 {
-    internal static async Task<Result<T, GitProviderRepositoryAccessError>> ExecuteAsync<T>(
+    internal static async Task<GitProviderOperationOutcome<T>> ExecuteAsync<T>(
         GitProviderConnection connection,
         Func<Task<T>> operation,
         ILogger logger)
@@ -16,13 +20,13 @@ internal static class GitProviderOperation
     {
         if (connection.Provider is not GitProviderKind.GitHub)
         {
-            return new Err<GitProviderRepositoryAccessError>(
-                new(new GitProviderUnsupported(connection.Provider.ToString())));
+            return new GitProviderRepositoryAccessError(
+                new GitProviderUnsupported(connection.Provider.ToString()));
         }
 
         try
         {
-            return new Ok<T>(await operation());
+            return await operation();
         }
         catch (GitHubApiException exception)
         {
@@ -30,16 +34,14 @@ internal static class GitProviderOperation
                 exception,
                 "GitHub rejected a repository operation with status {StatusCode}.",
                 exception.StatusCode);
-            return new Err<GitProviderRepositoryAccessError>(
-                new(new GitProviderUnavailable("GitHub")));
+            return new GitProviderRepositoryAccessError(new GitProviderUnavailable("GitHub"));
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             logger.LogError(
                 exception,
                 "GitHub repository operation failed before the provider request completed.");
-            return new Err<GitProviderRepositoryAccessError>(
-                new(new GitProviderUnavailable("GitHub")));
+            return new GitProviderRepositoryAccessError(new GitProviderUnavailable("GitHub"));
         }
     }
 }

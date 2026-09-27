@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.AspNetCore.Http;
 using Pole.ASP.Helpers;
 using Pole.Features.ResourceDeployments.Application.Endpoints;
 
@@ -10,10 +11,13 @@ public static class ResourceDeploymentHttpMappings
         Array.AsReadOnly<HttpProblemMapping>(
         [
             HttpProblemMapping.For<RetryResourceDeploymentError>(
-                MapRetryError)
+                MapRetryProblem)
         ]);
 
-    private static HttpProblem MapRetryError(
+    public static IResult MapRetryError(RetryResourceDeploymentError error) =>
+        MapRetryProblem(error).ToHttpResult();
+
+    private static HttpProblem MapRetryProblem(
         RetryResourceDeploymentError error) => error switch
         {
             ResourceDeploymentNotFound notFound => Problem(

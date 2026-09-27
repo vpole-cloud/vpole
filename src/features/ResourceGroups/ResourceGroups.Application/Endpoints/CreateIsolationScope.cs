@@ -75,8 +75,8 @@ public sealed class CreateIsolationScopeHandler(
             cancellationToken);
         return persisted switch
         {
-            Ok<IsolationScope> success => success.Value.ToDto(),
-            Err<PersistCreatedIsolationScopeError> error => error.Value switch
+            IsolationScope success => success.ToDto(),
+            PersistCreatedIsolationScopeError error => error.Value switch
             {
                 ResourceGroupRevisionConflict conflict => new CreateIsolationScopeError(conflict),
                 IsolationScopeNameConflict conflict => new CreateIsolationScopeError(conflict)
@@ -120,7 +120,6 @@ public static class CreateIsolationScopeEndpoint
     {
         app.MapPost("/{ResourceGroupId}/isolation-scopes", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] CreateIsolationScopeRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -130,7 +129,7 @@ public static class CreateIsolationScopeEndpoint
                     IsolationScopeDto scope => Results.Created(
                         $"/api/v1/resource-groups/{scope.ResourceGroupId}/isolation-scopes/{scope.Id}",
                         scope),
-                    CreateIsolationScopeError error => httpProblems.Map(error).ToHttpResult()
+                    CreateIsolationScopeError error => ResourceGroupHttpMappings.Map(error)
                 });
             })
             .WithName("CreateIsolationScope")

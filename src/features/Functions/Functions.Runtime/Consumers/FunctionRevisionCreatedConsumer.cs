@@ -7,7 +7,6 @@ using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Events;
 using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Features.Functions.Runtime.Provisioning;
-using Pole.ResultType;
 
 namespace Pole.Features.Functions.Runtime.Consumers;
 
@@ -43,8 +42,9 @@ public sealed class FunctionRevisionCreatedConsumer(
         if (!Matches(message.Placement, app.Placement))
             throw new InvalidOperationException("Function revision event placement does not match the Function App.");
         var placementResult = await placementResolver.ResolveAsync(app, cancellationToken: cancellationToken);
-        if (!placementResult.TryGetValue(out var placement, out _))
+        if (placementResult is FunctionResourcePlacementUnavailable)
             throw new InvalidOperationException("Function resource deployment placement is not ready.");
+        var placement = (FunctionResourcePlacement)placementResult.Value;
         var kubernetesRevision = new FunctionRevisionInKubernetes(app, revision, placement);
 
         if (revision.Status is ProvisioningFunctionRevisionStatus)
@@ -52,19 +52,19 @@ public sealed class FunctionRevisionCreatedConsumer(
             var applied = await kubernetesManager.ApplyAsync(
                 kubernetesRevision,
                 cancellationToken);
-            if (applied is Err<FunctionRevisionKubernetesOperationError> applyFailure)
+            if (applied is FunctionRevisionKubernetesOperationError applyFailure)
             {
                 logger.LogError(
                     "[function-revision-provisioning-failed] Kubernetes could not apply revision {RevisionId} for Function App {FunctionAppId}: {Reason}",
                     revision.Id,
                     app.Id,
-                    applyFailure.Value.Message());
+                    applyFailure.Message());
                 await FailAsync(
                     tenantId,
                     app,
                     revision,
                     "kubernetes-apply",
-                    applyFailure.Value.Message(),
+                    applyFailure.Message(),
                     cancellationToken);
                 return;
             }
@@ -79,12 +79,12 @@ public sealed class FunctionRevisionCreatedConsumer(
                     kubernetesRevision,
                     0,
                     cancellationToken);
-                if (stopped is Err<FunctionRevisionKubernetesOperationError> stopFailure)
+                if (stopped is FunctionRevisionKubernetesOperationError stopFailure)
                 {
                     logger.LogWarning(
                         "[function-revision-stop-failed] Could not return unconfigured ready revision {RevisionId} to zero replicas: {Reason}",
                         revision.Id,
-                        stopFailure.Value.Message());
+                        stopFailure.Message());
                 }
             }
 

@@ -2,7 +2,6 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Persistence.References;
 
@@ -11,7 +10,7 @@ internal sealed class MongoApplyDeploymentTargetReferenceChanges(
     IMongoCollection<DeploymentTargetReference> deploymentTargetReferences,
     TimeProvider timeProvider)
 {
-    public async Task<Result<Unit, DeploymentTargetReferenceChangeRejected>> InvokeAsync(
+    public async Task<ApplyDeploymentTargetReferenceChangesOutcome> InvokeAsync(
         DeploymentTargetReferenceOwner owner,
         IReadOnlyCollection<string> addedDeploymentTargetIds,
         IReadOnlyCollection<string> removedDeploymentTargetIds,
@@ -72,7 +71,7 @@ internal sealed class MongoApplyDeploymentTargetReferenceChanges(
                 .Project(item => item.DeploymentTargetId)
                 .ToListAsync(cancellationToken);
         if (referencedTargetIds.Count == 0)
-            return new Ok<Unit>(Unit.Value);
+            return new DeploymentTargetReferencesChanged();
 
         var removedFence = await AdvanceFencesAsync(
             referencedTargetIds,
@@ -88,7 +87,7 @@ internal sealed class MongoApplyDeploymentTargetReferenceChanges(
             removalFilter,
             cancellationToken: cancellationToken);
         return deleted.DeletedCount == referencedTargetIds.Count
-            ? new Ok<Unit>(Unit.Value)
+            ? new DeploymentTargetReferencesChanged()
             : Rejected(owner, addedTargetIds, removedTargetIds);
     }
 
@@ -110,16 +109,15 @@ internal sealed class MongoApplyDeploymentTargetReferenceChanges(
         return update.ModifiedCount == deploymentTargetIds.Count;
     }
 
-    private static Err<DeploymentTargetReferenceChangeRejected> Rejected(
+    private static ApplyDeploymentTargetReferenceChangesOutcome Rejected(
         DeploymentTargetReferenceOwner owner,
         IReadOnlyCollection<string> addedDeploymentTargetIds,
-        IReadOnlyCollection<string> removedDeploymentTargetIds) =>
-        new(new DeploymentTargetReferenceChangeRejected(
+        IReadOnlyCollection<string> removedDeploymentTargetIds) => new DeploymentTargetReferenceChangeRejected(
             owner,
             addedDeploymentTargetIds
                 .Concat(removedDeploymentTargetIds)
                 .Order(StringComparer.Ordinal)
-                .ToArray()));
+                .ToArray());
 
     private static void EnsureArguments(
         DeploymentTargetReferenceOwner owner,

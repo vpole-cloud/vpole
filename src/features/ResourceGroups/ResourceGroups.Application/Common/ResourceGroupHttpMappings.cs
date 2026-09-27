@@ -1,25 +1,74 @@
 using System.Net;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.ASP.Helpers;
+using Pole.Features.ResourceGroups.Application.Endpoints;
 using Pole.Features.ResourceGroups.Application.Persistence;
+using Pole.Features.ResourceGroups.Application.Persistence.IsolationScopes;
+using Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.ResourceGroups.Contracts.HttpMapping;
 
 namespace Pole.Features.ResourceGroups.Application.Common;
 
 public static class ResourceGroupHttpMappings
 {
+    public static IResult Map(CreateIsolationScopeError error) => error.Value switch
+    {
+        ResourceGroupNotFound value => MapResourceGroupNotFound(value).ToHttpResult(),
+        ResourceGroupDeleting value => MapResourceGroupDeleting(value).ToHttpResult(),
+        ResourceGroupRevisionConflict value => MapResourceGroupRevisionConflict(value).ToHttpResult(),
+        IsolationScopeNameConflict value => MapIsolationScopeNameConflict(value).ToHttpResult()
+    };
+
+    public static IResult Map(UpdateResourceGroupError error) => error.Value switch
+    {
+        ResourceGroupNotFound value => MapResourceGroupNotFound(value).ToHttpResult(),
+        ResourceGroupRevisionConflict value => MapResourceGroupRevisionConflict(value).ToHttpResult()
+    };
+
+    public static IResult Map(ResourceGroupDeletionError error) => error.Value switch
+    {
+        ResourceGroupNotFound value => MapResourceGroupNotFound(value).ToHttpResult(),
+        ResourceGroupContainsResources value => MapResourceGroupContainsResources(value).ToHttpResult(),
+        ResourceGroupDeploymentInProgress value => MapResourceGroupDeploymentInProgress(value).ToHttpResult(),
+        ResourceGroupRevisionConflict value => MapResourceGroupRevisionConflict(value).ToHttpResult()
+    };
+
+    public static IResult Map(IsolationScopeDeletionError error) => error.Value switch
+    {
+        ResourceGroupNotFound value => MapResourceGroupNotFound(value).ToHttpResult(),
+        ResourceGroupDeleting value => MapResourceGroupDeleting(value).ToHttpResult(),
+        IsolationScopeNotFound value => MapIsolationScopeNotFound(value).ToHttpResult(),
+        DefaultIsolationScopeDeletionForbidden value => MapDefaultIsolationScopeDeletionForbidden(value).ToHttpResult(),
+        IsolationScopeDeploymentInProgress value => MapIsolationScopeDeploymentInProgress(value).ToHttpResult(),
+        IsolationScopeReferenced value => MapIsolationScopeReferenced(value).ToHttpResult(),
+        ResourceGroupRevisionConflict value => MapResourceGroupRevisionConflict(value).ToHttpResult()
+    };
+
+    public static IResult Map(RetryRuntimeCellError error) => error.Value switch
+    {
+        RuntimeCellNotFound value => MapRuntimeCellNotFound(value).ToHttpResult(),
+        RuntimeCellRetryRejected value => MapRuntimeCellRetryRejected(value).ToHttpResult(),
+        ResourceGroupRevisionConflict value => MapResourceGroupRevisionConflict(value).ToHttpResult()
+    };
+
+    public static IResult Map(ResourceGroupNotFound error) => MapResourceGroupNotFound(error).ToHttpResult();
+    public static IResult Map(IsolationScopeNotFound error) => MapIsolationScopeNotFound(error).ToHttpResult();
+    public static IResult Map(RuntimeCellNotFound error) => MapRuntimeCellNotFound(error).ToHttpResult();
+
     public static IReadOnlyList<HttpProblemMapping> All { get; } =
         Array.AsReadOnly<HttpProblemMapping>(
         [
             HttpProblemMapping.For<ResourceGroupOwnershipNotFound>(MapResourceGroupOwnershipNotFound),
             HttpProblemMapping.For<ResourceGroupOwnershipDeleting>(MapResourceGroupOwnershipDeleting),
             HttpProblemMapping.For<ResourceRegistrationResourceGroupNotFound>(
-                error => ResourceGroupNotFoundProblem(error.ResourceGroupId)),
+                ResourceGroupContractHttpMappings.MapRegistrationResourceGroupNotFound),
             HttpProblemMapping.For<ResourceRegistrationResourceGroupDeleting>(
-                error => ResourceGroupDeletingProblem(error.ResourceGroupId)),
+                ResourceGroupContractHttpMappings.MapRegistrationResourceGroupDeleting),
             HttpProblemMapping.For<ResourceRegistrationIdentityConflict>(
-                MapResourceRegistrationIdentityConflict),
-            HttpProblemMapping.For<ResourceRegistrationNotFound>(MapResourceRegistrationNotFound),
+                ResourceGroupContractHttpMappings.MapRegistrationIdentityConflict),
+            HttpProblemMapping.For<ResourceRegistrationNotFound>(ResourceGroupContractHttpMappings.MapRegistrationNotFound),
             HttpProblemMapping.For<ResourceGroupNotFound>(MapResourceGroupNotFound),
             HttpProblemMapping.For<ResourceGroupDeleting>(MapResourceGroupDeleting),
             HttpProblemMapping.For<ResourceGroupRevisionConflict>(MapResourceGroupRevisionConflict),
@@ -30,11 +79,7 @@ public static class ResourceGroupHttpMappings
             HttpProblemMapping.For<IsolationScopeDeleting>(MapIsolationScopeDeleting),
             HttpProblemMapping.For<DefaultIsolationScopeDeletionForbidden>(
                 MapDefaultIsolationScopeDeletionForbidden),
-            HttpProblemMapping.For<IsolationScopeReferenced>(error => Problem(
-                HttpStatusCode.Conflict,
-                "resource-groups.isolation-scopes.referenced",
-                "Isolation scope still has resource references",
-                ("isolationScopeId", error.IsolationScopeId))),
+            HttpProblemMapping.For<IsolationScopeReferenced>(MapIsolationScopeReferenced),
             HttpProblemMapping.For<IsolationScopeDeploymentInProgress>(
                 MapIsolationScopeDeploymentInProgress),
             HttpProblemMapping.For<RuntimeCellNotFound>(MapRuntimeCellNotFound),
@@ -65,22 +110,6 @@ public static class ResourceGroupHttpMappings
         "resource-groups.revision-conflict",
         "Resource group changed",
         ("resourceGroupId", conflict.ResourceGroupId));
-
-    private static HttpProblem MapResourceRegistrationIdentityConflict(
-        ResourceRegistrationIdentityConflict conflict) => Problem(
-        HttpStatusCode.Conflict,
-        "resource-groups.resource-registration.identity-conflict",
-        "Resource identity is already registered",
-        ("resourceTypeId", conflict.ResourceTypeId.Value),
-        ("resourceId", conflict.ResourceId));
-
-    private static HttpProblem MapResourceRegistrationNotFound(
-        ResourceRegistrationNotFound notFound) => Problem(
-        HttpStatusCode.NotFound,
-        "resource-groups.resource-registration.not-found",
-        "Resource registration not found",
-        ("resourceTypeId", notFound.ResourceTypeId.Value),
-        ("resourceId", notFound.ResourceId));
 
     private static HttpProblem MapResourceGroupContainsResources(
         ResourceGroupContainsResources conflict) => Problem(
@@ -115,6 +144,12 @@ public static class ResourceGroupHttpMappings
         "resource-groups.isolation-scopes.deleting",
         "Isolation scope is being deleted",
         ("isolationScopeId", deleting.IsolationScopeId));
+
+    private static HttpProblem MapIsolationScopeReferenced(IsolationScopeReferenced error) => Problem(
+        HttpStatusCode.Conflict,
+        "resource-groups.isolation-scopes.referenced",
+        "Isolation scope still has resource references",
+        ("isolationScopeId", error.IsolationScopeId));
 
     private static HttpProblem MapDefaultIsolationScopeDeletionForbidden(
         DefaultIsolationScopeDeletionForbidden forbidden) => Problem(

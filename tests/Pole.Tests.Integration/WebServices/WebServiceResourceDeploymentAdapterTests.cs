@@ -228,7 +228,8 @@ public sealed class WebServiceResourceDeploymentAdapterTests
     private sealed class RecordingReader(WebService webService)
     {
         public List<(string TenantId, string ResourceId, string DeploymentId, long ResourceRevision, long Generation)>
-            ApplyRequests { get; } = [];
+            ApplyRequests
+        { get; } = [];
         public List<(string TenantId, string ResourceId)> DeleteRequests { get; } = [];
 
         public Task<WebServiceDeploymentPersistenceSnapshot?> LoadSnapshot(
@@ -260,7 +261,7 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         }
     }
 
-    private static Task<Result<RuntimeRegistryAccess, ResolveRuntimeRegistryAccessError>>
+    private static Task<ResolveRuntimeRegistryAccessOutcome>
         UnexpectedRegistryAccess(
             string tenantId,
             CancellationToken cancellationToken = default) =>

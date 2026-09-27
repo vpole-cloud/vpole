@@ -4,10 +4,6 @@ using Pole.Features.Functions.Application.Endpoints;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Endpoints;
-using Pole.Features.StorageProfiles.Application.Common;
-using Pole.Features.StorageProfiles.Application.Discovery;
-using Pole.Features.StorageProfiles.Application.Endpoints;
-using Pole.Features.StorageProfiles.Application.Endpoints.KubernetesInventory;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Application.Endpoints.Deployments;
@@ -16,7 +12,6 @@ using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Application.Persistence.Deployments;
 using Pole.Features.WebServices.Application.Persistence.Lifecycle;
 using Pole.Mediator;
-using Pole.ResultType;
 using Xunit.Sdk;
 
 namespace Pole.Tests.Integration.Infrastructure;
@@ -60,72 +55,6 @@ public static class ResultAssertionExtensions
                 UnexpectedError<WebServiceDeletionFinalized>(error)
         };
 
-
-    public static StorageProfileDto AssertSuccess(this CreateStorageProfileOutcome outcome) =>
-        outcome switch
-        {
-            StorageProfileDto success => success,
-            CreateStorageProfileError error => UnexpectedError<StorageProfileDto>(error)
-        };
-
-    public static CreateStorageProfileError AssertFailure(
-        this CreateStorageProfileOutcome outcome) => outcome switch
-        {
-            StorageProfileDto success => UnexpectedSuccess<CreateStorageProfileError>(success),
-            CreateStorageProfileError error => error
-        };
-
-    public static StorageProfileDto AssertSuccess(this UpdateStorageProfileOutcome outcome) =>
-        outcome switch
-        {
-            StorageProfileDto success => success,
-            UpdateStorageProfileError error => UnexpectedError<StorageProfileDto>(error)
-        };
-
-    public static UpdateStorageProfileError AssertFailure(
-        this UpdateStorageProfileOutcome outcome) => outcome switch
-        {
-            StorageProfileDto success => UnexpectedSuccess<UpdateStorageProfileError>(success),
-            UpdateStorageProfileError error => error
-        };
-
-    public static IReadOnlyCollection<StorageProfileDto> AssertSuccess(
-        this GetStorageProfilesOutcome outcome) => outcome switch
-        {
-            IReadOnlyCollection<StorageProfileDto> success => success
-        };
-
-    public static IReadOnlyCollection<StorageProfileDto> AssertSuccess(
-        this GetAvailableStorageProfilesOutcome outcome) => outcome switch
-        {
-            IReadOnlyCollection<StorageProfileDto> success => success,
-            KubernetesStorageDiscoveryUnavailable error =>
-                UnexpectedError<IReadOnlyCollection<StorageProfileDto>>(error)
-        };
-
-    public static IReadOnlyCollection<KubernetesStorageClassDto> AssertSuccess(
-        this GetKubernetesStorageClassesOutcome outcome) => outcome switch
-        {
-            IReadOnlyCollection<KubernetesStorageClassDto> success => success,
-            KubernetesStorageDiscoveryUnavailable error =>
-                UnexpectedError<IReadOnlyCollection<KubernetesStorageClassDto>>(error)
-        };
-
-    public static IReadOnlyCollection<KubernetesPersistentVolumeDto> AssertSuccess(
-        this GetKubernetesPersistentVolumesOutcome outcome) => outcome switch
-        {
-            IReadOnlyCollection<KubernetesPersistentVolumeDto> success => success,
-            KubernetesStorageDiscoveryUnavailable error =>
-                UnexpectedError<IReadOnlyCollection<KubernetesPersistentVolumeDto>>(error)
-        };
-
-    public static IReadOnlyCollection<KubernetesPersistentVolumeClaimDto> AssertSuccess(
-        this GetKubernetesPersistentVolumeClaimsOutcome outcome) => outcome switch
-        {
-            IReadOnlyCollection<KubernetesPersistentVolumeClaimDto> success => success,
-            KubernetesStorageDiscoveryUnavailable error =>
-                UnexpectedError<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>>(error)
-        };
 
     public static CreateWebServiceResponse AssertSuccess(
         this MediatorResult<CreateWebServiceOutcome> result) =>
@@ -299,46 +228,4 @@ public static class ResultAssertionExtensions
                     "Expected a request validation rejection, but the pipeline returned " +
                     $"'{reason.GetType().Name}'.")
             });
-
-    public static T AssertSuccess<T, TError>(this Result<T, TError> result)
-        where T : notnull
-        where TError : notnull =>
-        result switch
-        {
-            Ok<T> success => success.Value,
-            Err<TError> error => throw new XunitException(
-                $"Expected a successful result, but received " +
-                $"{error.Value.GetType().Name}: {error.Value}"),
-            _ => throw new XunitException(
-                $"Expected a successful result, but received unsupported result type " +
-                $"'{result.GetType().Name}'.")
-        };
-
-    public static TError AssertFailure<T, TError>(this Result<T, TError> result)
-        where T : notnull
-        where TError : notnull =>
-        result switch
-        {
-            Err<TError> error => error.Value,
-            Ok<T> success => throw new XunitException(
-                $"Expected a failed result, but received {success.GetType().Name}."),
-            _ => throw new XunitException(
-                $"Expected a failed result, but received unsupported result type " +
-                $"'{result.GetType().Name}'.")
-        };
-}
-
-/// <summary>
-/// Static-call facade for test code that reads more clearly with assertion functions than
-/// extension-method syntax. The assertion behavior remains centralized above.
-/// </summary>
-public static class ResultAssertions
-{
-    public static T AssertSuccess<T, TError>(Result<T, TError> result)
-        where T : notnull
-        where TError : notnull => result.AssertSuccess();
-
-    public static TError AssertFailure<T, TError>(Result<T, TError> result)
-        where T : notnull
-        where TError : notnull => result.AssertFailure();
 }

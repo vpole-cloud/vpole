@@ -10,6 +10,8 @@ using Pole.Features.Secrets.Domain;
 using Pole.Mediator;
 using Pole.Validation;
 
+using static Pole.Features.Secrets.Application.SecretHttpMappings;
+
 namespace Pole.Features.Secrets.Application.Endpoints;
 
 public union RotateSecretOutcome(
@@ -77,18 +79,17 @@ public static class RotateSecretEndpoint
     {
         app.MapPost("/{Id}/versions", async (
                 IMediator mediator,
-                IHttpProblemMapper problems,
                 [AsParameters] RotateSecretRequest request,
                 CancellationToken ct) =>
                 (await mediator.Send(request, ct))
                 .ToHttpResult(outcome => outcome switch
                 {
                     SecretMetadata metadata => Results.Ok(metadata),
-                    SecretMissing error => problems.Map(error).ToHttpResult(),
-                    SecretVersionConflict error => problems.Map(error).ToHttpResult(),
-                    SecretMappedKeysRequired error => problems.Map(error).ToHttpResult(),
-                    SecretEncryptionFailed error => problems.Map(error).ToHttpResult(),
-                    SecretManagedByProvider error => problems.Map(error).ToHttpResult()
+                    SecretMissing error => MapMissing(error),
+                    SecretVersionConflict error => MapVersionConflict(error),
+                    SecretMappedKeysRequired error => MapMappedKeysRequired(error),
+                    SecretEncryptionFailed error => MapEncryptionFailed(error),
+                    SecretManagedByProvider error => MapManagedByProvider(error)
                 }))
             .WithName("RotateSecret");
 

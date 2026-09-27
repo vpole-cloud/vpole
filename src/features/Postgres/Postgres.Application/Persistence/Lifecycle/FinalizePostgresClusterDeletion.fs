@@ -67,12 +67,12 @@ type MongoFinalizePostgresClusterDeletion(
                                         PostgresManagedSecret.owner clusterId,
                                         transaction.Session,
                                         transactionCancellationToken)
-                                match TypedResultInterop.toResult released with
-                                | Error error ->
+                                match released.Value with
+                                | :? ManagedSecretFailure as error ->
                                     return transaction.Abort(PostgresError(
                                         PostgresClusterDeletionSecretConflict(
                                             PostgresCredentialErrors.fromManaged clusterId error)))
-                                | Ok _ ->
+                                | :? ManagedSecretMutationSucceeded ->
                                     let! deleted =
                                         clusters.DeleteOneAsync(
                                             transaction.Session,
@@ -93,7 +93,7 @@ type MongoFinalizePostgresClusterDeletion(
                                                 transaction.Session,
                                                 transactionCancellationToken)
 
-                                        match TypedResultInterop.toResult registrationResult with
+                                        match TypedResultInterop.resourceUnregistration registrationResult with
                                         | Error error ->
                                             return
                                                 transaction.Abort(
@@ -107,12 +107,8 @@ type MongoFinalizePostgresClusterDeletion(
                                                     clusterId,
                                                     transaction.Session,
                                                     transactionCancellationToken)
-                                            let mutable ignored = Unchecked.defaultof<Unit>
-                                            let mutable purgeConflict = Unchecked.defaultof<ResourceDeploymentFinalizationConflict>
-                                            if TypedResultExtensions.TryGetValue(
-                                                purged,
-                                                &ignored,
-                                                &purgeConflict) then
+                                            match purged.Value with
+                                            | :? ResourceDeploymentsPurged ->
                                                 let writes : IReadOnlyCollection<OutboxWrite> =
                                                     [| OutboxWrite.Create(PostgresClusterEvents.deleted cluster) |]
                                                 do! storeOutboxWrites.Invoke(
@@ -120,10 +116,13 @@ type MongoFinalizePostgresClusterDeletion(
                                                     writes,
                                                     transactionCancellationToken)
                                                 return transaction.Commit(PostgresSuccess ())
-                                            else
+                                            | :? ResourceDeploymentFinalizationConflict as purgeConflict ->
                                                 return
                                                     transaction.Abort(
                                                         PostgresError(
                                                             PostgresClusterDeletionDeploymentPurgeConflict purgeConflict))
+                                            | value ->
+                                                return invalidOp $"Unexpected resource deployment purge outcome: {value}"
+                                | _ -> return invalidOp "Unexpected managed Secret release outcome."
                     }),
             cancellationToken)

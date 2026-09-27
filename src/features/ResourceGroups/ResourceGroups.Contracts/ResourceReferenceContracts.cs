@@ -1,5 +1,4 @@
 using MongoDB.Driver;
-using Pole.ResultType;
 using Pole.Workloads;
 
 namespace Pole.Features.ResourceGroups.Contracts;
@@ -11,7 +10,13 @@ public sealed record ResourceScopeConsumerReference(
 // Admission takes the group write fence shared by deletion and unregistration.
 public sealed record ResourceScopeReferenceUnavailable;
 
-public delegate Task<Result<Unit, ResourceScopeReferenceUnavailable>> AdmitResourceScopeReference(
+public sealed record ResourceScopeReferenceAdmitted;
+
+public union AdmitResourceScopeReferenceOutcome(
+    ResourceScopeReferenceAdmitted,
+    ResourceScopeReferenceUnavailable);
+
+public delegate Task<AdmitResourceScopeReferenceOutcome> AdmitResourceScopeReference(
     string tenantId,
     string resourceGroupId,
     string isolationScopeId,

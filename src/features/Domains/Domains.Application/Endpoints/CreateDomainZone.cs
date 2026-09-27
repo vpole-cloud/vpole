@@ -4,17 +4,19 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
+using Pole.Database;
 using Pole.Dns;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Application.Persistence;
-using Pole.Database;
 using Pole.Features.Domains.Application.Persistence.DomainZones;
+using Pole.Features.Domains.Contracts;
+using Pole.Features.Domains.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
-using Pole.Features.Domains.Domain;
+using static Pole.Features.DeploymentTargets.Contracts.HttpMapping.DeploymentTargetContractHttpMappings;
+using static Pole.Features.Domains.Application.Common.DomainHttpMappings;
 
 namespace Pole.Features.Domains.Application.Endpoints;
 
@@ -22,9 +24,9 @@ public static class CreateDomainZone
 {
     public static IEndpointRouteBuilder MapCreateDomainZoneEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/", async (IMediator mediator, IHttpProblemMapper httpProblems, [AsParameters] CreateDomainZoneRequest request, CancellationToken cancellationToken) =>
+        app.MapPost("/", async (IMediator mediator, [AsParameters] CreateDomainZoneRequest request, CancellationToken cancellationToken) =>
                 (await mediator.Send(request, cancellationToken)).ToHttpResult(
-                    outcome => ToHttpResult(outcome, httpProblems)))
+                    ToHttpResult))
             .WithName("CreateDomainZone")
             .Produces<TenantDomainZoneSnapshot>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -35,12 +37,14 @@ public static class CreateDomainZone
     }
 
     private static IResult ToHttpResult(
-        CreateDomainZoneOutcome outcome,
-        IHttpProblemMapper httpProblems) => outcome switch
+        CreateDomainZoneOutcome outcome) => outcome switch
         {
             TenantDomainZoneSnapshot zone =>
                 Results.Created($"/api/v1/domain-zones/{zone.Id}", zone),
-            CreateDomainZoneError error => httpProblems.Map(error).ToHttpResult()
+            DeploymentTargetDomainReservationAdmissionError error => MapDomainReservationAdmissionError(error),
+            ManagedDomainZoneAlreadyReserved error => MapManagedDomainZoneAlreadyReserved(error),
+            ManagedDomainZoneDeploymentTargetChanged error => MapManagedDomainZoneDeploymentTargetChanged(error),
+            ManagedDomainZoneReferenceRejected error => MapManagedDomainZoneReferenceRejected(error)
         };
 }
 
@@ -53,13 +57,12 @@ public sealed record CreateDomainZoneRequest(
     [FromTenantHeader] string TenantId)
     : IMediatorRequest<CreateDomainZoneOutcome>, ITenantCreateOperation;
 
-public union CreateDomainZoneError(
-    DeploymentTargetDomainReservationAdmissionError,
-    CreateManagedDomainZoneError);
-
 public union CreateDomainZoneOutcome(
     TenantDomainZoneSnapshot,
-    CreateDomainZoneError);
+    DeploymentTargetDomainReservationAdmissionError,
+    ManagedDomainZoneAlreadyReserved,
+    ManagedDomainZoneDeploymentTargetChanged,
+    ManagedDomainZoneReferenceRejected);
 
 public sealed class CreateDomainZoneRequestValidator : AbstractValidator<CreateDomainZoneRequest>
 {
@@ -84,9 +87,7 @@ public sealed class CreateDomainZoneRequestValidator : AbstractValidator<CreateD
 
 public sealed class CreateDomainZoneHandler(
     AdmitDeploymentTargetPublicIngressForDomainReservation admitPublicIngress,
-    RunMongoOutcomeTransaction<Result<
-        TenantDomainZoneSnapshot,
-        CreateDomainZoneError>> runMongoTransaction,
+    RunMongoOutcomeTransaction<CreateDomainZoneOutcome> runMongoTransaction,
     CreateManagedDomainZoneReservation createManagedDomainZone)
     : IMediatorOutcomeHandler<CreateDomainZoneRequest, CreateDomainZoneOutcome>
 {
@@ -94,41 +95,31 @@ public sealed class CreateDomainZoneHandler(
         CreateDomainZoneRequest request,
         CancellationToken cancellationToken = default)
     {
-        var result = await admitPublicIngress(
-                request.TenantId,
-                request.Body.DeploymentTargetId,
-                cancellationToken)
-            .MapErrorAsync(CreateDomainZoneError (error) => error)
-            .ThenAsync(publicIngress => ReserveAsync(
-                request,
-                publicIngress,
-                cancellationToken));
-
-        return result.Match(
-            CreateDomainZoneOutcome (zone) => zone,
-            CreateDomainZoneOutcome (error) => error);
-    }
-
-    private Task<Result<TenantDomainZoneSnapshot, CreateDomainZoneError>> ReserveAsync(
-        CreateDomainZoneRequest request,
-        DeploymentTargetPublicIngressDto publicIngress,
-        CancellationToken cancellationToken) =>
-        runMongoTransaction(
-            async (transaction, transactionCancellationToken) =>
-            {
-                var result = (await createManagedDomainZone(
-                        request.TenantId,
-                        publicIngress.DeploymentTargetId,
-                        request.Body.Label,
-                        publicIngress.PublicBaseDomain,
-                        publicIngress.WorkloadConfigurationRevision,
-                        transaction.Session,
-                        transactionCancellationToken))
-                    .MapError(CreateDomainZoneError (error) => error);
-
-                return result.Match(
-                    zone => transaction.Commit(new Ok<TenantDomainZoneSnapshot>(zone)),
-                    error => transaction.Abort(new Err<CreateDomainZoneError>(error)));
-            },
+        var admission = await admitPublicIngress(
+            request.TenantId,
+            request.Body.DeploymentTargetId,
             cancellationToken);
+        if (admission is DeploymentTargetDomainReservationAdmissionError admissionError)
+            return admissionError;
+        var publicIngress = (DeploymentTargetPublicIngressDto)admission.Value;
+
+        return await runMongoTransaction(async (transaction, ct) =>
+        {
+            var reserved = await createManagedDomainZone(
+                request.TenantId,
+                publicIngress.DeploymentTargetId,
+                request.Body.Label,
+                publicIngress.PublicBaseDomain,
+                publicIngress.WorkloadConfigurationRevision,
+                transaction.Session,
+                ct);
+            return reserved switch
+            {
+                TenantDomainZoneSnapshot zone => transaction.Commit(zone),
+                ManagedDomainZoneAlreadyReserved error => transaction.Abort(error),
+                ManagedDomainZoneDeploymentTargetChanged error => transaction.Abort(error),
+                ManagedDomainZoneReferenceRejected error => transaction.Abort(error)
+            };
+        }, cancellationToken);
+    }
 }

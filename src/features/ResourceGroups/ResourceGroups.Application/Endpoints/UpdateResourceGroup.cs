@@ -14,7 +14,6 @@ using Pole.Features.ResourceGroups.Application.Persistence.ResourceRegistrations
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
 
 namespace Pole.Features.ResourceGroups.Application.Endpoints;
@@ -25,7 +24,6 @@ public static class UpdateResourceGroup
     {
         app.MapPut("/{Id}", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] UpdateResourceGroupRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -33,7 +31,7 @@ public static class UpdateResourceGroup
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     ResourceGroupDto resourceGroup => Results.Ok(resourceGroup),
-                    UpdateResourceGroupError error => httpProblems.Map(error).ToHttpResult()
+                    UpdateResourceGroupError error => ResourceGroupHttpMappings.Map(error)
                 });
             })
             .WithName("UpdateResourceGroup")
@@ -98,11 +96,11 @@ public sealed class UpdateResourceGroupHandler(
             cancellationToken);
         return persisted switch
         {
-            Ok<ResourceGroup> success => success.Value.ToDto(await loadResourceRegistrationCount(
+            ResourceGroup success => success.ToDto(await loadResourceRegistrationCount(
                 request.TenantId,
                 request.Id,
                 cancellationToken)),
-            Err<ResourceGroupRevisionConflict> error => new UpdateResourceGroupError(error.Value)
+            ResourceGroupRevisionConflict error => new UpdateResourceGroupError(error)
         };
     }
 

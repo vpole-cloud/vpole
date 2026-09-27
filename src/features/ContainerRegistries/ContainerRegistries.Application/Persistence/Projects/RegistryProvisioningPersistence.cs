@@ -5,9 +5,22 @@ using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.ContainerRegistries.Application.Provisioning;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.ContainerRegistries.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.ContainerRegistries.Application.Persistence.Projects;
+
+public union ClaimRegistryProvisioningOutcome(
+    RegistryProject,
+    TenantContainerRegistryProvisioningConflict);
+
+public sealed record RemoteRegistryProvisioningRecorded;
+
+public union RecordRemoteRegistryProvisioningOutcome(
+    RemoteRegistryProvisioningRecorded,
+    TenantContainerRegistryProvisioningConflict);
+
+public union PersistReadyRegistryProjectOutcome(
+    RegistryProject,
+    TenantContainerRegistryProvisioningConflict);
 
 /// <summary>
 /// Owns the durable state transitions of the Harbor-project provisioning state machine.
@@ -24,7 +37,7 @@ public sealed class RegistryProvisioningPersistence(
     private readonly IMongoCollection<RegistryCredential> credentials =
         database.GetCollection<RegistryCredential>("RegistryCredentials");
 
-    internal async Task<Result<RegistryProject, TenantContainerRegistryProvisioningConflict>>
+    internal async Task<ClaimRegistryProvisioningOutcome>
         ClaimProvisioningAsync(
             string tenantId,
             string initiatedByUserId,
@@ -34,7 +47,7 @@ public sealed class RegistryProvisioningPersistence(
             .Find(ContainerRegistryFilters.HarborProjectByTenant(tenantId))
             .FirstOrDefaultAsync(cancellationToken);
         if (existing?.State is ReadyRegistryProject)
-            return new Ok<RegistryProject>(existing);
+            return existing;
         if (existing?.State is not null and not FailedRegistryProjectProvisioning)
             return Conflict(tenantId);
 
@@ -51,7 +64,7 @@ public sealed class RegistryProvisioningPersistence(
                 cancellationToken);
             return claimed is null
                 ? Conflict(tenantId)
-                : new Ok<RegistryProject>(claimed);
+                : claimed;
         }
 
         var project = RegistryProjectFactory.Create(
@@ -63,7 +76,7 @@ public sealed class RegistryProvisioningPersistence(
         try
         {
             await projects.InsertOneAsync(project, cancellationToken: cancellationToken);
-            return new Ok<RegistryProject>(project);
+            return project;
         }
         catch (MongoWriteException exception) when (
             exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
@@ -72,7 +85,7 @@ public sealed class RegistryProvisioningPersistence(
         }
     }
 
-    internal async Task<Result<Unit, TenantContainerRegistryProvisioningConflict>>
+    internal async Task<RecordRemoteRegistryProvisioningOutcome>
         RecordRemoteProvisioningAsync(
             string projectId,
             RemoteProvisionedRegistryProject remoteState,
@@ -86,11 +99,11 @@ public sealed class RegistryProvisioningPersistence(
                 .Set(item => item.UpdatedAtUtc, remoteState.ProvisionedAtUtc),
             cancellationToken: cancellationToken);
         return update.ModifiedCount == 1
-            ? new Ok<Unit>(Unit.Value)
+            ? new RemoteRegistryProvisioningRecorded()
             : ConflictUnit(tenantId);
     }
 
-    internal Task<Result<RegistryProject, TenantContainerRegistryProvisioningConflict>>
+    internal Task<PersistReadyRegistryProjectOutcome>
         PersistReadyAsync(
             RegistryProject project,
             RegistryProvisioningAttempt attempt,
@@ -98,7 +111,7 @@ public sealed class RegistryProvisioningPersistence(
             RegistryCredential buildCredential,
             RegistryCredential pullCredential,
             CancellationToken cancellationToken) =>
-        transactions.InvokeOutcomeAsync<Result<RegistryProject, TenantContainerRegistryProvisioningConflict>>(
+        transactions.InvokeOutcomeAsync<PersistReadyRegistryProjectOutcome>(
             async (transaction, transactionCancellationToken) =>
             {
                 var update = await projects.UpdateOneAsync(
@@ -110,16 +123,16 @@ public sealed class RegistryProvisioningPersistence(
                     cancellationToken: transactionCancellationToken);
                 if (update.ModifiedCount != 1)
                 {
-                    return transaction.AbortError<RegistryProject, TenantContainerRegistryProvisioningConflict>(
-                        new(project.TenantId));
+                    return transaction.Abort(new TenantContainerRegistryProvisioningConflict(project.TenantId));
                 }
 
                 await credentials.InsertManyAsync(
                     transaction.Session,
                     [buildCredential, pullCredential],
                     cancellationToken: transactionCancellationToken);
-                return transaction.Commit(new Ok<RegistryProject>(
-                    project with { State = ready, UpdatedAtUtc = ready.ProvisionedAtUtc }));
+                PersistReadyRegistryProjectOutcome outcome =
+                    project with { State = ready, UpdatedAtUtc = ready.ProvisionedAtUtc };
+                return transaction.Commit(outcome);
             },
             cancellationToken);
 
@@ -300,11 +313,9 @@ public sealed class RegistryProvisioningPersistence(
             .Limit(limit)
             .ToListAsync(cancellationToken);
 
-    private static Result<RegistryProject, TenantContainerRegistryProvisioningConflict> Conflict(
-        string tenantId) =>
-        new Err<TenantContainerRegistryProvisioningConflict>(new(tenantId));
+    private static ClaimRegistryProvisioningOutcome Conflict(string tenantId) =>
+        new TenantContainerRegistryProvisioningConflict(tenantId);
 
-    private static Result<Unit, TenantContainerRegistryProvisioningConflict> ConflictUnit(
-        string tenantId) =>
-        new Err<TenantContainerRegistryProvisioningConflict>(new(tenantId));
+    private static RecordRemoteRegistryProvisioningOutcome ConflictUnit(string tenantId) =>
+        new TenantContainerRegistryProvisioningConflict(tenantId);
 }

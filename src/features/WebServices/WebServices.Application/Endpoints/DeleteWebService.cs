@@ -11,11 +11,14 @@ using Pole.Features.ResourceDeployments.Events;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Persistence.Lifecycle;
+using Pole.Features.WebServices.Application.Persistence.Mutations;
 using Pole.Features.WebServices.Application.Persistence.Reads;
 using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
+
+using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
 
 namespace Pole.Features.WebServices.Application.Endpoints;
 
@@ -26,7 +29,6 @@ public static class DeleteWebService
     {
         app.MapDelete(Route, async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] DeleteWebServiceRequest request,
                 CancellationToken ct) =>
             {
@@ -34,7 +36,7 @@ public static class DeleteWebService
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     DeleteWebServiceResponse value => Results.Accepted(value: value),
-                    DeleteWebServiceError error => httpProblems.Map(error).ToHttpResult()
+                    DeleteWebServiceError error => MapError(error)
                 });
             })
             .WithName("DeleteWebService")
@@ -108,7 +110,7 @@ public sealed class DeleteWebServiceHandler(
                     webService,
                     deleting,
                     transactionCancellationToken);
-                if (!replace.TryGetValue(out _, out var replaceError))
+                if (replace is WebServiceUpdateConflict replaceError)
                     return transaction.Abort(
                         Error(new DeleteWebServiceError(replaceError)));
 
@@ -117,7 +119,7 @@ public sealed class DeleteWebServiceHandler(
                     request.Id,
                     transaction.Session,
                     transactionCancellationToken);
-                if (!buildGuard.TryGetValue(out _, out var buildError))
+                if (buildGuard is SourceBuildWebServiceHasActiveJobs buildError)
                     return transaction.Abort(Error(new DeleteWebServiceError(buildError)));
 
                 var deploymentResult = await requestResourceDeploymentSetDeletion(
@@ -132,13 +134,12 @@ public sealed class DeleteWebServiceHandler(
                             deployment.Compute.Profile)).ToArray()),
                     transaction.Session,
                     transactionCancellationToken);
-                if (!deploymentResult.TryGetValue(
-                        out var updatedDeployments,
-                        out var deploymentError))
+                if (deploymentResult is ResourceDeploymentMutationError deploymentError)
                 {
                     return transaction.Abort(
                         Error(new DeleteWebServiceError(deploymentError)));
                 }
+                var updatedDeployments = ((MutatedResourceDeployments)deploymentResult.Value).Placements;
 
                 return transaction.Commit(new DeleteWebServiceOutcome(
                     new DeleteWebServiceResponse(

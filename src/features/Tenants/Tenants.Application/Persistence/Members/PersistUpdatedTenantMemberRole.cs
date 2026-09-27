@@ -1,7 +1,6 @@
 using MongoDB.Driver;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.Tenants.Application.Persistence.Members;
 
@@ -10,7 +9,13 @@ public sealed record UpdateTenantMemberRole(
     string MemberId,
     TenantRole Role);
 
-public delegate Task<Result<TenantMember, TenantMemberMutationError>>
+public union PersistUpdatedTenantMemberRoleOutcome(
+    TenantMember,
+    TenantNotFound,
+    TenantMemberNotFound,
+    TenantLastOwner);
+
+public delegate Task<PersistUpdatedTenantMemberRoleOutcome>
     PersistUpdatedTenantMemberRole(
         UpdateTenantMemberRole request,
         CancellationToken cancellationToken = default);
@@ -19,7 +24,7 @@ internal sealed class MongoPersistUpdatedTenantMemberRole(IMongoDatabase databas
 {
     private readonly IMongoCollection<Tenant> _tenants = database.GetCollection<Tenant>("Tenants");
 
-    public async Task<Result<TenantMember, TenantMemberMutationError>> InvokeAsync(
+    public async Task<PersistUpdatedTenantMemberRoleOutcome> InvokeAsync(
         UpdateTenantMemberRole request,
         CancellationToken cancellationToken = default)
     {
@@ -28,16 +33,13 @@ internal sealed class MongoPersistUpdatedTenantMemberRole(IMongoDatabase databas
             .FirstOrDefaultAsync(cancellationToken);
         if (tenant is null)
         {
-            return new Err<TenantMemberMutationError>(
-                new TenantMemberMutationError(new TenantNotFound(request.TenantId)));
+            return new TenantNotFound(request.TenantId);
         }
 
         var existingMember = tenant.Members.FirstOrDefault(member => member.Id == request.MemberId);
         if (existingMember is null)
         {
-            return new Err<TenantMemberMutationError>(
-                new TenantMemberMutationError(
-                    new TenantMemberNotFound(request.TenantId, request.MemberId)));
+            return new TenantMemberNotFound(request.TenantId, request.MemberId);
         }
 
         var removesOwner = request.Role != TenantRole.Owner;
@@ -45,13 +47,12 @@ internal sealed class MongoPersistUpdatedTenantMemberRole(IMongoDatabase databas
             removesOwner &&
             tenant.Members.Count(member => member.Role == TenantRole.Owner) == 1)
         {
-            return new Err<TenantMemberMutationError>(
-                new TenantMemberMutationError(new TenantLastOwner(request.TenantId, request.MemberId)));
+            return new TenantLastOwner(request.TenantId, request.MemberId);
         }
 
         var updatedTenant = await _tenants.FindOneAndUpdateAsync(
             removesOwner
-                ? TenantFilters.ByIdWithMemberAndAnotherOwner(
+                ? TenantFilters.ByIdWithMemberAndOwnerCanBeRemoved(
                     request.TenantId,
                     request.MemberId)
                 : TenantFilters.ByIdWithMember(request.TenantId, request.MemberId),
@@ -60,12 +61,18 @@ internal sealed class MongoPersistUpdatedTenantMemberRole(IMongoDatabase databas
             cancellationToken);
         var updatedMember = updatedTenant?.Members.FirstOrDefault(member => member.Id == request.MemberId);
         if (updatedMember is not null)
-            return new Ok<TenantMember>(updatedMember);
+            return updatedMember;
 
-        return await TenantMemberMutationFailures.ResolveAsync(
+        var failure = await TenantMemberMutationFailures.ResolveAsync(
             _tenants,
             request.TenantId,
             request.MemberId,
             cancellationToken);
+        return failure switch
+        {
+            TenantNotFound error => error,
+            TenantMemberNotFound error => error,
+            TenantLastOwner error => error
+        };
     }
 }

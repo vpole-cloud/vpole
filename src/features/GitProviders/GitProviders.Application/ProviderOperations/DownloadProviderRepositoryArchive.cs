@@ -2,11 +2,16 @@ using Microsoft.Extensions.Logging;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.GitProviders.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.GitProviders.Application.ProviderOperations;
 
-public delegate Task<Result<Unit, GitProviderRepositoryAccessError>> DownloadProviderRepositoryArchive(
+public sealed record ProviderRepositoryArchiveDownloaded;
+
+public union DownloadProviderRepositoryArchiveOutcome(
+    ProviderRepositoryArchiveDownloaded,
+    GitProviderRepositoryAccessError);
+
+public delegate Task<DownloadProviderRepositoryArchiveOutcome> DownloadProviderRepositoryArchive(
     GitProviderConnection connection,
     string repositoryId,
     string commitSha,
@@ -17,7 +22,7 @@ internal sealed class GitHubDownloadProviderRepositoryArchive(
     IGitHubAppClient gitHubClient,
     ILogger<GitHubDownloadProviderRepositoryArchive> logger)
 {
-    public async Task<Result<Unit, GitProviderRepositoryAccessError>> InvokeAsync(
+    public async Task<DownloadProviderRepositoryArchiveOutcome> InvokeAsync(
         GitProviderConnection connection,
         string repositoryId,
         string commitSha,
@@ -26,8 +31,8 @@ internal sealed class GitHubDownloadProviderRepositoryArchive(
     {
         if (connection.Provider is not GitProviderKind.GitHub)
         {
-            return new Err<GitProviderRepositoryAccessError>(
-                new(new GitProviderUnsupported(connection.Provider.ToString())));
+            return new GitProviderRepositoryAccessError(
+                new GitProviderUnsupported(connection.Provider.ToString()));
         }
 
         try
@@ -38,7 +43,7 @@ internal sealed class GitHubDownloadProviderRepositoryArchive(
                 commitSha,
                 destination,
                 cancellationToken);
-            return new Ok<Unit>(Unit.Value);
+            return new ProviderRepositoryArchiveDownloaded();
         }
         catch (GitHubApiException exception)
         {
@@ -46,14 +51,12 @@ internal sealed class GitHubDownloadProviderRepositoryArchive(
                 exception,
                 "GitHub rejected a repository archive download with status {StatusCode}.",
                 exception.StatusCode);
-            return new Err<GitProviderRepositoryAccessError>(
-                new(new GitProviderUnavailable("GitHub")));
+            return new GitProviderRepositoryAccessError(new GitProviderUnavailable("GitHub"));
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             logger.LogError(exception, "GitHub repository archive download failed.");
-            return new Err<GitProviderRepositoryAccessError>(
-                new(new GitProviderUnavailable("GitHub")));
+            return new GitProviderRepositoryAccessError(new GitProviderUnavailable("GitHub"));
         }
     }
 }

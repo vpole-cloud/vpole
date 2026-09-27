@@ -1,4 +1,3 @@
-using Pole.ResultType;
 
 namespace Pole.Encryption.Tests;
 
@@ -16,7 +15,7 @@ public sealed class EnvelopeEncryptionDiagnosticsTests
         using var encryption = TestEncryptionService.Create(
             "primary", 1, new TestKey("primary", 1, files.WriteKey("primary.key")));
         var encryptedResult = await encryption.Service.EncryptStringAsync(plaintext, context);
-        Assert.True(encryptedResult.TryGetValue(out var encrypted, out var encryptionFailure), encryptionFailure?.Message);
+        var encrypted = Assert.IsType<EncryptedValue>(encryptedResult.Value);
         var clone = EncryptionTestData.CloneEnvelope(encrypted);
         var tampered = clone with
         {
@@ -25,8 +24,7 @@ public sealed class EnvelopeEncryptionDiagnosticsTests
 
         var result = await encryption.Service.DecryptStringAsync(tampered, context);
 
-        Assert.False(result.TryGetValue(out _, out var failure));
-        var decryptionFailure = Assert.IsType<EnvelopeDecryptionFailed>(failure);
+        var decryptionFailure = Assert.IsType<EnvelopeDecryptionFailed>(result.Value);
         var diagnostic = decryptionFailure.Message;
         Assert.DoesNotContain(plaintext, diagnostic, StringComparison.Ordinal);
         Assert.DoesNotContain(tenantId, diagnostic, StringComparison.Ordinal);

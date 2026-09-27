@@ -3,13 +3,16 @@ using Pole.Database;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Persistence;
 
+internal union LoadedResourceDeploymentOutcome(
+    ResourceDeployment,
+    ResourceDeploymentMutationError);
+
 internal static class ResourceDeploymentMutationSupport
 {
-    public static async Task<Result<ResourceDeployment, ResourceDeploymentMutationError>>
+    public static async Task<LoadedResourceDeploymentOutcome>
         LoadSingleAsync(
             IMongoCollection<ResourceDeployment> resourceDeployments,
             ResourceDeploymentMutationRequest request,
@@ -29,15 +32,15 @@ internal static class ResourceDeploymentMutationSupport
             .ToListAsync(cancellationToken);
         return deployments.Count switch
         {
-            0 => Error<ResourceDeployment>(
+            0 => new ResourceDeploymentMutationError(
                 new ResourceDeploymentMutationNotFound(request.ResourceId)),
-            1 => Success(deployments[0]),
-            _ => Error<ResourceDeployment>(
+            1 => deployments[0],
+            _ => new ResourceDeploymentMutationError(
                 new ResourceDeploymentCardinalityConflict(request.ResourceId))
         };
     }
 
-    public static async Task<Result<ResourceDeployment, ResourceDeploymentMutationError>>
+    public static async Task<LoadedResourceDeploymentOutcome>
         LoadExactAsync(
             IMongoCollection<ResourceDeployment> resourceDeployments,
             ResourceDeploymentExactMutationRequest request,
@@ -55,10 +58,10 @@ internal static class ResourceDeploymentMutationSupport
                     request.ResourceDeploymentId))
             .FirstOrDefaultAsync(cancellationToken);
         return deployment is null
-            ? Error<ResourceDeployment>(new ResourceDeploymentMutationNotFound(
+            ? new ResourceDeploymentMutationError(new ResourceDeploymentMutationNotFound(
                 request.ResourceId,
                 request.ResourceDeploymentId))
-            : Success(deployment);
+            : deployment;
     }
 
     public static ResourceDeploymentMutationError? EnsureExpectedCompute(
@@ -100,7 +103,7 @@ internal static class ResourceDeploymentMutationSupport
             _ => false
         };
 
-    public static async Task<Result<PlacementSummaryDto, ResourceDeploymentMutationError>>
+    public static async Task<ResourceDeploymentMutationOutcome>
         ReplaceAndEnqueueAsync(
             IMongoCollection<ResourceDeployment> resourceDeployments,
             StoreOutboxWrites storeOutboxWrites,
@@ -116,7 +119,7 @@ internal static class ResourceDeploymentMutationSupport
             cancellationToken: cancellationToken);
         if (replacement.ModifiedCount != 1)
         {
-            return Error<PlacementSummaryDto>(new ResourceDeploymentChanged(
+            return new ResourceDeploymentMutationError(new ResourceDeploymentChanged(
                 current.ResourceId,
                 current.Id));
         }
@@ -129,15 +132,8 @@ internal static class ResourceDeploymentMutationSupport
                 cancellationToken);
         }
 
-        return Success(updated.ToPlacementSummaryDto());
+        return updated.ToPlacementSummaryDto();
     }
-
-    public static Result<T, ResourceDeploymentMutationError> Error<T>(
-        ResourceDeploymentMutationError error)
-        where T : notnull => new Err<ResourceDeploymentMutationError>(error);
-
-    public static Ok<T> Success<T>(T value)
-        where T : notnull => new(value);
 
     public static void EnsureSetIsNonEmptyAndUnique<T>(
         IReadOnlyList<T> deployments,

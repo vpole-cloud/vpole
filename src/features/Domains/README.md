@@ -20,3 +20,11 @@ DNS syntax is implemented in the dependency-light `Pole.Dns` project. Input is n
 lowercase ASCII and may contain already encoded `xn--` labels. Unicode-to-punycode conversion,
 external apex-domain verification, shared hostnames across targets, and DNS-provider record
 creation are outside this feature's current scope.
+
+## Operation outcomes
+
+Zone, hostname-binding and cleanup capabilities return named outcome unions. Capability delegates
+use operation names without an `Outcome` suffix; the corresponding result type carries that suffix.
+Provider error groups remain available to workload consumers during their migration. Domain-zone
+endpoints expose concrete local errors and call HTTP mapping methods directly. Only provider
+contract error mappings remain registered for consumers still using the dynamic mapper.

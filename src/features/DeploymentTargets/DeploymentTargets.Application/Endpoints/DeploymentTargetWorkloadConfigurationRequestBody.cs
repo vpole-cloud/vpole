@@ -49,12 +49,10 @@ public sealed class DeploymentTargetIngressConfigurationRequestBodyValidator
 internal static class DeploymentTargetWorkloadConfigurationRequestBodyExtensions
 {
     public static DeploymentTargetWorkloadConfiguration ToDomain(
-        this DeploymentTargetWorkloadConfigurationRequestBody body) =>
-        DeploymentTargetWorkloadConfiguration.Create(body.Ingress?.ToDomain());
+        this DeploymentTargetWorkloadConfigurationRequestBody body) => DeploymentTargetWorkloadConfiguration.Create(body.Ingress?.ToDomain());
 
     public static DeploymentTargetIngressConfiguration ToDomain(
-        this DeploymentTargetIngressConfigurationRequestBody body) =>
-        DeploymentTargetIngressConfiguration.Create(
+        this DeploymentTargetIngressConfigurationRequestBody body) => DeploymentTargetIngressConfiguration.Create(
             body.IngressClassName,
             body.ClusterIssuerName,
             body.PublicBaseDomain);

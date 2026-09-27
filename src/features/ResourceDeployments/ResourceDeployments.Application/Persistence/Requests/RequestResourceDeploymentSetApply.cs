@@ -4,7 +4,6 @@ using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Persistence.Requests;
 
@@ -15,9 +14,7 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
     FenceResolvedComputeProfiles fenceResolvedComputeProfiles,
     TimeProvider timeProvider)
 {
-    public async Task<Result<
-        IReadOnlyList<PlacementSummaryDto>,
-        ResourceDeploymentMutationError>> InvokeAsync(
+    public async Task<ResourceDeploymentSetMutationOutcome> InvokeAsync(
         ResourceDeploymentSetApplyRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
@@ -45,7 +42,7 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
             .ToListAsync(cancellationToken);
         if (current.Count != request.Deployments.Count)
         {
-            return ResourceDeploymentMutationSupport.Error<IReadOnlyList<PlacementSummaryDto>>(
+            return new ResourceDeploymentMutationError(
                 new ResourceDeploymentMutationNotFound(request.ResourceId));
         }
 
@@ -55,7 +52,7 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
             var deployment = byId[item.ResourceDeploymentId];
             if (deployment.Revision != item.ExpectedDeploymentRevision)
             {
-                return ResourceDeploymentMutationSupport.Error<IReadOnlyList<PlacementSummaryDto>>(
+                return new ResourceDeploymentMutationError(
                     new ResourceDeploymentChanged(request.ResourceId, item.ResourceDeploymentId));
             }
 
@@ -64,11 +61,11 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
                 item.ExpectedCompute,
                 deployment);
             if (computeExpectation is not null)
-                return new Err<ResourceDeploymentMutationError>(computeExpectation.Value);
+                return computeExpectation.Value;
             if (deployment.DesiredOperation == ResourceDeploymentOperation.Delete ||
                 deployment.State is DeletedResourceDeploymentState)
             {
-                return ResourceDeploymentMutationSupport.Error<IReadOnlyList<PlacementSummaryDto>>(
+                return new ResourceDeploymentMutationError(
                     new ResourceDeploymentPendingDeletion(request.ResourceId, item.ResourceDeploymentId));
             }
             if (item.ReplacementCompute is not null &&
@@ -77,7 +74,7 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
                     deployment.ResolvedPlacement.DeploymentTargetId,
                     StringComparison.Ordinal))
             {
-                return ResourceDeploymentMutationSupport.Error<IReadOnlyList<PlacementSummaryDto>>(
+                return new ResourceDeploymentMutationError(
                     new ResourceDeploymentReplacementTargetMismatch(
                         request.ResourceId,
                         item.ResourceDeploymentId));
@@ -87,7 +84,7 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
                     deployment.ResolvedPlacement.Ingress,
                     item.ReplacementIngress))
             {
-                return ResourceDeploymentMutationSupport.Error<IReadOnlyList<PlacementSummaryDto>>(
+                return new ResourceDeploymentMutationError(
                     new ResourceDeploymentIngressConfigurationChanged(
                         request.ResourceId,
                         item.ResourceDeploymentId));
@@ -107,7 +104,7 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
                 .Distinct(StringComparer.Ordinal)
                 .Count())
         {
-            return ResourceDeploymentMutationSupport.Error<IReadOnlyList<PlacementSummaryDto>>(
+            return new ResourceDeploymentMutationError(
                 new ResourceDeploymentPlacementUnavailable(request.ResourceId));
         }
 
@@ -123,7 +120,7 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
                     deployment.ResolvedPlacement.KubernetesNamespace,
                     StringComparison.Ordinal))
             {
-                return ResourceDeploymentMutationSupport.Error<IReadOnlyList<PlacementSummaryDto>>(
+                return new ResourceDeploymentMutationError(
                     new ResourceDeploymentPlacementUnavailable(request.ResourceId, deployment.Id));
             }
         }
@@ -145,9 +142,9 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
                 computeFenceRequests,
                 session,
                 cancellationToken);
-            if (computeFence is Err<ComputeProfileResolutionFenceRejected>)
+            if (computeFence is ComputeProfileResolutionFenceRejected)
             {
-                return ResourceDeploymentMutationSupport.Error<IReadOnlyList<PlacementSummaryDto>>(
+                return new ResourceDeploymentMutationError(
                     new ResourceDeploymentComputeConfigurationChanged(
                         computeFenceRequests
                             .Select(fence => fence.ComputeProfileId)
@@ -184,7 +181,7 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
                 cancellationToken: cancellationToken);
             if (replacement.ModifiedCount != 1)
             {
-                return ResourceDeploymentMutationSupport.Error<IReadOnlyList<PlacementSummaryDto>>(
+                return new ResourceDeploymentMutationError(
                     new ResourceDeploymentChanged(request.ResourceId, original.Id));
             }
         }
@@ -196,7 +193,7 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
                 .Select(deployment => deployment.ToCurrentRequestWrite())
                 .ToArray(),
             cancellationToken);
-        return new Ok<IReadOnlyList<PlacementSummaryDto>>(
+        return new MutatedResourceDeployments(
             updated.Select(deployment => deployment.ToPlacementSummaryDto()).ToArray());
     }
 }

@@ -11,6 +11,8 @@ using Pole.Features.WebServices.Contracts;
 using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
 
+using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
+
 namespace Pole.Features.WebServices.Application.Endpoints.DeploymentTokens;
 
 public sealed record CreateWebServiceDeploymentTokenRequest(
@@ -82,7 +84,6 @@ public static class CreateWebServiceDeploymentTokenEndpoint
     {
         app.MapPost("/{Id}/deployment-tokens", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] CreateWebServiceDeploymentTokenRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -92,7 +93,7 @@ public static class CreateWebServiceDeploymentTokenEndpoint
                     CreateWebServiceDeploymentTokenResponse response => Results.Created(
                         $"/api/v1/web-services/{request.Id}/deployment-tokens/{response.Token.Id}",
                         response),
-                    WebServiceNotFound error => httpProblems.Map(error).ToHttpResult()
+                    WebServiceNotFound error => MapError(error)
                 });
             })
             .WithName("CreateWebServiceDeploymentToken")

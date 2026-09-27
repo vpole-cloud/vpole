@@ -1,11 +1,15 @@
 using MongoDB.Driver;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Persistence.References;
 
-internal delegate Task<Result<Unit, DeploymentTargetPublicBaseDomainReferenced>>
+internal sealed record DeploymentTargetPublicBaseDomainUnreferenced;
+internal union EnsureDeploymentTargetPublicBaseDomainUnreferencedOutcome(
+    DeploymentTargetPublicBaseDomainUnreferenced,
+    DeploymentTargetPublicBaseDomainReferenced);
+
+internal delegate Task<EnsureDeploymentTargetPublicBaseDomainUnreferencedOutcome>
     EnsureNoDeploymentTargetPublicBaseDomainReferences(
         string deploymentTargetId,
         IClientSessionHandle session,
@@ -18,7 +22,7 @@ internal delegate Task<Result<Unit, DeploymentTargetPublicBaseDomainReferenced>>
 internal sealed class MongoEnsureNoDeploymentTargetPublicBaseDomainReferences(
     IMongoCollection<DeploymentTargetReference> references)
 {
-    public async Task<Result<Unit, DeploymentTargetPublicBaseDomainReferenced>> InvokeAsync(
+    public async Task<EnsureDeploymentTargetPublicBaseDomainUnreferencedOutcome> InvokeAsync(
         string deploymentTargetId,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
@@ -30,8 +34,7 @@ internal sealed class MongoEnsureNoDeploymentTargetPublicBaseDomainReferences(
             .Project(item => item.Id)
             .FirstOrDefaultAsync(cancellationToken);
         return reference is null
-            ? new Ok<Unit>(Unit.Value)
-            : new Err<DeploymentTargetPublicBaseDomainReferenced>(
-                new DeploymentTargetPublicBaseDomainReferenced(deploymentTargetId));
+            ? new DeploymentTargetPublicBaseDomainUnreferenced()
+            : new DeploymentTargetPublicBaseDomainReferenced(deploymentTargetId);
     }
 }

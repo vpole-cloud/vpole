@@ -7,8 +7,8 @@ using Pole.ASP.Helpers;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
+using static Pole.Features.StorageProfiles.Application.Common.StorageProfileHttpMappings;
 
 namespace Pole.Features.StorageProfiles.Application.Endpoints.KubernetesInventory;
 
@@ -35,10 +35,10 @@ public sealed class GetKubernetesStorageClassesHandler(
             cancellationToken);
         return discovered switch
         {
-            Ok<IReadOnlyCollection<KubernetesStorageClassDto>> storageClasses =>
-                new GetKubernetesStorageClassesOutcome(storageClasses.Value),
-            Err<KubernetesStorageDiscoveryUnavailable> error =>
-                new GetKubernetesStorageClassesOutcome(error.Value)
+            IReadOnlyCollection<KubernetesStorageClassDto> storageClasses =>
+                storageClasses,
+            KubernetesStorageDiscoveryUnavailable error =>
+                error
         };
     }
 }
@@ -57,7 +57,6 @@ public static class GetKubernetesStorageClassesEndpoint
     {
         app.MapGet("/storage-classes", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] GetKubernetesStorageClassesRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -67,7 +66,7 @@ public static class GetKubernetesStorageClassesEndpoint
                     IReadOnlyCollection<KubernetesStorageClassDto> storageClasses =>
                         Results.Ok(storageClasses),
                     KubernetesStorageDiscoveryUnavailable error =>
-                        httpProblems.Map(error).ToHttpResult()
+                        MapDiscoveryUnavailable(error)
                 });
             })
             .WithName("GetKubernetesStorageClasses")

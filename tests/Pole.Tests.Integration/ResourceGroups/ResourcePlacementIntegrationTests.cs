@@ -185,16 +185,14 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
         return targets;
     }
 
-    private async Task<Result<ResourcePlacement, ResourceGroupPlacementError>> ResolveAsync(
+    private async Task<ResolveResourceGroupPlacementOutcome> ResolveAsync(
         ResolveResourceGroupPlacement resolve,
         string resourceGroupId,
         string? isolationScopeId,
         string? deploymentTargetId)
     {
         var transaction = new MongoRunTransaction(Fixture.Client);
-        return await transaction.InvokeOutcomeAsync<Result<
-            ResourcePlacement,
-            ResourceGroupPlacementError>>(async (context, ct) =>
+        return await transaction.InvokeOutcomeAsync<ResolveResourceGroupPlacementOutcome>(async (context, ct) =>
         {
             var result = await resolve(
                 TestData.TenantId,
@@ -205,13 +203,13 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
                 ct);
             return result switch
             {
-                Ok<ResourcePlacement> => context.Commit(result),
-                Err<ResourceGroupPlacementError> => context.Abort(result)
+                ResourcePlacement => context.Commit(result),
+                ResourceGroupPlacementError => context.Abort(result)
             };
         });
     }
 
-    private async Task<Result<IReadOnlyList<ResourcePlacement>, ResourceGroupPlacementError>>
+    private async Task<ResolveResourceGroupPlacementsOutcome>
         ResolveManyAsync(
             ResolveResourceGroupPlacements resolve,
             string resourceGroupId,
@@ -219,9 +217,7 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
             IReadOnlyList<string> deploymentTargetIds)
     {
         var transaction = new MongoRunTransaction(Fixture.Client);
-        return await transaction.InvokeOutcomeAsync<Result<
-            IReadOnlyList<ResourcePlacement>,
-            ResourceGroupPlacementError>>(async (context, ct) =>
+        return await transaction.InvokeOutcomeAsync<ResolveResourceGroupPlacementsOutcome>(async (context, ct) =>
         {
             var result = await resolve(
                 TestData.TenantId,
@@ -232,8 +228,8 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
                 ct);
             return result switch
             {
-                Ok<IReadOnlyList<ResourcePlacement>> => context.Commit(result),
-                Err<ResourceGroupPlacementError> => context.Abort(result)
+                ResourcePlacements => context.Commit(result),
+                ResourceGroupPlacementError => context.Abort(result)
             };
         });
     }
@@ -257,35 +253,35 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
     }
 
     private static ResourcePlacement AssertPlacement(
-        Result<ResourcePlacement, ResourceGroupPlacementError> result) =>
+        ResolveResourceGroupPlacementOutcome result) =>
         result switch
         {
-            Ok<ResourcePlacement> success => success.Value,
-            Err<ResourceGroupPlacementError> error => throw new Xunit.Sdk.XunitException(
+            ResourcePlacement success => success,
+            ResourceGroupPlacementError error => throw new Xunit.Sdk.XunitException(
                 $"Expected placement, got {error.Value.GetType().Name}.")
         };
 
     private static IReadOnlyList<ResourcePlacement> AssertPlacements(
-        Result<IReadOnlyList<ResourcePlacement>, ResourceGroupPlacementError> result) =>
+        ResolveResourceGroupPlacementsOutcome result) =>
         result switch
         {
-            Ok<IReadOnlyList<ResourcePlacement>> success => success.Value,
-            Err<ResourceGroupPlacementError> error => throw new Xunit.Sdk.XunitException(
+            ResourcePlacements success => success.Items,
+            ResourceGroupPlacementError error => throw new Xunit.Sdk.XunitException(
                 $"Expected placements, got {error.Value.GetType().Name}.")
         };
 
     private static ResourceGroupPlacementDeploymentTargetRejected
         AssertDeploymentTargetRejected(
-            Result<ResourcePlacement, ResourceGroupPlacementError> result) =>
+            ResolveResourceGroupPlacementOutcome result) =>
         result switch
         {
-            Err<ResourceGroupPlacementError> error => error.Value switch
+            ResourceGroupPlacementError error => error.Value switch
             {
                 ResourceGroupPlacementDeploymentTargetRejected rejected => rejected,
                 _ => throw new Xunit.Sdk.XunitException(
                     "Expected a deployment-target placement rejection.")
             },
-            Ok<ResourcePlacement> => throw new Xunit.Sdk.XunitException(
+            ResourcePlacement => throw new Xunit.Sdk.XunitException(
                 "Expected placement failure, got success.")
         };
 }

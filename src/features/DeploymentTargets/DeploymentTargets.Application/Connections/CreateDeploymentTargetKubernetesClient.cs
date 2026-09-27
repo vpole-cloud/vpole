@@ -1,7 +1,6 @@
 using System.Security.Cryptography;
 using k8s;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Connections;
 
@@ -11,9 +10,7 @@ public sealed record StoredDeploymentTargetConnectionUnavailable;
 /// Recreates a Kubernetes client from a stored deployment-target connection.
 /// The caller owns and must dispose a successful client.
 /// </summary>
-public delegate ValueTask<Result<
-    IKubernetes,
-    StoredDeploymentTargetConnectionUnavailable>> CreateDeploymentTargetKubernetesClient(
+public delegate ValueTask<CreateStoredKubernetesClientOutcome> CreateDeploymentTargetKubernetesClient(
     string deploymentTargetId,
     DeploymentTargetConnection connection,
     CancellationToken cancellationToken = default);
@@ -21,9 +18,7 @@ public delegate ValueTask<Result<
 internal sealed class DeploymentTargetKubernetesClientFactory(
     DeploymentTargetConnectionProtector protector)
 {
-    public async ValueTask<Result<
-        IKubernetes,
-        StoredDeploymentTargetConnectionUnavailable>> InvokeAsync(
+    public async ValueTask<CreateStoredKubernetesClientOutcome> InvokeAsync(
         string deploymentTargetId,
         DeploymentTargetConnection connection,
         CancellationToken cancellationToken = default)
@@ -32,17 +27,14 @@ internal sealed class DeploymentTargetKubernetesClientFactory(
 
         return connection switch
         {
-            InClusterDeploymentTargetConnection =>
-                KubernetesClientSecurity.CreateInClusterForStored(cancellationToken),
-            KubeconfigDeploymentTargetConnection kubeconfig =>
-                await CreateFromStoredKubeconfigAsync(deploymentTargetId, kubeconfig, cancellationToken),
-            ServiceAccountDeploymentTargetConnection serviceAccount =>
-                await CreateFromStoredServiceAccountAsync(deploymentTargetId, serviceAccount, cancellationToken),
-            _ => new Err<StoredDeploymentTargetConnectionUnavailable>(new())
+            InClusterDeploymentTargetConnection => KubernetesClientSecurity.CreateInClusterForStored(cancellationToken),
+            KubeconfigDeploymentTargetConnection kubeconfig => await CreateFromStoredKubeconfigAsync(deploymentTargetId, kubeconfig, cancellationToken),
+            ServiceAccountDeploymentTargetConnection serviceAccount => await CreateFromStoredServiceAccountAsync(deploymentTargetId, serviceAccount, cancellationToken),
+            _ => new StoredDeploymentTargetConnectionUnavailable()
         };
     }
 
-    private async ValueTask<Result<IKubernetes, StoredDeploymentTargetConnectionUnavailable>>
+    private async ValueTask<CreateStoredKubernetesClientOutcome>
         CreateFromStoredKubeconfigAsync(
         string deploymentTargetId,
         KubeconfigDeploymentTargetConnection connection,
@@ -53,18 +45,20 @@ internal sealed class DeploymentTargetKubernetesClientFactory(
             connection.Version,
             connection.EncryptedKubeconfig,
             cancellationToken);
-        if (!decryptedResult.TryGetValue(out var decrypted, out var decryptionFailure))
-            return new Err<StoredDeploymentTargetConnectionUnavailable>(decryptionFailure);
+        if (decryptedResult is StoredDeploymentTargetConnectionUnavailable decryptionFailure)
+            return decryptionFailure;
+        var decrypted = (byte[])decryptedResult.Value;
 
         try
         {
             var canonicalResult = KubeconfigCanonicalizer.DeserializeStored(decrypted);
-            if (!canonicalResult.TryGetValue(out var canonical, out var canonicalFailure))
-                return new Err<StoredDeploymentTargetConnectionUnavailable>(canonicalFailure);
+            if (canonicalResult is StoredDeploymentTargetConnectionUnavailable canonicalFailure)
+                return canonicalFailure;
+            var canonical = (CanonicalKubeconfigCredential)canonicalResult.Value;
             if (!string.Equals(canonical.ContextName, connection.ContextName, StringComparison.Ordinal) ||
                 !string.Equals(canonical.ServerUrl, connection.ServerUrl, StringComparison.Ordinal))
             {
-                return new Err<StoredDeploymentTargetConnectionUnavailable>(new());
+                return new StoredDeploymentTargetConnectionUnavailable();
             }
 
             return KubernetesClientSecurity.CreateForStored(
@@ -77,7 +71,7 @@ internal sealed class DeploymentTargetKubernetesClientFactory(
         }
     }
 
-    private async ValueTask<Result<IKubernetes, StoredDeploymentTargetConnectionUnavailable>>
+    private async ValueTask<CreateStoredKubernetesClientOutcome>
         CreateFromStoredServiceAccountAsync(
         string deploymentTargetId,
         ServiceAccountDeploymentTargetConnection connection,
@@ -88,23 +82,26 @@ internal sealed class DeploymentTargetKubernetesClientFactory(
             connection.Version,
             connection.EncryptedCredential,
             cancellationToken);
-        if (!decryptedResult.TryGetValue(out var decrypted, out var decryptionFailure))
-            return new Err<StoredDeploymentTargetConnectionUnavailable>(decryptionFailure);
+        if (decryptedResult is StoredDeploymentTargetConnectionUnavailable decryptionFailure)
+            return decryptionFailure;
+        var decrypted = (byte[])decryptedResult.Value;
 
         try
         {
             var canonicalResult = KubeconfigCanonicalizer.DeserializeStored(
                 decrypted,
                 ConnectionPayloadLimits.MaximumServiceAccountCredentialBytes);
-            if (!canonicalResult.TryGetValue(out var canonical, out _) ||
-                !KubeconfigCanonicalizer.IsServiceAccountCredential(canonical) ||
+            if (canonicalResult is StoredDeploymentTargetConnectionUnavailable)
+                return new StoredDeploymentTargetConnectionUnavailable();
+            var canonical = (CanonicalKubeconfigCredential)canonicalResult.Value;
+            if (!KubeconfigCanonicalizer.IsServiceAccountCredential(canonical) ||
                 !string.Equals(canonical.ServerUrl, connection.ServerUrl, StringComparison.Ordinal) ||
                 !string.Equals(
                     canonical.CertificateAuthorityData,
                     connection.CertificateAuthorityData,
                     StringComparison.Ordinal))
             {
-                return new Err<StoredDeploymentTargetConnectionUnavailable>(new());
+                return new StoredDeploymentTargetConnectionUnavailable();
             }
 
             return KubernetesClientSecurity.CreateForStored(

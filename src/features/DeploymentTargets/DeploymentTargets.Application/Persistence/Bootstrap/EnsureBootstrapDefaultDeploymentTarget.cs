@@ -3,7 +3,6 @@ using Pole.Database;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Persistence.References;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Persistence.Bootstrap;
 
@@ -44,10 +43,8 @@ internal sealed class MongoEnsureBootstrapDefaultDeploymentTarget(
             return await runMongoTransaction(
                 (transaction, ct) => request switch
                 {
-                    BindExistingDeploymentTargetAsDefault existing =>
-                        BindExistingAsync(transaction, existing.DeploymentTargetId, ct),
-                    CreateFirstDeploymentTargetAsDefault created =>
-                        CreateFirstAsync(transaction, created.DeploymentTarget, ct)
+                    BindExistingDeploymentTargetAsDefault existing => BindExistingAsync(transaction, existing.DeploymentTargetId, ct),
+                    CreateFirstDeploymentTargetAsDefault created => CreateFirstAsync(transaction, created.DeploymentTarget, ct)
                 },
                 cancellationToken);
         }
@@ -92,7 +89,7 @@ internal sealed class MongoEnsureBootstrapDefaultDeploymentTarget(
             deploymentTarget.WorkloadConfiguration.Ingress?.PublicBaseDomain,
             transaction.Session,
             cancellationToken);
-        if (admission is Err<DeploymentTargetPublicBaseDomainConflict>)
+        if (admission is DeploymentTargetPublicBaseDomainConflict)
             return transaction.Abort(new BootstrapDefaultDeploymentTargetRejected());
 
         await deploymentTargets.InsertOneAsync(

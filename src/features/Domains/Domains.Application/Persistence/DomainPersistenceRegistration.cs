@@ -5,7 +5,6 @@ using Pole.Features.Domains.Application.Endpoints;
 using Pole.Features.Domains.Application.Persistence.DomainZones;
 using Pole.Features.Domains.Application.Persistence.HostnameBindings;
 using Pole.Features.Domains.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.Domains.Application.Persistence;
 
@@ -28,15 +27,19 @@ public static class DomainPersistenceRegistration
         services.AddScoped<DeleteManagedDomainZone>(provider =>
             provider.GetRequiredService<MongoDeleteManagedDomainZone>().InvokeAsync);
         services.AddScoped<MongoGetOrCreateGeneratedDomainZones>();
-        services.AddScoped<GetOrCreateGeneratedDomainZonesOutcome>(provider =>
+        services.AddScoped<GetOrCreateGeneratedDomainZones>(provider =>
             provider.GetRequiredService<MongoGetOrCreateGeneratedDomainZones>().InvokeAsync);
-        services.AddScoped<GetOrCreateGeneratedDomainZoneOutcome>(provider =>
+        services.AddScoped<GetOrCreateGeneratedDomainZone>(provider =>
             async (request, session, cancellationToken) =>
             {
                 var result = await provider
                     .GetRequiredService<MongoGetOrCreateGeneratedDomainZones>()
                     .InvokeAsync([request], session, cancellationToken);
-                return result.Map(zones => zones[0]);
+                return result switch
+                {
+                    IReadOnlyList<TenantDomainZoneSnapshot> zones => zones[0],
+                    GeneratedDomainZoneError error => error
+                };
             });
 
         services.AddScoped<MongoLoadHostnameBindingsForDeployment>();
@@ -49,22 +52,26 @@ public static class DomainPersistenceRegistration
 
         services.AddScoped<MongoHostnameBindingCleanup>();
         services.AddScoped<MongoCreateGeneratedHostnameBindings>();
-        services.AddScoped<CreateGeneratedHostnameBindingsOutcome>(provider =>
+        services.AddScoped<CreateGeneratedHostnameBindings>(provider =>
             provider.GetRequiredService<MongoCreateGeneratedHostnameBindings>().InvokeAsync);
-        services.AddScoped<CreateGeneratedHostnameBindingOutcome>(provider =>
+        services.AddScoped<CreateGeneratedHostnameBinding>(provider =>
             async (request, session, cancellationToken) =>
             {
                 var result = await provider
                     .GetRequiredService<MongoCreateGeneratedHostnameBindings>()
                     .InvokeAsync([request], session, cancellationToken);
-                return result.Map(bindings => bindings[0]);
+                return result switch
+                {
+                    IReadOnlyList<HostnameBindingSnapshot> bindings => bindings[0],
+                    GeneratedHostnameBindingError error => error
+                };
             });
 
         services.AddScoped<MongoCreateCustomHostnameBinding>();
-        services.AddScoped<CreateCustomHostnameBindingOutcome>(provider =>
+        services.AddScoped<CreateCustomHostnameBinding>(provider =>
             provider.GetRequiredService<MongoCreateCustomHostnameBinding>().InvokeAsync);
         services.AddScoped<MongoDeleteCustomHostnameBinding>();
-        services.AddScoped<DeleteCustomHostnameBindingOutcome>(provider =>
+        services.AddScoped<DeleteCustomHostnameBinding>(provider =>
             provider.GetRequiredService<MongoDeleteCustomHostnameBinding>().InvokeAsync);
 
         services.AddScoped<MongoDeleteHostnameBindingsForDeployment>();
@@ -74,10 +81,10 @@ public static class DomainPersistenceRegistration
         services.AddScoped<DeleteHostnameBindingsForResource>(provider =>
             provider.GetRequiredService<MongoDeleteHostnameBindingsForResource>().InvokeAsync);
         services.TryAddSingleton<RunMongoOutcomeTransaction<
-            Result<TenantDomainZoneSnapshot, CreateDomainZoneError>>>(provider =>
+            CreateDomainZoneOutcome>>(provider =>
             provider.GetRequiredService<MongoRunTransaction>()
                 .InvokeOutcomeAsync<
-                    Result<TenantDomainZoneSnapshot, CreateDomainZoneError>>);
+                    CreateDomainZoneOutcome>);
         services.TryAddSingleton<RunMongoOutcomeTransaction<
             DeleteDomainZoneOutcome>>(provider =>
             provider.GetRequiredService<MongoRunTransaction>()

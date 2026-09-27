@@ -8,8 +8,7 @@ public sealed class DeploymentTargetMigration : IMigration
 {
     public ObjectId Id => new("69d60000b213917a38c379f4");
     public string Name => "Deployment targets and platform default";
-    public string Description =>
-        "Creates unique cluster identity, workload admission, and default-target indexes.";
+    public string Description => "Creates unique cluster identity, workload admission, and default-target indexes.";
 
     public async Task Up(IMongoDatabase context, CancellationToken cancellationToken = default)
     {

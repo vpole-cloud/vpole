@@ -1,6 +1,5 @@
 using k8s;
 using MongoDB.Driver;
-using Pole.ResultType;
 using Pole.Workloads;
 
 namespace Pole.Features.DeploymentTargets.Contracts;
@@ -138,9 +137,11 @@ public union DeploymentTargetWorkloadAdmissionError(
     DeploymentTargetDeletionRequested,
     DeploymentTargetNewWorkloadsDisabled);
 
-public delegate Task<Result<
+public union AdmitDeploymentTargetForWorkloadOutcome(
     DeploymentTargetLookupDto,
-    DeploymentTargetWorkloadAdmissionError>> AdmitDeploymentTargetForWorkload(
+    DeploymentTargetWorkloadAdmissionError);
+
+public delegate Task<AdmitDeploymentTargetForWorkloadOutcome> AdmitDeploymentTargetForWorkload(
     string deploymentTargetId,
     CancellationToken cancellationToken = default);
 
@@ -164,9 +165,11 @@ public union DeploymentTargetNewWorkloadAdmissionError(
     DeploymentTargetRequiredCapabilitiesUnavailable,
     DeploymentTargetWorkloadSelectionRequired);
 
-public delegate Task<Result<
+public union AdmitDeploymentTargetForNewWorkloadOutcome(
     DeploymentTargetLookupDto,
-    DeploymentTargetNewWorkloadAdmissionError>> AdmitDeploymentTargetForNewWorkload(
+    DeploymentTargetNewWorkloadAdmissionError);
+
+public delegate Task<AdmitDeploymentTargetForNewWorkloadOutcome> AdmitDeploymentTargetForNewWorkload(
     DeploymentTargetAdmissionRequest request,
     CancellationToken cancellationToken = default);
 
@@ -228,9 +231,11 @@ public delegate Task<IReadOnlyList<DeploymentTargetPublicIngressDto>>
 /// Resolves public ingress for a tenant domain reservation without forcing the domain feature to
 /// translate provider-owned expected errors into shared application failures.
 /// </summary>
-public delegate Task<Result<
+public union AdmitDeploymentTargetPublicIngressForDomainReservationOutcome(
     DeploymentTargetPublicIngressDto,
-    DeploymentTargetDomainReservationAdmissionError>>
+    DeploymentTargetDomainReservationAdmissionError);
+
+public delegate Task<AdmitDeploymentTargetPublicIngressForDomainReservationOutcome>
     AdmitDeploymentTargetPublicIngressForDomainReservation(
         string tenantId,
         string deploymentTargetId,
@@ -244,9 +249,11 @@ public delegate Task<Result<
 public union DeploymentTargetLookupError(
     DeploymentTargetNotFound);
 
-public delegate Task<Result<
+public union LookupDeploymentTargetOutcome(
     DeploymentTargetLookupDto,
-    DeploymentTargetLookupError>> LookupDeploymentTarget(
+    DeploymentTargetLookupError);
+
+public delegate Task<LookupDeploymentTargetOutcome> LookupDeploymentTarget(
     string deploymentTargetId,
     CancellationToken cancellationToken = default);
 
@@ -255,9 +262,11 @@ public sealed record DefaultDeploymentTargetNotConfigured;
 public union DefaultDeploymentTargetLookupError(
     DefaultDeploymentTargetNotConfigured);
 
-public delegate Task<Result<
+public union LookupDefaultDeploymentTargetOutcome(
     DeploymentTargetLookupDto,
-    DefaultDeploymentTargetLookupError>> LookupDefaultDeploymentTarget(
+    DefaultDeploymentTargetLookupError);
+
+public delegate Task<LookupDefaultDeploymentTargetOutcome> LookupDefaultDeploymentTarget(
     CancellationToken cancellationToken = default);
 
 /// <summary>
@@ -279,9 +288,11 @@ public union DefaultDeploymentTargetWorkloadAdmissionError(
 /// contextual placement selection: a caller that wants an automatic choice among all targets uses
 /// <see cref="AdmitDeploymentTargetForNewWorkload"/> instead.
 /// </summary>
-public delegate Task<Result<
+public union AdmitDefaultDeploymentTargetForNewWorkloadOutcome(
     DeploymentTargetLookupDto,
-    DefaultDeploymentTargetWorkloadAdmissionError>>
+    DefaultDeploymentTargetWorkloadAdmissionError);
+
+public delegate Task<AdmitDefaultDeploymentTargetForNewWorkloadOutcome>
     AdmitDefaultDeploymentTargetForNewWorkload(
         CancellationToken cancellationToken = default);
 
@@ -293,7 +304,12 @@ public sealed record DeploymentTargetReferenceChangeRejected(
     DeploymentTargetReferenceOwner Owner,
     IReadOnlyList<string> DeploymentTargetIds);
 
-public delegate Task<Result<Unit, DeploymentTargetReferenceChangeRejected>>
+public sealed record DeploymentTargetReferencesChanged;
+public union ApplyDeploymentTargetReferenceChangesOutcome(
+    DeploymentTargetReferencesChanged,
+    DeploymentTargetReferenceChangeRejected);
+
+public delegate Task<ApplyDeploymentTargetReferenceChangesOutcome>
     ApplyDeploymentTargetReferenceChanges(
         DeploymentTargetReferenceOwner owner,
         IReadOnlyCollection<string> addedDeploymentTargetIds,
@@ -324,9 +340,12 @@ public sealed record DeploymentTargetWorkloadConfigurationFenceRequest(
 public sealed record DeploymentTargetWorkloadConfigurationFenceRejected(
     IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> Requests);
 
-public delegate Task<Result<
-    Unit,
-    DeploymentTargetWorkloadConfigurationFenceRejected>>
+public sealed record DeploymentTargetWorkloadConfigurationsFenced;
+public union FenceDeploymentTargetWorkloadConfigurationsOutcome(
+    DeploymentTargetWorkloadConfigurationsFenced,
+    DeploymentTargetWorkloadConfigurationFenceRejected);
+
+public delegate Task<FenceDeploymentTargetWorkloadConfigurationsOutcome>
     FenceDeploymentTargetWorkloadConfigurations(
         IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> requests,
         IClientSessionHandle session,

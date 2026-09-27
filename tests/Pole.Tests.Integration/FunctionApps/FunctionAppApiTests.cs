@@ -1,6 +1,8 @@
 using System.Collections.Immutable;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
+using MongoDB.Driver;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Endpoints;
 using Pole.Features.Functions.Domain;
@@ -98,6 +100,41 @@ public sealed class FunctionAppApiTests(MongoReplicaSetFixture fixture)
                 []));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Missing_resource_deployment_maps_to_conflict_for_delete()
+    {
+        var groupResponse = await Client.PostAsJsonAsync(
+            "/api/v1/resource-groups/",
+            TestData.CreateResourceGroupRequest("function-missing").Body);
+        Assert.Equal(HttpStatusCode.Created, groupResponse.StatusCode);
+        var group = await groupResponse.Content.ReadFromJsonAsync<ResourceGroupResponse>();
+        Assert.NotNull(group);
+        var createResponse = await Client.PostAsJsonAsync(
+            "/api/v1/function-apps/",
+            new CreateFunctionAppRequestBody(
+                "missing-deployment-functions",
+                "missing-deployment-functions",
+                group.Id,
+                RevisionRequest(),
+                []));
+        Assert.True(
+            createResponse.StatusCode == HttpStatusCode.Accepted,
+            await createResponse.Content.ReadAsStringAsync());
+        var created = await createResponse.Content.ReadFromJsonAsync<CreateFunctionAppResponse>();
+        Assert.NotNull(created);
+
+        await Fixture.DbContext.ResourceDeployments.DeleteManyAsync(
+            deployment => deployment.ResourceId == created.FunctionAppId);
+
+        var response = await Client.DeleteAsync($"/api/v1/function-apps/{created.FunctionAppId}");
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(
+            "function-apps.resource-deployment.missing",
+            problem.RootElement.GetProperty("code").GetString());
     }
 
     private static FunctionRevisionRequest RevisionRequest() =>

@@ -7,8 +7,8 @@ using Pole.ASP.Helpers;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
+using static Pole.Features.StorageProfiles.Application.Common.StorageProfileHttpMappings;
 
 namespace Pole.Features.StorageProfiles.Application.Endpoints.KubernetesInventory;
 
@@ -35,10 +35,10 @@ public sealed class GetKubernetesPersistentVolumesHandler(
             cancellationToken);
         return discovered switch
         {
-            Ok<IReadOnlyCollection<KubernetesPersistentVolumeDto>> persistentVolumes =>
-                new GetKubernetesPersistentVolumesOutcome(persistentVolumes.Value),
-            Err<KubernetesStorageDiscoveryUnavailable> error =>
-                new GetKubernetesPersistentVolumesOutcome(error.Value)
+            IReadOnlyCollection<KubernetesPersistentVolumeDto> persistentVolumes =>
+                persistentVolumes,
+            KubernetesStorageDiscoveryUnavailable error =>
+                error
         };
     }
 }
@@ -57,7 +57,6 @@ public static class GetKubernetesPersistentVolumesEndpoint
     {
         app.MapGet("/persistent-volumes", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] GetKubernetesPersistentVolumesRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -67,7 +66,7 @@ public static class GetKubernetesPersistentVolumesEndpoint
                     IReadOnlyCollection<KubernetesPersistentVolumeDto> persistentVolumes =>
                         Results.Ok(persistentVolumes),
                     KubernetesStorageDiscoveryUnavailable error =>
-                        httpProblems.Map(error).ToHttpResult()
+                        MapDiscoveryUnavailable(error)
                 });
             })
             .WithName("GetKubernetesPersistentVolumes")

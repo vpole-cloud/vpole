@@ -9,7 +9,6 @@ using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Application.Migrations;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -34,19 +33,21 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
         var otherTarget = ComputeProfileTestData.CreateTarget();
         await fixture.DbContext.DeploymentTargets.InsertManyAsync([target, otherTarget]);
         using var host = new ComputeProfilePersistenceTestHost(fixture);
-        var profile = (await host.GetRequiredService<PersistCreatedComputeProfile>()(
+        var profileOutcome = await host.GetRequiredService<PersistCreatedComputeProfile>()(
             ComputeProfileTestData.CreateProfile(
                 target.Id,
                 isDefault: true,
                 tenantAccess: SelectedTenantsComputeProfileAccess.Create(
-                    [ComputeProfileTestData.TenantId])))).AssertSuccess();
+                    [ComputeProfileTestData.TenantId])));
+        var profile = Assert.IsType<ComputeProfile>(profileOutcome.Value);
         var resolve = host.GetRequiredService<ResolveComputeProfile>();
 
-        var resolved = (await resolve(new ComputeProfileResolutionRequest(
+        var resolvedOutcome = await resolve(new ComputeProfileResolutionRequest(
             ComputeProfileId: null,
             target.Id,
             ComputeProfileTestData.TenantId,
-            WebServiceType))).AssertSuccess();
+            WebServiceType));
+        var resolved = Assert.IsType<ResolvedComputeProfile>(resolvedOutcome.Value);
 
         Assert.Equal(profile.Id, resolved.ComputeProfileId);
         Assert.Equal(profile.Revision, resolved.ComputeProfileRevision);
@@ -60,21 +61,24 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
             target.Id,
             ComputeProfileTestData.OtherTenantId,
             WebServiceType));
-        Assert.IsType<ComputeProfileUnavailable>(wrongTenant.AssertError().Value);
+        var wrongTenantError = Assert.IsType<ComputeProfileResolutionError>(wrongTenant.Value);
+        Assert.IsType<ComputeProfileUnavailable>(wrongTenantError.Value);
 
         var wrongResourceType = await resolve(new ComputeProfileResolutionRequest(
             profile.Id,
             target.Id,
             ComputeProfileTestData.TenantId,
             ResourceTypeId.Create("third-party/widget")));
-        Assert.IsType<ComputeProfileUnavailable>(wrongResourceType.AssertError().Value);
+        var wrongResourceTypeError = Assert.IsType<ComputeProfileResolutionError>(wrongResourceType.Value);
+        Assert.IsType<ComputeProfileUnavailable>(wrongResourceTypeError.Value);
 
         var missingMapping = await resolve(new ComputeProfileResolutionRequest(
             profile.Id,
             otherTarget.Id,
             ComputeProfileTestData.TenantId,
             WebServiceType));
-        Assert.IsType<ComputeProfileUnavailable>(missingMapping.AssertError().Value);
+        var missingMappingError = Assert.IsType<ComputeProfileResolutionError>(missingMapping.Value);
+        Assert.IsType<ComputeProfileUnavailable>(missingMappingError.Value);
     }
 
     [Fact]
@@ -86,21 +90,24 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
         await fixture.DbContext.DeploymentTargets.InsertManyAsync([firstTarget, secondTarget]);
         using var host = new ComputeProfilePersistenceTestHost(fixture);
         var create = host.GetRequiredService<PersistCreatedComputeProfile>();
-        var defaultProfile = (await create(ComputeProfileTestData.CreateProfile(
+        var defaultProfileOutcome = await create(ComputeProfileTestData.CreateProfile(
             firstTarget.Id,
-            isDefault: true))).AssertSuccess();
-        var explicitProfile = (await create(ComputeProfileTestData.CreateProfile(
+            isDefault: true));
+        var defaultProfile = Assert.IsType<ComputeProfile>(defaultProfileOutcome.Value);
+        var explicitProfileOutcome = await create(ComputeProfileTestData.CreateProfile(
             secondTarget.Id,
-            displayName: "Target specific"))).AssertSuccess();
+            displayName: "Target specific"));
+        var explicitProfile = Assert.IsType<ComputeProfile>(explicitProfileOutcome.Value);
         var resolveMany = host.GetRequiredService<ResolveComputeProfiles>();
 
-        var resolved = (await resolveMany(new ComputeProfileBatchResolutionRequest(
+        var resolvedOutcome = await resolveMany(new ComputeProfileBatchResolutionRequest(
             ComputeProfileTestData.TenantId,
             WebServiceType,
             [
                 new ComputeProfileTargetResolutionRequest(firstTarget.Id, null),
                 new ComputeProfileTargetResolutionRequest(secondTarget.Id, explicitProfile.Id)
-            ]))).AssertSuccess();
+            ]));
+        var resolved = Assert.IsAssignableFrom<IReadOnlyList<ResolvedComputeProfile>>(resolvedOutcome.Value);
 
         Assert.Collection(
             resolved,
@@ -127,16 +134,17 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
         var update = host.GetRequiredService<PersistUpdatedComputeProfile>();
         var resolve = host.GetRequiredService<ResolveComputeProfile>();
         var fence = host.GetRequiredService<FenceResolvedComputeProfiles>();
-        var original = (await create(ComputeProfileTestData.CreateProfile(
+        var originalOutcome = await create(ComputeProfileTestData.CreateProfile(
                 target.Id,
                 tenantAccess: SelectedTenantsComputeProfileAccess.Create(
-                    [ComputeProfileTestData.TenantId]))))
-            .AssertSuccess();
-        var resolved = (await resolve(new ComputeProfileResolutionRequest(
+                    [ComputeProfileTestData.TenantId])));
+        var original = Assert.IsType<ComputeProfile>(originalOutcome.Value);
+        var resolvedOutcome = await resolve(new ComputeProfileResolutionRequest(
             original.Id,
             target.Id,
             ComputeProfileTestData.TenantId,
-            WebServiceType))).AssertSuccess();
+            WebServiceType));
+        var resolved = Assert.IsType<ResolvedComputeProfile>(resolvedOutcome.Value);
 
         var fenced = await FenceInTransactionAsync(
             fence,
@@ -146,18 +154,19 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
                     resolved.DeploymentTargetId,
                     ComputeProfileTestData.TenantId,
                     WebServiceType)]);
-        fenced.AssertSuccess();
+        Assert.IsType<ComputeProfilesFenced>(fenced.Value);
 
         var afterFence = await LoadAsync(original.Id);
         Assert.Equal(1, afterFence.ResolutionFence);
 
         var staleReplacement = Reconfigure(original, "Stale update");
         var staleUpdate = await update(original, staleReplacement);
-        Assert.IsType<ComputeProfileRevisionConflict>(staleUpdate.AssertError().Value);
+        Assert.IsType<ComputeProfileRevisionConflict>(staleUpdate.Value);
 
-        var updated = (await update(
+        var updatedOutcome = await update(
             afterFence,
-            Reconfigure(afterFence, "Current update"))).AssertSuccess();
+            Reconfigure(afterFence, "Current update"));
+        var updated = Assert.IsType<ComputeProfile>(updatedOutcome.Value);
         Assert.Equal(2, updated.Revision);
         Assert.Equal(1, updated.ResolutionFence);
 
@@ -169,7 +178,7 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
                     resolved.DeploymentTargetId,
                     ComputeProfileTestData.TenantId,
                     WebServiceType)]);
-        Assert.IsType<ComputeProfileResolutionFenceRejected>(staleFence.AssertError());
+        Assert.IsType<ComputeProfileResolutionFenceRejected>(staleFence.Value);
     }
 
     [Fact]
@@ -184,17 +193,20 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
         var update = host.GetRequiredService<PersistUpdatedComputeProfile>();
         var resolveMany = host.GetRequiredService<ResolveComputeProfiles>();
         var fence = host.GetRequiredService<FenceResolvedComputeProfiles>();
-        var first = (await create(ComputeProfileTestData.CreateProfile(firstTarget.Id))).AssertSuccess();
-        var second = (await create(ComputeProfileTestData.CreateProfile(
+        var firstOutcome = await create(ComputeProfileTestData.CreateProfile(firstTarget.Id));
+        var first = Assert.IsType<ComputeProfile>(firstOutcome.Value);
+        var secondOutcome = await create(ComputeProfileTestData.CreateProfile(
             secondTarget.Id,
-            displayName: "Second"))).AssertSuccess();
-        var resolved = (await resolveMany(new ComputeProfileBatchResolutionRequest(
+            displayName: "Second"));
+        var second = Assert.IsType<ComputeProfile>(secondOutcome.Value);
+        var resolvedOutcome = await resolveMany(new ComputeProfileBatchResolutionRequest(
             ComputeProfileTestData.TenantId,
             WebServiceType,
             [
                 new ComputeProfileTargetResolutionRequest(firstTarget.Id, first.Id),
                 new ComputeProfileTargetResolutionRequest(secondTarget.Id, second.Id)
-            ]))).AssertSuccess();
+            ]));
+        var resolved = Assert.IsAssignableFrom<IReadOnlyList<ResolvedComputeProfile>>(resolvedOutcome.Value);
 
         var fenceRequests = resolved
             .Select(profile => new ComputeProfileResolutionFenceRequest(
@@ -204,18 +216,18 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
                 ComputeProfileTestData.TenantId,
                 WebServiceType))
             .ToArray();
-        (await FenceInTransactionAsync(fence, fenceRequests)).AssertSuccess();
+        Assert.IsType<ComputeProfilesFenced>((await FenceInTransactionAsync(fence, fenceRequests)).Value);
         var firstAfterFence = await LoadAsync(first.Id);
         var secondAfterFence = await LoadAsync(second.Id);
         Assert.Equal(1, firstAfterFence.ResolutionFence);
         Assert.Equal(1, secondAfterFence.ResolutionFence);
-        _ = (await update(
+        _ = Assert.IsType<ComputeProfile>((await update(
             firstAfterFence,
-            Reconfigure(firstAfterFence, "Changed before batch fence"))).AssertSuccess();
+            Reconfigure(firstAfterFence, "Changed before batch fence"))).Value);
 
         var fenced = await FenceInTransactionAsync(fence, fenceRequests);
 
-        Assert.IsType<ComputeProfileResolutionFenceRejected>(fenced.AssertError());
+        Assert.IsType<ComputeProfileResolutionFenceRejected>(fenced.Value);
         Assert.Equal(1, (await LoadAsync(first.Id)).ResolutionFence);
         Assert.Equal(1, (await LoadAsync(second.Id)).ResolutionFence);
     }
@@ -229,11 +241,12 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
         await fixture.DbContext.DeploymentTargets.InsertManyAsync([target, otherTarget]);
         using var host = new ComputeProfilePersistenceTestHost(fixture);
         var create = host.GetRequiredService<PersistCreatedComputeProfile>();
-        var availableProfile = (await create(ComputeProfileTestData.CreateProfile(
+        var availableProfileOutcome = await create(ComputeProfileTestData.CreateProfile(
             target.Id,
             tenantAccess: SelectedTenantsComputeProfileAccess.Create(
                 [ComputeProfileTestData.TenantId]),
-            displayName: "Available"))).AssertSuccess();
+            displayName: "Available"));
+        var availableProfile = Assert.IsType<ComputeProfile>(availableProfileOutcome.Value);
         await create(ComputeProfileTestData.CreateProfile(
             target.Id,
             tenantAccess: SelectedTenantsComputeProfileAccess.Create(
@@ -272,7 +285,7 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
     private static FilterDefinition<ComputeProfile> ComputeProfileById(string computeProfileId) =>
         Builders<ComputeProfile>.Filter.Eq(profile => profile.Id, computeProfileId);
 
-    private async Task<Result<Unit, ComputeProfileResolutionFenceRejected>>
+    private async Task<FenceResolvedComputeProfilesOutcome>
         FenceInTransactionAsync(
             FenceResolvedComputeProfiles fence,
             IReadOnlyList<ComputeProfileResolutionFenceRequest> requests)
@@ -282,7 +295,7 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
         try
         {
             var result = await fence(requests, session);
-            if (result is Ok<Unit>)
+            if (result is ComputeProfilesFenced)
                 await session.CommitTransactionAsync();
             else
                 await session.AbortTransactionAsync();

@@ -1,5 +1,4 @@
 using MongoDB.Driver;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceGroups.Contracts;
 
@@ -56,7 +55,17 @@ public enum ResourcePlacementState
     Deleted
 }
 
-public delegate Task<Result<ResourcePlacement, ResourceGroupPlacementError>>
+public union ResolveResourceGroupPlacementOutcome(
+    ResourcePlacement,
+    ResourceGroupPlacementError);
+
+public sealed record ResourcePlacements(IReadOnlyList<ResourcePlacement> Items);
+
+public union ResolveResourceGroupPlacementsOutcome(
+    ResourcePlacements,
+    ResourceGroupPlacementError);
+
+public delegate Task<ResolveResourceGroupPlacementOutcome>
     ResolveResourceGroupPlacement(
         string tenantId,
         string resourceGroupId,
@@ -65,7 +74,7 @@ public delegate Task<Result<ResourcePlacement, ResourceGroupPlacementError>>
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-public delegate Task<Result<IReadOnlyList<ResourcePlacement>, ResourceGroupPlacementError>>
+public delegate Task<ResolveResourceGroupPlacementsOutcome>
     ResolveResourceGroupPlacements(
         string tenantId,
         string resourceGroupId,

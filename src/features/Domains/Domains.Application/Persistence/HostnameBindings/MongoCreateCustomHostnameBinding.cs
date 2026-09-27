@@ -5,7 +5,6 @@ using Pole.Dns;
 using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.Domains.Application.Persistence.HostnameBindings;
 
@@ -19,7 +18,7 @@ internal sealed class MongoCreateCustomHostnameBinding(
     private readonly IMongoCollection<HostnameBinding> bindings =
         database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
 
-    public async Task<Result<HostnameBindingSnapshot, CustomHostnameBindingError>> InvokeAsync(
+    public async Task<CreateCustomHostnameBindingOutcome> InvokeAsync(
         CreateCustomHostnameBindingRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
@@ -32,9 +31,8 @@ internal sealed class MongoCreateCustomHostnameBinding(
             .FirstOrDefaultAsync(cancellationToken);
         if (zone is null)
         {
-            return new Err<CustomHostnameBindingError>(
-                new CustomHostnameBindingError(
-                    new CustomHostnameBindingZoneNotFound(request.TenantDomainZoneId)));
+            return new CustomHostnameBindingError(
+                    new CustomHostnameBindingZoneNotFound(request.TenantDomainZoneId));
         }
 
         if (!string.Equals(
@@ -42,11 +40,10 @@ internal sealed class MongoCreateCustomHostnameBinding(
                 request.DeploymentTargetId,
                 StringComparison.Ordinal))
         {
-            return new Err<CustomHostnameBindingError>(
-                new CustomHostnameBindingError(
+            return new CustomHostnameBindingError(
                     new CustomHostnameBindingTargetMismatch(
                         zone.Id,
-                        request.DeploymentTargetId)));
+                        request.DeploymentTargetId));
         }
 
         var binding = HostnameBindingFactory.CreateCustom(
@@ -64,22 +61,20 @@ internal sealed class MongoCreateCustomHostnameBinding(
 
         if (!await cleanup.TryAdvanceZoneRevisionsAsync([zone], session, cancellationToken))
         {
-            return new Err<CustomHostnameBindingError>(
-                new CustomHostnameBindingError(
-                    new CustomHostnameBindingZoneChanged([zone.Id])));
+            return new CustomHostnameBindingError(
+                    new CustomHostnameBindingZoneChanged([zone.Id]));
         }
 
         try
         {
             await bindings.InsertOneAsync(session, binding, cancellationToken: cancellationToken);
-            return new Ok<HostnameBindingSnapshot>(binding.ToSnapshot());
+            return binding.ToSnapshot();
         }
         catch (MongoWriteException exception) when (
             exception.WriteError.Category == ServerErrorCategory.DuplicateKey)
         {
-            return new Err<CustomHostnameBindingError>(
-                new CustomHostnameBindingError(
-                    new CustomHostnameBindingConflict(binding.Hostname)));
+            return new CustomHostnameBindingError(
+                    new CustomHostnameBindingConflict(binding.Hostname));
         }
     }
 

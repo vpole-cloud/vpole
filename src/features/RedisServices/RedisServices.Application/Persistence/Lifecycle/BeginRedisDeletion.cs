@@ -1,12 +1,17 @@
 using MongoDB.Driver;
 using Pole.Features.RedisServices.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.RedisServices.Application.Persistence.Lifecycle;
 
 public sealed record RedisDeletionConflict(string RedisId);
 
-public delegate Task<Result<Unit, RedisDeletionConflict>> BeginRedisDeletion(
+public sealed record RedisDeletionStarted;
+
+public union BeginRedisDeletionOutcome(
+    RedisDeletionStarted,
+    RedisDeletionConflict);
+
+public delegate Task<BeginRedisDeletionOutcome> BeginRedisDeletion(
     IClientSessionHandle session,
     Redis current,
     Redis replacement,
@@ -15,7 +20,7 @@ public delegate Task<Result<Unit, RedisDeletionConflict>> BeginRedisDeletion(
 internal sealed class MongoBeginRedisDeletion(
     IMongoCollection<Redis> redisServices)
 {
-    public async Task<Result<Unit, RedisDeletionConflict>> InvokeAsync(
+    public async Task<BeginRedisDeletionOutcome> InvokeAsync(
         IClientSessionHandle session,
         Redis current,
         Redis replacement,
@@ -32,7 +37,7 @@ internal sealed class MongoBeginRedisDeletion(
             replacement,
             cancellationToken: cancellationToken);
         return replace.ModifiedCount == 1
-            ? new Ok<Unit>(Unit.Value)
-            : new Err<RedisDeletionConflict>(new RedisDeletionConflict(current.Id));
+            ? new RedisDeletionStarted()
+            : new RedisDeletionConflict(current.Id);
     }
 }

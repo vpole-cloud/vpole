@@ -15,7 +15,6 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Mediator;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Endpoints;
 
@@ -61,8 +60,9 @@ public sealed class RotateDeploymentTargetCredentialsHandler(
             target.NextConnectionVersion,
             request.Body.Connection.ToInput(),
             cancellationToken);
-        if (!preparedResult.TryGetValue(out var prepared, out var prepareError))
+        if (preparedResult is DeploymentTargetConnectionRejected prepareError)
             return prepareError;
+        var prepared = (PreparedDeploymentTargetConnection)preparedResult.Value;
 
         using (prepared)
         {
@@ -95,20 +95,20 @@ public sealed class RotateDeploymentTargetCredentialsHandler(
                 target,
                 updated,
                 cancellationToken);
-            if (!persistedResult.TryGetValue(out var persisted, out var persistenceError))
+            if (persistedResult is DeploymentTargetRevisionConflict persistenceError)
                 return persistenceError;
 
+            var persisted = (DeploymentTarget)persistedResult.Value;
             invalidateDeploymentTargetKubernetesClient(target.Id);
             var defaultId = await loadDefaultDeploymentTargetId(cancellationToken);
             return persisted.ToDto(persisted.Id == defaultId);
         }
     }
 
-    private static DeploymentTargetConnectionRejected ConnectionValidationFailure(string safeMessage) =>
-        new(new Dictionary<string, string[]>
-        {
-            ["Body.Connection"] = [safeMessage]
-        });
+    private static DeploymentTargetConnectionRejected ConnectionValidationFailure(string safeMessage) => new(new Dictionary<string, string[]>
+    {
+        ["Body.Connection"] = [safeMessage]
+    });
 
 }
 
@@ -144,20 +144,18 @@ public static class RotateDeploymentTargetCredentialsEndpoint
     {
         app.MapPut("/{Id}/credentials", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] RotateDeploymentTargetCredentialsRequest request,
                 CancellationToken cancellationToken) =>
+        {
+            var result = await mediator.Send(request, cancellationToken);
+            return result.ToHttpResult(outcome => outcome switch
             {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
-                {
-                    DeploymentTargetDto target => Results.Ok(target),
-                    DeploymentTargetNotFound
-                        or DeploymentTargetRevisionConflict
-                        or DeploymentTargetConnectionRejected =>
-                        httpProblems.Map(outcome).ToHttpResult()
-                });
-            })
+                DeploymentTargetDto target => Results.Ok(target),
+                DeploymentTargetNotFound error => DeploymentTargetHttpMappings.Map(error),
+                DeploymentTargetRevisionConflict error => DeploymentTargetHttpMappings.Map(error),
+                DeploymentTargetConnectionRejected error => DeploymentTargetHttpMappings.Map(error)
+            });
+        })
             .WithName("RotateDeploymentTargetCredentials")
             .Produces<DeploymentTargetDto>()
             .ProducesProblem(StatusCodes.Status404NotFound)

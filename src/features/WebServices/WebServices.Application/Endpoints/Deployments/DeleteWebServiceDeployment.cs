@@ -18,6 +18,8 @@ using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
 
+using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
+
 namespace Pole.Features.WebServices.Application.Endpoints.Deployments;
 
 public static class DeleteWebServiceDeployment
@@ -30,7 +32,6 @@ public static class DeleteWebServiceDeployment
                     "/{Id}/deployments/{DeploymentId}",
                     async (
                         IMediator mediator,
-                        IHttpProblemMapper httpProblems,
                         [AsParameters] DeleteWebServiceDeploymentRequest request,
                         CancellationToken cancellationToken) =>
                         (await mediator.Send(request, cancellationToken))
@@ -39,7 +40,7 @@ public static class DeleteWebServiceDeployment
                             PlacementSummaryDto value =>
                                 Results.Accepted(value: value),
                             DeleteWebServiceDeploymentError error =>
-                                httpProblems.Map(error).ToHttpResult()
+                                MapError(error)
                         }))
                 .WithName("DeleteWebServiceDeployment")
                 .Produces<PlacementSummaryDto>(StatusCodes.Status202Accepted);
@@ -148,9 +149,10 @@ public sealed class DeleteWebServiceDeploymentHandler(
                         ResourceRevision: updated.ActiveRevision),
                     transaction.Session,
                     token);
-                if (!deleted.TryGetValue(out var result, out var failure))
+                if (deleted is ResourceDeploymentMutationError failure)
                     return transaction.Abort(Error(
                         new DeleteWebServiceDeploymentError(failure)));
+                var result = (PlacementSummaryDto)deleted.Value;
 
                 var stamped = await advanceResourceDeploymentRevision(
                     new ResourceDeploymentResourceRevisionRequest(
@@ -160,9 +162,10 @@ public sealed class DeleteWebServiceDeploymentHandler(
                         updated.ActiveRevision),
                     transaction.Session,
                     token);
-                if (!stamped.TryGetValue(out var snapshots, out var revisionFailure))
+                if (stamped is AdvanceResourceDeploymentRevisionError revisionFailure)
                     return transaction.Abort(Error(
                         new DeleteWebServiceDeploymentError(revisionFailure)));
+                var snapshots = ((MutatedResourceDeployments)stamped.Value).Placements;
 
                 var retainedSnapshots = snapshots.Where(item =>
                     item.DeploymentId != current.DeploymentId).ToArray();
@@ -179,7 +182,7 @@ public sealed class DeleteWebServiceDeploymentHandler(
                     updated,
                     updated.ToUpdatedEvent(eventDeployments),
                     token);
-                if (!saved.TryGetValue(out _, out var persistenceError))
+                if (saved is WebServiceUpdateConflict persistenceError)
                     return transaction.Abort(Error(
                         new DeleteWebServiceDeploymentError(persistenceError)));
 

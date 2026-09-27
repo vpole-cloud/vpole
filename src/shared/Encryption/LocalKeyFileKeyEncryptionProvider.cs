@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using Microsoft.Extensions.Options;
-using Pole.ResultType;
 
 namespace Pole.Encryption;
 
@@ -48,7 +47,7 @@ public sealed class LocalKeyFileKeyEncryptionProvider : IKeyEncryptionProvider, 
     public string ProviderId => StableProviderId;
     public KeyEncryptionKeyDescriptor ActiveKey { get; }
 
-    public ValueTask<Result<WrappedDataEncryptionKey, DataEncryptionKeyWrappingFailed>> WrapKeyAsync(
+    public ValueTask<DataEncryptionKeyWrappingOutcome> WrapKeyAsync(
         KeyEncryptionKeyDescriptor keyDescriptor,
         ReadOnlyMemory<byte> dataEncryptionKey,
         ReadOnlyMemory<byte> associatedData,
@@ -62,8 +61,7 @@ public sealed class LocalKeyFileKeyEncryptionProvider : IKeyEncryptionProvider, 
                 dataEncryptionKey.Length != DataEncryptionKeySizeBytes ||
                 !_keys.TryGetValue(keyDescriptor.Identity, out var key))
             {
-                return ValueTask.FromResult<Result<WrappedDataEncryptionKey, DataEncryptionKeyWrappingFailed>>(
-                    new Err<DataEncryptionKeyWrappingFailed>(KeyWrapFailure()));
+                return ValueTask.FromResult<DataEncryptionKeyWrappingOutcome>(KeyWrapFailure());
             }
 
             try
@@ -73,18 +71,17 @@ public sealed class LocalKeyFileKeyEncryptionProvider : IKeyEncryptionProvider, 
                 var tag = new byte[TagSizeBytes];
                 using var aes = new AesGcm(key, TagSizeBytes);
                 aes.Encrypt(nonce, dataEncryptionKey.Span, ciphertext, tag, associatedData.Span);
-                return ValueTask.FromResult<Result<WrappedDataEncryptionKey, DataEncryptionKeyWrappingFailed>>(
-                    new Ok<WrappedDataEncryptionKey>(new WrappedDataEncryptionKey(ciphertext, nonce, tag)));
+                return ValueTask.FromResult<DataEncryptionKeyWrappingOutcome>(
+                    new WrappedDataEncryptionKey(ciphertext, nonce, tag));
             }
             catch (CryptographicException)
             {
-                return ValueTask.FromResult<Result<WrappedDataEncryptionKey, DataEncryptionKeyWrappingFailed>>(
-                    new Err<DataEncryptionKeyWrappingFailed>(KeyWrapFailure()));
+                return ValueTask.FromResult<DataEncryptionKeyWrappingOutcome>(KeyWrapFailure());
             }
         }
     }
 
-    public ValueTask<Result<byte[], DataEncryptionKeyUnwrappingFailed>> UnwrapKeyAsync(
+    public ValueTask<DataEncryptionKeyUnwrappingOutcome> UnwrapKeyAsync(
         KeyEncryptionKeyIdentity keyIdentity,
         string algorithm,
         int algorithmVersion,
@@ -105,8 +102,7 @@ public sealed class LocalKeyFileKeyEncryptionProvider : IKeyEncryptionProvider, 
                 authenticationTag.Length != TagSizeBytes ||
                 !_keys.TryGetValue(keyIdentity, out var key))
             {
-                return ValueTask.FromResult<Result<byte[], DataEncryptionKeyUnwrappingFailed>>(
-                    new Err<DataEncryptionKeyUnwrappingFailed>(KeyUnwrapFailure()));
+                return ValueTask.FromResult<DataEncryptionKeyUnwrappingOutcome>(KeyUnwrapFailure());
             }
 
             var dataEncryptionKey = new byte[DataEncryptionKeySizeBytes];
@@ -119,14 +115,12 @@ public sealed class LocalKeyFileKeyEncryptionProvider : IKeyEncryptionProvider, 
                     authenticationTag.Span,
                     dataEncryptionKey,
                     associatedData.Span);
-                return ValueTask.FromResult<Result<byte[], DataEncryptionKeyUnwrappingFailed>>(
-                    new Ok<byte[]>(dataEncryptionKey));
+                return ValueTask.FromResult<DataEncryptionKeyUnwrappingOutcome>(dataEncryptionKey);
             }
             catch (CryptographicException)
             {
                 CryptographicOperations.ZeroMemory(dataEncryptionKey);
-                return ValueTask.FromResult<Result<byte[], DataEncryptionKeyUnwrappingFailed>>(
-                    new Err<DataEncryptionKeyUnwrappingFailed>(KeyUnwrapFailure()));
+                return ValueTask.FromResult<DataEncryptionKeyUnwrappingOutcome>(KeyUnwrapFailure());
             }
         }
     }

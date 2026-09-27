@@ -10,7 +10,13 @@ using Pole.ResultType;
 
 namespace Pole.Features.ComputeProfiles.Application.Validation;
 
-public delegate Task<Result<Unit, ComputeProfileTargetMappingsInvalid>>
+public sealed record ComputeProfileTargetMappingsValid;
+
+public union ValidateComputeProfileTargetMappingsOutcome(
+    ComputeProfileTargetMappingsValid,
+    ComputeProfileTargetMappingsInvalid);
+
+public delegate Task<ValidateComputeProfileTargetMappingsOutcome>
     ValidateComputeProfileTargetMappings(
     ComputeProfile profile,
     CancellationToken cancellationToken = default);
@@ -21,7 +27,7 @@ public sealed class KubernetesComputeProfileTargetMappingValidator(
 {
     private const string ArchitectureLabel = "kubernetes.io/arch";
 
-    public async Task<Result<Unit, ComputeProfileTargetMappingsInvalid>> InvokeAsync(
+    public async Task<ValidateComputeProfileTargetMappingsOutcome> InvokeAsync(
         ComputeProfile profile,
         CancellationToken cancellationToken = default)
     {
@@ -35,14 +41,14 @@ public sealed class KubernetesComputeProfileTargetMappingValidator(
                 profile.ExtendedResources,
                 index,
                 cancellationToken);
-            if (validation is Err<ComputeProfileTargetMappingsInvalid> error)
+            if (validation is ComputeProfileTargetMappingsInvalid error)
                 return error;
         }
 
-        return new Ok<Unit>(Unit.Value);
+        return new ComputeProfileTargetMappingsValid();
     }
 
-    private async Task<Result<Unit, ComputeProfileTargetMappingsInvalid>> ValidateMappingAsync(
+    private async Task<ValidateComputeProfileTargetMappingsOutcome> ValidateMappingAsync(
         ComputeProfileTargetMapping mapping,
         ComputeArchitecture architecture,
         IReadOnlyCollection<ComputeProfileExtendedResource> extendedResources,
@@ -52,7 +58,7 @@ public sealed class KubernetesComputeProfileTargetMappingValidator(
         var targetResult = await admitDeploymentTarget(
             mapping.DeploymentTargetId,
             cancellationToken);
-        if (targetResult is Err<DeploymentTargetWorkloadAdmissionError>)
+        if (targetResult is DeploymentTargetWorkloadAdmissionError)
         {
             return Invalid(
                 mappingIndex,
@@ -114,7 +120,7 @@ public sealed class KubernetesComputeProfileTargetMappingValidator(
                 mapping.RequiredNodeAffinity,
                 extendedResources));
         return hasMatchingNode
-            ? new Ok<Unit>(Unit.Value)
+            ? new ComputeProfileTargetMappingsValid()
             : HardConstraintsFailure(
                 mappingIndex,
                 "No node satisfies the compute profile's hard constraints and extended resources.");
@@ -323,21 +329,20 @@ public sealed class KubernetesComputeProfileTargetMappingValidator(
         }
     }
 
-    private static Result<Unit, ComputeProfileTargetMappingsInvalid> HardConstraintsFailure(
+    private static ValidateComputeProfileTargetMappingsOutcome HardConstraintsFailure(
         int mappingIndex,
         string message) =>
         Invalid(mappingIndex, "Scheduling", message);
 
-    private static Result<Unit, ComputeProfileTargetMappingsInvalid> Invalid(
+    private static ValidateComputeProfileTargetMappingsOutcome Invalid(
         int mappingIndex,
         string field,
         string message) =>
-        new Err<ComputeProfileTargetMappingsInvalid>(
-            new ComputeProfileTargetMappingsInvalid(
-                new Dictionary<string, string[]>
-                {
-                    [Field(mappingIndex, field)] = [message]
-                }));
+        new ComputeProfileTargetMappingsInvalid(
+            new Dictionary<string, string[]>
+            {
+                [Field(mappingIndex, field)] = [message]
+            });
 
     private static string Field(int index, string name) =>
         $"TargetMappings[{index}].{name}";

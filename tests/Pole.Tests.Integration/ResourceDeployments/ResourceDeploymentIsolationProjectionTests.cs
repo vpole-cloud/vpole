@@ -46,8 +46,8 @@ public sealed class ResourceDeploymentIsolationProjectionTests(
         {
             requestedTargets.Add(id);
             Assert.Equal(first.Id, id);
-            return Task.FromResult<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>>(
-                new Ok<DeploymentTargetLookupDto>(current.ToLookupDto()));
+            return Task.FromResult<LookupDeploymentTargetOutcome>(
+                new LookupDeploymentTargetOutcome(current.ToLookupDto()));
         });
         var read = new MongoLoadResourceDeploymentSet(collection, projection);
         Assert.Equal(

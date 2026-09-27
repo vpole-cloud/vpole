@@ -54,14 +54,13 @@ public sealed class SourceBuildJobExecutor(
                 job.SourceRepositoryId,
                 job.CommitSha,
                 job.Id);
-            var workspace = TypedResultExtensions.TryGetValue(workspaceResult);
-            if (!workspace.Succeeded)
+            if (workspaceResult is CreateSourceBuildWorkspaceError workspaceError)
             {
-                await FailAsync(job, SourceBuildPhase.Cloning, workspace.Error!);
+                await FailAsync(job, SourceBuildPhase.Cloning, workspaceError);
                 return;
             }
 
-            var workspaceValue = workspace.Value!;
+            var workspaceValue = (SourceBuildWorkspace)workspaceResult.Value;
             await using (workspaceValue)
             {
                 var analyzing = job.StartAnalyzing(timeProvider.GetUtcNow().UtcDateTime);
@@ -107,29 +106,29 @@ public sealed class SourceBuildJobExecutor(
                     actorUserId,
                     repositoryName,
                     tag);
-                var registryAccess = TypedResultExtensions.TryGetValue(registryAccessResult);
-                if (!registryAccess.Succeeded)
+                if (registryAccessResult.Value is PrepareRegistryBuildPushError accessError)
                 {
-                    await FailAsync(job, SourceBuildPhase.Building, registryAccess.Error!);
+                    await FailAsync(job, SourceBuildPhase.Building, accessError);
                     return;
                 }
+                var registryAccess = (RegistryBuildAccess)registryAccessResult.Value;
 
                 var imageResult = await buildContainerImage(
                     new BuildKitBuildRequest(
                         workspaceValue.SourcePath,
                         job.Recipe.Dockerfile,
-                        registryAccess.Value!.Target,
-                        registryAccess.Value.Username,
-                        registryAccess.Value.Secret));
-                var image = TypedResultExtensions.TryGetValue(imageResult);
-                if (!image.Succeeded)
+                        registryAccess.Target,
+                        registryAccess.Username,
+                        registryAccess.Secret));
+                if (imageResult is BuildContainerImageError imageError)
                 {
-                    await FailAsync(job, SourceBuildPhase.Building, image.Error!);
+                    await FailAsync(job, SourceBuildPhase.Building, imageError);
                     return;
                 }
+                var image = (BuiltContainerImage)imageResult.Value;
 
                 var pushing = job.StartPushing(
-                    image.Value!.Reference,
+                    image.Reference,
                     timeProvider.GetUtcNow().UtcDateTime);
                 if (!await tryPersistSourceBuildJob(job, pushing))
                     return;
@@ -137,19 +136,19 @@ public sealed class SourceBuildJobExecutor(
 
                 var artifactResult = await getTenantRegistryArtifact(
                     job.TenantId,
-                    registryAccess.Value.RegistryProjectId,
+                    registryAccess.RegistryProjectId,
                     repositoryName,
                     tag);
-                var artifact = TypedResultExtensions.TryGetValue(artifactResult);
-                if (!artifact.Succeeded)
+                if (artifactResult.Value is GetTenantRegistryArtifactError artifactError)
                 {
-                    await FailAsync(job, SourceBuildPhase.Pushing, artifact.Error!);
+                    await FailAsync(job, SourceBuildPhase.Pushing, artifactError);
                     return;
                 }
+                var artifact = (RegistryArtifact)artifactResult.Value;
 
                 if (!string.Equals(
-                        artifact.Value!.Digest,
-                        image.Value.Digest,
+                        artifact.Digest,
+                        image.Digest,
                         StringComparison.OrdinalIgnoreCase))
                 {
                     await FailAsync(
@@ -171,21 +170,21 @@ public sealed class SourceBuildJobExecutor(
                         trigger?.UserId,
                         trigger?.Email,
                         new SourceBuildDeploymentImage(
-                            registryAccess.Value.Target.RegistryHost,
-                            $"{registryAccess.Value.Target.ProjectName}/{registryAccess.Value.Target.RepositoryName}",
-                            registryAccess.Value.Target.Tag,
-                            artifact.Value.Digest,
-                            registryAccess.Value.KubernetesPullSecretName)));
-                var deployment = TypedResultExtensions.TryGetValue(deploymentResult);
-                if (!deployment.Succeeded)
+                            registryAccess.Target.RegistryHost,
+                            $"{registryAccess.Target.ProjectName}/{registryAccess.Target.RepositoryName}",
+                            registryAccess.Target.Tag,
+                            artifact.Digest,
+                            registryAccess.KubernetesPullSecretName)));
+                if (deploymentResult is SourceBuildWebServiceDeploymentError deploymentError)
                 {
-                    await FailAsync(job, SourceBuildPhase.Deploying, deployment.Error!);
+                    await FailAsync(job, SourceBuildPhase.Deploying, deploymentError);
                     return;
                 }
+                var deployment = (SourceBuildDeploymentResult)deploymentResult.Value;
 
                 var deploying = job.StartDeploying(
-                    artifact.Value.Digest,
-                    deployment.Value!.ReleaseId,
+                    artifact.Digest,
+                    deployment.ReleaseId,
                     timeProvider.GetUtcNow().UtcDateTime);
                 await tryPersistSourceBuildJob(job, deploying);
             }
@@ -328,19 +327,19 @@ public sealed class SourceBuildJobExecutor(
 
     private static (string Code, string Message) DownloadFailure(
         DownloadSourceRepositoryArchiveError error) => error switch
-    {
-        SourceRepositoryBuildNotFound =>
-            ("SourceRepositoryNotFound", "The linked source repository no longer exists."),
-        SourceRepositoryBuildConnectionNotFound =>
-            ("GitProviderConnectionNotFound", "The linked git provider connection no longer exists."),
-        GitProviderRepositoryAccessError provider => provider switch
         {
-            GitProviderUnsupported =>
-                ("GitProviderUnsupported", "The linked git provider is not supported."),
-            GitProviderUnavailable =>
-                ("GitProviderUnavailable", "The linked git provider is unavailable.")
-        }
-    };
+            SourceRepositoryBuildNotFound =>
+                ("SourceRepositoryNotFound", "The linked source repository no longer exists."),
+            SourceRepositoryBuildConnectionNotFound =>
+                ("GitProviderConnectionNotFound", "The linked git provider connection no longer exists."),
+            GitProviderRepositoryAccessError provider => provider switch
+            {
+                GitProviderUnsupported =>
+                    ("GitProviderUnsupported", "The linked git provider is not supported."),
+                GitProviderUnavailable =>
+                    ("GitProviderUnavailable", "The linked git provider is unavailable.")
+            }
+        };
 
     private static string DeploymentRejectionCode(SourceBuildResourceDeploymentRejection error) =>
         error switch

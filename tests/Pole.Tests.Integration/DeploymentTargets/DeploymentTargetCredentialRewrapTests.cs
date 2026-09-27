@@ -17,7 +17,6 @@ using Pole.Features.DeploymentTargets.Application.Persistence.References;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
-using static Pole.Tests.Integration.Infrastructure.ResultAssertions;
 using Xunit;
 
 namespace Pole.Tests.Integration.DeploymentTargets;
@@ -45,17 +44,17 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
         var kubeconfigTargetId = ObjectId.GenerateNewId().ToString();
         var serviceAccountTargetId = ObjectId.GenerateNewId().ToString();
 
-        using var preparedKubeconfig = AssertSuccess(await oldConnectionService.PrepareAsync(
+        using var preparedKubeconfig = Assert.IsType<PreparedDeploymentTargetConnection>((await oldConnectionService.PrepareAsync(
             kubeconfigTargetId,
             connectionVersion: 1,
-            new KubeconfigConnectionInput(CreateKubeconfig())));
-        using var preparedServiceAccount = AssertSuccess(await oldConnectionService.PrepareAsync(
+            new KubeconfigConnectionInput(CreateKubeconfig()))).Value);
+        using var preparedServiceAccount = Assert.IsType<PreparedDeploymentTargetConnection>((await oldConnectionService.PrepareAsync(
             serviceAccountTargetId,
             connectionVersion: 1,
             new ServiceAccountConnectionInput(
                 KubernetesServer,
                 CertificateAuthorityData.Value,
-                ServiceAccountToken)));
+                ServiceAccountToken))).Value);
 
         var kubeconfigConnection = Assert.IsType<KubeconfigDeploymentTargetConnection>(
             preparedKubeconfig.Connection);
@@ -78,10 +77,10 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
 
         var rejected = await service.InvokeAsync(wrongKey);
         Assert.IsType<DeploymentTargetCredentialRewrapConflict>(
-            AssertFailure(rejected));
+            Assert.IsType<DeploymentTargetCredentialRewrapConflict>((rejected).Value));
 
-        var first = AssertSuccess(await service.InvokeAsync(
-            encryption.RotatingService.ActiveKey));
+        var first = Assert.IsType<DeploymentTargetCredentialRewrapSummary>((await service.InvokeAsync(
+            encryption.RotatingService.ActiveKey)).Value);
 
         Assert.Equal(2, first.Examined);
         Assert.Equal(2, first.Rewrapped);
@@ -98,18 +97,18 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
         AssertRewrapped(serviceAccountConnection.EncryptedCredential, storedServiceAccount.EncryptedCredential);
 
         var newOnlyConnectionService = CreateConnectionService(encryption.NewOnlyService);
-        using var resolvedKubeconfig = AssertSuccess(await newOnlyConnectionService.CreateAsync(
+        using var resolvedKubeconfig = Assert.IsAssignableFrom<IKubernetes>((await newOnlyConnectionService.CreateAsync(
             kubeconfigTargetId,
-            storedKubeconfig));
-        using var resolvedServiceAccount = AssertSuccess(await newOnlyConnectionService.CreateAsync(
+            storedKubeconfig)).Value);
+        using var resolvedServiceAccount = Assert.IsAssignableFrom<IKubernetes>((await newOnlyConnectionService.CreateAsync(
             serviceAccountTargetId,
-            storedServiceAccount));
+            storedServiceAccount)).Value);
 
-        AssertFailure(await oldConnectionService.CreateAsync(kubeconfigTargetId, storedKubeconfig));
-        AssertFailure(await oldConnectionService.CreateAsync(serviceAccountTargetId, storedServiceAccount));
+        Assert.IsType<StoredDeploymentTargetConnectionUnavailable>((await oldConnectionService.CreateAsync(kubeconfigTargetId, storedKubeconfig)).Value);
+        Assert.IsType<StoredDeploymentTargetConnectionUnavailable>((await oldConnectionService.CreateAsync(serviceAccountTargetId, storedServiceAccount)).Value);
 
-        var second = AssertSuccess(await service.InvokeAsync(
-            encryption.RotatingService.ActiveKey));
+        var second = Assert.IsType<DeploymentTargetCredentialRewrapSummary>((await service.InvokeAsync(
+            encryption.RotatingService.ActiveKey)).Value);
         Assert.Equal(2, second.Examined);
         Assert.Equal(0, second.Rewrapped);
         Assert.Equal(0, second.ConcurrentChanges);
@@ -121,13 +120,13 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
         using var encryption = RotationEncryptionScope.Create();
         var oldConnectionService = CreateConnectionService(encryption.OldService);
         var targetId = ObjectId.GenerateNewId().ToString();
-        using var prepared = AssertSuccess(await oldConnectionService.PrepareAsync(
+        using var prepared = Assert.IsType<PreparedDeploymentTargetConnection>((await oldConnectionService.PrepareAsync(
             targetId,
             connectionVersion: 1,
             new ServiceAccountConnectionInput(
                 KubernetesServer,
                 CertificateAuthorityData.Value,
-                ServiceAccountToken)));
+                ServiceAccountToken))).Value);
         var original = CreateTarget(targetId, prepared.Connection);
         await fixture.DbContext.DeploymentTargets.InsertOneAsync(original);
         var rewrapService = new MongoRewrapDeploymentTargetCredentials(
@@ -137,10 +136,10 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
             DateTimeOffset.UtcNow.AddMinutes(1),
             () =>
             {
-                var summary = AssertSuccess(rewrapService.InvokeAsync(
+                var summary = Assert.IsType<DeploymentTargetCredentialRewrapSummary>((rewrapService.InvokeAsync(
                         encryption.RotatingService.ActiveKey)
                     .GetAwaiter()
-                    .GetResult());
+                    .GetResult()).Value);
                 Assert.Equal(1, summary.Rewrapped);
             });
         var handler = new UpdateDeploymentTargetHandler(
@@ -150,9 +149,7 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
                 fixture.DbContext.DeploymentTargets,
                 CreateNoPublicBaseDomainReferences(),
                 CreateNoOverlappingPublicBaseDomain(),
-                new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<Result<
-                    DeploymentTarget,
-                    PersistUpdatedDeploymentTargetError>>).InvokeAsync,
+                new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<PersistUpdatedDeploymentTargetOutcome>).InvokeAsync,
             new NoOpClientCache().Invalidate,
             timeProvider);
 
@@ -179,8 +176,8 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
             stored.Connection);
         Assert.Equal("new", storedConnection.EncryptedCredential.KeyEncryptionKeyId);
         Assert.Equal(2, storedConnection.EncryptedCredential.KeyEncryptionKeyVersion);
-        using var resolved = AssertSuccess(await CreateConnectionService(encryption.NewOnlyService)
-            .CreateAsync(targetId, storedConnection));
+        using var resolved = Assert.IsAssignableFrom<IKubernetes>((await CreateConnectionService(encryption.NewOnlyService)
+            .CreateAsync(targetId, storedConnection)).Value);
     }
 
     private static void AssertRewrapped(EncryptedValue oldEnvelope, EncryptedValue newEnvelope)
@@ -205,9 +202,7 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
         PrepareDeploymentTargetConnection prepareDeploymentTargetConnection,
         CreateDeploymentTargetKubernetesClient createDeploymentTargetKubernetesClient)
     {
-        public ValueTask<Result<
-            PreparedDeploymentTargetConnection,
-            DeploymentTargetConnectionRejected>> PrepareAsync(
+        public ValueTask<PrepareDeploymentTargetConnectionOutcome> PrepareAsync(
             string deploymentTargetId,
             long connectionVersion,
             DeploymentTargetConnectionInput input,
@@ -218,9 +213,7 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
                 input,
                 cancellationToken);
 
-        public ValueTask<Result<
-            IKubernetes,
-            StoredDeploymentTargetConnectionUnavailable>> CreateAsync(
+        public ValueTask<CreateStoredKubernetesClientOutcome> CreateAsync(
             string deploymentTargetId,
             DeploymentTargetConnection connection,
             CancellationToken cancellationToken = default) =>

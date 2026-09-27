@@ -13,6 +13,8 @@ using Pole.Mediator;
 using Pole.Validation;
 using Pole.Workloads;
 
+using static Pole.Features.Secrets.Application.SecretHttpMappings;
+
 namespace Pole.Features.Secrets.Application.Endpoints;
 
 public union BindSecretOutcome(
@@ -101,18 +103,17 @@ public static class BindSecretEndpoint
     {
         app.MapPost("/{Id}/bindings", async (
                 IMediator mediator,
-                IHttpProblemMapper problems,
                 [AsParameters] BindSecretRequest request,
                 CancellationToken ct) =>
                 (await mediator.Send(request, ct))
                 .ToHttpResult(outcome => outcome switch
                 {
                     SecretMetadata metadata => Results.Ok(metadata),
-                    SecretMissing error => problems.Map(error).ToHttpResult(),
-                    SecretBindingLimitReached error => problems.Map(error).ToHttpResult(),
-                    SecretConsumerAlreadyBound error => problems.Map(error).ToHttpResult(),
-                    SecretUnknownKeys error => problems.Map(error).ToHttpResult(),
-                    SecretReferenceRejected error => problems.Map(error).ToHttpResult()
+                    SecretMissing error => MapMissing(error),
+                    SecretBindingLimitReached error => MapBindingLimitReached(error),
+                    SecretConsumerAlreadyBound error => MapConsumerAlreadyBound(error),
+                    SecretUnknownKeys error => MapUnknownKeys(error),
+                    SecretReferenceRejected error => MapReferenceRejected(error)
                 }))
             .WithName("BindSecret");
 

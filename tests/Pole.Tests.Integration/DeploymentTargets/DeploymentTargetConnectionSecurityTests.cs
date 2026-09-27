@@ -13,7 +13,6 @@ using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
-using static Pole.Tests.Integration.Infrastructure.ResultAssertions;
 using Xunit;
 
 namespace Pole.Tests.Integration.DeploymentTargets;
@@ -38,10 +37,10 @@ public sealed class DeploymentTargetConnectionSecurityTests
         var targetId = ObjectId.GenerateNewId().ToString();
         var kubeconfig = CreateKubeconfig(KubeconfigToken);
 
-        var prepared = AssertSuccess(await encryption.ConnectionService.PrepareAsync(
+        var prepared = Assert.IsType<PreparedDeploymentTargetConnection>((await encryption.ConnectionService.PrepareAsync(
             targetId,
             connectionVersion: 3,
-            new KubeconfigConnectionInput(kubeconfig)));
+            new KubeconfigConnectionInput(kubeconfig))).Value);
         using (prepared)
         {
             var persisted = Assert.IsType<KubeconfigDeploymentTargetConnection>(prepared.Connection);
@@ -58,9 +57,9 @@ public sealed class DeploymentTargetConnectionSecurityTests
 
             AssertHardenedTransport(prepared.Candidate, KubernetesServer);
 
-            var resolved = AssertSuccess(await encryption.ConnectionService.CreateAsync(
+            var resolved = Assert.IsAssignableFrom<IKubernetes>((await encryption.ConnectionService.CreateAsync(
                 targetId,
-                persisted));
+                persisted)).Value);
             using (resolved)
             {
                 AssertHardenedTransport(resolved, KubernetesServer);
@@ -85,7 +84,7 @@ public sealed class DeploymentTargetConnectionSecurityTests
             connectionVersion: 1,
             new KubeconfigConnectionInput(kubeconfig));
 
-        var rejection = AssertFailure(result);
+        var rejection = Assert.IsType<DeploymentTargetConnectionRejected>((result).Value);
         Assert.IsType<DeploymentTargetConnectionRejected>(rejection);
         AssertSafeConnectionRejection(
             rejection,
@@ -100,10 +99,10 @@ public sealed class DeploymentTargetConnectionSecurityTests
         using var encryption = TestEncryptionScope.Create();
         var targetId = ObjectId.GenerateNewId().ToString();
         var kubeconfig = CreateKubeconfig(KubeconfigToken);
-        var prepared = AssertSuccess(await encryption.ConnectionService.PrepareAsync(
+        var prepared = Assert.IsType<PreparedDeploymentTargetConnection>((await encryption.ConnectionService.PrepareAsync(
             targetId,
             connectionVersion: 1,
-            new KubeconfigConnectionInput(kubeconfig)));
+            new KubeconfigConnectionInput(kubeconfig))).Value);
 
         using (prepared)
         {
@@ -129,13 +128,13 @@ public sealed class DeploymentTargetConnectionSecurityTests
     {
         using var encryption = TestEncryptionScope.Create();
         var targetId = ObjectId.GenerateNewId().ToString();
-        var prepared = AssertSuccess(await encryption.ConnectionService.PrepareAsync(
+        var prepared = Assert.IsType<PreparedDeploymentTargetConnection>((await encryption.ConnectionService.PrepareAsync(
             targetId,
             connectionVersion: 5,
             new ServiceAccountConnectionInput(
                 ServiceAccountServer,
                 CertificateAuthorityData.Value,
-                ServiceAccountToken)));
+                ServiceAccountToken))).Value);
 
         using (prepared)
         {
@@ -160,7 +159,7 @@ public sealed class DeploymentTargetConnectionSecurityTests
             Assert.DoesNotContain(ServiceAccountServer, dtoJson, StringComparison.Ordinal);
             Assert.DoesNotContain("encrypted", dtoJson, StringComparison.OrdinalIgnoreCase);
 
-            var resolved = AssertSuccess(await encryption.ConnectionService.CreateAsync(targetId, persisted));
+            var resolved = Assert.IsAssignableFrom<IKubernetes>((await encryption.ConnectionService.CreateAsync(targetId, persisted)).Value);
             using (resolved)
             {
                 AssertHardenedTransport(resolved, ServiceAccountServer);
@@ -174,13 +173,13 @@ public sealed class DeploymentTargetConnectionSecurityTests
         using var encryption = TestEncryptionScope.Create();
         using var certificates = TlsCertificateSet.Create("service-account.pole.test");
         var targetId = ObjectId.GenerateNewId().ToString();
-        var prepared = AssertSuccess(await encryption.ConnectionService.PrepareAsync(
+        var prepared = Assert.IsType<PreparedDeploymentTargetConnection>((await encryption.ConnectionService.PrepareAsync(
             targetId,
             connectionVersion: 1,
             new ServiceAccountConnectionInput(
                 ServiceAccountServer,
                 Convert.ToBase64String(certificates.TrustedRoot.Export(X509ContentType.Cert)),
-                ServiceAccountToken)));
+                ServiceAccountToken))).Value);
 
         using (prepared)
         {
@@ -218,13 +217,13 @@ public sealed class DeploymentTargetConnectionSecurityTests
     {
         using var encryption = TestEncryptionScope.Create();
         var targetId = ObjectId.GenerateNewId().ToString();
-        var prepared = AssertSuccess(await encryption.ConnectionService.PrepareAsync(
+        var prepared = Assert.IsType<PreparedDeploymentTargetConnection>((await encryption.ConnectionService.PrepareAsync(
             targetId,
             connectionVersion: 1,
             new ServiceAccountConnectionInput(
                 ServiceAccountServer,
                 CertificateAuthorityData.Value,
-                ServiceAccountToken)));
+                ServiceAccountToken))).Value);
 
         using (prepared)
         {
@@ -237,7 +236,7 @@ public sealed class DeploymentTargetConnectionSecurityTests
 
             var result = await encryption.ConnectionService.CreateAsync(targetId, tampered);
 
-            var failure = AssertFailure(result);
+            var failure = Assert.IsType<StoredDeploymentTargetConnectionUnavailable>(result.Value);
             Assert.IsType<StoredDeploymentTargetConnectionUnavailable>(failure);
             AssertSafeStoredConnectionFailure(
                 failure,
@@ -254,10 +253,10 @@ public sealed class DeploymentTargetConnectionSecurityTests
     {
         using var encryption = TestEncryptionScope.Create();
         var targetId = ObjectId.GenerateNewId().ToString();
-        var prepared = AssertSuccess(await encryption.ConnectionService.PrepareAsync(
+        var prepared = Assert.IsType<PreparedDeploymentTargetConnection>((await encryption.ConnectionService.PrepareAsync(
             targetId,
             connectionVersion: 7,
-            new KubeconfigConnectionInput(CreateKubeconfig(KubeconfigToken))));
+            new KubeconfigConnectionInput(CreateKubeconfig(KubeconfigToken)))).Value);
 
         using (prepared)
         {
@@ -277,7 +276,7 @@ public sealed class DeploymentTargetConnectionSecurityTests
                 requestedTargetId,
                 requestedConnection);
 
-            var failure = AssertFailure(result);
+            var failure = Assert.IsType<StoredDeploymentTargetConnectionUnavailable>(result.Value);
             Assert.IsType<StoredDeploymentTargetConnectionUnavailable>(failure);
             AssertSafeStoredConnectionFailure(
                 failure,
@@ -501,9 +500,7 @@ public sealed class DeploymentTargetConnectionSecurityTests
         PrepareDeploymentTargetConnection prepareDeploymentTargetConnection,
         CreateDeploymentTargetKubernetesClient createDeploymentTargetKubernetesClient)
     {
-        public ValueTask<Result<
-            PreparedDeploymentTargetConnection,
-            DeploymentTargetConnectionRejected>> PrepareAsync(
+        public ValueTask<PrepareDeploymentTargetConnectionOutcome> PrepareAsync(
             string deploymentTargetId,
             long connectionVersion,
             DeploymentTargetConnectionInput input,
@@ -514,9 +511,7 @@ public sealed class DeploymentTargetConnectionSecurityTests
                 input,
                 cancellationToken);
 
-        public ValueTask<Result<
-            IKubernetes,
-            StoredDeploymentTargetConnectionUnavailable>> CreateAsync(
+        public ValueTask<CreateStoredKubernetesClientOutcome> CreateAsync(
             string deploymentTargetId,
             DeploymentTargetConnection connection,
             CancellationToken cancellationToken = default) =>

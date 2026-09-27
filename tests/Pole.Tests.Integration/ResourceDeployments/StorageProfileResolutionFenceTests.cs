@@ -2,7 +2,6 @@ using MongoDB.Driver;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
-using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 using Pole.Workloads;
@@ -47,7 +46,7 @@ public sealed class StorageProfileResolutionFenceTests(
             TargetId,
             "fast"));
 
-        result.AssertSuccess();
+        Assert.IsType<StorageProfileResolutionFenced>(result.Value);
         var saved = await fixture.DbContext.StorageProfiles
             .Find(item => item.Id == ProfileId)
             .SingleAsync();
@@ -81,7 +80,7 @@ public sealed class StorageProfileResolutionFenceTests(
             TargetId,
             "fast"));
 
-        Assert.IsType<StorageProfileResolutionFenceRejected>(result.AssertFailure());
+        Assert.IsType<StorageProfileResolutionFenceRejected>(result.Value);
     }
 
     [Fact]
@@ -95,7 +94,7 @@ public sealed class StorageProfileResolutionFenceTests(
                 "fast")));
     }
 
-    private async Task<Result<Unit, StorageProfileResolutionFenceRejected>> FenceAsync(
+    private async Task<FenceStorageProfileResolutionOutcome> FenceAsync(
         StorageProfileResolutionFenceRequest request)
     {
         using var provider = TestServiceProviderFactory.Create(fixture);
@@ -106,7 +105,7 @@ public sealed class StorageProfileResolutionFenceTests(
         try
         {
             var result = await fence(request, session);
-            if (result is Ok<Unit>)
+            if (result is StorageProfileResolutionFenced)
                 await session.CommitTransactionAsync();
             else
                 await session.AbortTransactionAsync();

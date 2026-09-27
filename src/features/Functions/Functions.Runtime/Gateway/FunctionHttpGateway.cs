@@ -12,7 +12,6 @@ using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Features.Functions.Runtime.Metering;
 using Pole.Functions.Protocol;
 using Pole.Observability;
-using Pole.ResultType;
 
 namespace Pole.Features.Functions.Runtime.Gateway;
 
@@ -524,7 +523,7 @@ public sealed class FunctionHttpGateway(
         var resolvedPlacement = await placementResolver.ResolveAsync(
             invocation.Resolved.App,
             cancellationToken: admissionLifetime);
-        if (!resolvedPlacement.TryGetValue(out var placement, out _))
+        if (resolvedPlacement is FunctionResourcePlacementUnavailable)
         {
             await WriteErrorAsync(
                 context,
@@ -535,12 +534,13 @@ public sealed class FunctionHttpGateway(
             return null;
         }
 
+        var placement = (FunctionResourcePlacement)resolvedPlacement.Value;
         var subject = new FunctionRevisionInKubernetes(
             invocation.Resolved.App,
             invocation.Resolved.Revision,
-            placement!);
+            placement);
         var service = new FunctionServiceKey(
-            placement!.DeploymentTargetId,
+            placement.DeploymentTargetId,
             subject.Namespace,
             subject.ServiceName);
         var snapshot = endpointRegistry.GetSnapshot(service);
@@ -553,8 +553,8 @@ public sealed class FunctionHttpGateway(
                 subject,
                 admissionLifetime,
                 forceScaleFence: requiresActivationFence);
-            if (activation.TryGetValue(out snapshot, out _))
-                return snapshot;
+            if (activation is FunctionEndpointSnapshot activatedSnapshot)
+                return activatedSnapshot;
 
             await WriteErrorAsync(context, StatusCodes.Status503ServiceUnavailable, "activation_failed",
                 "The Function revision could not be activated.", cancellationToken);

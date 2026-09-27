@@ -3,7 +3,6 @@ using MongoDB.Driver;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Contracts;
 using Pole.Features.Tenants.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.Tenants.Application.Persistence;
 
@@ -11,7 +10,7 @@ internal sealed class MongoEnsureTenantsExist(IMongoDatabase database)
 {
     private readonly IMongoCollection<Tenant> _tenants = database.GetCollection<Tenant>("Tenants");
 
-    public async Task<Result<Unit, TenantSetNotFound>> InvokeAsync(
+    public async Task<EnsureTenantsExistOutcome> InvokeAsync(
         IReadOnlyCollection<string> tenantIds,
         CancellationToken cancellationToken = default)
     {
@@ -27,7 +26,7 @@ internal sealed class MongoEnsureTenantsExist(IMongoDatabase database)
         }
 
         if (normalizedTenantIds.Length == 0)
-            return new Ok<Unit>(Unit.Value);
+            return new TenantsExist();
 
         var found = await _tenants
             .Find(TenantFilters.ByIds(normalizedTenantIds))
@@ -38,7 +37,7 @@ internal sealed class MongoEnsureTenantsExist(IMongoDatabase database)
             .Order(StringComparer.Ordinal)
             .ToArray();
         return missing.Length == 0
-            ? new Ok<Unit>(Unit.Value)
-            : new Err<TenantSetNotFound>(new TenantSetNotFound(missing));
+            ? new TenantsExist()
+            : new TenantSetNotFound(missing);
     }
 }

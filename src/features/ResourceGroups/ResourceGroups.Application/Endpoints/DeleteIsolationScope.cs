@@ -22,7 +22,6 @@ public static class DeleteIsolationScope
                 "/{ResourceGroupId}/isolation-scopes/{ScopeId}",
                 async (
                     IMediator mediator,
-                    IHttpProblemMapper httpProblems,
                     [AsParameters] DeleteIsolationScopeRequest request,
                     CancellationToken cancellationToken) =>
                 {
@@ -35,7 +34,7 @@ public static class DeleteIsolationScope
                                 requested.IsolationScopeId,
                                 Deleted: false,
                                 DeletionRequested: true)),
-                        IsolationScopeDeletionError error => httpProblems.Map(error).ToHttpResult()
+                        IsolationScopeDeletionError error => ResourceGroupHttpMappings.Map(error)
                     });
                 })
             .WithName("DeleteIsolationScope")

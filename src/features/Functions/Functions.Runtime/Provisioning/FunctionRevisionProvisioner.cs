@@ -7,7 +7,6 @@ using Pole.Features.Functions.Runtime.Agent;
 using Pole.Features.Functions.Runtime.Endpoints;
 using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Functions.Protocol;
-using Pole.ResultType;
 
 namespace Pole.Features.Functions.Runtime.Provisioning;
 
@@ -54,8 +53,10 @@ public sealed class FunctionRevisionProvisioner(
         }
 
         var activation = await activator.EnsureActiveAsync(subject, cancellationToken);
-        if (!activation.TryGetValue(out var snapshot, out var activationFailure))
+        if (activation is FunctionRevisionActivationError activationFailure)
             return await FailAndStopAsync(subject, "activation", activationFailure.Message(), cancellationToken);
+
+        var snapshot = (FunctionEndpointSnapshot)activation.Value;
 
         var metadataFailure = "No ready Function Agent returned valid metadata.";
         foreach (var endpoint in snapshot.Endpoints)
@@ -83,12 +84,12 @@ public sealed class FunctionRevisionProvisioner(
                         subject,
                         revision.Spec.Scaling.MinInstances,
                         cancellationToken);
-                    if (scaled is Err<FunctionRevisionKubernetesOperationError> scaleFailure)
+                    if (scaled is FunctionRevisionKubernetesOperationError scaleFailure)
                     {
                         return await FailAndStopAsync(
                             subject,
                             "minimum-scale",
-                            scaleFailure.Value.Message(),
+                            scaleFailure.Message(),
                             cancellationToken);
                     }
 
@@ -159,12 +160,12 @@ public sealed class FunctionRevisionProvisioner(
         CancellationToken cancellationToken)
     {
         var stopped = await kubernetesManager.ScaleProvisioningAsync(subject, 0, cancellationToken);
-        if (stopped is Err<FunctionRevisionKubernetesOperationError> stopFailure)
+        if (stopped is FunctionRevisionKubernetesOperationError stopFailure)
         {
             logger.LogWarning(
                 "[function-revision-stop-failed] Could not return failed revision {RevisionId} to zero replicas: {Reason}",
                 subject.Revision.Id,
-                stopFailure.Value.Message());
+                stopFailure.Message());
         }
 
         return FunctionRevisionProvisioningOutcome.Failure(code, message);

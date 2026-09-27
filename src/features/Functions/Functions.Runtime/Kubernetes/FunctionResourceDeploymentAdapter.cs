@@ -2,7 +2,6 @@ using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence.Reads;
 using Pole.Features.Functions.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.ResultType;
 using Pole.Workloads;
 
 namespace Pole.Features.Functions.Runtime.Kubernetes;
@@ -73,7 +72,7 @@ public sealed class FunctionResourceDeploymentAdapter(
             var result = await kubernetesManager.DeleteAsync(
                 new FunctionRevisionInKubernetes(app, revision, placement),
                 cancellationToken);
-            if (!result.TryGetValue(out _, out var failure))
+            if (result is FunctionRevisionKubernetesOperationError failure)
             {
                 return ResourceDeploymentAdapterResult.Failed.Create(
                     "FunctionRevisionDeleteFailed",

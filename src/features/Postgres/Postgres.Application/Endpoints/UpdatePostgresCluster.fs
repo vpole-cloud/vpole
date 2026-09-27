@@ -32,31 +32,6 @@ type UpdatePostgresClusterResponse =
     { Id : string
       Placement : PlacementSummaryDto }
 
-type UpdatePostgresClusterStateError =
-    | PostgresClusterUpdateNotFound of clusterId : string
-    | PostgresClusterUpdateUnavailable of clusterId : string
-    | PostgresClusterStatefulSetInstancesUnsupported of clusterId : string
-    | PostgresClusterComputeRuntimeClassUnsupported of clusterId : string
-
-type UpdatePostgresClusterError =
-    | UpdateState of UpdatePostgresClusterStateError
-    | UpdateCompute of ComputeProfileResolutionError
-    | UpdateCurrentCompute of LoadCurrentResourceDeploymentComputeError
-    | UpdateStorage of StorageProfileResolutionError
-    | UpdateDeployment of ResourceDeploymentMutationError
-    | UpdateQuota of QuotaExecutionError
-    | UpdateConflict of PostgresClusterUpdateConflict
-    interface IUnion with
-        member this.Value =
-            match this with
-            | UpdateState error -> box error
-            | UpdateCompute error -> box error
-            | UpdateCurrentCompute error -> box error
-            | UpdateStorage error -> box error
-            | UpdateDeployment error -> box error
-            | UpdateQuota error -> box error
-            | UpdateConflict error -> box error
-
 type UpdatePostgresClusterOutcome =
     | PostgresClusterUpdated of UpdatePostgresClusterResponse
     | UpdatePostgresClusterRejected of UpdatePostgresClusterError
@@ -105,7 +80,7 @@ module private UpdatePostgresClusterWorkflow =
                             PostgresResourceDeployment.ResourceType),
                         cancellationToken)
 
-                match TypedResultInterop.toResult computeResult with
+                match TypedResultInterop.computeProfile computeResult with
                 | Error error -> return Error(UpdateCompute error)
                 | Ok compute
                     when cluster.Spec.DeploymentMode = PostgresDeploymentMode.Operator &&
@@ -113,7 +88,7 @@ module private UpdatePostgresClusterWorkflow =
                     return
                         Error(
                             UpdateState(
-                                PostgresClusterComputeRuntimeClassUnsupported cluster.Id))
+                                UpdatePostgresClusterStateError.PostgresClusterComputeRuntimeClassUnsupported cluster.Id))
                 | Ok compute -> return Ok(Some compute)
             | _ -> return Ok None
         }
@@ -163,7 +138,7 @@ module private UpdatePostgresClusterWorkflow =
                         cluster.Id,
                         cancellationToken)
 
-                match TypedResultInterop.toResult currentComputeResult with
+                match TypedResultInterop.currentResourceDeploymentCompute currentComputeResult with
                 | Error error ->
                     return
                         Completed(
@@ -191,7 +166,7 @@ module private UpdatePostgresClusterWorkflow =
                                     updatedStorage),
                                 cancellationToken)
 
-                        match TypedResultInterop.toResult storageProfileResult with
+                        match TypedResultInterop.storageProfile storageProfileResult with
                         | Error error ->
                             return
                                 Completed(
@@ -275,7 +250,7 @@ module private UpdatePostgresClusterWorkflow =
                                 transaction.Session,
                                 ct)
 
-                        match TypedResultInterop.toResult deploymentResult with
+                        match TypedResultInterop.resourceDeploymentMutation deploymentResult with
                         | Error error ->
                             return
                                 transaction.Abort(
@@ -354,7 +329,6 @@ type UpdatePostgresCluster =
     static member Handle(
         [<AsParameters>] request : UpdatePostgresClusterRequest,
         [<FromServices>] mediator : IMediator,
-        [<FromServices>] httpProblems : IHttpProblemMapper,
         cancellationToken : System.Threading.CancellationToken) =
         task {
             let! result = mediator.Send(request, cancellationToken)
@@ -363,5 +337,5 @@ type UpdatePostgresCluster =
                     match outcome with
                     | PostgresClusterUpdated value -> Results.Accepted(value = value)
                     | UpdatePostgresClusterRejected error ->
-                        httpProblems.Map(error).ToHttpResult())
+                        (PostgresHttpMappings.mapUpdateError error).ToHttpResult())
         }

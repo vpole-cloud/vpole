@@ -1,7 +1,17 @@
 using System.Net;
-using Microsoft.Extensions.DependencyInjection;
 using Pole.ASP.Helpers;
 using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
+using Pole.Features.ComputeProfiles.Contracts;
+using Pole.Features.ComputeProfiles.Contracts.HttpMapping;
+using Pole.Features.Domains.Contracts;
+using Pole.Features.Domains.Contracts.HttpMapping;
+using Pole.Features.Quotas.Contracts;
+using Pole.Features.Quotas.Contracts.HttpMapping;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
+using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.ResourceGroups.Contracts.HttpMapping;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Application.Endpoints.Deployments;
@@ -14,38 +24,120 @@ namespace Pole.Features.WebServices.Application.Common;
 
 public static class WebServiceHttpMappings
 {
-    public static IReadOnlyList<HttpProblemMapping> All { get; } =
-        Array.AsReadOnly<HttpProblemMapping>(
-        [
-            HttpProblemMapping.For<AddWebServiceDeploymentStateError>(MapStateError),
-            HttpProblemMapping.For<CreateWebServicePlacementError>(MapCreatePlacementError),
-            HttpProblemMapping.For<WebServiceNotFound>(MapWebServiceNotFound),
-            HttpProblemMapping.For<WebServiceReleaseNotFound>(MapWebServiceReleaseNotFound),
-            HttpProblemMapping.For<WebServiceDeploymentTokenNotFound>(
-                MapWebServiceDeploymentTokenNotFound),
-            HttpProblemMapping.For<WebServiceLifecycleMutationStateError>(
-                MapLifecycleMutationStateError),
-            HttpProblemMapping.For<RollbackWebServiceStateError>(
-                MapRollbackStateError),
-            HttpProblemMapping.For<WebServiceDeploymentMutationStateError>(
-                MapDeploymentMutationStateError),
-            HttpProblemMapping.For<DeleteWebServiceDeploymentStateError>(
-                MapDeleteDeploymentStateError),
-            HttpProblemMapping.For<DeleteWebServiceStateError>(MapDeleteStateError),
-            HttpProblemMapping.For<SourceBuildWebServiceHasActiveJobs>(
-                MapSourceBuildWebServiceHasActiveJobs),
-            HttpProblemMapping.For<GetWebServiceDeploymentHostnamesError>(
-                MapGetDeploymentHostnamesError),
-            HttpProblemMapping.For<WebServiceImageTagAuthorizationError>(
-                MapImageTagAuthorizationError),
-            HttpProblemMapping.For<WebServiceImageTagStateError>(
-                MapImageTagStateError),
-            HttpProblemMapping.For<WebServiceUpdateConflict>(error => Problem(
-                HttpStatusCode.Conflict,
-                "web-services.update.concurrent-change",
-                "Web service changed concurrently",
-                ("webServiceId", error.WebServiceId)))
-        ]);
+    public static HttpProblem MapError(WebServiceNotFound error) => MapWebServiceNotFound(error);
+
+    public static HttpProblem MapError(WebServiceDeploymentTokenNotFound error) =>
+        MapWebServiceDeploymentTokenNotFound(error);
+
+    public static HttpProblem MapError(GetWebServiceDeploymentHostnamesError error) =>
+        MapGetDeploymentHostnamesError(error);
+
+    public static HttpProblem MapError(WebServiceUpdateConflict error) => Problem(
+        HttpStatusCode.Conflict,
+        "web-services.update.concurrent-change",
+        "Web service changed concurrently",
+        ("webServiceId", error.WebServiceId));
+
+    public static HttpProblem MapError(CreateWebServiceError error) => error switch
+    {
+        ResourceGroupOwnershipError ownership => ResourceGroupContractHttpMappings.MapOwnershipError(ownership),
+        CreateWebServicePlacementError placement => MapCreatePlacementError(placement),
+        ComputeProfileResolutionError compute => ComputeProfileContractHttpMappings.MapResolutionError(compute),
+        GeneratedDomainZoneError zone => DomainContractHttpMappings.MapGeneratedZoneError(zone),
+        GeneratedHostnameBindingError binding => DomainContractHttpMappings.MapGeneratedBindingError(binding),
+        CreateResourceDeploymentError deployment => ResourceDeploymentContractHttpMappings.MapDeploymentError(deployment),
+        ResourceRegistrationMutationError registration => ResourceGroupContractHttpMappings.MapRegistrationMutationError(registration),
+        QuotaExecutionError quota => QuotaContractHttpMappings.MapExecutionError(quota)
+    };
+
+    public static HttpProblem MapError(AddWebServiceDeploymentError error) => error switch
+    {
+        AddWebServiceDeploymentStateError state => MapStateError(state),
+        DeploymentTargetPublicIngressAdmissionError target => DeploymentTargetContractHttpMappings.MapPublicIngressAdmissionError(target),
+        ComputeProfileResolutionError compute => ComputeProfileContractHttpMappings.MapResolutionError(compute),
+        GeneratedDomainZoneError zone => DomainContractHttpMappings.MapGeneratedZoneError(zone),
+        GeneratedHostnameBindingError binding => DomainContractHttpMappings.MapGeneratedBindingError(binding),
+        CreateResourceDeploymentError deployment => ResourceDeploymentContractHttpMappings.MapDeploymentError(deployment),
+        AdvanceResourceDeploymentRevisionError revision => ResourceDeploymentContractHttpMappings.MapRevisionError(revision),
+        WebServiceUpdateConflict conflict => MapError(conflict),
+        QuotaExecutionError quota => QuotaContractHttpMappings.MapExecutionError(quota)
+    };
+
+    public static HttpProblem MapError(UpdateWebServiceError error) => error switch
+    {
+        WebServiceLifecycleMutationStateError state => MapLifecycleMutationStateError(state),
+        ResourceDeploymentMutationError deployment => ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
+        AdvanceResourceDeploymentRevisionError revision => ResourceDeploymentContractHttpMappings.MapRevisionError(revision),
+        WebServiceUpdateConflict conflict => MapError(conflict),
+        QuotaExecutionError quota => QuotaContractHttpMappings.MapExecutionError(quota)
+    };
+
+    public static HttpProblem MapError(DeleteWebServiceError error) => error switch
+    {
+        DeleteWebServiceStateError state => MapDeleteStateError(state),
+        SourceBuildWebServiceHasActiveJobs jobs => MapSourceBuildWebServiceHasActiveJobs(jobs),
+        ResourceDeploymentMutationError deployment => ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
+        WebServiceUpdateConflict conflict => MapError(conflict),
+        QuotaExecutionError quota => QuotaContractHttpMappings.MapExecutionError(quota)
+    };
+
+    public static HttpProblem MapError(RedeployWebServiceError error) => error switch
+    {
+        WebServiceLifecycleMutationStateError state => MapLifecycleMutationStateError(state),
+        ResourceDeploymentMutationError deployment => ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
+        WebServiceUpdateConflict conflict => MapError(conflict)
+    };
+
+    public static HttpProblem MapError(RollbackWebServiceError error) => error switch
+    {
+        RollbackWebServiceStateError state => MapRollbackStateError(state),
+        ResourceDeploymentMutationError deployment => ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
+        WebServiceUpdateConflict conflict => MapError(conflict),
+        QuotaExecutionError quota => QuotaContractHttpMappings.MapExecutionError(quota)
+    };
+
+    public static HttpProblem MapError(UpdateWebServiceImageTagError error) => error switch
+    {
+        WebServiceImageTagStateError state => MapImageTagStateError(state),
+        ResourceDeploymentMutationError deployment => ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
+        WebServiceUpdateConflict conflict => MapError(conflict)
+    };
+
+    public static HttpProblem MapError(UpdateWebServiceDeploymentError error) => error switch
+    {
+        WebServiceDeploymentMutationStateError state => MapDeploymentMutationStateError(state),
+        ComputeProfileResolutionError compute => ComputeProfileContractHttpMappings.MapResolutionError(compute),
+        ResourceDeploymentMutationError deployment => ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
+        AdvanceResourceDeploymentRevisionError revision => ResourceDeploymentContractHttpMappings.MapRevisionError(revision),
+        WebServiceUpdateConflict conflict => MapError(conflict),
+        QuotaExecutionError quota => QuotaContractHttpMappings.MapExecutionError(quota)
+    };
+
+    public static HttpProblem MapError(DeleteWebServiceDeploymentError error) => error switch
+    {
+        DeleteWebServiceDeploymentStateError state => MapDeleteDeploymentStateError(state),
+        ResourceDeploymentMutationError deployment => ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
+        AdvanceResourceDeploymentRevisionError revision => ResourceDeploymentContractHttpMappings.MapRevisionError(revision),
+        WebServiceUpdateConflict conflict => MapError(conflict),
+        QuotaExecutionError quota => QuotaContractHttpMappings.MapExecutionError(quota)
+    };
+
+    public static HttpProblem MapError(RetryWebServiceDeploymentError error) => error switch
+    {
+        WebServiceDeploymentMutationStateError state => MapDeploymentMutationStateError(state),
+        ResourceDeploymentMutationError deployment => ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
+        AdvanceResourceDeploymentRevisionError revision => ResourceDeploymentContractHttpMappings.MapRevisionError(revision),
+        WebServiceUpdateConflict conflict => MapError(conflict)
+    };
+
+    public static HttpProblem MapError(WebServiceDeploymentHostnameError error) => error switch
+    {
+        WebServiceDeploymentMutationStateError state => MapDeploymentMutationStateError(state),
+        CustomHostnameBindingError hostname => DomainContractHttpMappings.MapCustomHostnameBindingError(hostname),
+        ResourceDeploymentMutationError deployment => ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
+        AdvanceResourceDeploymentRevisionError revision => ResourceDeploymentContractHttpMappings.MapRevisionError(revision),
+        WebServiceUpdateConflict conflict => MapError(conflict)
+    };
 
     private static HttpProblem MapLifecycleMutationStateError(
         WebServiceLifecycleMutationStateError error) => error switch
@@ -73,14 +165,6 @@ public static class WebServiceHttpMappings
             "web-services.not-found",
             "Web service not found",
             ("webServiceId", error.WebServiceId));
-
-    private static HttpProblem MapWebServiceReleaseNotFound(
-        WebServiceReleaseNotFound error) => Problem(
-            HttpStatusCode.NotFound,
-            "web-services.release-not-found",
-            "Succeeded web service release was not found",
-            ("webServiceId", error.WebServiceId),
-            ("resourceRevision", error.ResourceRevision));
 
     private static HttpProblem MapWebServiceDeploymentTokenNotFound(
         WebServiceDeploymentTokenNotFound error) => Problem(
@@ -230,10 +314,6 @@ public static class WebServiceHttpMappings
             WebServiceImageTagAuthorizationError authorization =>
                 MapImageTagAuthorizationError(authorization)
         };
-
-    public static IServiceCollection AddWebServiceHttpMappings(
-        this IServiceCollection services) =>
-        services.AddHttpProblemMappings(All);
 
     private static HttpProblem MapStateError(
         AddWebServiceDeploymentStateError error) => error switch

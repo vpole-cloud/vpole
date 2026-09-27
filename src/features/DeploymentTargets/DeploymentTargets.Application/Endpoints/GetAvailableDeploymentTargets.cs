@@ -75,13 +75,13 @@ public static class GetAvailableDeploymentTargetsEndpoint
                 IMediator mediator,
                 [AsParameters] GetAvailableDeploymentTargetsRequest request,
                 CancellationToken cancellationToken) =>
+        {
+            var result = await mediator.Send(request, cancellationToken);
+            return result.ToHttpResult(outcome => outcome switch
             {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
-                {
-                    IReadOnlyCollection<AvailableDeploymentTargetDto> targets => Results.Ok(targets)
-                });
-            })
+                IReadOnlyCollection<AvailableDeploymentTargetDto> targets => Results.Ok(targets)
+            });
+        })
             .WithName("GetAvailableDeploymentTargets")
             .Produces<IReadOnlyCollection<AvailableDeploymentTargetDto>>();
         return app;

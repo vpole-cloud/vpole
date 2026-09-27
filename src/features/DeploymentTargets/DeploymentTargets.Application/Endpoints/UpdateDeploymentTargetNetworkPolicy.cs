@@ -11,7 +11,6 @@ using Pole.Features.DeploymentTargets.Application.Persistence.Reads;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
 
 namespace Pole.Features.DeploymentTargets.Application.Endpoints;
@@ -57,13 +56,13 @@ public sealed class UpdateDeploymentTargetNetworkPolicyHandler(
             request.Body.AllowIsolationNotEnforced,
             now);
         var result = await persistTarget(target, replacement, cancellationToken);
-        if (result.TryGetValue(out var persisted, out var error))
+        if (result is DeploymentTarget persisted)
         {
             var defaultId = await loadDefaultTargetId(cancellationToken);
             return persisted.ToDto(persisted.Id == defaultId);
         }
 
-        return error switch
+        return result.Value switch
         {
             DeploymentTargetRevisionConflict conflict => conflict,
             _ => throw new InvalidOperationException("An unchanged ingress configuration cannot conflict.")
@@ -93,7 +92,6 @@ public static class UpdateDeploymentTargetNetworkPolicyEndpoint
     {
         app.MapPut("/{Id}/network-policy", async (
             IMediator mediator,
-            IHttpProblemMapper problems,
             [AsParameters] UpdateDeploymentTargetNetworkPolicyRequest request,
             CancellationToken cancellationToken) =>
         {
@@ -101,8 +99,8 @@ public static class UpdateDeploymentTargetNetworkPolicyEndpoint
             return result.ToHttpResult(outcome => outcome switch
             {
                 DeploymentTargetDto dto => Results.Ok(dto),
-                DeploymentTargetNotFound or DeploymentTargetRevisionConflict =>
-                    problems.Map(outcome).ToHttpResult()
+                DeploymentTargetNotFound error => DeploymentTargetHttpMappings.Map(error),
+                DeploymentTargetRevisionConflict error => DeploymentTargetHttpMappings.Map(error)
             });
         })
             .WithName("UpdateDeploymentTargetNetworkPolicy")

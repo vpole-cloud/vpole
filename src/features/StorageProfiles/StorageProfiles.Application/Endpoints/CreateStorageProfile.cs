@@ -6,12 +6,13 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.StorageProfiles.Application.Common;
+using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Application.Persistence;
 using Pole.Features.StorageProfiles.Application.Persistence.Mutations;
 using Pole.Features.StorageProfiles.Application.Validation;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.Mediator;
-using Pole.ResultType;
+using static Pole.Features.StorageProfiles.Application.Common.StorageProfileHttpMappings;
 
 namespace Pole.Features.StorageProfiles.Application.Endpoints;
 
@@ -42,11 +43,10 @@ public sealed record CreateStorageProfileRequest(
     [FromBody] CreateStorageProfileRequestBody Body)
     : IMediatorRequest<CreateStorageProfileOutcome>;
 
-public union CreateStorageProfileError(StorageProfileMutationValidationError);
-
 public union CreateStorageProfileOutcome(
     StorageProfileDto,
-    CreateStorageProfileError);
+    StorageProfileTargetMappingsInvalid,
+    KubernetesStorageDiscoveryUnavailable);
 
 public sealed class CreateStorageProfileHandler(
     ValidateStorageProfileTargetMappings validateTargetMappings,
@@ -64,9 +64,12 @@ public sealed class CreateStorageProfileHandler(
                 ObjectId.GenerateNewId().ToString(),
                 now));
         var targetValidation = await validateTargetMappings(profile, cancellationToken);
-        if (targetValidation is Err<StorageProfileMutationValidationError> error)
+        switch (targetValidation)
         {
-            return new CreateStorageProfileError(error.Value);
+            case StorageProfileTargetMappingsInvalid error:
+                return error;
+            case KubernetesStorageDiscoveryUnavailable error:
+                return error;
         }
 
         var persisted = await persistCreatedStorageProfile(profile, cancellationToken);
@@ -93,7 +96,6 @@ public static class CreateStorageProfileEndpoint
     {
         app.MapPost("/profiles", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] CreateStorageProfileRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -103,7 +105,8 @@ public static class CreateStorageProfileEndpoint
                     StorageProfileDto profile => Results.Created(
                         $"/api/v1/platform/storage/profiles/{profile.Id}",
                         profile),
-                    CreateStorageProfileError error => httpProblems.Map(error).ToHttpResult()
+                    StorageProfileTargetMappingsInvalid error => MapTargetMappingsInvalid(error),
+                    KubernetesStorageDiscoveryUnavailable error => MapDiscoveryUnavailable(error)
                 });
             })
             .WithName("CreateStorageProfile")

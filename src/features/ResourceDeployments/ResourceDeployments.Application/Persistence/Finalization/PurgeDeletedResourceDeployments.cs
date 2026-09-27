@@ -1,14 +1,13 @@
 using MongoDB.Driver;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Persistence.Finalization;
 
 internal sealed class MongoPurgeDeletedResourceDeployments(
     IMongoCollection<ResourceDeployment> resourceDeployments)
 {
-    public async Task<Result<Unit, ResourceDeploymentFinalizationConflict>> InvokeAsync(
+    public async Task<PurgeResourceDeploymentsOutcome> InvokeAsync(
         string tenantId,
         ResourceTypeId resourceType,
         string resourceId,
@@ -26,8 +25,7 @@ internal sealed class MongoPurgeDeletedResourceDeployments(
         if (states.Count == 0 ||
             states.Any(state => state is not DeletedResourceDeploymentState))
         {
-            return new Err<ResourceDeploymentFinalizationConflict>(
-                new ResourceDeploymentFinalizationConflict(resourceId));
+            return new ResourceDeploymentFinalizationConflict(resourceId);
         }
 
         var deletion = await resourceDeployments.DeleteManyAsync(
@@ -35,8 +33,7 @@ internal sealed class MongoPurgeDeletedResourceDeployments(
             filter,
             cancellationToken: cancellationToken);
         return deletion.DeletedCount == states.Count
-            ? new Ok<Unit>(Unit.Value)
-            : new Err<ResourceDeploymentFinalizationConflict>(
-                new ResourceDeploymentFinalizationConflict(resourceId));
+            ? new ResourceDeploymentsPurged()
+            : new ResourceDeploymentFinalizationConflict(resourceId);
     }
 }

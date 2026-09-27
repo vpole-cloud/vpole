@@ -38,8 +38,13 @@ Domain validation checks business rules, aggregate invariants, or facts that dep
 Represent expected failures that callers must handle as explicit typed values rather than
 exceptions. Choose the result shape at the boundary that owns the decision:
 
-- Cross-feature synchronous contracts use `Result<T, TError>` with provider-owned error types.
-- A Mediator request handler owns a closed application outcome containing its expected results.
+- Synchronous contracts use provider-owned, operation-specific outcome unions, including
+  encryption operations.
+- A Mediator request handler owns a flat, closed application outcome containing its concrete
+  successful results and expected failures. Avoid nesting error-only wrappers in endpoint outcomes.
+- Closed HTTP outcomes use an exhaustive switch calling typed mapping methods directly. Prefer
+  static imports for those methods; `HttpProblem` implements `IResult`. Dynamic HTTP mapping
+  remains the mechanism for open pipeline/plugin rejections.
 - A pipeline behavior stops request execution with `PipelineRejected` and a typed
   `IMediatorRejection`; request validation uses `RequestValidationRejected`.
 
@@ -47,7 +52,9 @@ exceptions. Choose the result shape at the boundary that owns the decision:
 - Do not require every caller to catch the same exception and repeat the same mapping logic.
 - Reserve exceptions for unexpected failures, broken invariants, cancellation, and infrastructure conditions that cannot be handled meaningfully at the current boundary. In particular, do not convert MongoDB availability or driver failures into `Result`; let them reach the global exception handler and produce the standard 5xx response.
 - Do not catch an exception only to convert every failure into an indistinguishable generic result.
-- Use `Result<bool, TError>` only when both `true` and `false` are meaningful successful answers and a caller must separately handle an expected failure. For a command precondition, prefer an intention-revealing `Task<Result<Unit, TError>>` method such as `EnsureNoConfigurationAsync`: return `Ok<Unit>` when the condition holds and a typed conflict error when it does not.
+- Give command preconditions a named success state and concrete failures, as in
+  `EnsureTenantsExistOutcome(TenantsExist, TenantSetNotFound)`. Use a boolean successful value
+  only when both `true` and `false` are meaningful answers rather than success/failure markers.
 
 ## Endpoint file structure
 

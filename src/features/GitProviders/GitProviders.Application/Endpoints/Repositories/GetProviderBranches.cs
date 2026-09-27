@@ -10,8 +10,8 @@ using Pole.Features.GitProviders.Application.Persistence.Connections;
 using Pole.Features.GitProviders.Application.ProviderOperations;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
+using static Pole.Features.GitProviders.Application.Common.GitProviderHttpMappings;
 
 namespace Pole.Features.GitProviders.Application.Endpoints.Repositories;
 
@@ -23,13 +23,10 @@ public sealed record GetProviderBranchesRequest(
     [FromQuery] int PageSize = 100)
     : IMediatorRequest<GetProviderBranchesOutcome>, ITenantReadOperation;
 
-public union GetProviderBranchesError(
-    GitProviderConnectionNotFound,
-    GitProviderRepositoryAccessError);
-
 public union GetProviderBranchesOutcome(
     ProviderPage<ProviderBranchDto>,
-    GetProviderBranchesError);
+    GitProviderConnectionNotFound,
+    GitProviderRepositoryAccessError);
 
 public sealed class GetProviderBranchesRequestValidator : AbstractValidator<GetProviderBranchesRequest>
 {
@@ -56,8 +53,7 @@ public sealed class GetProviderBranchesHandler(
             request.ConnectionId,
             cancellationToken);
         if (connection is null)
-            return new GetProviderBranchesError(
-                new GitProviderConnectionNotFound(request.ConnectionId));
+            return new GitProviderConnectionNotFound(request.ConnectionId);
 
         var pageResult = await getProviderBranches(
             connection,
@@ -67,14 +63,13 @@ public sealed class GetProviderBranchesHandler(
             cancellationToken);
         return pageResult switch
         {
-            Ok<ProviderPage<ProviderBranch>> success => new ProviderPage<ProviderBranchDto>(
-                success.Value.Items.Select(item =>
+            ProviderPage<ProviderBranch> success => new ProviderPage<ProviderBranchDto>(
+                success.Items.Select(item =>
                     new ProviderBranchDto(item.Name, item.CommitSha, item.IsProtected)).ToArray(),
-                success.Value.Page,
-                success.Value.PageSize,
-                success.Value.HasMore),
-            Err<GitProviderRepositoryAccessError> error =>
-                new GetProviderBranchesError(error.Value)
+                success.Page,
+                success.PageSize,
+                success.HasMore),
+            GitProviderRepositoryAccessError error => error
         };
     }
 }
@@ -85,7 +80,6 @@ public static class GetProviderBranchesEndpoint
     {
         app.MapGet("/{ConnectionId}/repositories/{RepositoryId}/branches", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] GetProviderBranchesRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -93,7 +87,8 @@ public static class GetProviderBranchesEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     ProviderPage<ProviderBranchDto> page => Results.Ok(page),
-                    GetProviderBranchesError error => httpProblems.Map(error).ToHttpResult()
+                    GitProviderConnectionNotFound error => MapConnectionNotFound(error),
+                    GitProviderRepositoryAccessError error => MapRepositoryAccessError(error)
                 });
             })
             .WithName("GetProviderRepositoryBranches")

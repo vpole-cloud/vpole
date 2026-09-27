@@ -21,21 +21,6 @@ open Pole.Validation
 type GetPostgresClusterConnectionStringResponse =
     { ConnectionString : string }
 
-type GetPostgresClusterConnectionStringStateError =
-    | PostgresClusterConnectionStringNotFound of clusterId : string
-    | PostgresClusterConnectionStringDeleting of clusterId : string
-    | PostgresClusterDeploymentNotReady of clusterId : string
-    | PostgresClusterConnectionEndpointUnavailable of clusterId : string
-
-type GetPostgresClusterConnectionStringError =
-    | ConnectionStringState of GetPostgresClusterConnectionStringStateError
-    | ConnectionStringCredentials of PostgresCredentialError
-    interface IUnion with
-        member this.Value =
-            match this with
-            | ConnectionStringState error -> box error
-            | ConnectionStringCredentials error -> box error
-
 type GetPostgresClusterConnectionStringOutcome =
     | PostgresClusterConnectionString of GetPostgresClusterConnectionStringResponse
     | GetPostgresClusterConnectionStringRejected of GetPostgresClusterConnectionStringError
@@ -140,7 +125,6 @@ type GetPostgresClusterConnectionString =
     static member Handle(
         [<AsParameters>] request : GetPostgresClusterConnectionStringRequest,
         [<FromServices>] mediator : IMediator,
-        [<FromServices>] httpProblems : IHttpProblemMapper,
         cancellationToken : System.Threading.CancellationToken) =
         task {
             let! result = mediator.Send(request, cancellationToken)
@@ -149,5 +133,5 @@ type GetPostgresClusterConnectionString =
                     match outcome with
                     | PostgresClusterConnectionString value -> Results.Ok(value)
                     | GetPostgresClusterConnectionStringRejected error ->
-                        httpProblems.Map(error).ToHttpResult())
+                        (PostgresHttpMappings.mapConnectionStringError error).ToHttpResult())
         }

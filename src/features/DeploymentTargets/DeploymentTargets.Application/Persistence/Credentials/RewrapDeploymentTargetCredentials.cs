@@ -3,7 +3,6 @@ using Pole.Encryption;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Persistence.Credentials;
 
@@ -12,9 +11,11 @@ public sealed record DeploymentTargetCredentialRewrapSummary(
     long Rewrapped,
     long ConcurrentChanges);
 
-public delegate Task<Result<
+public union RewrapDeploymentTargetCredentialsPersistenceOutcome(
     DeploymentTargetCredentialRewrapSummary,
-    DeploymentTargetCredentialRewrapConflict>> RewrapDeploymentTargetCredentials(
+    DeploymentTargetCredentialRewrapConflict);
+
+public delegate Task<RewrapDeploymentTargetCredentialsPersistenceOutcome> RewrapDeploymentTargetCredentials(
     EnvelopeEncryptionKeyReference expectedActiveKey,
     CancellationToken cancellationToken = default);
 
@@ -24,17 +25,14 @@ internal sealed class MongoRewrapDeploymentTargetCredentials(
 {
     private const int BatchSize = 100;
 
-    public async Task<Result<
-        DeploymentTargetCredentialRewrapSummary,
-        DeploymentTargetCredentialRewrapConflict>> InvokeAsync(
+    public async Task<RewrapDeploymentTargetCredentialsPersistenceOutcome> InvokeAsync(
         EnvelopeEncryptionKeyReference expectedActiveKey,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(expectedActiveKey);
         if (expectedActiveKey != envelopeEncryption.ActiveKey)
         {
-            return new Err<DeploymentTargetCredentialRewrapConflict>(
-                new DeploymentTargetCredentialRewrapConflict());
+            return new DeploymentTargetCredentialRewrapConflict();
         }
 
         long examined = 0;
@@ -57,7 +55,7 @@ internal sealed class MongoRewrapDeploymentTargetCredentials(
                 cancellationToken.ThrowIfCancellationRequested();
                 cursor = target.Id;
 
-                Result<EncryptedValue, EnvelopeRewrapFailed> rewrapResult;
+                EnvelopeRewrapOutcome rewrapResult;
                 string encryptedField;
                 EncryptedValue currentEnvelope;
                 FilterDefinition<DeploymentTarget> casFilter;
@@ -104,15 +102,14 @@ internal sealed class MongoRewrapDeploymentTargetCredentials(
                             "A deployment-target credential has an unsupported stored connection kind.");
                 }
 
-                if (!rewrapResult.TryGetValue(out var rewrappedEnvelope, out _))
+                if (rewrapResult is not EncryptedValue rewrappedEnvelope)
                 {
                     throw new InvalidOperationException(
                         "A deployment-target credential could not be rewrapped by the active encryption provider.");
                 }
                 if (!ReferencesKey(rewrappedEnvelope, expectedActiveKey))
                 {
-                    return new Err<DeploymentTargetCredentialRewrapConflict>(
-                        new DeploymentTargetCredentialRewrapConflict());
+                    return new DeploymentTargetCredentialRewrapConflict();
                 }
 
                 var update = await deploymentTargets.UpdateOneAsync(
@@ -131,17 +128,15 @@ internal sealed class MongoRewrapDeploymentTargetCredentials(
                 break;
         }
 
-        return new Ok<DeploymentTargetCredentialRewrapSummary>(
-            new DeploymentTargetCredentialRewrapSummary(
+        return new DeploymentTargetCredentialRewrapSummary(
                 examined,
                 rewrapped,
-                concurrentChanges));
+                concurrentChanges);
     }
 
     private static bool ReferencesKey(
         EncryptedValue envelope,
-        EnvelopeEncryptionKeyReference key) =>
-        string.Equals(envelope.KeyProviderId, key.ProviderId, StringComparison.Ordinal) &&
+        EnvelopeEncryptionKeyReference key) => string.Equals(envelope.KeyProviderId, key.ProviderId, StringComparison.Ordinal) &&
         string.Equals(envelope.KeyEncryptionKeyId, key.KeyId, StringComparison.Ordinal) &&
         envelope.KeyEncryptionKeyVersion == key.KeyVersion &&
         string.Equals(envelope.KeyWrapAlgorithm, key.KeyWrapAlgorithm, StringComparison.Ordinal) &&

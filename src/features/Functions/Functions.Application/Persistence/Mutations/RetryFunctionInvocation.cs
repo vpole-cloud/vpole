@@ -3,7 +3,6 @@ using Pole.Database;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence;
 using Pole.Features.Functions.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.Functions.Application.Persistence.Mutations;
 
@@ -38,7 +37,11 @@ public sealed record FunctionInvocationManualRetry(
     string InvocationId,
     int NextAttemptNumber);
 
-public delegate Task<Result<FunctionInvocationManualRetry, RetryFunctionInvocationError>>
+public union PersistRetriedFunctionInvocationOutcome(
+    FunctionInvocationManualRetry,
+    RetryFunctionInvocationError);
+
+public delegate Task<PersistRetriedFunctionInvocationOutcome>
     RetryFunctionInvocation(
         string tenantId,
         string functionAppId,
@@ -50,10 +53,10 @@ internal sealed class MongoRetryFunctionInvocation(
     IMongoCollection<FunctionApp> functionApps,
     IMongoCollection<FunctionInvocation> functionInvocations,
     IMongoCollection<FunctionTimerState> functionTimerStates,
-    RunMongoOutcomeTransaction<Result<FunctionInvocationManualRetry, RetryFunctionInvocationError>>
+    RunMongoOutcomeTransaction<PersistRetriedFunctionInvocationOutcome>
         runTransaction)
 {
-    public Task<Result<FunctionInvocationManualRetry, RetryFunctionInvocationError>> InvokeAsync(
+    public Task<PersistRetriedFunctionInvocationOutcome> InvokeAsync(
         string tenantId,
         string functionAppId,
         string invocationId,
@@ -69,11 +72,8 @@ internal sealed class MongoRetryFunctionInvocation(
                 ct),
             cancellationToken);
 
-    private async Task<MongoTransactionDecision<Result<
-        FunctionInvocationManualRetry,
-        RetryFunctionInvocationError>>> RetryAsync(
-        MongoTransactionContext<Result<FunctionInvocationManualRetry, RetryFunctionInvocationError>>
-            transaction,
+    private async Task<MongoTransactionDecision<PersistRetriedFunctionInvocationOutcome>> RetryAsync(
+        MongoTransactionContext<PersistRetriedFunctionInvocationOutcome> transaction,
         string tenantId,
         string functionAppId,
         string invocationId,
@@ -87,8 +87,7 @@ internal sealed class MongoRetryFunctionInvocation(
             .FirstOrDefaultAsync(cancellationToken);
         if (app is null)
         {
-            return transaction.Abort(new Err<RetryFunctionInvocationError>(
-                new FunctionAppNotFound(functionAppId)));
+            return Reject(transaction, new FunctionAppNotFound(functionAppId));
         }
 
         var invocation = await functionInvocations
@@ -98,18 +97,15 @@ internal sealed class MongoRetryFunctionInvocation(
             .FirstOrDefaultAsync(cancellationToken);
         if (invocation is null)
         {
-            return transaction.Abort(new Err<RetryFunctionInvocationError>(
-                new FunctionInvocationNotFound(invocationId)));
+            return Reject(transaction, new FunctionInvocationNotFound(invocationId));
         }
         if (invocation.State != FunctionInvocationState.Failed)
         {
-            return transaction.Abort(new Err<RetryFunctionInvocationError>(
-                new FunctionInvocationNotRetryable(invocationId)));
+            return Reject(transaction, new FunctionInvocationNotRetryable(invocationId));
         }
         if (!string.Equals(app.ActiveRevisionId, invocation.RevisionId, StringComparison.Ordinal))
         {
-            return transaction.Abort(new Err<RetryFunctionInvocationError>(
-                new FunctionInvocationRevisionNoLongerActive(invocationId)));
+            return Reject(transaction, new FunctionInvocationRevisionNoLongerActive(invocationId));
         }
 
         var timer = await functionTimerStates
@@ -119,8 +115,7 @@ internal sealed class MongoRetryFunctionInvocation(
             .FirstOrDefaultAsync(cancellationToken);
         if (timer is null || timer.RevisionId != invocation.RevisionId)
         {
-            return transaction.Abort(new Err<RetryFunctionInvocationError>(
-                new FunctionInvocationTimerNoLongerActive(invocationId)));
+            return Reject(transaction, new FunctionInvocationTimerNoLongerActive(invocationId));
         }
 
         if (timer.ConcurrencyPolicy == TimerConcurrencyPolicy.Forbid)
@@ -132,8 +127,7 @@ internal sealed class MongoRetryFunctionInvocation(
                 cancellationToken);
             if (overlapping != 0)
             {
-                return transaction.Abort(new Err<RetryFunctionInvocationError>(
-                    new FunctionInvocationConcurrencyForbidden(invocationId)));
+                return Reject(transaction, new FunctionInvocationConcurrencyForbidden(invocationId));
             }
 
             var timerStamp = nowUtc > timer.UpdatedAtUtc
@@ -148,8 +142,7 @@ internal sealed class MongoRetryFunctionInvocation(
                 cancellationToken: cancellationToken);
             if (timerUpdated.ModifiedCount != 1)
             {
-                return transaction.Abort(new Err<RetryFunctionInvocationError>(
-                    new FunctionInvocationTimerChanged(invocationId)));
+                return Reject(transaction, new FunctionInvocationTimerChanged(invocationId));
             }
         }
 
@@ -163,8 +156,7 @@ internal sealed class MongoRetryFunctionInvocation(
             cancellationToken: cancellationToken);
         if (appUpdated.ModifiedCount != 1)
         {
-            return transaction.Abort(new Err<RetryFunctionInvocationError>(
-                new FunctionInvocationAppChanged(app.Id)));
+            return Reject(transaction, new FunctionInvocationAppChanged(app.Id));
         }
 
         var retry = invocation.RetryManually(nowUtc);
@@ -175,13 +167,17 @@ internal sealed class MongoRetryFunctionInvocation(
             cancellationToken: cancellationToken);
         if (replaced.ModifiedCount != 1)
         {
-            return transaction.Abort(new Err<RetryFunctionInvocationError>(
-                new FunctionInvocationChanged(invocationId)));
+            return Reject(transaction, new FunctionInvocationChanged(invocationId));
         }
 
-        return transaction.Commit(new Ok<FunctionInvocationManualRetry>(
-            new FunctionInvocationManualRetry(
-                invocation.Id,
-                checked(invocation.AttemptNumber + 1))));
+        PersistRetriedFunctionInvocationOutcome accepted = new FunctionInvocationManualRetry(
+            invocation.Id,
+            checked(invocation.AttemptNumber + 1));
+        return transaction.Commit(accepted);
     }
+
+    private static MongoTransactionDecision<PersistRetriedFunctionInvocationOutcome> Reject(
+        MongoTransactionContext<PersistRetriedFunctionInvocationOutcome> transaction,
+        RetryFunctionInvocationError error) =>
+        transaction.Abort(new PersistRetriedFunctionInvocationOutcome(error));
 }

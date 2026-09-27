@@ -1,14 +1,19 @@
 using MongoDB.Driver;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceGroups.Contracts;
 
 public sealed record IsolationScopeReferenced(string IsolationScopeId);
 
+public sealed record IsolationScopeUnreferenced;
+
+public union EnsureIsolationScopeUnreferencedOutcome(
+    IsolationScopeUnreferenced,
+    IsolationScopeReferenced);
+
 /// <summary>Feature-owned contributions join the deletion transaction; no foreign collections are exposed.</summary>
 public interface IIsolationScopeReferenceGuard
 {
-    Task<Result<Unit, IsolationScopeReferenced>> EnsureUnreferencedAsync(
+    Task<EnsureIsolationScopeUnreferencedOutcome> EnsureUnreferencedAsync(
         string tenantId,
         string resourceGroupId,
         string isolationScopeId,

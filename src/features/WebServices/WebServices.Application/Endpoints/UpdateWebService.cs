@@ -17,6 +17,8 @@ using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
 
+using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
+
 namespace Pole.Features.WebServices.Application.Endpoints;
 
 public static class UpdateWebService
@@ -27,7 +29,6 @@ public static class UpdateWebService
         {
             app.MapPut("/{Id}", async (
                     IMediator mediator,
-                    IHttpProblemMapper httpProblems,
                     [AsParameters] UpdateWebServiceRequest request,
                     CancellationToken cancellationToken) =>
                 {
@@ -37,7 +38,7 @@ public static class UpdateWebService
                         UpdateWebServiceResponse value =>
                             Results.Accepted(value: value),
                         UpdateWebServiceError error =>
-                            httpProblems.Map(error).ToHttpResult()
+                            MapError(error)
                     });
                 })
                 .WithName("UpdateWebService")
@@ -139,13 +140,12 @@ public sealed class UpdateWebServiceHandler(
                                 WebServiceDeploymentWorkflow.ToSetApplyItem(deployment)).ToArray()),
                         transaction.Session,
                         ct);
-                    if (!deploymentsResult.TryGetValue(
-                            out var physicalDeployments,
-                            out var deploymentError))
+                    if (deploymentsResult is ResourceDeploymentMutationError deploymentError)
                     {
                         return transaction.Abort(
                             Error(new UpdateWebServiceError(deploymentError)));
                     }
+                    var physicalDeployments = ((MutatedResourceDeployments)deploymentsResult.Value).Placements;
                     updatedDeployments = physicalDeployments;
                 }
                 else
@@ -158,13 +158,12 @@ public sealed class UpdateWebServiceHandler(
                             nextWebService.ActiveRevision),
                         transaction.Session,
                         ct);
-                    if (!deploymentsResult.TryGetValue(
-                            out var revisionDeployments,
-                            out var revisionError))
+                    if (deploymentsResult is AdvanceResourceDeploymentRevisionError revisionError)
                     {
                         return transaction.Abort(
                             Error(new UpdateWebServiceError(revisionError)));
                     }
+                    var revisionDeployments = ((MutatedResourceDeployments)deploymentsResult.Value).Placements;
                     updatedDeployments = revisionDeployments
                         .Where(WebServiceDeploymentWorkflow.IsDesiredPlacement)
                         .ToArray();
@@ -177,7 +176,7 @@ public sealed class UpdateWebServiceHandler(
                     nextWebService.ToUpdatedEvent(
                         WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments)),
                     ct);
-                if (!persisted.TryGetValue(out _, out var persistenceError))
+                if (persisted is WebServiceUpdateConflict persistenceError)
                 {
                     return transaction.Abort(
                         Error(new UpdateWebServiceError(persistenceError)));

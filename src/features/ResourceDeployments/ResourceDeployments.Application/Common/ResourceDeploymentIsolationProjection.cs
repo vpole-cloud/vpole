@@ -1,6 +1,5 @@
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Common;
 
@@ -13,7 +12,7 @@ public sealed class ResourceDeploymentIsolationProjection(
         CancellationToken cancellationToken)
     {
         var result = await lookupTarget(summary.DeploymentTargetId, cancellationToken);
-        var policy = result.TryGetValue(out var target, out _)
+        var policy = result is DeploymentTargetLookupDto target
             ? target.NetworkPolicy
             : DeploymentTargetNetworkPolicyDto.Unknown;
         return summary with
@@ -34,7 +33,7 @@ public sealed class ResourceDeploymentIsolationProjection(
         foreach (var targetId in targetIds.Distinct(StringComparer.Ordinal))
         {
             var result = await lookupTarget(targetId, cancellationToken);
-            var policy = result.TryGetValue(out var target, out _)
+            var policy = result is DeploymentTargetLookupDto target
                 ? target.NetworkPolicy
                 : DeploymentTargetNetworkPolicyDto.Unknown;
             values.Add(

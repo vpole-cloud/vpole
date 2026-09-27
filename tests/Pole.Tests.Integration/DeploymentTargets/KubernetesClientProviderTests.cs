@@ -192,9 +192,7 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
     {
         public List<ClientFactoryCall> Calls { get; } = [];
 
-        public ValueTask<Result<
-            IKubernetes,
-            StoredDeploymentTargetConnectionUnavailable>> InvokeAsync(
+        public ValueTask<CreateStoredKubernetesClientOutcome> InvokeAsync(
             string deploymentTargetId,
             DeploymentTargetConnection connection,
             CancellationToken cancellationToken = default)
@@ -212,9 +210,7 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
                 connection.Version,
                 client,
                 disposalHandler));
-            return ValueTask.FromResult<Result<
-                IKubernetes,
-                StoredDeploymentTargetConnectionUnavailable>>(new Ok<IKubernetes>(client));
+            return ValueTask.FromResult<CreateStoredKubernetesClientOutcome>(new CreateStoredKubernetesClientOutcome(client));
         }
     }
 

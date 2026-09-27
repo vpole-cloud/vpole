@@ -28,25 +28,6 @@ type DeletePostgresClusterResponse =
     { Id : string
       Placement : PlacementSummaryDto }
 
-type DeletePostgresClusterStateError =
-    | PostgresClusterDeletionNotFound of clusterId : string
-    | PostgresClusterDeletionResourceDeploymentMissing of clusterId : string
-
-type DeletePostgresClusterError =
-    | DeletePostgresClusterState of DeletePostgresClusterStateError
-    | DeletePostgresClusterCompute of LoadCurrentResourceDeploymentComputeError
-    | DeletePostgresClusterPersistence of PostgresClusterDeletionConflict
-    | DeletePostgresClusterDeployment of ResourceDeploymentMutationError
-    | DeletePostgresClusterQuota of QuotaExecutionError
-    interface IUnion with
-        member this.Value =
-            match this with
-            | DeletePostgresClusterState error -> box error
-            | DeletePostgresClusterCompute error -> box error
-            | DeletePostgresClusterPersistence error -> box error
-            | DeletePostgresClusterDeployment error -> box error
-            | DeletePostgresClusterQuota error -> box error
-
 type DeletePostgresClusterOutcome =
     | PostgresClusterDeletionAccepted of DeletePostgresClusterResponse
     | DeletePostgresClusterRejected of DeletePostgresClusterError
@@ -120,7 +101,7 @@ module private DeletePostgresClusterWorkflow =
                         cluster.Id,
                         cancellationToken)
 
-                match TypedResultInterop.toResult currentComputeResult with
+                match TypedResultInterop.currentResourceDeploymentCompute currentComputeResult with
                 | Error error ->
                     return
                         Completed(
@@ -184,7 +165,7 @@ module private DeletePostgresClusterWorkflow =
                                 transaction.Session,
                                 transactionCancellationToken)
 
-                        match TypedResultInterop.toResult deploymentResult with
+                        match TypedResultInterop.resourceDeploymentMutation deploymentResult with
                         | Error error ->
                             return
                                 transaction.Abort(
@@ -283,7 +264,6 @@ type DeletePostgresCluster =
     static member Handle(
         [<AsParameters>] request : DeletePostgresClusterRequest,
         [<FromServices>] mediator : IMediator,
-        [<FromServices>] httpProblems : IHttpProblemMapper,
         cancellationToken : System.Threading.CancellationToken) =
         task {
             let! result = mediator.Send(request, cancellationToken)
@@ -292,5 +272,5 @@ type DeletePostgresCluster =
                     match outcome with
                     | PostgresClusterDeletionAccepted value -> Results.Accepted(value = value)
                     | DeletePostgresClusterRejected error ->
-                        httpProblems.Map(error).ToHttpResult())
+                        (PostgresHttpMappings.mapDeleteError error).ToHttpResult())
         }

@@ -59,7 +59,7 @@ internal sealed class MongoPersistSecretBinding(
                 current.IsolationScopeId,
                 new ResourceScopeConsumerReference(type, binding.ConsumerId),
                 tx.Session,
-                token) is Err<ResourceScopeReferenceUnavailable> ||
+                token) is ResourceScopeReferenceUnavailable ||
                 await admitDeployments(
                     current.TenantId,
                     current.ResourceGroupId,
@@ -69,7 +69,7 @@ internal sealed class MongoPersistSecretBinding(
                     binding.Selection is AllSecretDeployments,
                     binding.Selection is SelectedSecretDeployments selected ? selected.DeploymentIds.ToArray() : [],
                     tx.Session,
-                    token) is Err<ResourceDeploymentReferenceUnavailable>)
+                    token) is ResourceDeploymentReferenceUnavailable)
                 return tx.Abort(new SecretReferenceRejected());
 
             var bound = current.Bind(binding, clock.GetUtcNow().UtcDateTime);

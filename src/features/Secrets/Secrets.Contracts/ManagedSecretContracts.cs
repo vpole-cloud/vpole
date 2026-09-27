@@ -1,6 +1,5 @@
 using System.Collections.Immutable;
 using MongoDB.Driver;
-using Pole.ResultType;
 
 namespace Pole.Features.Secrets.Contracts;
 
@@ -37,19 +36,44 @@ public sealed record ManagedSecretValues(
     public override string ToString() => "ManagedSecretValues([REDACTED])";
 }
 
-public sealed record ManagedSecretUnavailable;
-public sealed record ManagedSecretChanged;
-public sealed record ManagedSecretReferenceRejected;
-public sealed record ManagedSecretEncryptionUnavailable;
+public abstract record ManagedSecretFailure;
+public sealed record ManagedSecretUnavailable : ManagedSecretFailure;
+public sealed record ManagedSecretChanged : ManagedSecretFailure;
+public sealed record ManagedSecretReferenceRejected : ManagedSecretFailure;
+public sealed record ManagedSecretEncryptionUnavailable : ManagedSecretFailure;
+public sealed record ManagedSecretMutationSucceeded;
+public sealed record ManagedSecretKey(string Value)
+{
+    public override string ToString() => "ManagedSecretKey([REDACTED])";
+}
 
-public union ManagedSecretError(
+public union PrepareManagedSecretOutcome(
+    PreparedManagedSecret,
+    ManagedSecretEncryptionUnavailable);
+
+public union ManagedSecretMutationOutcome(
+    ManagedSecretMutationSucceeded,
     ManagedSecretUnavailable,
     ManagedSecretChanged,
     ManagedSecretReferenceRejected,
     ManagedSecretEncryptionUnavailable);
 
+public union ReadManagedSecretOutcome(
+    ManagedSecretValues,
+    ManagedSecretUnavailable,
+    ManagedSecretEncryptionUnavailable);
+
+public union ReadManagedSecretKeyOutcome(
+    ManagedSecretKey,
+    ManagedSecretUnavailable,
+    ManagedSecretEncryptionUnavailable);
+
+public union EnsureManagedSecretProjectionOutcome(
+    SecretProjectionReference,
+    ManagedSecretUnavailable);
+
 /// <summary>Prepares an encrypted version, without persistence or external side effects.</summary>
-public delegate Task<Result<PreparedManagedSecret, ManagedSecretEncryptionUnavailable>> PrepareManagedSecret(
+public delegate Task<PrepareManagedSecretOutcome> PrepareManagedSecret(
     string tenantId,
     string secretId,
     ManagedSecretOwner owner,
@@ -60,7 +84,7 @@ public delegate Task<Result<PreparedManagedSecret, ManagedSecretEncryptionUnavai
     CancellationToken ct);
 
 /// <summary>Joins the caller transaction after its resource registration and deployment are staged.</summary>
-public delegate Task<Result<Unit, ManagedSecretError>> CreateBoundManagedSecret(
+public delegate Task<ManagedSecretMutationOutcome> CreateBoundManagedSecret(
     PreparedManagedSecret prepared,
     string resourceGroupId,
     string isolationScopeId,
@@ -69,19 +93,19 @@ public delegate Task<Result<Unit, ManagedSecretError>> CreateBoundManagedSecret(
     CancellationToken ct);
 
 /// <summary>Reads credentials only through their tenant-scoped owning resource, never an arbitrary Secret ID.</summary>
-public delegate Task<Result<ManagedSecretValues, ManagedSecretError>> ReadManagedSecret(
+public delegate Task<ReadManagedSecretOutcome> ReadManagedSecret(
     string tenantId,
     ManagedSecretOwner owner,
     CancellationToken ct);
 
-public delegate Task<Result<Unit, ManagedSecretError>> RotateManagedSecret(
+public delegate Task<ManagedSecretMutationOutcome> RotateManagedSecret(
     PreparedManagedSecret prepared,
     long expectedVersion,
     IClientSessionHandle session,
     CancellationToken ct);
 
 /// <summary>Removes the owner; shared Secrets remain as ordinary tenant Secrets.</summary>
-public delegate Task<Result<Unit, ManagedSecretError>> ReleaseManagedSecret(
+public delegate Task<ManagedSecretMutationOutcome> ReleaseManagedSecret(
     string tenantId,
     ManagedSecretOwner owner,
     IClientSessionHandle session,
@@ -92,14 +116,14 @@ public sealed record SecretProjectionReference(
     string KubernetesName,
     long AppliedVersion);
 
-public delegate Task<Result<SecretProjectionReference, ManagedSecretUnavailable>> EnsureManagedSecretProjection(
+public delegate Task<EnsureManagedSecretProjectionOutcome> EnsureManagedSecretProjection(
     string tenantId,
     ManagedSecretOwner owner,
     string deploymentId,
     CancellationToken ct);
 
 /// <summary>Reads one provider-owned credential field without exposing the remaining values to the caller.</summary>
-public delegate Task<Result<string, ManagedSecretError>> ReadManagedSecretKey(
+public delegate Task<ReadManagedSecretKeyOutcome> ReadManagedSecretKey(
     string tenantId,
     ManagedSecretOwner owner,
     string key,

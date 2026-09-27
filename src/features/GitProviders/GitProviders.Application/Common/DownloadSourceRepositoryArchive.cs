@@ -3,7 +3,6 @@ using Pole.Features.GitProviders.Application.Persistence.Connections;
 using Pole.Features.GitProviders.Application.Persistence.Repositories;
 using Pole.Features.GitProviders.Application.ProviderOperations;
 using Pole.Features.GitProviders.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.GitProviders.Application.Common;
 
@@ -12,7 +11,7 @@ public sealed class SourceRepositoryArchiveDownloader(
     LoadGitProviderConnection loadGitProviderConnection,
     DownloadProviderRepositoryArchive downloadProviderRepositoryArchive)
 {
-    public async Task<Result<Unit, DownloadSourceRepositoryArchiveError>> InvokeAsync(
+    public async Task<DownloadSourceRepositoryArchiveOutcome> InvokeAsync(
         string tenantId,
         string sourceRepositoryId,
         string commitSha,
@@ -22,8 +21,8 @@ public sealed class SourceRepositoryArchiveDownloader(
         var repository = await loadSourceRepository(tenantId, sourceRepositoryId, cancellationToken);
         if (repository is null)
         {
-            return new Err<DownloadSourceRepositoryArchiveError>(
-                new(new SourceRepositoryBuildNotFound(sourceRepositoryId)));
+            return new DownloadSourceRepositoryArchiveError(
+                new SourceRepositoryBuildNotFound(sourceRepositoryId));
         }
 
         var connection = await loadGitProviderConnection(
@@ -32,10 +31,10 @@ public sealed class SourceRepositoryArchiveDownloader(
             cancellationToken);
         if (connection is null)
         {
-            return new Err<DownloadSourceRepositoryArchiveError>(
-                new(new SourceRepositoryBuildConnectionNotFound(
+            return new DownloadSourceRepositoryArchiveError(
+                new SourceRepositoryBuildConnectionNotFound(
                     repository.Id,
-                    repository.ConnectionId)));
+                    repository.ConnectionId));
         }
 
         var downloaded = await downloadProviderRepositoryArchive(
@@ -46,9 +45,9 @@ public sealed class SourceRepositoryArchiveDownloader(
             cancellationToken);
         return downloaded switch
         {
-            Ok<Unit> success => success,
-            Err<GitProviderRepositoryAccessError> error =>
-                new Err<DownloadSourceRepositoryArchiveError>(new(error.Value))
+            ProviderRepositoryArchiveDownloaded => new SourceRepositoryArchiveDownloaded(),
+            GitProviderRepositoryAccessError error =>
+                new DownloadSourceRepositoryArchiveError(error)
         };
     }
 }

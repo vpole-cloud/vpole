@@ -14,6 +14,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\StorageProfiles.Contracts.HttpMapping\StorageProfiles.Contracts.HttpMapping.csproj" />
       <ProjectReference Include="..\StorageProfiles.Contracts\StorageProfiles.Contracts.csproj" />
       <ProjectReference Include="..\StorageProfiles.Domain\StorageProfiles.Domain.csproj" />
       <ProjectReference Include="..\StorageProfiles.Primitives\StorageProfiles.Primitives.csproj" />
@@ -23,7 +24,6 @@
       <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />
       <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />
       <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
-      <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
       <ProjectReference Include="..\..\..\shared\Validation\Validation.csproj" />
       <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj" />
     </ItemGroup>

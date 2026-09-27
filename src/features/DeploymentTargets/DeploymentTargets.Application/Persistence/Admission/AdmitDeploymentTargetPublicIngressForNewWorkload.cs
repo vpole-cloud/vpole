@@ -1,6 +1,5 @@
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Persistence.Admission;
 
@@ -17,7 +16,7 @@ internal sealed class MongoAdmitDeploymentTargetPublicIngressForNewWorkload(
             var resolved = await admitDeploymentTargetForWorkload(
                 request.ExplicitDeploymentTargetId,
                 cancellationToken);
-            if (!resolved.TryGetValue(out var target, out var admissionError))
+            if (resolved is DeploymentTargetWorkloadAdmissionError admissionError)
             {
                 return admissionError switch
                 {
@@ -27,6 +26,7 @@ internal sealed class MongoAdmitDeploymentTargetPublicIngressForNewWorkload(
                     DeploymentTargetNewWorkloadsDisabled error => error
                 };
             }
+            var target = (DeploymentTargetLookupDto)resolved.Value;
 
             return DeploymentTargetAdmissionSupport.HasRequiredCapabilities(
                 target,

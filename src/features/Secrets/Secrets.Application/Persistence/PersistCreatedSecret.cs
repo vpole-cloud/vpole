@@ -56,11 +56,11 @@ internal sealed class MongoPersistCreatedSecret(
             values.Keys,
             now);
         var encrypted = await encrypt(secret, values, ct);
-        if (encrypted is not Ok<SecretVersion> version)
+        if (encrypted is not SecretVersion version)
             return new SecretEncryptionFailed();
         return await transactions.InvokeOutcomeAsync<PersistCreatedSecretResult>(async (tx, token) =>
         {
-            if (await admitScope(tenantId, groupId, scopeId, null, tx.Session, token) is Err<ResourceScopeReferenceUnavailable>)
+            if (await admitScope(tenantId, groupId, scopeId, null, tx.Session, token) is ResourceScopeReferenceUnavailable)
                 return tx.Abort(new SecretReferenceRejected());
 
             var registration = await registrar.RegisterAsync(
@@ -69,7 +69,7 @@ internal sealed class MongoPersistCreatedSecret(
                 new(SecretResource.Type, secret.Id, secret.Name),
                 tx.Session,
                 token);
-            if (registration is Err<ResourceRegistrationMutationError>)
+            if (registration is ResourceRegistrationMutationError)
                 return tx.Abort(new SecretReferenceRejected());
             try
             {
@@ -81,7 +81,7 @@ internal sealed class MongoPersistCreatedSecret(
             }
             await versions.InsertOneAsync(
                 tx.Session,
-                version.Value,
+                version,
                 cancellationToken: token);
             await publish(tx.Session, secret, new SecretCreated(), token);
             return tx.Commit(secret);

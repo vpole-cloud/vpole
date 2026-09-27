@@ -2,7 +2,6 @@ using MongoDB.Driver;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Persistence.Requests;
 
@@ -11,7 +10,7 @@ internal sealed class MongoRequestResourceDeploymentDeletion(
     StoreOutboxWrites storeOutboxWrites,
     TimeProvider timeProvider)
 {
-    public async Task<Result<PlacementSummaryDto, ResourceDeploymentMutationError>> InvokeAsync(
+    public async Task<ResourceDeploymentMutationOutcome> InvokeAsync(
         ResourceDeploymentMutationRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
@@ -25,14 +24,15 @@ internal sealed class MongoRequestResourceDeploymentDeletion(
             request,
             session,
             cancellationToken);
-        if (!loaded.TryGetValue(out var current, out var loadFailure))
-            return new Err<ResourceDeploymentMutationError>(loadFailure);
+        if (loaded is ResourceDeploymentMutationError loadFailure)
+            return loadFailure;
+        var current = (ResourceDeployment)loaded.Value;
         var computeExpectation = ResourceDeploymentMutationSupport.EnsureExpectedCompute(
             request.ResourceId,
             request.ExpectedCompute,
             current);
         if (computeExpectation is not null)
-            return new Err<ResourceDeploymentMutationError>(computeExpectation.Value);
+            return computeExpectation.Value;
         if (request.ReplacementCompute is not null)
         {
             throw new ArgumentException(
@@ -42,7 +42,7 @@ internal sealed class MongoRequestResourceDeploymentDeletion(
 
         var updated = current.RequestDeletion(timeProvider.GetUtcNow().UtcDateTime);
         return updated.Revision == current.Revision
-            ? new Ok<PlacementSummaryDto>(current.ToPlacementSummaryDto())
+            ? current.ToPlacementSummaryDto()
             : await ResourceDeploymentMutationSupport.ReplaceAndEnqueueAsync(
                 resourceDeployments,
                 storeOutboxWrites,

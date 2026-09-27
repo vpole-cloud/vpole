@@ -1,10 +1,15 @@
 using MongoDB.Driver;
-using Pole.ResultType;
 
 namespace Pole.Features.SourceBuilds.Contracts;
 
 /// <summary>Writes the active target in the caller transaction to fence admission against deletion.</summary>
-public delegate Task<Result<Unit, SourceBuildWebServiceNotFound>> AdmitSourceBuildWebService(
+public sealed record SourceBuildWebServiceAdmitted;
+
+public union AdmitSourceBuildWebServiceOutcome(
+    SourceBuildWebServiceAdmitted,
+    SourceBuildWebServiceNotFound);
+
+public delegate Task<AdmitSourceBuildWebServiceOutcome> AdmitSourceBuildWebService(
     string tenantId,
     string webServiceId,
     IClientSessionHandle session,
@@ -18,7 +23,19 @@ public delegate Task CleanupSourceBuildConfigurations(
 
 public sealed record SourceBuildWebServiceHasActiveJobs(string WebServiceId);
 
+public sealed record NoActiveSourceBuilds;
+
+public union EnsureNoWebServiceActiveSourceBuildsOutcome(
+    NoActiveSourceBuilds,
+    SourceBuildWebServiceHasActiveJobs);
+
 public sealed record SourceBuildSourceRepositoryConfigurationExists(string SourceRepositoryId);
+
+public sealed record NoSourceRepositoryBuildConfiguration;
+
+public union EnsureNoSourceRepositoryBuildConfigurationOutcome(
+    NoSourceRepositoryBuildConfiguration,
+    SourceBuildSourceRepositoryConfigurationExists);
 
 /// <summary>
 /// Resolves whether the WebServices target named by a source-build
@@ -34,7 +51,7 @@ public delegate Task<bool> SourceBuildWebServiceExists(
 /// Rejects deletion while nonterminal jobs exist, inside the transaction
 /// which has already fenced new admissions by writing the WebService.
 /// </summary>
-public delegate Task<Result<Unit, SourceBuildWebServiceHasActiveJobs>>
+public delegate Task<EnsureNoWebServiceActiveSourceBuildsOutcome>
     EnsureNoWebServiceActiveSourceBuilds(
         string tenantId,
         string webServiceId,
@@ -45,7 +62,7 @@ public delegate Task<Result<Unit, SourceBuildWebServiceHasActiveJobs>>
 /// Guards a source-repository deletion against source-build configuration that
 /// still references it. The source-build feature owns this invariant.
 /// </summary>
-public delegate Task<Result<Unit, SourceBuildSourceRepositoryConfigurationExists>>
+public delegate Task<EnsureNoSourceRepositoryBuildConfigurationOutcome>
     EnsureNoSourceRepositoryBuildConfiguration(
         string tenantId,
         string sourceRepositoryId,
@@ -126,7 +143,11 @@ public union SourceBuildWebServiceDeploymentError(
     SourceBuildWebServiceDeploymentRejected,
     SourceBuildWebServiceUpdateConflict);
 
-public delegate Task<Result<SourceBuildDeploymentResult, SourceBuildWebServiceDeploymentError>>
+public union DeploySourceBuildWebServiceOutcome(
+    SourceBuildDeploymentResult,
+    SourceBuildWebServiceDeploymentError);
+
+public delegate Task<DeploySourceBuildWebServiceOutcome>
     DeploySourceBuildWebService(
         SourceBuildDeploymentRequest request,
         CancellationToken cancellationToken = default);

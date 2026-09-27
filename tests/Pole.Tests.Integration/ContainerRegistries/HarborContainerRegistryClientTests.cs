@@ -52,7 +52,7 @@ public sealed class HarborContainerRegistryClientTests
         var result = await client.ProvisionProjectAsync(
             new RegistryProjectProvisioningRequest("tenant", "pole-test", AttemptId));
 
-        Assert.True(result.TryGetValue(out var provisioned, out _));
+        var provisioned = Assert.IsType<ProvisionedRegistryProject>(result.Value);
         Assert.Equal("17", provisioned.ExternalProjectId);
         Assert.Equal("build-secret", provisioned.BuildCredential.Secret);
         Assert.Equal("pull-secret", provisioned.PullCredential.Secret);
@@ -87,11 +87,10 @@ public sealed class HarborContainerRegistryClientTests
         var result = await client.ProvisionProjectAsync(
             new RegistryProjectProvisioningRequest("tenant", "pole-test", AttemptId));
 
-        var failed = TypedResultExtensions.TryGetValue(result);
-        Assert.False(failed.Succeeded);
+        var failed = Assert.IsType<ContainerRegistryProviderError>(result.Value);
         Assert.Equal(2, robotRequests);
-        Assert.IsType<ContainerRegistryProviderUnavailable>(failed.Error!.Value);
-        Assert.DoesNotContain("build-secret", failed.Error!.ToString(), StringComparison.Ordinal);
+        Assert.IsType<ContainerRegistryProviderUnavailable>(failed.Value);
+        Assert.DoesNotContain("build-secret", failed.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -120,10 +119,9 @@ public sealed class HarborContainerRegistryClientTests
         var result = await client.ProvisionProjectAsync(
             new RegistryProjectProvisioningRequest("tenant", "pole-test", AttemptId));
 
-        var failed = TypedResultExtensions.TryGetValue(result);
-        Assert.False(failed.Succeeded);
+        var failed = Assert.IsType<ContainerRegistryProviderError>(result.Value);
         Assert.Equal(2, robotRequests);
-        Assert.IsType<ContainerRegistryProviderUnavailable>(failed.Error!.Value);
+        Assert.IsType<ContainerRegistryProviderUnavailable>(failed.Value);
     }
 
     [Fact]
@@ -142,7 +140,7 @@ public sealed class HarborContainerRegistryClientTests
 
         var result = await client.GetArtifactAsync("pole-test", "service/api", "build-42");
 
-        Assert.True(result.TryGetValue(out var artifact, out _));
+        var artifact = Assert.IsType<RegistryArtifact>(result.Value);
         Assert.Equal("sha256:abc", artifact.Digest);
         Assert.Equal(1234, artifact.SizeBytes);
     }
@@ -172,9 +170,8 @@ public sealed class HarborContainerRegistryClientTests
             new RegistryRobotCleanupTarget("pole-test", $"pole-runtime-{AttemptId}", "22")
         ]);
 
-        var failed = TypedResultExtensions.TryGetValue(result);
-        Assert.False(failed.Succeeded);
-        Assert.IsType<ContainerRegistryProviderUnavailable>(failed.Error!.Value);
+        var failed = Assert.IsType<ContainerRegistryProviderError>(result.Value);
+        Assert.IsType<ContainerRegistryProviderUnavailable>(failed.Value);
         Assert.Equal(
             [
                 "DELETE /api/v2.0/robots/21",
@@ -221,7 +218,7 @@ public sealed class HarborContainerRegistryClientTests
         var result = await client.DeleteRobotCredentialsAsync(
             [new RegistryRobotCleanupTarget("project", robotName, null)]);
 
-        Assert.True(result.TryGetValue(out var cleanup, out _));
+        var cleanup = Assert.IsType<RegistryRobotCleanupResult>(result.Value);
         Assert.Equal(1, cleanup.MatchedByNameCount);
         Assert.Equal(
             [
@@ -258,7 +255,7 @@ public sealed class HarborContainerRegistryClientTests
 
         var result = await client.DeleteProjectAsync("17");
 
-        Assert.True(TypedResultExtensions.TryGetValue(result).Succeeded);
+        Assert.IsType<RegistryProjectDeleted>(result.Value);
         Assert.Equal(
             [
                 "GET /api/v2.0/projects/17",
@@ -276,11 +273,10 @@ public sealed class HarborContainerRegistryClientTests
 
         var result = await client.GetArtifactAsync("pole-test", "service", "tag");
 
-        var failed = TypedResultExtensions.TryGetValue(result);
-        Assert.False(failed.Succeeded);
-        var providerError = Assert.IsType<ContainerRegistryProviderError>(failed.Error!.Value);
+        var failed = Assert.IsType<ContainerRegistryArtifactLookupError>(result.Value);
+        var providerError = Assert.IsType<ContainerRegistryProviderError>(failed.Value);
         Assert.IsType<ContainerRegistryProviderUnavailable>(providerError.Value);
-        Assert.DoesNotContain("admin-secret", failed.Error!.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("admin-secret", failed.ToString(), StringComparison.Ordinal);
     }
 
     private static HarborContainerRegistryClient CreateClient(HttpMessageHandler handler) =>

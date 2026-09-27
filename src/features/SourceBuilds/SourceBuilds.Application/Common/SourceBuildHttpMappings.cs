@@ -5,32 +5,14 @@ namespace Pole.Features.SourceBuilds.Application.Common;
 
 public static class SourceBuildHttpMappings
 {
-    public static IReadOnlyList<HttpProblemMapping> All { get; } =
-        Array.AsReadOnly<HttpProblemMapping>(
-        [
-            HttpProblemMapping.For<SourceBuildConfigurationNotFound>(MapConfigurationNotFound),
-            HttpProblemMapping.For<SourceBuildConfigurationAlreadyExists>(MapConfigurationAlreadyExists),
-            HttpProblemMapping.For<SourceBuildConfigurationWebServiceNotFound>(MapWebServiceNotFound),
-            HttpProblemMapping.For<SourceBuildConfigurationHasActiveJobs>(MapConfigurationHasActiveJobs),
-            HttpProblemMapping.For<SourceBuildConfigurationRecipeCandidateChanged>(
-                MapRecipeCandidateChanged),
-            HttpProblemMapping.For<SourceBuildConfigurationUpdateConflict>(
-                MapConfigurationUpdateConflict),
-            HttpProblemMapping.For<SourceBuildLinkedRepositoryNotFound>(
-                MapLinkedRepositoryNotFound),
-            HttpProblemMapping.For<SourceBuildLinkedRepositoryCandidateChanged>(
-                MapLinkedRepositoryCandidateChanged),
-            HttpProblemMapping.For<SourceBuildJobNotFound>(MapJobNotFound)
-        ]);
-
-    private static HttpProblem MapConfigurationNotFound(SourceBuildConfigurationNotFound error) =>
+    public static HttpProblem MapConfigurationNotFound(SourceBuildConfigurationNotFound error) =>
         Problem(
             HttpStatusCode.NotFound,
             "source-builds.configurations.not-found",
             "Source build configuration not found",
             ("configurationId", error.ConfigurationId));
 
-    private static HttpProblem MapConfigurationAlreadyExists(
+    public static HttpProblem MapConfigurationAlreadyExists(
         SourceBuildConfigurationAlreadyExists error) =>
         Problem(
             HttpStatusCode.Conflict,
@@ -38,7 +20,7 @@ public static class SourceBuildHttpMappings
             "This web service already has a source build configuration",
             ("webServiceId", error.WebServiceId));
 
-    private static HttpProblem MapWebServiceNotFound(
+    public static HttpProblem MapWebServiceNotFound(
         SourceBuildConfigurationWebServiceNotFound error) =>
         Problem(
             HttpStatusCode.NotFound,
@@ -46,7 +28,7 @@ public static class SourceBuildHttpMappings
             "Web service not found",
             ("webServiceId", error.WebServiceId));
 
-    private static HttpProblem MapConfigurationHasActiveJobs(
+    public static HttpProblem MapConfigurationHasActiveJobs(
         SourceBuildConfigurationHasActiveJobs error) =>
         Problem(
             HttpStatusCode.Conflict,
@@ -54,7 +36,7 @@ public static class SourceBuildHttpMappings
             "Wait for active builds to finish before deleting this configuration",
             ("configurationId", error.ConfigurationId));
 
-    private static HttpProblem MapRecipeCandidateChanged(
+    public static HttpProblem MapRecipeCandidateChanged(
         SourceBuildConfigurationRecipeCandidateChanged error) =>
         Problem(
             HttpStatusCode.Conflict,
@@ -62,7 +44,7 @@ public static class SourceBuildHttpMappings
             "The recipe candidate cannot be changed; relink the source repository candidate instead",
             ("configurationId", error.ConfigurationId));
 
-    private static HttpProblem MapConfigurationUpdateConflict(
+    public static HttpProblem MapConfigurationUpdateConflict(
         SourceBuildConfigurationUpdateConflict error) =>
         Problem(
             HttpStatusCode.Conflict,
@@ -70,7 +52,7 @@ public static class SourceBuildHttpMappings
             "The source build configuration changed while it was being updated",
             ("configurationId", error.ConfigurationId));
 
-    private static HttpProblem MapLinkedRepositoryNotFound(
+    public static HttpProblem MapLinkedRepositoryNotFound(
         SourceBuildLinkedRepositoryNotFound error) =>
         Problem(
             HttpStatusCode.Conflict,
@@ -79,7 +61,7 @@ public static class SourceBuildHttpMappings
             ("configurationId", error.ConfigurationId),
             ("sourceRepositoryId", error.SourceRepositoryId));
 
-    private static HttpProblem MapLinkedRepositoryCandidateChanged(
+    public static HttpProblem MapLinkedRepositoryCandidateChanged(
         SourceBuildLinkedRepositoryCandidateChanged error) =>
         Problem(
             HttpStatusCode.Conflict,
@@ -88,7 +70,7 @@ public static class SourceBuildHttpMappings
             ("configurationId", error.ConfigurationId),
             ("sourceRepositoryId", error.SourceRepositoryId));
 
-    private static HttpProblem MapJobNotFound(SourceBuildJobNotFound error) =>
+    public static HttpProblem MapJobNotFound(SourceBuildJobNotFound error) =>
         Problem(
             HttpStatusCode.NotFound,
             "source-builds.jobs.not-found",

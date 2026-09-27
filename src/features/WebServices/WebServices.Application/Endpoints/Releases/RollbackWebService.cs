@@ -16,6 +16,8 @@ using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
 
+using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
+
 namespace Pole.Features.WebServices.Application.Endpoints.Releases;
 
 public static class RollbackWebService
@@ -26,7 +28,6 @@ public static class RollbackWebService
         {
             app.MapPost("/{Id}/rollback", async (
                     IMediator mediator,
-                    IHttpProblemMapper httpProblems,
                     [AsParameters] RollbackWebServiceRequest request,
                     CancellationToken cancellationToken) =>
                 (await mediator.Send(request, cancellationToken)).ToHttpResult(
@@ -35,7 +36,7 @@ public static class RollbackWebService
                         RollbackWebServiceResponse value =>
                             Results.Accepted(value: value),
                         RollbackWebServiceError error =>
-                            httpProblems.Map(error).ToHttpResult()
+                            MapError(error)
                     }))
                 .WithName("RollbackWebService")
                 .Produces<RollbackWebServiceResponse>(StatusCodes.Status202Accepted);
@@ -132,9 +133,10 @@ public sealed class RollbackWebServiceHandler(
                             WebServiceDeploymentWorkflow.ToSetApplyItem(deployment)).ToArray()),
                     transaction.Session,
                     ct);
-                if (!applied.TryGetValue(out var updatedDeployments, out var applyFailure))
+                if (applied is ResourceDeploymentMutationError applyFailure)
                     return transaction.Abort(Error(
                         new RollbackWebServiceError(applyFailure)));
+                var updatedDeployments = ((MutatedResourceDeployments)applied.Value).Placements;
 
                 var persisted = await persistUpdatedWebService(
                     transaction.Session,
@@ -142,7 +144,7 @@ public sealed class RollbackWebServiceHandler(
                     updated,
                     updated.ToUpdatedEvent(WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments)),
                     ct);
-                if (!persisted.TryGetValue(out _, out var persistenceError))
+                if (persisted is WebServiceUpdateConflict persistenceError)
                     return transaction.Abort(Error(
                         new RollbackWebServiceError(persistenceError)));
 

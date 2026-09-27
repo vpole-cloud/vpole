@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using MongoDB.Driver;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Tests.Integration.Infrastructure;
 
@@ -75,44 +74,33 @@ internal sealed class TestDeploymentTargetLookup
         };
     }
 
-    public Task<Result<
-        DeploymentTargetLookupDto,
-        DeploymentTargetLookupError>> LookupAsync(
+    public Task<LookupDeploymentTargetOutcome> LookupAsync(
         string deploymentTargetId,
         CancellationToken cancellationToken = default) =>
         Task.FromResult(_targets.TryGetValue(deploymentTargetId, out var target)
-            ? (Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>)
-                new Ok<DeploymentTargetLookupDto>(target)
-            : new Err<DeploymentTargetLookupError>(
-                new DeploymentTargetLookupError(
-                    new DeploymentTargetNotFound(deploymentTargetId))));
+            ? (LookupDeploymentTargetOutcome)target
+            : new DeploymentTargetLookupError(
+                new DeploymentTargetNotFound(deploymentTargetId)));
 
-    public Task<Result<
-        DeploymentTargetLookupDto,
-        DefaultDeploymentTargetLookupError>> LookupDefaultAsync(
+    public Task<LookupDefaultDeploymentTargetOutcome> LookupDefaultAsync(
         CancellationToken cancellationToken = default) =>
-        Task.FromResult<Result<
-            DeploymentTargetLookupDto,
-            DefaultDeploymentTargetLookupError>>(
-            new Ok<DeploymentTargetLookupDto>(_targets[Target.Id]));
+        Task.FromResult<LookupDefaultDeploymentTargetOutcome>(_targets[Target.Id]);
 
-    public async Task<Result<
-        DeploymentTargetLookupDto,
-        DefaultDeploymentTargetWorkloadAdmissionError>> AdmitDefaultForNewWorkloadAsync(
+    public async Task<AdmitDefaultDeploymentTargetForNewWorkloadOutcome> AdmitDefaultForNewWorkloadAsync(
         CancellationToken cancellationToken = default)
     {
         var admitted = await AdmitForWorkloadAsync(Target.Id, cancellationToken);
         return admitted switch
         {
-            Ok<DeploymentTargetLookupDto> target => new Ok<DeploymentTargetLookupDto>(target.Value),
-            Err<DeploymentTargetWorkloadAdmissionError> error => error.Value switch
+            DeploymentTargetLookupDto target => target,
+            DeploymentTargetWorkloadAdmissionError error => error.Value switch
             {
                 DeploymentTargetDisabled disabled =>
-                    new Err<DefaultDeploymentTargetWorkloadAdmissionError>(disabled),
+                    new DefaultDeploymentTargetWorkloadAdmissionError(disabled),
                 DeploymentTargetDeletionRequested deleting =>
-                    new Err<DefaultDeploymentTargetWorkloadAdmissionError>(deleting),
+                    new DefaultDeploymentTargetWorkloadAdmissionError(deleting),
                 DeploymentTargetNewWorkloadsDisabled unavailable =>
-                    new Err<DefaultDeploymentTargetWorkloadAdmissionError>(unavailable),
+                    new DefaultDeploymentTargetWorkloadAdmissionError(unavailable),
                 DeploymentTargetNotFound notFound => throw new InvalidOperationException(
                     $"Configured default deployment target '{notFound.DeploymentTargetId}' does not exist."),
                 _ => throw new InvalidOperationException(
@@ -130,48 +118,40 @@ internal sealed class TestDeploymentTargetLookup
                 ? []
                 : _targets.Values.OrderBy(target => target.Id, StringComparer.Ordinal).ToArray());
 
-    public Task<Result<
-        DeploymentTargetLookupDto,
-        DeploymentTargetWorkloadAdmissionError>> AdmitForWorkloadAsync(
+    public Task<AdmitDeploymentTargetForWorkloadOutcome> AdmitForWorkloadAsync(
         string deploymentTargetId,
         CancellationToken cancellationToken = default)
     {
-        Result<DeploymentTargetLookupDto, DeploymentTargetWorkloadAdmissionError> result;
+        AdmitDeploymentTargetForWorkloadOutcome result;
         if (!_targets.TryGetValue(deploymentTargetId, out var target))
         {
-            result = new Err<DeploymentTargetWorkloadAdmissionError>(
-                new DeploymentTargetWorkloadAdmissionError(
-                    new DeploymentTargetNotFound(deploymentTargetId)));
+            result = new DeploymentTargetWorkloadAdmissionError(
+                new DeploymentTargetNotFound(deploymentTargetId));
         }
         else if (!target.Enabled)
         {
-            result = new Err<DeploymentTargetWorkloadAdmissionError>(
-                new DeploymentTargetWorkloadAdmissionError(
-                    new DeploymentTargetDisabled(target.Id)));
+            result = new DeploymentTargetWorkloadAdmissionError(
+                new DeploymentTargetDisabled(target.Id));
         }
         else if (target.DeletionRequested)
         {
-            result = new Err<DeploymentTargetWorkloadAdmissionError>(
-                new DeploymentTargetWorkloadAdmissionError(
-                    new DeploymentTargetDeletionRequested(target.Id)));
+            result = new DeploymentTargetWorkloadAdmissionError(
+                new DeploymentTargetDeletionRequested(target.Id));
         }
         else if (RejectNewWorkloads || !target.AcceptsWorkloads)
         {
-            result = new Err<DeploymentTargetWorkloadAdmissionError>(
-                new DeploymentTargetWorkloadAdmissionError(
-                    new DeploymentTargetNewWorkloadsDisabled(target.Id)));
+            result = new DeploymentTargetWorkloadAdmissionError(
+                new DeploymentTargetNewWorkloadsDisabled(target.Id));
         }
         else
         {
-            result = new Ok<DeploymentTargetLookupDto>(target);
+            result = target;
         }
 
         return Task.FromResult(result);
     }
 
-    public async Task<Result<
-        DeploymentTargetLookupDto,
-        DeploymentTargetNewWorkloadAdmissionError>> AdmitForWorkloadPlacementAsync(
+    public async Task<AdmitDeploymentTargetForNewWorkloadOutcome> AdmitForWorkloadPlacementAsync(
         DeploymentTargetAdmissionRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -181,23 +161,22 @@ internal sealed class TestDeploymentTargetLookup
             var explicitResult = await AdmitForWorkloadAsync(
                 request.ExplicitDeploymentTargetId,
                 cancellationToken);
-            if (!explicitResult.TryGetValue(out var target, out var error))
+            if (explicitResult is DeploymentTargetWorkloadAdmissionError error)
             {
-                return new Err<DeploymentTargetNewWorkloadAdmissionError>(
-                    new DeploymentTargetNewWorkloadAdmissionError(error));
+                return new DeploymentTargetNewWorkloadAdmissionError(error);
             }
+            var target = (DeploymentTargetLookupDto)explicitResult.Value;
 
             var hasRequiredCapabilities =
                 !request.RequiredCapabilities.HasFlag(
                     DeploymentTargetRequiredCapabilities.PublicIngress) ||
                 target.WorkloadConfiguration.Ingress?.PublicBaseDomain is not null;
             return hasRequiredCapabilities
-                ? new Ok<DeploymentTargetLookupDto>(target)
-                : new Err<DeploymentTargetNewWorkloadAdmissionError>(
-                    new DeploymentTargetNewWorkloadAdmissionError(
+                ? target
+                : new DeploymentTargetNewWorkloadAdmissionError(
                         new DeploymentTargetRequiredCapabilitiesUnavailable(
                             target.Id,
-                            request.RequiredCapabilities)));
+                            request.RequiredCapabilities));
         }
 
         var eligible = RejectNewWorkloads
@@ -211,14 +190,12 @@ internal sealed class TestDeploymentTargetLookup
                 .ToArray();
         return eligible.Length switch
         {
-            0 => new Err<DeploymentTargetNewWorkloadAdmissionError>(
-                new DeploymentTargetNewWorkloadAdmissionError(
-                    new NoDeploymentTargetAcceptsWorkloads())),
-            > 1 => new Err<DeploymentTargetNewWorkloadAdmissionError>(
-                new DeploymentTargetNewWorkloadAdmissionError(
+            0 => new DeploymentTargetNewWorkloadAdmissionError(
+                    new NoDeploymentTargetAcceptsWorkloads()),
+            > 1 => new DeploymentTargetNewWorkloadAdmissionError(
                     new DeploymentTargetWorkloadSelectionRequired(
-                        eligible.Select(target => target.Id).ToArray()))),
-            _ => new Ok<DeploymentTargetLookupDto>(eligible[0])
+                        eligible.Select(target => target.Id).ToArray())),
+            _ => eligible[0]
         };
     }
 
@@ -271,46 +248,41 @@ internal sealed class TestDeploymentTargetLookup
                         target.WorkloadConfiguration.Ingress.PublicBaseDomain!))
                     .ToArray());
 
-    public Task<Result<
-        DeploymentTargetPublicIngressDto,
-        DeploymentTargetDomainReservationAdmissionError>> AdmitForDomainReservationAsync(
+    public Task<AdmitDeploymentTargetPublicIngressForDomainReservationOutcome> AdmitForDomainReservationAsync(
         string tenantId,
         string deploymentTargetId,
         CancellationToken cancellationToken = default)
     {
-        Result<
-            DeploymentTargetPublicIngressDto,
-            DeploymentTargetDomainReservationAdmissionError> result;
+        AdmitDeploymentTargetPublicIngressForDomainReservationOutcome result;
         if (RejectNewWorkloads)
         {
-            result = new Err<DeploymentTargetDomainReservationAdmissionError>(
+            result = new DeploymentTargetDomainReservationAdmissionError(
                 new DeploymentTargetNewWorkloadsDisabled(deploymentTargetId));
         }
         else if (!_targets.TryGetValue(deploymentTargetId, out var target))
         {
-            result = new Err<DeploymentTargetDomainReservationAdmissionError>(
+            result = new DeploymentTargetDomainReservationAdmissionError(
                 new DeploymentTargetNotFound(deploymentTargetId));
         }
         else if (target.WorkloadConfiguration.Ingress?.PublicBaseDomain is null)
         {
-            result = new Err<DeploymentTargetDomainReservationAdmissionError>(
+            result = new DeploymentTargetDomainReservationAdmissionError(
                 new DeploymentTargetPublicIngressUnavailable(deploymentTargetId));
         }
         else
         {
-            result = new Ok<DeploymentTargetPublicIngressDto>(
-                new DeploymentTargetPublicIngressDto(
+            result = new DeploymentTargetPublicIngressDto(
                     target.Id,
                     target.WorkloadConfiguration.Revision,
                     target.WorkloadConfiguration.Ingress!.IngressClassName,
                     target.WorkloadConfiguration.Ingress.ClusterIssuerName,
-                    target.WorkloadConfiguration.Ingress.PublicBaseDomain));
+                    target.WorkloadConfiguration.Ingress.PublicBaseDomain);
         }
 
         return Task.FromResult(result);
     }
 
-    public Task<Result<Unit, DeploymentTargetReferenceChangeRejected>>
+    public Task<ApplyDeploymentTargetReferenceChangesOutcome>
         ApplyChangesOutcomeAsync(
             DeploymentTargetReferenceOwner owner,
             IReadOnlyCollection<string> addedDeploymentTargetIds,
@@ -320,28 +292,25 @@ internal sealed class TestDeploymentTargetLookup
     {
         if (RejectReferenceRemoval && removedDeploymentTargetIds.Count > 0)
         {
-            return Task.FromResult<Result<Unit, DeploymentTargetReferenceChangeRejected>>(
-                new Err<DeploymentTargetReferenceChangeRejected>(
+            return Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(
                 new DeploymentTargetReferenceChangeRejected(
                     owner,
                     addedDeploymentTargetIds
                         .Concat(removedDeploymentTargetIds)
                         .Distinct(StringComparer.Ordinal)
                         .Order(StringComparer.Ordinal)
-                        .ToArray())));
+                        .ToArray()));
         }
 
         _referenceChanges.Enqueue(new DeploymentTargetReferenceChange(
             owner,
             addedDeploymentTargetIds.ToArray(),
             removedDeploymentTargetIds.ToArray()));
-        return Task.FromResult<Result<Unit, DeploymentTargetReferenceChangeRejected>>(
-            new Ok<Unit>(Unit.Value));
+        return Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(
+            new DeploymentTargetReferencesChanged());
     }
 
-    public Task<Result<
-        Unit,
-        DeploymentTargetWorkloadConfigurationFenceRejected>> FenceManyOutcomeAsync(
+    public Task<FenceDeploymentTargetWorkloadConfigurationsOutcome> FenceManyOutcomeAsync(
         IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> requests,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
@@ -350,13 +319,10 @@ internal sealed class TestDeploymentTargetLookup
             _targets.TryGetValue(request.DeploymentTargetId, out var target) &&
             request.ExpectedWorkloadConfigurationRevision ==
             target.WorkloadConfiguration.Revision);
-        return Task.FromResult<Result<
-            Unit,
-            DeploymentTargetWorkloadConfigurationFenceRejected>>(
+        return Task.FromResult<FenceDeploymentTargetWorkloadConfigurationsOutcome>(
             accepted
-                ? new Ok<Unit>(Unit.Value)
-                : new Err<DeploymentTargetWorkloadConfigurationFenceRejected>(
-                    new DeploymentTargetWorkloadConfigurationFenceRejected(requests)));
+                ? new DeploymentTargetWorkloadConfigurationsFenced()
+                : new DeploymentTargetWorkloadConfigurationFenceRejected(requests));
     }
 }
 

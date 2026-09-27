@@ -5,12 +5,12 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Application.Persistence;
 using Pole.Features.Domains.Application.Persistence.DomainZones;
+using Pole.Features.Domains.Contracts;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
+using static Pole.Features.Domains.Application.Common.DomainHttpMappings;
 
 namespace Pole.Features.Domains.Application.Endpoints;
 
@@ -20,11 +20,10 @@ public static class GetDomainZone
     {
         app.MapGet("/{Id}", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] GetDomainZoneRequest request,
                 CancellationToken cancellationToken) =>
                 (await mediator.Send(request, cancellationToken)).ToHttpResult(
-                    outcome => ToHttpResult(outcome, httpProblems)))
+                    ToHttpResult))
             .WithName("GetDomainZone")
             .Produces<TenantDomainZoneSnapshot>()
             .ProducesProblem(StatusCodes.Status404NotFound);
@@ -32,11 +31,10 @@ public static class GetDomainZone
     }
 
     private static IResult ToHttpResult(
-        GetDomainZoneOutcome outcome,
-        IHttpProblemMapper httpProblems) => outcome switch
+        GetDomainZoneOutcome outcome) => outcome switch
         {
             TenantDomainZoneSnapshot zone => Results.Ok(zone),
-            DomainZoneNotFound notFound => httpProblems.Map(notFound).ToHttpResult()
+            DomainZoneNotFound notFound => MapDomainZoneNotFound(notFound)
         };
 }
 
@@ -70,8 +68,10 @@ public sealed class GetDomainZoneHandler(LoadTenantDomainZone loadTenantDomainZo
             request.Id,
             cancellationToken);
 
-        return result.Match(
-            GetDomainZoneOutcome (zone) => zone,
-            GetDomainZoneOutcome (error) => error);
+        return result switch
+        {
+            TenantDomainZoneSnapshot zone => zone,
+            DomainZoneNotFound error => error
+        };
     }
 }

@@ -5,11 +5,15 @@ using k8s;
 using k8s.Autorest;
 using k8s.Models;
 using Pole.Features.Core.Kubernetes;
-using Pole.ResultType;
 
 namespace Pole.Features.WebServices.Application.Kubernetes;
 
 public sealed record WebServiceKubernetesApplyFailed(string Message);
+public sealed record WebServiceKubernetesApplied;
+
+public union WebServiceKubernetesApplyOutcome(
+    WebServiceKubernetesApplied,
+    WebServiceKubernetesApplyFailed);
 
 public static class WebServiceKubernetesResourceManager
 {
@@ -112,7 +116,7 @@ public static class WebServiceKubernetesResourceManager
             cancellationToken: cancellationToken);
     }
 
-    public static async Task<Result<Unit, WebServiceKubernetesApplyFailed>> ApplyAsync(
+    public static async Task<WebServiceKubernetesApplyOutcome> ApplyAsync(
         IKubernetes kubernetes,
         WebServiceInKubernetes webService,
         WebServiceDeploymentMetadata deploymentMetadata,
@@ -246,7 +250,7 @@ public static class WebServiceKubernetesResourceManager
 
                 });
 
-            return new Ok<Unit>(Unit.Value);
+            return new WebServiceKubernetesApplied();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -254,9 +258,8 @@ public static class WebServiceKubernetesResourceManager
         }
         catch (Exception)
         {
-            return new Err<WebServiceKubernetesApplyFailed>(
-                new WebServiceKubernetesApplyFailed(
-                    $"Unable to apply web service deployment in Kubernetes while {stage}."));
+            return new WebServiceKubernetesApplyFailed(
+                $"Unable to apply web service deployment in Kubernetes while {stage}.");
         }
     }
 

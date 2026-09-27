@@ -129,7 +129,7 @@ public sealed class RuntimeCellLifecyclePersistence(
                 [runtimeCell.DeploymentTargetId],
                 transaction.Session,
                 ct);
-            if (unregister is Err<DeploymentTargetReferenceChangeRejected>)
+            if (unregister is DeploymentTargetReferenceChangeRejected)
                 return transaction.Abort(false);
 
             await storeOutboxWrites(

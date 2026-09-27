@@ -28,13 +28,8 @@ public sealed class RedisQuotaAdmissionTests(MongoReplicaSetFixture fixture)
             .AssertSuccess();
         var second = await Mediator.Send(
             RedisTestData.CreateRedisServiceRequest(resourceGroup.Id, "redis-b"));
-        _ = ResultAssertionExtensions.AssertSuccess<CreateRedisServiceOutcome>(second)
-            .AssertFailure() switch
-        {
-            QuotaExecutionError quota => quota,
-            var error => throw new Xunit.Sdk.XunitException(
-                $"Expected a quota error, but received {error}.")
-        };
+        Assert.IsType<QuotaExecutionError>(
+            ResultAssertionExtensions.AssertSuccess<CreateRedisServiceOutcome>(second).Value);
 
         Assert.Equal(1L, await DbContext.RedisServices.CountDocumentsAsync(
             redis => redis.TenantId == RedisTestData.TenantId));

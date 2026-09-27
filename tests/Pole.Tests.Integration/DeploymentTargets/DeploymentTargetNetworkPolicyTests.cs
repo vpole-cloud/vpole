@@ -31,10 +31,10 @@ public sealed class DeploymentTargetNetworkPolicyTests
         Assert.Equal(target.CreatedAtUtc, dto.LastCheckedAtUtc);
         Assert.Equal(
             admitted,
-            DeploymentTargetAdmissionSupport.AdmitForWorkload(target) is Ok<DeploymentTargetLookupDto>);
+            DeploymentTargetAdmissionSupport.AdmitForWorkload(target) is DeploymentTargetLookupDto);
         Assert.Equal(
             admitted,
-            DeploymentTargetAdmissionSupport.AdmitDefaultForNewWorkload(target) is Ok<DeploymentTargetLookupDto>);
+            DeploymentTargetAdmissionSupport.AdmitDefaultForNewWorkload(target) is DeploymentTargetLookupDto);
     }
 
     [Fact]
@@ -43,7 +43,7 @@ public sealed class DeploymentTargetNetworkPolicyTests
         var target = Target();
         Assert.Equal(NetworkPolicyEnforcementStatus.Unknown, target.ToNetworkPolicyDto().Enforcement);
         Assert.Equal(NetworkPolicyEvidenceSource.None, target.ToNetworkPolicyDto().EvidenceSource);
-        Assert.False(DeploymentTargetAdmissionSupport.AdmitForWorkload(target).TryGetValue(out _, out _));
+        Assert.IsType<DeploymentTargetWorkloadAdmissionError>(DeploymentTargetAdmissionSupport.AdmitForWorkload(target).Value);
     }
 
     [Fact]

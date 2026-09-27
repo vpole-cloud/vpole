@@ -7,7 +7,6 @@ using Pole.Features.DeploymentTargets.Application.Persistence;
 using Pole.Features.DeploymentTargets.Application.Persistence.Bootstrap;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Bootstrap;
 
@@ -66,13 +65,13 @@ internal sealed class DeploymentTargetBootstrapper(
             connectionVersion: 1,
             input,
             cancellationToken);
-        if (preparedResult is not Ok<PreparedDeploymentTargetConnection> preparedResultSuccess)
+        if (preparedResult is not PreparedDeploymentTargetConnection)
         {
             throw new InvalidOperationException(
                 "The local deployment-target connection could not be prepared.");
         }
 
-        var prepared = preparedResultSuccess.Value;
+        var prepared = (PreparedDeploymentTargetConnection)preparedResult.Value;
         using (prepared)
         {
             var observation = await probeDeploymentTargetConnection(
@@ -124,8 +123,7 @@ internal sealed class DeploymentTargetBootstrapper(
     {
         var mode = options.Bootstrap.Mode switch
         {
-            DeploymentTargetBootstrapMode.Auto when environment.IsDevelopment() =>
-                DeploymentTargetBootstrapMode.Kubeconfig,
+            DeploymentTargetBootstrapMode.Auto when environment.IsDevelopment() => DeploymentTargetBootstrapMode.Kubeconfig,
             DeploymentTargetBootstrapMode.Auto => DeploymentTargetBootstrapMode.InCluster,
             DeploymentTargetBootstrapMode.InCluster => DeploymentTargetBootstrapMode.InCluster,
             DeploymentTargetBootstrapMode.Kubeconfig => DeploymentTargetBootstrapMode.Kubeconfig,

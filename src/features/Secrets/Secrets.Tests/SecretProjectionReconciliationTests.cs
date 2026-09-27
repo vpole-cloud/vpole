@@ -5,7 +5,6 @@ using Pole.Encryption;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Secrets.Application.Projections;
 using Pole.Features.Secrets.Domain;
-using Pole.ResultType;
 using Xunit;
 
 namespace Pole.Features.Secrets.Tests;
@@ -123,30 +122,30 @@ public sealed class SecretProjectionReconciliationTests
         public readonly Dictionary<string, V1Secret> Manifests = [];
         public Action<SecretProjection>? AfterApply;
 
-        public async Task<Result<Unit, SecretProjectionTargetError>> ApplyAsync(
+        public async Task<SecretProjectionTargetOutcome> ApplyAsync(
         SecretProjection projection,
-        Func<CancellationToken, Task<Result<V1Secret, SecretProjectionTargetError>>> createManifest,
+        Func<CancellationToken, Task<SecretProjectionManifestOutcome>> createManifest,
         CancellationToken ct)
         {
             if (Unavailable.Contains(projection.DeploymentTargetId))
-                return new Err<SecretProjectionTargetError>(new SecretProjectionTargetUnavailable());
+                return new SecretProjectionTargetUnavailable();
             var prepared = await createManifest(ct);
-            if (prepared is Err<SecretProjectionTargetError> error)
+            if (prepared.Value is SecretProjectionTargetFailure error)
                 return error;
-            var manifest = ((Ok<V1Secret>)prepared.Value).Value;
+            var manifest = (V1Secret)prepared.Value;
             Manifests[projection.DeploymentId] = manifest;
             AfterApply?.Invoke(projection);
             foreach (var bytes in manifest.Data.Values)
                 System.Security.Cryptography.CryptographicOperations.ZeroMemory(bytes);
-            return new Ok<Unit>(Unit.Value);
+            return new SecretProjectionTargetSucceeded();
         }
 
-        public Task<Result<Unit, SecretProjectionTargetError>> DeleteAsync(SecretProjection projection, CancellationToken ct)
+        public Task<SecretProjectionTargetOutcome> DeleteAsync(SecretProjection projection, CancellationToken ct)
         {
             if (Unavailable.Contains(projection.DeploymentTargetId))
-                return Task.FromResult<Result<Unit, SecretProjectionTargetError>>(new Err<SecretProjectionTargetError>(new SecretProjectionTargetUnavailable()));
+                return Task.FromResult<SecretProjectionTargetOutcome>(new SecretProjectionTargetUnavailable());
             Manifests.Remove(projection.DeploymentId);
-            return Task.FromResult<Result<Unit, SecretProjectionTargetError>>(new Ok<Unit>(Unit.Value));
+            return Task.FromResult<SecretProjectionTargetOutcome>(new SecretProjectionTargetSucceeded());
         }
     }
 
@@ -154,13 +153,13 @@ public sealed class SecretProjectionReconciliationTests
     {
         public bool Fail;
         public EnvelopeEncryptionKeyReference ActiveKey => throw new NotSupportedException();
-        public ValueTask<Result<byte[], EnvelopeDecryptionFailed>> DecryptAsync(EncryptedValue value, EnvelopeEncryptionContext context, CancellationToken ct = default) =>
-            ValueTask.FromResult<Result<byte[], EnvelopeDecryptionFailed>>(Fail
-                ? new Err<EnvelopeDecryptionFailed>(new("sensitive internal detail"))
-                : new Ok<byte[]>(JsonSerializer.SerializeToUtf8Bytes(new { password = "private-value" })));
-        public ValueTask<Result<EncryptedValue, EnvelopeEncryptionFailed>> EncryptAsync(ReadOnlyMemory<byte> value, EnvelopeEncryptionContext context, CancellationToken ct = default) => throw new NotSupportedException();
-        public ValueTask<Result<EncryptedValue, EnvelopeEncryptionFailed>> EncryptStringAsync(string value, EnvelopeEncryptionContext context, CancellationToken ct = default) => throw new NotSupportedException();
-        public ValueTask<Result<string, EnvelopeDecryptionFailed>> DecryptStringAsync(EncryptedValue value, EnvelopeEncryptionContext context, CancellationToken ct = default) => throw new NotSupportedException();
-        public ValueTask<Result<EncryptedValue, EnvelopeRewrapFailed>> RewrapAsync(EncryptedValue value, EnvelopeEncryptionContext context, CancellationToken ct = default) => throw new NotSupportedException();
+        public ValueTask<EnvelopeDecryptionOutcome> DecryptAsync(EncryptedValue value, EnvelopeEncryptionContext context, CancellationToken ct = default) =>
+            ValueTask.FromResult<EnvelopeDecryptionOutcome>(Fail
+                ? new EnvelopeDecryptionOutcome(new EnvelopeDecryptionFailed("sensitive internal detail"))
+                : JsonSerializer.SerializeToUtf8Bytes(new { password = "private-value" }));
+        public ValueTask<EnvelopeEncryptionOutcome> EncryptAsync(ReadOnlyMemory<byte> value, EnvelopeEncryptionContext context, CancellationToken ct = default) => throw new NotSupportedException();
+        public ValueTask<EnvelopeEncryptionOutcome> EncryptStringAsync(string value, EnvelopeEncryptionContext context, CancellationToken ct = default) => throw new NotSupportedException();
+        public ValueTask<EnvelopeStringDecryptionOutcome> DecryptStringAsync(EncryptedValue value, EnvelopeEncryptionContext context, CancellationToken ct = default) => throw new NotSupportedException();
+        public ValueTask<EnvelopeRewrapOutcome> RewrapAsync(EncryptedValue value, EnvelopeEncryptionContext context, CancellationToken ct = default) => throw new NotSupportedException();
     }
 }

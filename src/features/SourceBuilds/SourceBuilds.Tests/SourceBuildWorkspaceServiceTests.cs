@@ -4,7 +4,6 @@ using System.Text;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Execution;
-using Pole.ResultType;
 using Xunit;
 
 namespace Pole.Features.SourceBuilds.Tests;
@@ -27,9 +26,7 @@ public sealed class SourceBuildWorkspaceServiceTests
             "commit",
             "build-job");
 
-        var extracted = TypedResultExtensions.TryGetValue(result);
-        Assert.True(extracted.Succeeded, extracted.Error.ToString());
-        var workspace = extracted.Value!;
+        var workspace = Assert.IsType<SourceBuildWorkspace>(result.Value);
         Assert.Equal(("tenant", "source", "commit"), repositoryArchive.Request);
         await using (workspace)
         {
@@ -58,7 +55,7 @@ public sealed class SourceBuildWorkspaceServiceTests
     {
         public (string TenantId, string SourceRepositoryId, string CommitSha)? Request { get; private set; }
 
-        public async Task<Result<Unit, DownloadSourceRepositoryArchiveError>> InvokeAsync(
+        public async Task<DownloadSourceRepositoryArchiveOutcome> InvokeAsync(
             string tenantId,
             string sourceRepositoryId,
             string commitSha,
@@ -67,7 +64,7 @@ public sealed class SourceBuildWorkspaceServiceTests
         {
             Request = (tenantId, sourceRepositoryId, commitSha);
             await destination.WriteAsync(archive, cancellationToken);
-            return new Ok<Unit>(Unit.Value);
+            return new SourceRepositoryArchiveDownloaded();
         }
     }
 

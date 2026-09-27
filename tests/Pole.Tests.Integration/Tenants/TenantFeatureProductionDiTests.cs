@@ -6,6 +6,8 @@ using Pole.Features.Tenants.Application.Persistence;
 using Pole.Features.Tenants.Application.Persistence.Members;
 using Pole.Features.Tenants.Application.Persistence.Tenants;
 using Pole.Features.Tenants.Contracts;
+using Pole.Features.Tenants.Domain;
+using Pole.ASP.Helpers;
 using Pole.Mediator;
 using Pole.Server.Extensions;
 using Pole.Platform.Hosting;
@@ -77,6 +79,50 @@ public sealed class TenantFeatureProductionDiTests(MongoReplicaSetFixture fixtur
 
         await Assert.ThrowsAsync<ArgumentException>(
             () => ensureTenantsExist(["not-an-object-id"]));
+    }
+
+    [Fact]
+    public async Task TenantContracts_ReturnNamedSuccessAndMissingOutcomes()
+    {
+        var tenant = TenantFactory.Create("Contract lookup");
+        var missingTenantId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+        await fixture.Database.GetCollection<Tenant>("Tenants").InsertOneAsync(tenant);
+        var services = new ServiceCollection();
+        services.AddSingleton<IMongoDatabase>(fixture.Database);
+        services.AddTenantsFeature();
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+        using var scope = provider.CreateScope();
+        var ensure = scope.ServiceProvider.GetRequiredService<EnsureTenantsExist>();
+        var load = scope.ServiceProvider.GetRequiredService<LoadTenantIdentity>();
+
+        Assert.True(await ensure([]) is TenantsExist);
+        Assert.True(await ensure([tenant.Id, tenant.Id]) is TenantsExist);
+        var missing = await ensure([tenant.Id, missingTenantId, missingTenantId]);
+        Assert.True(missing is TenantSetNotFound);
+        var missingIds = missing switch
+        {
+            TenantSetNotFound missingSet => missingSet.TenantIds,
+            TenantsExist => throw new Xunit.Sdk.XunitException("Expected missing tenants.")
+        };
+        Assert.Equal([missingTenantId], missingIds);
+        Assert.True(await load(tenant.Id) is TenantIdentitySnapshot { DisplayName: "Contract lookup" });
+        Assert.True(await load(missingTenantId) is TenantIdentityNotFound notFound &&
+            notFound.TenantId == missingTenantId);
+    }
+
+    [Fact]
+    public void FeatureRegistration_RegistersOnlyPipelineRejectionMappings()
+    {
+        var services = new ServiceCollection();
+        services.AddTenantsFeature();
+        using var provider = services.BuildServiceProvider();
+        var mappings = provider.GetServices<HttpProblemMapping>().ToArray();
+
+        Assert.NotEmpty(mappings);
+        Assert.All(mappings, mapping =>
+            Assert.True(typeof(IMediatorRejection).IsAssignableFrom(mapping.MappedType)));
+        Assert.Contains(mappings, mapping => mapping.MappedType == typeof(TenantNotFound));
+        Assert.Contains(mappings, mapping => mapping.MappedType == typeof(TenantMemberNotFound));
     }
 
     private static void AssertResolved<T>(IServiceProvider provider)

@@ -16,12 +16,10 @@ public static class TenantMemberAuthorizationHttpProblemMappings
             HttpProblemMapping.For<TenantNotFound>(MapTenantNotFound),
             HttpProblemMapping.For<TenantMembershipRequired>(
                 MapMembershipRequired),
-            HttpProblemMapping.For<TenantMemberNotFound>(MapMemberNotFound),
-            HttpProblemMapping.For<TenantMemberAlreadyExists>(MapMemberAlreadyExists),
-            HttpProblemMapping.For<TenantLastOwner>(MapLastOwner)
+            HttpProblemMapping.For<TenantMemberNotFound>(MapMemberNotFound)
         ]);
 
-    private static HttpProblem MapAuthenticationRequired(
+    public static HttpProblem MapAuthenticationRequired(
         TenantAuthenticationRequired _) =>
         Problem(
             HttpStatusCode.Unauthorized,
@@ -29,7 +27,7 @@ public static class TenantMemberAuthorizationHttpProblemMappings
             "tenant.authorization.authentication-required",
             "An authenticated user is required.");
 
-    private static HttpProblem MapUserIdentityRequired(
+    public static HttpProblem MapUserIdentityRequired(
         TenantUserIdentityRequired _) =>
         Problem(
             HttpStatusCode.Unauthorized,
@@ -37,7 +35,7 @@ public static class TenantMemberAuthorizationHttpProblemMappings
             "tenant.authorization.user-identity-required",
             "The authenticated user id claim is required.");
 
-    private static HttpProblem MapTenantNotFound(
+    public static HttpProblem MapTenantNotFound(
         TenantNotFound notFound) =>
         Problem(
             HttpStatusCode.NotFound,
@@ -48,7 +46,7 @@ public static class TenantMemberAuthorizationHttpProblemMappings
                 ["tenantId"] = notFound.TenantId
             });
 
-    private static HttpProblem MapMembershipRequired(
+    public static HttpProblem MapMembershipRequired(
         TenantMembershipRequired required) =>
         Problem(
             HttpStatusCode.Forbidden,
@@ -60,7 +58,7 @@ public static class TenantMemberAuthorizationHttpProblemMappings
                 ["tenantId"] = required.TenantId
             });
 
-    private static HttpProblem MapMemberNotFound(
+    public static HttpProblem MapMemberNotFound(
         TenantMemberNotFound notFound) =>
         Problem(
             HttpStatusCode.NotFound,
@@ -72,7 +70,7 @@ public static class TenantMemberAuthorizationHttpProblemMappings
                 ["memberId"] = notFound.MemberId
             });
 
-    private static HttpProblem MapMemberAlreadyExists(
+    public static HttpProblem MapMemberAlreadyExists(
         TenantMemberAlreadyExists conflict) =>
         Problem(
             HttpStatusCode.Conflict,
@@ -84,7 +82,7 @@ public static class TenantMemberAuthorizationHttpProblemMappings
                 ["userId"] = conflict.UserId
             });
 
-    private static HttpProblem MapLastOwner(
+    public static HttpProblem MapLastOwner(
         TenantLastOwner conflict) =>
         Problem(
             HttpStatusCode.Conflict,

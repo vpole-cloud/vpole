@@ -19,9 +19,7 @@ internal sealed class MongoCreateResourceDeploymentSet(
     FenceStorageProfileResolution fenceStorageProfileResolution,
     TimeProvider timeProvider)
 {
-    public async Task<Result<
-        IReadOnlyList<PlacementSummaryDto>,
-        CreateResourceDeploymentError>> InvokeAsync(
+    public async Task<CreateResourceDeploymentSetOutcome> InvokeAsync(
         CreateResourceDeploymentSetRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
@@ -87,14 +85,13 @@ internal sealed class MongoCreateResourceDeploymentSet(
             targetFenceRequests,
             session,
             cancellationToken);
-        if (targetFence is Err<DeploymentTargetWorkloadConfigurationFenceRejected>)
+        if (targetFence is DeploymentTargetWorkloadConfigurationFenceRejected)
         {
-            return new Err<CreateResourceDeploymentError>(
-                new CreateResourceDeploymentError(
+            return new CreateResourceDeploymentError(
                     new ResourceDeploymentTargetConfigurationChanged(
                         targetFenceRequests
                             .Select(request => request.DeploymentTargetId)
-                            .ToArray())));
+                            .ToArray()));
         }
 
         var computeFenceRequests = request.Deployments
@@ -110,14 +107,13 @@ internal sealed class MongoCreateResourceDeploymentSet(
             computeFenceRequests,
             session,
             cancellationToken);
-        if (computeFence is Err<ComputeProfileResolutionFenceRejected>)
+        if (computeFence is ComputeProfileResolutionFenceRejected)
         {
-            return new Err<CreateResourceDeploymentError>(
-                new CreateResourceDeploymentError(
+            return new CreateResourceDeploymentError(
                     new ResourceDeploymentComputeConfigurationChanged(
                         computeFenceRequests
                             .Select(request => request.ComputeProfileId)
-                            .ToArray())));
+                            .ToArray()));
         }
 
         foreach (var storage in request.Deployments
@@ -133,12 +129,11 @@ internal sealed class MongoCreateResourceDeploymentSet(
                 storage,
                 session,
                 cancellationToken);
-            if (storageFence is Err<StorageProfileResolutionFenceRejected>)
+            if (storageFence is StorageProfileResolutionFenceRejected)
             {
-                return new Err<CreateResourceDeploymentError>(
-                    new CreateResourceDeploymentError(
+                return new CreateResourceDeploymentError(
                         new ResourceDeploymentStorageConfigurationChanged(
-                            storage.StorageProfileId)));
+                            storage.StorageProfileId));
             }
         }
 
@@ -153,20 +148,17 @@ internal sealed class MongoCreateResourceDeploymentSet(
             cancellationToken);
         return placementResult switch
         {
-            Err<ResourceGroupPlacementError> placementFailure =>
-                new Err<CreateResourceDeploymentError>(
-                    MapPlacementFailure(first.ResourceGroupId, placementFailure.Value)),
-            Ok<IReadOnlyList<ResourcePlacement>> success => await PersistResolvedDeploymentsAsync(
+            ResourceGroupPlacementError placementFailure =>
+                MapPlacementFailure(first.ResourceGroupId, placementFailure),
+            ResourcePlacements success => await PersistResolvedDeploymentsAsync(
                 request,
-                success.Value,
+                success.Items,
                 session,
                 cancellationToken)
         };
     }
 
-    private async Task<Result<
-        IReadOnlyList<PlacementSummaryDto>,
-        CreateResourceDeploymentError>> PersistResolvedDeploymentsAsync(
+    private async Task<CreateResourceDeploymentSetOutcome> PersistResolvedDeploymentsAsync(
         CreateResourceDeploymentSetRequest request,
         IReadOnlyList<ResourcePlacement> placements,
         IClientSessionHandle session,
@@ -181,10 +173,9 @@ internal sealed class MongoCreateResourceDeploymentSet(
             var deleting = placements.First(placement =>
                 placement.State is ResourcePlacementState.Deleting or
                     ResourcePlacementState.Deleted);
-            return new Err<CreateResourceDeploymentError>(
-                new CreateResourceDeploymentError(
+            return new CreateResourceDeploymentError(
                     new ResourcePlacementDeleting(
-                        deleting.DeploymentTargetId)));
+                        deleting.DeploymentTargetId));
         }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -237,7 +228,7 @@ internal sealed class MongoCreateResourceDeploymentSet(
                 .ToArray(),
             cancellationToken);
 
-        return new Ok<IReadOnlyList<PlacementSummaryDto>>(
+        return new CreatedResourceDeployments(
             deployments
                 .Select(deployment => deployment.ToPlacementSummaryDto())
             .ToArray());

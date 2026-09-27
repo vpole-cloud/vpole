@@ -31,7 +31,9 @@ type PostgresCredentialRotator(prepareSecret : PrepareManagedSecret) =
                         values,
                         credential.KubernetesType,
                         cancellationToken)
-                match TypedResultInterop.toResult result with
-                | Ok prepared -> return PostgresSuccess prepared
-                | Error _ -> return PostgresError(PostgresCredentialProtectionUnavailable clusterId)
+                match result.Value with
+                | :? PreparedManagedSecret as prepared -> return PostgresSuccess prepared
+                | :? ManagedSecretEncryptionUnavailable ->
+                    return PostgresError(PostgresCredentialProtectionUnavailable clusterId)
+                | _ -> return invalidOp "Unexpected managed Secret preparation outcome."
         }

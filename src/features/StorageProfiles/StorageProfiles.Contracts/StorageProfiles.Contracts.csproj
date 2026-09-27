@@ -10,7 +10,6 @@
 
     <ItemGroup>
       <ProjectReference Include="..\StorageProfiles.Primitives\StorageProfiles.Primitives.csproj" />
-      <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
       <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj" />
     </ItemGroup>
 

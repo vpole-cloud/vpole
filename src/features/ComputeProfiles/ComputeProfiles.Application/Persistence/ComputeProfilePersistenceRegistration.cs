@@ -8,7 +8,6 @@ using Pole.Features.ComputeProfiles.Application.Persistence.Reads;
 using Pole.Features.ComputeProfiles.Application.Persistence.Resolution;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.ComputeProfiles.Application.Persistence;
 
@@ -45,22 +44,14 @@ public static class ComputeProfilePersistenceRegistration
         services.AddCapability<MongoFenceResolvedComputeProfile,
             FenceResolvedComputeProfiles>(implementation => implementation.InvokeAsync);
 
-        services.TryAddSingleton<RunMongoOutcomeTransaction<Result<
-            ComputeProfile,
-            PersistCreatedComputeProfileError>>>(serviceProvider =>
+        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistCreatedComputeProfileOutcome>>(serviceProvider =>
             serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<Result<
-                    ComputeProfile,
-                    PersistCreatedComputeProfileError>>);
-        services.TryAddSingleton<RunMongoOutcomeTransaction<Result<
-            ComputeProfile,
-            PersistUpdatedComputeProfileError>>>(serviceProvider =>
+                .InvokeOutcomeAsync<PersistCreatedComputeProfileOutcome>);
+        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistUpdatedComputeProfileOutcome>>(serviceProvider =>
             serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<Result<
-                    ComputeProfile,
-                    PersistUpdatedComputeProfileError>>);
+                .InvokeOutcomeAsync<PersistUpdatedComputeProfileOutcome>);
         services.TryAddSingleton<RunMongoOutcomeTransaction<DeleteComputeProfileOutcome>>(
             serviceProvider => serviceProvider
                 .GetRequiredService<MongoRunTransaction>()

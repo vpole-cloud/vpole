@@ -3,9 +3,14 @@ using Pole.Features.ContainerRegistries.Application.Persistence;
 using Pole.Features.ContainerRegistries.Application.Persistence.Projects;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.ContainerRegistries.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.ContainerRegistries.Application.Provisioning;
+
+public sealed record RegistryCleanupCompleted;
+
+public union RegistryCleanupOutcome(
+    RegistryCleanupCompleted,
+    ContainerRegistryProviderError);
 
 public sealed record RegistryProvisioningAttempt(
     string AttemptId,
@@ -53,14 +58,14 @@ public sealed class RegistryProvisioningCleanupService(
         CancellationToken cancellationToken = default) =>
         persistence.ClaimCleanupAsync(projectId, attempt, originalFailure, cancellationToken);
 
-    public async Task<Result<Unit, ContainerRegistryProviderError>> CleanupAsync(
+    public async Task<RegistryCleanupOutcome> CleanupAsync(
         string projectId,
         CleanupRequiredRegistryProjectProvisioning cleanup,
         CancellationToken cancellationToken = default)
     {
         var leasedCleanup = await persistence.TryAcquireCleanupLeaseAsync(projectId, cleanup, cancellationToken);
         if (leasedCleanup is null)
-            return new Ok<Unit>(Unit.Value);
+            return new RegistryCleanupCompleted();
 
         using var workTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         workTimeout.CancelAfter(RegistryProvisioningCleanupPolicy.LeasedWorkTimeout);
@@ -73,31 +78,30 @@ public sealed class RegistryProvisioningCleanupService(
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var requiresNameVerification = leasedCleanup.BuildExternalRobotId is null ||
                                        leasedCleanup.PullExternalRobotId is null;
-        var cleanupResultValue = TypedResultExtensions.TryGetValue(result);
-        if (!cleanupResultValue.Succeeded)
+        if (result.Value is ContainerRegistryProviderError providerError)
         {
             await persistence.RecordCleanupRetryAsync(
-                projectId, leasedCleanup, ProviderFailure(cleanupResultValue.Error!), requiresNameVerification,
+                projectId, leasedCleanup, ProviderFailure(providerError), requiresNameVerification,
                 now, cancellationToken);
             logger.LogWarning(
                 "Container registry robot cleanup remains required for project {RegistryProjectId}, Harbor project {ExternalProjectId}, attempt {AttemptId}.",
                 projectId, leasedCleanup.ExternalProjectId, leasedCleanup.AttemptId);
-            return new Err<ContainerRegistryProviderError>(cleanupResultValue.Error!);
+            return providerError;
         }
-        var cleanupResult = cleanupResultValue.Value!;
+        var cleanupResult = (RegistryRobotCleanupResult)result.Value;
         if (requiresNameVerification &&
             (cleanupResult.MatchedByNameCount > 0 || now < leasedCleanup.CleanupVerificationNotBeforeUtc))
         {
             await persistence.RecordCleanupVerificationPendingAsync(
                 projectId, leasedCleanup, cleanupResult.MatchedByNameCount, now, cancellationToken);
-            return new Ok<Unit>(Unit.Value);
+            return new RegistryCleanupCompleted();
         }
 
         await persistence.MarkCleanupCompletedAsync(projectId, leasedCleanup, now, cancellationToken);
         logger.LogInformation(
             "Removed robot credentials from interrupted container registry provisioning for project {RegistryProjectId}, Harbor project {ExternalProjectId}, attempt {AttemptId}.",
             projectId, leasedCleanup.ExternalProjectId, leasedCleanup.AttemptId);
-        return new Ok<Unit>(Unit.Value);
+        return new RegistryCleanupCompleted();
     }
 
     public async Task ReconcileAsync(CancellationToken cancellationToken = default)

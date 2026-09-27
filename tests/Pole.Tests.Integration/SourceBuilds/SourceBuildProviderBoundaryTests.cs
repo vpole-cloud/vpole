@@ -92,16 +92,13 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
             repository.Id);
         var snapshot = await finder.InvokeAsync(TestData.TenantId, repository.Id);
 
-        var missing = TypedResultExtensions.TryGetValue(crossTenant);
-        Assert.False(missing.Succeeded);
-        Assert.IsType<SourceRepositoryBuildNotFound>(missing.Error!.Value);
-        var found = TypedResultExtensions.TryGetValue(snapshot);
-        Assert.True(found.Succeeded);
-        Assert.Equal(repository.Id, found.Value!.Id);
-        Assert.Equal(repository.CandidateKey, found.Value.CandidateKey);
-        Assert.Equal(SourceRepositoryBuildPlanKind.DotNet, found.Value.SelectedPlan.Kind);
-        Assert.Equal(plan.Commands, found.Value.SelectedPlan.Commands);
-        Assert.Equal(plan.DockerfilePreview, found.Value.SelectedPlan.Dockerfile);
+        Assert.IsType<SourceRepositoryBuildNotFound>(crossTenant.Value);
+        var found = Assert.IsType<SourceRepositoryBuildSnapshot>(snapshot.Value);
+        Assert.Equal(repository.Id, found.Id);
+        Assert.Equal(repository.CandidateKey, found.CandidateKey);
+        Assert.Equal(SourceRepositoryBuildPlanKind.DotNet, found.SelectedPlan.Kind);
+        Assert.Equal(plan.Commands, found.SelectedPlan.Commands);
+        Assert.Equal(plan.DockerfilePreview, found.SelectedPlan.Dockerfile);
 
         await using var destination = new MemoryStream();
         var crossTenantDownload = await archive.InvokeAsync(
@@ -109,9 +106,8 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
             repository.Id,
             "exact-commit",
             destination);
-        var missingDownload = TypedResultExtensions.TryGetValue(crossTenantDownload);
-        Assert.False(missingDownload.Succeeded);
-        Assert.IsType<SourceRepositoryBuildNotFound>(missingDownload.Error!.Value);
+        var missingDownload = Assert.IsType<DownloadSourceRepositoryArchiveError>(crossTenantDownload.Value);
+        Assert.IsType<SourceRepositoryBuildNotFound>(missingDownload.Value);
         Assert.Equal(0, archiveDownloader.DownloadCalls);
 
         var download = await archive.InvokeAsync(
@@ -119,7 +115,7 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
             repository.Id,
             "exact-commit",
             destination);
-        Assert.True(TypedResultExtensions.TryGetValue(download).Succeeded);
+        Assert.IsType<SourceRepositoryArchiveDownloaded>(download.Value);
         Assert.Equal(1, archiveDownloader.DownloadCalls);
         Assert.Equal(connection.Id, archiveDownloader.ConnectionId);
         Assert.Equal(repository.ExternalRepositoryId, archiveDownloader.ExternalRepositoryId);
@@ -158,9 +154,8 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
             "web-services/service-1",
             "build-1");
 
-        var crossTenantResult = TypedResultExtensions.TryGetValue(crossTenant);
-        Assert.False(crossTenantResult.Succeeded);
-        Assert.IsType<TenantContainerRegistryProjectNotFound>(crossTenantResult.Error!.Value);
+        var crossTenantError = Assert.IsType<GetTenantRegistryArtifactError>(crossTenant.Value);
+        Assert.IsType<TenantContainerRegistryProjectNotFound>(crossTenantError.Value);
         Assert.Equal(0, registryClient.ArtifactCalls);
 
         var artifact = await service.InvokeAsync(
@@ -169,9 +164,7 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
             "web-services/service-1",
             "build-1");
 
-        var foundResult = TypedResultExtensions.TryGetValue(artifact);
-        Assert.True(foundResult.Succeeded);
-        var found = foundResult.Value!;
+        var found = Assert.IsType<RegistryArtifact>(artifact.Value);
         Assert.Equal("sha256:digest", found.Digest);
         Assert.Equal(1, registryClient.ArtifactCalls);
         Assert.Equal(project.Name, registryClient.ProjectName);
@@ -188,7 +181,7 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
         public string? ExternalRepositoryId { get; private set; }
         public string? CommitSha { get; private set; }
 
-        public Task<Result<Unit, GitProviderRepositoryAccessError>> InvokeAsync(
+        public Task<DownloadProviderRepositoryArchiveOutcome> InvokeAsync(
             GitProviderConnection connection,
             string repositoryId,
             string commitSha,
@@ -199,8 +192,8 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
             ConnectionId = connection.Id;
             ExternalRepositoryId = repositoryId;
             CommitSha = commitSha;
-            return Task.FromResult<Result<Unit, GitProviderRepositoryAccessError>>(
-                new Ok<Unit>(Unit.Value));
+            return Task.FromResult<DownloadProviderRepositoryArchiveOutcome>(
+                new ProviderRepositoryArchiveDownloaded());
         }
     }
 
@@ -209,7 +202,7 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
         public int ArtifactCalls { get; private set; }
         public string? ProjectName { get; private set; }
 
-        public Task<Result<RegistryArtifact, ContainerRegistryArtifactLookupError>> GetArtifactAsync(
+        public Task<GetRegistryArtifactOutcome> GetArtifactAsync(
             string projectName,
             string repositoryName,
             string reference,
@@ -217,21 +210,21 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
         {
             ArtifactCalls++;
             ProjectName = projectName;
-            return Task.FromResult<Result<RegistryArtifact, ContainerRegistryArtifactLookupError>>(
-                new Ok<RegistryArtifact>(new RegistryArtifact(repositoryName, reference, "sha256:digest", 100)));
+            return Task.FromResult<GetRegistryArtifactOutcome>(
+                new RegistryArtifact(repositoryName, reference, "sha256:digest", 100));
         }
 
-        public Task<Result<ProvisionedRegistryProject, ContainerRegistryProviderError>> ProvisionProjectAsync(
+        public Task<ProvisionRegistryProjectOutcome> ProvisionProjectAsync(
             RegistryProjectProvisioningRequest request,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task<Result<RegistryRobotCleanupResult, ContainerRegistryProviderError>> DeleteRobotCredentialsAsync(
+        public Task<DeleteRegistryRobotCredentialsOutcome> DeleteRobotCredentialsAsync(
             IReadOnlyCollection<RegistryRobotCleanupTarget> targets,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task<Result<Unit, ContainerRegistryProviderError>> DeleteProjectAsync(
+        public Task<DeleteRegistryProjectOutcome> DeleteProjectAsync(
             string externalProjectId,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();

@@ -9,6 +9,7 @@ using Pole.Features.GitProviders.Application.GitHub;
 using Pole.Features.GitProviders.Application.Persistence.Setup;
 using Pole.Features.GitProviders.Domain;
 using Pole.Mediator;
+using static Pole.Features.GitProviders.Application.Common.GitProviderHttpMappings;
 
 namespace Pole.Features.GitProviders.Application.Endpoints.Connections;
 
@@ -61,7 +62,6 @@ public static class BeginGitHubInstallationEndpoint
     {
         app.MapPost("/github/install", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] BeginGitHubInstallationRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -69,7 +69,7 @@ public static class BeginGitHubInstallationEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     BeginGitHubInstallationResponse response => Results.Ok(response),
-                    GitHubIntegrationNotConfigured error => httpProblems.Map(error).ToHttpResult()
+                    GitHubIntegrationNotConfigured error => MapGitHubIntegrationNotConfigured(error)
                 });
             })
             .WithName("BeginGitHubInstallation")

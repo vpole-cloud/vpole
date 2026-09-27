@@ -1,4 +1,3 @@
-using Pole.ResultType;
 using k8s.Models;
 using k8s;
 using Microsoft.Extensions.DependencyInjection;
@@ -65,16 +64,16 @@ internal sealed class ManagedProjectionFixture : IDisposable
             _authority = _authority!.Rotate(["username", "password"], DateTime.UtcNow);
         Projection = SecretProjectionFactory.Create(_authority!, _binding, Projection.DeploymentId, Projection.RuntimeCellId,
             Projection.DeploymentTargetId, Projection.KubernetesNamespace);
-        var applied = await Target.ApplyAsync(Projection, _ => Task.FromResult<Result<V1Secret, SecretProjectionTargetError>>(new Ok<V1Secret>(SecretProjectionManifest.Create(Projection, _binding,
-            new Dictionary<string, string> { ["username"] = "postgres-user", ["password"] = password }))), default);
-        Xunit.Assert.IsType<Ok<Unit>>(applied.Value);
+        var applied = await Target.ApplyAsync(Projection, _ => Task.FromResult<SecretProjectionManifestOutcome>(SecretProjectionManifest.Create(Projection, _binding,
+            new Dictionary<string, string> { ["username"] = "postgres-user", ["password"] = password })), default);
+        Xunit.Assert.IsType<SecretProjectionTargetSucceeded>(applied.Value);
         _applied = true;
     }
 
     public async Task ReleaseAsync()
     {
         _authority = null;
-        Xunit.Assert.IsType<Ok<Unit>>((await Target.DeleteAsync(Projection, default)).Value);
+        Xunit.Assert.IsType<SecretProjectionTargetSucceeded>((await Target.DeleteAsync(Projection, default)).Value);
     }
 
     private ISecretProjectionTarget Target => _scope.ServiceProvider.GetRequiredService<ISecretProjectionTarget>();

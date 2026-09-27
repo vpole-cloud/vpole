@@ -21,7 +21,6 @@ public static class DeploymentTargetsFeatureRegistration
     {
         services.AddHttpProblemMappings(DeploymentTargetContractHttpMappings.All);
         services.TryAddSingleton(TimeProvider.System);
-        services.AddHttpProblemMappings(DeploymentTargetHttpMappings.All);
         services.AddDeploymentTargetPersistence();
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<
@@ -30,8 +29,7 @@ public static class DeploymentTargetsFeatureRegistration
         services.AddOptions<DeploymentTargetOptions>()
             .Bind(configuration.GetSection(DeploymentTargetOptions.SectionName))
             .ValidateOnStart();
-        services.TryAddSingleton(provider =>
-            provider.GetRequiredService<IOptions<DeploymentTargetOptions>>().Value);
+        services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<DeploymentTargetOptions>>().Value);
 
         services.TryAddSingleton<DeploymentTargetConnectionProtector>();
         services.TryAddSingleton<DeploymentTargetConnectionPreparer>();
@@ -51,10 +49,8 @@ public static class DeploymentTargetsFeatureRegistration
         // This is a genuine runtime protocol: consumers select it as a Kubernetes client
         // provider and it owns the lifecycle of cached, disposable clients.
         services.TryAddSingleton<KubernetesClientProvider>();
-        services.TryAddSingleton<IKubernetesClientProvider>(provider =>
-            provider.GetRequiredService<KubernetesClientProvider>());
-        services.TryAddSingleton<InvalidateDeploymentTargetKubernetesClient>(provider =>
-            provider.GetRequiredService<KubernetesClientProvider>().Invalidate);
+        services.TryAddSingleton<IKubernetesClientProvider>(provider => provider.GetRequiredService<KubernetesClientProvider>());
+        services.TryAddSingleton<InvalidateDeploymentTargetKubernetesClient>(provider => provider.GetRequiredService<KubernetesClientProvider>().Invalidate);
         services.TryAddSingleton<DeploymentTargetBootstrapper>();
         services.TryAddSingleton<BootstrapDeploymentTargets>(provider => provider
             .GetRequiredService<DeploymentTargetBootstrapper>()

@@ -22,6 +22,12 @@ using Pole.Features.StorageProfiles.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
+using static Pole.Features.DeploymentTargets.Contracts.HttpMapping.DeploymentTargetContractHttpMappings;
+using static Pole.Features.ResourceDeployments.Contracts.HttpMapping.ResourceDeploymentContractHttpMappings;
+using static Pole.Features.ResourceGroups.Contracts.HttpMapping.ResourceGroupContractHttpMappings;
+using static Pole.Features.Quotas.Contracts.HttpMapping.QuotaContractHttpMappings;
+using ComputeHttpMappings = Pole.Features.ComputeProfiles.Contracts.HttpMapping.ComputeProfileContractHttpMappings;
+using StorageHttpMappings = Pole.Features.StorageProfiles.Contracts.HttpMapping.StorageProfileContractHttpMappings;
 
 namespace Pole.Features.RedisServices.Application.Endpoints;
 
@@ -33,14 +39,18 @@ public static class CreateRedisService
         {
             app.MapPost("/", async (
                     [FromServices] IMediator mediator,
-                    [FromServices] IHttpProblemMapper httpProblems,
                     [AsParameters] CreateRedisServiceRequest request,
                     CancellationToken cancellationToken) =>
                     (await mediator.Send(request, cancellationToken))
                     .ToHttpResult(outcome => outcome switch
                     {
                         CreateRedisServiceResponse response => Results.Accepted(value: response),
-                        CreateRedisServiceError error => httpProblems.Map(error).ToHttpResult()
+                        DeploymentTargetNewWorkloadAdmissionError error => MapNewWorkloadAdmissionError(error),
+                        ComputeProfileResolutionError error => ComputeHttpMappings.MapResolutionError(error),
+                        StorageProfileResolutionError error => StorageHttpMappings.MapResolutionError(error),
+                        CreateResourceDeploymentError error => MapDeploymentError(error),
+                        ResourceRegistrationMutationError error => MapRegistrationMutationError(error),
+                        QuotaExecutionError error => MapExecutionError(error)
                     }))
                 .WithName("CreateRedisService")
                 .Produces<CreateRedisServiceResponse>(StatusCodes.Status202Accepted);
@@ -50,17 +60,14 @@ public static class CreateRedisService
     }
 }
 
-public union CreateRedisServiceError(
+public union CreateRedisServiceOutcome(
+    CreateRedisServiceResponse,
     DeploymentTargetNewWorkloadAdmissionError,
     ComputeProfileResolutionError,
     StorageProfileResolutionError,
     CreateResourceDeploymentError,
     ResourceRegistrationMutationError,
     QuotaExecutionError);
-
-public union CreateRedisServiceOutcome(
-    CreateRedisServiceResponse,
-    CreateRedisServiceError);
 
 public sealed class CreateRedisServiceHandler(
     PersistCreatedRedis persistCreatedRedis,
@@ -83,8 +90,9 @@ public sealed class CreateRedisServiceHandler(
                 request.Body.Placement?.DeploymentTargetId,
                 DeploymentTargetRequiredCapabilities.None),
             cancellationToken);
-        if (!targetResult.TryGetValue(out var target, out var targetError))
-            return Error(new CreateRedisServiceError(targetError));
+        if (targetResult is DeploymentTargetNewWorkloadAdmissionError targetError)
+            return targetError;
+        var target = (DeploymentTargetLookupDto)targetResult.Value;
 
         var computeProfileResult = await resolveComputeProfile(
             new ComputeProfileResolutionRequest(
@@ -93,12 +101,12 @@ public sealed class CreateRedisServiceHandler(
                 request.TenantId,
                 RedisResourceDeployment.ResourceType),
             cancellationToken);
-        if (!computeProfileResult.TryGetValue(
-                out var computeProfile,
-                out var computeProfileError))
+        if (computeProfileResult is ComputeProfileResolutionError computeProfileError)
         {
-            return Error(new CreateRedisServiceError(computeProfileError));
+            return computeProfileError;
         }
+
+        var computeProfile = (ResolvedComputeProfile)computeProfileResult.Value;
 
         var storageProfileResult = await resolveStorageProfile(
             new StorageProfileResolutionRequest(
@@ -108,9 +116,10 @@ public sealed class CreateRedisServiceHandler(
                 RedisResourceDeployment.ResourceType,
                 request.Body.Spec.Storage.SizeGb),
             cancellationToken);
-        if (!storageProfileResult.TryGetValue(out var storageProfile, out var storageProfileError))
-            return Error(new CreateRedisServiceError(storageProfileError));
+        if (storageProfileResult is StorageProfileResolutionError storageProfileError)
+            return storageProfileError;
 
+        var storageProfile = (ResolvedStorageProfile)storageProfileResult.Value;
         var createOptions = RedisFactory.DefaultCreateOptions with
         {
             Tags = request.Body.Tags
@@ -136,7 +145,7 @@ public sealed class CreateRedisServiceHandler(
             request.TenantId,
             RedisQuotaResourceKey.Create(newRedis.Id),
             new CreateQuotaMutation<RedisQuotaInput>(quotaInput),
-            quotaError => Error(new CreateRedisServiceError(quotaError)),
+            quotaError => quotaError,
             async (transaction, transactionCancellationToken) =>
             {
                 await persistCreatedRedis(
@@ -153,10 +162,9 @@ public sealed class CreateRedisServiceHandler(
                         newRedis.Name),
                     transaction.Session,
                     transactionCancellationToken);
-                if (!registration.TryGetValue(out _, out var registrationError))
+                if (registration is ResourceRegistrationMutationError registrationError)
                 {
-                    return transaction.Abort(
-                        Error(new CreateRedisServiceError(registrationError)));
+                    return transaction.Abort(registrationError);
                 }
 
                 var deploymentResult = await createResourceDeployment(
@@ -173,20 +181,17 @@ public sealed class CreateRedisServiceHandler(
                         ResourcePlacementCapability.SingleTarget),
                     transaction.Session,
                     transactionCancellationToken);
-                if (!deploymentResult.TryGetValue(
-                        out var deployment,
-                        out var deploymentError))
+                if (deploymentResult is CreateResourceDeploymentError deploymentError)
                 {
-                    return transaction.Abort(Error(new CreateRedisServiceError(deploymentError)));
+                    return transaction.Abort(deploymentError);
                 }
+                var deployment = (PlacementSummaryDto)deploymentResult.Value;
 
                 return transaction.Commit(new CreateRedisServiceOutcome(
                     new CreateRedisServiceResponse(newRedis.Id, deployment)));
             },
             cancellationToken);
     }
-
-    private static CreateRedisServiceOutcome Error(CreateRedisServiceError error) => new(error);
 
     private static ResolvedResourceDeploymentTarget ToResolvedResourceDeploymentTarget(
         DeploymentTargetLookupDto target) =>

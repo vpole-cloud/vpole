@@ -7,6 +7,7 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Persistence.Tenants;
 using Pole.Mediator;
+using static Pole.Features.Tenants.Application.TenantMemberAuthorizationHttpProblemMappings;
 
 namespace Pole.Features.Tenants.Application.Endpoints.Members;
 
@@ -39,7 +40,6 @@ public static class GetTenantMembersEndpoint
     {
         app.MapGet("/{TenantId}/members", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] GetTenantMembersRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -47,7 +47,7 @@ public static class GetTenantMembersEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     IReadOnlyCollection<TenantMemberDto> members => Results.Ok(members),
-                    TenantNotFound error => httpProblems.Map(error).ToHttpResult()
+                    TenantNotFound error => MapTenantNotFound(error)
                 });
             })
             .WithName("GetTenantMembers")

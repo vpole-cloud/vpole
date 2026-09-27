@@ -42,30 +42,6 @@ type CreatePostgresClusterRequestBody =
 
     override _.ToString() = "CreatePostgresClusterRequestBody([REDACTED])"
 
-type CreatePostgresClusterStateError =
-    | PostgresClusterComputeRuntimeClassUnsupported of deploymentTargetId : string
-
-type CreatePostgresClusterError =
-    | CreateState of CreatePostgresClusterStateError
-    | CreateTarget of DeploymentTargetNewWorkloadAdmissionError
-    | CreateCompute of ComputeProfileResolutionError
-    | CreateStorage of StorageProfileResolutionError
-    | CreateCredential of PostgresCredentialError
-    | CreateDeployment of CreateResourceDeploymentError
-    | CreateRegistration of ResourceRegistrationMutationError
-    | CreateQuota of QuotaExecutionError
-    interface IUnion with
-        member this.Value =
-            match this with
-            | CreateState error -> box error
-            | CreateTarget error -> box error
-            | CreateCompute error -> box error
-            | CreateStorage error -> box error
-            | CreateCredential error -> box error
-            | CreateDeployment error -> box error
-            | CreateRegistration error -> box error
-            | CreateQuota error -> box error
-
 type CreatePostgresClusterOutcome =
     | PostgresClusterCreated of PostgresClusterDto
     | CreatePostgresClusterRejected of CreatePostgresClusterError
@@ -140,7 +116,7 @@ module private CreatePostgresClusterWorkflow =
                         DeploymentTargetRequiredCapabilities.None),
                     cancellationToken)
 
-            match TypedResultInterop.toResult targetResult with
+            match TypedResultInterop.targetAdmission targetResult with
             | Error error ->
                 return Completed(CreatePostgresClusterRejected(CreateTarget error))
             | Ok target ->
@@ -153,7 +129,7 @@ module private CreatePostgresClusterWorkflow =
                             PostgresResourceDeployment.ResourceType),
                         cancellationToken)
 
-                match TypedResultInterop.toResult computeProfileResult with
+                match TypedResultInterop.computeProfile computeProfileResult with
                 | Error error ->
                     return Completed(CreatePostgresClusterRejected(CreateCompute error))
                 | Ok computeProfile
@@ -163,7 +139,7 @@ module private CreatePostgresClusterWorkflow =
                         Completed(
                             CreatePostgresClusterRejected(
                                 CreateState(
-                                    PostgresClusterComputeRuntimeClassUnsupported target.Id)))
+                                    CreatePostgresClusterStateError.PostgresClusterComputeRuntimeClassUnsupported target.Id)))
                 | Ok computeProfile ->
                     let requestedStorage =
                         defaultArg request.Body.Storage PostgresCluster.DefaultStorage
@@ -177,7 +153,7 @@ module private CreatePostgresClusterWorkflow =
                                 requestedStorage),
                             cancellationToken)
 
-                    match TypedResultInterop.toResult storageProfileResult with
+                    match TypedResultInterop.storageProfile storageProfileResult with
                     | Error error ->
                         return Completed(CreatePostgresClusterRejected(CreateStorage error))
                     | Ok storageProfile ->
@@ -262,7 +238,7 @@ module private CreatePostgresClusterWorkflow =
                             transaction.Session,
                             ct)
 
-                    match TypedResultInterop.toResult registrationResult with
+                    match TypedResultInterop.resourceRegistration registrationResult with
                     | Error error ->
                         return
                             transaction.Abort(
@@ -284,7 +260,7 @@ module private CreatePostgresClusterWorkflow =
                                 transaction.Session,
                                 ct)
 
-                        match TypedResultInterop.toResult deploymentResult with
+                        match TypedResultInterop.createResourceDeployment deploymentResult with
                         | Error error ->
                             return
                                 transaction.Abort(
@@ -298,16 +274,17 @@ module private CreatePostgresClusterWorkflow =
                                     deployment.DeploymentId,
                                     transaction.Session,
                                     ct)
-                            match TypedResultInterop.toResult secretResult with
-                            | Error error ->
+                            match secretResult.Value with
+                            | :? ManagedSecretFailure as error ->
                                 return transaction.Abort(
                                     CreatePostgresClusterRejected(
                                         CreateCredential(PostgresCredentialErrors.fromManaged plan.Cluster.Id error)))
-                            | Ok _ ->
+                            | :? ManagedSecretMutationSucceeded ->
                                 return
                                     transaction.Commit(
                                         PostgresClusterDto.create plan.Cluster deployment
                                         |> PostgresClusterCreated)
+                            | _ -> return invalidOp "Unexpected managed Secret creation outcome."
                 }),
             cancellationToken)
 
@@ -423,7 +400,6 @@ type CreatePostgresCluster =
     static member Handle(
         [<AsParameters>] request : CreatePostgresClusterRequest,
         [<FromServices>] mediator : IMediator,
-        [<FromServices>] httpProblems : IHttpProblemMapper,
         cancellationToken : System.Threading.CancellationToken) =
         task {
             let! result = mediator.Send(request, cancellationToken)
@@ -432,5 +408,5 @@ type CreatePostgresCluster =
                     match outcome with
                     | PostgresClusterCreated value -> Results.Accepted(value = value)
                     | CreatePostgresClusterRejected error ->
-                        httpProblems.Map(error).ToHttpResult())
+                        (PostgresHttpMappings.mapCreateError error).ToHttpResult())
         }

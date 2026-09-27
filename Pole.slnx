@@ -49,6 +49,7 @@
   <Folder Name="/features/GitProviders/">
     <Project Path="src/features/GitProviders/GitProviders.Application/GitProviders.Application.csproj" />
     <Project Path="src/features/GitProviders/GitProviders.Contracts/GitProviders.Contracts.csproj" />
+    <Project Path="src/features/GitProviders/GitProviders.Contracts.HttpMapping/GitProviders.Contracts.HttpMapping.csproj" />
     <Project Path="src/features/GitProviders/GitProviders.Domain/GitProviders.Domain.csproj" />
     <Project Path="src/features/GitProviders/GitProviders.Tests/GitProviders.Tests.csproj" />
   </Folder>
@@ -98,6 +99,7 @@
   </Folder>
   <Folder Name="/features/ResourceGroups/">
     <Project Path="src/features/ResourceGroups/ResourceGroups.Contracts/ResourceGroups.Contracts.csproj" />
+    <Project Path="src/features/ResourceGroups/ResourceGroups.Contracts.HttpMapping/ResourceGroups.Contracts.HttpMapping.csproj" />
     <Project Path="src/features/ResourceGroups/ResourceGroups.Application/ResourceGroups.Application.csproj" />
     <Project Path="src/features/ResourceGroups/ResourceGroups.Domain/ResourceGroups.Domain.csproj" />
     <Project Path="src/features/ResourceGroups/ResourceGroups.Events/ResourceGroups.Events.csproj" />
@@ -136,6 +138,7 @@
   </Folder>
   <Folder Name="/features/StorageProfiles/">
     <Project Path="src/features/StorageProfiles/StorageProfiles.Contracts/StorageProfiles.Contracts.csproj" />
+    <Project Path="src/features/StorageProfiles/StorageProfiles.Contracts.HttpMapping/StorageProfiles.Contracts.HttpMapping.csproj" />
     <Project Path="src/features/StorageProfiles/StorageProfiles.Domain/StorageProfiles.Domain.csproj" />
     <Project Path="src/features/StorageProfiles/StorageProfiles.Application/StorageProfiles.Application.csproj" />
     <Project Path="src/features/StorageProfiles/StorageProfiles.Primitives/StorageProfiles.Primitives.csproj" />

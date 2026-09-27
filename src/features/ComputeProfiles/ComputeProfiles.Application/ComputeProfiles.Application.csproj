@@ -22,6 +22,8 @@
       <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
       <ProjectReference Include="..\..\..\shared\Validation\Validation.csproj" />
       <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj" />
+      <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts.HttpMapping\DeploymentTargets.Contracts.HttpMapping.csproj" />
+      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts.HttpMapping\ResourceDeployments.Contracts.HttpMapping.csproj" />
     </ItemGroup>
 
     <ItemGroup>

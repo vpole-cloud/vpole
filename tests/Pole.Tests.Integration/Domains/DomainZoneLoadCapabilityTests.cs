@@ -37,7 +37,7 @@ public sealed class DomainZoneLoadCapabilityTests(MongoReplicaSetFixture fixture
         var foreignLookup = await loadZone.InvokeAsync(tenantId, foreignZone.Id);
         var selected = await loadZones.InvokeAsync(tenantId, deploymentTargetId);
 
-        Assert.False(foreignLookup.TryGetValue(out _, out var notFound));
+        var notFound = Assert.IsType<DomainZoneNotFound>(foreignLookup.Value);
         Assert.Equal(foreignZone.Id, notFound.ZoneId);
         var snapshot = Assert.Single(selected);
         Assert.Equal(zone.Id, snapshot.Id);

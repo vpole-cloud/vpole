@@ -11,18 +11,24 @@ using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ComputeProfiles.Contracts;
+using Pole.Features.ComputeProfiles.Contracts.HttpMapping;
 using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence.Mutations;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Quotas.Contracts;
+using Pole.Features.Quotas.Contracts.HttpMapping;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.ResourceGroups.Contracts.HttpMapping;
 using Pole.Functions.Protocol;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
 using Pole.Workloads;
+using static Pole.Features.Functions.Application.Common.FunctionAppHttpMappings;
 
 namespace Pole.Features.Functions.Application.Endpoints;
 
@@ -32,7 +38,6 @@ public static class CreateFunctionApp
     {
         app.MapPost("/", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] CreateFunctionAppRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -40,13 +45,29 @@ public static class CreateFunctionApp
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     CreateFunctionAppResponse response => Results.Accepted(value: response),
-                    CreateFunctionAppError error => httpProblems.Map(error).ToHttpResult()
+                    CreateFunctionAppError error => MapCreateError(error)
                 });
             })
             .WithName("CreateFunctionApp")
             .Produces<CreateFunctionAppResponse>(StatusCodes.Status202Accepted);
         return app;
     }
+
+    private static HttpProblem MapCreateError(CreateFunctionAppError error) =>
+        error.Value switch
+        {
+            FunctionAppDefaultDeploymentTargetUnavailable unavailable =>
+                MapDefaultDeploymentTargetUnavailable(unavailable),
+            DeploymentTargetNewWorkloadAdmissionError admission =>
+                DeploymentTargetContractHttpMappings.MapNewWorkloadAdmissionError(admission),
+            ComputeProfileResolutionError resolution =>
+                ComputeProfileContractHttpMappings.MapResolutionError(resolution),
+            CreateResourceDeploymentError deployment =>
+                ResourceDeploymentContractHttpMappings.MapDeploymentError(deployment),
+            ResourceRegistrationMutationError registration =>
+                ResourceGroupContractHttpMappings.MapRegistrationMutationError(registration),
+            QuotaExecutionError quota => QuotaContractHttpMappings.MapExecutionError(quota)
+        };
 }
 
 public sealed record CreateFunctionAppRequest(
@@ -159,11 +180,12 @@ public sealed class CreateFunctionAppHandler(
         CancellationToken cancellationToken = default)
     {
         var defaultTarget = await lookupDefaultDeploymentTarget(cancellationToken);
-        if (!defaultTarget.TryGetValue(out var configuredTarget, out _))
+        if (defaultTarget is DefaultDeploymentTargetLookupError)
         {
             return new CreateFunctionAppError(
                 new FunctionAppDefaultDeploymentTargetUnavailable());
         }
+        var configuredTarget = (DeploymentTargetLookupDto)defaultTarget.Value;
 
         var targetResult = await admitDeploymentTarget(
             new DeploymentTargetAdmissionRequest(
@@ -173,10 +195,11 @@ public sealed class CreateFunctionAppHandler(
                 configuredTarget.Id,
                 DeploymentTargetRequiredCapabilities.FunctionRuntimeConnectivity),
             cancellationToken);
-        if (!targetResult.TryGetValue(out var target, out var targetError))
+        if (targetResult is DeploymentTargetNewWorkloadAdmissionError targetError)
         {
             return new CreateFunctionAppError(targetError);
         }
+        var target = (DeploymentTargetLookupDto)targetResult.Value;
 
         var spec = request.Body.Spec.ToDomain();
         var computeResult = await resolveComputeProfile(
@@ -186,9 +209,10 @@ public sealed class CreateFunctionAppHandler(
                 request.TenantId,
                 FunctionResourceDeployment.ResourceType),
             cancellationToken);
-        if (!computeResult.TryGetValue(out var compute, out var computeError))
+        if (computeResult is ComputeProfileResolutionError computeError)
             return new CreateFunctionAppError(computeError);
 
+        var compute = (ResolvedComputeProfile)computeResult.Value;
         var createOptions = FunctionAppFactory.DefaultCreateOptions;
         var deploymentId = ObjectId.GenerateNewId().ToString();
         var admittedQuota = FunctionQuotaAllocation.FromRevision(spec.ToRevisionSpec());
@@ -216,12 +240,11 @@ public sealed class CreateFunctionAppHandler(
                         ResourcePlacementCapability.SingleTarget),
                     transaction.Session,
                     ct);
-                if (!deploymentResult.TryGetValue(
-                        out var placement,
-                        out var deploymentError))
+                if (deploymentResult is CreateResourceDeploymentError deploymentError)
                 {
                     return transaction.Abort(new CreateFunctionAppError(deploymentError));
                 }
+                var placement = (PlacementSummaryDto)deploymentResult.Value;
 
                 var created = FunctionAppFactory.Create(
                     request.TenantId,
@@ -249,7 +272,7 @@ public sealed class CreateFunctionAppHandler(
                         created.FunctionApp.Name),
                     transaction.Session,
                     ct);
-                if (!registration.TryGetValue(out _, out var registrationError))
+                if (registration is ResourceRegistrationMutationError registrationError)
                 {
                     return transaction.Abort(new CreateFunctionAppError(registrationError));
                 }

@@ -20,6 +20,7 @@
     <ProjectReference Include="..\\Domains.Domain\\Domains.Domain.csproj" />
     <ProjectReference Include="..\\..\\Tenants\\Tenants.Contracts\\Tenants.Contracts.csproj" />
     <ProjectReference Include="..\\..\\DeploymentTargets\\DeploymentTargets.Contracts\\DeploymentTargets.Contracts.csproj" />
+    <ProjectReference Include="..\\..\\DeploymentTargets\\DeploymentTargets.Contracts.HttpMapping\\DeploymentTargets.Contracts.HttpMapping.csproj" />
     <ProjectReference Include="..\\..\\..\\shared\\Dns\\Dns.csproj" />
     <ProjectReference Include="..\\..\\..\\shared\\Database\\Database.csproj" />
     <ProjectReference Include="..\\..\\..\\shared\\helpers\\ASP\\ASP.csproj" />

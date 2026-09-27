@@ -9,8 +9,7 @@ public delegate Task<string?> LoadDefaultDeploymentTargetId(
 internal sealed class MongoLoadDefaultDeploymentTargetId(
     IMongoCollection<DeploymentTargetSettings> settings)
 {
-    public async Task<string?> InvokeAsync(CancellationToken cancellationToken = default) =>
-        await settings
+    public async Task<string?> InvokeAsync(CancellationToken cancellationToken = default) => await settings
             .Find(DeploymentTargetSettingsFilters.Singleton())
             .Project(item => item.DefaultDeploymentTargetId)
             .FirstOrDefaultAsync(cancellationToken);

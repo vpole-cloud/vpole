@@ -11,7 +11,3 @@ public sealed record DefaultComputeProfileCannotBeDemoted(
 
 public sealed record ComputeProfileRevisionConflict(
     string ComputeProfileId);
-
-public union ComputeProfileMutationValidationError(
-    SelectedComputeProfileTenantsNotFound,
-    ComputeProfileTargetMappingsInvalid);

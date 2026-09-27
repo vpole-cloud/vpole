@@ -4,7 +4,6 @@ using Pole.Features.ResourceGroups.Application.Persistence.IsolationScopes;
 using Pole.Features.ResourceGroups.Application.Persistence.ResourceRegistrations;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
-using Pole.ResultType;
 using Pole.Workloads;
 
 namespace Pole.Features.ResourceGroups.Application.Persistence;
@@ -14,7 +13,7 @@ internal sealed class MongoAdmitResourceScopeReference(
     IMongoCollection<IsolationScope> scopes,
     IMongoCollection<ResourceRegistration> registrations)
 {
-    public async Task<Result<Unit, ResourceScopeReferenceUnavailable>> InvokeAsync(
+    public async Task<AdmitResourceScopeReferenceOutcome> InvokeAsync(
         string tenantId,
         string resourceGroupId,
         string isolationScopeId,
@@ -31,7 +30,7 @@ internal sealed class MongoAdmitResourceScopeReference(
             Builders<ResourceGroup>.Update.Inc(x => x.RegistrationFence, 1),
             cancellationToken: cancellationToken);
         if (fence.ModifiedCount != 1)
-            return new Err<ResourceScopeReferenceUnavailable>(new());
+            return new ResourceScopeReferenceUnavailable();
 
         var scope = await scopes
             .Find(
@@ -42,9 +41,9 @@ internal sealed class MongoAdmitResourceScopeReference(
                     isolationScopeId))
             .FirstOrDefaultAsync(cancellationToken);
         if (scope?.Lifecycle is not ActiveIsolationScopeLifecycleState)
-            return new Err<ResourceScopeReferenceUnavailable>(new());
+            return new ResourceScopeReferenceUnavailable();
         if (consumer is null)
-            return new Ok<Unit>(Unit.Value);
+            return new ResourceScopeReferenceAdmitted();
 
         var exists = await registrations.Find(
             session,
@@ -53,6 +52,6 @@ internal sealed class MongoAdmitResourceScopeReference(
                 resourceGroupId,
                 consumer.ResourceType,
                 consumer.ResourceId)).AnyAsync(cancellationToken);
-        return exists ? new Ok<Unit>(Unit.Value) : new Err<ResourceScopeReferenceUnavailable>(new());
+        return exists ? new ResourceScopeReferenceAdmitted() : new ResourceScopeReferenceUnavailable();
     }
 }

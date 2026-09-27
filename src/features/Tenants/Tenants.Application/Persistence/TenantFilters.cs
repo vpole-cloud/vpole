@@ -38,12 +38,16 @@ internal static class TenantFilters
                 tenant => tenant.Members,
                 member => member.Id == memberId));
 
-    public static FilterDefinition<Tenant> ByIdWithMemberAndAnotherOwner(
+    public static FilterDefinition<Tenant> ByIdWithMemberAndOwnerCanBeRemoved(
         string tenantId,
         string memberId) =>
         Builders<Tenant>.Filter.And(
             ByIdWithMember(tenantId, memberId),
-            AtLeastTwoOwners());
+            Builders<Tenant>.Filter.Or(
+                Builders<Tenant>.Filter.ElemMatch(
+                    tenant => tenant.Members,
+                    member => member.Id == memberId && member.Role != TenantRole.Owner),
+                AtLeastTwoOwners()));
 
     private static FilterDefinition<Tenant> AtLeastTwoOwners() =>
         new BsonDocumentFilterDefinition<Tenant>(

@@ -78,6 +78,17 @@ enabled target accepting workloads and fence target deletion, but do not require
 Actual workload admission and runtime-reference creation remain blocked until attestation or an
 explicit isolation-not-enforced override.
 
+## Operation outcomes and HTTP mapping
+
+Owned validation, persistence, resolution, and fencing capabilities return named operation
+unions. Mutation endpoints expose their concrete success and error cases and call HTTP mapping
+methods directly, including methods from provider-owned `Contracts.HttpMapping` projects.
+
+Resolution retains `ComputeProfileResolutionError` as the shared error group for workload
+consumers. Its contract HTTP mappings remain registered while those consumers still use the
+dynamic mapper. Calls to DeploymentTargets and ResourceDeployments retain those providers'
+existing result contracts until their respective migrations.
+
 ## Kubernetes validation and limitations
 
 Target mappings are checked against the selected cluster's node labels and allocatable extended

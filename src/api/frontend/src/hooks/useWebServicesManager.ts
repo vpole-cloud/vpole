@@ -184,8 +184,13 @@ export function useWebServicesManager({
   }, [apiBaseUrl, enabled, tenantId, token])
 
   useEffect(() => {
-    if (enabled) {
-      void loadAvailableTargets()
+    if (!enabled) return
+    let active = true
+    queueMicrotask(() => {
+      if (active) void loadAvailableTargets()
+    })
+    return () => {
+      active = false
     }
   }, [enabled, loadAvailableTargets])
 

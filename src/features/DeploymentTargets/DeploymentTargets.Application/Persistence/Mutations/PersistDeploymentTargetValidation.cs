@@ -1,11 +1,14 @@
 using MongoDB.Driver;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Persistence.Mutations;
 
-public delegate Task<Result<DeploymentTarget, DeploymentTargetRevisionConflict>>
+public union PersistDeploymentTargetValidationOutcome(
+    DeploymentTarget,
+    DeploymentTargetRevisionConflict);
+
+public delegate Task<PersistDeploymentTargetValidationOutcome>
     PersistDeploymentTargetValidation(
         DeploymentTarget current,
         DeploymentTarget replacement,
@@ -14,7 +17,7 @@ public delegate Task<Result<DeploymentTarget, DeploymentTargetRevisionConflict>>
 internal sealed class MongoPersistDeploymentTargetValidation(
     IMongoCollection<DeploymentTarget> deploymentTargets)
 {
-    public async Task<Result<DeploymentTarget, DeploymentTargetRevisionConflict>> InvokeAsync(
+    public async Task<PersistDeploymentTargetValidationOutcome> InvokeAsync(
         DeploymentTarget current,
         DeploymentTarget replacement,
         CancellationToken cancellationToken = default)
@@ -39,8 +42,7 @@ internal sealed class MongoPersistDeploymentTargetValidation(
             },
             cancellationToken);
         return persisted is null
-            ? new Err<DeploymentTargetRevisionConflict>(
-                new DeploymentTargetRevisionConflict(current.Id))
-            : new Ok<DeploymentTarget>(persisted);
+            ? new DeploymentTargetRevisionConflict(current.Id)
+            : persisted;
     }
 }

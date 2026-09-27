@@ -2,11 +2,16 @@ using MongoDB.Driver;
 using Pole.Features.Quotas.Application.Persistence.Usage;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.Quotas.Application.Persistence.Reservations;
 
-public delegate Task<Result<QuotaReservationCommitted, QuotaReservationCommitError>>
+public union CommitQuotaReservationOutcome(
+    QuotaReservationCommitted,
+    QuotaReservationNotFound,
+    QuotaReservationCancelled,
+    QuotaReservationExpired);
+
+public delegate Task<CommitQuotaReservationOutcome>
     CommitQuotaReservation(
         string reservationId,
         IClientSessionHandle session,
@@ -18,7 +23,7 @@ internal sealed class MongoCommitQuotaReservation(
     QuotaSettings settings,
     TimeProvider timeProvider)
 {
-    public async Task<Result<QuotaReservationCommitted, QuotaReservationCommitError>> InvokeAsync(
+    public async Task<CommitQuotaReservationOutcome> InvokeAsync(
         string reservationId,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
@@ -48,14 +53,10 @@ internal sealed class MongoCommitQuotaReservation(
                 .FirstOrDefaultAsync(cancellationToken);
             return existing?.State switch
             {
-                null => new Err<QuotaReservationCommitError>(
-                    new QuotaReservationCommitError(new QuotaReservationNotFound(reservationId))),
-                CommittedQuotaReservationState => new Ok<QuotaReservationCommitted>(
-                    new QuotaReservationCommitted()),
-                CancelledQuotaReservationState => new Err<QuotaReservationCommitError>(
-                    new QuotaReservationCommitError(new QuotaReservationCancelled(reservationId))),
-                ActiveQuotaReservationState => new Err<QuotaReservationCommitError>(
-                    new QuotaReservationCommitError(new QuotaReservationExpired(reservationId))),
+                null => new QuotaReservationNotFound(reservationId),
+                CommittedQuotaReservationState => new QuotaReservationCommitted(),
+                CancelledQuotaReservationState => new QuotaReservationCancelled(reservationId),
+                ActiveQuotaReservationState => new QuotaReservationExpired(reservationId),
                 _ => throw new InvalidOperationException(
                     $"Quota reservation '{reservationId}' has an unsupported state.")
             };
@@ -76,6 +77,6 @@ internal sealed class MongoCommitQuotaReservation(
                 .Set(candidate => candidate.UpdatedAtUtc, nowUtc),
             cancellationToken: cancellationToken);
 
-        return new Ok<QuotaReservationCommitted>(new QuotaReservationCommitted());
+        return new QuotaReservationCommitted();
     }
 }

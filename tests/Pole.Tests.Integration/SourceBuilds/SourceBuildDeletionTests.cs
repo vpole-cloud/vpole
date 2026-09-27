@@ -13,6 +13,7 @@ using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Consumers;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Application.Persistence.Lifecycle;
+using Pole.Features.WebServices.Application.Persistence.Mutations;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
 using Pole.ResultType;
@@ -39,7 +40,7 @@ public sealed class SourceBuildDeletionTests(MongoReplicaSetFixture fixture)
         await DbContext.SourceBuildJobs.InsertOneAsync(Job(other));
         var job = Job(configuration);
         var queue = Services.GetRequiredService<QueueSourceBuildJob>();
-        (await queue(job, Requested(job))).AssertSuccess();
+        Assert.IsType<SourceBuildJob>((await queue(job, Requested(job))).Value);
         var before = await Fixture.Database.WebServices()
             .Find(x => x.Id == service.WebServiceId)
             .SingleAsync();
@@ -65,7 +66,7 @@ public sealed class SourceBuildDeletionTests(MongoReplicaSetFixture fixture)
         // Configuration remains until final deletion, but the target already rejects admission.
         var deniedJob = Job(configuration);
         var denied = await queue(deniedJob, Requested(deniedJob));
-        Assert.IsType<Err<SourceBuildWebServiceNotFound>>(denied.Value);
+        Assert.IsType<SourceBuildWebServiceNotFound>(denied.Value);
         Assert.Equal(
             1,
             await DbContext.SourceBuildJobs.CountDocumentsAsync(x => x.TenantId == TestData.TenantId));
@@ -120,7 +121,7 @@ public sealed class SourceBuildDeletionTests(MongoReplicaSetFixture fixture)
                     20))).Items.Single().Id);
 
         var missingJob = Job(configuration);
-        Assert.IsType<Err<SourceBuildWebServiceNotFound>>(
+        Assert.IsType<SourceBuildWebServiceNotFound>(
             (await queue(missingJob, Requested(missingJob))).Value);
     }
 
@@ -135,14 +136,15 @@ public sealed class SourceBuildDeletionTests(MongoReplicaSetFixture fixture)
         var configuration = Configuration(created.WebServiceId);
         await DbContext.SourceBuildConfigurations.InsertOneAsync(configuration);
         var job = Job(configuration);
-        (await Services.GetRequiredService<QueueSourceBuildJob>()(job, Requested(job))).AssertSuccess();
+        Assert.IsType<SourceBuildJob>(
+            (await Services.GetRequiredService<QueueSourceBuildJob>()(job, Requested(job))).Value);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         var staleDeletion = await Services.GetRequiredService<BeginWebServiceDeletionOutcome>()(
             session,
             snapshot,
             snapshot.BeginDeletion(DateTime.UtcNow));
-        Assert.False(staleDeletion.TryGetValue(out _, out _));
+        Assert.IsType<WebServiceUpdateConflict>(staleDeletion.Value);
         await session.AbortTransactionAsync();
         var stored = await Fixture.Database.WebServices()
             .Find(x => x.Id == created.WebServiceId)

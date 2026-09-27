@@ -3,7 +3,6 @@ using Pole.Database;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Users.Domain;
 using Pole.Features.Users.Events;
-using Pole.ResultType;
 
 namespace Pole.Features.Users.Application.Persistence.Users;
 
@@ -11,7 +10,13 @@ public sealed record PersistCreatedUserRequest(
     PoleUser User,
     string DefaultTenantName);
 
-public delegate Task<Result<Unit, CreateUserPersistenceError>> PersistCreatedUser(
+public sealed record UserPersisted;
+
+public union PersistCreatedUserOutcome(
+    UserPersisted,
+    CreateUserPersistenceError);
+
+public delegate Task<PersistCreatedUserOutcome> PersistCreatedUser(
     PersistCreatedUserRequest request,
     CancellationToken cancellationToken = default);
 
@@ -22,13 +27,13 @@ internal sealed class MongoPersistCreatedUser(
 {
     private readonly IMongoCollection<PoleUser> _users = database.GetCollection<PoleUser>("Users");
 
-    public async Task<Result<Unit, CreateUserPersistenceError>> InvokeAsync(
+    public async Task<PersistCreatedUserOutcome> InvokeAsync(
         PersistCreatedUserRequest request,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            return await transaction.InvokeOutcomeAsync<Result<Unit, CreateUserPersistenceError>>(
+            return await transaction.InvokeOutcomeAsync<PersistCreatedUserOutcome>(
                 async (context, transactionCancellationToken) =>
                 {
                     var emailExists = await _users
@@ -36,7 +41,7 @@ internal sealed class MongoPersistCreatedUser(
                         .AnyAsync(transactionCancellationToken);
                     if (emailExists)
                     {
-                        return context.AbortError<Unit, CreateUserPersistenceError>(
+                        return context.Abort(
                             new CreateUserPersistenceError(
                                 new UserEmailAlreadyExists(request.User.Email)));
                     }
@@ -58,16 +63,15 @@ internal sealed class MongoPersistCreatedUser(
                             EventCore = EventCore.Create()
                         })],
                         transactionCancellationToken);
-                    return context.Commit(new Ok<Unit>(Unit.Value));
+                    return context.Commit(new UserPersisted());
                 },
                 cancellationToken);
         }
         catch (MongoWriteException exception) when (
             exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
         {
-            return new Err<CreateUserPersistenceError>(
-                new CreateUserPersistenceError(
-                    new UserIdentityAlreadyExists(request.User.Id)));
+            return new CreateUserPersistenceError(
+                new UserIdentityAlreadyExists(request.User.Id));
         }
     }
 }

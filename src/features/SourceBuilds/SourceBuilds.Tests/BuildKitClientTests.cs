@@ -2,7 +2,6 @@ using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Execution;
 using Microsoft.Extensions.Logging.Abstractions;
-using Pole.ResultType;
 using Xunit;
 
 namespace Pole.Features.SourceBuilds.Tests;
@@ -75,9 +74,8 @@ public sealed class BuildKitClientTests
             "robot$build",
             "registry-secret"));
 
-        var extracted = TypedResultExtensions.TryGetValue(result);
-        Assert.True(extracted.Succeeded, extracted.Error.ToString());
-        Assert.Equal(Digest, extracted.Value!.Digest);
+        var image = Assert.IsType<BuiltContainerImage>(result.Value);
+        Assert.Equal(Digest, image.Digest);
         Assert.NotNull(runner.LastSpec);
         Assert.False(Directory.Exists(runner.LastSpec.EnvironmentVariables["DOCKER_CONFIG"]));
     }
@@ -97,9 +95,8 @@ public sealed class BuildKitClientTests
             "robot$build",
             "registry-secret"));
 
-        var extracted = TypedResultExtensions.TryGetValue(result);
-        Assert.False(extracted.Succeeded);
-        var failure = Assert.IsType<BuildKitBuildRejected>(extracted.Error!.Value);
+        var error = Assert.IsType<BuildContainerImageError>(result.Value);
+        var failure = Assert.IsType<BuildKitBuildRejected>(error.Value);
         Assert.DoesNotContain("registry-secret", failure.ToString(), StringComparison.Ordinal);
         Assert.Contains("could not authenticate", failure.Classification, StringComparison.OrdinalIgnoreCase);
     }
@@ -119,9 +116,8 @@ public sealed class BuildKitClientTests
             "robot$build",
             "registry-secret"));
 
-        var extracted = TypedResultExtensions.TryGetValue(result);
-        Assert.False(extracted.Succeeded);
-        var failure = Assert.IsType<BuildKitBuildRejected>(extracted.Error!.Value);
+        var error = Assert.IsType<BuildContainerImageError>(result.Value);
+        var failure = Assert.IsType<BuildKitBuildRejected>(error.Value);
         Assert.DoesNotContain("registry-secret", failure.ToString(), StringComparison.Ordinal);
         Assert.Contains("configured target registry", failure.Classification, StringComparison.OrdinalIgnoreCase);
     }

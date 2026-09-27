@@ -10,7 +10,13 @@ namespace Pole.Features.Functions.Application.Persistence.Lifecycle;
 
 public sealed record FunctionAppDeletionFinalizationConflict(string FunctionAppId);
 
-public delegate Task<Result<Unit, FunctionAppDeletionFinalizationConflict>>
+public sealed record FunctionAppDeletionFinalized;
+
+public union FinalizeFunctionAppDeletionOutcome(
+    FunctionAppDeletionFinalized,
+    FunctionAppDeletionFinalizationConflict);
+
+public delegate Task<FinalizeFunctionAppDeletionOutcome>
     FinalizeFunctionAppDeletion(
         string tenantId,
         string functionAppId,
@@ -28,10 +34,10 @@ internal sealed class MongoFinalizeFunctionAppDeletion(
     GetExactResourceDeploymentFinalizationReadiness getDeploymentReadiness,
     PurgeExactDeletedResourceDeployment purgeDeployment,
     IResourceRegistrar resourceRegistrar,
-    RunMongoOutcomeTransaction<Result<Unit, FunctionAppDeletionFinalizationConflict>>
+    RunMongoOutcomeTransaction<FinalizeFunctionAppDeletionOutcome>
         runMongoTransaction)
 {
-    public Task<Result<Unit, FunctionAppDeletionFinalizationConflict>> InvokeAsync(
+    public Task<FinalizeFunctionAppDeletionOutcome> InvokeAsync(
         string tenantId,
         string functionAppId,
         string resourceDeploymentId,
@@ -46,7 +52,7 @@ internal sealed class MongoFinalizeFunctionAppDeletion(
                 .Find(transaction.Session, appFilter)
                 .FirstOrDefaultAsync(ct);
             if (app is null)
-                return transaction.Commit(new Ok<Unit>(Unit.Value));
+                return transaction.Commit(Finalized());
 
             var readiness = await getDeploymentReadiness(
                 tenantId,
@@ -56,7 +62,7 @@ internal sealed class MongoFinalizeFunctionAppDeletion(
                 transaction.Session,
                 ct);
             if (readiness is not ResourceDeploymentFinalizationReadiness.Ready)
-                return transaction.Commit(new Ok<Unit>(Unit.Value));
+                return transaction.Commit(Finalized());
 
             await DeleteOwnedDocumentsAsync(
                 transaction.Session,
@@ -77,7 +83,7 @@ internal sealed class MongoFinalizeFunctionAppDeletion(
                 functionAppId,
                 transaction.Session,
                 ct);
-            if (!registration.TryGetValue(out _, out _))
+            if (registration is ResourceRegistrationMutationError)
                 return transaction.Abort(Conflict(functionAppId));
 
             var purge = await purgeDeployment(
@@ -87,10 +93,10 @@ internal sealed class MongoFinalizeFunctionAppDeletion(
                 resourceDeploymentId,
                 transaction.Session,
                 ct);
-            if (purge is Err<ResourceDeploymentFinalizationConflict>)
+            if (purge is ResourceDeploymentFinalizationConflict)
                 return transaction.Abort(Conflict(functionAppId));
 
-            return transaction.Commit(new Ok<Unit>(Unit.Value));
+            return transaction.Commit(Finalized());
         }, cancellationToken);
 
     private async Task DeleteOwnedDocumentsAsync(
@@ -125,9 +131,12 @@ internal sealed class MongoFinalizeFunctionAppDeletion(
             cancellationToken: cancellationToken);
     }
 
-    private static Err<FunctionAppDeletionFinalizationConflict> Conflict(
+    private static FinalizeFunctionAppDeletionOutcome Finalized() =>
+        new FunctionAppDeletionFinalized();
+
+    private static FinalizeFunctionAppDeletionOutcome Conflict(
         string functionAppId) =>
-        new(new FunctionAppDeletionFinalizationConflict(functionAppId));
+        new FunctionAppDeletionFinalizationConflict(functionAppId);
 }
 
 internal static class FunctionAppDeletionFilters

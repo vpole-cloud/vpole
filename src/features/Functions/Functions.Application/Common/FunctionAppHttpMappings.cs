@@ -7,20 +7,7 @@ namespace Pole.Features.Functions.Application.Common;
 
 public static class FunctionAppHttpMappings
 {
-    public static IReadOnlyList<HttpProblemMapping> All { get; } =
-        Array.AsReadOnly<HttpProblemMapping>(
-        [
-            HttpProblemMapping.For<FunctionAppNotFound>(MapNotFound),
-            HttpProblemMapping.For<FunctionAppDefaultDeploymentTargetUnavailable>(
-                MapDefaultDeploymentTargetUnavailable),
-            HttpProblemMapping.For<FunctionAppHasPendingRevision>(MapPendingRevision),
-            HttpProblemMapping.For<FunctionAppIsNotEnabled>(MapNotEnabled),
-            HttpProblemMapping.For<FunctionAppRevisionChanged>(MapRevisionChanged),
-            HttpProblemMapping.For<FunctionAppDeletionChanged>(MapDeletionChanged),
-            HttpProblemMapping.For<RetryFunctionInvocationError>(MapRetryError)
-        ]);
-
-    private static HttpProblem MapNotFound(FunctionAppNotFound error) =>
+    public static HttpProblem MapNotFound(FunctionAppNotFound error) =>
         new(
             (int)HttpStatusCode.NotFound,
             PoleProblemTypeId.FromCode("function-apps.not-found"),
@@ -31,7 +18,7 @@ public static class FunctionAppHttpMappings
                 ["functionAppId"] = error.FunctionAppId
             });
 
-    private static HttpProblem MapDefaultDeploymentTargetUnavailable(
+    public static HttpProblem MapDefaultDeploymentTargetUnavailable(
         FunctionAppDefaultDeploymentTargetUnavailable _) =>
         new(
             (int)HttpStatusCode.Conflict,
@@ -39,25 +26,32 @@ public static class FunctionAppHttpMappings
             "Default deployment target is unavailable",
             "function-apps.default-deployment-target.unavailable");
 
-    private static HttpProblem MapPendingRevision(FunctionAppHasPendingRevision error) =>
+    public static HttpProblem MapPendingRevision(FunctionAppHasPendingRevision error) =>
         Conflict(
             "function-apps.pending-revision.exists",
             "Function App already has a pending revision",
             error.FunctionAppId);
 
-    private static HttpProblem MapNotEnabled(FunctionAppIsNotEnabled error) =>
+    public static HttpProblem MapNotEnabled(FunctionAppIsNotEnabled error) =>
         Conflict(
             "function-apps.not-enabled",
             "Function App is not enabled",
             error.FunctionAppId);
 
-    private static HttpProblem MapRevisionChanged(FunctionAppRevisionChanged error) =>
+    public static HttpProblem MapResourceDeploymentMissing(
+        FunctionAppResourceDeploymentMissing error) =>
+        Conflict(
+            "function-apps.resource-deployment.missing",
+            "Function App resource deployment is unavailable",
+            error.FunctionAppId);
+
+    public static HttpProblem MapRevisionChanged(FunctionAppRevisionChanged error) =>
         Conflict(
             "function-apps.revision-changed",
             "Function App revision changed concurrently",
             error.FunctionAppId);
 
-    private static HttpProblem MapDeletionChanged(FunctionAppDeletionChanged error) =>
+    public static HttpProblem MapDeletionChanged(FunctionAppDeletionChanged error) =>
         Conflict(
             "function-apps.deletion-changed",
             "Function App state changed concurrently",
@@ -74,7 +68,7 @@ public static class FunctionAppHttpMappings
                 ["functionAppId"] = functionAppId
             });
 
-    private static HttpProblem MapRetryError(RetryFunctionInvocationError error) => error switch
+    public static HttpProblem MapRetryError(RetryFunctionInvocationError error) => error switch
     {
         FunctionAppNotFound notFound => MapNotFound(notFound),
         FunctionInvocationNotFound notFound => new(

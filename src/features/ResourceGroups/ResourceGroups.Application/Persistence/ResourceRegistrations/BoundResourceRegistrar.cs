@@ -1,6 +1,5 @@
 using MongoDB.Driver;
 using Pole.Features.ResourceGroups.Contracts;
-using Pole.ResultType;
 using Pole.Workloads;
 
 namespace Pole.Features.ResourceGroups.Application.Persistence.ResourceRegistrations;
@@ -9,7 +8,7 @@ internal sealed class BoundResourceRegistrar(
     MongoResourceRegistrationMutations mutations,
     string? owningPluginId) : IResourceRegistrar
 {
-    public Task<Result<RegisteredResource, ResourceRegistrationMutationError>> RegisterAsync(
+    public Task<ResourceRegistrationOutcome> RegisterAsync(
         string tenantId,
         string resourceGroupId,
         ResourceRegistrationDescriptor resource,
@@ -23,7 +22,7 @@ internal sealed class BoundResourceRegistrar(
             session,
             cancellationToken);
 
-    public Task<Result<RegisteredResource, ResourceRegistrationMutationError>> UpdateAsync(
+    public Task<ResourceRegistrationOutcome> UpdateAsync(
         string tenantId,
         string resourceGroupId,
         ResourceRegistrationDescriptor resource,
@@ -37,7 +36,7 @@ internal sealed class BoundResourceRegistrar(
             session,
             cancellationToken);
 
-    public Task<Result<Unit, ResourceRegistrationMutationError>> UnregisterAsync(
+    public Task<ResourceUnregistrationOutcome> UnregisterAsync(
         string tenantId,
         string resourceGroupId,
         ResourceTypeId resourceTypeId,

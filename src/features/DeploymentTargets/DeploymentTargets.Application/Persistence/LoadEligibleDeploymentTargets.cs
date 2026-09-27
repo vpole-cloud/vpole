@@ -21,8 +21,7 @@ internal sealed class MongoLoadEligibleDeploymentTargets(
             .SortBy(target => target.Id)
             .ToListAsync(cancellationToken);
         return targets
-            .Where(target =>
-                !requiredCapabilities.HasFlag(
+            .Where(target => !requiredCapabilities.HasFlag(
                     DeploymentTargetRequiredCapabilities.PublicIngress) ||
                 target.WorkloadConfiguration.Ingress?.PublicBaseDomain is not null)
             .ToArray();

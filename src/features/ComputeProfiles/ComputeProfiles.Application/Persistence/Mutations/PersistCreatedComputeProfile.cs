@@ -8,10 +8,11 @@ using Pole.ResultType;
 
 namespace Pole.Features.ComputeProfiles.Application.Persistence.Mutations;
 
-public union PersistCreatedComputeProfileError(
+public union PersistCreatedComputeProfileOutcome(
+    ComputeProfile,
     DeploymentTargetReferenceChangeRejected);
 
-public delegate Task<Result<ComputeProfile, PersistCreatedComputeProfileError>>
+public delegate Task<PersistCreatedComputeProfileOutcome>
     PersistCreatedComputeProfile(
     ComputeProfile profile,
     CancellationToken cancellationToken = default);
@@ -19,11 +20,9 @@ public delegate Task<Result<ComputeProfile, PersistCreatedComputeProfileError>>
 internal sealed class MongoPersistCreatedComputeProfile(
     IMongoCollection<ComputeProfile> computeProfiles,
     ApplyDeploymentTargetReferenceChanges applyTargetReferenceChanges,
-    RunMongoOutcomeTransaction<Result<
-        ComputeProfile,
-        PersistCreatedComputeProfileError>> runMongoTransaction)
+    RunMongoOutcomeTransaction<PersistCreatedComputeProfileOutcome> runMongoTransaction)
 {
-    public Task<Result<ComputeProfile, PersistCreatedComputeProfileError>> InvokeAsync(
+    public Task<PersistCreatedComputeProfileOutcome> InvokeAsync(
         ComputeProfile profile,
         CancellationToken cancellationToken = default)
     {
@@ -37,9 +36,9 @@ internal sealed class MongoPersistCreatedComputeProfile(
                 [],
                 transaction.Session,
                 ct);
-            if (references is Err<DeploymentTargetReferenceChangeRejected> error)
+            if (references is DeploymentTargetReferenceChangeRejected error)
             {
-                return transaction.AbortError(new(error.Value));
+                return transaction.Abort(error);
             }
 
             if (profile.IsDefault)
@@ -56,7 +55,7 @@ internal sealed class MongoPersistCreatedComputeProfile(
                 transaction.Session,
                 profile,
                 cancellationToken: ct);
-            return transaction.Commit(new Ok<ComputeProfile>(profile));
+            return transaction.Commit(profile);
         }, cancellationToken);
     }
 }

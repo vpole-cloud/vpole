@@ -4,14 +4,14 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
-using Pole.Features.Core.Multitenancy;
-using Pole.Features.Domains.Contracts;
-using Pole.Features.Domains.Application.Persistence;
 using Pole.Database;
+using Pole.Features.Core.Multitenancy;
+using Pole.Features.Domains.Application.Persistence;
 using Pole.Features.Domains.Application.Persistence.DomainZones;
+using Pole.Features.Domains.Contracts;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
+using static Pole.Features.Domains.Application.Common.DomainHttpMappings;
 
 namespace Pole.Features.Domains.Application.Endpoints;
 
@@ -21,11 +21,10 @@ public static class DeleteDomainZone
     {
         app.MapDelete("/{Id}", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] DeleteDomainZoneRequest request,
                 CancellationToken cancellationToken) =>
                 (await mediator.Send(request, cancellationToken)).ToHttpResult(
-                    outcome => ToHttpResult(outcome, httpProblems)))
+                    ToHttpResult))
             .WithName("DeleteDomainZone")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status404NotFound)
@@ -34,12 +33,14 @@ public static class DeleteDomainZone
     }
 
     private static IResult ToHttpResult(
-        DeleteDomainZoneOutcome outcome,
-        IHttpProblemMapper httpProblems) => outcome switch
+        DeleteDomainZoneOutcome outcome) => outcome switch
         {
             ManagedDomainZoneDeleted => Results.NoContent(),
-            DeleteManagedDomainZoneError error =>
-                httpProblems.Map(error).ToHttpResult()
+            DomainZoneNotFound error => MapDomainZoneNotFound(error),
+            GeneratedDomainZoneDeletionRejected error => MapGeneratedDomainZoneDeletionRejected(error),
+            DomainZoneHasHostnameBindings error => MapDomainZoneHasHostnameBindings(error),
+            DomainZoneDeletionConflict error => MapDomainZoneDeletionConflict(error),
+            ManagedDomainZoneReferenceRemovalRejected error => MapManagedDomainZoneReferenceRemovalRejected(error)
         };
 }
 
@@ -50,7 +51,11 @@ public sealed record DeleteDomainZoneRequest(
 
 public union DeleteDomainZoneOutcome(
     ManagedDomainZoneDeleted,
-    DeleteManagedDomainZoneError);
+    DomainZoneNotFound,
+    GeneratedDomainZoneDeletionRejected,
+    DomainZoneHasHostnameBindings,
+    DomainZoneDeletionConflict,
+    ManagedDomainZoneReferenceRemovalRejected);
 
 public sealed class DeleteDomainZoneRequestValidator : AbstractValidator<DeleteDomainZoneRequest>
 {
@@ -78,9 +83,15 @@ public sealed class DeleteDomainZoneHandler(
                     transaction.Session,
                     transactionCancellationToken);
 
-                return result.Match(
-                    deleted => transaction.Commit(deleted),
-                    error => transaction.Abort(error));
+                return result switch
+                {
+                    ManagedDomainZoneDeleted deleted => transaction.Commit(deleted),
+                    DomainZoneNotFound error => transaction.Abort(error),
+                    GeneratedDomainZoneDeletionRejected error => transaction.Abort(error),
+                    DomainZoneHasHostnameBindings error => transaction.Abort(error),
+                    DomainZoneDeletionConflict error => transaction.Abort(error),
+                    ManagedDomainZoneReferenceRemovalRejected error => transaction.Abort(error)
+                };
             },
             cancellationToken);
 }

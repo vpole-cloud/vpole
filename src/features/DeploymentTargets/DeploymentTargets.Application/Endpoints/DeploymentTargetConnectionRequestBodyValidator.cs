@@ -44,8 +44,7 @@ public sealed class DeploymentTargetConnectionRequestBodyValidator
     }
 
     private static Func<DeploymentTargetConnectionRequestBody, bool> IsKind(
-        DeploymentTargetConnectionKind expected) =>
-        body => Enum.TryParse<DeploymentTargetConnectionKind>(
+        DeploymentTargetConnectionKind expected) => body => Enum.TryParse<DeploymentTargetConnectionKind>(
                     body.Kind,
                     ignoreCase: true,
                     out var actual) &&

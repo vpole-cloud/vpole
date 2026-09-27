@@ -1,10 +1,13 @@
 using Pole.Encryption;
 using Pole.Features.ContainerRegistries.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.ContainerRegistries.Application.Security;
 
-public delegate ValueTask<Result<EncryptedValue, RegistryCredentialProtectionFailed>>
+public union ProtectRegistryCredentialOutcome(
+    EncryptedValue,
+    RegistryCredentialProtectionFailed);
+
+public delegate ValueTask<ProtectRegistryCredentialOutcome>
     ProtectRegistryCredentialSecret(
         string tenantId,
         string credentialId,
@@ -14,7 +17,7 @@ public delegate ValueTask<Result<EncryptedValue, RegistryCredentialProtectionFai
 
 public sealed class EnvelopeProtectRegistryCredentialSecret(IEnvelopeEncryptionService encryption)
 {
-    public async ValueTask<Result<EncryptedValue, RegistryCredentialProtectionFailed>> InvokeAsync(
+    public async ValueTask<ProtectRegistryCredentialOutcome> InvokeAsync(
         string tenantId,
         string credentialId,
         long secretVersion,
@@ -25,9 +28,11 @@ public sealed class EnvelopeProtectRegistryCredentialSecret(IEnvelopeEncryptionS
             secret,
             RegistryCredentialEncryptionContext.Create(tenantId, credentialId, secretVersion),
             cancellationToken);
-        return result.TryGetValue(out var encrypted, out _)
-            ? new Ok<EncryptedValue>(encrypted)
-            : new Err<RegistryCredentialProtectionFailed>(new());
+        return result switch
+        {
+            EncryptedValue encrypted => encrypted,
+            EnvelopeEncryptionFailed => new RegistryCredentialProtectionFailed()
+        };
     }
 }
 

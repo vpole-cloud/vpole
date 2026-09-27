@@ -3,7 +3,6 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
-using Pole.ResultType;
 
 namespace Pole.Features.Users.Application.Identity;
 
@@ -14,13 +13,13 @@ public sealed class KeycloakIdentityProvider(
 {
     private readonly KeycloakOptions _options = options.Value;
 
-    public async Task<Result<string, IdentityUserCreationFailed>> CreateUserAsync(
+    public async Task<CreateIdentityUserOutcome> CreateUserAsync(
         CreateIdentityUser user,
         CancellationToken cancellationToken)
     {
         var token = await GetAccessTokenAsync(cancellationToken);
         if (token is null)
-            return new Err<IdentityUserCreationFailed>(new IdentityUserCreationFailed());
+            return new IdentityUserCreationFailed();
 
         using var request = new HttpRequestMessage(HttpMethod.Post, AdminUsersPath());
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -35,17 +34,17 @@ public sealed class KeycloakIdentityProvider(
         using var response = await httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            return new Err<IdentityUserCreationFailed>(new IdentityUserCreationFailed());
+            return new IdentityUserCreationFailed();
         }
 
         var idFromLocation = TryReadUserIdFromLocation(response.Headers.Location);
         if (!string.IsNullOrWhiteSpace(idFromLocation))
-            return new Ok<string>(idFromLocation);
+            return new IdentityUserCreated(idFromLocation);
 
         var idFromLookup = await LookupUserIdByUsernameAsync(user.Email, token, cancellationToken);
         return idFromLookup is null
-            ? new Err<IdentityUserCreationFailed>(new IdentityUserCreationFailed())
-            : new Ok<string>(idFromLookup);
+            ? new IdentityUserCreationFailed()
+            : new IdentityUserCreated(idFromLookup);
     }
 
     public async Task<bool> DeleteUserAsync(string userId, CancellationToken cancellationToken)

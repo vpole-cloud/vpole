@@ -7,12 +7,13 @@ using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Contracts;
+using Pole.Features.GitProviders.Contracts.HttpMapping;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Persistence.Configuration;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
+using static Pole.Features.SourceBuilds.Application.Common.SourceBuildHttpMappings;
 
 namespace Pole.Features.SourceBuilds.Application.Endpoints.Configurations;
 
@@ -26,14 +27,11 @@ public sealed record CreateSourceBuildConfigurationBody(
     string SourceRepositoryId,
     string WebServiceId);
 
-public union CreateSourceBuildConfigurationError(
+public union CreateSourceBuildConfigurationOutcome(
+    SourceBuildConfigurationDto,
     SourceRepositoryBuildNotFound,
     SourceBuildConfigurationWebServiceNotFound,
     SourceBuildConfigurationAlreadyExists);
-
-public union CreateSourceBuildConfigurationOutcome(
-    SourceBuildConfigurationDto,
-    CreateSourceBuildConfigurationError);
 
 public sealed class CreateSourceBuildConfigurationHandler(
     FindSourceRepositoryBuild findSourceRepositoryBuild,
@@ -53,14 +51,10 @@ public sealed class CreateSourceBuildConfigurationHandler(
             cancellationToken);
         return sourceRepository switch
         {
-            Err<FindSourceRepositoryBuildError> error => error.Value switch
-            {
-                SourceRepositoryBuildNotFound notFound =>
-                    new CreateSourceBuildConfigurationError(notFound)
-            },
-            Ok<SourceRepositoryBuildSnapshot> success => await CreateAsync(
+            SourceRepositoryBuildNotFound notFound => notFound,
+            SourceRepositoryBuildSnapshot success => await CreateAsync(
                 request,
-                success.Value,
+                success,
                 createSourceBuildConfiguration,
                 timeProvider,
                 cancellationToken)
@@ -87,14 +81,9 @@ public sealed class CreateSourceBuildConfigurationHandler(
         var created = await createSourceBuildConfiguration(configuration, cancellationToken);
         return created switch
         {
-            Ok<SourceBuildConfiguration> success => success.Value.ToDto(),
-            Err<PersistSourceBuildConfigurationError> error => error.Value switch
-            {
-                SourceBuildConfigurationAlreadyExists existsError =>
-                    new CreateSourceBuildConfigurationError(existsError),
-                SourceBuildConfigurationWebServiceNotFound missing =>
-                    new CreateSourceBuildConfigurationError(missing)
-            }
+            SourceBuildConfiguration success => success.ToDto(),
+            SourceBuildConfigurationAlreadyExists existsError => existsError,
+            SourceBuildConfigurationWebServiceNotFound missing => missing
         };
     }
 }
@@ -129,7 +118,6 @@ public static class CreateSourceBuildConfigurationEndpoint
     {
         app.MapPost("/", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] CreateSourceBuildConfigurationRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -139,8 +127,10 @@ public static class CreateSourceBuildConfigurationEndpoint
                     SourceBuildConfigurationDto configuration => Results.Created(
                         $"/api/v1/source-build-configurations/{configuration.Id}",
                         configuration),
-                    CreateSourceBuildConfigurationError error =>
-                        httpProblems.Map(error).ToHttpResult()
+                    SourceRepositoryBuildNotFound error =>
+                        GitProviderContractHttpMappings.MapSourceRepositoryBuildNotFound(error),
+                    SourceBuildConfigurationAlreadyExists error => MapConfigurationAlreadyExists(error),
+                    SourceBuildConfigurationWebServiceNotFound error => MapWebServiceNotFound(error)
                 });
             })
             .WithName("CreateSourceBuildConfiguration")

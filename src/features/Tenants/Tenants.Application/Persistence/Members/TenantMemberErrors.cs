@@ -8,10 +8,6 @@ public sealed record TenantLastOwner(
     string TenantId,
     string MemberId);
 
-public union TenantMemberAdditionError(
-    TenantNotFound,
-    TenantMemberAlreadyExists);
-
 public union TenantMemberMutationError(
     TenantNotFound,
     TenantMemberNotFound,

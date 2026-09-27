@@ -9,6 +9,7 @@ using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Persistence.Jobs;
 using Pole.Mediator;
 using Pole.Validation;
+using static Pole.Features.SourceBuilds.Application.Common.SourceBuildHttpMappings;
 
 namespace Pole.Features.SourceBuilds.Application.Endpoints.Jobs;
 
@@ -51,7 +52,6 @@ public static class GetSourceBuildJobEndpoint
     {
         app.MapGet("/{BuildJobId}", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] GetSourceBuildJobRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -59,7 +59,7 @@ public static class GetSourceBuildJobEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     SourceBuildJobDto job => Results.Ok(job),
-                    SourceBuildJobNotFound error => httpProblems.Map(error).ToHttpResult()
+                    SourceBuildJobNotFound error => MapJobNotFound(error)
                 });
             })
             .WithName("GetSourceBuildJob")

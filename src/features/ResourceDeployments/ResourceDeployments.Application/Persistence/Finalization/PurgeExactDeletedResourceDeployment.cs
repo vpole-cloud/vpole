@@ -1,14 +1,13 @@
 using MongoDB.Driver;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Persistence.Finalization;
 
 internal sealed class MongoPurgeExactDeletedResourceDeployment(
     IMongoCollection<ResourceDeployment> resourceDeployments)
 {
-    public async Task<Result<Unit, ResourceDeploymentFinalizationConflict>> InvokeAsync(
+    public async Task<PurgeResourceDeploymentsOutcome> InvokeAsync(
         string tenantId,
         ResourceTypeId resourceType,
         string resourceId,
@@ -30,8 +29,7 @@ internal sealed class MongoPurgeExactDeletedResourceDeployment(
             .FirstOrDefaultAsync(cancellationToken);
         if (deployment is null || deployment.State is not DeletedResourceDeploymentState)
         {
-            return new Err<ResourceDeploymentFinalizationConflict>(
-                new ResourceDeploymentFinalizationConflict(resourceId, resourceDeploymentId));
+            return new ResourceDeploymentFinalizationConflict(resourceId, resourceDeploymentId);
         }
 
         var deletion = await resourceDeployments.DeleteManyAsync(
@@ -44,8 +42,7 @@ internal sealed class MongoPurgeExactDeletedResourceDeployment(
                 deployment.Revision),
             cancellationToken: cancellationToken);
         return deletion.DeletedCount == 1
-            ? new Ok<Unit>(Unit.Value)
-            : new Err<ResourceDeploymentFinalizationConflict>(
-                new ResourceDeploymentFinalizationConflict(resourceId, resourceDeploymentId));
+            ? new ResourceDeploymentsPurged()
+            : new ResourceDeploymentFinalizationConflict(resourceId, resourceDeploymentId);
     }
 }

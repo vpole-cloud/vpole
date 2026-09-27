@@ -3,7 +3,6 @@ using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.Persistence;
 using Pole.Features.GitProviders.Application.Persistence.Connections;
 using Pole.Features.GitProviders.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.GitProviders.Application.ProviderOperations;
 
@@ -12,7 +11,11 @@ public union AnalyzeProviderRepositoryError(
     GitProviderRepositoryAccessError,
     RepositorySourceSnapshotTooLarge);
 
-public delegate Task<Result<AnalyzedProviderRepository, AnalyzeProviderRepositoryError>>
+public union AnalyzeProviderRepositoryOutcome(
+    AnalyzedProviderRepository,
+    AnalyzeProviderRepositoryError);
+
+public delegate Task<AnalyzeProviderRepositoryOutcome>
     AnalyzeProviderRepository(
         string tenantId,
         string connectionId,
@@ -25,7 +28,7 @@ internal sealed class GitProviderRepositoryAnalyzer(
     GetProviderRepositorySnapshot getProviderRepositorySnapshot,
     RepositorySourceAnalyzer analyzer)
 {
-    public async Task<Result<AnalyzedProviderRepository, AnalyzeProviderRepositoryError>> InvokeAsync(
+    public async Task<AnalyzeProviderRepositoryOutcome> InvokeAsync(
         string tenantId,
         string connectionId,
         string repositoryId,
@@ -40,8 +43,8 @@ internal sealed class GitProviderRepositoryAnalyzer(
         var connection = await loadGitProviderConnection(tenantId, connectionId, cancellationToken);
         if (connection is null)
         {
-            return new Err<AnalyzeProviderRepositoryError>(
-                new(new GitProviderConnectionNotFound(connectionId)));
+            return new AnalyzeProviderRepositoryError(
+                new GitProviderConnectionNotFound(connectionId));
         }
 
         var snapshotResult = await getProviderRepositorySnapshot(
@@ -51,19 +54,18 @@ internal sealed class GitProviderRepositoryAnalyzer(
             cancellationToken);
         return snapshotResult switch
         {
-            Err<GitProviderRepositoryAccessError> failure =>
-                new Err<AnalyzeProviderRepositoryError>(new(failure.Value)),
-            Ok<RepositorySourceSnapshot> success =>
-                analyzer.Analyze(success.Value) switch
+            GitProviderRepositoryAccessError failure =>
+                new AnalyzeProviderRepositoryError(failure),
+            RepositorySourceSnapshot success =>
+                analyzer.Analyze(success) switch
                 {
                     Pole.Features.GitProviders.Domain.SourceRepositoryAnalysis analysis =>
-                        new Ok<AnalyzedProviderRepository>(
-                            new AnalyzedProviderRepository(
+                        new AnalyzedProviderRepository(
                                 connection,
-                                success.Value.Repository,
-                                analysis)),
+                                success.Repository,
+                                analysis),
                     RepositorySourceSnapshotTooLarge tooLarge =>
-                        new Err<AnalyzeProviderRepositoryError>(new(tooLarge))
+                        new AnalyzeProviderRepositoryError(tooLarge)
                 }
         };
     }

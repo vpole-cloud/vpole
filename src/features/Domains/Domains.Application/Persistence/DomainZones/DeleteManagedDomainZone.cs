@@ -19,14 +19,15 @@ public sealed record ManagedDomainZoneReferenceRemovalRejected(
     string ZoneId,
     string DeploymentTargetId);
 
-public union DeleteManagedDomainZoneError(
+public union DeleteManagedDomainZoneOutcome(
+    ManagedDomainZoneDeleted,
     DomainZoneNotFound,
     GeneratedDomainZoneDeletionRejected,
     DomainZoneHasHostnameBindings,
     DomainZoneDeletionConflict,
     ManagedDomainZoneReferenceRemovalRejected);
 
-public delegate Task<Result<ManagedDomainZoneDeleted, DeleteManagedDomainZoneError>>
+public delegate Task<DeleteManagedDomainZoneOutcome>
     DeleteManagedDomainZone(
         string tenantId,
         string zoneId,
@@ -42,7 +43,7 @@ internal sealed class MongoDeleteManagedDomainZone(
     private readonly IMongoCollection<HostnameBinding> bindings =
         database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
 
-    public async Task<Result<ManagedDomainZoneDeleted, DeleteManagedDomainZoneError>>
+    public async Task<DeleteManagedDomainZoneOutcome>
         InvokeAsync(
             string tenantId,
             string zoneId,
@@ -56,13 +57,11 @@ internal sealed class MongoDeleteManagedDomainZone(
             .FirstOrDefaultAsync(cancellationToken);
         if (zone is null)
         {
-            return new Err<DeleteManagedDomainZoneError>(
-                new DomainZoneNotFound(zoneId));
+            return new DomainZoneNotFound(zoneId);
         }
         if (zone.Kind == TenantDomainZoneKind.Generated)
         {
-            return new Err<DeleteManagedDomainZoneError>(
-                new GeneratedDomainZoneDeletionRejected(zoneId));
+            return new GeneratedDomainZoneDeletionRejected(zoneId);
         }
         var bindingCount = await bindings.CountDocumentsAsync(
             session,
@@ -70,8 +69,7 @@ internal sealed class MongoDeleteManagedDomainZone(
             cancellationToken: cancellationToken);
         if (bindingCount > 0)
         {
-            return new Err<DeleteManagedDomainZoneError>(
-                new DomainZoneHasHostnameBindings(zoneId, bindingCount));
+            return new DomainZoneHasHostnameBindings(zoneId, bindingCount);
         }
         var deleted = await zones.DeleteOneAsync(
             session,
@@ -79,8 +77,7 @@ internal sealed class MongoDeleteManagedDomainZone(
             cancellationToken: cancellationToken);
         if (deleted.DeletedCount != 1)
         {
-            return new Err<DeleteManagedDomainZoneError>(
-                new DomainZoneDeletionConflict(zoneId));
+            return new DomainZoneDeletionConflict(zoneId);
         }
 
         var unregistered = await applyDeploymentTargetReferenceChanges(
@@ -91,11 +88,10 @@ internal sealed class MongoDeleteManagedDomainZone(
             [zone.DeploymentTargetId],
             session,
             cancellationToken);
-        return unregistered is Ok<Unit>
-            ? new Ok<ManagedDomainZoneDeleted>(new ManagedDomainZoneDeleted(zone.Id))
-            : new Err<DeleteManagedDomainZoneError>(
-                new ManagedDomainZoneReferenceRemovalRejected(
+        return unregistered is DeploymentTargetReferencesChanged
+            ? new ManagedDomainZoneDeleted(zone.Id)
+            : new ManagedDomainZoneReferenceRemovalRejected(
                     zone.Id,
-                    zone.DeploymentTargetId));
+                    zone.DeploymentTargetId);
     }
 }

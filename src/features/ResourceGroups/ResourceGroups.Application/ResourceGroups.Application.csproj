@@ -15,6 +15,7 @@
     <ItemGroup>
       <ProjectReference Include="..\ResourceGroups.Domain\ResourceGroups.Domain.csproj" />
       <ProjectReference Include="..\ResourceGroups.Events\ResourceGroups.Events.csproj" />
+      <ProjectReference Include="..\ResourceGroups.Contracts.HttpMapping\ResourceGroups.Contracts.HttpMapping.csproj" />
       <ProjectReference Include="..\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
       <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
       <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />

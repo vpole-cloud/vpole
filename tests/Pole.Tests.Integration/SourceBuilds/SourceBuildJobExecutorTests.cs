@@ -11,7 +11,6 @@ using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.WebServices.Application.Consumers;
 using Pole.Features.WebServices.Events;
-using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -98,11 +97,11 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
     {
         var queued = await QueueJobAsync();
         var deployment = new FakeDeploymentService(
-            new Err<SourceBuildWebServiceDeploymentError>(
-                new(new SourceBuildWebServiceDeploymentRejected(
+            new SourceBuildWebServiceDeploymentError(
+                new SourceBuildWebServiceDeploymentRejected(
                     queued.Job.WebServiceId,
                     new SourceBuildResourceDeploymentRejection(
-                        new SourceBuildResourceDeploymentPlacementUnavailable("deployment-1"))))));
+                        new SourceBuildResourceDeploymentPlacementUnavailable("deployment-1")))));
         var executor = CreateExecutor(
             new FakeWorkspaceService(),
             new FakeRegistryBuildService(),
@@ -251,7 +250,7 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
         public string? SourceRepositoryId { get; private set; }
         public string? DownloadedCommit { get; private set; }
 
-        public async Task<Result<SourceBuildWorkspace, CreateSourceBuildWorkspaceError>> InvokeAsync(
+        public async Task<CreateSourceBuildWorkspaceOutcome> InvokeAsync(
             string tenantId,
             string sourceRepositoryId,
             string commitSha,
@@ -268,35 +267,34 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
                 Path.Combine(source, "App.csproj"),
                 "<Project />",
                 cancellationToken);
-            return new Ok<SourceBuildWorkspace>(new SourceBuildWorkspace(root, source));
+            return new SourceBuildWorkspace(root, source);
         }
     }
 
     private sealed class FakeRegistryBuildService
     {
-        public Task<Result<RegistryBuildAccess, PrepareRegistryBuildPushError>> PreparePushAsync(
+        public Task<PrepareRegistryBuildPushOutcome> PreparePushAsync(
             string tenantId,
             string initiatedByUserId,
             string repositoryName,
             string tag,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<RegistryBuildAccess, PrepareRegistryBuildPushError>>(
-                new Ok<RegistryBuildAccess>(new RegistryBuildAccess(
+            Task.FromResult<PrepareRegistryBuildPushOutcome>(
+                new RegistryBuildAccess(
                     "507f1f77bcf86cd799439012",
                     new RegistryPushTarget("harbor.test", "pole-test", repositoryName, tag),
                     "pole-registry-507f1f77bcf86cd799439012",
                     "robot$build",
-                    "build-secret")));
+                    "build-secret"));
 
-        public Task<Result<RegistryArtifact, GetTenantRegistryArtifactError>> GetArtifactAsync(
+        public Task<GetTenantRegistryArtifactOutcome> GetArtifactAsync(
             string tenantId,
             string registryProjectId,
             string repositoryName,
             string reference,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<RegistryArtifact, GetTenantRegistryArtifactError>>(
-                new Ok<RegistryArtifact>(
-                    new RegistryArtifact(repositoryName, reference, Digest, 100)));
+            Task.FromResult<GetTenantRegistryArtifactOutcome>(
+                new RegistryArtifact(repositoryName, reference, Digest, 100));
     }
 
     private sealed class FakeBuildKitClient
@@ -304,28 +302,28 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
         public int Calls { get; private set; }
         public BuildKitBuildRequest? Request { get; private set; }
 
-        public Task<Result<BuiltContainerImage, BuildContainerImageError>> InvokeAsync(
+        public Task<BuildContainerImageOutcome> InvokeAsync(
             BuildKitBuildRequest request,
             CancellationToken cancellationToken = default)
         {
             Calls++;
             Request = request;
-            return Task.FromResult<Result<BuiltContainerImage, BuildContainerImageError>>(
-                new Ok<BuiltContainerImage>(new BuiltContainerImage(request.Target.Reference, Digest)));
+            return Task.FromResult<BuildContainerImageOutcome>(
+                new BuiltContainerImage(request.Target.Reference, Digest));
         }
     }
 
     private sealed class FakeDeploymentService(
-        Result<SourceBuildDeploymentResult, SourceBuildWebServiceDeploymentError>? result = null)
+        DeploySourceBuildWebServiceOutcome? result = null)
     {
         public SourceBuildDeploymentRequest? Request { get; private set; }
 
-        public Task<Result<SourceBuildDeploymentResult, SourceBuildWebServiceDeploymentError>> DeployAsync(
+        public Task<DeploySourceBuildWebServiceOutcome> DeployAsync(
             SourceBuildDeploymentRequest request,
             CancellationToken cancellationToken = default)
         {
             Request = request;
-            return Task.FromResult(result ?? new Ok<SourceBuildDeploymentResult>(
+            return Task.FromResult(result ?? new DeploySourceBuildWebServiceOutcome(
                 new SourceBuildDeploymentResult("release-1", 2)));
         }
     }

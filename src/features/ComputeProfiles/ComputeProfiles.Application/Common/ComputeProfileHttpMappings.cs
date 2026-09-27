@@ -8,54 +8,39 @@ namespace Pole.Features.ComputeProfiles.Application.Common;
 
 public static class ComputeProfileHttpMappings
 {
-    public static IReadOnlyList<HttpProblemMapping> All { get; } =
-        Array.AsReadOnly<HttpProblemMapping>(
-        [
-            HttpProblemMapping.For<ComputeProfileMutationValidationError>(
-                MapMutationValidationError),
-            HttpProblemMapping.For<ComputeProfileRevisionConflict>(
-                MapRevisionConflict),
-            HttpProblemMapping.For<DefaultComputeProfileCannotBeDemoted>(
-                MapDefaultDemotionRejected),
-            HttpProblemMapping.For<DefaultComputeProfileCannotBeDeleted>(
-                MapDefaultDeletionRejected)
-        ]);
+    public static HttpProblem MapSelectedTenantsNotFound(
+        SelectedComputeProfileTenantsNotFound missing) => Problem(
+        HttpStatusCode.UnprocessableEntity,
+        "compute-profiles.tenant-access.tenants-not-found",
+        "One or more selected tenants do not exist",
+        ("errors", new Dictionary<string, string[]>
+        {
+            ["TenantAccess.TenantIds"] = ["One or more selected tenants do not exist."]
+        }),
+        ("tenantIds", missing.TenantIds));
 
-    private static HttpProblem MapMutationValidationError(
-        ComputeProfileMutationValidationError error) => error switch
-    {
-        SelectedComputeProfileTenantsNotFound missing => Problem(
-            HttpStatusCode.UnprocessableEntity,
-            "compute-profiles.tenant-access.tenants-not-found",
-            "One or more selected tenants do not exist",
-            ("errors", new Dictionary<string, string[]>
-            {
-                ["TenantAccess.TenantIds"] =
-                    ["One or more selected tenants do not exist."]
-            }),
-            ("tenantIds", missing.TenantIds)),
-        ComputeProfileTargetMappingsInvalid invalid => Problem(
-            HttpStatusCode.UnprocessableEntity,
-            "compute-profiles.target-mappings.invalid",
-            "Compute profile target mappings are invalid",
-            ("errors", invalid.Errors))
-    };
+    public static HttpProblem MapTargetMappingsInvalid(
+        ComputeProfileTargetMappingsInvalid invalid) => Problem(
+        HttpStatusCode.UnprocessableEntity,
+        "compute-profiles.target-mappings.invalid",
+        "Compute profile target mappings are invalid",
+        ("errors", invalid.Errors));
 
-    private static HttpProblem MapRevisionConflict(
+    public static HttpProblem MapRevisionConflict(
         ComputeProfileRevisionConflict conflict) => Problem(
         HttpStatusCode.Conflict,
         "compute-profiles.revision-conflict",
         "Compute profile changed",
         ("computeProfileId", conflict.ComputeProfileId));
 
-    private static HttpProblem MapDefaultDemotionRejected(
+    public static HttpProblem MapDefaultDemotionRejected(
         DefaultComputeProfileCannotBeDemoted rejected) => Problem(
         HttpStatusCode.Conflict,
         "compute-profiles.default-demotion-forbidden",
         "Promote another compute profile before demoting the current default",
         ("computeProfileId", rejected.ComputeProfileId));
 
-    private static HttpProblem MapDefaultDeletionRejected(
+    public static HttpProblem MapDefaultDeletionRejected(
         DefaultComputeProfileCannotBeDeleted rejected) => Problem(
         HttpStatusCode.Conflict,
         "compute-profiles.default-delete-forbidden",

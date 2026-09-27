@@ -10,7 +10,6 @@ using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Features.Functions.Runtime.Security;
 using Pole.Functions.Protocol;
-using Pole.ResultType;
 using Xunit;
 
 namespace Pole.Features.Functions.Tests;
@@ -40,10 +39,11 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
             },
             []);
         var result = await manager.ApplyAsync(subject);
-        Assert.Equal(allowed, TypedResultExtensions.TryGetValue(result).Succeeded);
+        Assert.Equal(allowed, result is FunctionRevisionKubernetesMutationCompleted);
         Assert.Equal(allowed ? 2 : 0, handler.PostRequests.Count);
         currentReadiness = NetworkPolicyReadiness.EnforcementRequired;
-        Assert.False(TypedResultExtensions.TryGetValue(await manager.ApplyAsync(subject)).Succeeded);
+        Assert.IsAssignableFrom<FunctionRevisionKubernetesOperationError>(
+            (await manager.ApplyAsync(subject)).Value);
         Assert.Equal(2, lookups);
         Assert.Equal(allowed ? 2 : 0, handler.PostRequests.Count);
     }
@@ -71,7 +71,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         var result = provisioning
             ? await manager.ScaleProvisioningAsync(subject, desired)
             : await manager.ScaleAsync(subject, desired, 5);
-        Assert.Equal(allowed, TypedResultExtensions.TryGetValue(result).Succeeded);
+        Assert.Equal(allowed, result is FunctionRevisionKubernetesMutationCompleted);
         Assert.Equal(allowed ? 1 : 0, handler.PutRequests.Count);
     }
 
@@ -86,8 +86,8 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
             (_, _) => throw new InvalidOperationException(
                 "Readiness lookup is forbidden for diagnostics/deletion."),
             []);
-        Assert.True(TypedResultExtensions.TryGetValue(await manager.ReadReplicaStateAsync(subject)).Succeeded);
-        Assert.True(TypedResultExtensions.TryGetValue(await manager.DeleteAsync(subject)).Succeeded);
+        Assert.IsType<FunctionReplicaState>((await manager.ReadReplicaStateAsync(subject)).Value);
+        Assert.IsType<FunctionRevisionKubernetesMutationCompleted>((await manager.DeleteAsync(subject)).Value);
         Assert.Equal(2, handler.DeleteRequests);
     }
 
@@ -101,7 +101,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
 
         var result = await manager.ScaleAsync(subject, replicas: 3, coordinationGeneration: 5);
 
-        Assert.True(TypedResultExtensions.TryGetValue(result).Succeeded);
+        Assert.IsType<FunctionRevisionKubernetesMutationCompleted>(result.Value);
         var request = Assert.Single(handler.PutRequests);
         Assert.EndsWith(
             $"/apis/apps/v1/namespaces/{subject.Namespace}/deployments/{subject.DeploymentName}",
@@ -129,8 +129,8 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
 
         var failure = result switch
         {
-            Err<FunctionRevisionKubernetesOperationError> error => error.Value,
-            Ok<Unit> => throw new Xunit.Sdk.XunitException("Expected a scale rejection.")
+            FunctionRevisionKubernetesOperationError error => error,
+            FunctionRevisionKubernetesMutationCompleted => throw new Xunit.Sdk.XunitException("Expected a scale rejection.")
         };
         Assert.True(failure is FunctionRevisionKubernetesOperationRejected);
         Assert.Empty(handler.PutRequests);
@@ -146,7 +146,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
 
         var result = await manager.ScaleAsync(subject, replicas: 3, coordinationGeneration: 5);
 
-        Assert.True(TypedResultExtensions.TryGetValue(result).Succeeded);
+        Assert.IsType<FunctionRevisionKubernetesMutationCompleted>(result.Value);
         Assert.Empty(handler.PutRequests);
     }
 
@@ -166,8 +166,8 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
 
         var failure = result switch
         {
-            Err<FunctionRevisionKubernetesOperationError> error => error.Value,
-            Ok<Unit> => throw new Xunit.Sdk.XunitException("Expected a scale rejection.")
+            FunctionRevisionKubernetesOperationError error => error,
+            FunctionRevisionKubernetesMutationCompleted => throw new Xunit.Sdk.XunitException("Expected a scale rejection.")
         };
         Assert.True(failure is FunctionRevisionKubernetesOperationRejected);
         Assert.Empty(handler.PutRequests);
@@ -179,11 +179,11 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
             (id, ct) => LookupTarget(id, NetworkPolicyReadiness.EnforcementAttested),
             Array.Empty<IFunctionAgentTrustBundleProvider>());
 
-    private static Task<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>> LookupTarget(
+    private static Task<LookupDeploymentTargetOutcome> LookupTarget(
         string id,
         NetworkPolicyReadiness readiness) =>
-        Task.FromResult<Result<DeploymentTargetLookupDto, DeploymentTargetLookupError>>(
-            new Ok<DeploymentTargetLookupDto>(new(
+        Task.FromResult<LookupDeploymentTargetOutcome>(
+            new LookupDeploymentTargetOutcome(new DeploymentTargetLookupDto(
                 id,
                 "Target",
                 "cluster",

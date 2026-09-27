@@ -4,7 +4,6 @@ using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
-using Pole.ResultType;
 using Pole.Workloads;
 
 namespace Pole.Features.ResourceGroups.Application.Persistence.ResourceRegistrations;
@@ -15,7 +14,7 @@ internal sealed class MongoResourceRegistrationMutations(
     TimeProvider timeProvider,
     StoreOutboxWrites storeOutboxWrites)
 {
-    public async Task<Result<RegisteredResource, ResourceRegistrationMutationError>> RegisterAsync(
+    public async Task<ResourceRegistrationOutcome> RegisterAsync(
         string? owningPluginId,
         string tenantId,
         string resourceGroupId,
@@ -47,7 +46,7 @@ internal sealed class MongoResourceRegistrationMutations(
         if (existing is not null)
         {
             return IsSameRegistration(existing, candidate)
-                ? new Ok<RegisteredResource>(ToContract(existing))
+                ? ToContract(existing)
                 : Conflict(resource);
         }
 
@@ -57,7 +56,7 @@ internal sealed class MongoResourceRegistrationMutations(
             session,
             cancellationToken);
         if (admission is { } admissionError)
-            return new Err<ResourceRegistrationMutationError>(admissionError);
+            return admissionError;
 
         try
         {
@@ -65,7 +64,7 @@ internal sealed class MongoResourceRegistrationMutations(
                 session,
                 candidate,
                 cancellationToken: cancellationToken);
-            return new Ok<RegisteredResource>(ToContract(candidate));
+            return ToContract(candidate);
         }
         catch (MongoWriteException exception) when (
             exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
@@ -74,7 +73,7 @@ internal sealed class MongoResourceRegistrationMutations(
         }
     }
 
-    public async Task<Result<RegisteredResource, ResourceRegistrationMutationError>> UpdateAsync(
+    public async Task<ResourceRegistrationOutcome> UpdateAsync(
         string? owningPluginId,
         string tenantId,
         string resourceGroupId,
@@ -94,11 +93,10 @@ internal sealed class MongoResourceRegistrationMutations(
             .FirstOrDefaultAsync(cancellationToken);
         if (current is null)
         {
-            return new Err<ResourceRegistrationMutationError>(
-                new ResourceRegistrationMutationError(
+            return new ResourceRegistrationMutationError(
                     new ResourceRegistrationNotFound(
                         resource.ResourceTypeId,
-                        resource.ResourceId)));
+                        resource.ResourceId));
         }
         if (!string.Equals(current.ResourceGroupId, resourceGroupId, StringComparison.Ordinal) ||
             !string.Equals(current.OwningPluginId, owningPluginId, StringComparison.Ordinal))
@@ -111,7 +109,7 @@ internal sealed class MongoResourceRegistrationMutations(
             resource.DisplayName,
             timeProvider.GetUtcNow().UtcDateTime);
         if (ReferenceEquals(replacement, current))
-            return new Ok<RegisteredResource>(ToContract(current));
+            return ToContract(current);
 
         var admission = await AdvanceFenceAsync(
             tenantId,
@@ -119,7 +117,7 @@ internal sealed class MongoResourceRegistrationMutations(
             session,
             cancellationToken);
         if (admission is { } admissionError)
-            return new Err<ResourceRegistrationMutationError>(admissionError);
+            return admissionError;
 
         var write = await registrations.ReplaceOneAsync(
             session,
@@ -131,11 +129,11 @@ internal sealed class MongoResourceRegistrationMutations(
             replacement,
             cancellationToken: cancellationToken);
         return write.ModifiedCount == 1
-            ? new Ok<RegisteredResource>(ToContract(replacement))
+            ? ToContract(replacement)
             : Conflict(resource);
     }
 
-    public async Task<Result<Unit, ResourceRegistrationMutationError>> UnregisterAsync(
+    public async Task<ResourceUnregistrationOutcome> UnregisterAsync(
         string? owningPluginId,
         string tenantId,
         string resourceGroupId,
@@ -151,13 +149,12 @@ internal sealed class MongoResourceRegistrationMutations(
                 ResourceRegistrationFilters.ByIdentity(tenantId, resourceTypeId, resourceId))
             .FirstOrDefaultAsync(cancellationToken);
         if (current is null)
-            return new Ok<Unit>(Unit.Value);
+            return new ResourceUnregistered();
         if (!string.Equals(current.ResourceGroupId, resourceGroupId, StringComparison.Ordinal) ||
             !string.Equals(current.OwningPluginId, owningPluginId, StringComparison.Ordinal))
         {
-            return new Err<ResourceRegistrationMutationError>(
-                new ResourceRegistrationMutationError(
-                    new ResourceRegistrationIdentityConflict(resourceTypeId, resourceId)));
+            return new ResourceRegistrationMutationError(
+                new ResourceRegistrationIdentityConflict(resourceTypeId, resourceId));
         }
 
         var admission = await AdvanceFenceAsync(
@@ -166,7 +163,7 @@ internal sealed class MongoResourceRegistrationMutations(
             session,
             cancellationToken);
         if (admission is { } admissionError)
-            return new Err<ResourceRegistrationMutationError>(admissionError);
+            return admissionError;
 
         var deletion = await registrations.DeleteOneAsync(
             session,
@@ -186,10 +183,9 @@ internal sealed class MongoResourceRegistrationMutations(
                     })],
                 cancellationToken);
         return deletion.DeletedCount == 1
-            ? new Ok<Unit>(Unit.Value)
-            : new Err<ResourceRegistrationMutationError>(
-                new ResourceRegistrationMutationError(
-                    new ResourceRegistrationIdentityConflict(resourceTypeId, resourceId)));
+            ? new ResourceUnregistered()
+            : new ResourceRegistrationMutationError(
+                new ResourceRegistrationIdentityConflict(resourceTypeId, resourceId));
     }
 
     private async Task<ResourceRegistrationMutationError?> AdvanceFenceAsync(
@@ -223,12 +219,12 @@ internal sealed class MongoResourceRegistrationMutations(
         string.Equals(existing.DisplayName, candidate.DisplayName, StringComparison.Ordinal) &&
         string.Equals(existing.OwningPluginId, candidate.OwningPluginId, StringComparison.Ordinal);
 
-    private static Err<ResourceRegistrationMutationError> Conflict(
+    private static ResourceRegistrationOutcome Conflict(
         ResourceRegistrationDescriptor resource) =>
-        new(new ResourceRegistrationMutationError(
+        new ResourceRegistrationMutationError(
             new ResourceRegistrationIdentityConflict(
                 resource.ResourceTypeId,
-                resource.ResourceId)));
+                resource.ResourceId));
 
     private static RegisteredResource ToContract(ResourceRegistration registration) =>
         new(

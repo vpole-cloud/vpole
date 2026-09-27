@@ -28,7 +28,7 @@ public sealed class ComputeProfileTargetMappingValidatorTests
 
         var result = await validator.InvokeAsync(CreateProfile(runtimeClassName: "kata"));
 
-        _ = result.AssertSuccess();
+        Assert.IsType<ComputeProfileTargetMappingsValid>(result.Value);
     }
 
     [Fact]
@@ -44,7 +44,7 @@ public sealed class ComputeProfileTargetMappingValidatorTests
 
         var result = await validator.InvokeAsync(CreateProfile(runtimeClassName: "kata"));
 
-        var error = result.AssertError();
+        var error = Assert.IsType<ComputeProfileTargetMappingsInvalid>(result.Value);
         Assert.Contains("TargetMappings[0].Scheduling", error.Errors.Keys);
     }
 
@@ -61,7 +61,7 @@ public sealed class ComputeProfileTargetMappingValidatorTests
 
         var result = await validator.InvokeAsync(CreateProfile(runtimeClassName: "kata"));
 
-        var error = result.AssertError();
+        var error = Assert.IsType<ComputeProfileTargetMappingsInvalid>(result.Value);
         Assert.Contains("TargetMappings[0].RuntimeClassName", error.Errors.Keys);
         Assert.DoesNotContain(
             "provider-secret",
@@ -78,7 +78,7 @@ public sealed class ComputeProfileTargetMappingValidatorTests
 
         var result = await validator.InvokeAsync(CreateProfile(runtimeClassName: null));
 
-        var error = result.AssertError();
+        var error = Assert.IsType<ComputeProfileTargetMappingsInvalid>(result.Value);
         Assert.Contains("TargetMappings[0].DeploymentTargetId", error.Errors.Keys);
     }
 
@@ -179,15 +179,11 @@ public sealed class ComputeProfileTargetMappingValidatorTests
                 DeploymentTargetUnavailableReason.ConnectionUnavailable));
     }
 
-    private static Task<Result<
-        DeploymentTargetLookupDto,
-        DeploymentTargetWorkloadAdmissionError>> AdmitTarget(
+    private static Task<AdmitDeploymentTargetForWorkloadOutcome> AdmitTarget(
         string deploymentTargetId,
         CancellationToken cancellationToken = default) =>
-        Task.FromResult<Result<
-            DeploymentTargetLookupDto,
-            DeploymentTargetWorkloadAdmissionError>>(
-            new Ok<DeploymentTargetLookupDto>(
+        Task.FromResult<AdmitDeploymentTargetForWorkloadOutcome>(
+            new AdmitDeploymentTargetForWorkloadOutcome(
                 new DeploymentTargetLookupDto(
                     deploymentTargetId,
                     "Test",
@@ -201,15 +197,11 @@ public sealed class ComputeProfileTargetMappingValidatorTests
                     DeletionRequested: false,
                     HealthStatus: "Healthy")));
 
-    private static Task<Result<
-        DeploymentTargetLookupDto,
-        DeploymentTargetWorkloadAdmissionError>> RejectTarget(
+    private static Task<AdmitDeploymentTargetForWorkloadOutcome> RejectTarget(
         string deploymentTargetId,
         CancellationToken cancellationToken = default) =>
-        Task.FromResult<Result<
-            DeploymentTargetLookupDto,
-            DeploymentTargetWorkloadAdmissionError>>(
-            new Err<DeploymentTargetWorkloadAdmissionError>(
+        Task.FromResult<AdmitDeploymentTargetForWorkloadOutcome>(
+            new AdmitDeploymentTargetForWorkloadOutcome(
                 new DeploymentTargetWorkloadAdmissionError(
                     new DeploymentTargetNewWorkloadsDisabled(deploymentTargetId))));
 

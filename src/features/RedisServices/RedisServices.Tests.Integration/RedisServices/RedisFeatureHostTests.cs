@@ -47,7 +47,7 @@ public sealed class RedisFeatureHostTests(MongoReplicaSetFixture fixture)
             services.AddSingleton<DiscoverKubernetesStorageClassNames>(storage.GetStorageClassNamesAsync);
             services.AddSingleton<DiscoverKubernetesPersistentVolumes>(storage.GetPersistentVolumesAsync);
             services.AddSingleton<DiscoverKubernetesPersistentVolumeClaims>(storage.GetPersistentVolumeClaimsAsync);
-            });
+        });
         await host.SeedTenantAsync();
         using var client = host.GetClient();
         const string route = "/api/v1/redis-services/";
@@ -63,6 +63,11 @@ public sealed class RedisFeatureHostTests(MongoReplicaSetFixture fixture)
         otherUser.Headers.Add(FeatureTestAuthentication.UserHeader, "other-user");
         using var forbidden = await client.SendAsync(otherUser);
         Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+        const string absentId = "507f1f77bcf86cd799439012";
+        using var missingRedis = await client.GetAsync(route + absentId);
+        Assert.Equal(HttpStatusCode.NotFound, missingRedis.StatusCode);
+        using var missingDelete = await client.DeleteAsync(route + absentId);
+        Assert.Equal(HttpStatusCode.NotFound, missingDelete.StatusCode);
         var store = new RedisTestStore(fixture.Client, fixture.Database);
         await store.StorageProfiles.InsertOneAsync(RedisTestData.SeedStorageProfile());
         await fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles").InsertOneAsync(RedisTestData.SeedComputeProfile());

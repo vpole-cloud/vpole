@@ -407,9 +407,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
 
         public IReadOnlyCollection<DeploymentTargetConnectionInput> Inputs => _inputs.ToArray();
 
-        public async ValueTask<Result<
-            PreparedDeploymentTargetConnection,
-            DeploymentTargetConnectionRejected>> InvokeAsync(
+        public async ValueTask<PrepareDeploymentTargetConnectionOutcome> InvokeAsync(
             string deploymentTargetId,
             long connectionVersion,
             DeploymentTargetConnectionInput input,
@@ -430,7 +428,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
                     CreateFakeEnvelope()),
                 _ => throw new InvalidOperationException("Unexpected bootstrap connection input.")
             };
-            return new Ok<PreparedDeploymentTargetConnection>(
+            return new PrepareDeploymentTargetConnectionOutcome(
                 new PreparedDeploymentTargetConnection(connection, CreateInertKubernetesClient()));
         }
     }

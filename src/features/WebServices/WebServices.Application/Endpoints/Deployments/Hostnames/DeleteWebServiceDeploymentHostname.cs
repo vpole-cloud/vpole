@@ -18,6 +18,8 @@ using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
 
+using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
+
 namespace Pole.Features.WebServices.Application.Endpoints.Deployments.Hostnames;
 
 public static class DeleteWebServiceDeploymentHostname
@@ -30,7 +32,6 @@ public static class DeleteWebServiceDeploymentHostname
                     "/{Id}/deployments/{DeploymentId}/hostnames/{BindingId}",
                     async (
                         IMediator mediator,
-                        IHttpProblemMapper httpProblems,
                         [AsParameters] DeleteWebServiceDeploymentHostnameRequest request,
                         CancellationToken cancellationToken) =>
                         (await mediator.Send(request, cancellationToken))
@@ -38,7 +39,7 @@ public static class DeleteWebServiceDeploymentHostname
                         {
                             PlacementSummaryDto value => Results.Accepted(value: value),
                             WebServiceDeploymentHostnameError error =>
-                                httpProblems.Map(error).ToHttpResult()
+                                MapError(error)
                         }))
                 .WithName("DeleteWebServiceDeploymentHostname")
                 .Produces<PlacementSummaryDto>(StatusCodes.Status202Accepted);
@@ -61,7 +62,7 @@ public union DeleteWebServiceDeploymentHostnameOutcome(
 public sealed class DeleteWebServiceDeploymentHostnameHandler(
     LoadWebServiceById loadWebService,
     LoadExactResourceDeployment loadExactResourceDeployment,
-    DeleteCustomHostnameBindingOutcome deleteCustomHostnameBinding,
+    DeleteCustomHostnameBinding deleteCustomHostnameBinding,
     LoadHostnameBindingsForDeploymentInTransaction
         loadHostnameBindingsForDeploymentInTransaction,
     RequestExactResourceDeploymentApply requestExactResourceDeploymentApply,
@@ -129,7 +130,7 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
                 request.BindingId),
             transaction.Session,
             cancellationToken);
-        if (!deleted.TryGetValue(out _, out var deletedError))
+        if (deleted is CustomHostnameBindingError deletedError)
             return Abort(transaction, new WebServiceDeploymentHostnameError(deletedError));
 
         var currentBindings = await loadHostnameBindingsForDeploymentInTransaction(
@@ -151,8 +152,9 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
                     currentBindings.Select(binding => binding.Hostname))),
             transaction.Session,
             cancellationToken);
-        if (!applied.TryGetValue(out var changed, out var failure))
+        if (applied is ResourceDeploymentMutationError failure)
             return Abort(transaction, new WebServiceDeploymentHostnameError(failure));
+        var changed = (PlacementSummaryDto)applied.Value;
 
         var advanced = await advanceResourceDeploymentRevision(
             new ResourceDeploymentResourceRevisionRequest(
@@ -162,8 +164,9 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
                 updated.ActiveRevision),
             transaction.Session,
             cancellationToken);
-        if (!advanced.TryGetValue(out var deployments, out var revisionError))
+        if (advanced is AdvanceResourceDeploymentRevisionError revisionError)
             return Abort(transaction, new WebServiceDeploymentHostnameError(revisionError));
+        var deployments = ((MutatedResourceDeployments)advanced.Value).Placements;
 
         var persisted = await persistWebService(
             transaction.Session,
@@ -172,7 +175,7 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
             updated.ToUpdatedEvent(
                 WebServiceDeploymentWorkflow.ToEventDeployments(deployments)),
             cancellationToken);
-        if (!persisted.TryGetValue(out _, out var persistenceError))
+        if (persisted is WebServiceUpdateConflict persistenceError)
             return Abort(transaction, new WebServiceDeploymentHostnameError(persistenceError));
 
         var release = WebServiceReleaseFactory.CreatePending(

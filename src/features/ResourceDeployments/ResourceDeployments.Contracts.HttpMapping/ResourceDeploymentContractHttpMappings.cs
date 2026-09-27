@@ -22,11 +22,7 @@ public static class ResourceDeploymentContractHttpMappings
                 "Isolation scope has unfinished resource deployments",
                 ("resourceGroupId", error.ResourceGroupId),
                 ("isolationScopeId", error.IsolationScopeId))),
-            HttpProblemMapping.For<ComputeProfileReferencedByResourceDeployment>(error => Problem(
-                HttpStatusCode.Conflict,
-                "resource-deployments.compute-profile-referenced",
-                "Compute profile is referenced by a resource deployment",
-                ("computeProfileId", error.ComputeProfileId))),
+            HttpProblemMapping.For<ComputeProfileReferencedByResourceDeployment>(MapComputeProfileReferenced),
             HttpProblemMapping.For<ResourceDeploymentFinalizationConflict>(error => Problem(
                 HttpStatusCode.Conflict,
                 "resource-deployments.finalization-conflict",
@@ -35,7 +31,14 @@ public static class ResourceDeploymentContractHttpMappings
             HttpProblemMapping.For<AdvanceResourceDeploymentRevisionError>(MapRevisionError)
         ]);
 
-    private static HttpProblem MapDeploymentError(
+    public static HttpProblem MapComputeProfileReferenced(
+        ComputeProfileReferencedByResourceDeployment error) => Problem(
+                HttpStatusCode.Conflict,
+                "resource-deployments.compute-profile-referenced",
+                "Compute profile is referenced by a resource deployment",
+                ("computeProfileId", error.ComputeProfileId));
+
+    public static HttpProblem MapDeploymentError(
         CreateResourceDeploymentError error) => error switch
         {
             ResourceDeploymentTargetConfigurationChanged changed => Problem(
@@ -70,7 +73,7 @@ public static class ResourceDeploymentContractHttpMappings
                 ("deploymentTargetId", deleting.DeploymentTargetId))
         };
 
-    private static HttpProblem MapMutationError(
+    public static HttpProblem MapMutationError(
         ResourceDeploymentMutationError error) => error switch
         {
             ResourceDeploymentMutationNotFound notFound => Problem(
@@ -122,7 +125,7 @@ public static class ResourceDeploymentContractHttpMappings
                 ("computeProfileIds", changed.ComputeProfileIds))
         };
 
-    private static HttpProblem MapComputeError(
+    public static HttpProblem MapComputeError(
         LoadCurrentResourceDeploymentComputeError error) => error switch
         {
             CurrentResourceDeploymentComputeNotFound notFound => Problem(
@@ -137,7 +140,7 @@ public static class ResourceDeploymentContractHttpMappings
                 ("resourceId", conflict.ResourceId))
         };
 
-    private static HttpProblem MapRevisionError(
+    public static HttpProblem MapRevisionError(
         AdvanceResourceDeploymentRevisionError error) => error switch
         {
             ResourceDeploymentsNotFound notFound => Problem(

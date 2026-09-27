@@ -2,7 +2,6 @@ using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Endpoints;
 using Pole.Features.Request;
 using Pole.Mediator;
-using Pole.ResultType;
 using Xunit.Sdk;
 
 namespace Pole.Features.RedisServices.Tests.Integration.Infrastructure;
@@ -21,18 +20,12 @@ public static class ResultAssertionExtensions
     public static RedisDto AssertSuccess(this MediatorResult<GetRedisServiceByIdOutcome> result) => AssertSuccess<GetRedisServiceByIdOutcome>(result).AssertSuccess();
     public static PaginatedResponse<RedisDto> AssertSuccess(this MediatorResult<GetRedisServicesOutcome> result) => AssertSuccess<GetRedisServicesOutcome>(result).AssertSuccess();
 
-    public static CreateRedisServiceResponse AssertSuccess(this CreateRedisServiceOutcome outcome) => outcome switch { CreateRedisServiceResponse value => value, CreateRedisServiceError error => Fail<CreateRedisServiceResponse>(error) };
-    public static CreateRedisServiceError AssertFailure(this CreateRedisServiceOutcome outcome) => outcome switch { CreateRedisServiceError value => value, var success => Fail<CreateRedisServiceError>(success) };
+    public static CreateRedisServiceResponse AssertSuccess(this CreateRedisServiceOutcome outcome) => outcome switch { CreateRedisServiceResponse value => value, var error => Fail<CreateRedisServiceResponse>(error) };
     public static UpdateRedisServiceResponse AssertSuccess(this UpdateRedisServiceOutcome outcome) => outcome switch { UpdateRedisServiceResponse value => value, var error => Fail<UpdateRedisServiceResponse>(error) };
-    public static UpdateRedisServiceError AssertFailure(this UpdateRedisServiceOutcome outcome) => outcome switch { UpdateRedisServiceError value => value, var success => Fail<UpdateRedisServiceError>(success) };
     public static DeleteRedisServiceResponse AssertSuccess(this DeleteRedisServiceOutcome outcome) => outcome switch { DeleteRedisServiceResponse value => value, var error => Fail<DeleteRedisServiceResponse>(error) };
-    public static DeleteRedisServiceError AssertFailure(this DeleteRedisServiceOutcome outcome) => outcome switch { DeleteRedisServiceError value => value, var success => Fail<DeleteRedisServiceError>(success) };
     public static RedisDto AssertSuccess(this GetRedisServiceByIdOutcome outcome) => outcome switch { RedisDto value => value, var error => Fail<RedisDto>(error) };
     public static RedisServiceNotFound AssertFailure(this GetRedisServiceByIdOutcome outcome) => outcome switch { RedisServiceNotFound value => value, var success => Fail<RedisServiceNotFound>(success) };
     public static PaginatedResponse<RedisDto> AssertSuccess(this GetRedisServicesOutcome outcome) => outcome switch { PaginatedResponse<RedisDto> value => value };
-
-    public static T AssertSuccess<T, TError>(this Result<T, TError> result) where T : notnull where TError : notnull => result switch { Ok<T> value => value.Value, Err<TError> error => Fail<T>(error.Value), _ => throw new XunitException("Unsupported result.") };
-    public static TError AssertFailure<T, TError>(this Result<T, TError> result) where T : notnull where TError : notnull => result switch { Err<TError> value => value.Value, Ok<T> success => Fail<TError>(success.Value), _ => throw new XunitException("Unsupported result.") };
 
     private static T Fail<T>(object value) => throw new XunitException($"Unexpected result: {System.Text.Json.JsonSerializer.Serialize(value, value.GetType())}");
 }

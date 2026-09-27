@@ -15,8 +15,8 @@ using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.SourceBuilds.Events;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
+using static Pole.Features.SourceBuilds.Application.Common.SourceBuildHttpMappings;
 
 namespace Pole.Features.SourceBuilds.Application.Endpoints.Jobs;
 
@@ -27,15 +27,12 @@ public sealed record StartManualSourceBuildRequest(
     [FromClaim(Claims.Email)] ClaimValue<string?> CurrentUserEmail = default)
     : IMediatorRequest<StartManualSourceBuildOutcome>, ITenantWriteOperation;
 
-public union StartManualSourceBuildError(
+public union StartManualSourceBuildOutcome(
+    SourceBuildJobDto,
     SourceBuildConfigurationNotFound,
     SourceBuildConfigurationWebServiceNotFound,
     SourceBuildLinkedRepositoryNotFound,
     SourceBuildLinkedRepositoryCandidateChanged);
-
-public union StartManualSourceBuildOutcome(
-    SourceBuildJobDto,
-    StartManualSourceBuildError);
 
 public sealed class StartManualSourceBuildHandler(
     LoadSourceBuildConfiguration loadSourceBuildConfiguration,
@@ -54,8 +51,7 @@ public sealed class StartManualSourceBuildHandler(
             cancellationToken);
         if (configuration is null)
         {
-            return new StartManualSourceBuildError(
-                new SourceBuildConfigurationNotFound(request.ConfigurationId));
+            return new SourceBuildConfigurationNotFound(request.ConfigurationId);
         }
 
         var sourceRepository = await findSourceRepositoryBuild(
@@ -64,14 +60,14 @@ public sealed class StartManualSourceBuildHandler(
             cancellationToken);
         return sourceRepository switch
         {
-            Err<FindSourceRepositoryBuildError> => new StartManualSourceBuildError(
+            SourceRepositoryBuildNotFound =>
                 new SourceBuildLinkedRepositoryNotFound(
                     configuration.Id,
-                    configuration.SourceRepositoryId)),
-            Ok<SourceRepositoryBuildSnapshot> success => await QueueAsync(
+                    configuration.SourceRepositoryId),
+            SourceRepositoryBuildSnapshot success => await QueueAsync(
                 request,
                 configuration,
-                success.Value,
+                success,
                 queueSourceBuildJob,
                 timeProvider,
                 cancellationToken)
@@ -91,10 +87,9 @@ public sealed class StartManualSourceBuildHandler(
                 configuration.Recipe.CandidateKey,
                 StringComparison.Ordinal))
         {
-            return new StartManualSourceBuildError(
-                new SourceBuildLinkedRepositoryCandidateChanged(
-                    configuration.Id,
-                    sourceRepository.Id));
+            return new SourceBuildLinkedRepositoryCandidateChanged(
+                configuration.Id,
+                sourceRepository.Id);
         }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -120,10 +115,9 @@ public sealed class StartManualSourceBuildHandler(
             cancellationToken);
         return queued switch
         {
-            Ok<SourceBuildJob> success => success.Value.ToDto(),
-            Err<SourceBuildWebServiceNotFound> error =>
-                new StartManualSourceBuildError(
-                    new SourceBuildConfigurationWebServiceNotFound(error.Value.WebServiceId))
+            SourceBuildJob success => success.ToDto(),
+            SourceBuildWebServiceNotFound error =>
+                new SourceBuildConfigurationWebServiceNotFound(error.WebServiceId)
         };
     }
 }
@@ -141,7 +135,6 @@ public static class StartManualSourceBuildEndpoint
     {
         app.MapPost("/{ConfigurationId}/builds", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] StartManualSourceBuildRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -149,7 +142,10 @@ public static class StartManualSourceBuildEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     SourceBuildJobDto job => Results.Accepted(value: job),
-                    StartManualSourceBuildError error => httpProblems.Map(error).ToHttpResult()
+                    SourceBuildConfigurationNotFound error => MapConfigurationNotFound(error),
+                    SourceBuildConfigurationWebServiceNotFound error => MapWebServiceNotFound(error),
+                    SourceBuildLinkedRepositoryNotFound error => MapLinkedRepositoryNotFound(error),
+                    SourceBuildLinkedRepositoryCandidateChanged error => MapLinkedRepositoryCandidateChanged(error)
                 });
             })
             .WithName("StartManualSourceBuild")

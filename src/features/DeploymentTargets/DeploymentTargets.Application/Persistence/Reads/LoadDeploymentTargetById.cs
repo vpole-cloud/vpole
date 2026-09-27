@@ -12,8 +12,7 @@ internal sealed class MongoLoadDeploymentTargetById(
 {
     public async Task<DeploymentTarget?> InvokeAsync(
         string deploymentTargetId,
-        CancellationToken cancellationToken = default) =>
-        await deploymentTargets
+        CancellationToken cancellationToken = default) => await deploymentTargets
             .Find(DeploymentTargetFilters.ById(deploymentTargetId))
             .FirstOrDefaultAsync(cancellationToken);
 }

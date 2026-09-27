@@ -68,7 +68,7 @@ internal sealed class MongoFinalizeWebServiceDeletion(
                 webServiceId,
                 transaction.Session,
                 ct);
-            if (!registration.TryGetValue(out _, out var registrationError))
+            if (registration is ResourceRegistrationMutationError registrationError)
             {
                 return transaction.Abort(new WebServiceFinalizationError(registrationError));
             }
@@ -79,7 +79,7 @@ internal sealed class MongoFinalizeWebServiceDeletion(
                 webServiceId,
                 transaction.Session,
                 ct);
-            if (!bindingCleanup.TryGetValue(out _, out var bindingCleanupError))
+            if (bindingCleanup is HostnameBindingCleanupError bindingCleanupError)
             {
                 return transaction.Abort(new WebServiceFinalizationError(bindingCleanupError));
             }
@@ -90,9 +90,9 @@ internal sealed class MongoFinalizeWebServiceDeletion(
                 webServiceId,
                 transaction.Session,
                 ct);
-            if (purge is Err<ResourceDeploymentFinalizationConflict> conflict)
+            if (purge is ResourceDeploymentFinalizationConflict conflict)
             {
-                return transaction.Abort(new WebServiceFinalizationError(conflict.Value));
+                return transaction.Abort(new WebServiceFinalizationError(conflict));
             }
             await storeOutboxWrites(
                 transaction.Session,

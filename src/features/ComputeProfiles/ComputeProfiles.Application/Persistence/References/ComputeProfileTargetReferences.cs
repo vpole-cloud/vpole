@@ -1,7 +1,6 @@
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.ComputeProfiles.Application.Persistence.References;
 
@@ -9,7 +8,7 @@ internal static class ComputeProfileTargetReferences
 {
     public const string OwnerType = DeploymentTargetReferenceOwnerTypes.ComputeProfile;
 
-    public static Task<Result<Unit, DeploymentTargetReferenceChangeRejected>>
+    public static Task<ApplyDeploymentTargetReferenceChangesOutcome>
         ApplyChangesAsync(
         ApplyDeploymentTargetReferenceChanges applyChanges,
         ComputeProfile profile,

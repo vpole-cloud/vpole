@@ -89,7 +89,7 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
         var registration = await Services.GetRequiredService<IResourceRegistrar>().RegisterAsync(
             group.TenantId, group.Id,
             new(ResourceTypeId.Create("pole/web-service"), Id(), "payment-provider"), session);
-        Assert.IsType<Ok<RegisteredResource>>(registration.Value);
+        Assert.IsType<RegisteredResource>(registration.Value);
         await session.CommitTransactionAsync();
         Assert.Equal(2, await Versions.CountDocumentsAsync(Builders<SecretVersion>.Filter.Empty));
         Assert.Equal(2, await DbContext.CountOutboxMessagesAsync("pole.secrets/v1/secret-changed"));
@@ -144,7 +144,7 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
         var decrypted = await Services.GetRequiredService<IEnvelopeEncryptionService>().DecryptAsync(
             first.Value,
             EnvelopeEncryptionContext.ForTenant(group.TenantId, "Secret", created.Id, "values", 1));
-        Assert.True(decrypted is Ok<byte[]>);
+        Assert.IsType<byte[]>(decrypted.Value);
         Assert.Null(await Services.GetRequiredService<LoadSecretById>()(Id(), created.Id, default));
         AssertError<SecretMissing>(await RotateAsync(Id(), created.Id, 1, Values(), default));
         var rotated = Metadata(await RotateAsync(
@@ -538,7 +538,7 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
             group.Id,
             new(ResourceTypeId.Create("pole/web-service"), resourceId, "consumer"),
             session);
-        Assert.True(registration is Ok<RegisteredResource>);
+        Assert.IsType<RegisteredResource>(registration.Value);
         await session.CommitTransactionAsync();
         var now = DateTime.UtcNow;
         var placement = ResolvedResourcePlacement.Create(

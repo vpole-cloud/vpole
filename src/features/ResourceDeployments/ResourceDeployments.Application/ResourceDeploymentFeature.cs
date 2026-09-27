@@ -20,7 +20,6 @@ public static class ResourceDeploymentFeature
         IConfiguration configuration)
     {
         services.AddHttpProblemMappings(ResourceDeploymentContractHttpMappings.All);
-        services.AddHttpProblemMappings(ResourceDeploymentHttpMappings.All);
 
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<

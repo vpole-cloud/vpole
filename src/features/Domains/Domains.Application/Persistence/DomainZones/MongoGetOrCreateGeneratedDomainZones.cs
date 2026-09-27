@@ -21,9 +21,7 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
     private readonly IMongoCollection<TenantDomainZone> zones =
         database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
 
-    public async Task<Result<
-        IReadOnlyList<TenantDomainZoneSnapshot>,
-        GeneratedDomainZoneError>> InvokeAsync(
+    public async Task<GetOrCreateGeneratedDomainZonesOutcome> InvokeAsync(
         IReadOnlyList<GetOrCreateGeneratedZoneRequest> requests,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
@@ -35,14 +33,13 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
         var identity = await loadTenantIdentity(tenantId, cancellationToken);
         var tenant = identity switch
         {
-            Ok<TenantIdentitySnapshot> success => success.Value,
-            Err<TenantIdentityNotFound> => null
+            TenantIdentitySnapshot success => success,
+            TenantIdentityNotFound => null
         };
         if (tenant is null)
         {
-            return new Err<GeneratedDomainZoneError>(
-                new GeneratedDomainZoneError(
-                    new GeneratedDomainZoneTenantUnavailable(tenantId)));
+            return new GeneratedDomainZoneError(
+                    new GeneratedDomainZoneTenantUnavailable(tenantId));
         }
 
         var candidates = requests
@@ -64,9 +61,8 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
                     out var persisted) &&
                 !string.Equals(candidate.Domain, persisted.Domain, StringComparison.Ordinal))
             {
-                return new Err<GeneratedDomainZoneError>(
-                    new GeneratedDomainZoneError(
-                        new GeneratedDomainZoneMismatch(candidate.DeploymentTargetId)));
+                return new GeneratedDomainZoneError(
+                        new GeneratedDomainZoneMismatch(candidate.DeploymentTargetId));
             }
         }
 
@@ -92,12 +88,11 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
                     .ToArray(),
                 session,
                 cancellationToken);
-            if (fence is Err<DeploymentTargetWorkloadConfigurationFenceRejected>)
+            if (fence is DeploymentTargetWorkloadConfigurationFenceRejected)
             {
-                return new Err<GeneratedDomainZoneError>(
-                    new GeneratedDomainZoneError(
+                return new GeneratedDomainZoneError(
                         new GeneratedDomainZoneTargetChanged(
-                            missing.Select(candidate => candidate.DeploymentTargetId).ToArray())));
+                            missing.Select(candidate => candidate.DeploymentTargetId).ToArray()));
             }
 
             try
@@ -129,23 +124,21 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
                     [],
                     session,
                     cancellationToken);
-                if (registered is Err<DeploymentTargetReferenceChangeRejected>)
+                if (registered is DeploymentTargetReferenceChangeRejected)
                 {
-                    return new Err<GeneratedDomainZoneError>(
-                        new GeneratedDomainZoneError(
+                    return new GeneratedDomainZoneError(
                             new GeneratedDomainZoneTargetChanged(
-                                [candidate.DeploymentTargetId])));
+                                [candidate.DeploymentTargetId]));
                 }
 
                 existingByTarget.Add(CanonicalObjectId(candidate.DeploymentTargetId), candidate);
             }
         }
 
-        return new Ok<IReadOnlyList<TenantDomainZoneSnapshot>>(
-            requests
+        return requests
                 .Select(request => existingByTarget[
                     CanonicalObjectId(request.DeploymentTargetId)].ToSnapshot())
-                .ToArray());
+                .ToArray();
     }
 
     private TenantDomainZone CreateGeneratedZone(
@@ -160,11 +153,10 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
                 ObjectId.GenerateNewId().ToString(),
                 timeProvider.GetUtcNow().UtcDateTime));
 
-    private static Err<GeneratedDomainZoneError> GeneratedZoneConflict(
+    private static GeneratedDomainZoneError GeneratedZoneConflict(
         IReadOnlyList<TenantDomainZone> zones) =>
-        new(new GeneratedDomainZoneError(
-            new GeneratedDomainZoneConflict(
-                zones.Select(zone => zone.DeploymentTargetId).ToArray())));
+        new GeneratedDomainZoneConflict(
+                zones.Select(zone => zone.DeploymentTargetId).ToArray());
 
     private static string GeneratedZoneLabel(string displayName, string tenantId)
     {

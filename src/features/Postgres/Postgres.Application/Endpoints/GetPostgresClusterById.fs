@@ -17,10 +17,6 @@ open Pole.Features.ResourceDeployments.Contracts
 open Pole.Mediator
 open Pole.Validation
 
-type GetPostgresClusterByIdError =
-    | PostgresClusterNotFound of clusterId : string
-    | PostgresClusterDeploymentUnavailable of clusterId : string
-
 type GetPostgresClusterByIdOutcome =
     | PostgresClusterFound of PostgresClusterDto
     | GetPostgresClusterByIdRejected of GetPostgresClusterByIdError
@@ -86,7 +82,6 @@ type GetPostgresClusterById =
     static member Handle(
         [<AsParameters>] request: GetPostgresClusterByIdRequest,
         [<FromServices>] mediator: IMediator,
-        [<FromServices>] httpProblems: IHttpProblemMapper,
         cancellationToken: System.Threading.CancellationToken) =
         task {
             let! result = mediator.Send(request, cancellationToken)
@@ -95,5 +90,5 @@ type GetPostgresClusterById =
                     match outcome with
                     | PostgresClusterFound value -> Results.Ok(value)
                     | GetPostgresClusterByIdRejected error ->
-                        httpProblems.Map(error).ToHttpResult())
+                        (PostgresHttpMappings.mapGetByIdError error).ToHttpResult())
         }

@@ -10,8 +10,8 @@ using Pole.Features.GitProviders.Application.Persistence.Repositories;
 using Pole.Features.GitProviders.Application.ProviderOperations;
 using Pole.Features.GitProviders.Domain;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
+using static Pole.Features.GitProviders.Application.Common.GitProviderHttpMappings;
 
 namespace Pole.Features.GitProviders.Application.Endpoints.SourceRepositories;
 
@@ -20,14 +20,11 @@ public sealed record ReanalyzeSourceRepositoryRequest(
     [FromTenantHeader] string TenantId)
     : IMediatorRequest<ReanalyzeSourceRepositoryOutcome>, ITenantWriteOperation;
 
-public union ReanalyzeSourceRepositoryError(
+public union ReanalyzeSourceRepositoryOutcome(
+    SourceRepositoryDto,
     SourceRepositoryNotFound,
     AnalyzeProviderRepositoryError,
     SourceRepositorySelectedBuildPlanUnavailable);
-
-public union ReanalyzeSourceRepositoryOutcome(
-    SourceRepositoryDto,
-    ReanalyzeSourceRepositoryError);
 
 public sealed class ReanalyzeSourceRepositoryHandler(
     LoadSourceRepository loadSourceRepository,
@@ -42,7 +39,7 @@ public sealed class ReanalyzeSourceRepositoryHandler(
     {
         var existing = await loadSourceRepository(request.TenantId, request.Id, cancellationToken);
         if (existing is null)
-            return new ReanalyzeSourceRepositoryError(new SourceRepositoryNotFound(request.Id));
+            return new SourceRepositoryNotFound(request.Id);
 
         var analyzed = await analyzeProviderRepository(
             request.TenantId,
@@ -52,11 +49,10 @@ public sealed class ReanalyzeSourceRepositoryHandler(
             cancellationToken);
         return analyzed switch
         {
-            Err<AnalyzeProviderRepositoryError> error =>
-                new ReanalyzeSourceRepositoryError(error.Value),
-            Ok<AnalyzedProviderRepository> success => await PersistAsync(
+            AnalyzeProviderRepositoryError error => error,
+            AnalyzedProviderRepository success => await PersistAsync(
                 existing,
-                success.Value,
+                success,
                 persistReanalyzedSourceRepository,
                 timeProvider,
                 cancellationToken)
@@ -74,10 +70,9 @@ public sealed class ReanalyzeSourceRepositoryHandler(
             string.Equals(candidate.CandidateKey, existing.CandidateKey, StringComparison.Ordinal));
         if (selectedPlan is null)
         {
-            return new ReanalyzeSourceRepositoryError(
-                new SourceRepositorySelectedBuildPlanUnavailable(
+            return new SourceRepositorySelectedBuildPlanUnavailable(
                     existing.Id,
-                    existing.CandidateKey));
+                    existing.CandidateKey);
         }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -90,8 +85,8 @@ public sealed class ReanalyzeSourceRepositoryHandler(
             cancellationToken);
         return updated switch
         {
-            Ok<SourceRepository> success => success.Value.ToDto(),
-            Err<SourceRepositoryNotFound> error => new ReanalyzeSourceRepositoryError(error.Value)
+            SourceRepository success => success.ToDto(),
+            SourceRepositoryNotFound error => error
         };
     }
 }
@@ -109,7 +104,6 @@ public static class ReanalyzeSourceRepositoryEndpoint
     {
         app.MapPost("/{Id}/reanalyze", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] ReanalyzeSourceRepositoryRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -117,7 +111,9 @@ public static class ReanalyzeSourceRepositoryEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     SourceRepositoryDto repository => Results.Ok(repository),
-                    ReanalyzeSourceRepositoryError error => httpProblems.Map(error).ToHttpResult()
+                    SourceRepositoryNotFound error => MapSourceRepositoryNotFound(error),
+                    AnalyzeProviderRepositoryError error => MapAnalyzeError(error),
+                    SourceRepositorySelectedBuildPlanUnavailable error => MapSelectedBuildPlanUnavailable(error)
                 });
             })
             .WithName("ReanalyzeSourceRepository")

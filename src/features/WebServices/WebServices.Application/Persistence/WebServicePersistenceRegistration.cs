@@ -19,7 +19,6 @@ public static class WebServicePersistenceRegistration
 {
     public static IServiceCollection AddWebServicePersistence(this IServiceCollection services)
     {
-        services.AddWebServiceHttpMappings();
         services.TryAddSingleton(serviceProvider => serviceProvider
             .GetRequiredService<IMongoDatabase>()
             .GetCollection<WebService>("WebServices"));

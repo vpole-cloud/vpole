@@ -11,8 +11,7 @@ public sealed record DeploymentTargetProbeObservation(
     DeploymentTargetHealth Health,
     DeploymentTargetCapabilities Capabilities)
 {
-    public bool IsUsable =>
-        ClusterIdentity is not null &&
+    public bool IsUsable => ClusterIdentity is not null &&
         Health.Status == DeploymentTargetHealthStatus.Healthy;
 }
 

@@ -23,10 +23,12 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.ResourceGroups.Contracts.HttpMapping;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Application.Endpoints;
 using Pole.Features.StorageProfiles.Contracts;
+using Pole.Features.StorageProfiles.Contracts.HttpMapping;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.Tenants;
@@ -51,17 +53,12 @@ public sealed class HttpProblemMapperTests
     [Fact]
     public void StorageProfileCreateOutcomeMapsTargetValidationErrors()
     {
-        var mapper = new HttpProblemMapper(StorageProfileHttpMappings.All);
-        CreateStorageProfileError error = new(
-            new StorageProfileMutationValidationError(
-                new StorageProfileTargetMappingsInvalid(
-                    new Dictionary<string, string[]>
-                    {
-                        ["Body.TargetMappings[0].StorageClassName"] =
-                            ["Storage class was not found."]
-                    })));
-
-        var problem = mapper.Map(error);
+        var problem = StorageProfileHttpMappings.MapTargetMappingsInvalid(
+            new StorageProfileTargetMappingsInvalid(
+                new Dictionary<string, string[]>
+                {
+                    ["Body.TargetMappings[0].StorageClassName"] = ["Storage class was not found."]
+                }));
 
         Assert.Equal((int)HttpStatusCode.UnprocessableEntity, problem.StatusCode);
         Assert.Equal("storage-profiles.target-mappings.invalid", problem.Code);
@@ -74,9 +71,7 @@ public sealed class HttpProblemMapperTests
     [Fact]
     public void StorageProfileDiscoveryOutcomeUsesSanitizedUnavailableProblem()
     {
-        var mapper = new HttpProblemMapper(StorageProfileHttpMappings.All);
-
-        var problem = mapper.Map(
+        var problem = StorageProfileHttpMappings.MapDiscoveryUnavailable(
             new KubernetesStorageDiscoveryUnavailable("target-1"));
 
         Assert.Equal((int)HttpStatusCode.ServiceUnavailable, problem.StatusCode);
@@ -84,6 +79,38 @@ public sealed class HttpProblemMapperTests
         Assert.Equal("target-1", problem.Extensions["deploymentTargetId"]);
     }
 
+
+    [Fact]
+    public void StorageResolutionContractMappingPreservesSizeDetails()
+    {
+        StorageProfileResolutionError error = new StorageProfileSizeNotAllowed("storage-1", 32);
+
+        var direct = StorageProfileContractHttpMappings.MapResolutionError(error);
+        var registered = new HttpProblemMapper(StorageProfileHttpMappings.All).Map(error);
+
+        Assert.Equal((int)HttpStatusCode.UnprocessableEntity, direct.StatusCode);
+        Assert.Equal("storage-profiles.size-not-allowed", direct.Code);
+        Assert.Equal("storage-1", direct.Extensions["storageProfileId"]);
+        Assert.Equal(32, direct.Extensions["sizeGb"]);
+        Assert.Equal(direct.Code, registered.Code);
+    }
+
+    [Fact]
+    public void ResourceRegistrationContractMappingPreservesIdentityDetails()
+    {
+        ResourceRegistrationMutationError error = new ResourceRegistrationIdentityConflict(
+            Pole.Workloads.ResourceTypeId.Create("pole/redis"),
+            "resource-1");
+
+        var direct = ResourceGroupContractHttpMappings.MapRegistrationMutationError(error);
+        var registered = new HttpProblemMapper(ResourceGroupHttpMappings.All).Map(error);
+
+        Assert.Equal((int)HttpStatusCode.Conflict, direct.StatusCode);
+        Assert.Equal("resource-groups.resource-registration.identity-conflict", direct.Code);
+        Assert.Equal("pole/redis", direct.Extensions["resourceTypeId"]);
+        Assert.Equal("resource-1", direct.Extensions["resourceId"]);
+        Assert.Equal(direct.Code, registered.Code);
+    }
 
     [Fact]
     public void NewWorkloadAdmissionMappingIncludesSelectionDetails()
@@ -146,18 +173,13 @@ public sealed class HttpProblemMapperTests
     }
 
     [Fact]
-    public void WebServiceOutcomeUnwrapsProviderOwnedComputeError()
+    public void WebServiceOutcomeMapsProviderOwnedComputeError()
     {
-        var mapper = new HttpProblemMapper(
-        [
-            .. WebServiceHttpMappings.All,
-            .. ComputeProfileContractHttpMappings.All
-        ]);
         AddWebServiceDeploymentError error = new(
             new ComputeProfileResolutionError(
                 new ComputeProfileNotFound("compute-1")));
 
-        var problem = mapper.Map(error);
+        var problem = WebServiceHttpMappings.MapError(error);
 
         Assert.Equal((int)HttpStatusCode.NotFound, problem.StatusCode);
         Assert.Equal("compute-profiles.not-found", problem.Code);
@@ -165,18 +187,13 @@ public sealed class HttpProblemMapperTests
     }
 
     [Fact]
-    public void WebServiceOutcomeUnwrapsProviderOwnedResourceGroupError()
+    public void WebServiceOutcomeMapsProviderOwnedResourceGroupError()
     {
-        var mapper = new HttpProblemMapper(
-        [
-            .. WebServiceHttpMappings.All,
-            .. ResourceGroupHttpMappings.All
-        ]);
         CreateWebServiceError error = new(
             new ResourceGroupOwnershipError(
                 new ResourceGroupOwnershipDeleting("resource-group-1")));
 
-        var problem = mapper.Map(error);
+        var problem = WebServiceHttpMappings.MapError(error);
 
         Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
         Assert.Equal("resource-groups.deleting", problem.Code);
@@ -188,18 +205,10 @@ public sealed class HttpProblemMapperTests
 
 
     [Fact]
-    public void DeleteComputeProfileOutcomeUsesTheComputeProfileApplicationMapping()
+    public void ComputeProfileReferenceProblemCanBeMappedDirectly()
     {
-        var mapper = new HttpProblemMapper(
-        [
-            .. ComputeProfileHttpMappings.All,
-            .. ResourceDeploymentContractHttpMappings.All
-        ]);
-        DeleteComputeProfileError error =
-            new(new ComputeProfileReferencedByResourceDeployment("compute-1"));
-        DeleteComputeProfileOutcome outcome = new(error);
-
-        var problem = mapper.Map(outcome);
+        var problem = ResourceDeploymentContractHttpMappings.MapComputeProfileReferenced(
+            new ComputeProfileReferencedByResourceDeployment("compute-1"));
 
         Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
         Assert.Equal("resource-deployments.compute-profile-referenced", problem.Code);
@@ -207,20 +216,12 @@ public sealed class HttpProblemMapperTests
     }
 
     [Fact]
-    public void CreateComputeProfileOutcomeUnwrapsTargetReferenceProviderError()
+    public void TargetReferenceProblemCanBeMappedDirectly()
     {
-        var mapper = new HttpProblemMapper(
-        [
-            .. ComputeProfileHttpMappings.All,
-            .. DeploymentTargetContractHttpMappings.All
-        ]);
-        CreateComputeProfileError error = new(
-            new PersistCreatedComputeProfileError(
-                new DeploymentTargetReferenceChangeRejected(
-                    new DeploymentTargetReferenceOwner("compute-profile", "profile-1"),
-                    ["target-1"])));
-
-        var problem = mapper.Map(error);
+        var problem = DeploymentTargetContractHttpMappings.MapReferenceChangeRejected(
+            new DeploymentTargetReferenceChangeRejected(
+                new DeploymentTargetReferenceOwner("compute-profile", "profile-1"),
+                ["target-1"]));
 
         Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
         Assert.Equal("deployment-targets.reference-change-rejected", problem.Code);
@@ -253,7 +254,7 @@ public sealed class HttpProblemMapperTests
         var mapper = CreateMapper();
         DeploymentTargetDomainReservationAdmissionError contractError =
             new DeploymentTargetDisabled("target-2");
-        CreateDomainZoneError consumerError = contractError;
+        CreateDomainZoneOutcome consumerError = contractError;
 
         var problem = mapper.Map(consumerError);
 
@@ -266,14 +267,10 @@ public sealed class HttpProblemMapperTests
     }
 
     [Fact]
-    public void NestedConsumerUnionUsesTheApplicationMapping()
+    public void ManagedDomainZoneConflictMapsDirectly()
     {
-        var mapper = CreateMapper();
-        CreateManagedDomainZoneError applicationError =
-            new ManagedDomainZoneAlreadyReserved("app.example.test");
-        CreateDomainZoneError consumerError = applicationError;
-
-        var problem = mapper.Map(consumerError);
+        var problem = DomainHttpMappings.MapManagedDomainZoneAlreadyReserved(
+            new ManagedDomainZoneAlreadyReserved("app.example.test"));
 
         Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
         Assert.Equal(
@@ -284,13 +281,10 @@ public sealed class HttpProblemMapperTests
     }
 
     [Fact]
-    public void ApplicationUnionMappingPreservesStructuredExtensions()
+    public void DomainZoneReferencesMapDirectlyWithStructuredExtensions()
     {
-        var mapper = CreateMapper();
-        DeleteManagedDomainZoneError error =
-            new DomainZoneHasHostnameBindings("zone-1", 3);
-
-        var problem = mapper.Map(error);
+        var problem = DomainHttpMappings.MapDomainZoneHasHostnameBindings(
+            new DomainZoneHasHostnameBindings("zone-1", 3));
 
         Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
         Assert.Equal("domains.zone.delete.has-hostname-bindings", problem.Code);
@@ -317,7 +311,7 @@ public sealed class HttpProblemMapperTests
         ]);
         DeploymentTargetDomainReservationAdmissionError contractError =
             new DeploymentTargetNotFound("target-3");
-        CreateDomainZoneError consumerError = contractError;
+        CreateDomainZoneOutcome consumerError = contractError;
 
         var problem = mapper.Map(consumerError, overrides);
 
@@ -353,13 +347,13 @@ public sealed class HttpProblemMapperTests
         var mapper = new HttpProblemMapper([]);
         DeploymentTargetDomainReservationAdmissionError contractError =
             new DeploymentTargetNotFound("target-4");
-        CreateDomainZoneError consumerError = contractError;
+        CreateDomainZoneOutcome consumerError = contractError;
 
         var exception = Assert.Throws<InvalidOperationException>(() =>
             mapper.Map(consumerError));
 
         Assert.Contains(
-            typeof(CreateDomainZoneError).FullName!,
+            typeof(CreateDomainZoneOutcome).FullName!,
             exception.Message,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -438,17 +432,10 @@ public sealed class HttpProblemMapperTests
     [Fact]
     public void TenantMemberMutationErrorsHaveStableProblemMappings()
     {
-        var mapper = new HttpProblemMapper(
-            TenantMemberAuthorizationHttpProblemMappings.All);
-
-        AddTenantMemberError duplicateError = new(
-            new TenantMemberAdditionError(
-                new TenantMemberAlreadyExists("tenant-1", "user-1")));
-        DeleteTenantMemberError lastOwnerError = new(
-            new TenantMemberMutationError(
-                new TenantLastOwner("tenant-1", "member-1")));
-        var duplicate = mapper.Map(duplicateError);
-        var lastOwner = mapper.Map(lastOwnerError);
+        var duplicate = TenantMemberAuthorizationHttpProblemMappings.MapMemberAlreadyExists(
+            new TenantMemberAlreadyExists("tenant-1", "user-1"));
+        var lastOwner = TenantMemberAuthorizationHttpProblemMappings.MapLastOwner(
+            new TenantLastOwner("tenant-1", "member-1"));
 
         Assert.Equal((int)HttpStatusCode.Conflict, duplicate.StatusCode);
         Assert.Equal("tenants.member.already-exists", duplicate.Code);
@@ -462,19 +449,13 @@ public sealed class HttpProblemMapperTests
     [Fact]
     public void CreateUserErrorsHaveStableProblemMappings()
     {
-        var mapper = new HttpProblemMapper(UserHttpProblemMappings.All);
-        CreateUserError existingEmail = new(
-            new CreateUserPersistenceError(
-                new UserEmailAlreadyExists("ada@example.com")));
-        CreateUserError existingIdentity = new(
-            new CreateUserPersistenceError(
-                new UserIdentityAlreadyExists("keycloak-user-1")));
-        CreateUserError identityFailure = new(
-            new IdentityUserCreationFailed());
+        var existingEmail = new UserEmailAlreadyExists("ada@example.com");
+        var existingIdentity = new UserIdentityAlreadyExists("keycloak-user-1");
+        var identityFailure = new IdentityUserCreationFailed();
 
-        var conflict = mapper.Map(existingEmail);
-        var identityConflict = mapper.Map(existingIdentity);
-        var unavailable = mapper.Map(identityFailure);
+        var conflict = UserHttpProblemMappings.MapUserEmailAlreadyExists(existingEmail);
+        var identityConflict = UserHttpProblemMappings.MapUserIdentityAlreadyExists(existingIdentity);
+        var unavailable = UserHttpProblemMappings.MapIdentityUserCreationFailed(identityFailure);
 
         Assert.Equal((int)HttpStatusCode.Conflict, conflict.StatusCode);
         Assert.Equal("users.email.already-exists", conflict.Code);
@@ -714,8 +695,10 @@ public sealed class HttpProblemMapperTests
             new QuotaReservationExpired("reservation-1"));
 
         var problem = mapper.Map(error);
+        var direct = QuotaContractHttpMappings.MapExecutionError(error);
 
         Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
+        Assert.Equal(problem.Code, direct.Code);
         Assert.Equal("quotas.reservation.commit-expired", problem.Code);
         Assert.Equal(
             PoleProblemTypeId.FromCode(problem.Code),

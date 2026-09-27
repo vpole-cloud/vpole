@@ -27,15 +27,11 @@ public sealed class ComputeProfileBootstrapperTests
             {
                 persistCount++;
                 durableDefault = profile;
-                return Task.FromResult<Result<
-                    ComputeProfile,
-                    PersistCreatedComputeProfileError>>(new Ok<ComputeProfile>(profile));
+                return Task.FromResult<PersistCreatedComputeProfileOutcome>(profile);
             });
         services.AddScoped<LookupDefaultDeploymentTarget>(_ =>
-            cancellationToken => Task.FromResult<Result<
-                DeploymentTargetLookupDto,
-                DefaultDeploymentTargetLookupError>>(
-                new Ok<DeploymentTargetLookupDto>(CreateTarget(DeploymentTargetId))));
+            cancellationToken => Task.FromResult<LookupDefaultDeploymentTargetOutcome>(
+                new LookupDefaultDeploymentTargetOutcome(CreateTarget(DeploymentTargetId))));
         await using var serviceProvider = services.BuildServiceProvider();
         var bootstrapper = new ComputeProfileBootstrapper(
             serviceProvider.GetRequiredService<IServiceScopeFactory>(),

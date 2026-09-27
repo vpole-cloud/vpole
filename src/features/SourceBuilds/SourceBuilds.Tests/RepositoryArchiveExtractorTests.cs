@@ -2,7 +2,6 @@ using System.Formats.Tar;
 using System.IO.Compression;
 using System.Text;
 using Pole.Features.SourceBuilds.Application.Execution;
-using Pole.ResultType;
 using Xunit;
 
 namespace Pole.Features.SourceBuilds.Tests;
@@ -20,7 +19,7 @@ public sealed class RepositoryArchiveExtractorTests
 
         var result = await extractor.InvokeAsync(archive, destination.Path, 1024, 10);
 
-        Assert.True(TypedResultExtensions.TryGetValue(result).Succeeded);
+        Assert.IsType<SourceBuildRepositoryArchiveExtracted>(result.Value);
         Assert.Equal("<Project />", await File.ReadAllTextAsync(
             System.IO.Path.Combine(destination.Path, "src", "App.csproj")));
     }
@@ -36,7 +35,7 @@ public sealed class RepositoryArchiveExtractorTests
 
         var result = await extractor.InvokeAsync(archive, destination.Path, 1024, 10);
 
-        Assert.False(TypedResultExtensions.TryGetValue(result).Succeeded);
+        Assert.IsType<SourceBuildRepositoryArchiveInvalid>(result.Value);
     }
 
     [Fact]
@@ -49,7 +48,7 @@ public sealed class RepositoryArchiveExtractorTests
 
         var result = await extractor.InvokeAsync(archive, destination.Path, 10, 10);
 
-        Assert.False(TypedResultExtensions.TryGetValue(result).Succeeded);
+        Assert.IsType<SourceBuildRepositoryArchiveInvalid>(result.Value);
     }
 
     private static MemoryStream CreateArchive(

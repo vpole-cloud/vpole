@@ -1,11 +1,17 @@
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.StorageProfiles.Application.Validation;
 
-public delegate Task<Result<Unit, StorageProfileMutationValidationError>>
+public sealed record StorageProfileTargetMappingsValid;
+
+public union ValidateStorageProfileTargetMappingsOutcome(
+    StorageProfileTargetMappingsValid,
+    StorageProfileTargetMappingsInvalid,
+    KubernetesStorageDiscoveryUnavailable);
+
+public delegate Task<ValidateStorageProfileTargetMappingsOutcome>
     ValidateStorageProfileTargetMappings(
         StorageProfile profile,
         CancellationToken cancellationToken = default);
@@ -15,7 +21,7 @@ internal sealed class KubernetesStorageProfileTargetMappingValidator(
 {
     private const int MaximumConcurrentTargetQueries = 4;
 
-    public async Task<Result<Unit, StorageProfileMutationValidationError>> InvokeAsync(
+    public async Task<ValidateStorageProfileTargetMappingsOutcome> InvokeAsync(
         StorageProfile profile,
         CancellationToken cancellationToken = default)
     {
@@ -37,8 +43,7 @@ internal sealed class KubernetesStorageProfileTargetMappingValidator(
             .FirstOrDefault();
         if (unavailable?.DiscoveryUnavailable is { } discoveryUnavailable)
         {
-            return new Err<StorageProfileMutationValidationError>(
-                new StorageProfileMutationValidationError(discoveryUnavailable));
+            return discoveryUnavailable;
         }
 
         var errors = outcomes
@@ -52,10 +57,8 @@ internal sealed class KubernetesStorageProfileTargetMappingValidator(
                     $"deployment target '{outcome.DeploymentTargetId}'."
                 });
         return errors.Count == 0
-            ? new Ok<Unit>(Unit.Value)
-            : new Err<StorageProfileMutationValidationError>(
-                new StorageProfileMutationValidationError(
-                    new StorageProfileTargetMappingsInvalid(errors)));
+            ? new StorageProfileTargetMappingsValid()
+            : new StorageProfileTargetMappingsInvalid(errors);
     }
 
     private async Task<ValidationOutcome> CheckAsync(
@@ -70,7 +73,7 @@ internal sealed class KubernetesStorageProfileTargetMappingValidator(
             var discovered = await discoverStorageClassNames(
                 mapping.DeploymentTargetId,
                 cancellationToken);
-            if (!discovered.TryGetValue(out var knownStorageClasses, out var error))
+            if (discovered is KubernetesStorageDiscoveryUnavailable error)
             {
                 return new ValidationOutcome(
                     index,
@@ -80,6 +83,7 @@ internal sealed class KubernetesStorageProfileTargetMappingValidator(
                     error);
             }
 
+            var knownStorageClasses = (IReadOnlySet<string>)discovered.Value;
             return new ValidationOutcome(
                 index,
                 mapping.DeploymentTargetId,

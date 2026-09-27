@@ -10,8 +10,8 @@ using Pole.Features.GitProviders.Application.Persistence.Connections;
 using Pole.Features.GitProviders.Application.ProviderOperations;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
+using static Pole.Features.GitProviders.Application.Common.GitProviderHttpMappings;
 
 namespace Pole.Features.GitProviders.Application.Endpoints.Repositories;
 
@@ -22,13 +22,10 @@ public sealed record GetProviderRepositoriesRequest(
     [FromQuery] int PageSize = 50)
     : IMediatorRequest<GetProviderRepositoriesOutcome>, ITenantReadOperation;
 
-public union GetProviderRepositoriesError(
-    GitProviderConnectionNotFound,
-    GitProviderRepositoryAccessError);
-
 public union GetProviderRepositoriesOutcome(
     ProviderPage<ProviderRepositoryDto>,
-    GetProviderRepositoriesError);
+    GitProviderConnectionNotFound,
+    GitProviderRepositoryAccessError);
 
 public sealed class GetProviderRepositoriesRequestValidator : AbstractValidator<GetProviderRepositoriesRequest>
 {
@@ -54,8 +51,7 @@ public sealed class GetProviderRepositoriesHandler(
             request.ConnectionId,
             cancellationToken);
         if (connection is null)
-            return new GetProviderRepositoriesError(
-                new GitProviderConnectionNotFound(request.ConnectionId));
+            return new GitProviderConnectionNotFound(request.ConnectionId);
 
         var pageResult = await getProviderRepositories(
             connection,
@@ -64,8 +60,8 @@ public sealed class GetProviderRepositoriesHandler(
             cancellationToken);
         return pageResult switch
         {
-            Ok<ProviderPage<ProviderRepository>> success => new ProviderPage<ProviderRepositoryDto>(
-                success.Value.Items.Select(item => new ProviderRepositoryDto(
+            ProviderPage<ProviderRepository> success => new ProviderPage<ProviderRepositoryDto>(
+                success.Items.Select(item => new ProviderRepositoryDto(
                     item.Id,
                     item.Name,
                     item.FullName,
@@ -73,11 +69,10 @@ public sealed class GetProviderRepositoriesHandler(
                     item.IsPrivate,
                     item.DefaultBranch,
                     item.UpdatedAtUtc)).ToArray(),
-                success.Value.Page,
-                success.Value.PageSize,
-                success.Value.HasMore),
-            Err<GitProviderRepositoryAccessError> error =>
-                new GetProviderRepositoriesError(error.Value)
+                success.Page,
+                success.PageSize,
+                success.HasMore),
+            GitProviderRepositoryAccessError error => error
         };
     }
 }
@@ -87,7 +82,6 @@ public static class GetProviderRepositoriesEndpoint
     public static IEndpointRouteBuilder MapGetProviderRepositoriesEndpoint(this IEndpointRouteBuilder app)
     {
         app.MapGet("/{ConnectionId}/repositories", async (IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] GetProviderRepositoriesRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -95,7 +89,8 @@ public static class GetProviderRepositoriesEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     ProviderPage<ProviderRepositoryDto> page => Results.Ok(page),
-                    GetProviderRepositoriesError error => httpProblems.Map(error).ToHttpResult()
+                    GitProviderConnectionNotFound error => MapConnectionNotFound(error),
+                    GitProviderRepositoryAccessError error => MapRepositoryAccessError(error)
                 });
             })
             .WithName("GetProviderRepositories")

@@ -10,6 +10,8 @@ using Pole.Features.WebServices.Application.Persistence.Tokens;
 using Pole.Features.WebServices.Contracts;
 using Pole.Mediator;
 
+using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
+
 namespace Pole.Features.WebServices.Application.Endpoints.DeploymentTokens;
 
 public sealed record GetWebServiceDeploymentTokensRequest(
@@ -64,7 +66,6 @@ public static class GetWebServiceDeploymentTokensEndpoint
     {
         app.MapGet("/{Id}/deployment-tokens", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] GetWebServiceDeploymentTokensRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -72,7 +73,7 @@ public static class GetWebServiceDeploymentTokensEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     IReadOnlyList<WebServiceDeploymentTokenDto> value => Results.Ok(value),
-                    WebServiceNotFound error => httpProblems.Map(error).ToHttpResult()
+                    WebServiceNotFound error => MapError(error)
                 });
             })
             .WithName("GetWebServiceDeploymentTokens")

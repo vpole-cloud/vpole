@@ -3,17 +3,20 @@ using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Coordination;
 using Pole.Features.Functions.Runtime.Endpoints;
 using Pole.Features.Functions.Runtime.Kubernetes;
-using Pole.ResultType;
 
 namespace Pole.Features.Functions.Runtime.Activation;
 
 public interface IFunctionRevisionActivator
 {
-    Task<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>> EnsureActiveAsync(
+    Task<FunctionRevisionActivationOutcome> EnsureActiveAsync(
         FunctionRevisionInKubernetes subject,
         CancellationToken cancellationToken = default,
         bool forceScaleFence = false);
 }
+
+public union FunctionRevisionActivationOutcome(
+    FunctionEndpointSnapshot,
+    FunctionRevisionActivationError);
 
 public sealed class FunctionRevisionActivator(
     IFunctionEndpointRegistry endpointRegistry,
@@ -21,10 +24,10 @@ public sealed class FunctionRevisionActivator(
     IFunctionRevisionKubernetesManager kubernetesManager,
     TimeProvider timeProvider) : IFunctionRevisionActivator
 {
-    private readonly ConcurrentDictionary<string, Task<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>>> activations =
+    private readonly ConcurrentDictionary<string, Task<FunctionRevisionActivationOutcome>> activations =
         new(StringComparer.Ordinal);
 
-    public async Task<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>> EnsureActiveAsync(
+    public async Task<FunctionRevisionActivationOutcome> EnsureActiveAsync(
         FunctionRevisionInKubernetes subject,
         CancellationToken cancellationToken = default,
         bool forceScaleFence = false)
@@ -37,7 +40,7 @@ public sealed class FunctionRevisionActivator(
             subject.ServiceName);
         var current = endpointRegistry.GetSnapshot(service);
         if (current.HasReadyEndpoints && !forceScaleFence)
-            return new Ok<FunctionEndpointSnapshot>(current);
+            return current;
 
         var activationKey = $"{app.TenantId}/{app.Id}/{revision.Id}";
         var activation = activations.GetOrAdd(
@@ -49,8 +52,8 @@ public sealed class FunctionRevisionActivator(
         _ = activation.ContinueWith(
             (_, state) =>
             {
-                var (owner, key, expected) = ((FunctionRevisionActivator, string, Task<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>>))state!;
-                owner.activations.TryRemove(new KeyValuePair<string, Task<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>>>(key, expected));
+                var (owner, key, expected) = ((FunctionRevisionActivator, string, Task<FunctionRevisionActivationOutcome>))state!;
+                owner.activations.TryRemove(new KeyValuePair<string, Task<FunctionRevisionActivationOutcome>>(key, expected));
             },
             (this, activationKey, activation),
             CancellationToken.None,
@@ -59,7 +62,7 @@ public sealed class FunctionRevisionActivator(
         return await activation.WaitAsync(cancellationToken);
     }
 
-    private async Task<Result<FunctionEndpointSnapshot, FunctionRevisionActivationError>> ActivateCoreAsync(
+    private async Task<FunctionRevisionActivationOutcome> ActivateCoreAsync(
         FunctionRevisionCoordinationKey key,
         FunctionRevisionInKubernetes subject,
         FunctionServiceKey service)
@@ -89,7 +92,7 @@ public sealed class FunctionRevisionActivator(
                 }
                 if (decision.Kind == FunctionActivationBeginDecisionKind.Rejected)
                 {
-                    return new Err<FunctionRevisionActivationError>(
+                    return new FunctionRevisionActivationError(
                         new FunctionActivationCoordinatorRejected(
                             "Function revision activation was rejected by the coordinator."));
                 }
@@ -98,7 +101,7 @@ public sealed class FunctionRevisionActivator(
                 {
                     if (decision.Lease is not { } lease)
                     {
-                        return new Err<FunctionRevisionActivationError>(
+                        return new FunctionRevisionActivationError(
                             new FunctionActivationCoordinatorUnavailable(
                                 "Function revision activation returned an invalid coordination lease."));
                     }
@@ -108,10 +111,10 @@ public sealed class FunctionRevisionActivator(
                         lease.DesiredReplicas,
                         lease.Generation,
                         timeoutCancellation.Token);
-                    if (scaled is Err<FunctionRevisionKubernetesOperationError> scaleFailure)
+                    if (scaled is FunctionRevisionKubernetesOperationError scaleFailure)
                     {
-                        return new Err<FunctionRevisionActivationError>(
-                            new FunctionActivationScaleRejected(scaleFailure.Value));
+                        return new FunctionRevisionActivationError(
+                            new FunctionActivationScaleRejected(scaleFailure));
                     }
 
                     await coordinator.CompleteActivationAsync(
@@ -132,7 +135,7 @@ public sealed class FunctionRevisionActivator(
         }
         catch (Exception)
         {
-            return new Err<FunctionRevisionActivationError>(
+            return new FunctionRevisionActivationError(
                 new FunctionActivationCoordinatorUnavailable(
                     "Function revision coordination is unavailable."));
         }
@@ -142,7 +145,7 @@ public sealed class FunctionRevisionActivator(
         {
             var snapshot = endpointRegistry.GetSnapshot(service);
             if (snapshot.HasReadyEndpoints)
-                return new Ok<FunctionEndpointSnapshot>(snapshot);
+                return snapshot;
             try
             {
                 await Task.Delay(
@@ -159,7 +162,7 @@ public sealed class FunctionRevisionActivator(
         return ActivationTimeout(timeout);
     }
 
-    private static Err<FunctionRevisionActivationError> ActivationTimeout(TimeSpan timeout) =>
-        new(new FunctionActivationTimedOut(
-            $"Function revision did not become ready before the activation deadline ({timeout.TotalSeconds:0} seconds)."));
+    private static FunctionRevisionActivationError ActivationTimeout(TimeSpan timeout) =>
+        new FunctionActivationTimedOut(
+            $"Function revision did not become ready before the activation deadline ({timeout.TotalSeconds:0} seconds).");
 }

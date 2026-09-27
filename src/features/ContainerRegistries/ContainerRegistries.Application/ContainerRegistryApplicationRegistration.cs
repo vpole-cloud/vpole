@@ -3,7 +3,6 @@ using Hangfire;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
-using Pole.ASP.Helpers;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.ContainerRegistries.Application.Harbor;
 using Pole.Features.ContainerRegistries.Application.Persistence;
@@ -23,7 +22,6 @@ public static class ContainerRegistryApplicationRegistration
     {
         services.Configure<HarborOptions>(configuration.GetSection(HarborOptions.SectionName));
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<HarborOptions>>().Value);
-        services.AddHttpProblemMappings(ContainerRegistryHttpMappings.All);
         services.TryAddSingleton(TimeProvider.System);
 
         services.TryAddScoped<RegistryProvisioningPersistence>();

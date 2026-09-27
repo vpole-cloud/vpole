@@ -14,7 +14,13 @@ public static class QuotaContractHttpMappings
                 MapReservationCommitError)
         ]);
 
-    private static HttpProblem MapReservationError(
+    public static HttpProblem MapExecutionError(QuotaExecutionError error) => error switch
+    {
+        QuotaReservationError reservation => MapReservationError(reservation),
+        QuotaReservationCommitError commit => MapReservationCommitError(commit)
+    };
+
+    public static HttpProblem MapReservationError(
         QuotaReservationError error) => error switch
         {
             QuotaExceeded exceeded => new HttpProblem(
@@ -40,7 +46,7 @@ public static class QuotaContractHttpMappings
                 })
         };
 
-    private static HttpProblem MapReservationCommitError(
+    public static HttpProblem MapReservationCommitError(
         QuotaReservationCommitError error) => error switch
         {
             QuotaReservationNotFound => Problem(

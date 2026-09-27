@@ -3,7 +3,6 @@ using Pole.Features.ContainerRegistries.Application.Harbor;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Execution;
-using Pole.ResultType;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Text.Json;
 using Pole.Testing;
@@ -30,14 +29,13 @@ public sealed class HarborContractTests(HarborContractFixture fixture)
         resources.Defer($"delete Harbor project '{projectName}'", async token =>
         {
             var cleanup = await client.DeleteProjectAsync(projectName, token);
-            Assert.True(TypedResultExtensions.TryGetValue(cleanup).Succeeded);
+            Assert.IsType<RegistryProjectDeleted>(cleanup.Value);
         });
 
         var result = await client.ProvisionProjectAsync(
             new RegistryProjectProvisioningRequest("contract-test", projectName, attemptId));
 
-        if (!result.TryGetValue(out var created, out var failure))
-            Assert.Fail(failure.ToString());
+        var created = Assert.IsType<ProvisionedRegistryProject>(result.Value);
         Assert.Equal(projectName, created.ProjectName);
         Assert.False(string.IsNullOrWhiteSpace(created.BuildCredential.Username));
         Assert.False(string.IsNullOrWhiteSpace(created.BuildCredential.Secret));
@@ -65,13 +63,12 @@ public sealed class HarborContractTests(HarborContractFixture fixture)
         {
             var cleanup = await registryClient.DeleteProjectAsync(projectName, token);
             if (completed)
-                Assert.True(TypedResultExtensions.TryGetValue(cleanup).Succeeded);
+                Assert.IsType<RegistryProjectDeleted>(cleanup.Value);
         });
 
         var projectResult = await registryClient.ProvisionProjectAsync(
             new RegistryProjectProvisioningRequest("buildkit-contract-test", projectName, attemptId));
-        if (!projectResult.TryGetValue(out var provisioned, out var provisioningFailure))
-            Assert.Fail(provisioningFailure.ToString());
+        var provisioned = Assert.IsType<ProvisionedRegistryProject>(projectResult.Value);
 
         var processRunner = new ProcessRunner();
         var buildKit = new BuildKitClient(
@@ -97,11 +94,9 @@ public sealed class HarborContractTests(HarborContractFixture fixture)
             provisioned.BuildCredential.Username,
             provisioned.BuildCredential.Secret));
 
-        var build = TypedResultExtensions.TryGetValue(buildResult);
-        if (!build.Succeeded)
-            Assert.Fail(build.Error.ToString());
-        Assert.Equal(target.Reference, build.Value!.Reference);
-        Assert.StartsWith("sha256:", build.Value.Digest, StringComparison.Ordinal);
+        var build = Assert.IsType<BuiltContainerImage>(buildResult.Value);
+        Assert.Equal(target.Reference, build.Reference);
+        Assert.StartsWith("sha256:", build.Digest, StringComparison.Ordinal);
         completed = true;
     }
 

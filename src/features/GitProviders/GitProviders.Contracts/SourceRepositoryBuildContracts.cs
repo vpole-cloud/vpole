@@ -39,14 +39,16 @@ public union GitProviderRepositoryAccessError(
     GitProviderUnsupported,
     GitProviderUnavailable);
 
-public union FindSourceRepositoryBuildError(SourceRepositoryBuildNotFound);
-
 public union DownloadSourceRepositoryArchiveError(
     SourceRepositoryBuildNotFound,
     SourceRepositoryBuildConnectionNotFound,
     GitProviderRepositoryAccessError);
 
-public delegate Task<Result<SourceRepositoryBuildSnapshot, FindSourceRepositoryBuildError>>
+public union FindSourceRepositoryBuildOutcome(
+    SourceRepositoryBuildSnapshot,
+    SourceRepositoryBuildNotFound);
+
+public delegate Task<FindSourceRepositoryBuildOutcome>
     FindSourceRepositoryBuild(
         string tenantId,
         string sourceRepositoryId,
@@ -56,7 +58,13 @@ public delegate Task<Result<SourceRepositoryBuildSnapshot, FindSourceRepositoryB
 /// Writes the exact requested commit to the caller-owned destination stream.
 /// The destination remains owned by the caller and is not disposed by the provider.
 /// </summary>
-public delegate Task<Result<Unit, DownloadSourceRepositoryArchiveError>>
+public sealed record SourceRepositoryArchiveDownloaded;
+
+public union DownloadSourceRepositoryArchiveOutcome(
+    SourceRepositoryArchiveDownloaded,
+    DownloadSourceRepositoryArchiveError);
+
+public delegate Task<DownloadSourceRepositoryArchiveOutcome>
     DownloadSourceRepositoryArchive(
         string tenantId,
         string sourceRepositoryId,

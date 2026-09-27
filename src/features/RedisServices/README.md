@@ -72,7 +72,7 @@ hierarchy once rather than finding every handler query.
 - `StoreOutboxWrites` and `MongoRunTransaction` are the shared narrow transaction and outbox
   capabilities used by the persistence operations. Callers return an explicit transaction
   decision to commit or abort their closed outcome.
-- Expected revision and duplicate-key conflicts map to typed `Result<T, TError>` errors. Mongo availability,
+- Expected revision conflicts use named outcome unions. Mongo availability,
   timeout, and unexpected driver exceptions remain exceptions and reach the standard 5xx path.
 
 ## DI and raw Mongo access
@@ -88,6 +88,11 @@ not accept arbitrary Mongo filters or update definitions.
 This is intentionally not a generic repository. The delegate signatures use semantic inputs and
 return domain values or intention-revealing outcomes; they do not expose `IFindFluent`,
 `UpdateResult`, or general query execution.
+
+Redis update, deletion, and Kubernetes apply return named outcomes with concrete
+success and failure cases. Redis-owned endpoint errors are flat outcome cases mapped by static HTTP methods.
+Redis endpoints call provider-owned contract HTTP mappings directly for deployment,
+compute, storage, resource registration, and quota errors.
 
 ## Mongo document validation
 

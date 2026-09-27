@@ -98,9 +98,15 @@ export function useGitIntegrationsManager({
 
   useEffect(() => {
     if (!enabled || !selection.connectionId) {
-      setRepositories([])
-      setRepositoryStatus('idle')
-      return
+      let active = true
+      queueMicrotask(() => {
+        if (!active) return
+        setRepositories([])
+        setRepositoryStatus('idle')
+      })
+      return () => {
+        active = false
+      }
     }
 
     const controller = new AbortController()
@@ -133,9 +139,15 @@ export function useGitIntegrationsManager({
 
   useEffect(() => {
     if (!enabled || !selection.connectionId || !selection.repositoryId) {
-      setBranches([])
-      setBranchStatus('idle')
-      return
+      let active = true
+      queueMicrotask(() => {
+        if (!active) return
+        setBranches([])
+        setBranchStatus('idle')
+      })
+      return () => {
+        active = false
+      }
     }
 
     const controller = new AbortController()

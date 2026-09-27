@@ -5,16 +5,16 @@ using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Events;
-using Pole.ResultType;
 
 namespace Pole.Features.Functions.Application.Persistence.Lifecycle;
 
 public sealed record FunctionAppDeletionChanged(string FunctionAppId);
 
-public union BeginFunctionAppDeletionError(
+public union BeginFunctionAppDeletionOutcome(
+    FunctionApp,
     FunctionAppDeletionChanged);
 
-public delegate Task<Result<FunctionApp, BeginFunctionAppDeletionError>>
+public delegate Task<BeginFunctionAppDeletionOutcome>
     BeginFunctionAppDeletion(
         IClientSessionHandle session,
         FunctionApp current,
@@ -27,7 +27,7 @@ internal sealed class MongoBeginFunctionAppDeletion(
     IMongoCollection<FunctionTimerState> functionTimerStates,
     StoreOutboxWrites storeOutboxWrites)
 {
-    public async Task<Result<FunctionApp, BeginFunctionAppDeletionError>> InvokeAsync(
+    public async Task<BeginFunctionAppDeletionOutcome> InvokeAsync(
         IClientSessionHandle session,
         FunctionApp current,
         DateTimeOffset nowUtc,
@@ -45,8 +45,7 @@ internal sealed class MongoBeginFunctionAppDeletion(
             cancellationToken: cancellationToken);
         if (appResult.MatchedCount != 1)
         {
-            return new Err<BeginFunctionAppDeletionError>(
-                new FunctionAppDeletionChanged(current.Id));
+            return new FunctionAppDeletionChanged(current.Id);
         }
 
         await functionRouteBindings.UpdateOneAsync(
@@ -75,6 +74,6 @@ internal sealed class MongoBeginFunctionAppDeletion(
                     EventCore = EventCore.Create(current.TenantId)
                 })],
             cancellationToken);
-        return new Ok<FunctionApp>(current);
+        return current;
     }
 }

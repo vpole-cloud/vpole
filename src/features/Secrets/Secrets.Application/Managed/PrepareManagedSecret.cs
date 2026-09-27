@@ -3,14 +3,13 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Pole.Encryption;
 using Pole.Features.Secrets.Contracts;
-using Pole.ResultType;
 using Pole.Workloads;
 
 namespace Pole.Features.Secrets.Application.Managed;
 
 internal sealed class EnvelopePrepareManagedSecret(IEnvelopeEncryptionService encryption)
 {
-    public async Task<Result<PreparedManagedSecret, ManagedSecretEncryptionUnavailable>> InvokeAsync(
+    public async Task<PrepareManagedSecretOutcome> InvokeAsync(
         string tenantId,
         string secretId,
         ManagedSecretOwner owner,
@@ -36,9 +35,9 @@ internal sealed class EnvelopePrepareManagedSecret(IEnvelopeEncryptionService en
                 EnvelopeEncryptionContext.ForTenant(tenantId, "Secret", secretId, "values", version), ct);
             return protectedValues switch
             {
-                Ok<EncryptedValue> encrypted => new Ok<PreparedManagedSecret>(new(
-                    secretId, tenantId, owner, name, kubernetesType, version, values.Keys.Order().ToImmutableArray(), JsonSerializer.SerializeToUtf8Bytes(encrypted.Value).ToImmutableArray())),
-                Err<EnvelopeEncryptionFailed> => new Err<ManagedSecretEncryptionUnavailable>(new())
+                EncryptedValue encrypted => new PreparedManagedSecret(
+                    secretId, tenantId, owner, name, kubernetesType, version, values.Keys.Order().ToImmutableArray(), JsonSerializer.SerializeToUtf8Bytes(encrypted).ToImmutableArray()),
+                EnvelopeEncryptionFailed => new ManagedSecretEncryptionUnavailable()
             };
         }
         finally

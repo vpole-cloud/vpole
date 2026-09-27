@@ -37,13 +37,13 @@ public static class GetDeploymentTargetsEndpoint
     public static IEndpointRouteBuilder MapGetDeploymentTargetsEndpoint(this IEndpointRouteBuilder app)
     {
         app.MapGet("/", async (IMediator mediator, CancellationToken cancellationToken) =>
+        {
+            var result = await mediator.Send(new GetDeploymentTargetsRequest(), cancellationToken);
+            return result.ToHttpResult(outcome => outcome switch
             {
-                var result = await mediator.Send(new GetDeploymentTargetsRequest(), cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
-                {
-                    IReadOnlyCollection<DeploymentTargetDto> targets => Results.Ok(targets)
-                });
-            })
+                IReadOnlyCollection<DeploymentTargetDto> targets => Results.Ok(targets)
+            });
+        })
             .WithName("GetDeploymentTargets")
             .Produces<IReadOnlyCollection<DeploymentTargetDto>>();
         return app;

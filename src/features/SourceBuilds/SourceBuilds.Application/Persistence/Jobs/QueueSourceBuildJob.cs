@@ -3,11 +3,14 @@ using Pole.Database;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.SourceBuilds.Events;
-using Pole.ResultType;
 
 namespace Pole.Features.SourceBuilds.Application.Persistence.Jobs;
 
-public delegate Task<Result<SourceBuildJob, SourceBuildWebServiceNotFound>> QueueSourceBuildJob(
+public union QueueSourceBuildJobOutcome(
+    SourceBuildJob,
+    SourceBuildWebServiceNotFound);
+
+public delegate Task<QueueSourceBuildJobOutcome> QueueSourceBuildJob(
     SourceBuildJob job,
     SourceBuildRequestedEvent requestedEvent,
     CancellationToken cancellationToken = default);
@@ -18,7 +21,7 @@ internal sealed class MongoQueueSourceBuildJob(
     AdmitSourceBuildWebService admitWebService,
     StoreOutboxWrites storeOutboxWrites)
 {
-    public Task<Result<SourceBuildJob, SourceBuildWebServiceNotFound>> InvokeAsync(
+    public Task<QueueSourceBuildJobOutcome> InvokeAsync(
         SourceBuildJob job,
         SourceBuildRequestedEvent requestedEvent,
         CancellationToken cancellationToken = default)
@@ -30,7 +33,7 @@ internal sealed class MongoQueueSourceBuildJob(
                 "A source build request event must preserve build-job and tenant identity.");
         }
 
-        return transactions.InvokeOutcomeAsync<Result<SourceBuildJob, SourceBuildWebServiceNotFound>>(
+        return transactions.InvokeOutcomeAsync<QueueSourceBuildJobOutcome>(
             async (transaction, ct) =>
             {
                 var admitted = await admitWebService(
@@ -38,15 +41,19 @@ internal sealed class MongoQueueSourceBuildJob(
                     job.WebServiceId,
                     transaction.Session,
                     ct);
-                if (!admitted.TryGetValue(out _, out var error))
-                    return transaction.Abort(new Err<SourceBuildWebServiceNotFound>(error));
+                if (admitted is SourceBuildWebServiceNotFound error)
+                {
+                    QueueSourceBuildJobOutcome outcome = error;
+                    return transaction.Abort(outcome);
+                }
 
                 await jobs.InsertOneAsync(transaction.Session, job, cancellationToken: ct);
                 await storeOutboxWrites(
                     transaction.Session,
                     [OutboxWrite.Create(requestedEvent)],
                     ct);
-                return transaction.Commit(new Ok<SourceBuildJob>(job));
+                QueueSourceBuildJobOutcome accepted = job;
+                return transaction.Commit(accepted);
             },
             cancellationToken);
     }

@@ -9,6 +9,8 @@ using Pole.Features.WebServices.Application.Persistence.Tokens;
 using Pole.Mediator;
 using Pole.ResultType;
 
+using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
+
 namespace Pole.Features.WebServices.Application.Endpoints.DeploymentTokens;
 
 public sealed record RevokeWebServiceDeploymentTokenRequest(
@@ -41,10 +43,12 @@ public sealed class RevokeWebServiceDeploymentTokenHandler(
             request.ActorUserId.Value,
             DateTime.UtcNow,
             cancellationToken);
-        return result.TryGetValue(out _, out var error)
-            ? new RevokeWebServiceDeploymentTokenOutcome(
-                new RevokeWebServiceDeploymentTokenResponse(request.TokenId))
-            : new RevokeWebServiceDeploymentTokenOutcome(error);
+        return result switch
+        {
+            WebServiceDeploymentTokenRevoked =>
+                new RevokeWebServiceDeploymentTokenResponse(request.TokenId),
+            WebServiceDeploymentTokenNotFound error => error
+        };
     }
 }
 
@@ -64,7 +68,6 @@ public static class RevokeWebServiceDeploymentTokenEndpoint
     {
         app.MapDelete("/{Id}/deployment-tokens/{TokenId}", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] RevokeWebServiceDeploymentTokenRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -73,7 +76,7 @@ public static class RevokeWebServiceDeploymentTokenEndpoint
                 {
                     RevokeWebServiceDeploymentTokenResponse => Results.NoContent(),
                     WebServiceDeploymentTokenNotFound error =>
-                        httpProblems.Map(error).ToHttpResult()
+                        MapError(error)
                 });
             })
             .WithName("RevokeWebServiceDeploymentToken")

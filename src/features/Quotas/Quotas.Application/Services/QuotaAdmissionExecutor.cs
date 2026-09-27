@@ -5,7 +5,6 @@ using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Application.Persistence;
 using Pole.Features.Quotas.Application.Persistence.Reservations;
 using Pole.Features.Quotas.Application.Persistence.Usage;
-using Pole.ResultType;
 
 namespace Pole.Features.Quotas.Application.Services;
 
@@ -45,9 +44,15 @@ internal sealed class QuotaAdmissionExecutor(
                 positiveDelta,
                 resourceKey,
                 cancellationToken);
-            if (!reservationResult.TryGetValue(out reservation, out var reservationError))
+            switch (reservationResult)
             {
-                return quotaError(new QuotaExecutionError(reservationError));
+                case QuotaReservationLease lease:
+                    reservation = lease;
+                    break;
+                case QuotaExceeded error:
+                    return quotaError(new QuotaExecutionError(new QuotaReservationError(error)));
+                case QuotaReservationConflict error:
+                    return quotaError(new QuotaExecutionError(new QuotaReservationError(error)));
             }
         }
 
@@ -64,10 +69,19 @@ internal sealed class QuotaAdmissionExecutor(
                             reservation.ReservationId,
                             transaction.Session,
                             transactionCancellationToken);
-                        if (!commitResult.TryGetValue(out _, out var commitError))
+                        switch (commitResult)
                         {
-                            return transaction.Abort(
-                                quotaError(new QuotaExecutionError(commitError)));
+                            case QuotaReservationCommitted:
+                                break;
+                            case QuotaReservationNotFound error:
+                                return transaction.Abort(quotaError(
+                                    new QuotaExecutionError(new QuotaReservationCommitError(error))));
+                            case QuotaReservationCancelled error:
+                                return transaction.Abort(quotaError(
+                                    new QuotaExecutionError(new QuotaReservationCommitError(error))));
+                            case QuotaReservationExpired error:
+                                return transaction.Abort(quotaError(
+                                    new QuotaExecutionError(new QuotaReservationCommitError(error))));
                         }
                     }
 

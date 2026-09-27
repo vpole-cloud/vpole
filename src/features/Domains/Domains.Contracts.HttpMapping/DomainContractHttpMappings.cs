@@ -12,7 +12,7 @@ public static class DomainContractHttpMappings
             HttpProblemMapping.For<GeneratedHostnameBindingError>(MapGeneratedBindingError)
         ]);
 
-    private static HttpProblem MapGeneratedZoneError(
+    public static HttpProblem MapGeneratedZoneError(
         GeneratedDomainZoneError error) => error switch
         {
             GeneratedDomainZoneTenantUnavailable unavailable => Problem(
@@ -37,7 +37,7 @@ public static class DomainContractHttpMappings
                 ("deploymentTargetIds", conflict.DeploymentTargetIds))
         };
 
-    private static HttpProblem MapGeneratedBindingError(
+    public static HttpProblem MapGeneratedBindingError(
         GeneratedHostnameBindingError error) => error switch
         {
             GeneratedHostnameBindingZoneNotFound notFound => Problem(
@@ -61,6 +61,52 @@ public static class DomainContractHttpMappings
                 "domains.generated-binding.conflict",
                 "Generated hostname is already reserved",
                 ("hostnames", conflict.Hostnames))
+        };
+
+    public static HttpProblem MapCustomHostnameBindingError(
+        CustomHostnameBindingError error) => error switch
+        {
+            CustomHostnameBindingZoneNotFound notFound => Problem(
+                HttpStatusCode.NotFound,
+                "domains.hostname.zone-not-found",
+                "Domain zone not found",
+                ("domainZoneId", notFound.TenantDomainZoneId)),
+            CustomHostnameBindingTargetMismatch mismatch => Problem(
+                HttpStatusCode.Conflict,
+                "domains.hostname.zone-target-mismatch",
+                "Domain zone belongs to another deployment target",
+                ("domainZoneId", mismatch.TenantDomainZoneId),
+                ("deploymentTargetId", mismatch.DeploymentTargetId)),
+            CustomHostnameBindingConflict conflict => Problem(
+                HttpStatusCode.Conflict,
+                "domains.hostname.already-bound",
+                "Hostname is already bound",
+                ("hostname", conflict.Hostname)),
+            CustomHostnameBindingNotFound notFound => Problem(
+                HttpStatusCode.NotFound,
+                "domains.hostname.not-found",
+                "Hostname binding not found",
+                ("bindingId", notFound.BindingId)),
+            GeneratedHostnameBindingDeletionRejected rejected => Problem(
+                HttpStatusCode.Conflict,
+                "domains.hostname.delete.generated",
+                "Generated hostname binding cannot be deleted",
+                ("bindingId", rejected.BindingId)),
+            CustomHostnameBindingZoneUnavailable unavailable => Problem(
+                HttpStatusCode.Conflict,
+                "domains.hostname.zone-unavailable",
+                "Hostname binding domain zone is unavailable",
+                ("domainZoneId", unavailable.TenantDomainZoneId)),
+            CustomHostnameBindingZoneChanged changed => Problem(
+                HttpStatusCode.Conflict,
+                "domains.hostname.zone-changed",
+                "Domain zone changed during hostname update",
+                ("domainZoneIds", changed.TenantDomainZoneIds)),
+            CustomHostnameBindingDeletionConflict conflict => Problem(
+                HttpStatusCode.Conflict,
+                "domains.hostname.delete.conflict",
+                "Hostname binding changed during deletion",
+                ("bindingId", conflict.BindingId))
         };
 
     private static HttpProblem Problem(

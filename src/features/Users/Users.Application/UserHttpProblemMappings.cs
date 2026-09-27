@@ -7,15 +7,7 @@ namespace Pole.Features.Users.Application;
 
 public static class UserHttpProblemMappings
 {
-    public static IReadOnlyList<HttpProblemMapping> All { get; } =
-        Array.AsReadOnly<HttpProblemMapping>(
-        [
-            HttpProblemMapping.For<UserEmailAlreadyExists>(MapUserEmailAlreadyExists),
-            HttpProblemMapping.For<UserIdentityAlreadyExists>(MapUserIdentityAlreadyExists),
-            HttpProblemMapping.For<IdentityUserCreationFailed>(MapIdentityUserCreationFailed)
-        ]);
-
-    private static HttpProblem MapUserEmailAlreadyExists(
+    public static HttpProblem MapUserEmailAlreadyExists(
         UserEmailAlreadyExists conflict) =>
         new(
             (int)HttpStatusCode.Conflict,
@@ -28,7 +20,7 @@ public static class UserHttpProblemMappings
                 ["email"] = conflict.Email
             });
 
-    private static HttpProblem MapIdentityUserCreationFailed(
+    public static HttpProblem MapIdentityUserCreationFailed(
         IdentityUserCreationFailed _) =>
         new(
             (int)HttpStatusCode.BadGateway,
@@ -37,7 +29,7 @@ public static class UserHttpProblemMappings
             "users.identity-provider.user-creation-failed",
             "The identity provider could not create the user.");
 
-    private static HttpProblem MapUserIdentityAlreadyExists(
+    public static HttpProblem MapUserIdentityAlreadyExists(
         UserIdentityAlreadyExists _) =>
         new(
             (int)HttpStatusCode.Conflict,

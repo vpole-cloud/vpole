@@ -1,4 +1,3 @@
-using Pole.ResultType;
 
 namespace Pole.Encryption.Tests;
 
@@ -38,10 +37,10 @@ public sealed class EnvelopeEncryptionServiceTests
         const string plaintext = "пароль-🔐-秘密";
 
         var encryptedResult = await encryption.Service.EncryptStringAsync(plaintext, EncryptionTestData.TenantContext());
-        Assert.True(encryptedResult.TryGetValue(out var encrypted, out var encryptionFailure), encryptionFailure?.Message);
+        var encrypted = Assert.IsType<EncryptedValue>(encryptedResult.Value);
         var decryptedResult = await encryption.Service.DecryptStringAsync(encrypted, EncryptionTestData.TenantContext());
 
-        Assert.True(decryptedResult.TryGetValue(out var decrypted, out var decryptionFailure), decryptionFailure?.Message);
+        var decrypted = Assert.IsType<string>(decryptedResult.Value);
         Assert.Equal(plaintext, decrypted);
     }
 
@@ -262,8 +261,7 @@ public sealed class EnvelopeEncryptionServiceTests
 
         var result = await service.EncryptAsync(new byte[] { 1, 2, 3 }, EncryptionTestData.TenantContext());
 
-        Assert.False(result.TryGetValue(out _, out var failure));
-        Assert.IsType<EnvelopeEncryptionFailed>(failure);
+        Assert.IsType<EnvelopeEncryptionFailed>(result.Value);
     }
 
     private static TestEncryptionService CreateService(TemporaryKeyDirectory files) =>
@@ -276,8 +274,7 @@ public sealed class EnvelopeEncryptionServiceTests
         EnvelopeEncryptionContext context)
     {
         var result = await service.EncryptAsync(plaintext, context);
-        Assert.True(result.TryGetValue(out var encrypted, out var failure), failure?.Message);
-        return encrypted;
+        return Assert.IsType<EncryptedValue>(result.Value);
     }
 
     private static async Task<byte[]> DecryptAsync(
@@ -286,8 +283,7 @@ public sealed class EnvelopeEncryptionServiceTests
         EnvelopeEncryptionContext context)
     {
         var result = await service.DecryptAsync(value, context);
-        Assert.True(result.TryGetValue(out var plaintext, out var failure), failure?.Message);
-        return plaintext;
+        return Assert.IsType<byte[]>(result.Value);
     }
 
     private static async Task AssertDecryptFailsAsync(
@@ -296,8 +292,7 @@ public sealed class EnvelopeEncryptionServiceTests
         EnvelopeEncryptionContext context)
     {
         var result = await service.DecryptAsync(value, context);
-        Assert.False(result.TryGetValue(out _, out var failure));
-        Assert.IsType<EnvelopeDecryptionFailed>(failure);
+        Assert.IsType<EnvelopeDecryptionFailed>(result.Value);
     }
 
     private sealed class CapturingKeyEncryptionProvider : IKeyEncryptionProvider
@@ -309,18 +304,18 @@ public sealed class EnvelopeEncryptionServiceTests
             1);
         public List<byte[]> CapturedKeys { get; } = [];
 
-        public ValueTask<Result<WrappedDataEncryptionKey, DataEncryptionKeyWrappingFailed>> WrapKeyAsync(
+        public ValueTask<DataEncryptionKeyWrappingOutcome> WrapKeyAsync(
             KeyEncryptionKeyDescriptor key,
             ReadOnlyMemory<byte> dataEncryptionKey,
             ReadOnlyMemory<byte> associatedData,
             CancellationToken cancellationToken = default)
         {
             CapturedKeys.Add(dataEncryptionKey.ToArray());
-            return ValueTask.FromResult<Result<WrappedDataEncryptionKey, DataEncryptionKeyWrappingFailed>>(
-                new Ok<WrappedDataEncryptionKey>(new WrappedDataEncryptionKey(new byte[32], new byte[12], new byte[16])));
+            return ValueTask.FromResult<DataEncryptionKeyWrappingOutcome>(
+                new WrappedDataEncryptionKey(new byte[32], new byte[12], new byte[16]));
         }
 
-        public ValueTask<Result<byte[], DataEncryptionKeyUnwrappingFailed>> UnwrapKeyAsync(
+        public ValueTask<DataEncryptionKeyUnwrappingOutcome> UnwrapKeyAsync(
             KeyEncryptionKeyIdentity key,
             string algorithm,
             int algorithmVersion,
@@ -342,16 +337,15 @@ public sealed class EnvelopeEncryptionServiceTests
             keyWrapAlgorithm,
             1);
 
-        public ValueTask<Result<WrappedDataEncryptionKey, DataEncryptionKeyWrappingFailed>> WrapKeyAsync(
+        public ValueTask<DataEncryptionKeyWrappingOutcome> WrapKeyAsync(
             KeyEncryptionKeyDescriptor key,
             ReadOnlyMemory<byte> dataEncryptionKey,
             ReadOnlyMemory<byte> associatedData,
             CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<Result<WrappedDataEncryptionKey, DataEncryptionKeyWrappingFailed>>(
-                new Ok<WrappedDataEncryptionKey>(
-                    wrappedKey ?? new WrappedDataEncryptionKey(new byte[32], new byte[12], new byte[16])));
+            ValueTask.FromResult<DataEncryptionKeyWrappingOutcome>(
+                wrappedKey ?? new WrappedDataEncryptionKey(new byte[32], new byte[12], new byte[16]));
 
-        public ValueTask<Result<byte[], DataEncryptionKeyUnwrappingFailed>> UnwrapKeyAsync(
+        public ValueTask<DataEncryptionKeyUnwrappingOutcome> UnwrapKeyAsync(
             KeyEncryptionKeyIdentity key,
             string algorithm,
             int algorithmVersion,

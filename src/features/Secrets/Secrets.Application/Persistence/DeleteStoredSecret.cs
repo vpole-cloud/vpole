@@ -46,7 +46,7 @@ internal sealed class MongoDeleteStoredSecret(
                 current.Id,
                 tx.Session,
                 token);
-            if (unregistered is Err<ResourceRegistrationMutationError>)
+            if (unregistered is ResourceRegistrationMutationError)
                 return tx.Abort(new SecretReferenceRejected());
             await secrets.DeleteOneAsync(
                 tx.Session,

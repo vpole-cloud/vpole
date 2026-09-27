@@ -11,6 +11,8 @@ using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
 
+using static Pole.Features.Secrets.Application.SecretHttpMappings;
+
 namespace Pole.Features.Secrets.Application.Endpoints;
 
 public sealed record SecretDeleted;
@@ -55,16 +57,15 @@ public static class DeleteSecretEndpoint
     {
         app.MapDelete("/{Id}", async (
                 IMediator mediator,
-                IHttpProblemMapper problems,
                 [AsParameters] DeleteSecretRequest request,
                 CancellationToken ct) =>
                 (await mediator.Send(request, ct))
                 .ToHttpResult(outcome => outcome switch
                 {
                     SecretDeleted => Results.NoContent(),
-                    SecretMissing error => problems.Map(error).ToHttpResult(),
-                    SecretBindingsRemain error => problems.Map(error).ToHttpResult(),
-                    SecretReferenceRejected error => problems.Map(error).ToHttpResult()
+                    SecretMissing error => MapMissing(error),
+                    SecretBindingsRemain error => MapBindingsRemain(error),
+                    SecretReferenceRejected error => MapReferenceRejected(error)
                 }))
             .WithName("DeleteSecret");
 

@@ -9,6 +9,8 @@ using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Persistence.Reads;
 using Pole.Mediator;
 
+using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
+
 namespace Pole.Features.WebServices.Application.Endpoints.Deployments;
 
 public static class GetWebServiceResourceDeployments
@@ -19,14 +21,13 @@ public static class GetWebServiceResourceDeployments
         {
             app.MapGet("/{Id}/deployments", async (
                     IMediator mediator,
-                    IHttpProblemMapper httpProblems,
                     [AsParameters] GetWebServiceResourceDeploymentsRequest request,
                     CancellationToken cancellationToken) =>
                 (await mediator.Send(request, cancellationToken)).ToHttpResult(
                     outcome => outcome switch
                     {
                         IReadOnlyList<PlacementSummaryDto> value => Results.Ok(value),
-                        WebServiceNotFound error => httpProblems.Map(error).ToHttpResult()
+                        WebServiceNotFound error => MapError(error)
                     }))
                 .WithName("GetWebServiceResourceDeployments")
                 .Produces<IReadOnlyList<PlacementSummaryDto>>();

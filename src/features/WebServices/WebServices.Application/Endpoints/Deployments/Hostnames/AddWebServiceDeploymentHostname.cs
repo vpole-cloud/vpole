@@ -18,6 +18,8 @@ using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
 
+using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
+
 namespace Pole.Features.WebServices.Application.Endpoints.Deployments.Hostnames;
 
 public static class AddWebServiceDeploymentHostname
@@ -30,7 +32,6 @@ public static class AddWebServiceDeploymentHostname
                     "/{Id}/deployments/{DeploymentId}/hostnames",
                     async (
                         IMediator mediator,
-                        IHttpProblemMapper httpProblems,
                         [AsParameters] AddWebServiceDeploymentHostnameRequest request,
                         CancellationToken cancellationToken) =>
                         (await mediator.Send(request, cancellationToken))
@@ -38,7 +39,7 @@ public static class AddWebServiceDeploymentHostname
                         {
                             PlacementSummaryDto value => Results.Accepted(value: value),
                             WebServiceDeploymentHostnameError error =>
-                                httpProblems.Map(error).ToHttpResult()
+                                MapError(error)
                         }))
                 .WithName("AddWebServiceDeploymentHostname")
                 .Produces<PlacementSummaryDto>(StatusCodes.Status202Accepted);
@@ -65,7 +66,7 @@ public union AddWebServiceDeploymentHostnameOutcome(
 public sealed class AddWebServiceDeploymentHostnameHandler(
     LoadWebServiceById loadWebService,
     LoadExactResourceDeployment loadExactResourceDeployment,
-    CreateCustomHostnameBindingOutcome createCustomHostnameBinding,
+    CreateCustomHostnameBinding createCustomHostnameBinding,
     LoadHostnameBindingsForDeploymentInTransaction
         loadHostnameBindingsForDeploymentInTransaction,
     RequestExactResourceDeploymentApply requestExactResourceDeploymentApply,
@@ -135,7 +136,7 @@ public sealed class AddWebServiceDeploymentHostnameHandler(
                 request.Body.RelativeName),
             transaction.Session,
             cancellationToken);
-        if (!created.TryGetValue(out _, out var createdError))
+        if (created is CustomHostnameBindingError createdError)
             return Abort(transaction, new WebServiceDeploymentHostnameError(createdError));
 
         return await ApplyBindingSnapshotAsync(
@@ -173,8 +174,9 @@ public sealed class AddWebServiceDeploymentHostnameHandler(
                     snapshots.Select(binding => binding.Hostname))),
             transaction.Session,
             cancellationToken);
-        if (!applied.TryGetValue(out var changed, out var failure))
+        if (applied is ResourceDeploymentMutationError failure)
             return Abort(transaction, new WebServiceDeploymentHostnameError(failure));
+        var changed = (PlacementSummaryDto)applied.Value;
 
         var advanced = await advanceResourceDeploymentRevision(
             new ResourceDeploymentResourceRevisionRequest(
@@ -184,8 +186,9 @@ public sealed class AddWebServiceDeploymentHostnameHandler(
                 updated.ActiveRevision),
             transaction.Session,
             cancellationToken);
-        if (!advanced.TryGetValue(out var deployments, out var revisionError))
+        if (advanced is AdvanceResourceDeploymentRevisionError revisionError)
             return Abort(transaction, new WebServiceDeploymentHostnameError(revisionError));
+        var deployments = ((MutatedResourceDeployments)advanced.Value).Placements;
 
         var persisted = await persistWebService(
             transaction.Session,
@@ -194,7 +197,7 @@ public sealed class AddWebServiceDeploymentHostnameHandler(
             updated.ToUpdatedEvent(
                 WebServiceDeploymentWorkflow.ToEventDeployments(deployments)),
             cancellationToken);
-        if (!persisted.TryGetValue(out _, out var persistenceError))
+        if (persisted is WebServiceUpdateConflict persistenceError)
             return Abort(transaction, new WebServiceDeploymentHostnameError(persistenceError));
 
         var release = WebServiceReleaseFactory.CreatePending(

@@ -13,7 +13,6 @@ using Pole.Features.StorageProfiles.Application.Persistence.Mutations;
 using Pole.Features.StorageProfiles.Application.Persistence.Reads;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
-using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 using Pole.Workloads;
@@ -54,8 +53,9 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
                 [ResourceTypeId.Create("third-party/widget")])
         ]);
 
-        var response = (await Mediator.Send(
-            new GetStorageProfilesRequest())).AssertSuccess().AssertSuccess();
+        var responseOutcome = await Mediator.Send(
+            new GetStorageProfilesRequest());
+        var response = Assert.IsAssignableFrom<IReadOnlyCollection<StorageProfileDto>>(responseOutcome.AssertSuccess().Value);
 
         Assert.Equal(
             [defaultId, archiveId, bulkId],
@@ -81,12 +81,26 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
                     "missing-class")
             ])));
 
-        var error = result.AssertSuccess().AssertFailure();
-        var validation = Assert.IsType<StorageProfileMutationValidationError>(error.Value);
-        var invalid = Assert.IsType<StorageProfileTargetMappingsInvalid>(validation.Value);
+        var invalid = Assert.IsType<StorageProfileTargetMappingsInvalid>(result.AssertSuccess().Value);
         Assert.Contains(
             "Body.TargetMappings[0].StorageClassName",
             invalid.Errors.Keys);
+    }
+
+    [Fact]
+    public async Task Create_ReturnsDiscoveryUnavailableWithoutPersistingProfile()
+    {
+        var result = await Mediator.Send(new CreateStorageProfileRequest(
+            ValidCreateBody(displayName: "Unavailable target", targetMappings:
+            [
+                new StorageProfileTargetMappingRequestBody(SecondDeploymentTargetId, "standard")
+            ])));
+
+        var error = Assert.IsType<KubernetesStorageDiscoveryUnavailable>(result.AssertSuccess().Value);
+        Assert.Equal(SecondDeploymentTargetId, error.DeploymentTargetId);
+        Assert.False(await DbContext.StorageProfiles
+            .Find(profile => profile.DisplayName == "Unavailable target")
+            .AnyAsync());
     }
 
     [Fact]
@@ -121,8 +135,9 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
     [Fact]
     public async Task Create_PersistsTargetMappingsAndInitialRevision()
     {
-        var response = (await Mediator.Send(new CreateStorageProfileRequest(
-            ValidCreateBody()))).AssertSuccess().AssertSuccess();
+        var responseOutcome = await Mediator.Send(new CreateStorageProfileRequest(
+            ValidCreateBody()));
+        var response = Assert.IsType<StorageProfileDto>(responseOutcome.AssertSuccess().Value);
 
         Assert.Equal(1, response.Revision);
         var mapping = Assert.Single(response.TargetMappings);
@@ -161,15 +176,15 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
                 [ResourceTypeId.Create("third-party/widget")])
         ]);
 
-        var response = (await Mediator.Send(new UpdateStorageProfileRequest(
+        var responseOutcome = await Mediator.Send(new UpdateStorageProfileRequest(
             targetId,
             ValidUpdateBody(
                 revision: 1,
                 displayName: "Fast Widget Updated",
                 isDefault: true,
                 allowedResourceTypes: ["third-party/widget"],
-                sizeLimits: new StorageProfileSizeLimitsDto(2, 50)))))
-            .AssertSuccess().AssertSuccess();
+                sizeLimits: new StorageProfileSizeLimitsDto(2, 50))));
+        var response = Assert.IsType<StorageProfileDto>(responseOutcome.AssertSuccess().Value);
 
         Assert.Equal(targetId, response.Id);
         Assert.Equal("Fast Widget Updated", response.DisplayName);
@@ -188,8 +203,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
             ValidUpdateBody(
                 revision: 1,
                 displayName: "Stale update")));
-        var staleError = stale.AssertSuccess().AssertFailure();
-        Assert.IsType<StorageProfileRevisionConflict>(staleError.Value);
+        Assert.IsType<StorageProfileRevisionConflict>(stale.AssertSuccess().Value);
     }
 
     [Fact]
@@ -199,7 +213,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
             .Find(profile => profile.Id == TestData.DefaultStorageProfileId)
             .SingleAsync();
 
-        var response = (await Mediator.Send(new UpdateStorageProfileRequest(
+        var responseOutcome = await Mediator.Send(new UpdateStorageProfileRequest(
             existing.Id,
             new UpdateStorageProfileRequestBody(
                 existing.DisplayName,
@@ -222,8 +236,8 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
                 new StorageProfileSizeLimitsDto(
                     existing.SizeLimits!.MinSizeGb,
                     existing.SizeLimits.MaxSizeGb),
-                existing.Revision))))
-            .AssertSuccess().AssertSuccess();
+                existing.Revision)));
+        var response = Assert.IsType<StorageProfileDto>(responseOutcome.AssertSuccess().Value);
 
         Assert.Equal(existing.Revision, response.Revision);
         var persisted = await DbContext.StorageProfiles
@@ -252,7 +266,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
                     TestData.DefaultDeploymentTargetId,
                     "fast"),
                 session);
-            fenced.AssertSuccess();
+            Assert.IsType<StorageProfileResolutionFenced>(fenced.Value);
             await session.CommitTransactionAsync();
         }
 
@@ -272,7 +286,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
 
         var result = await update(profile, replacement);
 
-        Assert.IsType<StorageProfileRevisionConflict>(result.AssertFailure());
+        Assert.IsType<StorageProfileRevisionConflict>(result.Value);
         var saved = await DbContext.StorageProfiles
             .Find(item => item.Id == profile.Id)
             .SingleAsync();
@@ -325,11 +339,12 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
             scope.ServiceProvider.GetRequiredService<DiscoverKubernetesStorageClassNames>(),
             scope.ServiceProvider.GetRequiredService<LoadAvailableStorageProfiles>());
 
-        var response = (await handler.HandleAsync(
+        var responseOutcome = await handler.HandleAsync(
             new GetAvailableStorageProfilesRequest(
                 "third-party/widget",
                 SecondDeploymentTargetId,
-                TestData.TenantId))).AssertSuccess();
+                TestData.TenantId));
+        var response = Assert.IsAssignableFrom<IReadOnlyCollection<StorageProfileDto>>(responseOutcome.Value);
 
         Assert.Equal([bothTargetsId], response.Select(profile => profile.Id).ToArray());
         Assert.Equal(
@@ -342,15 +357,18 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
     {
         var discovery = Services.GetRequiredService<TestStorageDiscoveryService>();
 
-        var classes = (await Mediator.Send(
+        var classesOutcome = await Mediator.Send(
             new GetKubernetesStorageClassesRequest(
-                TestData.DefaultDeploymentTargetId))).AssertSuccess().AssertSuccess();
-        var volumes = (await Mediator.Send(
+                TestData.DefaultDeploymentTargetId));
+        var classes = Assert.IsAssignableFrom<IReadOnlyCollection<KubernetesStorageClassDto>>(classesOutcome.AssertSuccess().Value);
+        var volumesOutcome = await Mediator.Send(
             new GetKubernetesPersistentVolumesRequest(
-                TestData.DefaultDeploymentTargetId))).AssertSuccess().AssertSuccess();
-        var claims = (await Mediator.Send(
+                TestData.DefaultDeploymentTargetId));
+        var volumes = Assert.IsAssignableFrom<IReadOnlyCollection<KubernetesPersistentVolumeDto>>(volumesOutcome.AssertSuccess().Value);
+        var claimsOutcome = await Mediator.Send(
             new GetKubernetesPersistentVolumeClaimsRequest(
-                TestData.DefaultDeploymentTargetId))).AssertSuccess().AssertSuccess();
+                TestData.DefaultDeploymentTargetId));
+        var claims = Assert.IsAssignableFrom<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>>(claimsOutcome.AssertSuccess().Value);
 
         Assert.Equal(["bulk", "fast", "standard"], classes.Select(item => item.Name).ToArray());
         Assert.Equal("pv-standard-1", Assert.Single(volumes).Name);
@@ -405,13 +423,14 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
         using var scope = provider.CreateScope();
         var resolve = scope.ServiceProvider.GetRequiredService<ResolveStorageProfile>();
 
-        var resolved = (await resolve(
+        var resolvedOutcome = await resolve(
             new StorageProfileResolutionRequest(
                 profile.Id,
                 SecondDeploymentTargetId,
                 TestData.TenantId,
                 ResourceTypeId.Create("third-party/widget"),
-                SizeGb: 5))).AssertSuccess();
+                SizeGb: 5));
+        var resolved = Assert.IsType<ResolvedStorageProfile>(resolvedOutcome.Value);
 
         Assert.Equal(profile.Id, resolved.ProfileId);
         Assert.Equal(profile.Revision, resolved.ProfileRevision);
@@ -437,7 +456,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
                 SizeGb: 5));
 
         Assert.IsType<StorageProfileDeploymentTargetNotConfigured>(
-            result.AssertFailure().Value);
+            Assert.IsType<StorageProfileResolutionError>(result.Value).Value);
         Assert.Empty(discovery.RequestedDeploymentTargetIds);
     }
 
@@ -464,7 +483,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
             ResourceTypeId.Create("third-party/widget"),
             SizeGb: 5));
 
-        Assert.IsType<StorageProfileTenantAccessDenied>(result.AssertFailure().Value);
+        Assert.IsType<StorageProfileTenantAccessDenied>(Assert.IsType<StorageProfileResolutionError>(result.Value).Value);
     }
 
     [Fact]

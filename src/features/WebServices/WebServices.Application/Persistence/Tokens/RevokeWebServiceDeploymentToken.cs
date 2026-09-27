@@ -1,12 +1,16 @@
 using MongoDB.Driver;
 using Pole.Features.WebServices.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.WebServices.Application.Persistence.Tokens;
 
 public sealed record WebServiceDeploymentTokenNotFound(string TokenId);
+public sealed record WebServiceDeploymentTokenRevoked;
 
-public delegate Task<Result<Unit, WebServiceDeploymentTokenNotFound>>
+public union RevokeWebServiceDeploymentTokenResult(
+    WebServiceDeploymentTokenRevoked,
+    WebServiceDeploymentTokenNotFound);
+
+public delegate Task<RevokeWebServiceDeploymentTokenResult>
     RevokeWebServiceDeploymentTokenOutcome(
         string tenantId,
         string webServiceId,
@@ -18,7 +22,7 @@ public delegate Task<Result<Unit, WebServiceDeploymentTokenNotFound>>
 internal sealed class MongoRevokeWebServiceDeploymentToken(
     IMongoCollection<WebServiceDeploymentToken> tokens)
 {
-    public async Task<Result<Unit, WebServiceDeploymentTokenNotFound>> InvokeOutcomeAsync(
+    public async Task<RevokeWebServiceDeploymentTokenResult> InvokeOutcomeAsync(
         string tenantId,
         string webServiceId,
         string tokenId,
@@ -33,8 +37,7 @@ internal sealed class MongoRevokeWebServiceDeploymentToken(
                 .Set(item => item.RevokedByUserId, revokedByUserId),
             cancellationToken: cancellationToken);
         return result.MatchedCount == 0
-            ? new Err<WebServiceDeploymentTokenNotFound>(
-                new WebServiceDeploymentTokenNotFound(tokenId))
-            : new Ok<Unit>(Unit.Value);
+            ? new WebServiceDeploymentTokenNotFound(tokenId)
+            : new WebServiceDeploymentTokenRevoked();
     }
 }

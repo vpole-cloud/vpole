@@ -54,7 +54,7 @@ session. An unconditional aggregate mutation and its outbox event are one persis
 Release insertion supersedes older pending generations in that same transaction. Self-contained
 completion and deletion-finalization operations own their transaction and keep resource, release,
 deployment cleanup, and outbox changes atomic. Revision and duplicate-key conflicts are typed
-`Result<T, TError>` errors; Mongo availability and driver failures continue as exceptions.
+expected outcome errors; Mongo availability and driver failures continue as exceptions.
 
 Transaction-owning flows use closed `RunMongoOutcomeTransaction<TOutcome>` delegates and return
 an explicit commit or abort decision. The WebServices registration binds the closed outcome types

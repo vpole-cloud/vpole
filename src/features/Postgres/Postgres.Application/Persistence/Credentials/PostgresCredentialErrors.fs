@@ -11,8 +11,8 @@ type PostgresCredentialError =
 
 [<RequireQualifiedAccess>]
 module PostgresCredentialErrors =
-    let fromManaged clusterId (error : ManagedSecretError) =
-        match error.Value with
+    let fromManaged clusterId (error : ManagedSecretFailure) =
+        match error with
         | :? ManagedSecretUnavailable -> PostgresCredentialNotFound clusterId
         | :? ManagedSecretChanged -> PostgresCredentialRotationConflict clusterId
         | :? ManagedSecretReferenceRejected -> PostgresCredentialReferenceRejected clusterId

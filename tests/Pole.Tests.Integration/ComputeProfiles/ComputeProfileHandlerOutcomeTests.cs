@@ -7,7 +7,6 @@ using Pole.Features.ComputeProfiles.Application.Validation;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.ResultType;
 using Xunit;
 
 namespace Pole.Tests.Integration.ComputeProfiles;
@@ -63,15 +62,13 @@ public sealed class ComputeProfileHandlerOutcomeTests
     }
 
     [Fact]
-    public async Task Create_wraps_target_reference_rejection_in_its_request_outcome()
+    public async Task Create_returns_target_reference_rejection_directly()
     {
         PersistCreatedComputeProfile persist = (profile, cancellationToken) =>
-            Task.FromResult<Result<ComputeProfile, PersistCreatedComputeProfileError>>(
-                new Err<PersistCreatedComputeProfileError>(
-                    new PersistCreatedComputeProfileError(
-                        new DeploymentTargetReferenceChangeRejected(
+            Task.FromResult<PersistCreatedComputeProfileOutcome>(
+                new DeploymentTargetReferenceChangeRejected(
                             new DeploymentTargetReferenceOwner("compute-profile", profile.Id),
-                            [TargetId]))));
+                            [TargetId]));
         var handler = new CreateComputeProfileHandler(
             ValidTenantAccess,
             ValidTargetMappings,
@@ -80,15 +77,7 @@ public sealed class ComputeProfileHandlerOutcomeTests
 
         var outcome = await handler.HandleAsync(new CreateComputeProfileRequest(ValidCreateBody()));
 
-        var error = outcome switch
-        {
-            CreateComputeProfileError failure => failure.Value,
-            ComputeProfileDto => throw new Xunit.Sdk.XunitException(
-                "Expected create to return an error outcome.")
-        };
-        var persistenceError = Assert.IsType<PersistCreatedComputeProfileError>(error);
-        var rejected = Assert.IsType<DeploymentTargetReferenceChangeRejected>(
-            persistenceError.Value);
+        var rejected = Assert.IsType<DeploymentTargetReferenceChangeRejected>(outcome.Value);
         Assert.Equal([TargetId], rejected.DeploymentTargetIds);
     }
 
@@ -108,18 +97,12 @@ public sealed class ComputeProfileHandlerOutcomeTests
             MissingProfileId,
             ValidUpdateBody(revision: 1)));
 
-        var notFound = outcome switch
-        {
-            UpdateComputeProfileError failure =>
-                Assert.IsType<ComputeProfileNotFound>(failure.Value),
-            ComputeProfileDto => throw new Xunit.Sdk.XunitException(
-                "Expected update to return a not-found outcome.")
-        };
+        var notFound = Assert.IsType<ComputeProfileNotFound>(outcome.Value);
         Assert.Equal(MissingProfileId, notFound.ComputeProfileId);
     }
 
     [Fact]
-    public async Task Update_wraps_default_demotion_rejection_in_its_request_outcome()
+    public async Task Update_returns_default_demotion_rejection_directly()
     {
         var current = ComputeProfileTestData.CreateProfile(
             TargetId,
@@ -128,10 +111,8 @@ public sealed class ComputeProfileHandlerOutcomeTests
         LoadComputeProfileById load = (computeProfileId, cancellationToken) =>
             Task.FromResult<ComputeProfile?>(current);
         PersistUpdatedComputeProfile persist = (existing, replacement, cancellationToken) =>
-            Task.FromResult<Result<ComputeProfile, PersistUpdatedComputeProfileError>>(
-                new Err<PersistUpdatedComputeProfileError>(
-                    new PersistUpdatedComputeProfileError(
-                        new DefaultComputeProfileCannotBeDemoted(existing.Id))));
+            Task.FromResult<PersistUpdatedComputeProfileOutcome>(
+                new DefaultComputeProfileCannotBeDemoted(existing.Id));
         var handler = new UpdateComputeProfileHandler(
             load,
             ValidTenantAccess,
@@ -143,15 +124,7 @@ public sealed class ComputeProfileHandlerOutcomeTests
             current.Id,
             ValidUpdateBody(current.Revision)));
 
-        var error = outcome switch
-        {
-            UpdateComputeProfileError failure => failure.Value,
-            ComputeProfileDto => throw new Xunit.Sdk.XunitException(
-                "Expected update to return an error outcome.")
-        };
-        var persistenceError = Assert.IsType<PersistUpdatedComputeProfileError>(error);
-        var rejected = Assert.IsType<DefaultComputeProfileCannotBeDemoted>(
-            persistenceError.Value);
+        var rejected = Assert.IsType<DefaultComputeProfileCannotBeDemoted>(outcome.Value);
         Assert.Equal(current.Id, rejected.ComputeProfileId);
     }
 
@@ -159,19 +132,19 @@ public sealed class ComputeProfileHandlerOutcomeTests
     private const string MissingProfileId = "507f1f77bcf86cd799439097";
     private const string TargetId = "507f1f77bcf86cd799439071";
 
-    private static Task<Result<Unit, SelectedComputeProfileTenantsNotFound>>
+    private static Task<ValidateComputeProfileTenantAccessOutcome>
         ValidTenantAccess(
             ComputeProfileTenantAccess tenantAccess,
             CancellationToken cancellationToken = default) =>
-        Task.FromResult<Result<Unit, SelectedComputeProfileTenantsNotFound>>(
-            new Ok<Unit>(Unit.Value));
+        Task.FromResult<ValidateComputeProfileTenantAccessOutcome>(
+            new ComputeProfileTenantAccessValid());
 
-    private static Task<Result<Unit, ComputeProfileTargetMappingsInvalid>>
+    private static Task<ValidateComputeProfileTargetMappingsOutcome>
         ValidTargetMappings(
             ComputeProfile profile,
             CancellationToken cancellationToken = default) =>
-        Task.FromResult<Result<Unit, ComputeProfileTargetMappingsInvalid>>(
-            new Ok<Unit>(Unit.Value));
+        Task.FromResult<ValidateComputeProfileTargetMappingsOutcome>(
+            new ComputeProfileTargetMappingsValid());
 
     private static CreateComputeProfileRequestBody ValidCreateBody() =>
         new(

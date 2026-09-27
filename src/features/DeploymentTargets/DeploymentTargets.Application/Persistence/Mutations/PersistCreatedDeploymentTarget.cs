@@ -3,7 +3,6 @@ using Pole.Database;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Persistence.References;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Persistence.Mutations;
 
@@ -11,7 +10,11 @@ public union PersistCreatedDeploymentTargetError(
     DeploymentTargetPublicBaseDomainConflict,
     DeploymentTargetIdentityConflict);
 
-public delegate Task<Result<DeploymentTarget, PersistCreatedDeploymentTargetError>>
+public union PersistCreatedDeploymentTargetOutcome(
+    DeploymentTarget,
+    PersistCreatedDeploymentTargetError);
+
+public delegate Task<PersistCreatedDeploymentTargetOutcome>
     PersistCreatedDeploymentTarget(
         DeploymentTarget deploymentTarget,
         CancellationToken cancellationToken = default);
@@ -19,11 +22,9 @@ public delegate Task<Result<DeploymentTarget, PersistCreatedDeploymentTargetErro
 internal sealed class MongoPersistCreatedDeploymentTarget(
     IMongoCollection<DeploymentTarget> deploymentTargets,
     EnsureNoOverlappingDeploymentTargetPublicBaseDomain ensureNoOverlappingPublicBaseDomain,
-    RunMongoOutcomeTransaction<Result<
-        DeploymentTarget,
-        PersistCreatedDeploymentTargetError>> runMongoTransaction)
+    RunMongoOutcomeTransaction<PersistCreatedDeploymentTargetOutcome> runMongoTransaction)
 {
-    public async Task<Result<DeploymentTarget, PersistCreatedDeploymentTargetError>> InvokeAsync(
+    public async Task<PersistCreatedDeploymentTargetOutcome> InvokeAsync(
         DeploymentTarget deploymentTarget,
         CancellationToken cancellationToken = default)
     {
@@ -37,9 +38,9 @@ internal sealed class MongoPersistCreatedDeploymentTarget(
                     deploymentTarget.WorkloadConfiguration.Ingress?.PublicBaseDomain,
                     transaction.Session,
                     ct);
-                if (!admitted.TryGetValue(out _, out var admissionError))
+                if (admitted is DeploymentTargetPublicBaseDomainConflict admissionError)
                 {
-                    return transaction.AbortError(
+                    return transaction.Abort(
                         new PersistCreatedDeploymentTargetError(
                             admissionError));
                 }
@@ -49,15 +50,14 @@ internal sealed class MongoPersistCreatedDeploymentTarget(
                     deploymentTarget,
                     cancellationToken: ct);
                 return transaction.Commit(
-                    new Ok<DeploymentTarget>(deploymentTarget));
+                    deploymentTarget);
             }, cancellationToken);
         }
         catch (MongoWriteException exception) when (
             exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
         {
-            return new Err<PersistCreatedDeploymentTargetError>(
-                new PersistCreatedDeploymentTargetError(
-                    new DeploymentTargetIdentityConflict()));
+            return new PersistCreatedDeploymentTargetError(
+                    new DeploymentTargetIdentityConflict());
         }
     }
 }

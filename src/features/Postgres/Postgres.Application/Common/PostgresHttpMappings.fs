@@ -4,10 +4,16 @@ open System
 open System.Collections.Generic
 open System.Net
 open Pole.ASP.Helpers
+open Pole.Features.ComputeProfiles.Contracts.HttpMapping
+open Pole.Features.DeploymentTargets.Contracts.HttpMapping
 open Pole.Features.Postgres.Application.Endpoints
 open Pole.Features.Postgres.Application.Persistence.Credentials
 open Pole.Features.Postgres.Application.Persistence.Lifecycle
 open Pole.Features.Postgres.Application.Persistence.Mutations
+open Pole.Features.Quotas.Contracts.HttpMapping
+open Pole.Features.ResourceDeployments.Contracts.HttpMapping
+open Pole.Features.ResourceGroups.Contracts.HttpMapping
+open Pole.Features.StorageProfiles.Contracts.HttpMapping
 
 [<RequireQualifiedAccess>]
 module PostgresHttpMappings =
@@ -97,23 +103,45 @@ module PostgresHttpMappings =
     let private mapDeletionConflict (error : PostgresClusterDeletionConflict) =
         problem HttpStatusCode.Conflict "postgres.deletion.concurrent-change" "PostgreSQL cluster changed concurrently while deletion was being accepted" error.ClusterId
 
-    let all : IReadOnlyList<HttpProblemMapping> =
-        [| HttpProblemMapping.For<CreatePostgresClusterStateError>(
-               Func<CreatePostgresClusterStateError, HttpProblem>(mapCreateState))
-           HttpProblemMapping.For<UpdatePostgresClusterStateError>(
-               Func<UpdatePostgresClusterStateError, HttpProblem>(mapUpdateState))
-           HttpProblemMapping.For<UpdatePostgresClusterPasswordStateError>(
-               Func<UpdatePostgresClusterPasswordStateError, HttpProblem>(mapPasswordState))
-           HttpProblemMapping.For<DeletePostgresClusterStateError>(
-               Func<DeletePostgresClusterStateError, HttpProblem>(mapDeleteState))
-           HttpProblemMapping.For<GetPostgresClusterByIdError>(
-               Func<GetPostgresClusterByIdError, HttpProblem>(mapGetById))
-           HttpProblemMapping.For<GetPostgresClusterConnectionStringStateError>(
-               Func<GetPostgresClusterConnectionStringStateError, HttpProblem>(mapConnectionStringState))
-           HttpProblemMapping.For<PostgresCredentialError>(
-               Func<PostgresCredentialError, HttpProblem>(mapCredential))
-           HttpProblemMapping.For<PostgresClusterUpdateConflict>(
-               Func<PostgresClusterUpdateConflict, HttpProblem>(mapUpdateConflict))
-           HttpProblemMapping.For<PostgresClusterDeletionConflict>(
-               Func<PostgresClusterDeletionConflict, HttpProblem>(mapDeletionConflict)) |]
-        :> IReadOnlyList<HttpProblemMapping>
+    let mapCreateError (error : CreatePostgresClusterError) =
+        match error with
+        | CreateState value -> mapCreateState value
+        | CreateTarget value -> DeploymentTargetContractHttpMappings.MapNewWorkloadAdmissionError(value)
+        | CreateCompute value -> ComputeProfileContractHttpMappings.MapResolutionError(value)
+        | CreateStorage value -> StorageProfileContractHttpMappings.MapResolutionError(value)
+        | CreateCredential value -> mapCredential value
+        | CreateDeployment value -> ResourceDeploymentContractHttpMappings.MapDeploymentError(value)
+        | CreateRegistration value -> ResourceGroupContractHttpMappings.MapRegistrationMutationError(value)
+        | CreateQuota value -> QuotaContractHttpMappings.MapExecutionError(value)
+
+    let mapDeleteError (error : DeletePostgresClusterError) =
+        match error with
+        | DeletePostgresClusterState value -> mapDeleteState value
+        | DeletePostgresClusterCompute value -> ResourceDeploymentContractHttpMappings.MapComputeError(value)
+        | DeletePostgresClusterPersistence value -> mapDeletionConflict value
+        | DeletePostgresClusterDeployment value -> ResourceDeploymentContractHttpMappings.MapMutationError(value)
+        | DeletePostgresClusterQuota value -> QuotaContractHttpMappings.MapExecutionError(value)
+
+    let mapUpdateError (error : UpdatePostgresClusterError) =
+        match error with
+        | UpdateState value -> mapUpdateState value
+        | UpdateCompute value -> ComputeProfileContractHttpMappings.MapResolutionError(value)
+        | UpdateCurrentCompute value -> ResourceDeploymentContractHttpMappings.MapComputeError(value)
+        | UpdateStorage value -> StorageProfileContractHttpMappings.MapResolutionError(value)
+        | UpdateDeployment value -> ResourceDeploymentContractHttpMappings.MapMutationError(value)
+        | UpdateQuota value -> QuotaContractHttpMappings.MapExecutionError(value)
+        | UpdateConflict value -> mapUpdateConflict value
+
+    let mapPasswordError (error : UpdatePostgresClusterPasswordError) =
+        match error with
+        | PasswordState value -> mapPasswordState value
+        | PasswordCompute value -> ResourceDeploymentContractHttpMappings.MapComputeError(value)
+        | PasswordCredential value -> mapCredential value
+        | PasswordDeployment value -> ResourceDeploymentContractHttpMappings.MapMutationError(value)
+
+    let mapConnectionStringError (error : GetPostgresClusterConnectionStringError) =
+        match error with
+        | ConnectionStringState value -> mapConnectionStringState value
+        | ConnectionStringCredentials value -> mapCredential value
+
+    let mapGetByIdError (error : GetPostgresClusterByIdError) = mapGetById error

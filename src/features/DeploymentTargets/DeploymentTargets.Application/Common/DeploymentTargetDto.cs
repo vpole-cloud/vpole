@@ -61,8 +61,7 @@ public sealed record DeploymentTargetIngressConfigurationDto(
 
 public static class DeploymentTargetDtoExtensions
 {
-    public static DeploymentTargetDto ToDto(this DeploymentTarget target, bool isDefault = false) =>
-        new(
+    public static DeploymentTargetDto ToDto(this DeploymentTarget target, bool isDefault = false) => new(
             target.Id,
             target.DisplayName,
             target.ClusterIdentity,
@@ -91,12 +90,11 @@ public static class DeploymentTargetDtoExtensions
             isDefault,
             target.CreatedAtUtc,
             target.UpdatedAtUtc)
-        {
-            NetworkPolicy = target.ToNetworkPolicyDto()
-        };
+    {
+        NetworkPolicy = target.ToNetworkPolicyDto()
+    };
 
-    public static DeploymentTargetLookupDto ToLookupDto(this DeploymentTarget target) =>
-        new(
+    public static DeploymentTargetLookupDto ToLookupDto(this DeploymentTarget target) => new(
             target.Id,
             target.DisplayName,
             target.ClusterIdentity,
@@ -115,20 +113,19 @@ public static class DeploymentTargetDtoExtensions
             target.AcceptsWorkloads,
             target.DeletionRequestedAtUtc is not null,
             target.Health.Status.ToString())
-        {
-            NetworkPolicy = target.ToNetworkPolicyDto()
-        };
+    {
+        NetworkPolicy = target.ToNetworkPolicyDto()
+    };
 
-    public static AvailableDeploymentTargetDto ToAvailableDto(this DeploymentTarget target) =>
-        new(
+    public static AvailableDeploymentTargetDto ToAvailableDto(this DeploymentTarget target) => new(
             target.Id,
             target.DisplayName,
             target.WorkloadConfiguration.Revision,
             target.WorkloadConfiguration.Ingress?.PublicBaseDomain is not null,
             target.WorkloadConfiguration.Ingress?.PublicBaseDomain)
-        {
-            NetworkPolicy = target.ToNetworkPolicyDto()
-        };
+    {
+        NetworkPolicy = target.ToNetworkPolicyDto()
+    };
 
     public static DeploymentTargetNetworkPolicyDto ToNetworkPolicyDto(this DeploymentTarget target)
     {
@@ -162,8 +159,7 @@ public static class DeploymentTargetDtoExtensions
     }
 
     private static DeploymentTargetCapabilitiesDto ToDto(
-        this DeploymentTargetCapabilities capabilities) =>
-        new(
+        this DeploymentTargetCapabilities capabilities) => new(
             capabilities.IsKnown,
             capabilities.ObservedAtUtc,
             capabilities.KubernetesVersion,

@@ -5,7 +5,6 @@ using Pole.Features.DeploymentTargets.Application.Persistence;
 using Pole.Features.DeploymentTargets.Application.Persistence.Reads;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Connections;
 
@@ -54,12 +53,13 @@ public sealed class KubernetesClientProvider(
                 target!.Id,
                 target.Connection,
                 cancellationToken);
-            if (!created.TryGetValue(out var client, out _))
+            if (created is StoredDeploymentTargetConnectionUnavailable)
             {
                 throw new DeploymentTargetUnavailableException(
                     deploymentTargetId,
                     DeploymentTargetUnavailableReason.ConnectionUnavailable);
             }
+            var client = (IKubernetes)created.Value;
 
             if (Volatile.Read(ref _disposed) != 0)
             {
@@ -119,8 +119,7 @@ public sealed class KubernetesClientProvider(
 
     private async Task<DeploymentTarget?> LoadTargetAsync(
         string deploymentTargetId,
-        CancellationToken cancellationToken) =>
-        await loadDeploymentTargetById(deploymentTargetId, cancellationToken);
+        CancellationToken cancellationToken) => await loadDeploymentTargetById(deploymentTargetId, cancellationToken);
 
     private bool TryGetCurrent(DeploymentTarget target, out IKubernetes client)
     {

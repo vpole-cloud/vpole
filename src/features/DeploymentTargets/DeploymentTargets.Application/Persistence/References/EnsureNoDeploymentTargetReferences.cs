@@ -1,11 +1,15 @@
 using MongoDB.Driver;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Persistence.References;
 
-public delegate Task<Result<Unit, DeploymentTargetHasDurableReferences>>
+public sealed record DeploymentTargetUnreferenced;
+public union EnsureDeploymentTargetUnreferencedOutcome(
+    DeploymentTargetUnreferenced,
+    DeploymentTargetHasDurableReferences);
+
+public delegate Task<EnsureDeploymentTargetUnreferencedOutcome>
     EnsureNoDeploymentTargetReferences(
         string deploymentTargetId,
         CancellationToken cancellationToken = default);
@@ -13,7 +17,7 @@ public delegate Task<Result<Unit, DeploymentTargetHasDurableReferences>>
 internal sealed class MongoEnsureNoDeploymentTargetReferences(
     IMongoCollection<DeploymentTargetReference> references)
 {
-    public async Task<Result<Unit, DeploymentTargetHasDurableReferences>> InvokeAsync(
+    public async Task<EnsureDeploymentTargetUnreferencedOutcome> InvokeAsync(
         string deploymentTargetId,
         CancellationToken cancellationToken = default)
     {
@@ -22,8 +26,7 @@ internal sealed class MongoEnsureNoDeploymentTargetReferences(
             .Project(item => item.Id)
             .FirstOrDefaultAsync(cancellationToken);
         return reference is null
-            ? new Ok<Unit>(Unit.Value)
-            : new Err<DeploymentTargetHasDurableReferences>(
-                new DeploymentTargetHasDurableReferences(deploymentTargetId));
+            ? new DeploymentTargetUnreferenced()
+            : new DeploymentTargetHasDurableReferences(deploymentTargetId);
     }
 }

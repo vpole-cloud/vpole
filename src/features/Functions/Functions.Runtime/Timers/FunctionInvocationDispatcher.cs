@@ -12,7 +12,6 @@ using Pole.Features.Functions.Runtime.Coordination;
 using Pole.Features.Functions.Runtime.Endpoints;
 using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Functions.Protocol;
-using Pole.ResultType;
 
 namespace Pole.Features.Functions.Runtime.Timers;
 
@@ -182,7 +181,7 @@ public sealed class FunctionInvocationDispatcher(
                 var resolvedPlacement = await placementResolver.ResolveAsync(
                     app,
                     cancellationToken: admissionOwnership.Token);
-                if (!resolvedPlacement.TryGetValue(out var placement, out _))
+                if (resolvedPlacement is FunctionResourcePlacementUnavailable)
                 {
                     await DeferDispatchAsync(
                         invocation,
@@ -195,9 +194,10 @@ public sealed class FunctionInvocationDispatcher(
                     return;
                 }
 
-                var subject = new FunctionRevisionInKubernetes(app, revision, placement!);
+                var placement = (FunctionResourcePlacement)resolvedPlacement.Value;
+                var subject = new FunctionRevisionInKubernetes(app, revision, placement);
                 var service = new FunctionServiceKey(
-                    placement!.DeploymentTargetId,
+                    placement.DeploymentTargetId,
                     subject.Namespace,
                     subject.ServiceName);
                 snapshot = endpointRegistry.GetSnapshot(service);
@@ -207,7 +207,7 @@ public sealed class FunctionInvocationDispatcher(
                         subject,
                         admissionOwnership.Token,
                         forceScaleFence: admission.RequiresActivationFence);
-                    if (!activation.TryGetValue(out var activatedSnapshot, out var activationFailure))
+                    if (activation is FunctionRevisionActivationError activationFailure)
                     {
                         await DeferDispatchAsync(
                             invocation,
@@ -219,7 +219,7 @@ public sealed class FunctionInvocationDispatcher(
                             cancellationToken);
                         return;
                     }
-                    snapshot = activatedSnapshot!;
+                    snapshot = (FunctionEndpointSnapshot)activation.Value;
                 }
 
                 var renewedForExecution = await RenewDispatchLeaseAsync(

@@ -1,6 +1,5 @@
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
-using Pole.ResultType;
 
 namespace Pole.Features.SourceBuilds.Application.Execution;
 
@@ -11,7 +10,11 @@ public union CreateSourceBuildWorkspaceError(
     SourceBuildRepositoryArchiveInvalid,
     SourceBuildWorkspaceArchiveLimitExceeded);
 
-public delegate Task<Result<SourceBuildWorkspace, CreateSourceBuildWorkspaceError>>
+public union CreateSourceBuildWorkspaceOutcome(
+    SourceBuildWorkspace,
+    CreateSourceBuildWorkspaceError);
+
+public delegate Task<CreateSourceBuildWorkspaceOutcome>
     CreateSourceBuildWorkspace(
         string tenantId,
         string sourceRepositoryId,
@@ -24,7 +27,7 @@ public sealed class SourceBuildWorkspaceService(
     ExtractRepositoryArchive extractRepositoryArchive,
     SourceBuildExecutionOptions options)
 {
-    public async Task<Result<SourceBuildWorkspace, CreateSourceBuildWorkspaceError>> InvokeAsync(
+    public async Task<CreateSourceBuildWorkspaceOutcome> InvokeAsync(
         string tenantId,
         string sourceRepositoryId,
         string commitSha,
@@ -55,14 +58,14 @@ public sealed class SourceBuildWorkspaceService(
                     commitSha,
                     limitedArchive,
                     cancellationToken);
-                if (download is Err<DownloadSourceRepositoryArchiveError> failure)
+                if (download is DownloadSourceRepositoryArchiveError failure)
                 {
                     await DeleteWorkspaceAsync(buildRoot);
-                    return new Err<CreateSourceBuildWorkspaceError>(new(failure.Value));
+                    return new CreateSourceBuildWorkspaceError(failure);
                 }
             }
 
-            Result<Unit, SourceBuildRepositoryArchiveInvalid> extraction;
+            ExtractRepositoryArchiveOutcome extraction;
             await using (var archive = new FileStream(
                              archivePath,
                              FileMode.Open,
@@ -78,20 +81,19 @@ public sealed class SourceBuildWorkspaceService(
                     options.MaxExtractedFiles,
                     cancellationToken);
             }
-            if (extraction is Err<SourceBuildRepositoryArchiveInvalid> extractionFailure)
+            if (extraction is SourceBuildRepositoryArchiveInvalid extractionFailure)
             {
                 await DeleteWorkspaceAsync(buildRoot);
-                return new Err<CreateSourceBuildWorkspaceError>(new(extractionFailure.Value));
+                return new CreateSourceBuildWorkspaceError(extractionFailure);
             }
 
             File.Delete(archivePath);
-            return new Ok<SourceBuildWorkspace>(new SourceBuildWorkspace(buildRoot, sourcePath));
+            return new SourceBuildWorkspace(buildRoot, sourcePath);
         }
         catch (InvalidDataException)
         {
             await DeleteWorkspaceAsync(buildRoot);
-            return new Err<CreateSourceBuildWorkspaceError>(
-                new(new SourceBuildWorkspaceArchiveLimitExceeded()));
+            return new CreateSourceBuildWorkspaceError(new SourceBuildWorkspaceArchiveLimitExceeded());
         }
     }
 

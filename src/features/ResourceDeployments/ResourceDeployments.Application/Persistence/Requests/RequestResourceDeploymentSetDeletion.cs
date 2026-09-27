@@ -2,7 +2,6 @@ using MongoDB.Driver;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Persistence.Requests;
 
@@ -11,9 +10,7 @@ internal sealed class MongoRequestResourceDeploymentSetDeletion(
     StoreOutboxWrites storeOutboxWrites,
     TimeProvider timeProvider)
 {
-    public async Task<Result<
-        IReadOnlyList<PlacementSummaryDto>,
-        ResourceDeploymentMutationError>> InvokeAsync(
+    public async Task<ResourceDeploymentSetMutationOutcome> InvokeAsync(
         ResourceDeploymentSetDeletionRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
@@ -41,7 +38,7 @@ internal sealed class MongoRequestResourceDeploymentSetDeletion(
             .ToListAsync(cancellationToken);
         if (current.Count != request.Deployments.Count)
         {
-            return ResourceDeploymentMutationSupport.Error<IReadOnlyList<PlacementSummaryDto>>(
+            return new ResourceDeploymentMutationError(
                 new ResourceDeploymentMutationNotFound(request.ResourceId));
         }
 
@@ -51,7 +48,7 @@ internal sealed class MongoRequestResourceDeploymentSetDeletion(
             var deployment = byId[item.ResourceDeploymentId];
             if (deployment.Revision != item.ExpectedDeploymentRevision)
             {
-                return ResourceDeploymentMutationSupport.Error<IReadOnlyList<PlacementSummaryDto>>(
+                return new ResourceDeploymentMutationError(
                     new ResourceDeploymentChanged(request.ResourceId, item.ResourceDeploymentId));
             }
 
@@ -60,7 +57,7 @@ internal sealed class MongoRequestResourceDeploymentSetDeletion(
                 item.ExpectedCompute,
                 deployment);
             if (computeExpectation is not null)
-                return new Err<ResourceDeploymentMutationError>(computeExpectation.Value);
+                return computeExpectation.Value;
         }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -82,7 +79,7 @@ internal sealed class MongoRequestResourceDeploymentSetDeletion(
                 cancellationToken: cancellationToken);
             if (replacement.ModifiedCount != 1)
             {
-                return ResourceDeploymentMutationSupport.Error<IReadOnlyList<PlacementSummaryDto>>(
+                return new ResourceDeploymentMutationError(
                     new ResourceDeploymentChanged(request.ResourceId, original.Id));
             }
         }
@@ -95,7 +92,7 @@ internal sealed class MongoRequestResourceDeploymentSetDeletion(
                 .ToArray(),
             cancellationToken);
 
-        return new Ok<IReadOnlyList<PlacementSummaryDto>>(
+        return new MutatedResourceDeployments(
             updated.Select(deployment => deployment.ToPlacementSummaryDto()).ToArray());
     }
 }

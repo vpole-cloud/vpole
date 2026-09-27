@@ -19,7 +19,6 @@ public static class DeleteResourceGroup
     {
         app.MapDelete("/{Id}", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] DeleteResourceGroupRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -31,7 +30,7 @@ public static class DeleteResourceGroup
                         new DeleteResourceGroupResponse(
                             Deleted: false,
                             DeletionRequested: true)),
-                    ResourceGroupDeletionError error => httpProblems.Map(error).ToHttpResult()
+                    ResourceGroupDeletionError error => ResourceGroupHttpMappings.Map(error)
                 });
             })
             .WithName("DeleteResourceGroup")

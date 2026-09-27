@@ -40,12 +40,8 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         var first = await service(TestData.TenantId, TestData.UserId);
         var second = await service(TestData.TenantId, TestData.UserId);
 
-        var firstProject = TypedResultExtensions.TryGetValue(first);
-        var secondProject = TypedResultExtensions.TryGetValue(second);
-        Assert.True(firstProject.Succeeded);
-        Assert.True(secondProject.Succeeded);
-        var project = firstProject.Value!;
-        var sameProject = secondProject.Value!;
+        var project = Assert.IsType<RegistryProject>(first.Value);
+        var sameProject = Assert.IsType<RegistryProject>(second.Value);
         Assert.Equal(project.Id, sameProject.Id);
         Assert.Equal(1, registryClient.ProvisionCalls);
         var ready = Assert.IsType<ReadyRegistryProject>(project.State);
@@ -81,9 +77,7 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
             TestData.TenantId,
             project.Id,
             RegistryCredentialPurpose.BuildPushPull);
-        var resolvedCredential = TypedResultExtensions.TryGetValue(resolved);
-        Assert.True(resolvedCredential.Succeeded);
-        var buildCredential = resolvedCredential.Value!;
+        var buildCredential = Assert.IsType<ResolvedRegistryCredential>(resolved.Value);
         Assert.Equal(FakeContainerRegistryClient.BuildSecret, buildCredential.Secret);
         Assert.Equal(ready.BuildCredentialId, credentials.Single(item =>
             item.Purpose == RegistryCredentialPurpose.BuildPushPull).Id);
@@ -102,7 +96,7 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
 
         var failed = await service(TestData.TenantId, TestData.UserId);
 
-        Assert.False(TypedResultExtensions.TryGetValue(failed).Succeeded);
+        Assert.IsType<ContainerRegistryProviderError>(failed.Value);
         var storedFailure = await Fixture.DbContext.RegistryProjects
             .Find(item => item.TenantId == TestData.TenantId)
             .SingleAsync();
@@ -117,9 +111,7 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
 
         var blockedRetry = await service(TestData.TenantId, TestData.UserId);
 
-        var blockedResult = TypedResultExtensions.TryGetValue(blockedRetry);
-        Assert.False(blockedResult.Succeeded);
-        Assert.IsType<TenantContainerRegistryProvisioningConflict>(blockedResult.Error!.Value);
+        Assert.IsType<TenantContainerRegistryProvisioningConflict>(blockedRetry.Value);
         Assert.Equal(1, registryClient.ProvisionCalls);
 
         var cleanupService = CreateCleanupService(
@@ -161,9 +153,7 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
 
         var retried = await service(TestData.TenantId, TestData.UserId);
 
-        var retriedResult = TypedResultExtensions.TryGetValue(retried);
-        Assert.True(retriedResult.Succeeded);
-        var ready = retriedResult.Value!;
+        var ready = Assert.IsType<RegistryProject>(retried.Value);
         Assert.IsType<ReadyRegistryProject>(ready.State);
         Assert.Equal(2, registryClient.ProvisionCalls);
     }
@@ -176,9 +166,7 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         var unprotector = new EnvelopeUnprotectRegistryCredentialSecret(encryption.Service);
         var credentialId = ObjectId.GenerateNewId().ToString();
         var protectedResult = await protector.InvokeAsync(TestData.TenantId, credentialId, 1, "secret");
-        var protectedValue = TypedResultExtensions.TryGetValue(protectedResult);
-        Assert.True(protectedValue.Succeeded);
-        var protectedSecret = protectedValue.Value!;
+        var protectedSecret = Assert.IsType<EncryptedValue>(protectedResult.Value);
         var credential = RegistryCredentialFactory.Create(
             TestData.TenantId,
             ObjectId.GenerateNewId().ToString(),
@@ -200,8 +188,8 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         var tamperedResult = await unprotector.InvokeAsync(tampered);
         var substitutedTenantResult = await unprotector.InvokeAsync(credential with { TenantId = "other-tenant" });
 
-        Assert.False(TypedResultExtensions.TryGetValue(tamperedResult).Succeeded);
-        Assert.False(TypedResultExtensions.TryGetValue(substitutedTenantResult).Succeeded);
+        Assert.IsType<RegistryCredentialUnavailable>(tamperedResult.Value);
+        Assert.IsType<RegistryCredentialUnavailable>(substitutedTenantResult.Value);
         Assert.DoesNotContain("secret", credential.ToString(), StringComparison.Ordinal);
     }
 
@@ -217,9 +205,7 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
             credentialId,
             1,
             "rotation-secret");
-        var encryptedValue = TypedResultExtensions.TryGetValue(encryptedResult);
-        Assert.True(encryptedValue.Succeeded);
-        var oldEnvelope = encryptedValue.Value!;
+        var oldEnvelope = Assert.IsType<EncryptedValue>(encryptedResult.Value);
         var credential = RegistryCredentialFactory.Create(
             TestData.TenantId,
             ObjectId.GenerateNewId().ToString(),
@@ -237,12 +223,10 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
             encryption.RotatingService);
         var wrongTarget = encryption.RotatingService.ActiveKey with { KeyVersion = 99 };
         var rejected = await service.InvokeAsync(wrongTarget);
-        Assert.False(TypedResultExtensions.TryGetValue(rejected).Succeeded);
+        Assert.IsType<RegistryCredentialRewrapRejected>(rejected.Value);
 
         var first = await service.InvokeAsync(encryption.RotatingService.ActiveKey);
-        var firstRewrap = TypedResultExtensions.TryGetValue(first);
-        Assert.True(firstRewrap.Succeeded);
-        var firstSummary = firstRewrap.Value!;
+        var firstSummary = Assert.IsType<RegistryCredentialRewrapSummary>(first.Value);
         Assert.Equal(1, firstSummary.Examined);
         Assert.Equal(1, firstSummary.Rewrapped);
         Assert.Equal(0, firstSummary.ConcurrentChanges);
@@ -258,18 +242,14 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
 
         var newOnlyResult = await new EnvelopeUnprotectRegistryCredentialSecret(encryption.NewOnlyService)
             .InvokeAsync(rewrapped);
-        var newOnlyPlaintext = TypedResultExtensions.TryGetValue(newOnlyResult);
-        Assert.True(newOnlyPlaintext.Succeeded);
-        var plaintext = newOnlyPlaintext.Value!;
+        var plaintext = Assert.IsType<string>(newOnlyResult.Value);
         Assert.Equal("rotation-secret", plaintext);
         var oldOnlyResult = await new EnvelopeUnprotectRegistryCredentialSecret(encryption.OldService)
             .InvokeAsync(rewrapped);
-        Assert.False(TypedResultExtensions.TryGetValue(oldOnlyResult).Succeeded);
+        Assert.IsType<RegistryCredentialUnavailable>(oldOnlyResult.Value);
 
         var second = await service.InvokeAsync(encryption.RotatingService.ActiveKey);
-        var secondRewrap = TypedResultExtensions.TryGetValue(second);
-        Assert.True(secondRewrap.Succeeded);
-        var secondSummary = secondRewrap.Value!;
+        var secondSummary = Assert.IsType<RegistryCredentialRewrapSummary>(second.Value);
         Assert.Equal(1, secondSummary.Examined);
         Assert.Equal(0, secondSummary.Rewrapped);
         Assert.Equal(0, secondSummary.ConcurrentChanges);
@@ -497,14 +477,14 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
 
         var staleWorker = await cleanupService.CleanupAsync(project.Id, cleanup);
 
-        Assert.True(TypedResultExtensions.TryGetValue(staleWorker).Succeeded);
+        Assert.IsType<RegistryCleanupCompleted>(staleWorker.Value);
         Assert.Equal(1, registryClient.RobotCleanupCalls);
         registryClient.ContinueCleanup.SetResult(true);
-        Assert.True(TypedResultExtensions.TryGetValue(await firstWorker).Succeeded);
+        Assert.IsType<RegistryCleanupCompleted>((await firstWorker).Value);
 
         var staleWorkerAfterLeaseRelease = await cleanupService.CleanupAsync(project.Id, cleanup);
 
-        Assert.True(TypedResultExtensions.TryGetValue(staleWorkerAfterLeaseRelease).Succeeded);
+        Assert.IsType<RegistryCleanupCompleted>(staleWorkerAfterLeaseRelease.Value);
 
         var stored = await Fixture.DbContext.RegistryProjects.Find(item => item.Id == project.Id).SingleAsync();
         var pending = Assert.IsType<CleanupRequiredRegistryProjectProvisioning>(stored.State);
@@ -538,9 +518,9 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         var failedWorker = await cleanupService.CleanupAsync(project.Id, cleanup);
         var staleWorkerAfterLeaseRelease = await cleanupService.CleanupAsync(project.Id, cleanup);
 
-        Assert.True(TypedResultExtensions.TryGetValue(failedWorker).Error is
-            ContainerRegistryProviderUnavailable);
-        Assert.True(TypedResultExtensions.TryGetValue(staleWorkerAfterLeaseRelease).Succeeded);
+        Assert.IsType<ContainerRegistryProviderUnavailable>(
+            Assert.IsType<ContainerRegistryProviderError>(failedWorker.Value).Value);
+        Assert.IsType<RegistryCleanupCompleted>(staleWorkerAfterLeaseRelease.Value);
         Assert.Equal(1, registryClient.RobotCleanupCalls);
         var stored = await Fixture.DbContext.RegistryProjects.Find(item => item.Id == project.Id).SingleAsync();
         var pending = Assert.IsType<CleanupRequiredRegistryProjectProvisioning>(stored.State);
@@ -574,7 +554,7 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
 
         var result = await cleanupService.CleanupAsync(project.Id, cleanup);
 
-        Assert.True(TypedResultExtensions.TryGetValue(result).Succeeded);
+        Assert.IsType<RegistryCleanupCompleted>(result.Value);
         Assert.Equal(1, registryClient.RobotCleanupCalls);
         var stored = await Fixture.DbContext.RegistryProjects.Find(item => item.Id == project.Id).SingleAsync();
         Assert.IsType<FailedRegistryProjectProvisioning>(stored.State);
@@ -872,13 +852,13 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
                 }));
     }
 
-    private static ValueTask<Result<EncryptedValue, RegistryCredentialProtectionFailed>> CancelProtectAsync(
+    private static ValueTask<ProtectRegistryCredentialOutcome> CancelProtectAsync(
         string tenantId,
         string credentialId,
         long secretVersion,
         string secret,
         CancellationToken cancellationToken = default) =>
-        ValueTask.FromException<Result<EncryptedValue, RegistryCredentialProtectionFailed>>(
+        ValueTask.FromException<ProtectRegistryCredentialOutcome>(
             new OperationCanceledException());
 
     private sealed class FakeContainerRegistryClient : IContainerRegistryClient
@@ -898,34 +878,34 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         public TaskCompletionSource<bool>? CleanupStarted { get; init; }
         public TaskCompletionSource<bool>? ContinueCleanup { get; init; }
 
-        public Task<Result<ProvisionedRegistryProject, ContainerRegistryProviderError>> ProvisionProjectAsync(
+        public Task<ProvisionRegistryProjectOutcome> ProvisionProjectAsync(
             RegistryProjectProvisioningRequest request,
             CancellationToken cancellationToken = default)
         {
             ProvisionCalls++;
             if (FailNextProvision && ProvisionCalls == 1)
             {
-                return Task.FromResult<Result<ProvisionedRegistryProject, ContainerRegistryProviderError>>(
-                    new Err<ContainerRegistryProviderError>(new(new ContainerRegistryProviderUnavailable("Harbor"))));
+                return Task.FromResult<ProvisionRegistryProjectOutcome>(
+                    new ContainerRegistryProviderError(new ContainerRegistryProviderUnavailable("Harbor")));
             }
 
-            return Task.FromResult<Result<ProvisionedRegistryProject, ContainerRegistryProviderError>>(
-                new Ok<ProvisionedRegistryProject>(new(
+            return Task.FromResult<ProvisionRegistryProjectOutcome>(
+                new ProvisionedRegistryProject(
                     "17",
                     request.ProjectName,
                     new RegistryRobotCredential("21", "robot$build", BuildSecret, null),
-                    new RegistryRobotCredential("22", "robot$runtime", PullSecret, null))));
+                    new RegistryRobotCredential("22", "robot$runtime", PullSecret, null)));
         }
 
-        public Task<Result<RegistryArtifact, ContainerRegistryArtifactLookupError>> GetArtifactAsync(
+        public Task<GetRegistryArtifactOutcome> GetArtifactAsync(
             string projectName,
             string repositoryName,
             string reference,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Result<RegistryArtifact, ContainerRegistryArtifactLookupError>>(
-                new Err<ContainerRegistryArtifactLookupError>(new(new ContainerRegistryArtifactNotFound(reference))));
+            Task.FromResult<GetRegistryArtifactOutcome>(
+                new ContainerRegistryArtifactLookupError(new ContainerRegistryArtifactNotFound(reference)));
 
-        public async Task<Result<RegistryRobotCleanupResult, ContainerRegistryProviderError>> DeleteRobotCredentialsAsync(
+        public async Task<DeleteRegistryRobotCredentialsOutcome> DeleteRobotCredentialsAsync(
             IReadOnlyCollection<RegistryRobotCleanupTarget> targets,
             CancellationToken cancellationToken = default)
         {
@@ -944,17 +924,17 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
             if (ContinueCleanup is not null)
                 await ContinueCleanup.Task.WaitAsync(cancellationToken);
             return FailRobotCleanup
-                ? new Err<ContainerRegistryProviderError>(new(new ContainerRegistryProviderUnavailable("Harbor")))
-                : new Ok<RegistryRobotCleanupResult>(new(
-                    MatchedByNameCounts.TryDequeue(out var matchedCount) ? matchedCount : 0));
+                ? new ContainerRegistryProviderError(new ContainerRegistryProviderUnavailable("Harbor"))
+                : new RegistryRobotCleanupResult(
+                    MatchedByNameCounts.TryDequeue(out var matchedCount) ? matchedCount : 0);
         }
 
-        public Task<Result<Unit, ContainerRegistryProviderError>> DeleteProjectAsync(
+        public Task<DeleteRegistryProjectOutcome> DeleteProjectAsync(
             string externalProjectId,
             CancellationToken cancellationToken = default)
         {
             DeleteProjectCalls++;
-            return Task.FromResult<Result<Unit, ContainerRegistryProviderError>>(new Ok<Unit>(Unit.Value));
+            return Task.FromResult<DeleteRegistryProjectOutcome>(new RegistryProjectDeleted());
         }
     }
 }

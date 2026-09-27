@@ -3,13 +3,16 @@ using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Persistence.Reads;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Persistence.Admission;
 
+internal union LoadDefaultDeploymentTargetOutcome(
+    DeploymentTarget,
+    DefaultDeploymentTargetLookupError);
+
 internal static class DeploymentTargetAdmissionSupport
 {
-    public static async Task<Result<DeploymentTarget, DefaultDeploymentTargetLookupError>>
+    public static async Task<LoadDefaultDeploymentTargetOutcome>
         LoadDefaultAsync(
             LoadDefaultDeploymentTargetId loadDefaultDeploymentTargetId,
             LoadDeploymentTargetById loadDeploymentTargetById,
@@ -18,7 +21,7 @@ internal static class DeploymentTargetAdmissionSupport
         var defaultTargetId = await loadDefaultDeploymentTargetId(cancellationToken);
         if (string.IsNullOrWhiteSpace(defaultTargetId))
         {
-            return new Err<DefaultDeploymentTargetLookupError>(
+            return new DefaultDeploymentTargetLookupError(
                 new DefaultDeploymentTargetNotConfigured());
         }
 
@@ -29,59 +32,51 @@ internal static class DeploymentTargetAdmissionSupport
         return target is null
             ? throw new InvalidOperationException(
                 $"Configured default deployment target '{deploymentTargetId}' does not exist.")
-            : new Ok<DeploymentTarget>(target);
+            : target;
     }
 
-    public static Result<
-        DeploymentTargetLookupDto,
-        DeploymentTargetWorkloadAdmissionError> AdmitForWorkload(DeploymentTarget target)
+    public static AdmitDeploymentTargetForWorkloadOutcome AdmitForWorkload(DeploymentTarget target)
     {
         var lookup = target.ToLookupDto();
         if (!lookup.Enabled)
         {
-            return new Err<DeploymentTargetWorkloadAdmissionError>(
-                new DeploymentTargetWorkloadAdmissionError(
-                    new DeploymentTargetDisabled(lookup.Id)));
+            return new DeploymentTargetWorkloadAdmissionError(
+                new DeploymentTargetDisabled(lookup.Id));
         }
         if (lookup.DeletionRequested)
         {
-            return new Err<DeploymentTargetWorkloadAdmissionError>(
-                new DeploymentTargetWorkloadAdmissionError(
-                    new DeploymentTargetDeletionRequested(lookup.Id)));
+            return new DeploymentTargetWorkloadAdmissionError(
+                new DeploymentTargetDeletionRequested(lookup.Id));
         }
         if (!lookup.AcceptsWorkloads || !target.WorkloadConfiguration.NetworkPolicy.AllowsWorkloads(target))
         {
-            return new Err<DeploymentTargetWorkloadAdmissionError>(
-                new DeploymentTargetWorkloadAdmissionError(
-                    new DeploymentTargetNewWorkloadsDisabled(lookup.Id)));
+            return new DeploymentTargetWorkloadAdmissionError(
+                new DeploymentTargetNewWorkloadsDisabled(lookup.Id));
         }
 
-        return new Ok<DeploymentTargetLookupDto>(lookup);
+        return lookup;
     }
 
-    public static Result<
-        DeploymentTargetLookupDto,
-        DefaultDeploymentTargetWorkloadAdmissionError> AdmitDefaultForNewWorkload(
+    public static AdmitDefaultDeploymentTargetForNewWorkloadOutcome AdmitDefaultForNewWorkload(
         DeploymentTarget target)
     {
         var lookup = target.ToLookupDto();
         if (!lookup.Enabled)
-            return new Err<DefaultDeploymentTargetWorkloadAdmissionError>(
+            return new DefaultDeploymentTargetWorkloadAdmissionError(
                 new DeploymentTargetDisabled(lookup.Id));
         if (lookup.DeletionRequested)
-            return new Err<DefaultDeploymentTargetWorkloadAdmissionError>(
+            return new DefaultDeploymentTargetWorkloadAdmissionError(
                 new DeploymentTargetDeletionRequested(lookup.Id));
         if (!lookup.AcceptsWorkloads || !target.WorkloadConfiguration.NetworkPolicy.AllowsWorkloads(target))
-            return new Err<DefaultDeploymentTargetWorkloadAdmissionError>(
+            return new DefaultDeploymentTargetWorkloadAdmissionError(
                 new DeploymentTargetNewWorkloadsDisabled(lookup.Id));
 
-        return new Ok<DeploymentTargetLookupDto>(lookup);
+        return lookup;
     }
 
     public static bool HasRequiredCapabilities(
         DeploymentTargetLookupDto target,
-        DeploymentTargetRequiredCapabilities requiredCapabilities) =>
-        (!requiredCapabilities.HasFlag(DeploymentTargetRequiredCapabilities.PublicIngress) ||
+        DeploymentTargetRequiredCapabilities requiredCapabilities) => (!requiredCapabilities.HasFlag(DeploymentTargetRequiredCapabilities.PublicIngress) ||
          target.WorkloadConfiguration.Ingress?.PublicBaseDomain is not null) &&
         (!requiredCapabilities.HasFlag(
              DeploymentTargetRequiredCapabilities.FunctionRuntimeConnectivity) ||

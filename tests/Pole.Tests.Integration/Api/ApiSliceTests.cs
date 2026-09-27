@@ -11,6 +11,8 @@ using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.Users.Application.Common;
 using Pole.Features.Users.Application.Endpoints;
+using Pole.Features.Tenants.Application.Common;
+using Pole.Features.Tenants.Application.Endpoints.Members;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -44,6 +46,62 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
         var user = await response.Content.ReadFromJsonAsync<UserDto>();
         Assert.NotNull(user);
         Assert.Equal("new-user@example.test", user.Email);
+    }
+
+    [Fact]
+    public async Task CreateUser_DuplicateEmailReturnsTypedConflict()
+    {
+        Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
+        var request = new CreateUserRequestBody("duplicate-user@example.test", "New", "User");
+        using var created = await Client.PostAsJsonAsync("/api/v1/users/", request);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+
+        using var response = await Client.PostAsJsonAsync("/api/v1/users/", request);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("users.email.already-exists", problem.RootElement.GetProperty("code").GetString());
+        Assert.Equal("tag:pole.dev,2026:problem:users.email.already-exists",
+            problem.RootElement.GetProperty("type").GetString());
+        Assert.Equal(request.Email, problem.RootElement.GetProperty("email").GetString());
+    }
+
+    [Fact]
+    public async Task TenantMemberMutations_PreserveDirectConflictMappingsAndSuccessfulResponses()
+    {
+        Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
+        var path = $"/api/v1/tenants/{TestData.TenantId}/members";
+        var members = await Client.GetFromJsonAsync<TenantMemberDto[]>(path);
+        var owner = Assert.Single(members!);
+        using var demotion = await Client.PutAsJsonAsync($"{path}/{owner.Id}",
+            new UpdateTenantMemberRequestBody(TenantRole.Admin));
+        using var removal = await Client.DeleteAsync($"{path}/{owner.Id}");
+        foreach (var response in new[] { demotion, removal })
+        {
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal("tenants.member.last-owner", problem.RootElement.GetProperty("code").GetString());
+            Assert.Equal(owner.Id, problem.RootElement.GetProperty("memberId").GetString());
+        }
+
+        var request = new AddTenantMemberRequestBody("new-member", "member@example.test", TenantRole.Member);
+        using var created = await Client.PostAsJsonAsync(path, request);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var member = await created.Content.ReadFromJsonAsync<TenantMemberDto>();
+        Assert.NotNull(member);
+        using var duplicate = await Client.PostAsJsonAsync(path, request);
+        Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+        using var duplicateProblem = JsonDocument.Parse(await duplicate.Content.ReadAsStringAsync());
+        Assert.Equal("tenants.member.already-exists", duplicateProblem.RootElement.GetProperty("code").GetString());
+        Assert.Equal(request.UserId, duplicateProblem.RootElement.GetProperty("userId").GetString());
+        using var updated = await Client.PutAsJsonAsync($"{path}/{member.Id}",
+            new UpdateTenantMemberRequestBody(TenantRole.Viewer));
+        Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
+        var updatedMember = await updated.Content.ReadFromJsonAsync<TenantMemberDto>();
+        Assert.Equal(TenantRole.Viewer, updatedMember!.Role);
+        using var deleted = await Client.DeleteAsync($"{path}/{member.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
     }
 
     [Fact]
@@ -138,6 +196,24 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
         var response = await Client.GetAsync("/api/v1/platform/storage/profiles");
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("/api/v1/platform/storage/storage-classes?")]
+    [InlineData("/api/v1/platform/storage/persistent-volumes?")]
+    [InlineData("/api/v1/platform/storage/persistent-volume-claims?")]
+    [InlineData("/api/v1/storage-profiles/?resourceType=third-party/widget&")]
+    public async Task StorageDiscovery_ReturnsUnavailableProblemForUnknownTarget(string route)
+    {
+        Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
+        const string targetId = "507f1f77bcf86cd799439097";
+
+        var response = await Client.GetAsync($"{route}deploymentTargetId={targetId}");
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("storage-profiles.discovery-unavailable", problem.RootElement.GetProperty("code").GetString());
+        Assert.Equal(targetId, problem.RootElement.GetProperty("deploymentTargetId").GetString());
     }
 
     [Fact]

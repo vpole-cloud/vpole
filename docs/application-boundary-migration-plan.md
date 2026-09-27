@@ -3,7 +3,7 @@
 Status: Completed — 2026-08-26
 
 This document records the agreed plan for migrating Pole feature boundaries to
-typed unions, typed results, named capability delegates, feature-owned dependency
+typed unions, named capability delegates, feature-owned dependency
 injection, and persistence implementations that do not expose MongoDB contexts to
 application consumers.
 
@@ -35,7 +35,7 @@ HTTP endpoint
   -> mediator request
   -> feature-owned outcome union
   -> named cross-feature capabilities
-  -> Result<T, TError> for local composition
+  -> operation-specific unions for local composition
   -> semantic persistence capabilities
   -> internal MongoDB implementation
 ```
@@ -43,7 +43,7 @@ HTTP endpoint
 ## Goals
 
 1. Give every mediator request a feature-owned closed outcome union.
-2. Use `Result<T, TError>` for local two-track composition without coupling
+2. Use operation-specific unions for local two-track composition without coupling
    handlers to shared HTTP-oriented failures.
 3. Make expected cross-feature failures stable provider-owned contract types.
 4. Prefer named delegates for independently consumable application capabilities.
@@ -93,17 +93,11 @@ A consumer may include a provider-owned error union in its own error union. It
 must not translate every provider error into consumer-local copies unless the
 consumer is intentionally changing the semantics.
 
-### 2. `Result<T, TError>` is a composition primitive
+### 2. Operation-specific unions compose local outcomes
 
-`Result<T, TError>` remains useful inside handlers and capabilities where a
-success value and one typed error channel need to be composed.
-
-It is not the mandatory outer return type of a mediator handler. A handler's
-outer type is its request-specific union.
-
-The closed result implementation must prevent third-party subclasses from adding
-unknown states. When the .NET 11 closed-type design is finalized for the project,
-the result primitives should use it where it improves compiler enforcement.
+Handlers and capabilities use closed, operation-specific unions for expected
+success and failure states. A handler's outer type is its request-specific union.
+This keeps each operation's cases visible to callers and exhaustively matchable.
 
 ### 3. Expected failures and exceptions have different meanings
 
@@ -209,10 +203,13 @@ Use a named delegate when an operation:
 Example:
 
 ```csharp
-public delegate Task<Result<ResourceSnapshot, LoadResourceError>> LoadResource(
+public delegate Task<LoadResourceOutcome> LoadResource(
     LoadResourceRequest request,
     CancellationToken cancellationToken = default);
 ```
+
+`LoadResourceOutcome` is the operation-specific union of `ResourceSnapshot` and
+`LoadResourceError`.
 
 Injecting two or three explicit delegates is preferred to injecting a broad
 interface and using one method. A handler with an excessive number of delegates
@@ -423,7 +420,7 @@ that can be called without mediator validation.
 - define provider-owned request and snapshot records;
 - define expected provider error unions;
 - define request-specific handler outcome unions;
-- use `Result<T, TError>` where local composition needs it;
+- use operation-specific unions where local composition needs them;
 - keep domain types out of cross-feature contracts;
 - document structural preconditions that throw.
 
@@ -728,7 +725,7 @@ mediator pipeline envelope must remain open to plugin-provided behaviors.
 A feature is migrated when:
 
 - its mediator handlers return request-specific outcome unions;
-- its local composition uses typed results or direct unions intentionally;
+- its local composition uses operation-specific unions;
 - expected errors are provider- or feature-owned typed contracts;
 - structural contract violations throw and are not HTTP-mapped as expected 400s;
 - consumers depend on named semantic capabilities or justified interfaces;
@@ -784,19 +781,18 @@ This migration wave is complete. The final repository audit confirmed that:
 The focused migration gates passed for Domains (7 tests), WebServices (21 tests),
 and ResourceDeployments (74 tests). A full build is part of the final handoff.
 
-### Legacy Result cleanup — 2026-08-27
+### Legacy Result cleanup — 2026-08-27, completed 2026-09-26
 
 The temporary shared `Result`, `Result<T>`, `Success`, `Failure`, and `Failures`
-hierarchy has been removed rather than retained for compatibility. The only shared
-result representation is `Result<T, TError>`, whose cases are `Ok<T>` and
-`Err<TError>`.
+hierarchy has been removed rather than retained for compatibility. The later
+`Result<T, TError>`, `Ok<T>`, and `Err<TError>` types were also removed after their
+remaining encryption contracts moved to operation-specific unions.
 
 `Mediator` resolves only `IMediatorOutcomeHandler<TRequest, TOutcome>` and keeps
 its open `IMediatorRejection` extension point for host and plugin pipeline
 behaviors. `MongoRunTransaction` exposes only the explicit outcome decision
 protocol. Encryption and Kubernetes adapters use their own typed errors. The
-architecture test rejects removed compatibility symbols and a reintroduced
-single-error `Result<T>`.
+architecture test rejects removed compatibility symbols and generic C# result types.
 
 ## Deferred Decisions
 

@@ -18,6 +18,8 @@ using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
 
+using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
+
 namespace Pole.Features.WebServices.Application.Endpoints.Deployments;
 
 public static class UpdateWebServiceDeployment
@@ -30,7 +32,6 @@ public static class UpdateWebServiceDeployment
                     "/{Id}/deployments/{DeploymentId}",
                     async (
                         IMediator mediator,
-                        IHttpProblemMapper httpProblems,
                         [AsParameters] UpdateWebServiceDeploymentRequest request,
                         CancellationToken cancellationToken) =>
                         (await mediator.Send(request, cancellationToken))
@@ -39,7 +40,7 @@ public static class UpdateWebServiceDeployment
                             PlacementSummaryDto value =>
                                 Results.Accepted(value: value),
                             UpdateWebServiceDeploymentError error =>
-                                httpProblems.Map(error).ToHttpResult()
+                                MapError(error)
                         }))
                 .WithName("UpdateWebServiceDeployment")
                 .Produces<PlacementSummaryDto>(StatusCodes.Status202Accepted);
@@ -107,8 +108,9 @@ public sealed class UpdateWebServiceDeploymentHandler(
             request,
             current,
             cancellationToken);
-        if (!replacementCompute.TryGetValue(out var resolution, out var computeFailure))
+        if (replacementCompute is ComputeProfileResolutionError computeFailure)
             return Error(new UpdateWebServiceDeploymentError(computeFailure));
+        var resolution = (ReplacementComputeResolution)replacementCompute.Value;
         var replacement = resolution.Value;
 
         var desiredDeployments = deployments.Select(deployment =>
@@ -148,9 +150,10 @@ public sealed class UpdateWebServiceDeploymentHandler(
                         fixedReplicas: request.Body.FixedReplicas),
                     transaction.Session,
                     token);
-                if (!result.TryGetValue(out var changed, out var failure))
+                if (result is ResourceDeploymentMutationError failure)
                     return transaction.Abort(Error(
                         new UpdateWebServiceDeploymentError(failure)));
+                var changed = (PlacementSummaryDto)result.Value;
 
                 var advanced = await advanceResourceDeploymentRevision(
                     new ResourceDeploymentResourceRevisionRequest(
@@ -160,9 +163,10 @@ public sealed class UpdateWebServiceDeploymentHandler(
                         updated.ActiveRevision),
                     transaction.Session,
                     token);
-                if (!advanced.TryGetValue(out var snapshots, out var revisionFailure))
+                if (advanced is AdvanceResourceDeploymentRevisionError revisionFailure)
                     return transaction.Abort(Error(
                         new UpdateWebServiceDeploymentError(revisionFailure)));
+                var snapshots = ((MutatedResourceDeployments)advanced.Value).Placements;
 
                 var saved = await persistWebService(
                     transaction.Session,
@@ -171,7 +175,7 @@ public sealed class UpdateWebServiceDeploymentHandler(
                     updated.ToUpdatedEvent(
                         WebServiceDeploymentWorkflow.ToEventDeployments(snapshots)),
                     token);
-                if (!saved.TryGetValue(out _, out var persistenceError))
+                if (saved is WebServiceUpdateConflict persistenceError)
                     return transaction.Abort(Error(
                         new UpdateWebServiceDeploymentError(persistenceError)));
 
@@ -195,17 +199,14 @@ public sealed class UpdateWebServiceDeploymentHandler(
             cancellationToken);
     }
 
-    private async Task<Result<
-        ReplacementComputeResolution,
-        ComputeProfileResolutionError>>
+    private async Task<ReplacementComputeOutcome>
         ResolveReplacementComputeAsync(
             UpdateWebServiceDeploymentRequest request,
             PlacementSummaryDto current,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Body.ComputeProfileId))
-            return new Ok<ReplacementComputeResolution>(
-                new ReplacementComputeResolution(null));
+            return new ReplacementComputeResolution(null);
 
         var resolved = await resolveComputeProfiles(
             new ComputeProfileBatchResolutionRequest(
@@ -215,15 +216,20 @@ public sealed class UpdateWebServiceDeploymentHandler(
                     current.DeploymentTargetId,
                     request.Body.ComputeProfileId)]),
             cancellationToken);
-        return resolved.TryGetValue(out var profiles, out var failure)
-            ? new Ok<ReplacementComputeResolution>(
-                new ReplacementComputeResolution(
-                    profiles.Single().ToResourceDeploymentConfiguration()))
-            : new Err<ComputeProfileResolutionError>(failure);
+        return resolved switch
+        {
+            IReadOnlyList<ResolvedComputeProfile> profiles => new ReplacementComputeResolution(
+                profiles.Single().ToResourceDeploymentConfiguration()),
+            ComputeProfileResolutionError error => error
+        };
     }
 
     private sealed record ReplacementComputeResolution(
         ResourceDeploymentComputeConfiguration? Value);
+
+    private union ReplacementComputeOutcome(
+        ReplacementComputeResolution,
+        ComputeProfileResolutionError);
 
     private static ComputeConfigurationSummaryDto ToComputeSummary(
         ResourceDeploymentComputeConfiguration compute) =>

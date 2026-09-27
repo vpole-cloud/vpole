@@ -17,15 +17,11 @@ public sealed class PreparedDeploymentTargetConnection(
     public DeploymentTargetConnection Connection { get; } =
         connection ?? throw new ArgumentNullException(nameof(connection));
 
-    public IKubernetes Candidate => Volatile.Read(ref _candidate) ??
-        throw new ObjectDisposedException(nameof(PreparedDeploymentTargetConnection));
+    public IKubernetes Candidate => Volatile.Read(ref _candidate) ?? throw new ObjectDisposedException(nameof(PreparedDeploymentTargetConnection));
 
-    public IKubernetes TakeCandidate() =>
-        Interlocked.Exchange(ref _candidate, null) ??
-        throw new ObjectDisposedException(nameof(PreparedDeploymentTargetConnection));
+    public IKubernetes TakeCandidate() => Interlocked.Exchange(ref _candidate, null) ?? throw new ObjectDisposedException(nameof(PreparedDeploymentTargetConnection));
 
     public void Dispose() => Interlocked.Exchange(ref _candidate, null)?.Dispose();
 
-    public override string ToString() =>
-        $"PreparedDeploymentTargetConnection(Kind={Connection.Kind}, Version={Connection.Version}, Credential=[REDACTED])";
+    public override string ToString() => $"PreparedDeploymentTargetConnection(Kind={Connection.Kind}, Version={Connection.Version}, Credential=[REDACTED])";
 }

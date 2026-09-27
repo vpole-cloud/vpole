@@ -1,5 +1,4 @@
 using MongoDB.Driver;
-using Pole.ResultType;
 using Pole.Workloads;
 
 namespace Pole.Features.Domains.Contracts;
@@ -162,15 +161,13 @@ public union HostnameBindingCleanupError(
     HostnameBindingCleanupBindingsChanged,
     HostnameBindingCleanupReferenceRemovalRejected);
 
-public delegate Task<Result<TenantDomainZoneSnapshot, GeneratedDomainZoneError>>
-    GetOrCreateGeneratedDomainZoneOutcome(
+public delegate Task<GetOrCreateGeneratedDomainZoneOutcome>
+    GetOrCreateGeneratedDomainZone(
         GetOrCreateGeneratedZoneRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-public delegate Task<Result<
-    IReadOnlyList<TenantDomainZoneSnapshot>,
-    GeneratedDomainZoneError>> GetOrCreateGeneratedDomainZonesOutcome(
+public delegate Task<GetOrCreateGeneratedDomainZonesOutcome> GetOrCreateGeneratedDomainZones(
         IReadOnlyList<GetOrCreateGeneratedZoneRequest> requests,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
@@ -192,32 +189,30 @@ public delegate Task<IReadOnlyList<HostnameBindingSnapshot>>
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-public delegate Task<Result<HostnameBindingSnapshot, GeneratedHostnameBindingError>>
-    CreateGeneratedHostnameBindingOutcome(
+public delegate Task<CreateGeneratedHostnameBindingOutcome>
+    CreateGeneratedHostnameBinding(
         CreateGeneratedHostnameBindingRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-public delegate Task<Result<
-    IReadOnlyList<HostnameBindingSnapshot>,
-    GeneratedHostnameBindingError>> CreateGeneratedHostnameBindingsOutcome(
+public delegate Task<CreateGeneratedHostnameBindingsOutcome> CreateGeneratedHostnameBindings(
         IReadOnlyList<CreateGeneratedHostnameBindingRequest> requests,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-public delegate Task<Result<HostnameBindingSnapshot, CustomHostnameBindingError>>
-    CreateCustomHostnameBindingOutcome(
+public delegate Task<CreateCustomHostnameBindingOutcome>
+    CreateCustomHostnameBinding(
         CreateCustomHostnameBindingRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-public delegate Task<Result<Unit, CustomHostnameBindingError>>
-    DeleteCustomHostnameBindingOutcome(
+public delegate Task<DeleteCustomHostnameBindingOutcome>
+    DeleteCustomHostnameBinding(
         DeleteCustomHostnameBindingRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
-public delegate Task<Result<Unit, HostnameBindingCleanupError>>
+public delegate Task<CleanupHostnameBindingsOutcome>
     DeleteHostnameBindingsForDeployment(
     string tenantId,
     ResourceTypeId resourceType,
@@ -226,10 +221,42 @@ public delegate Task<Result<Unit, HostnameBindingCleanupError>>
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
-public delegate Task<Result<Unit, HostnameBindingCleanupError>>
+public delegate Task<CleanupHostnameBindingsOutcome>
     DeleteHostnameBindingsForResource(
     string tenantId,
     ResourceTypeId resourceType,
     string resourceId,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
+
+public sealed record CustomHostnameBindingDeleted;
+
+public sealed record HostnameBindingsCleanedUp;
+
+public union GetOrCreateGeneratedDomainZoneOutcome(
+    TenantDomainZoneSnapshot,
+    GeneratedDomainZoneError);
+
+public union GetOrCreateGeneratedDomainZonesOutcome(
+    IReadOnlyList<TenantDomainZoneSnapshot>,
+    GeneratedDomainZoneError);
+
+public union CreateGeneratedHostnameBindingOutcome(
+    HostnameBindingSnapshot,
+    GeneratedHostnameBindingError);
+
+public union CreateGeneratedHostnameBindingsOutcome(
+    IReadOnlyList<HostnameBindingSnapshot>,
+    GeneratedHostnameBindingError);
+
+public union CreateCustomHostnameBindingOutcome(
+    HostnameBindingSnapshot,
+    CustomHostnameBindingError);
+
+public union DeleteCustomHostnameBindingOutcome(
+    CustomHostnameBindingDeleted,
+    CustomHostnameBindingError);
+
+public union CleanupHostnameBindingsOutcome(
+    HostnameBindingsCleanedUp,
+    HostnameBindingCleanupError);

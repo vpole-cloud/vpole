@@ -8,8 +8,7 @@ public sealed class DeploymentTargetReferenceMigration : IMigration
 {
     public ObjectId Id => new("69d60000b213917a38c379f5");
     public string Name => "Deployment target reference registry";
-    public string Description =>
-        "Creates lookup and unique owner indexes for durable deployment-target references.";
+    public string Description => "Creates lookup and unique owner indexes for durable deployment-target references.";
 
     public async Task Up(IMongoDatabase context, CancellationToken cancellationToken = default)
     {

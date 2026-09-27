@@ -9,12 +9,13 @@ using Pole.ResultType;
 
 namespace Pole.Features.ComputeProfiles.Application.Persistence.Mutations;
 
-public union PersistUpdatedComputeProfileError(
+public union PersistUpdatedComputeProfileOutcome(
+    ComputeProfile,
     ComputeProfileRevisionConflict,
     DefaultComputeProfileCannotBeDemoted,
     DeploymentTargetReferenceChangeRejected);
 
-public delegate Task<Result<ComputeProfile, PersistUpdatedComputeProfileError>>
+public delegate Task<PersistUpdatedComputeProfileOutcome>
     PersistUpdatedComputeProfile(
     ComputeProfile current,
     ComputeProfile replacement,
@@ -23,11 +24,9 @@ public delegate Task<Result<ComputeProfile, PersistUpdatedComputeProfileError>>
 internal sealed class MongoPersistUpdatedComputeProfile(
     IMongoCollection<ComputeProfile> computeProfiles,
     ApplyDeploymentTargetReferenceChanges applyTargetReferenceChanges,
-    RunMongoOutcomeTransaction<Result<
-        ComputeProfile,
-        PersistUpdatedComputeProfileError>> runMongoTransaction)
+    RunMongoOutcomeTransaction<PersistUpdatedComputeProfileOutcome> runMongoTransaction)
 {
-    public Task<Result<ComputeProfile, PersistUpdatedComputeProfileError>> InvokeAsync(
+    public Task<PersistUpdatedComputeProfileOutcome> InvokeAsync(
         ComputeProfile current,
         ComputeProfile replacement,
         CancellationToken cancellationToken = default)
@@ -35,10 +34,8 @@ internal sealed class MongoPersistUpdatedComputeProfile(
         ComputeProfilePersistenceGuards.EnsureSameIdentity(current, replacement);
         if (current.IsDefault && !replacement.IsDefault)
         {
-            return Task.FromResult<Result<ComputeProfile, PersistUpdatedComputeProfileError>>(
-                new Err<PersistUpdatedComputeProfileError>(
-                    new PersistUpdatedComputeProfileError(
-                        new DefaultComputeProfileCannotBeDemoted(current.Id))));
+            return Task.FromResult<PersistUpdatedComputeProfileOutcome>(
+                new DefaultComputeProfileCannotBeDemoted(current.Id));
         }
 
         var currentTargetIds = current.TargetMappings
@@ -57,9 +54,9 @@ internal sealed class MongoPersistUpdatedComputeProfile(
                 currentTargetIds.Except(replacementTargetIds, StringComparer.Ordinal),
                 transaction.Session,
                 ct);
-            if (references is Err<DeploymentTargetReferenceChangeRejected> error)
+            if (references is DeploymentTargetReferenceChangeRejected error)
             {
-                return transaction.AbortError(new(error.Value));
+                return transaction.Abort(error);
             }
 
             if (replacement.IsDefault)
@@ -79,11 +76,10 @@ internal sealed class MongoPersistUpdatedComputeProfile(
                 cancellationToken: ct);
             if (replaced.ModifiedCount != 1)
             {
-                return transaction.AbortError(
-                    new(new ComputeProfileRevisionConflict(current.Id)));
+                return transaction.Abort(new ComputeProfileRevisionConflict(current.Id));
             }
 
-            return transaction.Commit(new Ok<ComputeProfile>(replacement));
+            return transaction.Commit(replacement);
         }, cancellationToken);
     }
 }

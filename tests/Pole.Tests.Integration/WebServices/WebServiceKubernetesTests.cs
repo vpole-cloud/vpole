@@ -11,7 +11,6 @@ using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Application.Kubernetes;
-using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Pole.Tests.Integration.ResourceDeployments;
 using Pole.Testing;
@@ -67,12 +66,11 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
             options: WebServiceFactory.DefaultOptions with { Id = SourceBuildWebServiceId });
     }
 
-    private static void AssertResultSucceeded(Result<Unit, WebServiceKubernetesApplyFailed> result)
+    private static void AssertResultSucceeded(WebServiceKubernetesApplyOutcome result)
     {
-        var extracted = TypedResultExtensions.TryGetValue(result);
-        if (!extracted.Succeeded)
+        if (result is WebServiceKubernetesApplyFailed failure)
             throw new Xunit.Sdk.XunitException(
-                $"Kubernetes deployment apply failed: {extracted.Error!.Message}");
+                $"Kubernetes deployment apply failed: {failure.Message}");
     }
 
     [KubernetesFact("monitoring")]

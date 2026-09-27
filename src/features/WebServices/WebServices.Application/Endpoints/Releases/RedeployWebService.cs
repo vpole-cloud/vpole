@@ -16,6 +16,8 @@ using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
 
+using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
+
 namespace Pole.Features.WebServices.Application.Endpoints.Releases;
 
 public static class RedeployWebService
@@ -26,7 +28,6 @@ public static class RedeployWebService
         {
             app.MapPost("/{Id}/redeploy", async (
                     IMediator mediator,
-                    IHttpProblemMapper httpProblems,
                     [AsParameters] RedeployWebServiceRequest request,
                     CancellationToken cancellationToken) =>
                 (await mediator.Send(request, cancellationToken)).ToHttpResult(
@@ -35,7 +36,7 @@ public static class RedeployWebService
                         RedeployWebServiceResponse value =>
                             Results.Accepted(value: value),
                         RedeployWebServiceError error =>
-                            httpProblems.Map(error).ToHttpResult()
+                            MapError(error)
                     }))
                 .WithName("RedeployWebService")
                 .Produces<RedeployWebServiceResponse>(StatusCodes.Status202Accepted);
@@ -108,9 +109,10 @@ public sealed class RedeployWebServiceHandler(
                         WebServiceDeploymentWorkflow.ToSetApplyItem(deployment)).ToArray()),
                 transaction.Session,
                 ct);
-            if (!deploymentsResult.TryGetValue(out var updatedDeployments, out var deploymentsFailure))
+            if (deploymentsResult is ResourceDeploymentMutationError deploymentsFailure)
                 return transaction.Abort(Error(
                     new RedeployWebServiceError(deploymentsFailure)));
+            var updatedDeployments = ((MutatedResourceDeployments)deploymentsResult.Value).Placements;
 
             var persisted = await persistUpdatedWebService(
                 transaction.Session,
@@ -118,7 +120,7 @@ public sealed class RedeployWebServiceHandler(
                 updated,
                 updated.ToUpdatedEvent(WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments)),
                 ct);
-            if (!persisted.TryGetValue(out _, out var persistenceError))
+            if (persisted is WebServiceUpdateConflict persistenceError)
                 return transaction.Abort(Error(
                     new RedeployWebServiceError(persistenceError)));
 

@@ -9,8 +9,8 @@ using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.Persistence.Repositories;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
+using static Pole.Features.GitProviders.Application.Common.GitProviderHttpMappings;
 
 namespace Pole.Features.GitProviders.Application.Endpoints.SourceRepositories;
 
@@ -19,13 +19,10 @@ public sealed record DeleteSourceRepositoryRequest(
     [FromTenantHeader] string TenantId)
     : IMediatorRequest<DeleteSourceRepositoryOutcome>, ITenantWriteOperation;
 
-public union DeleteSourceRepositoryError(
-    SourceRepositoryNotFound,
-    SourceRepositoryHasBuildConfiguration);
-
 public union DeleteSourceRepositoryOutcome(
     string,
-    DeleteSourceRepositoryError);
+    SourceRepositoryNotFound,
+    SourceRepositoryHasBuildConfiguration);
 
 public sealed class DeleteSourceRepositoryRequestValidator
     : AbstractValidator<DeleteSourceRepositoryRequest>
@@ -49,10 +46,9 @@ public sealed class DeleteSourceRepositoryHandler(
             cancellationToken);
         return configurationGuard switch
         {
-            Err<SourceBuildSourceRepositoryConfigurationExists> =>
-                new DeleteSourceRepositoryError(
-                    new SourceRepositoryHasBuildConfiguration(request.Id)),
-            Ok<Unit> => await DeleteAsync(
+            SourceBuildSourceRepositoryConfigurationExists =>
+                new SourceRepositoryHasBuildConfiguration(request.Id),
+            NoSourceRepositoryBuildConfiguration => await DeleteAsync(
                 request,
                 deleteSourceRepository,
                 cancellationToken)
@@ -67,9 +63,8 @@ public sealed class DeleteSourceRepositoryHandler(
         var deleted = await deleteSourceRepository(request.TenantId, request.Id, cancellationToken);
         return deleted switch
         {
-            Ok<Unit> => request.Id,
-            Err<SourceRepositoryNotFound> error =>
-                new DeleteSourceRepositoryError(error.Value)
+            SourceRepositoryDeleted => request.Id,
+            SourceRepositoryNotFound error => error
         };
     }
 }
@@ -80,7 +75,6 @@ public static class DeleteSourceRepositoryEndpoint
     {
         app.MapDelete("/{Id}", async (
                 IMediator mediator,
-                IHttpProblemMapper httpProblems,
                 [AsParameters] DeleteSourceRepositoryRequest request,
                 CancellationToken cancellationToken) =>
             {
@@ -88,7 +82,8 @@ public static class DeleteSourceRepositoryEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     string _ => Results.NoContent(),
-                    DeleteSourceRepositoryError error => httpProblems.Map(error).ToHttpResult()
+                    SourceRepositoryNotFound error => MapSourceRepositoryNotFound(error),
+                    SourceRepositoryHasBuildConfiguration error => MapSourceRepositoryHasBuildConfiguration(error)
                 });
             })
             .WithName("DeleteSourceRepository")
