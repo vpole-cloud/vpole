@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Domain;
 
 namespace Pole.Features.ResourceGroups.Application.Persistence.RuntimeCells;
@@ -102,6 +103,11 @@ internal static class RuntimeCellFilters
         DateTime staleBefore,
         DateTime now) =>
         Builders<RuntimeCell>.Filter.Or(
+            Builders<RuntimeCell>.Filter.And(
+                Builders<RuntimeCell>.Filter.OfType<RuntimeCellState, ReadyRuntimeCellState>(cell => cell.State),
+                Builders<RuntimeCell>.Filter.Lte(
+                    cell => cell.UpdatedAtUtc,
+                    RuntimeCellVerificationSchedule.DueBefore(now))),
             Builders<RuntimeCell>.Filter.And(
                 Builders<RuntimeCell>.Filter
                     .OfType<RuntimeCellState, ProvisioningRuntimeCellState>(cell => cell.State),

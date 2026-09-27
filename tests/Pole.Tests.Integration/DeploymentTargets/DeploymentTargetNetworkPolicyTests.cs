@@ -85,6 +85,31 @@ public sealed class DeploymentTargetNetworkPolicyTests
             (NetworkPolicyEnforcement)99, false, checkedAtUtc));
     }
 
+    [Fact]
+    public void MissingPolicyWriterPermission_BlocksWorkloadsWithoutChangingCniEvidence()
+    {
+        var attested = Attest(Target(), NetworkPolicyEnforcement.Supported, false);
+        var withoutPolicyCreate = attested with
+        {
+            Capabilities = attested.Capabilities with
+            {
+                NetworkPolicyCapabilities = new DeploymentTargetNetworkPolicyCapabilities(
+                    CanGet: true,
+                    CanCreate: false,
+                    CanUpdate: true,
+                    CanPatch: true,
+                    CanDelete: true)
+            }
+        };
+
+        var readiness = withoutPolicyCreate.ToNetworkPolicyDto();
+        Assert.Equal(NetworkPolicyEnforcementStatus.Supported, readiness.Enforcement);
+        Assert.Equal(NetworkPolicyReadiness.EnforcementRequired, readiness.Readiness);
+        Assert.Equal(NetworkPolicyReason.WriterPermissionsMissing, readiness.Reason);
+        Assert.IsType<DeploymentTargetWorkloadAdmissionError>(
+            DeploymentTargetAdmissionSupport.AdmitForWorkload(withoutPolicyCreate).Value);
+    }
+
     internal static DeploymentTarget Target()
     {
         var id = ObjectId.GenerateNewId().ToString();
@@ -98,8 +123,9 @@ public sealed class DeploymentTargetNetworkPolicyTests
                 1,
                 now,
                 "v1.35.0",
+                new(true, true, true, true, true),
                 new(true, true, true, true, true)),
-            DeploymentTargetWorkloadConfiguration.Create(null),
+            DeploymentTargetWorkloadConfiguration.Create(null, DeploymentTargetNetworkSources.None),
             true,
             true,
             new(id, now));

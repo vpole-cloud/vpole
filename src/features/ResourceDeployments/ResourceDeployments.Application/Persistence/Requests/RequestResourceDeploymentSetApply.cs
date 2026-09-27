@@ -27,6 +27,8 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
             request.Deployments,
             deployment => deployment.ResourceDeploymentId,
             nameof(request));
+        if (request.Deployments.Any(item => item.IngressChange is null or ReplaceIngress { Configuration: null }))
+            throw new ArgumentException("Every deployment must specify a valid ingress change.", nameof(request));
 
         var deploymentIds = request.Deployments
             .Select(item => item.ResourceDeploymentId)
@@ -79,10 +81,11 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
                         request.ResourceId,
                         item.ResourceDeploymentId));
             }
-            if (item.ReplacementIngress is not null &&
+            if (item.IngressChange is ReplaceIngress replaceIngress &&
+                deployment.ResolvedPlacement.Ingress is not null &&
                 !ResourceDeploymentMutationSupport.HasSameIngressIdentity(
                     deployment.ResolvedPlacement.Ingress,
-                    item.ReplacementIngress))
+                    replaceIngress.Configuration))
             {
                 return new ResourceDeploymentMutationError(
                     new ResourceDeploymentIngressConfigurationChanged(
@@ -160,8 +163,16 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
             var placement = deployment.ResolvedPlacement;
             if (item.ReplacementCompute is not null)
                 placement = placement with { Compute = item.ReplacementCompute.ToDomain() };
-            if (item.ReplacementIngress is not null)
-                placement = placement with { Ingress = item.ReplacementIngress.ToDomain() };
+            placement = item.IngressChange switch
+            {
+                PreserveIngress => placement,
+                ClearIngress => placement with { Ingress = null },
+                ReplaceIngress replaceIngress => placement with
+                {
+                    Ingress = replaceIngress.Configuration.ToDomain()
+                },
+                _ => throw new ArgumentException("An ingress change is required.", nameof(request))
+            };
 
             updated.Add(deployment.RequestReconciliation(
                 placement,

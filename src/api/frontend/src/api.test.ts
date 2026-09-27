@@ -48,6 +48,25 @@ describe('web service placement API', () => {
     )
   })
 
+  it('loads private workload targets without requiring public ingress', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchAvailableDeploymentTargets(
+      'https://pole.test',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      false,
+    )
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://pole.test/api/v1/deployment-targets/available?resourceType=pole%2Fweb-service&requiresPublicIngress=false',
+      expect.any(Object),
+    )
+  })
+
   it('sends per-target placement and never sends the retired shared replicas or domain fields', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -58,6 +77,7 @@ describe('web service placement API', () => {
     await createWebService('https://pole.test', {
       name: 'api',
       resourceGroupId: '507f1f77bcf86cd799439014',
+      exposure: 'Private',
       isolationScopeId: '507f1f77bcf86cd799439015',
       imageServer: 'docker.io',
       imageName: 'library/nginx',
@@ -78,6 +98,7 @@ describe('web service placement API', () => {
       isolationScopeId: '507f1f77bcf86cd799439015',
       targets: [{ deploymentTargetId: '507f1f77bcf86cd799439016', fixedReplicas: 2, computeProfileId: null }],
     })
+    expect(body.exposure).toBe('Private')
     expect(body.spec).not.toHaveProperty('replicas')
     expect(body).not.toHaveProperty('domainName')
   })

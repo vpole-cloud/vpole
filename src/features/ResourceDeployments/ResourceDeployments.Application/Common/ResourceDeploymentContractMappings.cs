@@ -79,6 +79,7 @@ internal static class ResourceDeploymentContractMappings
             deployment.UpdatedAtUtc,
             new ResourceDeploymentResolvedPlacementSnapshot(
                 deployment.ResolvedPlacement.DeploymentTargetId,
+                deployment.ResolvedPlacement.TargetWorkloadConfigurationRevision,
                 deployment.ResolvedPlacement.KubernetesNamespace,
                 deployment.ResolvedPlacement.Ingress is null
                     ? null

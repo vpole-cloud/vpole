@@ -3,13 +3,15 @@ using Pole.Features.Functions.Application.Persistence.Reads;
 using Pole.Features.Functions.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Workloads;
+using System.Collections.Immutable;
 
 namespace Pole.Features.Functions.Runtime.Kubernetes;
 
 public sealed class FunctionResourceDeploymentAdapter(
     LoadFunctionAppById loadFunctionAppById,
     LoadFunctionAppRevisions loadFunctionAppRevisions,
-    IFunctionRevisionKubernetesManager kubernetesManager)
+    IFunctionRevisionKubernetesManager kubernetesManager,
+    ReconcileResourceIngressPolicy reconcileIngressPolicy)
     : IResourceDeploymentAdapter
 {
     public async Task<ResourceDeploymentAdapterResult> ApplyAsync(
@@ -36,6 +38,16 @@ public sealed class FunctionResourceDeploymentAdapter(
                 retryable: false);
         }
 
+        var ingress = await reconcileIngressPolicy(
+            PolicyRequest(deployment, [FunctionRevisionInKubernetes.AgentPort]),
+            cancellationToken);
+        if (ingress is not ResourceIngressPolicyApplied)
+        {
+            return ResourceDeploymentAdapterResult.Failed.Create(
+                "FunctionGatewayIngressUnavailable",
+                "The Function gateway ingress policy is not ready.");
+        }
+
         // Revision provisioning remains Function-owned. Marking the placement ready here
         // releases the placement-fenced revision event after RuntimeCell reconciliation.
         return ResourceDeploymentAdapterResult.Succeeded.Create();
@@ -51,7 +63,16 @@ public sealed class FunctionResourceDeploymentAdapter(
             deployment.ResourceId,
             cancellationToken);
         if (app is null)
-            return ResourceDeploymentAdapterResult.Succeeded.Create();
+        {
+            var missingAppIngress = await reconcileIngressPolicy(
+                PolicyRequest(deployment, []),
+                cancellationToken);
+            return missingAppIngress is ResourceIngressPolicyApplied
+                ? ResourceDeploymentAdapterResult.Succeeded.Create()
+                : ResourceDeploymentAdapterResult.Failed.Create(
+                    "FunctionGatewayIngressCleanupUnavailable",
+                    "The Function gateway ingress policy could not be closed.");
+        }
         if (!Matches(app, deployment))
         {
             return ResourceDeploymentAdapterResult.Failed.Create(
@@ -80,8 +101,33 @@ public sealed class FunctionResourceDeploymentAdapter(
             }
         }
 
+        var ingress = await reconcileIngressPolicy(
+            PolicyRequest(deployment, []),
+            cancellationToken);
+        if (ingress is not ResourceIngressPolicyApplied)
+        {
+            return ResourceDeploymentAdapterResult.Failed.Create(
+                "FunctionGatewayIngressCleanupUnavailable",
+                "The Function gateway ingress policy could not be closed.");
+        }
+
         return ResourceDeploymentAdapterResult.Succeeded.Create();
     }
+
+    private static ResourceIngressPolicyRequest PolicyRequest(
+        ResourceDeploymentReconciliationSnapshot deployment,
+        ImmutableList<int> ports) => new(
+            deployment.TenantId,
+            deployment.ResourceType,
+            deployment.ResourceId,
+            deployment.Id,
+            deployment.RuntimeCellId,
+            deployment.Placement.DeploymentTargetId,
+            deployment.Placement.KubernetesNamespace,
+            ResourceIngressPolicyPurpose.FunctionGateway,
+            deployment.DesiredGeneration,
+            deployment.Placement.TargetWorkloadConfigurationRevision,
+            ports);
 
     private static bool Matches(
         FunctionApp app,

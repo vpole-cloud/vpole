@@ -43,7 +43,7 @@ internal sealed class ManagedProjectionFixture : IDisposable
                 tenant == Projection.TenantId && type == ResourceTypeId.Create("pole/postgresql") &&
                 resource == Projection.ConsumerId && deployment == Projection.DeploymentId
                     ? new ResourceDeploymentRuntimePlacementDto(Projection.DeploymentId, Projection.ConsumerId, Projection.RuntimeCellId,
-                        Projection.DeploymentTargetId, Projection.KubernetesNamespace, 1,
+                        Projection.DeploymentTargetId, Projection.KubernetesNamespace, 1, 1,
                         new ResourceDeploymentComputeConfiguration(PostgresTestData.DefaultComputeProfileId, 1,
                             Projection.DeploymentTargetId, "test", new(250, 256), new(1000, 1024), ComputeArchitecture.Any,
                             [], [], [], [], [], null), "Ready", "Apply", Projection.IsolationScopeId)

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Text.Json.Serialization;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -6,6 +7,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.Domains.Contracts;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
@@ -59,7 +62,9 @@ public sealed record UpdateWebServiceRequest(
 
 public sealed record UpdateWebServiceRequestBody(
     WebServiceSpecDto Spec,
-    ImmutableHashSet<string> Tags);
+    ImmutableHashSet<string> Tags,
+    [property: JsonConverter(typeof(WebServiceExposureModeJsonConverter))]
+    WebServiceExposureMode Exposure);
 
 public sealed record UpdateWebServiceResponse(
     string Id,
@@ -73,6 +78,10 @@ public union UpdateWebServiceOutcome(
 public sealed class UpdateWebServiceHandler(
     LoadWebServiceById loadWebServiceById,
     LoadResourceDeploymentSet loadResourceDeploymentSet,
+    AdmitDeploymentTargetPublicIngressForNewWorkload admitPublicIngress,
+    GetOrCreateGeneratedDomainZones getOrCreateGeneratedDomainZones,
+    CreateGeneratedHostnameBindings createGeneratedHostnameBindings,
+    LoadHostnameBindingsForDeploymentInTransaction loadHostnameBindingsForDeployment,
     RequestResourceDeploymentSetApply requestResourceDeploymentSetApply,
     AdvanceResourceDeploymentRevision advanceResourceDeploymentRevision,
     PersistUpdatedWebServiceOutcome persistUpdatedWebService,
@@ -106,7 +115,26 @@ public sealed class UpdateWebServiceHandler(
                 new WebServiceHasNoActiveDeployments(webService.Id)));
 
         var nextSpec = request.Body.Spec.ToDomain();
-        var nextWebService = webService.UpdateDesiredState(nextSpec, request.Body.Tags);
+        var nextExposure = WebServiceExposure.Create(
+            request.Body.Exposure,
+            webService.Exposure.GeneratedHostnameLabelPrefix);
+        var nextWebService = webService.UpdateDesiredState(
+            nextSpec,
+            request.Body.Tags,
+            nextExposure);
+        IReadOnlyDictionary<string, DeploymentTargetPublicIngressDto> publicTargets =
+            new Dictionary<string, DeploymentTargetPublicIngressDto>(StringComparer.Ordinal);
+        if (webService.Exposure.Mode is WebServiceExposureMode.Private &&
+            nextExposure.Mode is WebServiceExposureMode.Public)
+        {
+            var targetResult = await ResolvePublicTargetsAsync(
+                webService,
+                deployments,
+                cancellationToken);
+            if (targetResult is DeploymentTargetPublicIngressAdmissionError targetError)
+                return Error(new UpdateWebServiceError(targetError));
+            publicTargets = (IReadOnlyDictionary<string, DeploymentTargetPublicIngressDto>)targetResult.Value;
+        }
         if (Equals(nextWebService, webService))
         {
             return new UpdateWebServiceOutcome(new UpdateWebServiceResponse(
@@ -126,18 +154,35 @@ public sealed class UpdateWebServiceHandler(
             quotaError => Error(quotaError),
             async (transaction, ct) =>
             {
-                var physicalChanges = !Equals(webService.Spec, nextSpec);
+                var physicalChanges = !Equals(webService.Spec, nextSpec) ||
+                    webService.Exposure.Mode != nextWebService.Exposure.Mode;
                 IReadOnlyList<PlacementSummaryDto> updatedDeployments;
                 if (physicalChanges)
                 {
+                    var ingressItemsResult = await CreateExposureApplyItemsAsync(
+                        transaction.Session,
+                        webService,
+                        nextWebService,
+                        deployments,
+                        publicTargets,
+                        ct);
+                    if (ingressItemsResult is GeneratedDomainZoneError zonesError)
+                    {
+                        return transaction.Abort(
+                            Error(new UpdateWebServiceError(zonesError)));
+                    }
+                    if (ingressItemsResult is GeneratedHostnameBindingError bindingsError)
+                    {
+                        return transaction.Abort(
+                            Error(new UpdateWebServiceError(bindingsError)));
+                    }
                     var deploymentsResult = await requestResourceDeploymentSetApply(
                         new ResourceDeploymentSetApplyRequest(
                             webService.TenantId,
                             WebServiceResourceDeployment.ResourceType,
                             webService.Id,
                             nextWebService.ActiveRevision,
-                            deployments.Select(deployment =>
-                                WebServiceDeploymentWorkflow.ToSetApplyItem(deployment)).ToArray()),
+                            (ResourceDeploymentSetApplyItem[])ingressItemsResult.Value),
                         transaction.Session,
                         ct);
                     if (deploymentsResult is ResourceDeploymentMutationError deploymentError)
@@ -195,7 +240,8 @@ public sealed class UpdateWebServiceHandler(
                     correlationId: null,
                     new WebServiceReleaseFactory.CreateOptions(
                         MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
-                        timeProvider.GetUtcNow().UtcDateTime));
+                        timeProvider.GetUtcNow().UtcDateTime),
+                    exposure: nextWebService.Exposure);
                 await persistCurrentWebServiceRelease(transaction.Session, release, ct);
 
                 return transaction.Commit(new UpdateWebServiceOutcome(
@@ -206,6 +252,151 @@ public sealed class UpdateWebServiceHandler(
             },
             cancellationToken);
     }
+
+    private async Task<ResolvePublicTargetsOutcome> ResolvePublicTargetsAsync(
+        WebService webService,
+        IReadOnlyList<PlacementSummaryDto> deployments,
+        CancellationToken cancellationToken)
+    {
+        var resolved = new Dictionary<string, DeploymentTargetPublicIngressDto>(StringComparer.Ordinal);
+        foreach (var targetId in deployments
+                     .Select(deployment => deployment.DeploymentTargetId)
+                     .Distinct(StringComparer.Ordinal))
+        {
+            var result = await admitPublicIngress(
+                new DeploymentTargetAdmissionRequest(
+                    webService.TenantId,
+                    WebServiceResourceDeployment.ResourceType,
+                    webService.IsolationScopeId,
+                    targetId,
+                    DeploymentTargetRequiredCapabilities.PublicIngress),
+                cancellationToken);
+            if (result is DeploymentTargetPublicIngressDto target)
+            {
+                resolved.Add(targetId, target);
+                continue;
+            }
+            return result switch
+            {
+                DeploymentTargetPublicIngressDto => throw new InvalidOperationException(
+                    "Public ingress admission returned an inconsistent result."),
+                DeploymentTargetNotFound error => new DeploymentTargetPublicIngressAdmissionError(error),
+                DeploymentTargetDisabled error => new DeploymentTargetPublicIngressAdmissionError(error),
+                DeploymentTargetDeletionRequested error => new DeploymentTargetPublicIngressAdmissionError(error),
+                DeploymentTargetNewWorkloadsDisabled error => new DeploymentTargetPublicIngressAdmissionError(error),
+                NoDeploymentTargetAcceptsPublicWorkloads error => new DeploymentTargetPublicIngressAdmissionError(error),
+                DeploymentTargetSelectionRequired error => new DeploymentTargetPublicIngressAdmissionError(error),
+                DeploymentTargetPublicIngressUnavailable error => new DeploymentTargetPublicIngressAdmissionError(error)
+            };
+        }
+        return (IReadOnlyDictionary<string, DeploymentTargetPublicIngressDto>)resolved;
+    }
+
+    private async Task<CreateExposureApplyItemsOutcome> CreateExposureApplyItemsAsync(
+        MongoDB.Driver.IClientSessionHandle session,
+        WebService current,
+        WebService updated,
+        IReadOnlyList<PlacementSummaryDto> deployments,
+        IReadOnlyDictionary<string, DeploymentTargetPublicIngressDto> publicTargets,
+        CancellationToken cancellationToken)
+    {
+        if (current.Exposure.Mode is WebServiceExposureMode.Public &&
+            updated.Exposure.Mode is WebServiceExposureMode.Private)
+        {
+            return deployments.Select(deployment =>
+                WebServiceDeploymentWorkflow.ToSetApplyItemForExposure(
+                    deployment,
+                    new ClearIngress())).ToArray();
+        }
+
+        if (current.Exposure.Mode is not WebServiceExposureMode.Private ||
+            updated.Exposure.Mode is not WebServiceExposureMode.Public)
+        {
+            return deployments.Select(deployment =>
+                WebServiceDeploymentWorkflow.ToSetApplyItem(deployment)).ToArray();
+        }
+
+        var targetIds = deployments
+            .Select(deployment => deployment.DeploymentTargetId)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var zonesResult = await getOrCreateGeneratedDomainZones(
+            targetIds.Select(targetId =>
+            {
+                var target = publicTargets[targetId];
+                return new GetOrCreateGeneratedZoneRequest(
+                    updated.TenantId,
+                    target.DeploymentTargetId,
+                    target.PublicBaseDomain,
+                    target.WorkloadConfigurationRevision);
+            }).ToArray(),
+            session,
+            cancellationToken);
+        if (zonesResult is GeneratedDomainZoneError zonesError)
+            return zonesError;
+
+        var zonesByTarget = ((IReadOnlyList<TenantDomainZoneSnapshot>)zonesResult.Value)
+            .ToDictionary(zone => zone.DeploymentTargetId, StringComparer.Ordinal);
+        var bindingsByDeployment = new Dictionary<string, HostnameBindingSnapshot>(StringComparer.Ordinal);
+        foreach (var deployment in deployments)
+        {
+            var existingBindings = await loadHostnameBindingsForDeployment(
+                updated.TenantId,
+                WebServiceResourceDeployment.ResourceType,
+                updated.Id,
+                deployment.DeploymentId,
+                session,
+                cancellationToken);
+            var generatedBinding = existingBindings.SingleOrDefault(binding =>
+                string.Equals(binding.Kind, HostnameBindingKinds.Generated, StringComparison.Ordinal));
+            if (generatedBinding is not null)
+                bindingsByDeployment.Add(deployment.DeploymentId, generatedBinding);
+        }
+        var bindingRequests = deployments
+            .Where(deployment => !bindingsByDeployment.ContainsKey(deployment.DeploymentId))
+            .Select(deployment =>
+            new CreateGeneratedHostnameBindingRequest(
+                updated.TenantId,
+                zonesByTarget[deployment.DeploymentTargetId].Id,
+                deployment.DeploymentTargetId,
+                WebServiceResourceDeployment.ResourceType,
+                updated.Id,
+                deployment.DeploymentId,
+                $"{updated.Exposure.GeneratedHostnameLabelPrefix}-{updated.Id}")).ToArray();
+        if (bindingRequests.Length > 0)
+        {
+            var bindingsResult = await createGeneratedHostnameBindings(
+                bindingRequests,
+                session,
+                cancellationToken);
+            if (bindingsResult is GeneratedHostnameBindingError bindingsError)
+                return bindingsError;
+            foreach (var binding in (IReadOnlyList<HostnameBindingSnapshot>)bindingsResult.Value)
+                bindingsByDeployment.Add(binding.ResourceDeploymentId, binding);
+        }
+
+        return deployments.Select(deployment =>
+        {
+            var target = publicTargets[deployment.DeploymentTargetId];
+            var ingress = ResourceDeploymentIngressConfiguration.Create(
+                target.IngressClassName,
+                target.ClusterIssuerName,
+                target.PublicBaseDomain,
+                [bindingsByDeployment[deployment.DeploymentId].Hostname]);
+            return WebServiceDeploymentWorkflow.ToSetApplyItemForExposure(
+                deployment,
+                new ReplaceIngress(ingress));
+        }).ToArray();
+    }
+
+    private union ResolvePublicTargetsOutcome(
+        IReadOnlyDictionary<string, DeploymentTargetPublicIngressDto>,
+        DeploymentTargetPublicIngressAdmissionError);
+
+    private union CreateExposureApplyItemsOutcome(
+        ResourceDeploymentSetApplyItem[],
+        GeneratedDomainZoneError,
+        GeneratedHostnameBindingError);
 
     private static UpdateWebServiceOutcome Error(
         UpdateWebServiceError error) =>
@@ -221,5 +412,11 @@ public sealed class UpdateWebServiceValidator : AbstractValidator<UpdateWebServi
         RuleFor(request => request.Body.Spec)
             .NotNull().WithMessage("Web service specification is required.")
             .SetValidator(new WebServiceSpecDtoValidator());
+        RuleFor(request => request.Body.Exposure).IsInEnum();
+        RuleFor(request => request)
+            .Must(request => CreateWebServiceRequestBodyValidator.HasPublicIngressTarget(
+                request.Body.Spec?.Config?.PortMappings))
+            .When(request => request.Body.Exposure is WebServiceExposureMode.Public)
+            .WithMessage("Public web services require a TCP mapping with a numeric target port.");
     }
 }

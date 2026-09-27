@@ -23,7 +23,11 @@ internal sealed class MongoLoadEligibleDeploymentTargets(
         return targets
             .Where(target => !requiredCapabilities.HasFlag(
                     DeploymentTargetRequiredCapabilities.PublicIngress) ||
-                target.WorkloadConfiguration.Ingress?.PublicBaseDomain is not null)
+                target.WorkloadConfiguration.Ingress?.PublicBaseDomain is not null &&
+                target.WorkloadConfiguration.NetworkSources.PublicIngress is not null)
+            .Where(target => !requiredCapabilities.HasFlag(
+                    DeploymentTargetRequiredCapabilities.FunctionRuntimeConnectivity) ||
+                target.WorkloadConfiguration.NetworkSources.FunctionGateway is not null)
             .ToArray();
     }
 }

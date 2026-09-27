@@ -129,6 +129,8 @@ public static class ResultAssertionExtensions
         outcome switch
         {
             RollbackWebServiceResponse success => success,
+            RollbackWebServicePublicSpecIncompatible incompatible =>
+                UnexpectedError<RollbackWebServiceResponse>(incompatible),
             RollbackWebServiceError error => UnexpectedError<RollbackWebServiceResponse>(error)
         };
 
@@ -136,6 +138,8 @@ public static class ResultAssertionExtensions
         outcome switch
         {
             RollbackWebServiceResponse success => UnexpectedSuccess<RollbackWebServiceError>(success),
+            RollbackWebServicePublicSpecIncompatible incompatible =>
+                UnexpectedError<RollbackWebServiceError>(incompatible),
             RollbackWebServiceError error => error
         };
 

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using k8s;
@@ -10,13 +11,104 @@ namespace Pole.Features.WebServices.Application.Kubernetes;
 
 public sealed record WebServiceKubernetesApplyFailed(string Message);
 public sealed record WebServiceKubernetesApplied;
+public sealed record WebServiceKubernetesApplyRejected(
+    string FailureCode,
+    string Message);
 
 public union WebServiceKubernetesApplyOutcome(
     WebServiceKubernetesApplied,
-    WebServiceKubernetesApplyFailed);
+    WebServiceKubernetesApplyFailed,
+    WebServiceKubernetesApplyRejected);
 
 public static class WebServiceKubernetesResourceManager
 {
+    public static async Task<bool> DeleteIngressForGenerationAsync(
+        IKubernetes kubernetes,
+        WebServiceInKubernetes webService,
+        WebServiceDeploymentMetadata deployment,
+        CancellationToken cancellationToken = default,
+        Func<CancellationToken, Task<bool>>? isCurrentGeneration = null)
+    {
+        var ingressName = webService.IngressName;
+        V1Ingress current;
+        try
+        {
+            current = await kubernetes.NetworkingV1.ReadNamespacedIngressAsync(
+                ingressName,
+                webService.Namespace,
+                cancellationToken: cancellationToken);
+        }
+        catch (HttpOperationException exception) when (
+            exception.Response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            return true;
+        }
+
+        if (!IsOwnedIngress(current, webService) ||
+            !TryGetDeploymentGeneration(current, out var currentGeneration) ||
+            currentGeneration > GetDesiredGeneration(deployment))
+        {
+            return false;
+        }
+        if (isCurrentGeneration is not null &&
+            !await isCurrentGeneration(cancellationToken))
+        {
+            return false;
+        }
+
+        try
+        {
+            await kubernetes.NetworkingV1.DeleteNamespacedIngressAsync(
+                ingressName,
+                webService.Namespace,
+                body: new V1DeleteOptions
+                {
+                    Preconditions = new V1Preconditions
+                    {
+                        Uid = current.Metadata.Uid,
+                        ResourceVersion = current.Metadata.ResourceVersion
+                    }
+                },
+                cancellationToken: cancellationToken);
+        }
+        catch (HttpOperationException exception) when (
+            exception.Response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            return true;
+        }
+        catch (HttpOperationException exception) when (
+            exception.Response?.StatusCode == HttpStatusCode.Conflict)
+        {
+            return false;
+        }
+
+        for (var attempt = 0; attempt < 30; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                var remaining = await kubernetes.NetworkingV1.ReadNamespacedIngressAsync(
+                    ingressName,
+                    webService.Namespace,
+                    cancellationToken: cancellationToken);
+                if (!IsOwnedIngress(remaining, webService) ||
+                    !TryGetDeploymentGeneration(remaining, out var remainingGeneration) ||
+                    remainingGeneration > GetDesiredGeneration(deployment))
+                {
+                    return false;
+                }
+            }
+            catch (HttpOperationException exception) when (
+                exception.Response?.StatusCode == HttpStatusCode.NotFound)
+            {
+                return true;
+            }
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+        }
+
+        return false;
+    }
+
     public static async Task ApplyImagePullSecretAsync(
         IKubernetes kubernetes,
         WebServiceInKubernetes webService,
@@ -68,8 +160,11 @@ public static class WebServiceKubernetesResourceManager
         await KubernetesExtensions.CreateIfNotExistAsync(() =>
             kubernetes.CoreV1.CreateNamespacedServiceAsync(service, webService.Namespace, cancellationToken: cancellationToken));
 
-        await KubernetesExtensions.CreateIfNotExistAsync(() =>
-            kubernetes.NetworkingV1.CreateNamespacedIngressAsync(ingress, webService.Namespace, cancellationToken: cancellationToken));
+        if (ingress is not null)
+        {
+            await KubernetesExtensions.CreateIfNotExistAsync(() =>
+                kubernetes.NetworkingV1.CreateNamespacedIngressAsync(ingress, webService.Namespace, cancellationToken: cancellationToken));
+        }
 
         await KubernetesExtensions.CreateIfNotExistAsync(() =>
             kubernetes.CustomObjects.CreateNamespacedCustomObjectAsync(
@@ -109,18 +204,31 @@ public static class WebServiceKubernetesResourceManager
             webService.Namespace,
             cancellationToken: cancellationToken);
 
-        await kubernetes.NetworkingV1.ReplaceNamespacedIngressAsync(
-            ingress,
-            ingress.Metadata.Name,
-            webService.Namespace,
-            cancellationToken: cancellationToken);
+        if (ingress is null)
+        {
+            await KubernetesExtensions.DeleteIfExistsAsync(() =>
+                kubernetes.NetworkingV1.DeleteNamespacedIngressAsync(
+                    webService.IngressName,
+                    webService.Namespace,
+                    cancellationToken: cancellationToken));
+        }
+        else
+        {
+            await kubernetes.NetworkingV1.ReplaceNamespacedIngressAsync(
+                ingress,
+                ingress.Metadata.Name,
+                webService.Namespace,
+                cancellationToken: cancellationToken);
+        }
     }
 
     public static async Task<WebServiceKubernetesApplyOutcome> ApplyAsync(
         IKubernetes kubernetes,
         WebServiceInKubernetes webService,
         WebServiceDeploymentMetadata deploymentMetadata,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool ingressAlreadyRemoved = false,
+        Func<CancellationToken, Task<bool>>? isCurrentGeneration = null)
     {
         var stage = "preparing the deployment manifest";
         try
@@ -135,7 +243,7 @@ public static class WebServiceKubernetesResourceManager
             var service = webService.ToService();
 
             stage = "preparing the Ingress manifest";
-            var ingress = webService.ToIngress();
+            var ingress = webService.ToIngress(deploymentMetadata);
 
             stage = "preparing the ServiceMonitor manifest";
             var serviceMonitor = webService.ToServiceMonitor();
@@ -198,24 +306,33 @@ public static class WebServiceKubernetesResourceManager
                         cancellationToken: cancellationToken);
                 });
             stage = "applying the Ingress";
-            await CreateOrReplaceAsync(
-                () => kubernetes.NetworkingV1.CreateNamespacedIngressAsync(
-                    ingress,
-                    webService.Namespace,
-                    cancellationToken: cancellationToken),
-                async () =>
+            if (ingress is null)
+            {
+                if (!ingressAlreadyRemoved &&
+                    !await DeleteIngressForGenerationAsync(
+                        kubernetes,
+                        webService,
+                        deploymentMetadata,
+                        cancellationToken,
+                        isCurrentGeneration))
                 {
-                    var existing = await kubernetes.NetworkingV1.ReadNamespacedIngressAsync(
-                        ingress.Metadata.Name,
-                        webService.Namespace,
-                        cancellationToken: cancellationToken);
-                    ingress.Metadata.ResourceVersion = existing.Metadata.ResourceVersion;
-                    await kubernetes.NetworkingV1.ReplaceNamespacedIngressAsync(
-                        ingress,
-                        ingress.Metadata.Name,
-                        webService.Namespace,
-                        cancellationToken: cancellationToken);
-                });
+                    return new WebServiceKubernetesApplyRejected(
+                        "IngressRevocationPending",
+                        "The current ingress could not be confirmed revoked for this deployment generation.");
+                }
+            }
+            else
+            {
+                var ingressRejection = await ApplyIngressAsync(
+                    kubernetes,
+                    webService,
+                    ingress,
+                    deploymentMetadata,
+                    cancellationToken,
+                    isCurrentGeneration);
+                if (ingressRejection is not null)
+                    return ingressRejection;
+            }
             var serviceMonitorObject = ToJsonObject(serviceMonitor);
 
             stage = "applying the ServiceMonitor";
@@ -308,6 +425,94 @@ public static class WebServiceKubernetesResourceManager
                 namespaceParameter: @namespace,
                 cancellationToken: cancellationToken));
     }
+
+    private static async Task<WebServiceKubernetesApplyRejected?> ApplyIngressAsync(
+        IKubernetes kubernetes,
+        WebServiceInKubernetes webService,
+        V1Ingress desired,
+        WebServiceDeploymentMetadata deploymentMetadata,
+        CancellationToken cancellationToken,
+        Func<CancellationToken, Task<bool>>? isCurrentGeneration)
+    {
+        if (isCurrentGeneration is not null &&
+            !await isCurrentGeneration(cancellationToken))
+        {
+            return new WebServiceKubernetesApplyRejected(
+                "DeploymentGenerationSuperseded",
+                "A newer deployment generation superseded this ingress apply.");
+        }
+        try
+        {
+            await kubernetes.NetworkingV1.CreateNamespacedIngressAsync(
+                desired,
+                webService.Namespace,
+                cancellationToken: cancellationToken);
+            return null;
+        }
+        catch (HttpOperationException exception) when (
+            exception.Response?.StatusCode == HttpStatusCode.Conflict)
+        {
+            // An existing same-name ingress must be read and fenced before replacement.
+        }
+
+        var existing = await kubernetes.NetworkingV1.ReadNamespacedIngressAsync(
+            desired.Metadata.Name,
+            webService.Namespace,
+            cancellationToken: cancellationToken);
+        if (!IsOwnedIngress(existing, webService) ||
+            !TryGetDeploymentGeneration(existing, out var existingGeneration) ||
+            existingGeneration > GetDesiredGeneration(deploymentMetadata))
+        {
+            return new WebServiceKubernetesApplyRejected(
+                "IngressOwnershipConflict",
+                "A newer or unowned ingress cannot be replaced by this deployment generation.");
+        }
+        if (isCurrentGeneration is not null &&
+            !await isCurrentGeneration(cancellationToken))
+        {
+            return new WebServiceKubernetesApplyRejected(
+                "DeploymentGenerationSuperseded",
+                "A newer deployment generation superseded this ingress replacement.");
+        }
+
+        desired.Metadata.ResourceVersion = existing.Metadata.ResourceVersion;
+        await kubernetes.NetworkingV1.ReplaceNamespacedIngressAsync(
+            desired,
+            desired.Metadata.Name,
+            webService.Namespace,
+            cancellationToken: cancellationToken);
+        return null;
+    }
+
+    private static bool IsOwnedIngress(
+        V1Ingress ingress,
+        WebServiceInKubernetes webService)
+    {
+        if (ingress.Metadata?.Labels is null)
+            return false;
+        var expected = webService.PlacementIdentity.ToDictionary();
+        return expected.All(pair =>
+            ingress.Metadata.Labels.TryGetValue(pair.Key, out var value) &&
+            string.Equals(value, pair.Value, StringComparison.Ordinal));
+    }
+
+    private static bool TryGetDeploymentGeneration(
+        V1Ingress ingress,
+        out long generation)
+    {
+        generation = 0;
+        return ingress.Metadata.Annotations is not null &&
+               ingress.Metadata.Annotations.TryGetValue(
+                   "pole.server/deploymentGeneration",
+                   out var value) &&
+               long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out generation);
+    }
+
+    private static long GetDesiredGeneration(WebServiceDeploymentMetadata metadata) =>
+        metadata is WebServiceResourceDeploymentMetadata deployment
+            ? deployment.DesiredGeneration
+            : throw new InvalidOperationException(
+                "Resource ingress reconciliation requires a resource deployment generation.");
 
     private static async Task CreateOrReplaceAsync(Func<Task> createCall, Func<Task> replaceCall)
     {

@@ -28,6 +28,7 @@ public sealed class DeploymentTargetProbe(
     private const int MaximumClusterIdentityLength = 512;
     private const int MaximumKubernetesVersionLength = 128;
     private static readonly string[] NamespaceVerbs = ["get", "create", "update", "patch", "delete"];
+    private static readonly string[] NetworkPolicyVerbs = ["get", "create", "update", "patch", "delete"];
 
     public async Task<DeploymentTargetProbeObservation> InvokeAsync(
         IKubernetes kubernetes,
@@ -72,26 +73,23 @@ public sealed class DeploymentTargetProbe(
             var permissions = new Dictionary<string, bool>(StringComparer.Ordinal);
             foreach (var verb in NamespaceVerbs)
             {
-                var review = new V1SelfSubjectAccessReview
-                {
-                    ApiVersion = "authorization.k8s.io/v1",
-                    Kind = "SelfSubjectAccessReview",
-                    Spec = new V1SelfSubjectAccessReviewSpec
-                    {
-                        ResourceAttributes = new V1ResourceAttributes
-                        {
-                            Group = string.Empty,
-                            Resource = "namespaces",
-                            Verb = verb
-                        }
-                    }
-                };
-                var response = await kubernetes.AuthorizationV1.CreateSelfSubjectAccessReviewAsync(
-                    review,
-                    cancellationToken: timeout.Token);
-                if (response is null)
-                    throw new InvalidDataException("The Kubernetes API returned an empty access review.");
-                permissions[verb] = response.Status?.Allowed == true;
+                permissions[verb] = await IsAllowedAsync(
+                    kubernetes,
+                    string.Empty,
+                    "namespaces",
+                    verb,
+                    timeout.Token);
+            }
+
+            var networkPolicyPermissions = new Dictionary<string, bool>(StringComparer.Ordinal);
+            foreach (var verb in NetworkPolicyVerbs)
+            {
+                networkPolicyPermissions[verb] = await IsAllowedAsync(
+                    kubernetes,
+                    "networking.k8s.io",
+                    "networkpolicies",
+                    verb,
+                    timeout.Token);
             }
 
             var checkedAtUtc = GetCheckedAtUtc(lastHealthyAtUtc);
@@ -101,11 +99,18 @@ public sealed class DeploymentTargetProbe(
                 permissions["update"],
                 permissions["patch"],
                 permissions["delete"]);
+            var networkPolicyCapabilities = new DeploymentTargetNetworkPolicyCapabilities(
+                networkPolicyPermissions["get"],
+                networkPolicyPermissions["create"],
+                networkPolicyPermissions["update"],
+                networkPolicyPermissions["patch"],
+                networkPolicyPermissions["delete"]);
             var capabilities = DeploymentTargetCapabilities.Observed(
                 connectionVersion,
                 checkedAtUtc,
                 normalizedKubernetesVersion,
-                namespaceCapabilities);
+                namespaceCapabilities,
+                networkPolicyCapabilities);
             if (permissions.Values.Any(allowed => !allowed))
             {
                 return new DeploymentTargetProbeObservation(
@@ -116,6 +121,19 @@ public sealed class DeploymentTargetProbe(
                         lastHealthyAtUtc,
                         "InsufficientNamespacePermissions",
                         "The Kubernetes identity cannot manage namespaces required by Pole."),
+                    capabilities);
+            }
+
+            if (!networkPolicyCapabilities.CanManage)
+            {
+                return new DeploymentTargetProbeObservation(
+                    identity,
+                    DeploymentTargetHealth.Degraded(
+                        connectionVersion,
+                        checkedAtUtc,
+                        lastHealthyAtUtc,
+                        "InsufficientNetworkPolicyPermissions",
+                        "The Kubernetes identity cannot manage NetworkPolicies required by Pole."),
                     capabilities);
             }
 
@@ -150,6 +168,35 @@ public sealed class DeploymentTargetProbe(
                 "ConnectionUnavailable",
                 "The Kubernetes API connection could not be validated.");
         }
+    }
+
+    private static async Task<bool> IsAllowedAsync(
+        IKubernetes kubernetes,
+        string group,
+        string resource,
+        string verb,
+        CancellationToken cancellationToken)
+    {
+        var review = new V1SelfSubjectAccessReview
+        {
+            ApiVersion = "authorization.k8s.io/v1",
+            Kind = "SelfSubjectAccessReview",
+            Spec = new V1SelfSubjectAccessReviewSpec
+            {
+                ResourceAttributes = new V1ResourceAttributes
+                {
+                    Group = group,
+                    Resource = resource,
+                    Verb = verb
+                }
+            }
+        };
+        var response = await kubernetes.AuthorizationV1.CreateSelfSubjectAccessReviewAsync(
+            review,
+            cancellationToken: cancellationToken);
+        if (response is null)
+            throw new InvalidDataException("The Kubernetes API returned an empty access review.");
+        return response.Status?.Allowed == true;
     }
 
     private DeploymentTargetProbeObservation Failed(

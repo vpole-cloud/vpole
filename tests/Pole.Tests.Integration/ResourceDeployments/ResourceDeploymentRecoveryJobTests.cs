@@ -1,5 +1,6 @@
 using System.Diagnostics.Metrics;
 using Microsoft.Extensions.DependencyInjection;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ResourceDeployments.Application.Common;
@@ -143,6 +144,78 @@ public sealed class ResourceDeploymentRecoveryJobTests(
                     message.PendingKey ==
                     ResourceDeploymentPendingKey.Apply(DeploymentId, 1)));
         Assert.Equal([1L], measurements);
+    }
+
+    [Fact]
+    public async Task AppliedVerification_PreservesReleaseIdentity_AndAdvancesThroughBoundedBatches()
+    {
+        var now = new DateTime(2026, 9, 27, 12, 0, 0, DateTimeKind.Utc);
+        var oldest = CreateApplied(ObjectId.GenerateNewId().ToString(), now.AddMinutes(-20));
+        var next = CreateApplied(ObjectId.GenerateNewId().ToString(), now.AddMinutes(-10));
+        var recent = CreateApplied(ObjectId.GenerateNewId().ToString(), now.AddMinutes(-1));
+        await fixture.DbContext.ResourceDeployments.InsertManyAsync([oldest, next, recent]);
+        var candidates = new LoadResourceDeploymentRecoveryCandidatesOperation(fixture.DbContext.ResourceDeployments);
+        var recover = new RecoverResourceDeploymentOperation(
+            fixture.DbContext.ResourceDeployments,
+            (operation, cancellationToken) => fixture.DbContext.RunOutcomeInTransactionAsync(
+                operation, cancellationToken: cancellationToken),
+            fixture.StoreOutboxWrites,
+            Services.GetRequiredService<LoadResourcePlacementInTransaction>());
+
+        Assert.Equal([oldest.Id], await candidates.InvokeAsync(now, now.AddSeconds(-30), 1));
+        await recover.InvokeAsync(oldest.Id, now);
+        await recover.InvokeAsync(oldest.Id, now);
+
+        var queued = await fixture.DbContext.ResourceDeployments.Find(item => item.Id == oldest.Id).SingleAsync();
+        Assert.IsType<PendingResourceDeploymentState>(queued.State);
+        Assert.Equal(oldest.DesiredGeneration, queued.DesiredGeneration);
+        Assert.Equal(oldest.ResourceRevision, queued.ResourceRevision);
+        Assert.Equal(oldest.ResolvedPlacement.KubernetesNamespace, queued.ResolvedPlacement.KubernetesNamespace);
+        Assert.Equal(oldest.ResolvedPlacement.TargetWorkloadConfigurationRevision,
+            queued.ResolvedPlacement.TargetWorkloadConfigurationRevision);
+        Assert.Equal(oldest.Revision + 1, queued.Revision);
+        Assert.Equal(1, await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
+            message => message.PendingKey == ResourceDeploymentPendingKey.Apply(oldest.Id, oldest.DesiredGeneration)));
+        Assert.Equal([next.Id], await candidates.InvokeAsync(now, now.AddSeconds(-30), 1));
+        await recover.InvokeAsync(next.Id, now);
+        Assert.Empty(await candidates.InvokeAsync(now, now.AddSeconds(-30), 1));
+    }
+
+    [Fact]
+    public async Task Verification_DoesNotResurrectADeploymentWhoseDeletionWasRequested()
+    {
+        var now = new DateTime(2026, 9, 27, 12, 0, 0, DateTimeKind.Utc);
+        var deleting = CreateApplied(DeploymentId, now.AddMinutes(-20)).RequestDeletion(now.AddSeconds(-1));
+        await fixture.DbContext.ResourceDeployments.InsertOneAsync(deleting);
+        var recover = new RecoverResourceDeploymentOperation(
+            fixture.DbContext.ResourceDeployments,
+            (operation, cancellationToken) => fixture.DbContext.RunOutcomeInTransactionAsync(
+                operation, cancellationToken: cancellationToken),
+            fixture.StoreOutboxWrites,
+            Services.GetRequiredService<LoadResourcePlacementInTransaction>());
+
+        await recover.InvokeAsync(deleting.Id, now);
+
+        var saved = await fixture.DbContext.ResourceDeployments.Find(item => item.Id == deleting.Id).SingleAsync();
+        Assert.Equal(ResourceDeploymentOperation.Delete, saved.DesiredOperation);
+        Assert.Equal(deleting.DesiredGeneration, saved.DesiredGeneration);
+        Assert.Throws<InvalidOperationException>(() => saved.RequestVerification(now));
+        Assert.Equal(0, await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
+            message => message.PendingKey == ResourceDeploymentPendingKey.Apply(saved.Id, saved.DesiredGeneration)));
+    }
+
+    private static ResourceDeployment CreateApplied(string id, DateTime completedAtUtc)
+    {
+        var createdAtUtc = completedAtUtc.AddMinutes(-1);
+        return ResourceDeploymentFactory.Create(
+                TenantId, TestResourceType, id, ResourceGroupId, ScopeId,
+                ResolvedResourcePlacement.Create(
+                    RuntimeCellId, TargetId, "pole-verification-test", 1, 1,
+                    null, null, ResourceDeploymentTestData.Compute(), createdAtUtc),
+                ResourcePlacementCapability.SingleTarget, true,
+                new ResourceDeploymentFactory.CreateOptions(id, createdAtUtc))
+            .Start(1, ResourceDeploymentOperation.Apply, ClaimId, createdAtUtc, completedAtUtc.AddMinutes(1))
+            .Complete(1, ResourceDeploymentOperation.Apply, ClaimId, [], completedAtUtc);
     }
 
     private sealed class FixedTimeProvider(DateTime utcNow) : TimeProvider

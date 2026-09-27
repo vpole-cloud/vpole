@@ -110,7 +110,7 @@ public sealed class SecretProjectionReconciliationTests
             (_, _, resource, _) => Task.FromResult<IReadOnlyList<PlacementSummaryDto>>([
                 new("deployment-" + resource[^1], "scope", "cell", "target-" + resource[^1], 1, 0, "Pending", null, null!, [])]),
             (_, _, resource, deployment, _) => Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(Removed.Contains(deployment) ? null :
-                new(deployment, resource, "cell", "target-" + resource[^1], "namespace-" + resource[^1], 1, null!, "Pending", "Apply", ForeignScope.Contains(deployment) ? "foreign" : "scope")),
+                new(deployment, resource, "cell", "target-" + resource[^1], "namespace-" + resource[^1], 1, 1, null!, "Pending", "Apply", ForeignScope.Contains(deployment) ? "foreign" : "scope")),
             (desired, claim, now, _) => Task.FromResult<SecretProjection?>(desired.Claim(claim, now)),
             (row, _) => { Rows[row.DeploymentId] = row; return Task.CompletedTask; },
             Encryption, Target, TimeProvider.System).ReconcileAsync("tenant", "secret", default);

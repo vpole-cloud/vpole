@@ -40,7 +40,7 @@ public sealed class SecretProjectionKubernetesTests(KubernetesClusterFixture fix
         services.AddSingleton<IKubernetesClientProvider>(new SelectedClient(fixture.Client));
         services.AddSingleton<LoadSecretById>((_, _, _) => Task.FromResult<Secret?>(secret));
         services.AddSingleton<LoadExactResourceDeploymentRuntimePlacement>((_, _, _, _, _) => Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(
-            new(deploymentId, binding.ConsumerId, "cell", "selected-target", namespaceName, 1, null!, "Pending", "Apply", secret.IsolationScopeId)));
+            new(deploymentId, binding.ConsumerId, "cell", "selected-target", namespaceName, 1, 1, null!, "Pending", "Apply", secret.IsolationScopeId)));
         using var provider = services.BuildServiceProvider();
         var target = provider.GetRequiredService<ISecretProjectionTarget>();
         async Task Apply(string password)

@@ -7,8 +7,10 @@ using Pole.ASP.Helpers;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Application.Jobs;
+using Pole.Features.ResourceDeployments.Application.Kubernetes;
 using Pole.Features.ResourceDeployments.Application.Persistence;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
 
 namespace Pole.Features.ResourceDeployments.Application;
@@ -34,6 +36,11 @@ public static class ResourceDeploymentFeature
                 .Value);
 
         services.AddResourceDeploymentPersistence();
+        services.TryAddScoped<KubernetesResourceIngressPolicyManager>();
+        services.TryAddScoped<ReconcileResourceIngressPolicy>(serviceProvider =>
+            serviceProvider
+                .GetRequiredService<KubernetesResourceIngressPolicyManager>()
+                .InvokeAsync);
 
         services.TryAddSingleton<ResourceDeploymentMetrics>();
         services.TryAddSingleton<ResourceDeploymentAdapterCatalog>();

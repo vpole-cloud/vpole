@@ -4,23 +4,27 @@ namespace Pole.Features.DeploymentTargets.Domain;
 
 public sealed record DeploymentTargetWorkloadConfiguration(
     long Revision,
-    DeploymentTargetIngressConfiguration? Ingress)
+    DeploymentTargetIngressConfiguration? Ingress,
+    DeploymentTargetNetworkSources NetworkSources)
 {
     public DeploymentTargetNetworkPolicy NetworkPolicy { get; init; } = DeploymentTargetNetworkPolicy.Unknown;
 
     public static DeploymentTargetWorkloadConfiguration Create(
-        DeploymentTargetIngressConfiguration? ingress) =>
-        new(Revision: 1, NormalizeIngress(ingress));
+        DeploymentTargetIngressConfiguration? ingress,
+        DeploymentTargetNetworkSources networkSources) =>
+        new(Revision: 1, NormalizeIngress(ingress), networkSources);
 
     public DeploymentTargetWorkloadConfiguration Reconfigure(
-        DeploymentTargetIngressConfiguration? ingress)
+        DeploymentTargetIngressConfiguration? ingress,
+        DeploymentTargetNetworkSources networkSources)
     {
         var normalizedIngress = NormalizeIngress(ingress);
-        return Equals(Ingress, normalizedIngress)
+        return Equals(Ingress, normalizedIngress) && NetworkSources.EquivalentTo(networkSources)
             ? this
             : new DeploymentTargetWorkloadConfiguration(
                 checked(DeploymentTargetValueGuard.Positive(Revision, nameof(Revision)) + 1),
-                normalizedIngress)
+                normalizedIngress,
+                networkSources)
             {
                 NetworkPolicy = NetworkPolicy
             };

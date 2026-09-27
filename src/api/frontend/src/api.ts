@@ -246,10 +246,11 @@ export async function fetchAvailableDeploymentTargets(
   token?: string,
   tenantId?: string,
   signal?: AbortSignal,
+  requiresPublicIngress = true,
 ) {
   const query = new URLSearchParams({
     resourceType: webServiceResourceType,
-    requiresPublicIngress: 'true',
+    requiresPublicIngress: String(requiresPublicIngress),
   })
   if (isolationScopeId) {
     query.set('isolationScopeId', isolationScopeId)
@@ -480,6 +481,7 @@ export async function createWebService(
     body: JSON.stringify({
       name: input.name,
       resourceGroupId: input.resourceGroupId,
+      exposure: input.exposure,
       spec: buildWebServiceSpec(input),
       placement: buildWebServicePlacement(input),
       tags: [],
@@ -499,6 +501,7 @@ export async function updateWebService(
     headers: buildHeaders(token, tenantId),
     body: JSON.stringify({
       spec: buildWebServiceSpec(input),
+      exposure: input.exposure,
       tags: [],
     }),
   })

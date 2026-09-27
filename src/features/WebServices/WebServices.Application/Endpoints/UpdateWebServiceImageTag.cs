@@ -187,6 +187,7 @@ public sealed class UpdateWebServiceImageTagHandler(
                 new WebServiceReleaseFactory.CreateOptions(
                     MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
                     timeProvider.GetUtcNow().UtcDateTime),
+                updatedWebService.Exposure,
                 new ExternalImageTagUpdateProvenance(
                     request.Body.Source,
                     request.Body.CommitSha,

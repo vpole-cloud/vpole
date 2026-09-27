@@ -103,6 +103,22 @@ public sealed class RuntimeCellNamespaceTests
     }
 
     [Fact]
+    public void NetworkPolicyManifest_DeniesIngressToEveryPod_WithoutRestrictingEgress()
+    {
+        var runtimeCell = CreateRuntimeCell();
+
+        var policy = RuntimeCellNetworkPolicyManifestBuilder.Build(runtimeCell);
+
+        Assert.Equal(RuntimeCellNetworkPolicyManifestBuilder.Name, policy.Metadata.Name);
+        Assert.Equal(runtimeCell.KubernetesNamespace, policy.Metadata.NamespaceProperty);
+        Assert.Equal(runtimeCell.Id, policy.Metadata.Labels[RuntimeCellNamespaceLabels.RuntimeCellId]);
+        Assert.Empty(policy.Spec.PodSelector.MatchLabels ?? new Dictionary<string, string>());
+        Assert.Empty(policy.Spec.Ingress);
+        Assert.Equal(["Ingress"], policy.Spec.PolicyTypes);
+        Assert.Null(policy.Spec.Egress);
+    }
+
+    [Fact]
     public void ManifestBuilder_AddsValidatedExternalLabelsWithoutReplacingOwnership()
     {
         var runtimeCell = CreateRuntimeCell();
@@ -182,6 +198,8 @@ public sealed class RuntimeCellNamespaceTests
         Assert.NotNull(handler.CreatedNamespace);
         Assert.Equal(runtimeCell.KubernetesNamespace, handler.CreatedNamespace.Metadata.Name);
         Assert.Equal(runtimeCell.Id, handler.CreatedNamespace.Metadata.Labels[RuntimeCellNamespaceLabels.RuntimeCellId]);
+        Assert.Equal(1, handler.PolicyCreateRequests);
+        Assert.Equal(runtimeCell.KubernetesNamespace, handler.CreatedPolicy!.Metadata.NamespaceProperty);
     }
 
     [Fact]
@@ -202,6 +220,71 @@ public sealed class RuntimeCellNamespaceTests
         Assert.True(result is Unit);
         Assert.Equal(1, handler.CreateRequests);
         Assert.Equal(1, handler.ReadRequests);
+        Assert.Equal(1, handler.PolicyCreateRequests);
+    }
+
+    [Fact]
+    public async Task EnsureCreated_ExistingOwnedPolicy_IsReplacedWithDefaultDeny()
+    {
+        var runtimeCell = CreateRuntimeCell();
+        var permissive = RuntimeCellNetworkPolicyManifestBuilder.Build(runtimeCell);
+        permissive.Metadata.ResourceVersion = "42";
+        permissive.Spec.Ingress = [new V1NetworkPolicyIngressRule()];
+        using var handler = new NamespaceApiHandler
+        {
+            PolicyCreateStatusCode = HttpStatusCode.Conflict,
+            ExistingPolicy = permissive
+        };
+        using var kubernetes = CreateKubernetes(handler);
+        var subject = new KubernetesRuntimeCellNamespaceManager(
+            new RecordingKubernetesClientProvider(kubernetes));
+
+        var result = await subject.EnsureCreatedAsync(runtimeCell);
+
+        Assert.True(result is Unit);
+        Assert.Equal(1, handler.PolicyReadRequests);
+        Assert.Equal(1, handler.PolicyReplaceRequests);
+        Assert.Equal("42", handler.ReplacedPolicy!.Metadata.ResourceVersion);
+        Assert.Empty(handler.ReplacedPolicy.Spec.Ingress);
+    }
+
+    [Fact]
+    public async Task EnsureCreated_ForeignPolicy_ReturnsConflictWithoutReplacing()
+    {
+        var runtimeCell = CreateRuntimeCell();
+        var foreign = RuntimeCellNetworkPolicyManifestBuilder.Build(runtimeCell);
+        foreign.Metadata.Labels[RuntimeCellNamespaceLabels.RuntimeCellId] = "another-cell";
+        using var handler = new NamespaceApiHandler
+        {
+            PolicyCreateStatusCode = HttpStatusCode.Conflict,
+            ExistingPolicy = foreign
+        };
+        using var kubernetes = CreateKubernetes(handler);
+        var subject = new KubernetesRuntimeCellNamespaceManager(
+            new RecordingKubernetesClientProvider(kubernetes));
+
+        var result = await subject.EnsureCreatedAsync(runtimeCell);
+
+        Assert.IsType<RuntimeCellNetworkPolicyOwnershipConflict>(result.Value);
+        Assert.Equal(0, handler.PolicyReplaceRequests);
+    }
+
+    [Fact]
+    public async Task EnsureCreated_PolicyApplyFailure_DoesNotReportCellReady()
+    {
+        using var handler = new NamespaceApiHandler
+        {
+            PolicyCreateStatusCode = HttpStatusCode.Forbidden
+        };
+        using var kubernetes = CreateKubernetes(handler);
+        var subject = new KubernetesRuntimeCellNamespaceManager(
+            new RecordingKubernetesClientProvider(kubernetes));
+
+        var result = await subject.EnsureCreatedAsync(CreateRuntimeCell());
+
+        Assert.IsType<RuntimeCellNetworkPolicyUnavailable>(result.Value);
+        Assert.Equal(1, handler.CreateRequests);
+        Assert.Equal(1, handler.PolicyCreateRequests);
     }
 
     [Fact]
@@ -298,7 +381,7 @@ public sealed class RuntimeCellNamespaceTests
 
         var result = await subject.DeleteAsync(runtimeCell);
 
-        Assert.True(result is RuntimeCellNamespaceUnavailable { DeletionPending: true });
+        Assert.True(result is RuntimeCellNamespaceDeletionPending);
         Assert.Equal(2, handler.ReadRequests);
         Assert.Equal(1, handler.DeleteRequests);
     }
@@ -342,6 +425,8 @@ public sealed class RuntimeCellNamespaceTests
             RuntimeCellNamespaceUnavailable failure => failure,
             RuntimeCellNamespaceOwnershipConflict => throw new Xunit.Sdk.XunitException(
                 "Expected a sanitized namespace-provider failure, got an ownership conflict."),
+            RuntimeCellNetworkPolicyOwnershipConflict or RuntimeCellNetworkPolicyUnavailable =>
+                throw new Xunit.Sdk.XunitException("Network policy must not be attempted when namespace creation fails."),
             Unit => throw new Xunit.Sdk.XunitException(
                 "Expected a sanitized namespace-provider failure, got success.")
         };
@@ -424,17 +509,53 @@ public sealed class RuntimeCellNamespaceTests
         public HttpStatusCode ReadStatusCode { get; init; } = HttpStatusCode.OK;
         public IReadOnlyList<HttpStatusCode>? ReadStatusCodes { get; init; }
         public HttpStatusCode DeleteStatusCode { get; init; } = HttpStatusCode.OK;
+        public HttpStatusCode PolicyCreateStatusCode { get; init; } = HttpStatusCode.Created;
+        public HttpStatusCode PolicyReplaceStatusCode { get; init; } = HttpStatusCode.OK;
         public V1Namespace? ExistingNamespace { get; init; }
+        public V1NetworkPolicy? ExistingPolicy { get; init; }
         public V1Namespace? CreatedNamespace { get; private set; }
+        public V1NetworkPolicy? CreatedPolicy { get; private set; }
+        public V1NetworkPolicy? ReplacedPolicy { get; private set; }
         public int CreateRequests { get; private set; }
         public int ReadRequests { get; private set; }
         public int DeleteRequests { get; private set; }
+        public int PolicyCreateRequests { get; private set; }
+        public int PolicyReadRequests { get; private set; }
+        public int PolicyReplaceRequests { get; private set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
             var path = request.RequestUri!.AbsolutePath;
+            if (path.Contains("/networkpolicies", StringComparison.Ordinal))
+            {
+                if (request.Method == HttpMethod.Post)
+                {
+                    PolicyCreateRequests++;
+                    CreatedPolicy = JsonSerializer.Deserialize<V1NetworkPolicy>(
+                        await request.Content!.ReadAsStringAsync(cancellationToken));
+                    return (int)PolicyCreateStatusCode < 400
+                        ? Response(request, PolicyCreateStatusCode, SerializePolicy(CreatedPolicy!))
+                        : Response(request, PolicyCreateStatusCode, SerializeStatus(PolicyCreateStatusCode));
+                }
+
+                if (request.Method == HttpMethod.Get)
+                {
+                    PolicyReadRequests++;
+                    return Response(request, HttpStatusCode.OK, SerializePolicy(ExistingPolicy!));
+                }
+
+                if (request.Method == HttpMethod.Put)
+                {
+                    PolicyReplaceRequests++;
+                    ReplacedPolicy = JsonSerializer.Deserialize<V1NetworkPolicy>(
+                        await request.Content!.ReadAsStringAsync(cancellationToken));
+                    return (int)PolicyReplaceStatusCode < 400
+                        ? Response(request, PolicyReplaceStatusCode, SerializePolicy(ReplacedPolicy!))
+                        : Response(request, PolicyReplaceStatusCode, SerializeStatus(PolicyReplaceStatusCode));
+                }
+            }
             if (request.Method == HttpMethod.Post && path == "/api/v1/namespaces")
             {
                 CreateRequests++;
@@ -495,6 +616,26 @@ public sealed class RuntimeCellNamespaceTests
                 {
                     name = value.Metadata.Name,
                     labels = value.Metadata.Labels
+                }
+            });
+
+        private static string SerializePolicy(V1NetworkPolicy value) =>
+            JsonSerializer.Serialize(new
+            {
+                apiVersion = value.ApiVersion,
+                kind = value.Kind,
+                metadata = new
+                {
+                    name = value.Metadata.Name,
+                    @namespace = value.Metadata.NamespaceProperty,
+                    labels = value.Metadata.Labels,
+                    resourceVersion = value.Metadata.ResourceVersion
+                },
+                spec = new
+                {
+                    podSelector = new { matchLabels = value.Spec.PodSelector.MatchLabels },
+                    policyTypes = value.Spec.PolicyTypes,
+                    ingress = value.Spec.Ingress
                 }
             });
 

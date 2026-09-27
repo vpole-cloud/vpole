@@ -10,15 +10,18 @@ using Pole.Functions.Protocol;
 
 namespace Pole.Features.Functions.Runtime.Provisioning;
 
-public sealed record FunctionRevisionProvisioningOutcome(
-    bool Succeeded,
-    string? FailureCode = null,
-    string? FailureMessage = null)
-{
-    public static FunctionRevisionProvisioningOutcome Success() => new(true);
-    public static FunctionRevisionProvisioningOutcome Failure(string code, string message) =>
-        new(false, code, message);
-}
+public sealed record FunctionRevisionProvisioningCompleted;
+
+public sealed record FunctionRevisionProvisioningDeferred(string Reason);
+
+public sealed record FunctionRevisionProvisioningFailed(
+    string Code,
+    string Message);
+
+public union FunctionRevisionProvisioningOutcome(
+    FunctionRevisionProvisioningCompleted,
+    FunctionRevisionProvisioningDeferred,
+    FunctionRevisionProvisioningFailed);
 
 public interface IFunctionRevisionProvisioner
 {
@@ -47,14 +50,21 @@ public sealed class FunctionRevisionProvisioner(
             return await PromoteAsync(subject, app, revision, cancellationToken);
         if (revision.Status is not ProvisioningFunctionRevisionStatus)
         {
-            return FunctionRevisionProvisioningOutcome.Failure(
+            return new FunctionRevisionProvisioningFailed(
                 "revision-status",
                 "Only a provisioning or ready Function revision can be provisioned.");
         }
 
         var activation = await activator.EnsureActiveAsync(subject, cancellationToken);
         if (activation is FunctionRevisionActivationError activationFailure)
+        {
+            if (activationFailure.Value is FunctionActivationScaleRejected
+                {
+                    Error.Value: FunctionRevisionGatewaySourceUnavailable sourceFailure
+                })
+                return new FunctionRevisionProvisioningDeferred(sourceFailure.Message);
             return await FailAndStopAsync(subject, "activation", activationFailure.Message(), cancellationToken);
+        }
 
         var snapshot = (FunctionEndpointSnapshot)activation.Value;
 
@@ -86,6 +96,8 @@ public sealed class FunctionRevisionProvisioner(
                         cancellationToken);
                     if (scaled is FunctionRevisionKubernetesOperationError scaleFailure)
                     {
+                        if (scaleFailure.Value is FunctionRevisionGatewaySourceUnavailable sourceFailure)
+                            return new FunctionRevisionProvisioningDeferred(sourceFailure.Message);
                         return await FailAndStopAsync(
                             subject,
                             "minimum-scale",
@@ -145,7 +157,7 @@ public sealed class FunctionRevisionProvisioner(
             revision.Id,
             cancellationToken);
         return promoted is FunctionRevisionLifecycleCompleted
-            ? FunctionRevisionProvisioningOutcome.Success()
+            ? new FunctionRevisionProvisioningCompleted()
             : await FailAndStopAsync(
                 subject,
                 "promotion",
@@ -168,7 +180,7 @@ public sealed class FunctionRevisionProvisioner(
                 stopFailure.Message());
         }
 
-        return FunctionRevisionProvisioningOutcome.Failure(code, message);
+        return new FunctionRevisionProvisioningFailed(code, message);
     }
 
     private static string? ValidateMetadata(

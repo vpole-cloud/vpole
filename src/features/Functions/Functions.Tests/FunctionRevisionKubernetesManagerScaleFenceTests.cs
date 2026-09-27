@@ -9,6 +9,7 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Features.Functions.Runtime.Security;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Functions.Protocol;
 using Xunit;
 
@@ -37,6 +38,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
                 Assert.Equal(subject.Placement.DeploymentTargetId, id);
                 return LookupTarget(id, currentReadiness);
             },
+            ReadyBaseline,
             []);
         var result = await manager.ApplyAsync(subject);
         Assert.Equal(allowed, result is FunctionRevisionKubernetesMutationCompleted);
@@ -46,6 +48,56 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
             (await manager.ApplyAsync(subject)).Value);
         Assert.Equal(2, lookups);
         Assert.Equal(allowed ? 2 : 0, handler.PostRequests.Count);
+    }
+
+    [Fact]
+    public async Task Apply_blocks_when_runtime_cell_baseline_cannot_be_repaired()
+    {
+        var subject = CreateSubject();
+        using var handler = new DeploymentHandler(Deployment(subject, 0, 0));
+        using var kubernetes = CreateKubernetes(handler);
+        var manager = new FunctionRevisionKubernetesManager(
+            new FixedKubernetesClientProvider(kubernetes),
+            (id, ct) => LookupTarget(id, NetworkPolicyReadiness.EnforcementAttested),
+            (tenantId, runtimeCellId, targetId, kubernetesNamespace, ct) =>
+                Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
+                    new RuntimeCellIngressBaselineUnavailable(
+                        runtimeCellId,
+                        RuntimeCellIngressBaselineFailureReason.PolicyUnavailable)),
+            []);
+
+        var result = await manager.ApplyAsync(subject);
+
+        Assert.IsAssignableFrom<FunctionRevisionKubernetesOperationError>(result.Value);
+        Assert.Empty(handler.PostRequests);
+    }
+
+    [Fact]
+    public async Task Missing_gateway_source_blocks_apply_and_positive_scale_but_allows_downscale()
+    {
+        var subject = CreateSubject();
+        using var handler = new DeploymentHandler(Deployment(subject, 1, 4));
+        using var kubernetes = CreateKubernetes(handler);
+        var manager = new FunctionRevisionKubernetesManager(
+            new FixedKubernetesClientProvider(kubernetes),
+            (id, ct) => LookupTarget(id, NetworkPolicyReadiness.EnforcementAttested, gatewaySource: false),
+            ReadyBaseline,
+            []);
+
+        var apply = await manager.ApplyAsync(subject);
+        var provisioningIncrease = await manager.ScaleProvisioningAsync(subject, 2);
+        var scaleIncrease = await manager.ScaleAsync(subject, 2, 5);
+        var downscale = await manager.ScaleAsync(subject, 0, 5);
+
+        foreach (var result in new[] { apply, provisioningIncrease, scaleIncrease })
+        {
+            var unavailable = Assert.IsType<FunctionRevisionGatewaySourceUnavailable>(
+                Assert.IsType<FunctionRevisionKubernetesOperationError>(result.Value).Value);
+            Assert.Contains("gateway source", unavailable.Message, StringComparison.Ordinal);
+        }
+        Assert.IsType<FunctionRevisionKubernetesMutationCompleted>(downscale.Value);
+        Assert.Empty(handler.PostRequests);
+        Assert.Single(handler.PutRequests);
     }
 
     [Theory]
@@ -67,6 +119,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         var manager = new FunctionRevisionKubernetesManager(
             new FixedKubernetesClientProvider(kubernetes),
             (id, ct) => LookupTarget(id, NetworkPolicyReadiness.EnforcementRequired),
+            ReadyBaseline,
             []);
         var result = provisioning
             ? await manager.ScaleProvisioningAsync(subject, desired)
@@ -85,6 +138,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
             new FixedKubernetesClientProvider(kubernetes),
             (_, _) => throw new InvalidOperationException(
                 "Readiness lookup is forbidden for diagnostics/deletion."),
+            ReadyBaseline,
             []);
         Assert.IsType<FunctionReplicaState>((await manager.ReadReplicaStateAsync(subject)).Value);
         Assert.IsType<FunctionRevisionKubernetesMutationCompleted>((await manager.DeleteAsync(subject)).Value);
@@ -177,11 +231,22 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         new(
             new FixedKubernetesClientProvider(kubernetes),
             (id, ct) => LookupTarget(id, NetworkPolicyReadiness.EnforcementAttested),
+            ReadyBaseline,
             Array.Empty<IFunctionAgentTrustBundleProvider>());
+
+    private static Task<EnsureRuntimeCellIngressBaselineOutcome> ReadyBaseline(
+        string tenantId,
+        string runtimeCellId,
+        string targetId,
+        string kubernetesNamespace,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
+            new RuntimeCellIngressBaselineReady());
 
     private static Task<LookupDeploymentTargetOutcome> LookupTarget(
         string id,
-        NetworkPolicyReadiness readiness) =>
+        NetworkPolicyReadiness readiness,
+        bool gatewaySource = true) =>
         Task.FromResult<LookupDeploymentTargetOutcome>(
             new LookupDeploymentTargetOutcome(new DeploymentTargetLookupDto(
                 id,
@@ -189,7 +254,10 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
                 "cluster",
                 "InCluster",
                 1,
-                new(1, null),
+                new(1, null, new DeploymentTargetNetworkSourcesDto(
+                    null,
+                    gatewaySource ? new DeploymentTargetCidrNetworkSourceDto("192.0.2.9/32") : null,
+                    null)),
                 1,
                 true,
                 true,

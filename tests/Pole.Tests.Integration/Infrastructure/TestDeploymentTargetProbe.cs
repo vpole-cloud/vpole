@@ -18,7 +18,8 @@ internal sealed class TestDeploymentTargetProbe
             connectionVersion,
             now,
             "v1.35.0-test",
-            new DeploymentTargetNamespaceCapabilities(true, true, true, true, true));
+            new DeploymentTargetNamespaceCapabilities(true, true, true, true, true),
+            new DeploymentTargetNetworkPolicyCapabilities(true, true, true, true, true));
         var identity = $"test:kubernetes:{kubernetes.BaseUri.Host}:{kubernetes.BaseUri.Port}";
         return Task.FromResult(new DeploymentTargetProbeObservation(
             identity,

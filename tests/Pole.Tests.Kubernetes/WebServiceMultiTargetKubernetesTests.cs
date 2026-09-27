@@ -105,7 +105,14 @@ public sealed class WebServiceMultiTargetKubernetesTests(KubernetesClusterFixtur
                     webService.Id,
                     "deployment-44")),
 
-            WebServiceReleaseDeploymentMetadata.Create("release-1", 1, DateTime.UtcNow));
+            WebServiceResourceDeploymentMetadata.Create(
+                "release-1",
+                "deployment-44",
+                "cell-44",
+                target.Key,
+                1,
+                1,
+                DateTime.UtcNow));
 
     private static WebService BuildWebService() =>
         WebServiceFactory.Create(
@@ -123,7 +130,7 @@ public sealed class WebServiceMultiTargetKubernetesTests(KubernetesClusterFixtur
                     new ProbeConfig("/", "80"),
                     new ProbeConfig("/", "80"),
                     new ProbeConfig("/", "80"))),
-            exposure: WebServiceExposure.Create(),
+            exposure: WebServiceExposure.Create(WebServiceExposureMode.Public),
             options: WebServiceFactory.DefaultOptions with
             {
                 Id = "507f1f77bcf86cd799439014"

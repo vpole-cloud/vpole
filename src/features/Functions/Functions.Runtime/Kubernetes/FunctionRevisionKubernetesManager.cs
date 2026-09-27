@@ -6,6 +6,7 @@ using Pole.Features.Core.Kubernetes;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Security;
+using Pole.Features.ResourceGroups.Contracts;
 
 namespace Pole.Features.Functions.Runtime.Kubernetes;
 
@@ -54,6 +55,7 @@ public sealed record FunctionReplicaState(
 public sealed class FunctionRevisionKubernetesManager(
     IKubernetesClientProvider kubernetesClientProvider,
     LookupDeploymentTarget lookupDeploymentTarget,
+    EnsureRuntimeCellIngressBaseline ensureRuntimeCellIngressBaseline,
     IEnumerable<IFunctionAgentTrustBundleProvider> trustBundleProviders)
     : IFunctionRevisionKubernetesManager
 {
@@ -64,8 +66,11 @@ public sealed class FunctionRevisionKubernetesManager(
         FunctionRevisionInKubernetes revision,
         CancellationToken cancellationToken = default)
     {
-        if (!await AllowsWorkloadsAsync(revision.Placement.DeploymentTargetId, cancellationToken))
-            return EnforcementRequired();
+        var admission = await TargetWorkloadReadinessAsync(
+            revision.Placement.DeploymentTargetId,
+            cancellationToken);
+        if (admission is not TargetWorkloadReadiness.Ready)
+            return AdmissionFailure(admission);
 
         var clientResult = await ResolveKubernetesAsync(
             revision.Placement.DeploymentTargetId,
@@ -73,6 +78,8 @@ public sealed class FunctionRevisionKubernetesManager(
         if (clientResult is FunctionRevisionKubernetesOperationError clientFailure)
             return clientFailure;
         var kubernetes = (IKubernetes)clientResult.Value;
+        if (!await BaselineReadyAsync(revision, cancellationToken))
+            return EnforcementRequired();
 
         try
         {
@@ -178,8 +185,6 @@ public sealed class FunctionRevisionKubernetesManager(
             return Invalid("Replica count is outside the Function revision scaling bounds.");
         }
 
-        var allowsIncrease = replicas == 0 ||
-            await AllowsWorkloadsAsync(revision.Placement.DeploymentTargetId, cancellationToken);
         var clientResult = await ResolveKubernetesAsync(
             revision.Placement.DeploymentTargetId,
             cancellationToken);
@@ -193,8 +198,12 @@ public sealed class FunctionRevisionKubernetesManager(
                 revision.DeploymentName,
                 revision.Namespace,
                 cancellationToken: cancellationToken);
-            if (replicas > (scale.Spec.Replicas ?? 0) && !allowsIncrease)
-                return EnforcementRequired();
+            if (replicas > (scale.Spec.Replicas ?? 0))
+            {
+                var admission = await WorkloadReadinessAsync(revision, cancellationToken);
+                if (admission is not TargetWorkloadReadiness.Ready)
+                    return AdmissionFailure(admission);
+            }
             scale.Spec.Replicas = replicas;
             await kubernetes.AppsV1.ReplaceNamespacedDeploymentScaleAsync(
                 scale,
@@ -228,8 +237,6 @@ public sealed class FunctionRevisionKubernetesManager(
             return Invalid("Scale coordination generation must be positive.");
         }
 
-        var allowsIncrease = replicas == 0 ||
-            await AllowsWorkloadsAsync(revision.Placement.DeploymentTargetId, cancellationToken);
         var clientResult = await ResolveKubernetesAsync(
             revision.Placement.DeploymentTargetId,
             cancellationToken);
@@ -263,8 +270,12 @@ public sealed class FunctionRevisionKubernetesManager(
                             "The Function revision scale generation is already associated with another replica count.");
                 }
 
-                if (replicas > (deployment.Spec.Replicas ?? 0) && !allowsIncrease)
-                    return EnforcementRequired();
+                if (replicas > (deployment.Spec.Replicas ?? 0))
+                {
+                    var admission = await WorkloadReadinessAsync(revision, cancellationToken);
+                    if (admission is not TargetWorkloadReadiness.Ready)
+                        return AdmissionFailure(admission);
+                }
                 deployment.Spec.Replicas = replicas;
                 deployment.Metadata.Annotations ??= new Dictionary<string, string>();
                 deployment.Metadata.Annotations[FunctionRevisionInKubernetes.ScaleGenerationAnnotation] =
@@ -338,17 +349,69 @@ public sealed class FunctionRevisionKubernetesManager(
 
     // Function provisioning/activation/scaling also run outside ResourceDeployment reconciliation.
     // Guard the shared mutation boundary, not placement lookup or diagnostics. Never cache evidence.
-    private async Task<bool> AllowsWorkloadsAsync(
-        string targetId,
+    private async Task<TargetWorkloadReadiness> WorkloadReadinessAsync(
+        FunctionRevisionInKubernetes revision,
         CancellationToken cancellationToken)
     {
-        var result = await lookupDeploymentTarget(targetId, cancellationToken);
-        return result is DeploymentTargetLookupDto target &&
-            target.NetworkPolicy.AllowsWorkloads;
+        var targetReadiness = await TargetWorkloadReadinessAsync(
+            revision.Placement.DeploymentTargetId,
+            cancellationToken);
+        if (targetReadiness is not TargetWorkloadReadiness.Ready)
+            return targetReadiness;
+        return await BaselineReadyAsync(revision, cancellationToken)
+            ? TargetWorkloadReadiness.Ready
+            : TargetWorkloadReadiness.BaselineUnavailable;
+    }
+
+    private async Task<TargetWorkloadReadiness> TargetWorkloadReadinessAsync(
+        string deploymentTargetId,
+        CancellationToken cancellationToken)
+    {
+        var result = await lookupDeploymentTarget(
+            deploymentTargetId,
+            cancellationToken);
+        if (result is not DeploymentTargetLookupDto target ||
+            !target.NetworkPolicy.AllowsWorkloads)
+            return TargetWorkloadReadiness.EnforcementRequired;
+        return target.WorkloadConfiguration.NetworkSources.FunctionGateway is null
+            ? TargetWorkloadReadiness.GatewaySourceUnavailable
+            : TargetWorkloadReadiness.Ready;
+    }
+
+    private async Task<bool> BaselineReadyAsync(
+        FunctionRevisionInKubernetes revision,
+        CancellationToken cancellationToken)
+    {
+        var baseline = await ensureRuntimeCellIngressBaseline(
+            revision.App.TenantId,
+            revision.Placement.RuntimeCellId,
+            revision.Placement.DeploymentTargetId,
+            revision.Namespace,
+            cancellationToken);
+        return baseline is RuntimeCellIngressBaselineReady;
     }
 
     private static FunctionRevisionKubernetesOperationError EnforcementRequired() =>
         Rejected("NetworkPolicy enforcement has not been established for this target.");
+
+    private static FunctionRevisionKubernetesOperationError AdmissionFailure(
+        TargetWorkloadReadiness readiness) => readiness switch
+        {
+            TargetWorkloadReadiness.GatewaySourceUnavailable =>
+                new FunctionRevisionGatewaySourceUnavailable(
+                    "The Function gateway source is not configured for this target."),
+            TargetWorkloadReadiness.EnforcementRequired or TargetWorkloadReadiness.BaselineUnavailable =>
+                EnforcementRequired(),
+            _ => throw new ArgumentOutOfRangeException(nameof(readiness))
+        };
+
+    private enum TargetWorkloadReadiness
+    {
+        Ready,
+        EnforcementRequired,
+        GatewaySourceUnavailable,
+        BaselineUnavailable
+    }
 
     private async Task<ResolveKubernetesOutcome> ResolveKubernetesAsync(
         string deploymentTargetId,

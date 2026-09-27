@@ -1,4 +1,5 @@
 using MongoDB.Bson;
+using System.Collections.Immutable;
 using Pole.Features.DeploymentTargets.Domain;
 using Xunit;
 
@@ -22,6 +23,7 @@ public sealed class DeploymentTargetWorkloadConfigurationTests
             target.Enabled,
             target.AcceptsWorkloads,
             replacement,
+            target.WorkloadConfiguration.NetworkSources,
             CreatedAtUtc.AddMinutes(1));
 
         Assert.Equal(target.Revision + 1, updated.Revision);
@@ -41,6 +43,7 @@ public sealed class DeploymentTargetWorkloadConfigurationTests
             target.Enabled,
             target.AcceptsWorkloads,
             target.WorkloadConfiguration.Ingress,
+            target.WorkloadConfiguration.NetworkSources,
             CreatedAtUtc.AddMinutes(1));
 
         Assert.Equal(target.Revision + 1, updated.Revision);
@@ -62,6 +65,7 @@ public sealed class DeploymentTargetWorkloadConfigurationTests
             target.Enabled,
             target.AcceptsWorkloads,
             target.WorkloadConfiguration.Ingress,
+            target.WorkloadConfiguration.NetworkSources,
             CreatedAtUtc.AddMinutes(1));
 
         Assert.Equal(target.Revision, unchanged.Revision);
@@ -81,7 +85,8 @@ public sealed class DeploymentTargetWorkloadConfigurationTests
             target.Enabled,
             target.AcceptsWorkloads,
             ingress: null,
-            CreatedAtUtc.AddMinutes(1));
+            networkSources: target.WorkloadConfiguration.NetworkSources,
+            updatedAtUtc: CreatedAtUtc.AddMinutes(1));
 
         Assert.Equal(target.Revision + 1, updated.Revision);
         Assert.Equal(
@@ -109,6 +114,60 @@ public sealed class DeploymentTargetWorkloadConfigurationTests
         Assert.Equal(
             target.WorkloadConfiguration.Ingress,
             updated.WorkloadConfiguration.Ingress);
+    }
+
+    [Fact]
+    public void Reconfigure_NetworkSourceChangeAdvancesConfigurationRevision_AndEquivalentSelectorsDoNot()
+    {
+        var target = CreateTarget();
+        var labels = new Dictionary<string, string>
+        {
+            ["app.kubernetes.io/name"] = "traefik",
+            ["app.kubernetes.io/component"] = "controller"
+        };
+        var source = DeploymentTargetPodNetworkSource.Create("ingress-system", labels);
+        var configured = target.Reconfigure(
+            target.DisplayName,
+            target.Enabled,
+            target.AcceptsWorkloads,
+            target.WorkloadConfiguration.Ingress,
+            new DeploymentTargetNetworkSources(source, null, null),
+            CreatedAtUtc.AddMinutes(1));
+
+        labels["app.kubernetes.io/name"] = "changed-after-factory";
+        Assert.Equal("traefik", source.PodLabels["app.kubernetes.io/name"]);
+        Assert.Equal(target.WorkloadConfiguration.Revision + 1, configured.WorkloadConfiguration.Revision);
+
+        var equivalent = DeploymentTargetPodNetworkSource.Create("ingress-system", new Dictionary<string, string>
+        {
+            ["app.kubernetes.io/component"] = "controller",
+            ["app.kubernetes.io/name"] = "traefik"
+        });
+        var unchanged = configured.Reconfigure(
+            configured.DisplayName,
+            configured.Enabled,
+            configured.AcceptsWorkloads,
+            configured.WorkloadConfiguration.Ingress,
+            new DeploymentTargetNetworkSources(equivalent, null, null),
+            CreatedAtUtc.AddMinutes(2));
+
+        Assert.Equal(configured.Revision, unchanged.Revision);
+        Assert.Equal(configured.WorkloadConfiguration.Revision, unchanged.WorkloadConfiguration.Revision);
+    }
+
+    [Fact]
+    public void NetworkSources_RejectBroadOrMalformedIdentities()
+    {
+        Assert.Throws<ArgumentException>(() => DeploymentTargetPodNetworkSource.Create(
+            "ingress-system", new Dictionary<string, string>()));
+        Assert.Throws<ArgumentException>(() => DeploymentTargetPodNetworkSource.Create(
+            "bad.namespace", new Dictionary<string, string> { ["app"] = "controller" }));
+        Assert.Throws<ArgumentException>(() => DeploymentTargetPodNetworkSource.Create(
+            "ingress-system", new Dictionary<string, string> { ["bad key"] = "controller" }));
+        Assert.Throws<ArgumentException>(() => DeploymentTargetPodNetworkSource.Create(
+            "ingress-system", new Dictionary<string, string> { ["app"] = " padded " }));
+        Assert.Throws<ArgumentException>(() => DeploymentTargetCidrNetworkSource.Create("0.0.0.0/0"));
+        Assert.Equal("2001:db8::1/128", DeploymentTargetCidrNetworkSource.Create("2001:db8::1/128").Cidr);
     }
 
     [Theory]

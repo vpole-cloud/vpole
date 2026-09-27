@@ -143,7 +143,8 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
             ("SuccessThreshold", IntegerType("int", minimum: 1, maximum: 10)));
 
         private static BsonDocument ExposureSchema() => Object(
-            ["GeneratedHostnameLabelPrefix"],
+            ["Mode", "GeneratedHostnameLabelPrefix"],
+            ("Mode", AllowedValues("Private", "Public")),
             ("GeneratedHostnameLabelPrefix", StringType(minimumLength: 1, maximumLength: 63)));
 
         private static BsonDocument ServiceEventSchema() => Object(

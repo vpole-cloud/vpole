@@ -228,6 +228,21 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
                 {
                     IngressClassName = "nginx",
                     ClusterIssuerName = "private-ca"
+                },
+                NetworkSources = new DeploymentTargetBootstrapNetworkSourcesOptions
+                {
+                    Pods = new()
+                    {
+                        [DeploymentTargetBootstrapNetworkSourcePurpose.PublicIngress] = new()
+                        {
+                            Namespace = "ingress-system",
+                            PodLabels = new() { ["app"] = "nginx" }
+                        }
+                    },
+                    Cidrs = new()
+                    {
+                        [DeploymentTargetBootstrapNetworkSourcePurpose.FunctionGateway] = "192.0.2.9/32"
+                    }
                 }
             }
         });
@@ -243,6 +258,13 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
             target.WorkloadConfiguration.Ingress);
         Assert.Equal("nginx", ingress.IngressClassName);
         Assert.Equal("private-ca", ingress.ClusterIssuerName);
+        var ingressSource = Assert.IsType<DeploymentTargetPodNetworkSource>(
+            target.WorkloadConfiguration.NetworkSources.PublicIngress);
+        Assert.Equal("ingress-system", ingressSource.Namespace);
+        Assert.Equal("nginx", ingressSource.PodLabels["app"]);
+        Assert.Equal("192.0.2.9/32", Assert.IsType<DeploymentTargetCidrNetworkSource>(
+            target.WorkloadConfiguration.NetworkSources.FunctionGateway).Cidr);
+        Assert.Null(target.WorkloadConfiguration.NetworkSources.PostgresOperator);
     }
 
     [Fact]

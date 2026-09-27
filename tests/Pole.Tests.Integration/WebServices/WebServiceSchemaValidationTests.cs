@@ -76,6 +76,20 @@ public sealed class WebServiceSchemaValidationTests(MongoReplicaSetFixture fixtu
     }
 
     [Fact]
+    public async Task Validator_requires_a_known_exposure_mode()
+    {
+        await new WebServiceSchemaValidationMigration().Up(fixture.Database);
+        var contract = CreateContract();
+
+        await contract.AssertRejectsAsync(
+            CreateWebService(new ActiveWebServiceLifecycle()),
+            document => document[nameof(WebService.Exposure)].AsBsonDocument.Remove("Mode"));
+        await contract.AssertRejectsAsync(
+            CreateWebService(new ActiveWebServiceLifecycle()),
+            document => document[nameof(WebService.Exposure)].AsBsonDocument["Mode"] = "Internal");
+    }
+
+    [Fact]
     public async Task ReleaseMigration_accepts_retry_deployment_action()
     {
         await new WebServiceReleaseSchemaValidationMigration().Up(fixture.Database);
@@ -102,7 +116,8 @@ public sealed class WebServiceSchemaValidationTests(MongoReplicaSetFixture fixtu
             null,
             new WebServiceReleaseFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
-                DateTime.UtcNow));
+                DateTime.UtcNow),
+            WebServiceExposure.Create(WebServiceExposureMode.Public));
 
         await new MongoDocumentContractTester<WebServiceRelease>(
                 fixture.Database,
@@ -134,7 +149,7 @@ public sealed class WebServiceSchemaValidationTests(MongoReplicaSetFixture fixtu
                         : ImmutableList<PortMapping>.Empty),
                 autoscaling,
                 CreateProbes()),
-            WebServiceExposure.Create("api"),
+            WebServiceExposure.Create(generatedHostnameLabelPrefix: "api"),
             WebServiceFactory.DefaultOptions with
             {
                 Id = ObjectId.GenerateNewId().ToString(),

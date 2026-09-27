@@ -1,6 +1,7 @@
 using k8s;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Tests.Integration.DeploymentTargets;
@@ -12,12 +13,14 @@ using Pole.Features.Events.Abstractions;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Endpoints;
 using Pole.Features.Functions.Application.Persistence.Lifecycle;
+using Pole.Features.Functions.Application.Persistence.Reads;
 using Pole.Features.Functions.Application.Persistence.Runtime.Provisioning;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Events;
 using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Features.Functions.Runtime.Provisioning;
+using Pole.Features.ResourceDeployments.Events;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -58,6 +61,9 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             provider,
             (id, ct) => Task.FromResult<LookupDeploymentTargetOutcome>(
                 new LookupDeploymentTargetOutcome(target.ToLookupDto())),
+            (tenantId, runtimeCellId, targetId, kubernetesNamespace, ct) =>
+                Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
+                    new RuntimeCellIngressBaselineReady()),
             []);
         var loadPlacement = Services.GetRequiredService<LoadExactResourceDeploymentRuntimePlacement>();
         var resolver = new FunctionResourcePlacementResolver(async (tenant, type, resource, deployment, ct) =>
@@ -70,6 +76,8 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             new MongoLoadFunctionRevisionProvisioningSubject(
                 DbContext.FunctionApps,
                 DbContext.FunctionRevisions).InvokeAsync,
+            Services.GetRequiredService<LoadFunctionAppById>(),
+            Services.GetRequiredService<LoadExactResourceDeploymentRuntimePlacement>(),
             resolver,
             manager,
             Services.GetRequiredService<FailFunctionRevision>(),
@@ -121,11 +129,13 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             TestData.TenantId))).RequireSuccess();
         var manager = new RecordingKubernetesManager(
             new FunctionRevisionKubernetesOperationError(
-                new FunctionRevisionKubernetesUnavailable("Kubernetes rejected the manifest.")));
+                new FunctionRevisionKubernetesOperationRejected("Kubernetes rejected the manifest.")));
         var consumer = new FunctionRevisionCreatedConsumer(
             new MongoLoadFunctionRevisionProvisioningSubject(
                 DbContext.FunctionApps,
                 DbContext.FunctionRevisions).InvokeAsync,
+            Services.GetRequiredService<LoadFunctionAppById>(),
+            Services.GetRequiredService<LoadExactResourceDeploymentRuntimePlacement>(),
             new FixedPlacementResolver(),
             manager,
             Services.GetRequiredService<FailFunctionRevision>(),
@@ -174,6 +184,8 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             new MongoLoadFunctionRevisionProvisioningSubject(
                 DbContext.FunctionApps,
                 DbContext.FunctionRevisions).InvokeAsync,
+            Services.GetRequiredService<LoadFunctionAppById>(),
+            Services.GetRequiredService<LoadExactResourceDeploymentRuntimePlacement>(),
             new FixedPlacementResolver(),
             manager,
             Services.GetRequiredService<FailFunctionRevision>(),
@@ -223,6 +235,8 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             new MongoLoadFunctionRevisionProvisioningSubject(
                 DbContext.FunctionApps,
                 DbContext.FunctionRevisions).InvokeAsync,
+            Services.GetRequiredService<LoadFunctionAppById>(),
+            Services.GetRequiredService<LoadExactResourceDeploymentRuntimePlacement>(),
             new FixedPlacementResolver(),
             manager,
             fail,
@@ -267,6 +281,8 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             new MongoLoadFunctionRevisionProvisioningSubject(
                 DbContext.FunctionApps,
                 DbContext.FunctionRevisions).InvokeAsync,
+            Services.GetRequiredService<LoadFunctionAppById>(),
+            Services.GetRequiredService<LoadExactResourceDeploymentRuntimePlacement>(),
             new FixedPlacementResolver(),
             manager,
             fail,
@@ -289,6 +305,114 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             .Find(candidate => candidate.Id == created.RevisionId)
             .SingleAsync();
         Assert.IsType<FailedFunctionRevisionStatus>(revision.Status);
+    }
+
+    [Fact]
+    public async Task Gateway_source_restoration_replays_pending_revision_after_current_deployment_applies()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var created = (await Mediator.Send(new CreateFunctionAppRequest(
+            new CreateFunctionAppRequestBody(
+                "restored-gateway-functions",
+                "restored-gateway-functions",
+                group.Id,
+                RevisionRequest(),
+                []),
+            TestData.TenantId))).RequireSuccess();
+        var manager = new RecordingKubernetesManager(
+            new FunctionRevisionKubernetesOperationError(
+                new FunctionRevisionGatewaySourceUnavailable(
+                    "The Function gateway source is not configured.")));
+        var consumer = new FunctionRevisionCreatedConsumer(
+            new MongoLoadFunctionRevisionProvisioningSubject(
+                DbContext.FunctionApps,
+                DbContext.FunctionRevisions).InvokeAsync,
+            Services.GetRequiredService<LoadFunctionAppById>(),
+            AppliedPlacement(created),
+            new FixedPlacementResolver(),
+            manager,
+            Services.GetRequiredService<FailFunctionRevision>(),
+            [new CompletingProvisioner(
+                Services.GetRequiredService<MarkFunctionRevisionReady>(),
+                Services.GetRequiredService<PromoteFunctionRevision>())],
+            NullLogger<FunctionRevisionCreatedConsumer>.Instance);
+        var createdEvent = new FunctionRevisionCreatedEvent(
+            created.FunctionAppId,
+            created.RevisionId,
+            created.RevisionNumber,
+            Placement(created),
+            null!)
+        {
+            EventCore = EventCore.Create(TestData.TenantId)
+        };
+
+        await consumer.HandleAsync(createdEvent);
+        var pending = await DbContext.FunctionRevisions
+            .Find(candidate => candidate.Id == created.RevisionId)
+            .SingleAsync();
+        Assert.IsType<ProvisioningFunctionRevisionStatus>(pending.Status);
+        manager.ApplyResult = new FunctionRevisionKubernetesMutationCompleted();
+
+        await consumer.HandleAppliedAsync(AppliedEvent(created));
+
+        Assert.Equal(2, manager.ApplyCalls);
+        var revision = await DbContext.FunctionRevisions
+            .Find(candidate => candidate.Id == created.RevisionId)
+            .SingleAsync();
+        Assert.IsType<ActiveFunctionRevisionStatus>(revision.Status);
+        var app = await DbContext.FunctionApps
+            .Find(candidate => candidate.Id == created.FunctionAppId)
+            .SingleAsync();
+        Assert.Null(app.PendingRevisionId);
+        Assert.Equal(created.RevisionId, app.ActiveRevisionId);
+    }
+
+    [Fact]
+    public async Task Applied_event_does_not_replay_stale_generation_or_deleting_app()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var created = (await Mediator.Send(new CreateFunctionAppRequest(
+            new CreateFunctionAppRequestBody(
+                "stale-gateway-functions",
+                "stale-gateway-functions",
+                group.Id,
+                RevisionRequest(),
+                []),
+            TestData.TenantId))).RequireSuccess();
+        var manager = new RecordingKubernetesManager(new FunctionRevisionKubernetesMutationCompleted());
+        var loadApp = Services.GetRequiredService<LoadFunctionAppById>();
+        var deleting = false;
+        var consumer = new FunctionRevisionCreatedConsumer(
+            new MongoLoadFunctionRevisionProvisioningSubject(
+                DbContext.FunctionApps,
+                DbContext.FunctionRevisions).InvokeAsync,
+            async (tenantId, appId, ct) =>
+            {
+                var app = await loadApp(tenantId, appId, ct);
+                return deleting && app is not null
+                    ? app with { DesiredState = FunctionAppDesiredState.Deleting }
+                    : app;
+            },
+            AppliedPlacement(created),
+            new FixedPlacementResolver(),
+            manager,
+            Services.GetRequiredService<FailFunctionRevision>(),
+            [new RecordingProvisioner()],
+            NullLogger<FunctionRevisionCreatedConsumer>.Instance);
+
+        await consumer.HandleAppliedAsync(AppliedEvent(created) with { Generation = 2 });
+        deleting = true;
+        await consumer.HandleAppliedAsync(AppliedEvent(created));
+        await consumer.HandleAppliedAsync(AppliedEvent(created) with
+        {
+            EventCore = EventCore.Create("other-tenant")
+        });
+
+        Assert.Equal(0, manager.ApplyCalls);
+        var revision = await DbContext.FunctionRevisions
+            .Find(candidate => candidate.Id == created.RevisionId)
+            .SingleAsync();
+        Assert.IsType<ProvisioningFunctionRevisionStatus>(revision.Status);
     }
 
     private static FunctionRevisionRequest RevisionRequest() =>
@@ -314,6 +438,40 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             created.Placement.RuntimeCellId,
             created.Placement.DeploymentTargetId);
 
+    private static LoadExactResourceDeploymentRuntimePlacement AppliedPlacement(
+        CreateFunctionAppResponse created) =>
+        (tenantId, resourceType, resourceId, deploymentId, ct) =>
+            Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(
+                tenantId == TestData.TenantId &&
+                resourceType == FunctionResourceDeployment.ResourceType &&
+                resourceId == created.FunctionAppId &&
+                deploymentId == created.Placement.DeploymentId
+                    ? new ResourceDeploymentRuntimePlacementDto(
+                        deploymentId,
+                        resourceId,
+                        created.Placement.RuntimeCellId,
+                        created.Placement.DeploymentTargetId,
+                        "functions",
+                        1,
+                        1,
+                        null!,
+                        "Applied",
+                        "Apply",
+                        "test-scope")
+                    : null);
+
+    private static ResourceDeploymentAppliedEvent AppliedEvent(
+        CreateFunctionAppResponse created) =>
+        new(
+            created.Placement.DeploymentId,
+            FunctionResourceDeployment.ResourceType.Value,
+            created.FunctionAppId,
+            created.Placement.RuntimeCellId,
+            1)
+        {
+            EventCore = EventCore.Create(TestData.TenantId)
+        };
+
     private sealed class FixedPlacementResolver : IFunctionResourcePlacementResolver
     {
         public Task<FunctionResourcePlacementOutcome> ResolveAsync(
@@ -334,6 +492,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
         : IFunctionRevisionKubernetesManager
     {
         public int ApplyCalls { get; private set; }
+        public FunctionRevisionKubernetesMutationOutcome ApplyResult { get; set; } = applyResult;
         public List<int> BootstrapScaleRequests { get; } = [];
 
         public Task<FunctionRevisionKubernetesMutationOutcome> ApplyAsync(
@@ -341,7 +500,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             CancellationToken cancellationToken = default)
         {
             ApplyCalls++;
-            return Task.FromResult(applyResult);
+            return Task.FromResult(ApplyResult);
         }
 
         public Task<FunctionRevisionKubernetesMutationOutcome> DeleteAsync(
@@ -383,7 +542,30 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             CancellationToken cancellationToken)
         {
             Revision = subject.Revision;
-            return Task.FromResult(FunctionRevisionProvisioningOutcome.Success());
+            return Task.FromResult<FunctionRevisionProvisioningOutcome>(
+                new FunctionRevisionProvisioningCompleted());
+        }
+    }
+
+    private sealed class CompletingProvisioner(
+        MarkFunctionRevisionReady markReady,
+        PromoteFunctionRevision promote) : IFunctionRevisionProvisioner
+    {
+        public async Task<FunctionRevisionProvisioningOutcome> ProvisionAsync(
+            FunctionRevisionInKubernetes subject,
+            CancellationToken cancellationToken)
+        {
+            (await markReady(
+                subject.App.TenantId,
+                subject.App.Id,
+                subject.Revision.Id,
+                cancellationToken)).RequireLifecycleSuccess();
+            (await promote(
+                subject.App.TenantId,
+                subject.App.Id,
+                subject.Revision.Id,
+                cancellationToken)).RequireLifecycleSuccess();
+            return new FunctionRevisionProvisioningCompleted();
         }
     }
 }

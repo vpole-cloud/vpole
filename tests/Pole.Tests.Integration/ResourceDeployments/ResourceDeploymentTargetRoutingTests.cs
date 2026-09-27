@@ -53,11 +53,13 @@ public sealed class ResourceDeploymentTargetRoutingTests(
     }
 
     [Theory]
-    [InlineData(NetworkPolicyReadiness.EnforcementAttested, true)]
-    [InlineData(NetworkPolicyReadiness.IsolationNotEnforced, true)]
-    [InlineData(NetworkPolicyReadiness.EnforcementRequired, false)]
+    [InlineData(NetworkPolicyReadiness.EnforcementAttested, true, true)]
+    [InlineData(NetworkPolicyReadiness.IsolationNotEnforced, true, true)]
+    [InlineData(NetworkPolicyReadiness.EnforcementRequired, true, false)]
+    [InlineData(NetworkPolicyReadiness.EnforcementAttested, false, false)]
     public async Task ReconciliationOnTargetB_ChecksCurrentEnforcementBeforeApplying(
         NetworkPolicyReadiness readiness,
+        bool baselineReady,
         bool allowed)
     {
         var now = DateTime.UtcNow;
@@ -119,6 +121,12 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             Services.GetRequiredService<LoadResourcePlacement>(),
             _ => (adapter, ResourcePlacementCapability.SingleTarget),
             (id, ct) => LookupTarget(id, ct, readiness),
+            (tenantId, cellId, targetId, kubernetesNamespace, ct) =>
+                Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(baselineReady
+                    ? new RuntimeCellIngressBaselineReady()
+                    : new RuntimeCellIngressBaselineUnavailable(
+                        cellId,
+                        RuntimeCellIngressBaselineFailureReason.PolicyUnavailable)),
             metrics,
             NullLogger<ResourceDeploymentReconciler>.Instance);
 
@@ -134,7 +142,9 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             Assert.Empty(provider.RequestedTargetIds);
             var blocked = await fixture.DbContext.ResourceDeployments.Find(item => item.Id == DeploymentId).SingleAsync();
             Assert.Equal(
-                "NetworkPolicyEnforcementRequired",
+                readiness == NetworkPolicyReadiness.EnforcementRequired
+                    ? "NetworkPolicyEnforcementRequired"
+                    : "IngressBaselineUnavailable",
                 Assert.IsType<FailedResourceDeploymentState>(blocked.State).FailureCode);
             return;
         }
@@ -209,6 +219,9 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             Services.GetRequiredService<LoadResourcePlacement>(),
             _ => (adapter, ResourcePlacementCapability.SingleTarget),
             (id, ct) => LookupTarget(id, ct),
+            (tenantId, cellId, targetId, kubernetesNamespace, ct) =>
+                Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
+                    new RuntimeCellIngressBaselineReady()),
             metrics,
             NullLogger<ResourceDeploymentReconciler>.Instance);
 

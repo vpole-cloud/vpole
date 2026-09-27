@@ -41,7 +41,8 @@ public sealed record DeploymentTargetCapabilitiesDto(
     bool IsKnown,
     DateTime? ObservedAtUtc,
     string? KubernetesVersion,
-    DeploymentTargetNamespaceCapabilitiesDto Namespace);
+    DeploymentTargetNamespaceCapabilitiesDto Namespace,
+    DeploymentTargetNetworkPolicyCapabilitiesDto NetworkPolicy);
 
 public sealed record DeploymentTargetNamespaceCapabilitiesDto(
     bool CanGet,
@@ -50,9 +51,17 @@ public sealed record DeploymentTargetNamespaceCapabilitiesDto(
     bool CanPatch,
     bool CanDelete);
 
+public sealed record DeploymentTargetNetworkPolicyCapabilitiesDto(
+    bool CanGet,
+    bool CanCreate,
+    bool CanUpdate,
+    bool CanPatch,
+    bool CanDelete);
+
 public sealed record DeploymentTargetWorkloadConfigurationDto(
     long Revision,
-    DeploymentTargetIngressConfigurationDto? Ingress);
+    DeploymentTargetIngressConfigurationDto? Ingress,
+    DeploymentTargetNetworkSourcesDto NetworkSources);
 
 public sealed record DeploymentTargetIngressConfigurationDto(
     string IngressClassName,
@@ -82,7 +91,8 @@ public static class DeploymentTargetDtoExtensions
                         ingress.IngressClassName,
                         ingress.ClusterIssuerName,
                         ingress.PublicBaseDomain)
-                    : null),
+                    : null,
+                target.WorkloadConfiguration.NetworkSources.ToDto()),
             target.Revision,
             target.Enabled,
             target.AcceptsWorkloads,
@@ -107,7 +117,8 @@ public static class DeploymentTargetDtoExtensions
                         ingress.IngressClassName,
                         ingress.ClusterIssuerName,
                         ingress.PublicBaseDomain)
-                    : null),
+                    : null,
+                target.WorkloadConfiguration.NetworkSources.ToDto()),
             target.Revision,
             target.Enabled,
             target.AcceptsWorkloads,
@@ -127,6 +138,23 @@ public static class DeploymentTargetDtoExtensions
         NetworkPolicy = target.ToNetworkPolicyDto()
     };
 
+    public static DeploymentTargetNetworkSourcesDto ToDto(
+        this DeploymentTargetNetworkSources sources) =>
+        new(
+            sources.PublicIngress?.ToDto(),
+            sources.FunctionGateway?.ToDto(),
+            sources.PostgresOperator?.ToDto());
+
+    public static DeploymentTargetNetworkSourceDto ToDto(
+        this DeploymentTargetNetworkSource source) => source switch
+        {
+            DeploymentTargetPodNetworkSource pod => new DeploymentTargetPodNetworkSourceDto(
+                pod.Namespace,
+                pod.PodLabels),
+            DeploymentTargetCidrNetworkSource cidr => new DeploymentTargetCidrNetworkSourceDto(cidr.Cidr),
+            _ => throw new InvalidOperationException("Unsupported network source type.")
+        };
+
     public static DeploymentTargetNetworkPolicyDto ToNetworkPolicyDto(this DeploymentTarget target)
     {
         var policy = target.WorkloadConfiguration.NetworkPolicy;
@@ -142,17 +170,21 @@ public static class DeploymentTargetDtoExtensions
         };
         return new(
             enforcement,
-            enforcement == NetworkPolicyEnforcementStatus.Supported
+            !target.Capabilities.NetworkPolicyCapabilities.CanManage
+                ? NetworkPolicyReadiness.EnforcementRequired
+                : enforcement == NetworkPolicyEnforcementStatus.Supported
                 ? NetworkPolicyReadiness.EnforcementAttested
                 : evidence.AllowIsolationNotEnforced
                     ? NetworkPolicyReadiness.IsolationNotEnforced
                     : NetworkPolicyReadiness.EnforcementRequired,
-            enforcement switch
-            {
-                NetworkPolicyEnforcementStatus.Supported => NetworkPolicyReason.OperatorAttestedSupported,
-                NetworkPolicyEnforcementStatus.Unsupported => NetworkPolicyReason.OperatorAttestedUnsupported,
-                _ => NetworkPolicyReason.EnforcementNotEstablished
-            },
+            !target.Capabilities.NetworkPolicyCapabilities.CanManage
+                ? NetworkPolicyReason.WriterPermissionsMissing
+                : enforcement switch
+                {
+                    NetworkPolicyEnforcementStatus.Supported => NetworkPolicyReason.OperatorAttestedSupported,
+                    NetworkPolicyEnforcementStatus.Unsupported => NetworkPolicyReason.OperatorAttestedUnsupported,
+                    _ => NetworkPolicyReason.EnforcementNotEstablished
+                },
             evidence.LastCheckedAtUtc,
             NetworkPolicyEvidenceSource.OperatorAttestation,
             evidence.AllowIsolationNotEnforced);
@@ -168,5 +200,11 @@ public static class DeploymentTargetDtoExtensions
                 capabilities.NamespaceCapabilities.CanCreate,
                 capabilities.NamespaceCapabilities.CanUpdate,
                 capabilities.NamespaceCapabilities.CanPatch,
-                capabilities.NamespaceCapabilities.CanDelete));
+                capabilities.NamespaceCapabilities.CanDelete),
+            new DeploymentTargetNetworkPolicyCapabilitiesDto(
+                capabilities.NetworkPolicyCapabilities.CanGet,
+                capabilities.NetworkPolicyCapabilities.CanCreate,
+                capabilities.NetworkPolicyCapabilities.CanUpdate,
+                capabilities.NetworkPolicyCapabilities.CanPatch,
+                capabilities.NetworkPolicyCapabilities.CanDelete));
 }

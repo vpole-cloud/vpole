@@ -91,6 +91,11 @@ internal static class DeploymentTargetFilters
             NetworkPolicyAdmission());
 
     private static FilterDefinition<DeploymentTarget> NetworkPolicyAdmission() => Builders<DeploymentTarget>.Filter.Where(target => target.Health.FailureCode != "ClusterIdentityMismatch" &&
+            target.Capabilities.NetworkPolicyCapabilities.CanGet &&
+            target.Capabilities.NetworkPolicyCapabilities.CanCreate &&
+            target.Capabilities.NetworkPolicyCapabilities.CanUpdate &&
+            target.Capabilities.NetworkPolicyCapabilities.CanPatch &&
+            target.Capabilities.NetworkPolicyCapabilities.CanDelete &&
             target.WorkloadConfiguration.NetworkPolicy is AttestedNetworkPolicy &&
             (((AttestedNetworkPolicy)target.WorkloadConfiguration.NetworkPolicy).Enforcement ==
                 NetworkPolicyEnforcement.Supported ||

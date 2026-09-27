@@ -70,6 +70,28 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
     }
 
     [Fact]
+    public async Task ReconciliationPolicyApplyFailure_KeepsCellNonReadyAndRetryable()
+    {
+        var cell = await InsertCellAsync();
+        var manager = new RecordingNamespaceManager(
+            new RuntimeCellNetworkPolicyUnavailable(cell.KubernetesNamespace),
+            Unit.Value);
+        var consumer = new ReconcileRuntimeCellOnReconciliationRequestedConsumer(
+            CreateLifecyclePersistence(InitialTime.AddMinutes(1)),
+            manager.EnsureCreatedAsync);
+
+        await consumer.HandleAsync(ReconciliationEvent(cell));
+
+        var saved = await DbContext.RuntimeCells.Find(item => item.Id == cell.Id).SingleAsync();
+        var failed = Assert.IsType<FailedRuntimeCellState>(saved.State);
+        Assert.Equal("NetworkPolicyApplyFailed", failed.FailureCode);
+        Assert.Contains("ingress policy", failed.FailureMessage, StringComparison.Ordinal);
+        Assert.True(failed.RetryNotBeforeUtc > failed.AttemptedAtUtc);
+        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(
+            "pole.resource-groups/v1/runtime-cell-ready"));
+    }
+
+    [Fact]
     public async Task DeletionSuccess_MarksDeleted_UnregistersReference_AndIsIdempotent()
     {
         var provisioning = await InsertCellAsync();
@@ -102,9 +124,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         var admission = new RecordingReferenceAdmission();
         var manager = new RecordingNamespaceManager(
             Unit.Value,
-            new RuntimeCellNamespaceUnavailable(
-                "pole-runtime-cell",
-                DeletionPending: true));
+            new RuntimeCellNamespaceDeletionPending("pole-runtime-cell"));
         var consumer = new DeleteRuntimeCellOnDeletionRequestedConsumer(
             CreateLifecyclePersistence(InitialTime.AddMinutes(2), admission.ApplyChangesOutcomeAsync),
             manager.DeleteAsync,
@@ -310,13 +330,13 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         };
 
     private sealed class RecordingNamespaceManager(
-        RuntimeCellNamespaceOperationOutcome ensureResult,
-        RuntimeCellNamespaceOperationOutcome deleteResult)
+        RuntimeCellEnsureOutcome ensureResult,
+        RuntimeCellDeleteOutcome deleteResult)
     {
         public int EnsureCallCount { get; private set; }
         public int DeleteCallCount { get; private set; }
 
-        public Task<RuntimeCellNamespaceOperationOutcome> EnsureCreatedAsync(
+        public Task<RuntimeCellEnsureOutcome> EnsureCreatedAsync(
             RuntimeCell runtimeCell,
             CancellationToken cancellationToken = default)
         {
@@ -324,7 +344,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
             return Task.FromResult(ensureResult);
         }
 
-        public Task<RuntimeCellNamespaceOperationOutcome> DeleteAsync(
+        public Task<RuntimeCellDeleteOutcome> DeleteAsync(
             RuntimeCell runtimeCell,
             CancellationToken cancellationToken = default)
         {

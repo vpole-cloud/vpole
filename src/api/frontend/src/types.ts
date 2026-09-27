@@ -70,6 +70,7 @@ export interface WebService {
 }
 
 export interface WebServiceExposure {
+  mode: 'Private' | 'Public'
   generatedHostnameLabelPrefix: string
 }
 
@@ -396,6 +397,7 @@ export interface ResourceGroupInput {
 }
 
 export interface WebServiceInput {
+  exposure: 'Private' | 'Public'
   name: string
   resourceGroupId: string
   isolationScopeId?: string

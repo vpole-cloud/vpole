@@ -1,4 +1,5 @@
 using Pole.Features.ComputeProfiles.Contracts;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -76,6 +77,9 @@ public union WebServiceImageTagStateError(
 
 public union UpdateWebServiceError(
     WebServiceLifecycleMutationStateError,
+    DeploymentTargetPublicIngressAdmissionError,
+    GeneratedDomainZoneError,
+    GeneratedHostnameBindingError,
     ResourceDeploymentMutationError,
     AdvanceResourceDeploymentRevisionError,
     WebServiceUpdateConflict,
@@ -120,7 +124,10 @@ public union RetryWebServiceDeploymentError(
 
 public union WebServiceDeploymentHostnameError(
     WebServiceDeploymentMutationStateError,
+    WebServiceHostnameAttachmentUnavailable,
     CustomHostnameBindingError,
     ResourceDeploymentMutationError,
     AdvanceResourceDeploymentRevisionError,
     WebServiceUpdateConflict);
+
+public sealed record WebServiceHostnameAttachmentUnavailable(string WebServiceId);

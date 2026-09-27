@@ -107,6 +107,7 @@ public sealed record ResourceDeploymentRuntimePlacementDto(
     string DeploymentTargetId,
     string KubernetesNamespace,
     long DeploymentRevision,
+    long DesiredGeneration,
     ResourceDeploymentComputeConfiguration Compute,
     string Status,
     string DesiredOperation,

@@ -32,8 +32,12 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
         var result = await WebServiceKubernetesResourceManager.ApplyAsync(
             Kubernetes,
             ToKubernetes(webService),
-            WebServiceReleaseDeploymentMetadata.Create(
+            WebServiceResourceDeploymentMetadata.Create(
                 "release-k8s",
+                "deployment-44",
+                "cell-44",
+                "target-44",
+                1,
                 1,
                 DateTime.UtcNow));
 
@@ -62,7 +66,7 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
             resourceGroupId: ResourceGroupId,
             isolationScopeId: IsolationScopeId,
             spec: spec,
-            exposure: WebServiceExposure.Create(),
+            exposure: WebServiceExposure.Create(WebServiceExposureMode.Public),
             options: WebServiceFactory.DefaultOptions with { Id = SourceBuildWebServiceId });
     }
 
@@ -163,7 +167,7 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
             resourceGroupId: ResourceGroupId,
             isolationScopeId: IsolationScopeId,
             spec: spec,
-            exposure: WebServiceExposure.Create(),
+            exposure: WebServiceExposure.Create(WebServiceExposureMode.Public),
             options: options);
     }
 

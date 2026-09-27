@@ -1,6 +1,7 @@
 namespace Pole.Features.Postgres.Application.Kubernetes
 
 open System
+open System.Collections.Immutable
 open System.Threading
 open System.Threading.Tasks
 open Pole.Features.DeploymentTargets.Contracts
@@ -16,7 +17,67 @@ type PostgresResourceDeploymentAdapter(
     readCredentialKey : ReadManagedSecretKey,
     ensureProjection : EnsureManagedSecretProjection,
     deploymentManager : IPostgresClusterDeploymentManager,
-    kubernetesClientProvider : IKubernetesClientProvider) =
+    kubernetesClientProvider : IKubernetesClientProvider,
+    reconcileIngressPolicy : ReconcileResourceIngressPolicy) =
+
+    let ingressRequest
+        (deployment : ResourceDeploymentReconciliationSnapshot)
+        purpose
+        ports =
+        ResourceIngressPolicyRequest(
+            deployment.TenantId,
+            deployment.ResourceType,
+            deployment.ResourceId,
+            deployment.Id,
+            deployment.RuntimeCellId,
+            deployment.Placement.DeploymentTargetId,
+            deployment.Placement.KubernetesNamespace,
+            purpose,
+            deployment.DesiredGeneration,
+            deployment.Placement.TargetWorkloadConfigurationRevision,
+            ImmutableList.CreateRange<int>(ports))
+
+    let ingressApplied (outcome : ReconcileResourceIngressPolicyOutcome) =
+        outcome.Value :? ResourceIngressPolicyApplied
+
+    let ensureApplyIngress deployment mode cancellationToken =
+        task {
+            let! replication =
+                reconcileIngressPolicy.Invoke(
+                    ingressRequest deployment ResourceIngressPolicyPurpose.PostgresReplication [ 5432 ],
+                    cancellationToken)
+            if not (ingressApplied replication) then
+                return Some("PostgresReplicationIngressUnavailable", "The PostgreSQL replication ingress policy is not ready.")
+            elif mode = PostgresDeploymentMode.Operator then
+                let! operator =
+                    reconcileIngressPolicy.Invoke(
+                        ingressRequest deployment ResourceIngressPolicyPurpose.PostgresOperator [ 5432; 8000 ],
+                        cancellationToken)
+                return
+                    if ingressApplied operator then None
+                    else Some("PostgresOperatorIngressUnavailable", "The PostgreSQL operator ingress policy is not ready.")
+            else
+                return None
+        }
+
+    let ensureDeleteIngress deployment cancellationToken =
+        task {
+            let! replication =
+                reconcileIngressPolicy.Invoke(
+                    ingressRequest deployment ResourceIngressPolicyPurpose.PostgresReplication [],
+                    cancellationToken)
+            let! operator =
+                reconcileIngressPolicy.Invoke(
+                    ingressRequest deployment ResourceIngressPolicyPurpose.PostgresOperator [],
+                    cancellationToken)
+            return
+                if not (ingressApplied replication) then
+                    Some("PostgresReplicationIngressCleanupUnavailable", "The PostgreSQL replication ingress policy could not be closed.")
+                elif not (ingressApplied operator) then
+                    Some("PostgresOperatorIngressCleanupUnavailable", "The PostgreSQL operator ingress policy could not be closed.")
+                else
+                    None
+        }
 
     let validateContext (context : ResourceDeploymentReconciliationContext) =
         if context.Deployment.ResourceType <> PostgresResourceDeployment.ResourceType then
@@ -65,81 +126,90 @@ type PostgresResourceDeploymentAdapter(
                                     false)
                                 :> ResourceDeploymentAdapterResult
                         else
-                            let! projectionResult =
-                                ensureProjection.Invoke(
-                                    deployment.TenantId,
-                                    PostgresManagedSecret.owner cluster.Id,
-                                    deployment.Id,
-                                    cancellationToken)
-                            match projectionResult.Value with
-                            | :? ManagedSecretUnavailable ->
+                            let! ingressFailure =
+                                ensureApplyIngress deployment cluster.Spec.DeploymentMode cancellationToken
+                            match ingressFailure with
+                            | Some(code, message) ->
                                 return ResourceDeploymentAdapterResult.Failed.Create(
-                                    "PostgresSecretProjectionUnavailable",
-                                    "The managed credential projection is not ready.",
+                                    code,
+                                    message,
                                     true) :> ResourceDeploymentAdapterResult
-                            | :? SecretProjectionReference as projection ->
-                                let storage = deployment.Placement.Storage
-                                let metadata =
-                                    { DeploymentId = deployment.Id
-                                      IsolationScopeId = deployment.IsolationScopeId
-                                      RuntimeCellId = deployment.RuntimeCellId
-                                      DeploymentTargetId = deployment.Placement.DeploymentTargetId
-                                      Generation = deployment.DesiredGeneration }
-                                let! kubernetes =
-                                    kubernetesClientProvider.GetAsync(
-                                        deployment.Placement.DeploymentTargetId,
+                            | None ->
+                                let! projectionResult =
+                                    ensureProjection.Invoke(
+                                        deployment.TenantId,
+                                        PostgresManagedSecret.owner cluster.Id,
+                                        deployment.Id,
                                         cancellationToken)
-                                let! projectedCredentials =
-                                    task {
-                                        match cluster.Spec.DeploymentMode with
-                                        | PostgresDeploymentMode.StatefulSet ->
-                                            return Ok(StatefulSetCredentials projection)
-                                        | PostgresDeploymentMode.Operator ->
-                                            let! username = readCredentialKey.Invoke(
-                                                deployment.TenantId,
-                                                PostgresManagedSecret.owner cluster.Id,
-                                                PostgresManagedSecret.usernameKey,
-                                                cancellationToken)
-                                            return
-                                                match username.Value with
-                                                | :? ManagedSecretKey as key ->
-                                                    Ok(OperatorCredentials(key.Value, projection))
-                                                | :? ManagedSecretFailure ->
-                                                    Error()
-                                                | _ -> invalidOp "Unexpected managed Secret key outcome."
-                                        | mode ->
-                                            return invalidOp $"Unsupported PostgreSQL deployment mode '{mode}'."
-                                    }
-                                match projectedCredentials with
-                                | Error _ ->
+                                match projectionResult.Value with
+                                | :? ManagedSecretUnavailable ->
                                     return ResourceDeploymentAdapterResult.Failed.Create(
-                                        "PostgresCredentialUnavailable",
-                                        "The managed PostgreSQL username is unavailable.",
+                                        "PostgresSecretProjectionUnavailable",
+                                        "The managed credential projection is not ready.",
                                         true) :> ResourceDeploymentAdapterResult
-                                | Ok credentials ->
-                                    do!
-                                        deploymentManager.ApplyAsync(
-                                            kubernetes,
-                                            cluster,
-                                            credentials,
-                                            deployment.Placement.KubernetesNamespace,
-                                            storage.StorageClassName,
-                                            PostgresResourceDeploymentMappings.kubernetesCompute
-                                                deployment.Placement.Compute,
-                                            metadata,
+                                | :? SecretProjectionReference as projection ->
+                                    let storage = deployment.Placement.Storage
+                                    let metadata =
+                                        { DeploymentId = deployment.Id
+                                          IsolationScopeId = deployment.IsolationScopeId
+                                          RuntimeCellId = deployment.RuntimeCellId
+                                          DeploymentTargetId = deployment.Placement.DeploymentTargetId
+                                          Generation = deployment.DesiredGeneration }
+                                    let! kubernetes =
+                                        kubernetesClientProvider.GetAsync(
+                                            deployment.Placement.DeploymentTargetId,
                                             cancellationToken)
-                                    let host =
-                                        $"{PostgresClusterKubernetesBuilder.buildReadWriteServiceName cluster.Id}.{deployment.Placement.KubernetesNamespace}.svc.cluster.local"
-                                    return
-                                        ResourceDeploymentAdapterResult.Succeeded.Create(
-                                            [ ResourceDeploymentEndpointDto.Create(
-                                                  "PostgreSql",
-                                                  host,
-                                                  5432,
-                                                  "postgresql") ])
-                                        :> ResourceDeploymentAdapterResult
+                                    let! projectedCredentials =
+                                        task {
+                                            match cluster.Spec.DeploymentMode with
+                                            | PostgresDeploymentMode.StatefulSet ->
+                                                return Ok(StatefulSetCredentials projection)
+                                            | PostgresDeploymentMode.Operator ->
+                                                let! username = readCredentialKey.Invoke(
+                                                    deployment.TenantId,
+                                                    PostgresManagedSecret.owner cluster.Id,
+                                                    PostgresManagedSecret.usernameKey,
+                                                    cancellationToken)
+                                                return
+                                                    match username.Value with
+                                                    | :? ManagedSecretKey as key ->
+                                                        Ok(OperatorCredentials(key.Value, projection))
+                                                    | :? ManagedSecretFailure ->
+                                                        Error()
+                                                    | _ -> invalidOp "Unexpected managed Secret key outcome."
+                                            | mode ->
+                                                return invalidOp $"Unsupported PostgreSQL deployment mode '{mode}'."
+                                        }
+                                    match projectedCredentials with
+                                    | Error _ ->
+                                        return ResourceDeploymentAdapterResult.Failed.Create(
+                                            "PostgresCredentialUnavailable",
+                                            "The managed PostgreSQL username is unavailable.",
+                                            true) :> ResourceDeploymentAdapterResult
+                                    | Ok credentials ->
+                                        do!
+                                            deploymentManager.ApplyAsync(
+                                                kubernetes,
+                                                cluster,
+                                                credentials,
+                                                deployment.Placement.KubernetesNamespace,
+                                                storage.StorageClassName,
+                                                PostgresResourceDeploymentMappings.kubernetesCompute
+                                                    deployment.Placement.Compute,
+                                                metadata,
+                                                cancellationToken)
+                                        let host =
+                                            $"{PostgresClusterKubernetesBuilder.buildReadWriteServiceName cluster.Id}.{deployment.Placement.KubernetesNamespace}.svc.cluster.local"
+                                        return
+                                            ResourceDeploymentAdapterResult.Succeeded.Create(
+                                                [ ResourceDeploymentEndpointDto.Create(
+                                                      "PostgreSql",
+                                                      host,
+                                                      5432,
+                                                      "postgresql") ])
+                                            :> ResourceDeploymentAdapterResult
 
-                            | _ -> return invalidOp "Unexpected managed Secret projection outcome."
+                                | _ -> return invalidOp "Unexpected managed Secret projection outcome."
 
             }
 
@@ -149,37 +219,44 @@ type PostgresResourceDeploymentAdapter(
                 | Some failure -> return failure :> ResourceDeploymentAdapterResult
                 | None ->
                     let deployment = context.Deployment
-                    let! cluster =
-                        loadCluster.Invoke(
-                            deployment.TenantId,
-                            deployment.ResourceId,
-                            cancellationToken)
-
-                    match cluster with
+                    let! ingressFailure = ensureDeleteIngress deployment cancellationToken
+                    match ingressFailure with
+                    | Some(code, message) ->
+                        return ResourceDeploymentAdapterResult.Failed.Create(
+                            code,
+                            message,
+                            true) :> ResourceDeploymentAdapterResult
                     | None ->
-                        return
-                            ResourceDeploymentAdapterResult.Failed.Create(
-                                "PostgresClusterNotFound",
-                                "The logical PostgreSQL cluster no longer exists.",
-                                false)
-                            :> ResourceDeploymentAdapterResult
-                    | Some cluster ->
-                        let! kubernetes =
-                            kubernetesClientProvider.GetAsync(
-                                deployment.Placement.DeploymentTargetId,
+                        let! cluster =
+                            loadCluster.Invoke(
+                                deployment.TenantId,
+                                deployment.ResourceId,
                                 cancellationToken)
 
-                        do!
-                            deploymentManager.DeleteAsync(
-                                kubernetes,
-                                cluster.Id,
-                                deployment.Placement.KubernetesNamespace,
-                                cluster.Spec.DeploymentMode,
-                                cancellationToken)
+                        match cluster with
+                        | None ->
+                            return
+                                ResourceDeploymentAdapterResult.Failed.Create(
+                                    "PostgresClusterNotFound",
+                                    "The logical PostgreSQL cluster no longer exists.",
+                                    false)
+                                :> ResourceDeploymentAdapterResult
+                        | Some cluster ->
+                            let! kubernetes =
+                                kubernetesClientProvider.GetAsync(
+                                    deployment.Placement.DeploymentTargetId,
+                                    cancellationToken)
 
-                        return
-                            ResourceDeploymentAdapterResult.Succeeded.Create()
-                            :> ResourceDeploymentAdapterResult
+                            do!
+                                deploymentManager.DeleteAsync(
+                                    kubernetes,
+                                    cluster.Id,
+                                    deployment.Placement.KubernetesNamespace,
+                                    cluster.Spec.DeploymentMode,
+                                    cancellationToken)
+
+                            return ResourceDeploymentAdapterResult.Succeeded.Create()
+                                   :> ResourceDeploymentAdapterResult
             }
 
 [<AbstractClass; Sealed>]

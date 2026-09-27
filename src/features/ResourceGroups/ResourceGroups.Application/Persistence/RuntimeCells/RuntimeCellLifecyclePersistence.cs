@@ -28,7 +28,7 @@ public sealed class RuntimeCellLifecyclePersistence(
     public Task PersistReconciliationAsync(
         RuntimeCell runtimeCell,
         long generation,
-        RuntimeCellNamespaceOperationOutcome namespaceOutcome,
+        RuntimeCellEnsureOutcome namespaceOutcome,
         CancellationToken cancellationToken = default) =>
         runUnitTransaction(async (transaction, ct) =>
         {
@@ -59,8 +59,11 @@ public sealed class RuntimeCellLifecyclePersistence(
             var failed = runtimeCell.MarkFailed(
                 generation,
                 RuntimeCellOperation.Reconciliation,
-                FailureCode(namespaceOutcome),
-                "The Kubernetes namespace reconciliation attempt failed.",
+                EnsureFailureCode(namespaceOutcome),
+                namespaceOutcome is RuntimeCellNetworkPolicyOwnershipConflict
+                    or RuntimeCellNetworkPolicyUnavailable
+                    ? "The Kubernetes ingress policy could not be established for this runtime cell."
+                    : "The Kubernetes namespace reconciliation attempt failed.",
                 attemptedAtUtc,
                 attemptedAtUtc.Add(RetryDelay(generation)));
             var failureWrite = await runtimeCells.ReplaceOneAsync(
@@ -84,7 +87,7 @@ public sealed class RuntimeCellLifecyclePersistence(
     public Task<bool> PersistDeletionAsync(
         RuntimeCell runtimeCell,
         long generation,
-        RuntimeCellNamespaceOperationOutcome namespaceOutcome,
+        RuntimeCellDeleteOutcome namespaceOutcome,
         CancellationToken cancellationToken = default) =>
         runBooleanTransaction(async (transaction, ct) =>
         {
@@ -94,7 +97,7 @@ public sealed class RuntimeCellLifecyclePersistence(
                 var failed = runtimeCell.MarkFailed(
                     generation,
                     RuntimeCellOperation.Deletion,
-                    FailureCode(namespaceOutcome),
+                    DeleteFailureCode(namespaceOutcome),
                     "The Kubernetes namespace deletion attempt failed.",
                     attemptedAtUtc,
                     attemptedAtUtc.Add(RetryDelay(generation)));
@@ -139,14 +142,26 @@ public sealed class RuntimeCellLifecyclePersistence(
             return transaction.Commit(true);
         }, cancellationToken);
 
-    public static string FailureCode(RuntimeCellNamespaceOperationOutcome outcome) =>
+    public static string EnsureFailureCode(RuntimeCellEnsureOutcome outcome) =>
         outcome switch
         {
             Unit => throw new ArgumentException(
                 "A successful namespace operation has no failure code.",
                 nameof(outcome)),
             RuntimeCellNamespaceOwnershipConflict => "NamespaceOwnershipConflict",
-            RuntimeCellNamespaceUnavailable { DeletionPending: true } =>
+            RuntimeCellNamespaceUnavailable => "NamespaceOperationFailed",
+            RuntimeCellNetworkPolicyOwnershipConflict => "NetworkPolicyOwnershipConflict",
+            RuntimeCellNetworkPolicyUnavailable => "NetworkPolicyApplyFailed"
+        };
+
+    public static string DeleteFailureCode(RuntimeCellDeleteOutcome outcome) =>
+        outcome switch
+        {
+            Unit => throw new ArgumentException(
+                "A successful namespace operation has no failure code.",
+                nameof(outcome)),
+            RuntimeCellNamespaceOwnershipConflict => "NamespaceOwnershipConflict",
+            RuntimeCellNamespaceDeletionPending =>
                 "NamespaceDeletionPending",
             RuntimeCellNamespaceUnavailable => "NamespaceOperationFailed"
         };

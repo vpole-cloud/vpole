@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 
@@ -221,6 +222,14 @@ internal static class ResourceDeploymentFilters
         DateTime stalePendingBefore) =>
         Builders<ResourceDeployment>.Filter.Or(
             Builders<ResourceDeployment>.Filter.And(
+                Builders<ResourceDeployment>.Filter.OfType<ResourceDeploymentState, AppliedResourceDeploymentState>(
+                    deployment => deployment.State),
+                Builders<ResourceDeployment>.Filter.Eq(
+                    deployment => deployment.DesiredOperation, ResourceDeploymentOperation.Apply),
+                Builders<ResourceDeployment>.Filter.Lte(
+                    deployment => deployment.UpdatedAtUtc,
+                    ResourceDeploymentVerificationSchedule.DueBefore(now))),
+            Builders<ResourceDeployment>.Filter.And(
                 IsPending(),
                 Builders<ResourceDeployment>.Filter.Lte(
                     deployment => deployment.UpdatedAtUtc,
@@ -322,6 +331,9 @@ internal static class ResourceDeploymentFilters
         ResourceDeploymentState state) =>
         state switch
         {
+            AppliedResourceDeploymentState =>
+                Builders<ResourceDeployment>.Filter.OfType<ResourceDeploymentState, AppliedResourceDeploymentState>(
+                    deployment => deployment.State),
             WaitingForRuntimeCellResourceDeploymentState => IsWaitingForRuntimeCell(),
             PendingResourceDeploymentState => IsPending(),
             ReconcilingResourceDeploymentState reconciling =>

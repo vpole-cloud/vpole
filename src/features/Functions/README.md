@@ -36,6 +36,12 @@ The current implementation is experimental and API contracts may still change.
 5. After the revision becomes ready, Pole promotes it atomically and starts routing HTTP and timer
    invocations to it.
 
+The target must have an explicit `FunctionGateway` network source. Before a Function revision
+is provisioned, the ResourceDeployment writer installs an ingress policy allowing only that
+source to the Function Agent pod port 8080. The shared RuntimeCell deny baseline is rechecked
+before revision apply and replica increases. A missing source or failed policy write leaves the
+revision retryable; deletion and replica reductions remain available.
+
 A minimal user application looks like this:
 
 ```csharp

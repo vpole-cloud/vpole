@@ -78,6 +78,11 @@ validation as though the revision were new.
 
 If provisioning fails, Pole first attempts to return a provisioning or ready revision to zero, then
 stores `failed` and updates the app. A failed revision is never routable.
+When the target's configured Function gateway source is temporarily absent, manifest apply or
+positive scaling defers the pending revision without marking it failed. The resource deployment's
+retry or periodic verification emits an applied event after the source is restored; the Function
+consumer then resumes only the app's current pending revision at its current applied deployment
+generation. Deleting apps and stale applied events do not restart provisioning.
 
 ## Promotion
 

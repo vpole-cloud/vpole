@@ -44,7 +44,8 @@ public static class TestData
             Spec: ValidWebServiceSpec(),
             Placement: new WebServicePlacementRequest(null,
                 [new WebServiceDeploymentTargetRequest(DefaultDeploymentTargetId, 2)]),
-            Tags: ImmutableHashSet<string>.Empty),
+            Tags: ImmutableHashSet<string>.Empty,
+            Exposure: WebServiceExposureMode.Public),
             tenantId,
             new ClaimValue<string>(UserId),
             new ClaimValue<string>(UserEmail));

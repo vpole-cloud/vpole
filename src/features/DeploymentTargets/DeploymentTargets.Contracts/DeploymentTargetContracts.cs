@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+using System.Text.Json.Serialization;
 using k8s;
 using MongoDB.Driver;
 using Pole.Workloads;
@@ -71,7 +73,24 @@ public sealed record DeploymentTargetLookupDto(
 
 public sealed record DeploymentTargetWorkloadConfigurationLookupDto(
     long Revision,
-    DeploymentTargetIngressConfigurationLookupDto? Ingress);
+    DeploymentTargetIngressConfigurationLookupDto? Ingress,
+    DeploymentTargetNetworkSourcesDto NetworkSources);
+
+public sealed record DeploymentTargetNetworkSourcesDto(
+    DeploymentTargetNetworkSourceDto? PublicIngress,
+    DeploymentTargetNetworkSourceDto? FunctionGateway,
+    DeploymentTargetNetworkSourceDto? PostgresOperator);
+
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonDerivedType(typeof(DeploymentTargetPodNetworkSourceDto), "Pod")]
+[JsonDerivedType(typeof(DeploymentTargetCidrNetworkSourceDto), "Cidr")]
+public abstract record DeploymentTargetNetworkSourceDto;
+
+public sealed record DeploymentTargetPodNetworkSourceDto(
+    string Namespace,
+    ImmutableDictionary<string, string> PodLabels) : DeploymentTargetNetworkSourceDto;
+
+public sealed record DeploymentTargetCidrNetworkSourceDto(string Cidr) : DeploymentTargetNetworkSourceDto;
 
 public sealed record DeploymentTargetIngressConfigurationLookupDto(
     string IngressClassName,
@@ -121,7 +140,8 @@ public sealed record DeploymentTargetPublicIngressDto(
     long WorkloadConfigurationRevision,
     string IngressClassName,
     string ClusterIssuerName,
-    string PublicBaseDomain);
+    string PublicBaseDomain,
+    DeploymentTargetNetworkSourceDto Source);
 
 public sealed record DeploymentTargetNotFound(string DeploymentTargetId);
 

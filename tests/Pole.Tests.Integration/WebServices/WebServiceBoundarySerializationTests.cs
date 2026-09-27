@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using MongoDB.Bson;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
 using Pole.Tests.Integration.Infrastructure;
@@ -13,6 +14,40 @@ namespace Pole.Tests.Integration.WebServices;
 
 public sealed class WebServiceBoundarySerializationTests
 {
+    [Fact]
+    public void CreateRequest_OmittedExposureDefaultsPrivate_AndNumericEnumsAreRejected()
+    {
+        var webJsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var omitted = JsonSerializer.Deserialize<CreateWebServiceRequestBody>("{}", webJsonOptions);
+
+        Assert.NotNull(omitted);
+        Assert.Equal(WebServiceExposureMode.Private, omitted.Exposure);
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<CreateWebServiceRequestBody>(
+            "{\"exposure\":1}", webJsonOptions));
+    }
+
+    [Fact]
+    public void CreateRequest_PublicValidationSafelyRejectsMissingSpecAndNonTcpRoute()
+    {
+        var validator = new CreateWebServiceRequestBodyValidator();
+        var missingSpec = new CreateWebServiceRequestBody(
+            "api", "507f1f77bcf86cd799439011", null!, null!, ImmutableHashSet<string>.Empty,
+            WebServiceExposureMode.Public);
+        var nonTcpRoute = missingSpec with
+        {
+            Spec = TestData.ValidWebServiceSpec() with
+            {
+                Config = TestData.ValidWebServiceSpec().Config with
+                {
+                    PortMappings = [new PortMappingDto(80, "8080", "UDP", "http")]
+                }
+            }
+        };
+
+        Assert.False(validator.Validate(missingSpec).IsValid);
+        Assert.False(validator.Validate(nonTcpRoute).IsValid);
+    }
+
     [Fact]
     public void EventOwnedSnapshots_PreserveThePublishedJsonShape()
     {
@@ -24,7 +59,7 @@ public sealed class WebServiceBoundarySerializationTests
             "isolation-scope-1",
             1,
             spec,
-            new WebServiceExposureSnapshot("api"),
+            new WebServiceExposureSnapshot("Public", "api"),
             ImmutableHashSet.Create("production"),
             [new WebServiceDesiredDeploymentSnapshot(
                 "deployment-1",
@@ -51,6 +86,7 @@ public sealed class WebServiceBoundarySerializationTests
         Assert.Equal(
             "api.example.com",
             root.GetProperty("deployments")[0].GetProperty("hostnames")[0].GetString());
+        Assert.Equal("Public", root.GetProperty("exposure").GetProperty("mode").GetString());
         var startup = root
             .GetProperty("spec")
             .GetProperty("probes")
@@ -96,7 +132,8 @@ public sealed class WebServiceBoundarySerializationTests
             "correlation-1",
             new WebServiceReleaseFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
-                new DateTime(2026, 8, 9, 10, 0, 0, DateTimeKind.Utc)));
+                new DateTime(2026, 8, 9, 10, 0, 0, DateTimeKind.Utc)),
+            WebServiceExposure.Create(WebServiceExposureMode.Public));
 
         var document = release.ToBsonDocument();
         var spec = document["Spec"].AsBsonDocument;

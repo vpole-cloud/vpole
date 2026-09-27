@@ -24,6 +24,12 @@ instance count. Native StatefulSet deployments support the complete scheduling s
 CloudNativePG supports resources, node selection, affinity, and tolerations; because its Cluster
 API does not support runtime class, an incompatible operator-mode request is rejected explicitly.
 
+The RuntimeCell baseline denies ingress before a PostgreSQL workload starts. Each deployment
+gets a replication policy limited to pods with the same tenant, resource, and deployment IDs on
+TCP 5432. CloudNativePG mode also requires an explicit target `PostgresOperator` network source
+and grants that source TCP 5432 and 8000. Missing operator identity or a failed policy write
+blocks reconciliation with a retryable status; Pole does not open an entire platform namespace.
+
 ## Persistence and reconciliation
 
 Mongo persistence and outbox events remain feature-owned. Kubernetes reconciliation routes every

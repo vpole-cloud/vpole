@@ -115,6 +115,7 @@ public sealed class WebServiceSourceBuildDeploymentService(
                 new WebServiceReleaseFactory.CreateOptions(
                     MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
                     timeProvider.GetUtcNow().UtcDateTime),
+                updatedWebService.Exposure,
                 new SourceBuildReleaseProvenance(
                     request.BuildJobId,
                     request.SourceRepositoryId,

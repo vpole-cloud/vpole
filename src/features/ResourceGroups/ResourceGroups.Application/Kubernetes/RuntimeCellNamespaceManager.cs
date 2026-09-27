@@ -10,20 +10,32 @@ namespace Pole.Features.ResourceGroups.Application.Kubernetes;
 
 public sealed record RuntimeCellNamespaceOwnershipConflict(string KubernetesNamespace);
 
-public sealed record RuntimeCellNamespaceUnavailable(
-    string KubernetesNamespace,
-    bool DeletionPending = false);
+public sealed record RuntimeCellNamespaceUnavailable(string KubernetesNamespace);
 
-public union RuntimeCellNamespaceOperationOutcome(
+public sealed record RuntimeCellNamespaceDeletionPending(string KubernetesNamespace);
+
+public sealed record RuntimeCellNetworkPolicyOwnershipConflict(string KubernetesNamespace);
+
+public sealed record RuntimeCellNetworkPolicyUnavailable(string KubernetesNamespace);
+
+public union RuntimeCellEnsureOutcome(
     Unit,
     RuntimeCellNamespaceOwnershipConflict,
-    RuntimeCellNamespaceUnavailable);
+    RuntimeCellNamespaceUnavailable,
+    RuntimeCellNetworkPolicyOwnershipConflict,
+    RuntimeCellNetworkPolicyUnavailable);
 
-public delegate Task<RuntimeCellNamespaceOperationOutcome> EnsureRuntimeCellNamespace(
+public union RuntimeCellDeleteOutcome(
+    Unit,
+    RuntimeCellNamespaceOwnershipConflict,
+    RuntimeCellNamespaceUnavailable,
+    RuntimeCellNamespaceDeletionPending);
+
+public delegate Task<RuntimeCellEnsureOutcome> EnsureRuntimeCellNamespace(
     RuntimeCell runtimeCell,
     CancellationToken cancellationToken = default);
 
-public delegate Task<RuntimeCellNamespaceOperationOutcome> DeleteRuntimeCellNamespace(
+public delegate Task<RuntimeCellDeleteOutcome> DeleteRuntimeCellNamespace(
     RuntimeCell runtimeCell,
     CancellationToken cancellationToken = default);
 
@@ -31,7 +43,7 @@ public sealed class KubernetesRuntimeCellNamespaceManager(
     IKubernetesClientProvider kubernetesClientProvider,
     KubernetesOptions? kubernetesOptions = null)
 {
-    public async Task<RuntimeCellNamespaceOperationOutcome> EnsureCreatedAsync(
+    public async Task<RuntimeCellEnsureOutcome> EnsureCreatedAsync(
         RuntimeCell runtimeCell,
         CancellationToken cancellationToken = default)
     {
@@ -49,7 +61,6 @@ public sealed class KubernetesRuntimeCellNamespaceManager(
                         runtimeCell,
                         kubernetesOptions?.AdditionalNamespaceLabels),
                     cancellationToken: cancellationToken);
-                return Unit.Value;
             }
             catch (HttpOperationException exception)
                 when (exception.Response?.StatusCode == HttpStatusCode.Conflict)
@@ -57,10 +68,11 @@ public sealed class KubernetesRuntimeCellNamespaceManager(
                 var existing = await kubernetes.CoreV1.ReadNamespaceAsync(
                     runtimeCell.KubernetesNamespace,
                     cancellationToken: cancellationToken);
-                return HasExpectedOwnership(existing, runtimeCell)
-                    ? Unit.Value
-                    : OwnershipConflict(runtimeCell.KubernetesNamespace);
+                if (!HasExpectedOwnership(existing, runtimeCell))
+                    return OwnershipConflict(runtimeCell.KubernetesNamespace);
             }
+
+            return await EnsureNetworkPolicyAsync(kubernetes, runtimeCell, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -76,7 +88,52 @@ public sealed class KubernetesRuntimeCellNamespaceManager(
         }
     }
 
-    public async Task<RuntimeCellNamespaceOperationOutcome> DeleteAsync(
+    private static async Task<RuntimeCellEnsureOutcome> EnsureNetworkPolicyAsync(
+        IKubernetes kubernetes,
+        RuntimeCell runtimeCell,
+        CancellationToken cancellationToken)
+    {
+        var desired = RuntimeCellNetworkPolicyManifestBuilder.Build(runtimeCell);
+        try
+        {
+            try
+            {
+                await kubernetes.NetworkingV1.CreateNamespacedNetworkPolicyAsync(
+                    desired,
+                    runtimeCell.KubernetesNamespace,
+                    cancellationToken: cancellationToken);
+                return Unit.Value;
+            }
+            catch (HttpOperationException exception)
+                when (exception.Response?.StatusCode == HttpStatusCode.Conflict)
+            {
+                var existing = await kubernetes.NetworkingV1.ReadNamespacedNetworkPolicyAsync(
+                    RuntimeCellNetworkPolicyManifestBuilder.Name,
+                    runtimeCell.KubernetesNamespace,
+                    cancellationToken: cancellationToken);
+                if (!HasExpectedOwnership(existing.Metadata?.Labels, runtimeCell))
+                    return new RuntimeCellNetworkPolicyOwnershipConflict(runtimeCell.KubernetesNamespace);
+
+                desired.Metadata.ResourceVersion = existing.Metadata!.ResourceVersion;
+                await kubernetes.NetworkingV1.ReplaceNamespacedNetworkPolicyAsync(
+                    desired,
+                    RuntimeCellNetworkPolicyManifestBuilder.Name,
+                    runtimeCell.KubernetesNamespace,
+                    cancellationToken: cancellationToken);
+                return Unit.Value;
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (HttpOperationException)
+        {
+            return new RuntimeCellNetworkPolicyUnavailable(runtimeCell.KubernetesNamespace);
+        }
+    }
+
+    public async Task<RuntimeCellDeleteOutcome> DeleteAsync(
         RuntimeCell runtimeCell,
         CancellationToken cancellationToken = default)
     {
@@ -148,7 +205,13 @@ public sealed class KubernetesRuntimeCellNamespaceManager(
         V1Namespace existing,
         RuntimeCell runtimeCell)
     {
-        var labels = existing.Metadata?.Labels;
+        return HasExpectedOwnership(existing.Metadata?.Labels, runtimeCell);
+    }
+
+    private static bool HasExpectedOwnership(
+        IDictionary<string, string>? labels,
+        RuntimeCell runtimeCell)
+    {
         if (labels is null)
             return false;
 
@@ -165,8 +228,8 @@ public sealed class KubernetesRuntimeCellNamespaceManager(
     private static RuntimeCellNamespaceUnavailable KubernetesFailure(string namespaceName) =>
         new(namespaceName);
 
-    private static RuntimeCellNamespaceUnavailable DeletionPending(string namespaceName) =>
-        new(namespaceName, DeletionPending: true);
+    private static RuntimeCellNamespaceDeletionPending DeletionPending(string namespaceName) =>
+        new(namespaceName);
 
     private static RuntimeCellNamespaceUnavailable DeploymentTargetFailure(
         string namespaceName) =>

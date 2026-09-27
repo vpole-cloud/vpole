@@ -18,7 +18,7 @@ interface WebServiceFormProps {
   computeProfilesByTarget: Record<string, AvailableComputeProfile[]>
   submitStatus: 'idle' | 'loading' | 'success' | 'error'
   submitError?: string
-  onLoadTargets: (isolationScopeId?: string) => Promise<AvailableDeploymentTarget[]>
+  onLoadTargets: (isolationScopeId?: string, requiresPublicIngress?: boolean, signal?: AbortSignal) => Promise<AvailableDeploymentTarget[]>
   onLoadComputeProfiles: (deploymentTargetId: string) => Promise<AvailableComputeProfile[]>
   onSubmit: (input: WebServiceInput) => Promise<void>
   onCancelEdit?: () => void
@@ -64,6 +64,7 @@ export function WebServiceForm({
     initialValue?.resourceGroupId ?? resourceGroups[0]?.id ?? '',
   )
   const [isolationScopeId, setIsolationScopeId] = useState(initialValue?.isolationScopeId ?? '')
+  const [exposure, setExposure] = useState<'Private' | 'Public'>(initialValue?.exposure.mode ?? 'Private')
   const [imageServer, setImageServer] = useState(initialValue?.spec.image.server ?? '')
   const [imageName, setImageName] = useState(initialValue?.spec.image.name ?? '')
   const [imageTag, setImageTag] = useState(initialValue?.spec.image.tag ?? 'latest')
@@ -99,8 +100,14 @@ export function WebServiceForm({
     if (mode !== 'create') {
       return
     }
-    void onLoadTargets(isolationScopeId.trim() || undefined)
-  }, [isolationScopeId, mode, onLoadTargets])
+    const controller = new AbortController()
+    void onLoadTargets(
+      isolationScopeId.trim() || undefined,
+      exposure === 'Public',
+      controller.signal,
+    )
+    return () => controller.abort()
+  }, [exposure, isolationScopeId, mode, onLoadTargets])
 
   const setTargetSelected = (targetId: string, selected: boolean) => {
     if (selected) void onLoadComputeProfiles(targetId)
@@ -145,6 +152,7 @@ export function WebServiceForm({
     setValidationError('')
     await onSubmit({
       name: name.trim(),
+      exposure,
       resourceGroupId,
       isolationScopeId: isolationScopeId.trim() || undefined,
       imageServer: imageServer.trim(),
@@ -201,12 +209,21 @@ export function WebServiceForm({
           <label className="field"><span className="field__label">Tag</span><input className="field__control" value={imageTag} onChange={(event) => setImageTag(event.target.value)} placeholder="latest" /></label>
         </div>
 
+        <label className="field">
+          <span className="field__label">Exposure</span>
+          <select className="field__control" value={exposure} onChange={(event) => setExposure(event.target.value as 'Private' | 'Public')}>
+            <option value="Private">Private</option>
+            <option value="Public">Public</option>
+          </select>
+          <span className="field__hint">Private services have no public ingress; resource-to-resource access requires declared connections. Public services receive generated hostnames.</span>
+        </label>
+
         {mode === 'create' && (
           <section className="form-message" aria-label="Deployment placement">
             <strong>Deployment targets</strong>
-            {targetsStatus === 'loading' && <p>Loading targets that accept public workloads…</p>}
+            {targetsStatus === 'loading' && <p>Loading eligible deployment targets…</p>}
             {targetsStatus === 'error' && <p>{targetsError || 'Unable to load eligible targets.'}</p>}
-            {targetsStatus === 'success' && availableTargets.length === 0 && <p>No eligible target is available. A target needs workload admission and a public ingress base domain.</p>}
+            {targetsStatus === 'success' && availableTargets.length === 0 && <p>No eligible target is available. A target needs workload admission{exposure === 'Public' ? ' and a public ingress base domain' : ''}.</p>}
             {exactlyOneTarget && availableTargets[0] && (
               <p>{availableTargets[0].displayName} is selected automatically. <button className="button" type="button" onClick={() => setShowAdvancedTargets((current) => !current)}>Placement options</button></p>
             )}
@@ -217,7 +234,7 @@ export function WebServiceForm({
                 <div className="form-grid" key={target.id}>
                   <label className="field">
                     <span className="field__label"><input type="checkbox" checked={Boolean(selected)} onChange={(event) => setTargetSelected(target.id, event.target.checked)} /> {target.displayName}</span>
-                    <span className="field__hint">Generated hostname: ….{target.publicBaseDomain ?? 'no base domain'}</span>
+                    {exposure === 'Public' && <span className="field__hint">Generated hostname: ….{target.publicBaseDomain ?? 'no base domain'}</span>}
                   </label>
                   {selected && <>
                     <label className="field"><span className="field__label">Fixed replicas</span><input className="field__control" type="number" min="1" max="1000" value={selected.fixedReplicas} onChange={(event) => updateTarget(target.id, { fixedReplicas: Number(event.target.value) })} /></label>

@@ -32,12 +32,14 @@
       <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
       <ProjectReference Include="..\..\..\shared\Validation\Validation.csproj" />
       <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj" />
+      <ProjectReference Include="..\..\..\shared\Kubernetes\Kubernetes.csproj" />
     </ItemGroup>
 
     <ItemGroup>
       <PackageReference Include="FluentValidation" />
       <PackageReference Include="Hangfire.Core" />
       <PackageReference Include="MassTransit" />
+      <PackageReference Include="KubernetesClient" />
     </ItemGroup>
 
 </Project>

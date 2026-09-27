@@ -16,6 +16,7 @@ using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Application.Endpoints.Deployments;
 using Pole.Features.WebServices.Application.Endpoints.Deployments.Hostnames;
+using Pole.Features.WebServices.Application.Endpoints.Releases;
 using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Application.Persistence.Mutations;
 using Pole.Features.WebServices.Application.Persistence.Tokens;
@@ -54,6 +55,7 @@ public static class WebServiceHttpMappings
     {
         AddWebServiceDeploymentStateError state => MapStateError(state),
         DeploymentTargetPublicIngressAdmissionError target => DeploymentTargetContractHttpMappings.MapPublicIngressAdmissionError(target),
+        DeploymentTargetNewWorkloadAdmissionError target => DeploymentTargetContractHttpMappings.MapNewWorkloadAdmissionError(target),
         ComputeProfileResolutionError compute => ComputeProfileContractHttpMappings.MapResolutionError(compute),
         GeneratedDomainZoneError zone => DomainContractHttpMappings.MapGeneratedZoneError(zone),
         GeneratedHostnameBindingError binding => DomainContractHttpMappings.MapGeneratedBindingError(binding),
@@ -66,6 +68,9 @@ public static class WebServiceHttpMappings
     public static HttpProblem MapError(UpdateWebServiceError error) => error switch
     {
         WebServiceLifecycleMutationStateError state => MapLifecycleMutationStateError(state),
+        DeploymentTargetPublicIngressAdmissionError target => DeploymentTargetContractHttpMappings.MapPublicIngressAdmissionError(target),
+        GeneratedDomainZoneError zone => DomainContractHttpMappings.MapGeneratedZoneError(zone),
+        GeneratedHostnameBindingError binding => DomainContractHttpMappings.MapGeneratedBindingError(binding),
         ResourceDeploymentMutationError deployment => ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
         AdvanceResourceDeploymentRevisionError revision => ResourceDeploymentContractHttpMappings.MapRevisionError(revision),
         WebServiceUpdateConflict conflict => MapError(conflict),
@@ -95,6 +100,15 @@ public static class WebServiceHttpMappings
         WebServiceUpdateConflict conflict => MapError(conflict),
         QuotaExecutionError quota => QuotaContractHttpMappings.MapExecutionError(quota)
     };
+
+    public static HttpProblem MapRollbackWebServicePublicSpecIncompatible(
+        RollbackWebServicePublicSpecIncompatible incompatible) =>
+        Problem(
+            HttpStatusCode.UnprocessableEntity,
+            "web-services.rollback.public-spec-incompatible",
+            "The historical web service specification cannot serve public ingress",
+            ("webServiceId", incompatible.WebServiceId),
+            ("targetRevision", incompatible.TargetRevision));
 
     public static HttpProblem MapError(UpdateWebServiceImageTagError error) => error switch
     {
@@ -133,6 +147,11 @@ public static class WebServiceHttpMappings
     public static HttpProblem MapError(WebServiceDeploymentHostnameError error) => error switch
     {
         WebServiceDeploymentMutationStateError state => MapDeploymentMutationStateError(state),
+        WebServiceHostnameAttachmentUnavailable unavailable => Problem(
+            HttpStatusCode.Conflict,
+            "web-services.private-hostname-unavailable",
+            "Custom hostnames require public web-service exposure",
+            ("webServiceId", unavailable.WebServiceId)),
         CustomHostnameBindingError hostname => DomainContractHttpMappings.MapCustomHostnameBindingError(hostname),
         ResourceDeploymentMutationError deployment => ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
         AdvanceResourceDeploymentRevisionError revision => ResourceDeploymentContractHttpMappings.MapRevisionError(revision),
@@ -339,6 +358,10 @@ public static class WebServiceHttpMappings
     private static HttpProblem MapCreatePlacementError(
         CreateWebServicePlacementError error) => error switch
         {
+            NoDeploymentTargetAcceptsWorkloads => Problem(
+                HttpStatusCode.Conflict,
+                "deployment-targets.no-workload-target",
+                "No deployment target accepts web-service workloads"),
             NoDeploymentTargetAcceptsPublicWorkloads => Problem(
                 HttpStatusCode.Conflict,
                 "deployment-targets.no-public-workload-target",

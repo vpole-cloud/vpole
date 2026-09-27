@@ -1,10 +1,29 @@
 using FluentValidation;
+using System.Text.Json.Serialization;
 using Pole.Features.DeploymentTargets.Domain;
 
 namespace Pole.Features.DeploymentTargets.Application.Endpoints;
 
 public sealed record DeploymentTargetWorkloadConfigurationRequestBody(
-    DeploymentTargetIngressConfigurationRequestBody? Ingress);
+    DeploymentTargetIngressConfigurationRequestBody? Ingress,
+    DeploymentTargetNetworkSourcesRequestBody NetworkSources);
+
+public sealed record DeploymentTargetNetworkSourcesRequestBody(
+    DeploymentTargetNetworkSourceRequestBody? PublicIngress,
+    DeploymentTargetNetworkSourceRequestBody? FunctionGateway,
+    DeploymentTargetNetworkSourceRequestBody? PostgresOperator);
+
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonDerivedType(typeof(DeploymentTargetPodNetworkSourceRequestBody), "Pod")]
+[JsonDerivedType(typeof(DeploymentTargetCidrNetworkSourceRequestBody), "Cidr")]
+public abstract record DeploymentTargetNetworkSourceRequestBody;
+
+public sealed record DeploymentTargetPodNetworkSourceRequestBody(
+    string Namespace,
+    Dictionary<string, string> PodLabels) : DeploymentTargetNetworkSourceRequestBody;
+
+public sealed record DeploymentTargetCidrNetworkSourceRequestBody(string Cidr)
+    : DeploymentTargetNetworkSourceRequestBody;
 
 public sealed record DeploymentTargetIngressConfigurationRequestBody(
     string IngressClassName,
@@ -16,10 +35,61 @@ public sealed class DeploymentTargetWorkloadConfigurationRequestBodyValidator
 {
     public DeploymentTargetWorkloadConfigurationRequestBodyValidator()
     {
+        RuleFor(body => body.NetworkSources)
+            .NotNull()
+            .SetValidator(new DeploymentTargetNetworkSourcesRequestBodyValidator());
         When(
             body => body.Ingress is not null,
             () => RuleFor(body => body.Ingress!)
                 .SetValidator(new DeploymentTargetIngressConfigurationRequestBodyValidator()));
+    }
+}
+
+public sealed class DeploymentTargetNetworkSourcesRequestBodyValidator
+    : AbstractValidator<DeploymentTargetNetworkSourcesRequestBody>
+{
+    public DeploymentTargetNetworkSourcesRequestBodyValidator()
+    {
+        RuleFor(body => body.PublicIngress).SetInheritanceValidator(validator =>
+        {
+            validator.Add(new DeploymentTargetPodNetworkSourceRequestBodyValidator());
+            validator.Add(new DeploymentTargetCidrNetworkSourceRequestBodyValidator());
+        });
+        RuleFor(body => body.FunctionGateway).SetInheritanceValidator(validator =>
+        {
+            validator.Add(new DeploymentTargetPodNetworkSourceRequestBodyValidator());
+            validator.Add(new DeploymentTargetCidrNetworkSourceRequestBodyValidator());
+        });
+        RuleFor(body => body.PostgresOperator).SetInheritanceValidator(validator =>
+        {
+            validator.Add(new DeploymentTargetPodNetworkSourceRequestBodyValidator());
+            validator.Add(new DeploymentTargetCidrNetworkSourceRequestBodyValidator());
+        });
+    }
+}
+
+public sealed class DeploymentTargetPodNetworkSourceRequestBodyValidator
+    : AbstractValidator<DeploymentTargetPodNetworkSourceRequestBody>
+{
+    public DeploymentTargetPodNetworkSourceRequestBodyValidator()
+    {
+        RuleFor(body => body.Namespace)
+            .Must(DeploymentTargetPodNetworkSource.IsValidNamespace)
+            .WithMessage("Source namespace must be a Kubernetes DNS label.");
+        RuleFor(body => body.PodLabels)
+            .Must(DeploymentTargetPodNetworkSource.IsValid)
+            .WithMessage("Source pod labels must be nonempty valid Kubernetes labels.");
+    }
+}
+
+public sealed class DeploymentTargetCidrNetworkSourceRequestBodyValidator
+    : AbstractValidator<DeploymentTargetCidrNetworkSourceRequestBody>
+{
+    public DeploymentTargetCidrNetworkSourceRequestBodyValidator()
+    {
+        RuleFor(body => body.Cidr)
+            .Must(DeploymentTargetCidrNetworkSource.IsValid)
+            .WithMessage("Source CIDR must be a bounded IP network.");
     }
 }
 
@@ -49,7 +119,27 @@ public sealed class DeploymentTargetIngressConfigurationRequestBodyValidator
 internal static class DeploymentTargetWorkloadConfigurationRequestBodyExtensions
 {
     public static DeploymentTargetWorkloadConfiguration ToDomain(
-        this DeploymentTargetWorkloadConfigurationRequestBody body) => DeploymentTargetWorkloadConfiguration.Create(body.Ingress?.ToDomain());
+        this DeploymentTargetWorkloadConfigurationRequestBody body) =>
+        DeploymentTargetWorkloadConfiguration.Create(
+            body.Ingress?.ToDomain(),
+            body.NetworkSources.ToDomain());
+
+    public static DeploymentTargetNetworkSources ToDomain(
+        this DeploymentTargetNetworkSourcesRequestBody body) =>
+        new(
+            body.PublicIngress?.ToDomain(),
+            body.FunctionGateway?.ToDomain(),
+            body.PostgresOperator?.ToDomain());
+
+    public static DeploymentTargetNetworkSource ToDomain(
+        this DeploymentTargetNetworkSourceRequestBody body) => body switch
+        {
+            DeploymentTargetPodNetworkSourceRequestBody pod => DeploymentTargetPodNetworkSource.Create(
+                pod.Namespace, pod.PodLabels),
+            DeploymentTargetCidrNetworkSourceRequestBody cidr =>
+                DeploymentTargetCidrNetworkSource.Create(cidr.Cidr),
+            _ => throw new InvalidOperationException("Unsupported network source kind.")
+        };
 
     public static DeploymentTargetIngressConfiguration ToDomain(
         this DeploymentTargetIngressConfigurationRequestBody body) => DeploymentTargetIngressConfiguration.Create(

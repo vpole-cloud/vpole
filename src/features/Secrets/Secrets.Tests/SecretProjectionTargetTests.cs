@@ -145,7 +145,7 @@ public sealed class SecretProjectionTargetTests
             collection.AddSingleton<LoadSecretById>((_, _, _) => StorageFailure is null
                 ? Task.FromResult<Secret?>(Secret) : Task.FromException<Secret?>(StorageFailure));
             collection.AddSingleton<LoadExactResourceDeploymentRuntimePlacement>((_, _, _, _, _) => Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(
-                new("deployment", "resource", "cell", "target", "namespace", 1, null!, "Pending", "Apply", "scope")));
+                new("deployment", "resource", "cell", "target", "namespace", 1, 1, null!, "Pending", "Apply", "scope")));
             services = collection.BuildServiceProvider();
         }
 
