@@ -4,10 +4,10 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using MongoDB.Bson;
-using Pole.ASP.Helpers;
 using MongoDB.Driver;
-using Pole.Features.Core.Multitenancy;
+using Pole.ASP.Helpers;
 using Pole.Features.ComputeProfiles.Domain;
+using Pole.Features.Core.Multitenancy;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
 using Pole.Features.Quotas.Contracts;
@@ -19,6 +19,7 @@ using Pole.Features.Tenants.Domain;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Domain;
+using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Pole.Tests.Integration.ResourceDeployments;
 using Xunit;
@@ -405,8 +406,10 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
 
     private async Task<WebService> InsertWebServiceAsync()
     {
-        var resourceGroupId = ObjectId.GenerateNewId().ToString();
-        var isolationScopeId = ObjectId.GenerateNewId().ToString();
+        var resourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(
+            TestData.SeedResourceGroup());
+        var resourceGroupId = resourceGroup.Id;
+        var isolationScopeId = resourceGroup.DefaultIsolationScopeId;
         var runtimeCellId = ObjectId.GenerateNewId().ToString();
         var createdAtUtc = DateTime.UtcNow.AddMinutes(-1);
         var webService = TestData.SeedWebService(resourceGroupId);
@@ -445,9 +448,36 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
             new ResourceDeploymentFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
                 createdAtUtc.AddSeconds(1)));
-        await Fixture.Database.WebServices().InsertOneAsync(webService);
-        await Fixture.DbContext.RuntimeCells.InsertOneAsync(runtimeCell);
-        await Fixture.DbContext.ResourceDeployments.InsertOneAsync(deployment);
+        await Fixture.DbContext.RunOutcomeInTransactionAsync<Unit>(
+            async (transaction, cancellationToken) =>
+            {
+                await Fixture.Database.WebServices().InsertOneAsync(
+                    transaction.Session,
+                    webService,
+                    cancellationToken: cancellationToken);
+                await Fixture.DbContext.ResourceRegistrations.InsertOneAsync(
+                    transaction.Session,
+                    ResourceRegistrationFactory.Create(
+                        webService.TenantId,
+                        resourceGroupId,
+                        WebServiceResourceDeployment.ResourceType,
+                        webService.Id,
+                        webService.Name,
+                        owningPluginId: null,
+                        new ResourceRegistrationFactory.CreateOptions(
+                            ObjectId.GenerateNewId().ToString(),
+                            createdAtUtc)),
+                    cancellationToken: cancellationToken);
+                await Fixture.DbContext.RuntimeCells.InsertOneAsync(
+                    transaction.Session,
+                    runtimeCell,
+                    cancellationToken: cancellationToken);
+                await Fixture.DbContext.ResourceDeployments.InsertOneAsync(
+                    transaction.Session,
+                    deployment,
+                    cancellationToken: cancellationToken);
+                return transaction.Commit(Unit.Value);
+            });
         return webService;
     }
 
