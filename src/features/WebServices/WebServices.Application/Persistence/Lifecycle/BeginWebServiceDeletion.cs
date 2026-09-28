@@ -40,8 +40,13 @@ internal sealed class MongoBeginWebServiceDeletion(
             return new WebServiceUpdateConflict(current.Id);
         var cascade = await cascadeConnections(
             current.TenantId, WebServiceResourceDeployment.ResourceType, current.Id, session, cancellationToken);
-        if (cascade is ResourceConnectionCascadeConflict)
-            return new WebServiceUpdateConflict(current.Id);
+        WebServiceUpdateConflict? cascadeConflict = cascade switch
+        {
+            ResourceConnectionsCascaded => null,
+            ResourceConnectionCascadeConflict => new WebServiceUpdateConflict(current.Id)
+        };
+        if (cascadeConflict is not null)
+            return cascadeConflict;
 
         var result = await webServices.ReplaceOneAsync(
             session,

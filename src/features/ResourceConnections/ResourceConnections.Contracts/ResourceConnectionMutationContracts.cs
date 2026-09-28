@@ -41,6 +41,18 @@ public union CascadeConnectionsForResourceDeletionOutcome(
     ResourceConnectionsCascaded,
     ResourceConnectionCascadeConflict);
 
+public static class CascadeConnectionsForResourceDeletionOutcomeExtensions
+{
+    public static TResult Match<TResult>(
+        this CascadeConnectionsForResourceDeletionOutcome outcome,
+        Func<ResourceConnectionsCascaded, TResult> cascaded,
+        Func<ResourceConnectionCascadeConflict, TResult> conflict) => outcome switch
+        {
+            ResourceConnectionsCascaded success => cascaded(success),
+            ResourceConnectionCascadeConflict error => conflict(error)
+        };
+}
+
 /// <summary>Marks affected declarations deleting using their retained cleanup snapshots.</summary>
 public delegate Task<CascadeConnectionsForResourceDeletionOutcome> CascadeConnectionsForResourceDeletion(
     string tenantId,

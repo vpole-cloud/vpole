@@ -1,5 +1,6 @@
 namespace Pole.Features.Postgres.Application.Persistence.Lifecycle
 
+open System
 open System.Threading
 open System.Threading.Tasks
 open MongoDB.Driver
@@ -32,19 +33,23 @@ type MongoBeginPostgresClusterDeletion(
                 let! cascade =
                     cascadeConnections.Invoke(
                         current.TenantId, PostgresResourceDeployment.ResourceType, current.Id, session, cancellationToken)
-                match cascade.Value with
-                | :? ResourceConnectionCascadeConflict ->
-                    return PostgresError { ClusterId = current.Id }
-                | _ ->
-                    let! persisted =
-                        clusters.ReplaceOneAsync(
-                            session,
-                            PostgresFilters.activeAtRevision current,
-                            replacement,
-                            cancellationToken = cancellationToken)
-                    return
-                        if persisted.ModifiedCount = 1L then
-                            PostgresSuccess ()
-                        else
-                            PostgresError { ClusterId = current.Id }
+                let onCascaded =
+                    Func<ResourceConnectionsCascaded, Task<PostgresOutcome<unit, PostgresClusterDeletionConflict>>>(
+                        fun _ -> task {
+                            let! persisted =
+                                clusters.ReplaceOneAsync(
+                                    session,
+                                    PostgresFilters.activeAtRevision current,
+                                    replacement,
+                                    cancellationToken = cancellationToken)
+                            return
+                                if persisted.ModifiedCount = 1L then
+                                    PostgresSuccess ()
+                                else
+                                    PostgresError { ClusterId = current.Id }
+                        })
+                let onConflict =
+                    Func<ResourceConnectionCascadeConflict, Task<PostgresOutcome<unit, PostgresClusterDeletionConflict>>>(
+                        fun _ -> Task.FromResult(PostgresError { ClusterId = current.Id }))
+                return! CascadeConnectionsForResourceDeletionOutcomeExtensions.Match(cascade, onCascaded, onConflict)
         }

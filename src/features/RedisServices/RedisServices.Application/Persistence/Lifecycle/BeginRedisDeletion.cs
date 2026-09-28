@@ -42,8 +42,13 @@ internal sealed class MongoBeginRedisDeletion(
             return new RedisDeletionConflict(current.Id);
         var cascade = await cascadeConnections(
             current.TenantId, RedisResourceDeployment.ResourceType, current.Id, session, cancellationToken);
-        if (cascade is ResourceConnectionCascadeConflict)
-            return new RedisDeletionConflict(current.Id);
+        RedisDeletionConflict? cascadeConflict = cascade switch
+        {
+            ResourceConnectionsCascaded => null,
+            ResourceConnectionCascadeConflict => new RedisDeletionConflict(current.Id)
+        };
+        if (cascadeConflict is not null)
+            return cascadeConflict;
 
         var replace = await redisServices.ReplaceOneAsync(
             session,

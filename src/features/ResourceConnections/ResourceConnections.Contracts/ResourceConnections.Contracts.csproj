@@ -3,6 +3,7 @@
     <TargetFramework>net11.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <WarningsAsErrors>$(WarningsAsErrors);CS8509</WarningsAsErrors>
     <AssemblyName>Pole.Features.ResourceConnections.Contracts</AssemblyName>
     <RootNamespace>Pole.Features.ResourceConnections.Contracts</RootNamespace>
   </PropertyGroup>

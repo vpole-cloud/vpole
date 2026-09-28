@@ -88,105 +88,109 @@ internal sealed class MongoCreateResourceConnection(
                     command.EndpointId,
                     transaction.Session,
                     ct);
-                if (publishedEndpoint is ConnectionEndpointMissing)
-                    return transaction.Abort(new CreateResourceConnectionPersistenceOutcome(
-                        new ConnectionResourceMissing()));
-                if (publishedEndpoint is ConnectionDestinationDeleting)
-                    return transaction.Abort(new CreateResourceConnectionPersistenceOutcome(
-                        new ConnectionPlacementDeleting()));
-                if (publishedEndpoint is ConnectionEndpointUnsupportedByProvider)
-                    return transaction.Abort(new CreateResourceConnectionPersistenceOutcome(
-                        new ConnectionEndpointUnsupported()));
-                var endpoint = (ResolvedConnectionEndpoint)publishedEndpoint.Value;
-
-                var sourcePlacements = (await loadPlacements(
-                    command.TenantId,
-                    source.Type,
-                    source.Id,
-                    transaction.Session,
-                    ct))
-                    .Where(item => !item.DeletionRequested)
-                    .ToArray();
-                if (sourcePlacements.Length == 0)
-                    return transaction.Abort(new CreateResourceConnectionPersistenceOutcome(
-                        new ConnectionSourceHasNoPlacements()));
-
-                var destinationPlacements = (await loadPlacements(
-                    command.TenantId,
-                    destination.Type,
-                    destination.Id,
-                    transaction.Session,
-                    ct))
-                    .Where(item => !item.DeletionRequested)
-                    .ToArray();
-
-                var snapshots = new List<ConnectionTargetSnapshot>();
-                foreach (var sourcesOnTarget in sourcePlacements
-                    .GroupBy(item => item.DeploymentTargetId, StringComparer.Ordinal))
+                return publishedEndpoint switch
                 {
-                    var destinationsOnTarget = destinationPlacements
-                        .Where(item => item.DeploymentTargetId == sourcesOnTarget.Key)
-                        .ToArray();
-                    if (destinationsOnTarget.Length == 0)
-                    {
-                        return transaction.Abort(new CreateResourceConnectionPersistenceOutcome(
-                            new ConnectionDestinationTargetMissing(sourcesOnTarget.Key)));
-                    }
-                    if (destinationsOnTarget.Length > 1)
-                    {
-                        return transaction.Abort(new CreateResourceConnectionPersistenceOutcome(
-                            new ConnectionDestinationTargetAmbiguous(sourcesOnTarget.Key)));
-                    }
+                    ResolvedConnectionEndpoint endpoint => await PersistResolvedEndpointAsync(endpoint),
+                    ConnectionEndpointMissing => transaction.Abort(new CreateResourceConnectionPersistenceOutcome(
+                        new ConnectionResourceMissing())),
+                    ConnectionDestinationDeleting => transaction.Abort(new CreateResourceConnectionPersistenceOutcome(
+                        new ConnectionPlacementDeleting())),
+                    ConnectionEndpointUnsupportedByProvider => transaction.Abort(
+                        new CreateResourceConnectionPersistenceOutcome(new ConnectionEndpointUnsupported()))
+                };
 
-                    var destinationPlacement = destinationsOnTarget[0];
-                    snapshots.Add(ConnectionTargetSnapshot.Create(
-                        sourcesOnTarget.Key,
-                        destinationPlacement.DeploymentId,
-                        destinationPlacement.RuntimeCellId,
-                        destinationPlacement.KubernetesNamespace,
-                        endpoint.ServiceName,
-                        endpoint.ServicePort.Value,
-                        endpoint.TargetPort.Value,
-                        sourcesOnTarget.Select(item => new ConnectionSourcePlacement(
-                            item.DeploymentId,
-                            item.RuntimeCellId,
-                            item.KubernetesNamespace))));
-                }
-
-                var connection = ResourceConnectionFactory.Create(
-                    ObjectId.GenerateNewId().ToString(),
-                    command.TenantId,
-                    command.Name,
-                    source.Type,
-                    source.Id,
-                    destination.Type,
-                    destination.Id,
-                    endpoint.Id,
-                    snapshots);
-                try
+                async Task<MongoTransactionDecision<CreateResourceConnectionPersistenceOutcome>>
+                    PersistResolvedEndpointAsync(ResolvedConnectionEndpoint endpoint)
                 {
-                    await connections.InsertOneAsync(
+                    var sourcePlacements = (await loadPlacements(
+                        command.TenantId,
+                        source.Type,
+                        source.Id,
                         transaction.Session,
-                        connection,
-                        cancellationToken: ct);
-                }
-                catch (MongoWriteException exception) when (
-                    exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
-                {
-                    return transaction.Abort(new CreateResourceConnectionPersistenceOutcome(
-                        new ConnectionNameAlreadyExists(command.Name)));
-                }
+                        ct))
+                        .Where(item => !item.DeletionRequested)
+                        .ToArray();
+                    if (sourcePlacements.Length == 0)
+                        return transaction.Abort(new CreateResourceConnectionPersistenceOutcome(
+                            new ConnectionSourceHasNoPlacements()));
 
-                await storeOutboxWrites(
-                    transaction.Session,
-                    [OutboxWrite.Create(new ResourceConnectionCreatedEvent(
+                    var destinationPlacements = (await loadPlacements(
+                        command.TenantId,
+                        destination.Type,
+                        destination.Id,
+                        transaction.Session,
+                        ct))
+                        .Where(item => !item.DeletionRequested)
+                        .ToArray();
+
+                    var snapshots = new List<ConnectionTargetSnapshot>();
+                    foreach (var sourcesOnTarget in sourcePlacements
+                        .GroupBy(item => item.DeploymentTargetId, StringComparer.Ordinal))
+                    {
+                        var destinationsOnTarget = destinationPlacements
+                            .Where(item => item.DeploymentTargetId == sourcesOnTarget.Key)
+                            .ToArray();
+                        if (destinationsOnTarget.Length == 0)
+                        {
+                            return transaction.Abort(new CreateResourceConnectionPersistenceOutcome(
+                                new ConnectionDestinationTargetMissing(sourcesOnTarget.Key)));
+                        }
+                        if (destinationsOnTarget.Length > 1)
+                        {
+                            return transaction.Abort(new CreateResourceConnectionPersistenceOutcome(
+                                new ConnectionDestinationTargetAmbiguous(sourcesOnTarget.Key)));
+                        }
+
+                        var destinationPlacement = destinationsOnTarget[0];
+                        snapshots.Add(ConnectionTargetSnapshot.Create(
+                            sourcesOnTarget.Key,
+                            destinationPlacement.DeploymentId,
+                            destinationPlacement.RuntimeCellId,
+                            destinationPlacement.KubernetesNamespace,
+                            endpoint.ServiceName,
+                            endpoint.ServicePort.Value,
+                            endpoint.TargetPort.Value,
+                            sourcesOnTarget.Select(item => new ConnectionSourcePlacement(
+                                item.DeploymentId,
+                                item.RuntimeCellId,
+                                item.KubernetesNamespace))));
+                    }
+
+                    var connection = ResourceConnectionFactory.Create(
+                        ObjectId.GenerateNewId().ToString(),
+                        command.TenantId,
+                        command.Name,
+                        source.Type,
+                        source.Id,
+                        destination.Type,
+                        destination.Id,
+                        endpoint.Id,
+                        snapshots);
+                    try
+                    {
+                        await connections.InsertOneAsync(
+                            transaction.Session,
+                            connection,
+                            cancellationToken: ct);
+                    }
+                    catch (MongoWriteException exception) when (
+                        exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
+                    {
+                        return transaction.Abort(new CreateResourceConnectionPersistenceOutcome(
+                            new ConnectionNameAlreadyExists(command.Name)));
+                    }
+
+                    await storeOutboxWrites(
+                        transaction.Session,
+                        [OutboxWrite.Create(new ResourceConnectionCreatedEvent(
                         connection.Id,
                         connection.Generation)
                     {
                         EventCore = EventCore.Create(command.TenantId)
                     })],
-                    ct);
-                return transaction.Commit(new CreateResourceConnectionPersistenceOutcome(connection));
+                        ct);
+                    return transaction.Commit(new CreateResourceConnectionPersistenceOutcome(connection));
+                }
             },
             cancellationToken);
 
