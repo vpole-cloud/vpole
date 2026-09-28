@@ -24,9 +24,11 @@ internal static class WebServiceConnectionEndpointCatalog
         string serviceName,
         PortMapping mapping)
     {
-        if (!string.Equals(mapping.Protocol, "TCP", StringComparison.OrdinalIgnoreCase) ||
-            !NetworkPort.TryCreate(mapping.ServicePort, out var servicePort) ||
-            !NetworkPort.TryParse(mapping.TargetPort, out var targetPort))
+        if (!NetworkPort.TryCreate(mapping.ServicePort, out var servicePort) ||
+            !WebServicePublicIngressPort.TryResolve(
+                mapping.Protocol,
+                mapping.TargetPort,
+                out var targetPort))
         {
             return null;
         }
