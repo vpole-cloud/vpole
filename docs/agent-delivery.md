@@ -145,8 +145,10 @@ canonical example. Do not add a broad prohibition based only on one incident.
 Review consumes the exact diff and current test evidence; the primary agent owns
 triage, fixes and the final claim of completion.
 
-On an SELinux-enforcing Podman host, a new worktree under `/tmp` can give bind-mounted
-configuration files the `user_tmp_t` label. If container logs report permission
+On an SELinux-enforcing Podman host, a new worktree can give bind-mounted
+configuration files the `user_tmp_t` or `user_home_t` label. Check `getenforce` and
+`ls -Z` on the actual container host: a sandbox without the SELinux filesystem can
+report `Disabled` even when the host is enforcing. If container logs report permission
 denied for the existing read-only Keycloak or BuildKit configuration mount, inspect
 `ls -Z` and label only those files `container_file_t` with `chcon -t container_file_t`:
 `infrastructure/keycloak/realms/pole.control-plane.realm.json` and
