@@ -43,7 +43,7 @@ public static class DeleteFunctionApp
     }
 
     private static HttpProblem MapDeleteError(DeleteFunctionAppError error) =>
-        error.Value switch
+        error switch
         {
             FunctionAppNotFound notFound => MapNotFound(notFound),
             FunctionAppResourceDeploymentMissing missing => MapResourceDeploymentMissing(missing),

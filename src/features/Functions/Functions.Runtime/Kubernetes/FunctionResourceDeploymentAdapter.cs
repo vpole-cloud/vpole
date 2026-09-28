@@ -39,7 +39,7 @@ public sealed class FunctionResourceDeploymentAdapter(
         }
 
         var ingress = await reconcileIngressPolicy(
-            PolicyRequest(deployment, [FunctionRevisionInKubernetes.AgentPort]),
+            PolicyRequest(deployment, [NetworkPort.Create(FunctionRevisionInKubernetes.AgentPort)]),
             cancellationToken);
         if (ingress is not ResourceIngressPolicyApplied)
         {
@@ -116,7 +116,7 @@ public sealed class FunctionResourceDeploymentAdapter(
 
     private static ResourceIngressPolicyRequest PolicyRequest(
         ResourceDeploymentReconciliationSnapshot deployment,
-        ImmutableList<int> ports) => new(
+        ImmutableList<NetworkPort> ports) => new(
             deployment.TenantId,
             deployment.ResourceType,
             deployment.ResourceId,
@@ -124,7 +124,7 @@ public sealed class FunctionResourceDeploymentAdapter(
             deployment.RuntimeCellId,
             deployment.Placement.DeploymentTargetId,
             deployment.Placement.KubernetesNamespace,
-            ResourceIngressPolicyPurpose.FunctionGateway,
+            FunctionIngressPolicyDefinition.Purpose,
             deployment.DesiredGeneration,
             deployment.Placement.TargetWorkloadConfigurationRevision,
             ports);

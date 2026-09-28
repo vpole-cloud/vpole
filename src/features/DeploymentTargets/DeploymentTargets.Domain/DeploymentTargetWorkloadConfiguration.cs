@@ -12,13 +12,14 @@ public sealed record DeploymentTargetWorkloadConfiguration(
     public static DeploymentTargetWorkloadConfiguration Create(
         DeploymentTargetIngressConfiguration? ingress,
         DeploymentTargetNetworkSources networkSources) =>
-        new(Revision: 1, NormalizeIngress(ingress), networkSources);
+        new(Revision: 1, NormalizeIngress(ingress), networkSources.Validate());
 
     public DeploymentTargetWorkloadConfiguration Reconfigure(
         DeploymentTargetIngressConfiguration? ingress,
         DeploymentTargetNetworkSources networkSources)
     {
         var normalizedIngress = NormalizeIngress(ingress);
+        networkSources.Validate();
         return Equals(Ingress, normalizedIngress) && NetworkSources.EquivalentTo(networkSources)
             ? this
             : new DeploymentTargetWorkloadConfiguration(

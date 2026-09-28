@@ -246,7 +246,7 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
                 renamed.AcceptsWorkloads,
                 new DeploymentTargetWorkloadConfigurationRequestBody(
                     Ingress: null,
-                    NetworkSources: new DeploymentTargetNetworkSourcesRequestBody(null, null, null)),
+                    NetworkSources: new DeploymentTargetNetworkSourcesRequestBody([])),
                 renamed.Revision));
 
         Assert.Equal(HttpStatusCode.OK, disabledIngressResponse.StatusCode);
@@ -275,7 +275,11 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
         {
             WorkloadConfiguration = body.WorkloadConfiguration with
             {
-                NetworkSources = new DeploymentTargetNetworkSourcesRequestBody(publicSource, null, null)
+                NetworkSources = new DeploymentTargetNetworkSourcesRequestBody(
+                    new Dictionary<string, DeploymentTargetNetworkSourceRequestBody>
+                    {
+                        [DeploymentTargetNetworkSourcesDto.PublicIngressName] = publicSource
+                    })
             }
         };
 
@@ -285,19 +289,17 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
         var created = Assert.IsType<DeploymentTargetDto>(
             await response.Content.ReadFromJsonAsync<DeploymentTargetDto>());
         var returnedPublic = Assert.IsType<DeploymentTargetPodNetworkSourceDto>(
-            created.WorkloadConfiguration.NetworkSources.PublicIngress);
+            created.WorkloadConfiguration.NetworkSources.Entries[DeploymentTargetNetworkSourcesDto.PublicIngressName]);
         Assert.Equal("ingress-system", returnedPublic.Namespace);
         Assert.Equal("traefik", returnedPublic.PodLabels["app.kubernetes.io/name"]);
         var persisted = await Fixture.DbContext.DeploymentTargets
             .Find(target => target.Id == created.Id)
             .SingleAsync();
         Assert.IsType<DeploymentTargetPodNetworkSource>(
-            persisted.WorkloadConfiguration.NetworkSources.PublicIngress);
+            persisted.WorkloadConfiguration.NetworkSources.Entries[DeploymentTargetNetworkSourcesDto.PublicIngressName]);
 
-        var newSources = created.WorkloadConfiguration.NetworkSources.ToRequestBody() with
-        {
-            FunctionGateway = new DeploymentTargetCidrNetworkSourceRequestBody("192.0.2.9/32")
-        };
+        var newSources = created.WorkloadConfiguration.NetworkSources.ToRequestBody();
+        newSources.Entries.Add("example/queue", new DeploymentTargetCidrNetworkSourceRequestBody("192.0.2.9/32"));
         var update = await Client.PutAsJsonAsync(
             $"/api/v1/platform/deployment-targets/{created.Id}",
             new UpdateDeploymentTargetRequestBody(
@@ -312,7 +314,7 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
             await update.Content.ReadFromJsonAsync<DeploymentTargetDto>());
         Assert.Equal(created.WorkloadConfiguration.Revision + 1, configured.WorkloadConfiguration.Revision);
         Assert.Equal("192.0.2.9/32", Assert.IsType<DeploymentTargetCidrNetworkSourceDto>(
-            configured.WorkloadConfiguration.NetworkSources.FunctionGateway).Cidr);
+            configured.WorkloadConfiguration.NetworkSources.Entries["example/queue"]).Cidr);
 
         var attestResponse = await Client.PutAsJsonAsync(
             $"/api/v1/platform/deployment-targets/{configured.Id}/network-policy",
@@ -330,6 +332,39 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
         Assert.DoesNotContain("192.0.2.9", availableJson, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("vendor//controller")]
+    [InlineData(" vendor/controller")]
+    [InlineData("vendor/controller-")]
+    public async Task NetworkSources_InvalidContributionKey_DoesNotChangeTarget(string sourceName)
+    {
+        SetPlatformAdmin();
+        var created = await CreateTargetAsync();
+        var update = new UpdateDeploymentTargetRequestBody(
+            created.DisplayName,
+            created.Enabled,
+            created.AcceptsWorkloads,
+            created.WorkloadConfiguration.ToRequestBody() with
+            {
+                NetworkSources = new DeploymentTargetNetworkSourcesRequestBody(
+                    new Dictionary<string, DeploymentTargetNetworkSourceRequestBody>
+                    {
+                        [sourceName] = new DeploymentTargetCidrNetworkSourceRequestBody("192.0.2.9/32")
+                    })
+            },
+            created.Revision);
+
+        var response = await Client.PutAsJsonAsync(
+            $"/api/v1/platform/deployment-targets/{created.Id}", update);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var persisted = await Fixture.DbContext.DeploymentTargets
+            .Find(target => target.Id == created.Id)
+            .SingleAsync();
+        Assert.Equal(created.Revision, persisted.Revision);
+        Assert.Equal(created.WorkloadConfiguration.Revision, persisted.WorkloadConfiguration.Revision);
+    }
+
     [Fact]
     public async Task NetworkSources_RejectPaddedLabelAndUnknownJsonKind()
     {
@@ -345,7 +380,10 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
             created.WorkloadConfiguration.ToRequestBody() with
             {
                 NetworkSources = new DeploymentTargetNetworkSourcesRequestBody(
-                    invalidSource, null, null)
+                    new Dictionary<string, DeploymentTargetNetworkSourceRequestBody>
+                    {
+                        ["example/controller"] = invalidSource
+                    })
             },
             created.Revision);
 
@@ -358,13 +396,16 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
             WorkloadConfiguration = update.WorkloadConfiguration with
             {
                 NetworkSources = new DeploymentTargetNetworkSourcesRequestBody(
-                    invalidSource with
+                    new Dictionary<string, DeploymentTargetNetworkSourceRequestBody>
                     {
-                        PodLabels = new Dictionary<string, string>
+                        ["example/controller"] = invalidSource with
                         {
-                            ["app.kubernetes.io/name"] = "traefik"
+                            PodLabels = new Dictionary<string, string>
+                            {
+                                ["app.kubernetes.io/name"] = "traefik"
+                            }
                         }
-                    }, null, null)
+                    })
             }
         };
         var json = JsonSerializer.Serialize(valid, JsonSerializerOptions.Web);

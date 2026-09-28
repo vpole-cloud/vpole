@@ -77,14 +77,18 @@ public sealed record DeploymentTargetWorkloadConfigurationLookupDto(
     DeploymentTargetNetworkSourcesDto NetworkSources);
 
 public sealed record DeploymentTargetNetworkSourcesDto(
-    DeploymentTargetNetworkSourceDto? PublicIngress,
-    DeploymentTargetNetworkSourceDto? FunctionGateway,
-    DeploymentTargetNetworkSourceDto? PostgresOperator);
+    ImmutableDictionary<string, DeploymentTargetNetworkSourceDto> Entries)
+{
+    public const string PublicIngressName = "public-ingress";
+
+    public DeploymentTargetNetworkSourceDto? Get(string name) =>
+        Entries.TryGetValue(name, out var source) ? source : null;
+}
 
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
 [JsonDerivedType(typeof(DeploymentTargetPodNetworkSourceDto), "Pod")]
 [JsonDerivedType(typeof(DeploymentTargetCidrNetworkSourceDto), "Cidr")]
-public abstract record DeploymentTargetNetworkSourceDto;
+public closed record DeploymentTargetNetworkSourceDto;
 
 public sealed record DeploymentTargetPodNetworkSourceDto(
     string Namespace,
@@ -101,8 +105,7 @@ public sealed record DeploymentTargetIngressConfigurationLookupDto(
 public enum DeploymentTargetRequiredCapabilities
 {
     None = 0,
-    PublicIngress = 1,
-    FunctionRuntimeConnectivity = 2
+    PublicIngress = 1
 }
 
 /// <summary>
@@ -115,7 +118,8 @@ public sealed record DeploymentTargetAdmissionRequest(
     ResourceTypeId ResourceType,
     string? IsolationScopeId,
     string? ExplicitDeploymentTargetId,
-    DeploymentTargetRequiredCapabilities RequiredCapabilities);
+    DeploymentTargetRequiredCapabilities RequiredCapabilities,
+    string? RequiredNetworkSource = null);
 
 /// <summary>
 /// Safe target information suitable for a tenant placement picker. It intentionally excludes

@@ -5,23 +5,54 @@ using Pole.KubernetesValidation;
 
 namespace Pole.Features.DeploymentTargets.Domain;
 
-/// <summary>Platform-owned ingress identities for one deployment target.</summary>
+/// <summary>Named ingress sources for one deployment target.</summary>
 public sealed record DeploymentTargetNetworkSources(
-    DeploymentTargetNetworkSource? PublicIngress,
-    DeploymentTargetNetworkSource? FunctionGateway,
-    DeploymentTargetNetworkSource? PostgresOperator)
+    ImmutableDictionary<string, DeploymentTargetNetworkSource> Entries)
 {
-    public static DeploymentTargetNetworkSources None { get; } = new(null, null, null);
+    public static DeploymentTargetNetworkSources None { get; } = new(
+        ImmutableDictionary<string, DeploymentTargetNetworkSource>.Empty);
+
+    public DeploymentTargetNetworkSource? Get(string name) =>
+        Entries.TryGetValue(name, out var source) ? source : null;
+
+    public DeploymentTargetNetworkSources Validate()
+    {
+        ArgumentNullException.ThrowIfNull(Entries);
+        foreach (var (name, source) in Entries)
+        {
+            if (!IsValidName(name) || (source switch
+            {
+                DeploymentTargetPodNetworkSource pod =>
+                    !DeploymentTargetPodNetworkSource.IsValidNamespace(pod.Namespace) ||
+                    !DeploymentTargetPodNetworkSource.IsValid(pod.PodLabels),
+                DeploymentTargetCidrNetworkSource cidr =>
+                    !DeploymentTargetCidrNetworkSource.IsValid(cidr.Cidr)
+            }))
+            {
+                throw new ArgumentException("Network source names and selectors must be valid.", nameof(Entries));
+            }
+        }
+
+        return this;
+    }
+
+    public static bool IsValidName(string? name) =>
+        !string.IsNullOrEmpty(name) && name.Length <= 128 &&
+        name.Split('/').All(segment =>
+            segment.Length is >= 1 and <= 63 &&
+            segment[0] is >= 'a' and <= 'z' &&
+            segment[^1] is >= 'a' and <= 'z' or >= '0' and <= '9' &&
+            segment.All(character => character is >= 'a' and <= 'z' or >= '0' and <= '9' or '-'));
 
     public bool EquivalentTo(DeploymentTargetNetworkSources other) =>
-        DeploymentTargetNetworkSource.Equivalent(PublicIngress, other.PublicIngress) &&
-        DeploymentTargetNetworkSource.Equivalent(FunctionGateway, other.FunctionGateway) &&
-        DeploymentTargetNetworkSource.Equivalent(PostgresOperator, other.PostgresOperator);
+        Entries.Count == other.Entries.Count &&
+        Entries.All(entry => other.Entries.TryGetValue(entry.Key, out var source) &&
+                             DeploymentTargetNetworkSource.Equivalent(entry.Value, source));
 }
 
 [BsonDiscriminator(RootClass = true)]
 [BsonKnownTypes(typeof(DeploymentTargetPodNetworkSource), typeof(DeploymentTargetCidrNetworkSource))]
-public abstract record DeploymentTargetNetworkSource
+public closed record DeploymentTargetNetworkSource
 {
     public static bool Equivalent(
         DeploymentTargetNetworkSource? first,

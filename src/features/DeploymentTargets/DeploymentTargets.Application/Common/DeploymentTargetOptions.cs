@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Microsoft.Extensions.Options;
 using Pole.Features.DeploymentTargets.Domain;
 
@@ -35,41 +36,31 @@ public sealed class DeploymentTargetBootstrapWorkloadConfigurationOptions
     public DeploymentTargetBootstrapNetworkSourcesOptions NetworkSources { get; init; } = new();
 }
 
-public enum DeploymentTargetBootstrapNetworkSourcePurpose
-{
-    PublicIngress,
-    FunctionGateway,
-    PostgresOperator
-}
-
 // Separate typed maps let IConfiguration bind each variant without a discriminator and
-// nullable variant fields. A purpose may occur in only one map, enforced at startup.
+// nullable variant fields. A name may occur in only one map, enforced at startup.
 public sealed class DeploymentTargetBootstrapNetworkSourcesOptions
 {
-    public Dictionary<DeploymentTargetBootstrapNetworkSourcePurpose, DeploymentTargetBootstrapPodSourceOptions> Pods { get; init; } = [];
-    public Dictionary<DeploymentTargetBootstrapNetworkSourcePurpose, string> Cidrs { get; init; } = [];
+    public Dictionary<string, DeploymentTargetBootstrapPodSourceOptions> Pods { get; init; } = [];
+    public Dictionary<string, string> Cidrs { get; init; } = [];
 
     internal DeploymentTargetNetworkSources ToDomain() => new(
-        Resolve(DeploymentTargetBootstrapNetworkSourcePurpose.PublicIngress),
-        Resolve(DeploymentTargetBootstrapNetworkSourcePurpose.FunctionGateway),
-        Resolve(DeploymentTargetBootstrapNetworkSourcePurpose.PostgresOperator));
-
-    private DeploymentTargetNetworkSource? Resolve(DeploymentTargetBootstrapNetworkSourcePurpose purpose) =>
-        Pods.TryGetValue(purpose, out var pod)
-            ? DeploymentTargetPodNetworkSource.Create(pod.Namespace, pod.PodLabels)
-            : Cidrs.TryGetValue(purpose, out var cidr)
-                ? DeploymentTargetCidrNetworkSource.Create(cidr)
-                : null;
+        Pods.Select(entry => new KeyValuePair<string, DeploymentTargetNetworkSource>(
+                entry.Key,
+                DeploymentTargetPodNetworkSource.Create(entry.Value.Namespace, entry.Value.PodLabels)))
+            .Concat(Cidrs.Select(entry => new KeyValuePair<string, DeploymentTargetNetworkSource>(
+                entry.Key,
+                DeploymentTargetCidrNetworkSource.Create(entry.Value))))
+            .ToImmutableDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal));
 
     internal IEnumerable<string> ValidationFailures()
     {
         const string prefix = "DeploymentTargets:Bootstrap:WorkloadConfiguration:NetworkSources";
-        foreach (var purpose in Pods.Keys.Concat(Cidrs.Keys).Distinct())
+        foreach (var sourceName in Pods.Keys.Concat(Cidrs.Keys).Distinct())
         {
-            if (!Enum.IsDefined(purpose))
-                yield return $"{prefix}: source purpose '{purpose}' is not supported.";
-            if (Pods.ContainsKey(purpose) && Cidrs.ContainsKey(purpose))
-                yield return $"{prefix}: '{purpose}' must have exactly one source variant.";
+            if (!DeploymentTargetNetworkSources.IsValidName(sourceName))
+                yield return $"{prefix}: source name '{sourceName}' is invalid.";
+            if (Pods.ContainsKey(sourceName) && Cidrs.ContainsKey(sourceName))
+                yield return $"{prefix}: '{sourceName}' must have exactly one source variant.";
         }
 
         foreach (var (purpose, pod) in Pods)

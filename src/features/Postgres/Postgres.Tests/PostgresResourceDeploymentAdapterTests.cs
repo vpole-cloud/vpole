@@ -148,7 +148,7 @@ public sealed class PostgresResourceDeploymentAdapterTests
     [InlineData(true)]
     public async Task Delete_WithoutLogicalCluster_ClosesBothPolicyPurposesBeforeReturning(bool policyFailure)
     {
-        var purposes = new List<ResourceIngressPolicyPurpose>();
+        var purposes = new List<string>();
         using var kubernetes = CreateKubernetes();
         var provider = new RecordingKubernetesClientProvider(kubernetes);
         var manager = new RecordingDeploymentManager();
@@ -164,7 +164,7 @@ public sealed class PostgresResourceDeploymentAdapterTests
                 Assert.Empty(request.AllowedTcpPorts);
                 purposes.Add(request.Purpose);
                 return Task.FromResult<ReconcileResourceIngressPolicyOutcome>(
-                    policyFailure && request.Purpose is ResourceIngressPolicyPurpose.PostgresReplication
+                    policyFailure && request.Purpose is "postgres-replication"
                         ? new ResourceIngressPolicyUnavailable()
                         : new ResourceIngressPolicyApplied());
             });
@@ -173,7 +173,7 @@ public sealed class PostgresResourceDeploymentAdapterTests
             await subject.DeleteAsync(CreateContext()));
 
         Assert.Equal(
-            [ResourceIngressPolicyPurpose.PostgresReplication, ResourceIngressPolicyPurpose.PostgresOperator],
+            ["postgres-replication", "postgres-operator"],
             purposes);
         Assert.Equal(
             policyFailure ? "PostgresReplicationIngressCleanupUnavailable" : "PostgresClusterNotFound",

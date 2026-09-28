@@ -61,9 +61,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
             (id, ct) => LookupTarget(id, NetworkPolicyReadiness.EnforcementAttested),
             (tenantId, runtimeCellId, targetId, kubernetesNamespace, ct) =>
                 Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
-                    new RuntimeCellIngressBaselineUnavailable(
-                        runtimeCellId,
-                        RuntimeCellIngressBaselineFailureReason.PolicyUnavailable)),
+                    new RuntimeCellIngressBaselinePolicyUnavailable(runtimeCellId)),
             []);
 
         var result = await manager.ApplyAsync(subject);
@@ -255,9 +253,10 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
                 "InCluster",
                 1,
                 new(1, null, new DeploymentTargetNetworkSourcesDto(
-                    null,
-                    gatewaySource ? new DeploymentTargetCidrNetworkSourceDto("192.0.2.9/32") : null,
-                    null)),
+                    gatewaySource
+                        ? ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty.Add(
+                            "functions/gateway", new DeploymentTargetCidrNetworkSourceDto("192.0.2.9/32"))
+                        : ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty)),
                 1,
                 true,
                 true,

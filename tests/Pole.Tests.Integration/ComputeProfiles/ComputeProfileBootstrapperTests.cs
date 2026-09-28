@@ -75,7 +75,7 @@ public sealed class ComputeProfileBootstrapperTests
             "in-cluster",
             1,
             new DeploymentTargetWorkloadConfigurationLookupDto(
-                1, null, new DeploymentTargetNetworkSourcesDto(null, null, null)),
+                1, null, new DeploymentTargetNetworkSourcesDto(System.Collections.Immutable.ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty)),
             1,
             Enabled: true,
             AcceptsWorkloads: true,

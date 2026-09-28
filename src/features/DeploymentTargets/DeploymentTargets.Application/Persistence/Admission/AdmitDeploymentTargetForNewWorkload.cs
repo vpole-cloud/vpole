@@ -24,7 +24,8 @@ internal sealed class MongoAdmitDeploymentTargetForNewWorkload(
 
             return DeploymentTargetAdmissionSupport.HasRequiredCapabilities(
                 target,
-                request.RequiredCapabilities)
+                request.RequiredCapabilities,
+                request.RequiredNetworkSource)
                 ? target
                 : new DeploymentTargetNewWorkloadAdmissionError(
                         new DeploymentTargetRequiredCapabilitiesUnavailable(
@@ -36,6 +37,8 @@ internal sealed class MongoAdmitDeploymentTargetForNewWorkload(
                 request.RequiredCapabilities,
                 cancellationToken))
             .Select(target => target.ToLookupDto())
+            .Where(target => DeploymentTargetAdmissionSupport.HasRequiredCapabilities(
+                target, request.RequiredCapabilities, request.RequiredNetworkSource))
             .ToArray();
         return eligible.Length switch
         {

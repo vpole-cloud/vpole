@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
@@ -146,7 +147,8 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
             ResourceTypeId.Create("pole/function-app"),
             IsolationScopeId: null,
             inCluster.Id,
-            DeploymentTargetRequiredCapabilities.FunctionRuntimeConnectivity);
+            DeploymentTargetRequiredCapabilities.None,
+            "functions/gateway");
 
         var admitted = Assert.IsType<DeploymentTargetLookupDto>((await admission(request)).Value);
         Assert.Equal(inCluster.Id, admitted.Id);
@@ -342,7 +344,7 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
                             "traefik",
                             "letsencrypt-prod",
                             "new.example.test"),
-                        new DeploymentTargetNetworkSourcesRequestBody(null, null, null)),
+                        new DeploymentTargetNetworkSourcesRequestBody([])),
                     current.Revision)));
 
         _ = result switch
@@ -443,15 +445,19 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
                     "letsencrypt-prod",
                     publicBaseDomain),
                 new DeploymentTargetNetworkSources(
-                    publicBaseDomain is null
-                        ? null
-                        : DeploymentTargetPodNetworkSource.Create(
-                            "kube-system",
-                            new Dictionary<string, string> { ["app.kubernetes.io/name"] = "traefik" }),
-                    functionGateway
-                        ? DeploymentTargetCidrNetworkSource.Create("192.0.2.9/32")
-                        : null,
-                    null)),
+                    (publicBaseDomain is null
+                        ? ImmutableDictionary<string, DeploymentTargetNetworkSource>.Empty
+                        : ImmutableDictionary<string, DeploymentTargetNetworkSource>.Empty.Add(
+                            "public-ingress",
+                            DeploymentTargetPodNetworkSource.Create(
+                                "kube-system",
+                                new Dictionary<string, string> { ["app.kubernetes.io/name"] = "traefik" })))
+                    .AddRange(functionGateway
+                        ? new Dictionary<string, DeploymentTargetNetworkSource>
+                        {
+                            ["functions/gateway"] = DeploymentTargetCidrNetworkSource.Create("192.0.2.9/32")
+                        }
+                        : []))),
             enabled: true,
             acceptsWorkloads: true,
             new DeploymentTargetFactory.CreateOptions(id, now)).AttestForTests();

@@ -14,6 +14,7 @@ open Pole.Features.Postgres.Application.Persistence
 open Pole.Features.Postgres.Application.Search
 open Pole.Features.Postgres.Domain
 open Pole.Features.Quotas.Contracts
+open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.Search.Contracts
 
 [<AbstractClass; Sealed>]
@@ -66,5 +67,9 @@ type PostgresFeatureRegistration =
         services.TryAddSingleton<IPostgresClusterDeploymentManager, PostgresClusterDeploymentManager>()
         |> ignore
         services.TryAddSingleton(PostgresResourceDeploymentAdapterRegistration.Descriptor)
+        |> ignore
+        services.AddSingleton<ResourceIngressPolicyDefinition>(PostgresIngressPolicyDefinitions.Replication)
+        |> ignore
+        services.AddSingleton<ResourceIngressPolicyDefinition>(PostgresIngressPolicyDefinitions.Operator)
         |> ignore
         services

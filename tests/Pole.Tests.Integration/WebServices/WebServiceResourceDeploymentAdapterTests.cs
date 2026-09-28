@@ -22,6 +22,31 @@ namespace Pole.Tests.Integration.WebServices;
 
 public sealed class WebServiceResourceDeploymentAdapterTests
 {
+    [Theory]
+    [InlineData("0", "TCP")]
+    [InlineData("65536", "TCP")]
+    [InlineData("8080", "UDP")]
+    public async Task Apply_RejectsInvalidPublicIngressTargetPort(string targetPort, string protocol)
+    {
+        var reader = new RecordingReader(CreateWebService(targetPort, protocol));
+        using var handler = new RecordingKubernetesHandler();
+        using var kubernetes = new Kubernetes(
+            new KubernetesClientConfiguration { Host = "http://kubernetes.test" }, handler);
+        var subject = new WebServiceResourceDeploymentAdapter(
+            reader.LoadSnapshot,
+            reader.LoadById,
+            reader.LoadExactDeployment,
+            UnexpectedRegistryAccess,
+            new FixedKubernetesClientProvider(kubernetes),
+            (_, _) => throw new InvalidOperationException("Invalid ports must not reach the policy writer."));
+
+        var result = await subject.ApplyAsync(CreateContext(includeIngress: true));
+
+        var failure = Assert.IsType<ResourceDeploymentAdapterResult.Failed>(result);
+        Assert.Equal("PublicIngressTargetPortUnavailable", failure.FailureCode);
+        Assert.Empty(handler.Requests);
+    }
+
     [Fact]
     public async Task Apply_UsesContextClientNamespaceAndResolvedIngress()
     {
@@ -64,10 +89,10 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             Assert.Equal("https", endpoint.Scheme);
         });
         Assert.Equal(
-            [ResourceIngressPolicyPurpose.WebServicePublic, ResourceIngressPolicyPurpose.WebServiceHttp01],
+            ["web-public", "web-http01"],
             policyRequests.Select(request => request.Purpose));
-        Assert.Equal([8080], policyRequests[0].AllowedTcpPorts);
-        Assert.Equal([8089], policyRequests[1].AllowedTcpPorts);
+        Assert.Equal([8080], policyRequests[0].AllowedTcpPorts.Select(port => port.Value));
+        Assert.Equal([8089], policyRequests[1].AllowedTcpPorts.Select(port => port.Value));
         Assert.Equal(
             [(TenantId, ResourceId, DeploymentId, 1L, 1L)],
             reader.ApplyRequests);
@@ -450,7 +475,7 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         {
             policyRequests.Add(request);
             return Task.FromResult<ReconcileResourceIngressPolicyOutcome>(
-                request.Purpose is ResourceIngressPolicyPurpose.WebServicePublic
+                request.Purpose is "web-public"
                     ? new ResourceIngressPolicySourceUnavailable()
                     : new ResourceIngressPolicyApplied());
         }
@@ -475,7 +500,7 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         var failed = Assert.IsType<ResourceDeploymentAdapterResult.Failed>(result);
         Assert.Equal("PublicIngressSourceUnavailable", failed.FailureCode);
         Assert.Equal(2, policyRequests.Count);
-        Assert.Equal(ResourceIngressPolicyPurpose.WebServiceHttp01, policyRequests[1].Purpose);
+        Assert.Equal("web-http01", policyRequests[1].Purpose);
         Assert.Empty(handler.Requests);
     }
 
@@ -567,7 +592,7 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         {
             policyRequests.Add(request);
             return Task.FromResult<ReconcileResourceIngressPolicyOutcome>(
-                request.Purpose is ResourceIngressPolicyPurpose.WebServicePublic
+                request.Purpose is "web-public"
                     ? new ResourceIngressPolicyUnavailable()
                     : new ResourceIngressPolicyApplied());
         }
@@ -589,7 +614,7 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         var failed = Assert.IsType<ResourceDeploymentAdapterResult.Failed>(result);
         Assert.Equal("IngressPolicyReconciliationFailed", failed.FailureCode);
         Assert.Equal(
-            [ResourceIngressPolicyPurpose.WebServicePublic, ResourceIngressPolicyPurpose.WebServiceHttp01],
+            ["web-public", "web-http01"],
             policyRequests.Select(request => request.Purpose));
     }
 
@@ -604,7 +629,7 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         {
             policyRequests.Add(request);
             return Task.FromResult<ReconcileResourceIngressPolicyOutcome>(
-                request.Purpose is ResourceIngressPolicyPurpose.WebServicePublic
+                request.Purpose is "web-public"
                     ? new ResourceIngressPolicySourceUnavailable()
                     : new ResourceIngressPolicyApplied());
         }
@@ -626,7 +651,7 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         Assert.Equal("PublicIngressSourceUnavailable", failed.FailureCode);
         Assert.True(failed.Retryable);
         Assert.Equal(
-            [ResourceIngressPolicyPurpose.WebServicePublic, ResourceIngressPolicyPurpose.WebServiceHttp01],
+            ["web-public", "web-http01"],
             policyRequests.Select(request => request.Purpose));
         Assert.All(policyRequests, request => Assert.Empty(request.AllowedTcpPorts));
         Assert.Empty(handler.Requests);
@@ -665,7 +690,9 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         return new ResourceDeploymentReconciliationContext(deployment);
     }
 
-    private static WebService CreateWebService() =>
+    private static WebService CreateWebService(
+        string targetPort = "8080",
+        string protocol = "TCP") =>
         WebServiceFactory.Create(
             name: "api",
             tenantId: TenantId,
@@ -675,7 +702,7 @@ public sealed class WebServiceResourceDeploymentAdapterTests
                 new ImageInfo("registry.example.test", "pole/api", "1.0"),
                 Config: new WebServiceConfig(
                     ImmutableDictionary<string, string>.Empty,
-                    [new PortMapping(80, "8080", "TCP", "http")]),
+                    [new PortMapping(80, targetPort, protocol, "http")]),
                 Autoscaling: null,
                 Probes: new ProbeSpec(
                     new ProbeConfig("/health", "8080"),

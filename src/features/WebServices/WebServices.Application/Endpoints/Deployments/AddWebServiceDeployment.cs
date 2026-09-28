@@ -413,7 +413,7 @@ public sealed class AddWebServiceDeploymentHandler(
             WebServiceResourceDeployment.ResourceType,
             webService.Id,
             deploymentId,
-            $"{webService.Exposure.GeneratedHostnameLabelPrefix}-{webService.Id}");
+            webService.Exposure.GeneratedHostnameLabel(webService.Id));
 
     private static CreateResourceDeploymentSetRequest CreateDeploymentSetRequest(
         AddWebServiceDeploymentRequest request,

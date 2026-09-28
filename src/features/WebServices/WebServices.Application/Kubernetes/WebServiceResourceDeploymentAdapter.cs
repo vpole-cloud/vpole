@@ -98,7 +98,7 @@ public sealed class WebServiceResourceDeploymentAdapter(
         var policyFailure = await ReconcileIngressPoliciesAsync(
             context,
             webService.Exposure.Mode is WebServiceExposureMode.Public ? allowedTcpPorts : [],
-            webService.Exposure.Mode is WebServiceExposureMode.Public ? [8089] : [],
+            webService.Exposure.Mode is WebServiceExposureMode.Public ? [NetworkPort.Create(8089)] : [],
             cancellationToken);
         if (webService.Exposure.Mode is WebServiceExposureMode.Private)
         {
@@ -243,14 +243,13 @@ public sealed class WebServiceResourceDeploymentAdapter(
         return null;
     }
 
-    private static ImmutableList<int>? ResolvePublicIngressTargetPort(WebService webService)
+    private static ImmutableList<NetworkPort>? ResolvePublicIngressTargetPort(WebService webService)
     {
         if (webService.Exposure.Mode is WebServiceExposureMode.Private)
             return [];
-        var targetPort = webService.Spec.Config.PortMappings.FirstOrDefault()?.TargetPort;
-        return int.TryParse(targetPort, System.Globalization.NumberStyles.None,
-                   System.Globalization.CultureInfo.InvariantCulture, out var port) &&
-               port is >= 1 and <= 65535
+        var mapping = webService.Spec.Config.PortMappings.FirstOrDefault();
+        return mapping is not null &&
+               WebServicePublicIngressPort.TryResolve(mapping.Protocol, mapping.TargetPort, out var port)
             ? [port]
             : null;
     }
@@ -270,15 +269,15 @@ public sealed class WebServiceResourceDeploymentAdapter(
 
     private async Task<ResourceDeploymentAdapterResult.Failed?> ReconcileIngressPoliciesAsync(
         ResourceDeploymentReconciliationContext context,
-        ImmutableList<int> publicTcpPorts,
-        ImmutableList<int> http01TcpPorts,
+        ImmutableList<NetworkPort> publicTcpPorts,
+        ImmutableList<NetworkPort> http01TcpPorts,
         CancellationToken cancellationToken)
     {
         ResourceDeploymentAdapterResult.Failed? failure = null;
         foreach (var (purpose, ports) in new[]
                  {
-                     (ResourceIngressPolicyPurpose.WebServicePublic, publicTcpPorts),
-                     (ResourceIngressPolicyPurpose.WebServiceHttp01, http01TcpPorts)
+                     (WebServiceIngressPolicyDefinitions.PublicPurpose, publicTcpPorts),
+                     (WebServiceIngressPolicyDefinitions.Http01Purpose, http01TcpPorts)
                  })
         {
             var result = await reconcileResourceIngressPolicy(

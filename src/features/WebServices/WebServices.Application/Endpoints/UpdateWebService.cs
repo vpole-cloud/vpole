@@ -362,7 +362,7 @@ public sealed class UpdateWebServiceHandler(
                 WebServiceResourceDeployment.ResourceType,
                 updated.Id,
                 deployment.DeploymentId,
-                $"{updated.Exposure.GeneratedHostnameLabelPrefix}-{updated.Id}")).ToArray();
+                updated.Exposure.GeneratedHostnameLabel(updated.Id))).ToArray();
         if (bindingRequests.Length > 0)
         {
             var bindingsResult = await createGeneratedHostnameBindings(

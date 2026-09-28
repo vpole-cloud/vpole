@@ -43,11 +43,12 @@ After envelope-encryption initialization and database migrations, startup runs a
 `DeploymentTargets:Bootstrap:Mode` supports `Auto`, `InCluster`, and `Kubeconfig`. `Auto` selects `Kubeconfig` in Development and `InCluster` in every other environment. Development can set an absolute `KubeconfigPath` and optional `KubeconfigContext`; otherwise Pole reads one absolute `KUBECONFIG` file or the standard user kubeconfig. Merged `KUBECONFIG` lists are rejected so the imported credential is deterministic.
 
 Bootstrap network sources are explicit under `DeploymentTargets:Bootstrap:WorkloadConfiguration:NetworkSources`.
-`Pods` maps each purpose (`PublicIngress`, `FunctionGateway`, `PostgresOperator`) to a required
-namespace and nonempty pod-label map. `Cidrs` maps the same purposes to a canonical
+`Pods` maps each provider-owned source name (for example, `public-ingress`,
+`functions/gateway`, or `postgres/operator`) to a required namespace and nonempty pod-label map.
+`Cidrs` maps source names to a canonical
 IPv4 or IPv6 CIDR; validation rejects the unrestricted `/0` prefix, and the administrator
 must limit the range to the required CNI-visible source addresses. A purpose may occur in
-only one map. Invalid labels, CIDRs, duplicate purposes, and unknown numeric purposes fail
+only one map. Invalid names, labels, CIDRs, and duplicate names fail
 startup. Empty maps configure no source. For example:
 
 ```json
@@ -57,7 +58,7 @@ startup. Empty maps configure no source. For example:
       "WorkloadConfiguration": {
         "NetworkSources": {
           "Pods": {
-            "PublicIngress": {
+            "public-ingress": {
               "Namespace": "kube-system",
               "PodLabels": {
                 "app.kubernetes.io/name": "traefik",
@@ -73,8 +74,8 @@ startup. Empty maps configure no source. For example:
 }
 ```
 
-The platform target create/update API uses a `networkSources` object with optional named
-purposes. Each source has a JSON `kind` discriminator: `Pod` with `namespace` and `podLabels`,
+The platform target create/update API uses a `networkSources.entries` object keyed by source
+name. Each source has a JSON `kind` discriminator: `Pod` with `namespace` and `podLabels`,
 or `Cidr` with `cidr`. Pod namespace and labels form one conjunctive Kubernetes policy peer;
 they are not alternate identities. CIDR sources identify addresses visible to the CNI, which
 may differ from the original sender after NAT. Configure only the addresses actually required

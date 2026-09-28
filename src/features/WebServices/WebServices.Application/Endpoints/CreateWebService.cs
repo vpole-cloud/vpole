@@ -273,7 +273,7 @@ public sealed class CreateWebServiceHandler(
                     WebServiceResourceDeployment.ResourceType,
                     webService.Id,
                     pending.DeploymentId,
-                    $"{webService.Exposure.GeneratedHostnameLabelPrefix}-{webService.Id}")).ToArray();
+                    webService.Exposure.GeneratedHostnameLabel(webService.Id))).ToArray();
             var bindingsResult = await createGeneratedHostnameBindings(
                 bindingRequests,
                 session,
@@ -503,12 +503,8 @@ public sealed class CreateWebServiceRequestBodyValidator : AbstractValidator<Cre
     internal static bool HasPublicIngressTarget(ImmutableList<PortMappingDto>? mappings)
     {
         var mapping = mappings?.FirstOrDefault();
-        if (mapping is null || !string.Equals(mapping.Protocol, "TCP", StringComparison.OrdinalIgnoreCase))
-            return false;
-        var targetPort = mapping.TargetPort;
-        return int.TryParse(targetPort, System.Globalization.NumberStyles.None,
-                   System.Globalization.CultureInfo.InvariantCulture, out var port) &&
-               port is >= 1 and <= 65535;
+        return mapping is not null &&
+               WebServicePublicIngressPort.TryResolve(mapping.Protocol, mapping.TargetPort, out _);
     }
 }
 

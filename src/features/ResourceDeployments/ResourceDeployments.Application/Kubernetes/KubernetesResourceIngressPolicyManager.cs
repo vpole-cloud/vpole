@@ -15,7 +15,8 @@ internal sealed class KubernetesResourceIngressPolicyManager(
     LoadIngressPolicyDeployment loadDeployment,
     LookupDeploymentTarget lookupDeploymentTarget,
     EnsureRuntimeCellIngressBaseline ensureRuntimeCellIngressBaseline,
-    IKubernetesClientProvider kubernetesClientProvider)
+    IKubernetesClientProvider kubernetesClientProvider,
+    ResourceIngressPolicyCatalog catalog)
 {
     private const int MaximumWriteAttempts = 3;
 
@@ -23,7 +24,8 @@ internal sealed class KubernetesResourceIngressPolicyManager(
         ResourceIngressPolicyRequest request,
         CancellationToken cancellationToken = default)
     {
-        ValidateRequest(request);
+        var definition = catalog.Resolve(request);
+        ValidateRequest(request, definition);
 
         var deployment = await loadDeployment(request, cancellationToken);
         if (deployment is null ||
@@ -50,10 +52,8 @@ internal sealed class KubernetesResourceIngressPolicyManager(
         if (request.TargetWorkloadConfigurationRevision > targetRevision)
             return new ResourceIngressPolicyStaleRevision();
 
-        var source = ResolveSource(request, target);
-        var publicStateChanged = (request.Purpose is
-                                     ResourceIngressPolicyPurpose.WebServicePublic or
-                                     ResourceIngressPolicyPurpose.WebServiceHttp01) &&
+        var source = definition.ResolveSource(request, TargetSources(target));
+        var publicStateChanged = definition.RequiresIngressPlacement &&
                                  request.AllowedTcpPorts.Count > 0 &&
                                  deployment.ResolvedPlacement.Ingress is null;
         var sourceUnavailable = request.AllowedTcpPorts.Count > 0 && source is null;
@@ -71,10 +71,23 @@ internal sealed class KubernetesResourceIngressPolicyManager(
                 request.DeploymentTargetId,
                 request.KubernetesNamespace,
                 cancellationToken);
-            if (baseline is RuntimeCellIngressBaselinePlacementMismatch)
-                return new ResourceIngressPolicyPlacementMismatch();
-            if (baseline is not RuntimeCellIngressBaselineReady)
-                return new ResourceIngressPolicyUnavailable();
+            ReconcileResourceIngressPolicyOutcome? baselineFailure = baseline switch
+            {
+                null => throw new InvalidOperationException("The ingress baseline returned no outcome."),
+                RuntimeCellIngressBaselineReady => null,
+                RuntimeCellIngressBaselinePlacementMismatch => new ResourceIngressPolicyPlacementMismatch(),
+                RuntimeCellIngressBaselineNotReady or
+                RuntimeCellIngressBaselineNamespaceOwnershipConflict or
+                RuntimeCellIngressBaselineNamespaceUnavailable or
+                RuntimeCellIngressBaselinePolicyOwnershipConflict or
+                RuntimeCellIngressBaselinePolicyUnavailable or
+                RuntimeCellIngressBaselineTargetNotFound or
+                RuntimeCellIngressBaselineTargetDisabled or
+                RuntimeCellIngressBaselineDefaultTargetNotConfigured or
+                RuntimeCellIngressBaselineTargetConnectionUnavailable => new ResourceIngressPolicyUnavailable()
+            };
+            if (baselineFailure is { } failure)
+                return failure;
         }
 
         var current = request with
@@ -84,7 +97,8 @@ internal sealed class KubernetesResourceIngressPolicyManager(
         };
         var desired = ResourceIngressPolicyManifestBuilder.Build(
             current,
-            allowTraffic ? source : null);
+            allowTraffic ? source : null,
+            definition);
 
         try
         {
@@ -214,22 +228,19 @@ internal sealed class KubernetesResourceIngressPolicyManager(
                (!allowTraffic || target.NetworkPolicy.AllowsWorkloads);
     }
 
-    private static DeploymentTargetNetworkSourceDto? ResolveSource(
-        ResourceIngressPolicyRequest request,
-        DeploymentTargetLookupDto target) => request.Purpose switch
-        {
-            ResourceIngressPolicyPurpose.WebServicePublic =>
-                target.WorkloadConfiguration.NetworkSources.PublicIngress,
-            ResourceIngressPolicyPurpose.WebServiceHttp01 =>
-                target.WorkloadConfiguration.NetworkSources.PublicIngress,
-            ResourceIngressPolicyPurpose.FunctionGateway =>
-                target.WorkloadConfiguration.NetworkSources.FunctionGateway,
-            ResourceIngressPolicyPurpose.PostgresOperator =>
-                target.WorkloadConfiguration.NetworkSources.PostgresOperator,
-            ResourceIngressPolicyPurpose.PostgresReplication =>
-                ResourceIngressPolicyManifestBuilder.ReplicationSource(request),
-            _ => throw new ArgumentOutOfRangeException(nameof(request))
-        };
+    private static ResourceIngressPolicyTargetSources TargetSources(DeploymentTargetLookupDto target) =>
+        new(target.WorkloadConfiguration.NetworkSources.Entries.ToDictionary(
+            entry => entry.Key,
+            entry => entry.Value switch
+            {
+                DeploymentTargetPodNetworkSourceDto pod =>
+                    (ResourceIngressPolicyNetworkSource)new ResourceIngressPolicyPodSource(
+                        pod.Namespace, pod.PodLabels),
+                DeploymentTargetCidrNetworkSourceDto cidr =>
+                    new ResourceIngressPolicyCidrSource(cidr.Cidr),
+                null => null
+            },
+            StringComparer.Ordinal));
 
     private static bool OwnsPolicy(V1NetworkPolicy existing, ResourceIngressPolicyRequest request)
     {
@@ -264,32 +275,20 @@ internal sealed class KubernetesResourceIngressPolicyManager(
                targetRevision <= request.TargetWorkloadConfigurationRevision;
     }
 
-    private static void ValidateRequest(ResourceIngressPolicyRequest request)
+    private static void ValidateRequest(
+        ResourceIngressPolicyRequest request,
+        ResourceIngressPolicyDefinition definition)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(request.AllowedTcpPorts);
         if (request.DeploymentDesiredGeneration < 1 ||
             request.TargetWorkloadConfigurationRevision < 1 ||
-            request.AllowedTcpPorts.Any(port => port is < 1 or > 65535))
+            request.AllowedTcpPorts.Any(port => port.Value is < 1 or > 65535))
         {
             throw new ArgumentException("Ingress policy revision or TCP port is invalid.", nameof(request));
         }
 
-        if (request.AllowedTcpPorts.Count > 0 &&
-            (request.Purpose switch
-            {
-                ResourceIngressPolicyPurpose.WebServiceHttp01 =>
-                    !request.AllowedTcpPorts.SequenceEqual([8089]),
-                ResourceIngressPolicyPurpose.FunctionGateway =>
-                    !request.AllowedTcpPorts.SequenceEqual([8080]),
-                ResourceIngressPolicyPurpose.PostgresOperator =>
-                    !request.AllowedTcpPorts.Order().SequenceEqual([5432, 8000]),
-                ResourceIngressPolicyPurpose.PostgresReplication =>
-                    !request.AllowedTcpPorts.SequenceEqual([5432]),
-                ResourceIngressPolicyPurpose.WebServicePublic =>
-                    request.AllowedTcpPorts.Count != 1,
-                _ => true
-            }))
+        if (request.AllowedTcpPorts.Count > 0 && !definition.AllowsPorts(request.AllowedTcpPorts))
         {
             throw new ArgumentException("Ingress policy ports do not match the provider path.", nameof(request));
         }

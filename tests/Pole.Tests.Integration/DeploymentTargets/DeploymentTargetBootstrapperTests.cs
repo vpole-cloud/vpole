@@ -233,7 +233,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
                 {
                     Pods = new()
                     {
-                        [DeploymentTargetBootstrapNetworkSourcePurpose.PublicIngress] = new()
+                        ["public-ingress"] = new()
                         {
                             Namespace = "ingress-system",
                             PodLabels = new() { ["app"] = "nginx" }
@@ -241,7 +241,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
                     },
                     Cidrs = new()
                     {
-                        [DeploymentTargetBootstrapNetworkSourcePurpose.FunctionGateway] = "192.0.2.9/32"
+                        ["functions/gateway"] = "192.0.2.9/32"
                     }
                 }
             }
@@ -259,12 +259,12 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         Assert.Equal("nginx", ingress.IngressClassName);
         Assert.Equal("private-ca", ingress.ClusterIssuerName);
         var ingressSource = Assert.IsType<DeploymentTargetPodNetworkSource>(
-            target.WorkloadConfiguration.NetworkSources.PublicIngress);
+            target.WorkloadConfiguration.NetworkSources.Get("public-ingress"));
         Assert.Equal("ingress-system", ingressSource.Namespace);
         Assert.Equal("nginx", ingressSource.PodLabels["app"]);
         Assert.Equal("192.0.2.9/32", Assert.IsType<DeploymentTargetCidrNetworkSource>(
-            target.WorkloadConfiguration.NetworkSources.FunctionGateway).Cidr);
-        Assert.Null(target.WorkloadConfiguration.NetworkSources.PostgresOperator);
+            target.WorkloadConfiguration.NetworkSources.Get("functions/gateway")).Cidr);
+        Assert.Null(target.WorkloadConfiguration.NetworkSources.Get("postgres/operator"));
     }
 
     [Fact]

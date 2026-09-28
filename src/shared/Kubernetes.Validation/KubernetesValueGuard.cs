@@ -62,6 +62,14 @@ public static partial class KubernetesValueGuard
                 parameterName);
     }
 
+    public static string DnsLabel(string? value, string parameterName)
+    {
+        var normalized = Required(value, parameterName, MaximumLabelNameLength);
+        return DnsLabelPattern().IsMatch(normalized)
+            ? normalized
+            : throw new ArgumentException("The value must be a Kubernetes DNS label.", parameterName);
+    }
+
     public static string? OptionalDnsSubdomain(
         string? value,
         string parameterName)
