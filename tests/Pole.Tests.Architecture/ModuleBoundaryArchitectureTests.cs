@@ -14,6 +14,92 @@ public sealed class ModuleBoundaryArchitectureTests
     private static readonly IReadOnlyList<DocumentedSourceException>
         TemporaryIntegrationEventPlacementAllowlist = [];
 
+    // Distribution is independent: built-in workloads are still providers to generic capabilities.
+    private static readonly IReadOnlyDictionary<string, FeatureRole> FeatureRoles =
+        new Dictionary<string, FeatureRole>(StringComparer.Ordinal)
+        {
+            ["ComputeProfiles"] = FeatureRole.Platform,
+            ["ContainerRegistries"] = FeatureRole.Platform,
+            ["DeploymentTargets"] = FeatureRole.Platform,
+            ["Domains"] = FeatureRole.Platform,
+            ["GitProviders"] = FeatureRole.BuiltIn,
+            ["Outbox"] = FeatureRole.Platform,
+            ["Quotas"] = FeatureRole.Platform,
+            ["ResourceConnections"] = FeatureRole.Platform,
+            ["ResourceDeployments"] = FeatureRole.Platform,
+            ["ResourceGroups"] = FeatureRole.Platform,
+            ["Search"] = FeatureRole.Platform,
+            ["Secrets"] = FeatureRole.Platform,
+            ["StorageProfiles"] = FeatureRole.Platform,
+            ["Tenants"] = FeatureRole.Platform,
+            ["Users"] = FeatureRole.Platform,
+            ["Functions"] = FeatureRole.BuiltIn,
+            ["SourceBuilds"] = FeatureRole.BuiltIn,
+            ["WebServices"] = FeatureRole.BuiltIn,
+            ["Postgres"] = FeatureRole.ServiceProvider,
+            ["RedisServices"] = FeatureRole.ServiceProvider
+        };
+
+    [Fact]
+    public void EveryProductionFeature_HasAnExplicitArchitecturalRole()
+    {
+        var projects = LoadProductionFeatureProjects(Path.Combine(FindRepositoryRoot(), "src/features"));
+        Assert.DoesNotContain(projects.Values.Select(project => project.Feature)
+            .Distinct(StringComparer.Ordinal), feature => !FeatureRoles.ContainsKey(feature));
+    }
+
+    [Fact]
+    public void PlatformCapabilities_DoNotReferenceConcreteProviders()
+    {
+        var projects = LoadProductionFeatureProjects(Path.Combine(FindRepositoryRoot(), "src/features"));
+        var violations = projects.Values
+            .SelectMany(project => LoadFeatureReferences(project, projects))
+            .Where(edge => !IsAllowedFeatureDirection(edge.Source.Feature, edge.Target.Feature))
+            .Select(edge => $"{edge.Source.Identity} -> {edge.Target.Identity}")
+            .Order(StringComparer.Ordinal);
+        Assert.Empty(violations);
+    }
+
+    [Theory]
+    [InlineData("ResourceDeployments", "Postgres", false)]
+    [InlineData("ResourceConnections", "RedisServices", false)]
+    [InlineData("Search", "WebServices", false)]
+    [InlineData("ResourceDeployments", "Functions", false)]
+    [InlineData("SourceBuilds", "RedisServices", false)]
+    [InlineData("Postgres", "ResourceDeployments", true)]
+    [InlineData("Functions", "ResourceConnections", true)]
+    [InlineData("SourceBuilds", "WebServices", true)]
+    [InlineData("RedisServices", "RedisServices", true)]
+    public void ArchitecturalRole_ConstrainsEveryProjectRole(
+        string sourceFeature,
+        string targetFeature,
+        bool expected)
+    {
+        Assert.Equal(expected, IsAllowedFeatureDirection(sourceFeature, targetFeature));
+    }
+
+    private static bool IsAllowedFeatureDirection(string sourceFeature, string targetFeature)
+    {
+        if (sourceFeature == targetFeature)
+            return true;
+        var source = FeatureRoles[sourceFeature];
+        var target = FeatureRoles[targetFeature];
+        return source switch
+        {
+            FeatureRole.Platform => target is FeatureRole.Platform,
+            FeatureRole.BuiltIn => target is not FeatureRole.ServiceProvider,
+            FeatureRole.ServiceProvider => true,
+            _ => throw new ArgumentOutOfRangeException(nameof(sourceFeature))
+        };
+    }
+
+    private enum FeatureRole
+    {
+        Platform,
+        BuiltIn,
+        ServiceProvider
+    }
+
     [Theory]
     [InlineData("Application", true)]
     [InlineData("Domain", false)]
