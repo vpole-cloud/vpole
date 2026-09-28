@@ -108,13 +108,25 @@ public sealed class ResourceConnectionPolicyTargetTests
     public async Task TargetUnavailableBaseline_PreservesTargetFailureReason()
     {
         using var fixture = new Fixture();
-        fixture.BaselineOutcome = new RuntimeCellIngressBaselineTargetUnavailable(
-            fixture.Snapshot.DestinationRuntimeCellId,
-            RuntimeCellIngressBaselineTargetFailureReason.Disabled);
+        fixture.BaselineOutcome = new RuntimeCellIngressBaselineTargetDisabled(
+            fixture.Snapshot.DestinationRuntimeCellId);
 
         var result = await fixture.Target.ApplyAsync(fixture.Connection, fixture.Snapshot);
 
         Assert.IsType<ResourceConnectionPolicyTargetUnavailable>(result.Value);
+        Assert.Equal(0, fixture.Api.CreateCount);
+    }
+
+    [Fact]
+    public async Task BaselineNotReady_PreservesBaselineFailureReason()
+    {
+        using var fixture = new Fixture();
+        fixture.BaselineOutcome = new RuntimeCellIngressBaselineNotReady(
+            fixture.Snapshot.DestinationRuntimeCellId);
+
+        var result = await fixture.Target.ApplyAsync(fixture.Connection, fixture.Snapshot);
+
+        Assert.IsType<ResourceConnectionPolicyBaselineUnavailable>(result.Value);
         Assert.Equal(0, fixture.Api.CreateCount);
     }
 

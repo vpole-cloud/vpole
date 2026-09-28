@@ -79,10 +79,9 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
                 snapshot.TargetId,
                 snapshot.DestinationNamespace,
                 cancellationToken);
-            if (baseline is RuntimeCellIngressBaselineTargetUnavailable)
-                return new ResourceConnectionPolicyTargetUnavailable();
-            if (baseline is not RuntimeCellIngressBaselineReady)
-                return new ResourceConnectionPolicyBaselineUnavailable();
+            var baselineFailure = BaselineFailure(baseline);
+            if (baselineFailure is { } failure)
+                return failure;
 
             var client = await clients.GetAsync(snapshot.TargetId, cancellationToken);
             var existing = await ReadAsync(
@@ -325,6 +324,24 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
             HttpStatusCode.NotFound => new ResourceConnectionPolicyNamespaceUnavailable(),
             HttpStatusCode.Conflict => new ResourceConnectionPolicyConcurrentWrite(),
             _ => new ResourceConnectionPolicyRequestRejected()
+        };
+
+    private static ResourceConnectionPolicyApplyOutcome? BaselineFailure(
+        EnsureRuntimeCellIngressBaselineOutcome outcome) => outcome switch
+        {
+            RuntimeCellIngressBaselineReady => null,
+            RuntimeCellIngressBaselineTargetNotFound or
+            RuntimeCellIngressBaselineTargetDisabled or
+            RuntimeCellIngressBaselineDefaultTargetNotConfigured or
+            RuntimeCellIngressBaselineTargetConnectionUnavailable =>
+                new ResourceConnectionPolicyTargetUnavailable(),
+            RuntimeCellIngressBaselineNotReady or
+            RuntimeCellIngressBaselinePlacementMismatch or
+            RuntimeCellIngressBaselineNamespaceOwnershipConflict or
+            RuntimeCellIngressBaselineNamespaceUnavailable or
+            RuntimeCellIngressBaselinePolicyOwnershipConflict or
+            RuntimeCellIngressBaselinePolicyUnavailable =>
+                new ResourceConnectionPolicyBaselineUnavailable()
         };
 
     private static ResourceConnectionPolicyDeleteOutcome DeleteFailureForHttp(
