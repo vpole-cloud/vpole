@@ -7,6 +7,58 @@ events. Small, stable concepts shared by several modules live in thematic leaf p
 These rules apply to production projects under `src/features`. `Pole.Server` is the composition
 root, and tests may reference the production assemblies required by their verification boundary.
 
+## Platform capabilities and resource providers
+
+Architectural role and distribution are separate decisions. A provider may ship with Pole or
+later be installed as a plugin; shipping with the host does not make its resource-specific rules
+part of the generic platform. Pole expects many database and message-broker providers, so adding
+one must not require a new branch, enum member, or reference in a generic platform capability.
+
+- Platform capabilities own tenant identity, resource registration and grouping, placement,
+  deployment targets, reconciliation, connections, search, secrets, quotas, and shared delivery
+  infrastructure. Their implementations do not reference concrete service-provider projects,
+  including provider Contracts, Events, Primitives, and HTTP mappings.
+- RedisServices and Postgres are service providers. They may consume platform Contracts and
+  contribute implementations of platform extension contracts from their own Application/Runtime.
+- WebServices and Functions are built-in workload providers. SourceBuilds and GitProviders are built-in delivery
+  workflows and integrations. These remain first-party product capabilities, but generic platform mechanisms do not
+  depend on their concrete implementation, contracts, events, ports, or selectors either.
+- Pole.Server is the composition root and may reference implementations to register them. Tests
+  may compose concrete providers when that is the boundary they verify.
+
+These constraints supplement, rather than replace, the project-role dependency matrix below.
+Provider-to-provider references do not become permitted merely because both modules are plugins;
+use a real published capability and preserve the existing layer rules.
+
+There are two distinct synchronous integration patterns:
+
+```text
+Consumer.Application -> CapabilityOwner.Contracts   (use a platform operation)
+ResourceProvider.Application -> CapabilityOwner.Contracts   (implement an extension)
+CapabilityOwner.Application -> CapabilityOwner.Contracts    (invoke registered extensions)
+Pole.Server -> ResourceProvider.Application                  (compose registrations)
+```
+
+The platform owns the extension contract's meaning and generic lifecycle. The provider owns its
+endpoint catalog, required network paths, selectors, resource-specific ports, and event adapters.
+The platform validates ownership, placement, revisions, and structural invariants; it must not
+reconstruct provider rules by switching on resource type names. A registry must reject duplicate
+identities during startup. Register source and destination capabilities separately when a provider
+supports only one. Keep transaction participation explicit in contracts that need atomic reads.
+
+For asynchronous contributions, provider-owned consumers translate provider events into platform
+operations. A platform module must not import each service provider's event assembly. Search's
+contribution pattern below is the canonical example. Moving provider knowledge into a central
+helper, shared project, or renamed enum does not satisfy this boundary.
+
+The architecture tests classify production feature roles and reject platform-to-provider project
+references. New feature folders require an explicit classification. Behavioral tests must also
+show that a new registered provider works without changing the generic platform implementation;
+project-reference checks alone cannot detect a hardcoded resource-type switch.
+
+This boundary does not require dynamic assembly loading, a plugin package manager, or hot reload.
+Those are separate delivery capabilities. Explicit DI composition is sufficient here.
+
 ## Project roles
 
 ### Domain

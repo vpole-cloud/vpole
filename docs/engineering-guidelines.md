@@ -9,6 +9,10 @@ Cross-feature synchronous integration uses provider-owned Contracts; asynchronou
 provider-owned Events. Application projects do not reference another feature's Domain or
 Application. Small, genuinely shared concepts belong to thematic dependency-leaf projects.
 
+Platform capabilities must not reference concrete service-provider modules, including their
+Contracts and Events. Built-in workload providers also contribute through platform-owned extension
+contracts. Shipping a provider with Pole does not make its rules part of generic infrastructure.
+
 The complete dependency matrix, Mongo transaction exception, event evolution policy, and
 architecture-test rules are defined in [Module boundaries](module-boundaries.md).
 
@@ -56,6 +60,20 @@ exceptions. Choose the result shape at the boundary that owns the decision:
   `EnsureTenantsExistOutcome(TenantsExist, TenantSetNotFound)`. Use a boolean successful value
   only when both `true` and `false` are meaningful answers rather than success/failure markers.
 
+### Exact outcomes and closed state hierarchies
+
+Each operation's union contains only results that operation can produce. Reuse concrete error
+records across operations where their meaning is identical; do not use a universal failure enum
+or wrapper that admits impossible errors. Map typed operational failures explicitly to persisted
+or transport diagnostic codes. Enums remain appropriate for categories whose entire set is valid.
+
+Use C# closed record hierarchies for finite domain state families and sealed terminal variants.
+Use operation-specific unions for outcomes and open interfaces for provider extension points.
+Match the typed union or closed hierarchy with an exhaustive switch expression; do not switch on
+an untyped Value and add a fallback that hides a newly introduced case. Null is a separate case
+only where the input contract is nullable. Persistence still requires explicit discriminator
+configuration and serialization verification.
+
 ## Endpoint file structure
 
 Keep each Minimal API endpoint with its application boundary in one file: the route mapping, request/response types, request validator, and Mediator handler belong together. A file may contain one endpoint-handler pair.
@@ -98,6 +116,16 @@ Use typed members, expressions, identifiers, and framework APIs instead of strin
 - Avoid magic strings that duplicate names already represented by the type system.
 - When a string-based API is unavoidable, centralize stable identifiers where doing so reduces drift.
 - Do not force a typed API when it cannot express the required behavior correctly; document the reason for the fallback when it is not obvious.
+
+Name resource identity and address construction rules explicitly: hostname labels, Kubernetes
+object names, and Service addresses belong to their semantic owner rather than repeated string
+interpolation in handlers or DTO mapping. This does not require wrapping ordinary display text.
+
+Validated numeric port values share the range 1..65535 in these workload contracts. Keep parsing
+and range checks in one small value type and protect its default struct value at the boundaries
+that consume it. A numeric port does not establish protocol, endpoint eligibility, or resolve a
+Kubernetes named target port; those decisions remain with the provider. Do not add implicit
+unchecked conversions that bypass the value's invariant.
 
 ## Verify uncertain dependency behavior
 
