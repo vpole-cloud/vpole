@@ -74,8 +74,24 @@ internal sealed class MongoPersistUpdatedWebService(
 
         var connections = await reconcileConnections(
             current.TenantId, WebServiceResourceDeployment.ResourceType, current.Id, session, cancellationToken);
-        if (connections is ResourceConnectionTopologyConflict conflict)
-            return new WebServiceConnectionConflict(current.Id, conflict.ConnectionId);
+        var connectionConflict = connections switch
+        {
+            ResourceConnectionTopologyValid => null,
+            ResourceConnectionSourceHasNoPlacements error =>
+                new WebServiceConnectionConflict(current.Id, error.ConnectionId),
+            ResourceConnectionDestinationTargetMissing error =>
+                new WebServiceConnectionConflict(current.Id, error.ConnectionId),
+            ResourceConnectionDestinationTargetAmbiguous error =>
+                new WebServiceConnectionConflict(current.Id, error.ConnectionId),
+            ResourceConnectionEndpointMissing error =>
+                new WebServiceConnectionConflict(current.Id, error.ConnectionId),
+            ResourceConnectionDestinationDeletingConflict error =>
+                new WebServiceConnectionConflict(current.Id, error.ConnectionId),
+            ResourceConnectionConcurrentMutation error =>
+                new WebServiceConnectionConflict(current.Id, error.ConnectionId)
+        };
+        if (connectionConflict is not null)
+            return connectionConflict;
 
         await storeOutboxWrites(
             session,

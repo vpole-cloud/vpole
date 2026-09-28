@@ -68,6 +68,89 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
     }
 
     [Fact]
+    public async Task RemovingLastSourcePlacement_ReportsExactConflict_AndAbortRestoresPlacement()
+    {
+        var connection = await CreateWebConnectionAsync();
+        var sourceId = connection.SourceResourceId;
+        var deployment = await DbContext.ResourceDeployments
+            .Find(item => item.ResourceId == sourceId).SingleAsync();
+        var registrationBefore = await DbContext.ResourceRegistrations
+            .Find(item => item.ResourceId == sourceId).SingleAsync();
+        using var session = await Fixture.Client.StartSessionAsync();
+        session.StartTransaction();
+        Assert.NotNull(await Services.GetRequiredService<FenceRegisteredResource>()(
+            TestData.TenantId, WebServiceResourceDeployment.ResourceType, sourceId, session));
+        await DbContext.ResourceDeployments.DeleteOneAsync(session, item => item.Id == deployment.Id);
+
+        var result = await Services.GetRequiredService<ReconcileConnectionsForResource>()(
+            TestData.TenantId, WebServiceResourceDeployment.ResourceType, sourceId, session);
+
+        Assert.Equal(connection.Id,
+            Assert.IsType<ResourceConnectionSourceHasNoPlacements>(result.Value).ConnectionId);
+        await session.AbortTransactionAsync();
+        Assert.NotNull(await DbContext.ResourceDeployments
+            .Find(item => item.Id == deployment.Id).SingleOrDefaultAsync());
+        Assert.Equal(registrationBefore.ReferenceFence,
+            (await DbContext.ResourceRegistrations
+                .Find(item => item.ResourceId == sourceId).SingleAsync()).ReferenceFence);
+        Assert.Equal(connection.Generation, (await LoadConnectionAsync(connection.Id)).Generation);
+    }
+
+    [Fact]
+    public async Task RemovingEndpoint_ReportsExactConflict_AndAbortRestoresEndpoint()
+    {
+        var connection = await CreateWebConnectionAsync();
+        var current = await WebServices.Find(item => item.Id == connection.DestinationResourceId)
+            .SingleAsync();
+        var replacement = current.UpdateDesiredState(
+            current.Spec with { Config = current.Spec.Config with { PortMappings = [] } },
+            current.Tags);
+        using var session = await Fixture.Client.StartSessionAsync();
+        session.StartTransaction();
+        Assert.NotNull(await Services.GetRequiredService<FenceRegisteredResource>()(
+            TestData.TenantId, WebServiceResourceDeployment.ResourceType, current.Id, session));
+        await WebServices.ReplaceOneAsync(session, item => item.Id == current.Id, replacement);
+
+        var result = await Services.GetRequiredService<ReconcileConnectionsForResource>()(
+            TestData.TenantId, WebServiceResourceDeployment.ResourceType, current.Id, session);
+
+        Assert.Equal(connection.Id,
+            Assert.IsType<ResourceConnectionEndpointMissing>(result.Value).ConnectionId);
+        await session.AbortTransactionAsync();
+        var unchanged = await WebServices.Find(item => item.Id == current.Id).SingleAsync();
+        Assert.Equal(current.Revision, unchanged.Revision);
+        Assert.Equal("http", Assert.Single(unchanged.Spec.Config.PortMappings).Name);
+        Assert.Equal(connection.Generation, (await LoadConnectionAsync(connection.Id)).Generation);
+    }
+
+    [Fact]
+    public async Task DeletingDestination_ReportsExactConflict_AndAbortRestoresLifecycle()
+    {
+        var connection = await CreateWebConnectionAsync();
+        var current = await WebServices.Find(item => item.Id == connection.DestinationResourceId)
+            .SingleAsync();
+        using var session = await Fixture.Client.StartSessionAsync();
+        session.StartTransaction();
+        Assert.NotNull(await Services.GetRequiredService<FenceRegisteredResource>()(
+            TestData.TenantId, WebServiceResourceDeployment.ResourceType, current.Id, session));
+        await WebServices.ReplaceOneAsync(
+            session,
+            item => item.Id == current.Id,
+            current.BeginDeletion(DateTime.UtcNow));
+
+        var result = await Services.GetRequiredService<ReconcileConnectionsForResource>()(
+            TestData.TenantId, WebServiceResourceDeployment.ResourceType, current.Id, session);
+
+        Assert.Equal(connection.Id,
+            Assert.IsType<ResourceConnectionDestinationDeletingConflict>(result.Value).ConnectionId);
+        await session.AbortTransactionAsync();
+        var unchanged = await WebServices.Find(item => item.Id == current.Id).SingleAsync();
+        Assert.IsType<ActiveWebServiceLifecycle>(unchanged.Lifecycle);
+        Assert.Equal(current.Revision, unchanged.Revision);
+        Assert.Equal(connection.Generation, (await LoadConnectionAsync(connection.Id)).Generation);
+    }
+
+    [Fact]
     public async Task SourceTargetRemoval_PreservesRemainingPairAndRetiresRemovedPolicyLocation()
     {
         var connection = await CreateWebConnectionAsync();

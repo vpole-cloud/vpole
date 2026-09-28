@@ -67,11 +67,12 @@ internal sealed class MongoRecordResourceConnectionTarget(
             expectedGeneration,
             reason,
             timeProvider.GetUtcNow().UtcDateTime);
-        if (outcome is not ConnectionApplyRecorded recorded)
+        var changed = ApplyChange(outcome);
+        if (changed is null)
             return;
         await connections.ReplaceOneAsync(
             ResourceConnectionFilters.AtRevision(tenantId, connectionId, expectedRevision),
-            recorded.Connection,
+            changed,
             cancellationToken: cancellationToken);
     }
 
@@ -96,11 +97,12 @@ internal sealed class MongoRecordResourceConnectionTarget(
             expectedGeneration,
             reason,
             timeProvider.GetUtcNow().UtcDateTime);
-        if (outcome is not ConnectionCleanupRecorded recorded)
+        var changed = CleanupChange(outcome);
+        if (changed is null)
             return;
         await connections.ReplaceOneAsync(
             ResourceConnectionFilters.AtRevision(tenantId, connectionId, expectedRevision),
-            recorded.Connection,
+            changed,
             cancellationToken: cancellationToken);
     }
 
@@ -114,16 +116,16 @@ internal sealed class MongoRecordResourceConnectionTarget(
         RecordAsync(
             tenantId,
             connectionId,
-            current => failureReason is null
+            current => ApplyChange(failureReason is null
                 ? current.RecordApplied(
                     targetId,
                     expectedGeneration,
-                    timeProvider.GetUtcNow().UtcDateTime).Value as ConnectionApplyRecorded
+                    timeProvider.GetUtcNow().UtcDateTime)
                 : current.RecordApplyFailure(
                     targetId,
                     expectedGeneration,
                     failureReason,
-                    timeProvider.GetUtcNow().UtcDateTime).Value as ConnectionApplyRecorded,
+                    timeProvider.GetUtcNow().UtcDateTime)),
             cancellationToken);
 
     public Task RecordCleanupAsync(
@@ -136,24 +138,41 @@ internal sealed class MongoRecordResourceConnectionTarget(
         RecordAsync(
             tenantId,
             connectionId,
-            current => failureReason is null
+            current => CleanupChange(failureReason is null
                 ? current.RecordCleanupCompleted(
                     location,
                     expectedGeneration,
-                    timeProvider.GetUtcNow().UtcDateTime).Value as ConnectionCleanupRecorded
+                    timeProvider.GetUtcNow().UtcDateTime)
                 : current.RecordCleanupFailure(
                     location,
                     expectedGeneration,
                     failureReason,
-                    timeProvider.GetUtcNow().UtcDateTime).Value as ConnectionCleanupRecorded,
+                    timeProvider.GetUtcNow().UtcDateTime)),
             cancellationToken);
 
-    private async Task RecordAsync<TRecorded>(
+    private static ResourceConnection? ApplyChange(ConnectionApplyOutcome outcome) => outcome switch
+    {
+        ConnectionApplyRecorded recorded => recorded.Connection,
+        StaleConnectionApply => null,
+        ConnectionNoLongerActive => null,
+        ConnectionApplyAlreadyApplied => null,
+        UnknownConnectionApplyTarget => null
+    };
+
+    private static ResourceConnection? CleanupChange(ConnectionCleanupOutcome outcome) => outcome switch
+    {
+        ConnectionCleanupRecorded recorded => recorded.Connection,
+        StaleConnectionCleanup => null,
+        CurrentConnectionPolicyLocation => null,
+        ConnectionCleanupAlreadyCompleted => null,
+        UnknownConnectionCleanupTarget => null
+    };
+
+    private async Task RecordAsync(
         string tenantId,
         string connectionId,
-        Func<ResourceConnection, TRecorded?> change,
+        Func<ResourceConnection, ResourceConnection?> change,
         CancellationToken cancellationToken)
-        where TRecorded : class
     {
         for (var attempt = 0; attempt < 4; attempt++)
         {
@@ -162,13 +181,7 @@ internal sealed class MongoRecordResourceConnectionTarget(
                 .FirstOrDefaultAsync(cancellationToken);
             if (current is null)
                 return;
-            var outcome = change(current);
-            var changed = outcome switch
-            {
-                ConnectionApplyRecorded applied => applied.Connection,
-                ConnectionCleanupRecorded cleaned => cleaned.Connection,
-                _ => null
-            };
+            var changed = change(current);
             if (changed is null)
             {
                 await purgeIfComplete(current, cancellationToken);

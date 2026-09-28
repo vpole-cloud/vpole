@@ -12,12 +12,17 @@ namespace Pole.Features.ResourceConnections.Application.Persistence;
 internal sealed record ConnectionResolvedSnapshots(
     IReadOnlyList<ConnectionTargetSnapshot> Snapshots);
 
-internal sealed record ConnectionResolutionConflict(
-    ResourceConnectionTopologyConflictReason Reason);
-
 internal union ResolveConnectionSnapshotsOutcome(
     ConnectionResolvedSnapshots,
-    ConnectionResolutionConflict);
+    ResourceConnectionSourceHasNoPlacements,
+    ResourceConnectionDestinationTargetMissing,
+    ResourceConnectionDestinationTargetAmbiguous,
+    ResourceConnectionEndpointMissing,
+    ResourceConnectionDestinationDeletingConflict);
+
+internal union RefreshConnectionOutcome(
+    ResourceConnectionTopologyValid,
+    ResourceConnectionConcurrentMutation);
 
 internal sealed class MongoResourceConnectionMutationProvider(
     IMongoCollection<ResourceConnection> connections,
@@ -46,41 +51,65 @@ internal sealed class MongoResourceConnectionMutationProvider(
             if (current.Lifecycle is not ActiveResourceConnection active)
                 continue;
             var resolved = await ResolveSnapshotsAsync(current, session, cancellationToken);
-            if (resolved is ConnectionResolutionConflict conflict)
-                return new ResourceConnectionTopologyConflict(current.Id, conflict.Reason);
-            var snapshots = ((ConnectionResolvedSnapshots)resolved.Value).Snapshots;
-            if (active.Targets.Count == snapshots.Count &&
-                active.Targets.Select(item => item.Snapshot)
-                    .Zip(snapshots)
-                    .All(pair => pair.First.HasSameResolvedValues(pair.Second)))
+            ReconcileConnectionsForResourceOutcome resolution = resolved switch
+            {
+                ConnectionResolvedSnapshots found => (await RefreshAsync(
+                    current, active, found.Snapshots, session, outbox, cancellationToken)) switch
+                {
+                    ResourceConnectionTopologyValid refreshed => refreshed,
+                    ResourceConnectionConcurrentMutation error => error
+                },
+                ResourceConnectionSourceHasNoPlacements error => error,
+                ResourceConnectionDestinationTargetMissing error => error,
+                ResourceConnectionDestinationTargetAmbiguous error => error,
+                ResourceConnectionEndpointMissing error => error,
+                ResourceConnectionDestinationDeletingConflict error => error
+            };
+            if (resolution is ResourceConnectionTopologyValid valid)
+            {
+                refreshedCount += valid.RefreshedCount;
                 continue;
-
-            var updated = current.RefreshResolvedTargets(snapshots);
-            var result = await connections.ReplaceOneAsync(
-                session,
-                ResourceConnectionFilters.AtRevision(
-                    tenantId,
-                    current.Id,
-                    current.Revision),
-                updated,
-                cancellationToken: cancellationToken);
-            if (result.ModifiedCount != 1)
-            {
-                return new ResourceConnectionTopologyConflict(
-                    current.Id,
-                    ResourceConnectionTopologyConflictReason.ConcurrentMutation);
             }
-            refreshedCount++;
-            outbox.Add(OutboxWrite.Create(new ResourceConnectionReconciliationRequestedEvent(
-                current.Id,
-                updated.Generation)
-            {
-                EventCore = EventCore.Create(tenantId)
-            }));
+            return resolution;
         }
         if (outbox.Count > 0)
             await storeOutboxWrites(session, outbox, cancellationToken);
         return new ResourceConnectionTopologyValid(refreshedCount);
+    }
+
+    private async Task<RefreshConnectionOutcome> RefreshAsync(
+        ResourceConnection current,
+        ActiveResourceConnection active,
+        IReadOnlyList<ConnectionTargetSnapshot> snapshots,
+        IClientSessionHandle session,
+        List<OutboxWrite> outbox,
+        CancellationToken cancellationToken)
+    {
+        if (active.Targets.Count == snapshots.Count &&
+            active.Targets.Select(item => item.Snapshot)
+                .Zip(snapshots)
+                .All(pair => pair.First.HasSameResolvedValues(pair.Second)))
+            return new ResourceConnectionTopologyValid(0);
+
+        var updated = current.RefreshResolvedTargets(snapshots);
+        var result = await connections.ReplaceOneAsync(
+            session,
+            ResourceConnectionFilters.AtRevision(
+                current.TenantId,
+                current.Id,
+                current.Revision),
+            updated,
+            cancellationToken: cancellationToken);
+        if (result.ModifiedCount != 1)
+            return new ResourceConnectionConcurrentMutation(current.Id);
+
+        outbox.Add(OutboxWrite.Create(new ResourceConnectionReconciliationRequestedEvent(
+            current.Id,
+            updated.Generation)
+        {
+            EventCore = EventCore.Create(current.TenantId)
+        }));
+        return new ResourceConnectionTopologyValid(1);
     }
 
     public async Task<CascadeConnectionsForResourceDeletionOutcome> CascadeAsync(
@@ -140,13 +169,24 @@ internal sealed class MongoResourceConnectionMutationProvider(
             connection.EndpointId,
             session,
             cancellationToken);
-        if (endpointResult is ConnectionDestinationDeleting)
-            return new ConnectionResolutionConflict(
-                ResourceConnectionTopologyConflictReason.DestinationDeleting);
-        if (endpointResult is not ResolvedConnectionEndpoint endpoint)
-            return new ConnectionResolutionConflict(
-                ResourceConnectionTopologyConflictReason.EndpointMissing);
+        return endpointResult switch
+        {
+            ResolvedConnectionEndpoint endpoint => await ResolvePlacementsAsync(
+                connection, sourceType, destinationType, endpoint, session, cancellationToken),
+            ConnectionDestinationDeleting => new ResourceConnectionDestinationDeletingConflict(connection.Id),
+            ConnectionEndpointMissing => new ResourceConnectionEndpointMissing(connection.Id),
+            ConnectionEndpointUnsupportedByProvider => new ResourceConnectionEndpointMissing(connection.Id)
+        };
+    }
 
+    private async Task<ResolveConnectionSnapshotsOutcome> ResolvePlacementsAsync(
+        ResourceConnection connection,
+        ResourceTypeId sourceType,
+        ResourceTypeId destinationType,
+        ResolvedConnectionEndpoint endpoint,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
         var sourcePlacements = (await loadPlacements(
             connection.TenantId,
             sourceType,
@@ -156,8 +196,7 @@ internal sealed class MongoResourceConnectionMutationProvider(
             .Where(item => !item.DeletionRequested)
             .ToArray();
         if (sourcePlacements.Length == 0)
-            return new ConnectionResolutionConflict(
-                ResourceConnectionTopologyConflictReason.SourceHasNoPlacements);
+            return new ResourceConnectionSourceHasNoPlacements(connection.Id);
         var destinationPlacements = (await loadPlacements(
             connection.TenantId,
             destinationType,
@@ -175,11 +214,9 @@ internal sealed class MongoResourceConnectionMutationProvider(
                 .Where(item => item.DeploymentTargetId == sourcesOnTarget.Key)
                 .ToArray();
             if (destinations.Length == 0)
-                return new ConnectionResolutionConflict(
-                    ResourceConnectionTopologyConflictReason.DestinationTargetMissing);
+                return new ResourceConnectionDestinationTargetMissing(connection.Id);
             if (destinations.Length > 1)
-                return new ConnectionResolutionConflict(
-                    ResourceConnectionTopologyConflictReason.DestinationTargetAmbiguous);
+                return new ResourceConnectionDestinationTargetAmbiguous(connection.Id);
             var destination = destinations[0];
             snapshots.Add(ConnectionTargetSnapshot.Create(
                 sourcesOnTarget.Key,
