@@ -85,7 +85,8 @@ export function WebServiceForm({
       .join('\n'),
   )
   const [selectedTargets, setTargets] = useState<WebServiceDeploymentInput[] | undefined>()
-  const defaultTargetId = mode === 'create' && availableTargets.length === 1 ? availableTargets[0].id : undefined
+  const eligibleTargets = targetsStatus === 'success' ? availableTargets : []
+  const defaultTargetId = mode === 'create' && eligibleTargets.length === 1 ? eligibleTargets[0].id : undefined
   const targets = selectedTargets ?? (defaultTargetId ? [deploymentConfiguration(defaultTargetId)] : [])
   const [showAdvancedTargets, setShowAdvancedTargets] = useState(false)
   const [validationError, setValidationError] = useState('')
@@ -140,6 +141,10 @@ export function WebServiceForm({
       setValidationError('Image registry, name, and tag are required.')
       return
     }
+    if (mode === 'create' && targetsStatus !== 'success') {
+      setValidationError('Wait for eligible deployment targets to load before creating the service.')
+      return
+    }
     if (mode === 'create' && targets.length === 0) {
       setValidationError('Select at least one eligible deployment target.')
       return
@@ -169,7 +174,7 @@ export function WebServiceForm({
     })
   }
 
-  const exactlyOneTarget = availableTargets.length === 1
+  const exactlyOneTarget = eligibleTargets.length === 1
 
   return (
     <section className="panel web-service-form-panel">
@@ -198,7 +203,10 @@ export function WebServiceForm({
         {mode === 'create' && (
           <label className="field">
             <span className="field__label">Isolation scope (optional)</span>
-            <input className="field__control" value={isolationScopeId} onChange={(event) => setIsolationScopeId(event.target.value)} placeholder="MongoDB ObjectId" />
+            <input className="field__control" value={isolationScopeId} onChange={(event) => {
+              setIsolationScopeId(event.target.value)
+              setTargets(undefined)
+            }} placeholder="MongoDB ObjectId" />
             <span className="field__hint">Eligible targets are refreshed for this placement scope.</span>
           </label>
         )}
@@ -211,7 +219,10 @@ export function WebServiceForm({
 
         <label className="field">
           <span className="field__label">Exposure</span>
-          <select className="field__control" value={exposure} onChange={(event) => setExposure(event.target.value as 'Private' | 'Public')}>
+          <select className="field__control" value={exposure} onChange={(event) => {
+            setExposure(event.target.value as 'Private' | 'Public')
+            setTargets(undefined)
+          }}>
             <option value="Private">Private</option>
             <option value="Public">Public</option>
           </select>
@@ -224,10 +235,10 @@ export function WebServiceForm({
             {targetsStatus === 'loading' && <p>Loading eligible deployment targets…</p>}
             {targetsStatus === 'error' && <p>{targetsError || 'Unable to load eligible targets.'}</p>}
             {targetsStatus === 'success' && availableTargets.length === 0 && <p>No eligible target is available. A target needs workload admission{exposure === 'Public' ? ' and a public ingress base domain' : ''}.</p>}
-            {exactlyOneTarget && availableTargets[0] && (
-              <p>{availableTargets[0].displayName} is selected automatically. <button className="button" type="button" onClick={() => setShowAdvancedTargets((current) => !current)}>Placement options</button></p>
+            {exactlyOneTarget && eligibleTargets[0] && (
+              <p>{eligibleTargets[0].displayName} is selected automatically. <button className="button" type="button" onClick={() => setShowAdvancedTargets((current) => !current)}>Placement options</button></p>
             )}
-            {(!exactlyOneTarget || showAdvancedTargets) && availableTargets.map((target) => {
+            {(!exactlyOneTarget || showAdvancedTargets) && eligibleTargets.map((target) => {
               const selected = targets.find((item) => item.deploymentTargetId === target.id)
               const profiles = computeProfilesByTarget[target.id] ?? []
               return (
@@ -263,7 +274,7 @@ export function WebServiceForm({
         {mode === 'edit' && <div className="form-message">Placement is managed per target below. Shared runtime changes fan out atomically to every active deployment.</div>}
 
         <div className="resource-group-form__actions">
-          <button className="button button--primary" disabled={submitStatus === 'loading'} type="submit">{submitStatus === 'loading' ? 'Saving…' : mode === 'create' ? 'Create service' : 'Save changes'}</button>
+          <button className="button button--primary" disabled={submitStatus === 'loading' || (mode === 'create' && targetsStatus !== 'success')} type="submit">{submitStatus === 'loading' ? 'Saving…' : mode === 'create' ? 'Create service' : 'Save changes'}</button>
           {mode === 'edit' && onCancelEdit && <button className="button" onClick={onCancelEdit} type="button">Cancel</button>}
         </div>
       </form>
