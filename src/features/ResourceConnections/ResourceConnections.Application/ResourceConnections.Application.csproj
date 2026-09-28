@@ -8,12 +8,12 @@
     <RootNamespace>Pole.Features.ResourceConnections.Application</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Pole.Features.ResourceConnections.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../ResourceConnections.Domain/ResourceConnections.Domain.csproj" />
     <ProjectReference Include="../ResourceConnections.Events/ResourceConnections.Events.csproj" />
     <ProjectReference Include="../ResourceConnections.Contracts/ResourceConnections.Contracts.csproj" />
-    <ProjectReference Include="../../RedisServices/RedisServices.Contracts/RedisServices.Contracts.csproj" />
-    <ProjectReference Include="../../WebServices/WebServices.Contracts/WebServices.Contracts.csproj" />
-    <ProjectReference Include="../../Postgres/Postgres.Contracts/Postgres.Contracts.csproj" />
     <ProjectReference Include="../../DeploymentTargets/DeploymentTargets.Contracts/DeploymentTargets.Contracts.csproj" />
     <ProjectReference Include="../../ResourceGroups/ResourceGroups.Contracts/ResourceGroups.Contracts.csproj" />
     <ProjectReference Include="../../ResourceDeployments/ResourceDeployments.Contracts/ResourceDeployments.Contracts.csproj" />

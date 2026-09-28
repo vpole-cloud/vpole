@@ -145,8 +145,8 @@ internal sealed class MongoCreateResourceConnection(
                         destinationPlacement.RuntimeCellId,
                         destinationPlacement.KubernetesNamespace,
                         endpoint.ServiceName,
-                        endpoint.ServicePort,
-                        endpoint.TargetPort,
+                        endpoint.ServicePort.Value,
+                        endpoint.TargetPort.Value,
                         sourcesOnTarget.Select(item => new ConnectionSourcePlacement(
                             item.DeploymentId,
                             item.RuntimeCellId,

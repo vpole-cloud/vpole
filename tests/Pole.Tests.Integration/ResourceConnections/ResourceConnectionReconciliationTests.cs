@@ -201,37 +201,35 @@ public sealed class ResourceConnectionReconciliationTests(MongoReplicaSetFixture
         public readonly Dictionary<string, int> ApplyAttempts = new();
         public int TombstoneCleanupAttempts;
 
-        public Task<ResourceConnectionPolicyTargetOutcome> ApplyAsync(
+        public Task<ResourceConnectionPolicyApplyOutcome> ApplyAsync(
             ResourceConnection connection,
             ConnectionTargetSnapshot snapshot,
             CancellationToken cancellationToken = default)
         {
             ApplyAttempts[snapshot.TargetId] =
                 ApplyAttempts.GetValueOrDefault(snapshot.TargetId) + 1;
-            return Task.FromResult<ResourceConnectionPolicyTargetOutcome>(
+            return Task.FromResult<ResourceConnectionPolicyApplyOutcome>(
                 ApplyFailureTarget == snapshot.TargetId
-                    ? new ResourceConnectionPolicyFailed(
-                        ResourceConnectionPolicyFailureReason.TargetUnavailable)
+                    ? new ResourceConnectionPolicyTargetUnavailable()
                     : new ResourceConnectionPolicySucceeded());
         }
 
-        public Task<ResourceConnectionPolicyTargetOutcome> DeleteAsync(
+        public Task<ResourceConnectionPolicyDeleteOutcome> DeleteAsync(
             ResourceConnection connection,
             ConnectionTargetSnapshot snapshot,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<ResourceConnectionPolicyTargetOutcome>(
+            Task.FromResult<ResourceConnectionPolicyDeleteOutcome>(
                 CleanupFailureTarget == snapshot.TargetId
-                    ? new ResourceConnectionPolicyFailed(
-                        ResourceConnectionPolicyFailureReason.TargetUnavailable)
+                    ? new ResourceConnectionPolicyTargetUnavailable()
                     : new ResourceConnectionPolicySucceeded());
 
-        public Task<ResourceConnectionPolicyTargetOutcome> DeleteTombstoneAsync(
+        public Task<ResourceConnectionPolicyDeleteOutcome> DeleteTombstoneAsync(
             ResourceConnectionCleanupTombstone tombstone,
             ConnectionTargetSnapshot snapshot,
             CancellationToken cancellationToken = default)
         {
             TombstoneCleanupAttempts++;
-            return Task.FromResult<ResourceConnectionPolicyTargetOutcome>(
+            return Task.FromResult<ResourceConnectionPolicyDeleteOutcome>(
                 new ResourceConnectionPolicySucceeded());
         }
     }

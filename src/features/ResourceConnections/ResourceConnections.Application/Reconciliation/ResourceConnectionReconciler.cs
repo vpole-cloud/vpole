@@ -63,42 +63,39 @@ public sealed class ResourceConnectionReconciler(
         CancellationToken cancellationToken)
     {
         var result = await policyTarget.ApplyAsync(connection, snapshot, cancellationToken);
-        switch (result)
+        if (result is ResourceConnectionPolicyDesiredStateChanged)
+            return;
+        var failureCode = result.FailureCode();
+        if (failureCode is null)
         {
-            case ResourceConnectionPolicySucceeded:
-                await recordApply(
-                    connection.TenantId,
-                    connection.Id,
-                    snapshot.TargetId,
-                    connection.Generation,
-                    failureReason: null,
-                    cancellationToken);
-                break;
-            case ResourceConnectionPolicyFailed failed:
-                if (wasApplied)
-                {
-                    await recordReverificationFailure(
-                        connection.TenantId,
-                        connection.Id,
-                        snapshot.TargetId,
-                        connection.Generation,
-                        connection.Revision,
-                        failed.Reason.ToString(),
-                        cancellationToken);
-                }
-                else
-                {
-                    await recordApply(
-                        connection.TenantId,
-                        connection.Id,
-                        snapshot.TargetId,
-                        connection.Generation,
-                        failed.Reason.ToString(),
-                        cancellationToken);
-                }
-                break;
-            case ResourceConnectionPolicyDesiredStateChanged:
-                break;
+            await recordApply(
+                connection.TenantId,
+                connection.Id,
+                snapshot.TargetId,
+                connection.Generation,
+                failureReason: null,
+                cancellationToken);
+        }
+        else if (wasApplied)
+        {
+            await recordReverificationFailure(
+                connection.TenantId,
+                connection.Id,
+                snapshot.TargetId,
+                connection.Generation,
+                connection.Revision,
+                failureCode,
+                cancellationToken);
+        }
+        else
+        {
+            await recordApply(
+                connection.TenantId,
+                connection.Id,
+                snapshot.TargetId,
+                connection.Generation,
+                failureCode,
+                cancellationToken);
         }
     }
 
@@ -109,42 +106,39 @@ public sealed class ResourceConnectionReconciler(
         CancellationToken cancellationToken)
     {
         var result = await policyTarget.DeleteAsync(connection, snapshot, cancellationToken);
-        switch (result)
+        if (result is ResourceConnectionPolicyDesiredStateChanged)
+            return;
+        var failureCode = result.FailureCode();
+        if (failureCode is null)
         {
-            case ResourceConnectionPolicySucceeded:
-                await recordCleanup(
-                    connection.TenantId,
-                    connection.Id,
-                    snapshot.PolicyLocation,
-                    connection.Generation,
-                    failureReason: null,
-                    cancellationToken);
-                break;
-            case ResourceConnectionPolicyFailed failed:
-                if (wasCompleted)
-                {
-                    await recordCleanupVerificationFailure(
-                        connection.TenantId,
-                        connection.Id,
-                        snapshot.PolicyLocation,
-                        connection.Generation,
-                        connection.Revision,
-                        failed.Reason.ToString(),
-                        cancellationToken);
-                }
-                else
-                {
-                    await recordCleanup(
-                        connection.TenantId,
-                        connection.Id,
-                        snapshot.PolicyLocation,
-                        connection.Generation,
-                        failed.Reason.ToString(),
-                        cancellationToken);
-                }
-                break;
-            case ResourceConnectionPolicyDesiredStateChanged:
-                break;
+            await recordCleanup(
+                connection.TenantId,
+                connection.Id,
+                snapshot.PolicyLocation,
+                connection.Generation,
+                failureReason: null,
+                cancellationToken);
+        }
+        else if (wasCompleted)
+        {
+            await recordCleanupVerificationFailure(
+                connection.TenantId,
+                connection.Id,
+                snapshot.PolicyLocation,
+                connection.Generation,
+                connection.Revision,
+                failureCode,
+                cancellationToken);
+        }
+        else
+        {
+            await recordCleanup(
+                connection.TenantId,
+                connection.Id,
+                snapshot.PolicyLocation,
+                connection.Generation,
+                failureCode,
+                cancellationToken);
         }
     }
 }

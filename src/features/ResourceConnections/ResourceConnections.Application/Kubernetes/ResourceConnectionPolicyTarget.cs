@@ -9,42 +9,51 @@ using Pole.Features.ResourceGroups.Contracts;
 
 namespace Pole.Features.ResourceConnections.Application.Kubernetes;
 
-public enum ResourceConnectionPolicyFailureReason
-{
-    TargetUnavailable,
-    BaselineUnavailable,
-    NamespaceUnavailable,
-    OwnershipConflict,
-    ConcurrentWrite,
-    RequestRejected,
-    TransportUnavailable
-}
-
 public sealed record ResourceConnectionPolicySucceeded;
 
 public sealed record ResourceConnectionPolicyDesiredStateChanged;
 
-public sealed record ResourceConnectionPolicyFailed(
-    ResourceConnectionPolicyFailureReason Reason);
+public sealed record ResourceConnectionPolicyTargetUnavailable;
+public sealed record ResourceConnectionPolicyBaselineUnavailable;
+public sealed record ResourceConnectionPolicyNamespaceUnavailable;
+public sealed record ResourceConnectionPolicyOwnershipConflict;
+public sealed record ResourceConnectionPolicyConcurrentWrite;
+public sealed record ResourceConnectionPolicyRequestRejected;
+public sealed record ResourceConnectionPolicyTransportUnavailable;
 
-public union ResourceConnectionPolicyTargetOutcome(
+public union ResourceConnectionPolicyApplyOutcome(
     ResourceConnectionPolicySucceeded,
     ResourceConnectionPolicyDesiredStateChanged,
-    ResourceConnectionPolicyFailed);
+    ResourceConnectionPolicyTargetUnavailable,
+    ResourceConnectionPolicyBaselineUnavailable,
+    ResourceConnectionPolicyNamespaceUnavailable,
+    ResourceConnectionPolicyOwnershipConflict,
+    ResourceConnectionPolicyConcurrentWrite,
+    ResourceConnectionPolicyRequestRejected,
+    ResourceConnectionPolicyTransportUnavailable);
+
+public union ResourceConnectionPolicyDeleteOutcome(
+    ResourceConnectionPolicySucceeded,
+    ResourceConnectionPolicyDesiredStateChanged,
+    ResourceConnectionPolicyTargetUnavailable,
+    ResourceConnectionPolicyOwnershipConflict,
+    ResourceConnectionPolicyConcurrentWrite,
+    ResourceConnectionPolicyRequestRejected,
+    ResourceConnectionPolicyTransportUnavailable);
 
 public interface IResourceConnectionPolicyTarget
 {
-    Task<ResourceConnectionPolicyTargetOutcome> ApplyAsync(
+    Task<ResourceConnectionPolicyApplyOutcome> ApplyAsync(
         ResourceConnection connection,
         ConnectionTargetSnapshot snapshot,
         CancellationToken cancellationToken = default);
 
-    Task<ResourceConnectionPolicyTargetOutcome> DeleteAsync(
+    Task<ResourceConnectionPolicyDeleteOutcome> DeleteAsync(
         ResourceConnection connection,
         ConnectionTargetSnapshot snapshot,
         CancellationToken cancellationToken = default);
 
-    Task<ResourceConnectionPolicyTargetOutcome> DeleteTombstoneAsync(
+    Task<ResourceConnectionPolicyDeleteOutcome> DeleteTombstoneAsync(
         ResourceConnectionCleanupTombstone tombstone,
         ConnectionTargetSnapshot snapshot,
         CancellationToken cancellationToken = default);
@@ -57,7 +66,7 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
     LoadResourceConnectionTombstone loadTombstone)
     : IResourceConnectionPolicyTarget
 {
-    public async Task<ResourceConnectionPolicyTargetOutcome> ApplyAsync(
+    public async Task<ResourceConnectionPolicyApplyOutcome> ApplyAsync(
         ResourceConnection connection,
         ConnectionTargetSnapshot snapshot,
         CancellationToken cancellationToken = default)
@@ -71,11 +80,9 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
                 snapshot.DestinationNamespace,
                 cancellationToken);
             if (baseline is RuntimeCellIngressBaselineTargetUnavailable)
-                return new ResourceConnectionPolicyFailed(
-                    ResourceConnectionPolicyFailureReason.TargetUnavailable);
+                return new ResourceConnectionPolicyTargetUnavailable();
             if (baseline is not RuntimeCellIngressBaselineReady)
-                return new ResourceConnectionPolicyFailed(
-                    ResourceConnectionPolicyFailureReason.BaselineUnavailable);
+                return new ResourceConnectionPolicyBaselineUnavailable();
 
             var client = await clients.GetAsync(snapshot.TargetId, cancellationToken);
             var existing = await ReadAsync(
@@ -88,8 +95,7 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
                     connection.TenantId,
                     connection.Id,
                     snapshot.PolicyLocation))
-                return new ResourceConnectionPolicyFailed(
-                    ResourceConnectionPolicyFailureReason.OwnershipConflict);
+                return new ResourceConnectionPolicyOwnershipConflict();
 
             // The read and baseline call can take time. Check the Mongo authority
             // immediately before a cluster write; a later change is repaired by
@@ -126,8 +132,7 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
                 // from a newer generation. The durable tombstone also retries it.
                 if (string.IsNullOrWhiteSpace(written.Metadata?.Uid) ||
                     string.IsNullOrWhiteSpace(written.Metadata.ResourceVersion))
-                    return new ResourceConnectionPolicyFailed(
-                        ResourceConnectionPolicyFailureReason.RequestRejected);
+                    return new ResourceConnectionPolicyRequestRejected();
                 try
                 {
                     await client.NetworkingV1.DeleteNamespacedNetworkPolicyAsync(
@@ -158,22 +163,20 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
         }
         catch (DeploymentTargetUnavailableException)
         {
-            return new ResourceConnectionPolicyFailed(
-                ResourceConnectionPolicyFailureReason.TargetUnavailable);
+            return new ResourceConnectionPolicyTargetUnavailable();
         }
         catch (HttpOperationException exception)
         {
-            return FailureForHttp(exception, deleting: false);
+            return ApplyFailureForHttp(exception);
         }
         catch (Exception exception) when (exception is HttpRequestException or TimeoutException ||
                                           exception is OperationCanceledException)
         {
-            return new ResourceConnectionPolicyFailed(
-                ResourceConnectionPolicyFailureReason.TransportUnavailable);
+            return new ResourceConnectionPolicyTransportUnavailable();
         }
     }
 
-    public Task<ResourceConnectionPolicyTargetOutcome> DeleteAsync(
+    public Task<ResourceConnectionPolicyDeleteOutcome> DeleteAsync(
         ResourceConnection connection,
         ConnectionTargetSnapshot snapshot,
         CancellationToken cancellationToken = default) =>
@@ -184,7 +187,7 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
             ct => IsCurrentCleanupAsync(connection, snapshot, ct),
             cancellationToken);
 
-    public Task<ResourceConnectionPolicyTargetOutcome> DeleteTombstoneAsync(
+    public Task<ResourceConnectionPolicyDeleteOutcome> DeleteTombstoneAsync(
         ResourceConnectionCleanupTombstone tombstone,
         ConnectionTargetSnapshot snapshot,
         CancellationToken cancellationToken = default) =>
@@ -195,7 +198,7 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
             ct => IsCurrentTombstoneAsync(tombstone, snapshot, ct),
             cancellationToken);
 
-    private async Task<ResourceConnectionPolicyTargetOutcome> DeletePolicyAsync(
+    private async Task<ResourceConnectionPolicyDeleteOutcome> DeletePolicyAsync(
         string tenantId,
         string connectionId,
         ConnectionTargetSnapshot snapshot,
@@ -217,8 +220,7 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
                     tenantId,
                     connectionId,
                     snapshot.PolicyLocation))
-                return new ResourceConnectionPolicyFailed(
-                    ResourceConnectionPolicyFailureReason.OwnershipConflict);
+                return new ResourceConnectionPolicyOwnershipConflict();
             if (!await isAuthorized(cancellationToken))
                 return new ResourceConnectionPolicyDesiredStateChanged();
 
@@ -242,18 +244,16 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
         }
         catch (DeploymentTargetUnavailableException)
         {
-            return new ResourceConnectionPolicyFailed(
-                ResourceConnectionPolicyFailureReason.TargetUnavailable);
+            return new ResourceConnectionPolicyTargetUnavailable();
         }
         catch (HttpOperationException exception)
         {
-            return FailureForHttp(exception, deleting: true);
+            return DeleteFailureForHttp(exception);
         }
         catch (Exception exception) when (exception is HttpRequestException or TimeoutException ||
                                           exception is OperationCanceledException)
         {
-            return new ResourceConnectionPolicyFailed(
-                ResourceConnectionPolicyFailureReason.TransportUnavailable);
+            return new ResourceConnectionPolicyTransportUnavailable();
         }
     }
 
@@ -282,8 +282,7 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
                 !active.Targets.Any(target => target.Snapshot.PolicyLocation == snapshot.PolicyLocation) &&
                 active.RetiringTargets.Any(target => target.Snapshot.PolicyLocation == snapshot.PolicyLocation),
             DeletingResourceConnection deleting => deleting.Targets.Any(target =>
-                target.Snapshot.PolicyLocation == snapshot.PolicyLocation),
-            _ => false
+                target.Snapshot.PolicyLocation == snapshot.PolicyLocation)
         };
     }
 
@@ -320,16 +319,19 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
         }
     }
 
-    private static ResourceConnectionPolicyTargetOutcome FailureForHttp(
-        HttpOperationException exception,
-        bool deleting) => exception.Response?.StatusCode switch
+    private static ResourceConnectionPolicyApplyOutcome ApplyFailureForHttp(
+        HttpOperationException exception) => exception.Response?.StatusCode switch
         {
-            HttpStatusCode.NotFound when deleting => new ResourceConnectionPolicySucceeded(),
-            HttpStatusCode.NotFound => new ResourceConnectionPolicyFailed(
-                ResourceConnectionPolicyFailureReason.NamespaceUnavailable),
-            HttpStatusCode.Conflict => new ResourceConnectionPolicyFailed(
-                ResourceConnectionPolicyFailureReason.ConcurrentWrite),
-            _ => new ResourceConnectionPolicyFailed(
-                ResourceConnectionPolicyFailureReason.RequestRejected)
+            HttpStatusCode.NotFound => new ResourceConnectionPolicyNamespaceUnavailable(),
+            HttpStatusCode.Conflict => new ResourceConnectionPolicyConcurrentWrite(),
+            _ => new ResourceConnectionPolicyRequestRejected()
+        };
+
+    private static ResourceConnectionPolicyDeleteOutcome DeleteFailureForHttp(
+        HttpOperationException exception) => exception.Response?.StatusCode switch
+        {
+            HttpStatusCode.NotFound => new ResourceConnectionPolicySucceeded(),
+            HttpStatusCode.Conflict => new ResourceConnectionPolicyConcurrentWrite(),
+            _ => new ResourceConnectionPolicyRequestRejected()
         };
 }

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ResourceConnections.Application.Endpoints;
@@ -30,6 +31,8 @@ public static class ResourceConnectionsFeature
                 "ResourceConnectionCleanupTombstones"));
         services.TryAddScoped<MongoCreateResourceConnection>();
         services.TryAddScoped<ResourceConnectionEndpointCatalog>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService,
+            ResourceConnectionCapabilityStartupValidator>());
         services.TryAddScoped<MongoResourceConnectionMutationProvider>();
         services.TryAddScoped<ReconcileConnectionsForResource>(provider => provider
             .GetRequiredService<MongoResourceConnectionMutationProvider>()

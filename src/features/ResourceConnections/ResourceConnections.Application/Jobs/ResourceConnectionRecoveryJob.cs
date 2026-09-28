@@ -28,8 +28,6 @@ public sealed class ResourceConnectionRecoveryJob(
             foreach (var connection in page)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!NeedsReconciliation(connection))
-                    continue;
                 await reconciler.ReconcileAsync(
                     connection.TenantId,
                     connection.Id,
@@ -52,13 +50,13 @@ public sealed class ResourceConnectionRecoveryJob(
                         tombstone,
                         snapshot,
                         cancellationToken);
-                    if (outcome is ResourceConnectionPolicyFailed failed)
+                    if (outcome.FailureCode() is { } failureCode)
                     {
                         logger.LogWarning(
                             "Connection tombstone {ConnectionId} cleanup retry failed for target {TargetId}: {Reason}",
                             tombstone.Id,
                             snapshot.TargetId,
-                            failed.Reason);
+                            failureCode);
                     }
                 }
             }
@@ -66,11 +64,4 @@ public sealed class ResourceConnectionRecoveryJob(
         }
     }
 
-    private static bool NeedsReconciliation(ResourceConnection connection) =>
-        connection.Lifecycle switch
-        {
-            ActiveResourceConnection => true,
-            DeletingResourceConnection => true,
-            _ => false
-        };
 }

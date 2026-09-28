@@ -11,6 +11,7 @@ using Pole.Features.Postgres.Domain;
 using Pole.Features.RedisServices.Application;
 using Pole.Features.RedisServices.Contracts;
 using Pole.Features.RedisServices.Domain;
+using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Contracts;
 using Pole.Features.WebServices.Domain;
@@ -64,18 +65,17 @@ public sealed class ProviderConnectionEndpointTests(MongoReplicaSetFixture fixtu
         using var session = await fixture.Client.StartSessionAsync();
         session.StartTransaction();
         await fixture.Database.GetCollection<WebService>("WebServices").InsertOneAsync(session, web);
-        var lookup = scope.ServiceProvider.GetRequiredService<LoadWebServiceConnectionEndpoints>();
+        var lookup = Destination("pole/web-service");
 
-        var result = await lookup(web.TenantId, web.Id, session);
+        var result = await lookup.LoadAsync(web.TenantId, web.Id, session);
 
-        var found = Assert.IsType<WebServiceConnectionEndpointsFound>(result.Value);
-        Assert.Equal(web.Id, found.ResourceId);
-        Assert.Equal($"{web.Name}-svc", found.ServiceName);
+        var found = Assert.IsType<ResourceConnectionEndpointsFound>(result.Value);
         var endpoint = Assert.Single(found.Endpoints);
         Assert.Equal("http", endpoint.Id);
-        Assert.Equal(80, endpoint.ServicePort);
-        Assert.Equal(8080, endpoint.TargetPort);
-        Assert.IsType<WebServiceConnectionResourceMissing>((await lookup(Id(), web.Id, session)).Value);
+        Assert.Equal($"{web.Name}-svc", endpoint.ServiceName);
+        Assert.Equal(80, endpoint.ServicePort.Value);
+        Assert.Equal(8080, endpoint.TargetPort.Value);
+        Assert.IsType<ResourceConnectionDestinationMissing>((await lookup.LoadAsync(Id(), web.Id, session)).Value);
         await session.AbortTransactionAsync();
         Assert.Equal(0, await fixture.Database.GetCollection<WebService>("WebServices")
             .CountDocumentsAsync(item => item.Id == web.Id));
@@ -88,18 +88,18 @@ public sealed class ProviderConnectionEndpointTests(MongoReplicaSetFixture fixtu
             new RedisSpec(new Storage(1, Id())), RedisFactory.DefaultCreateOptions);
         var collection = fixture.Database.GetCollection<Redis>("RedisServices");
         await collection.InsertOneAsync(redis);
-        var lookup = scope.ServiceProvider.GetRequiredService<LoadRedisConnectionEndpoints>();
+        var lookup = Destination("pole/redis");
         using var session = await fixture.Client.StartSessionAsync();
         session.StartTransaction();
-        var found = Assert.IsType<RedisConnectionEndpointsFound>((await lookup(redis.TenantId, redis.Id, session)).Value);
-        Assert.Equal("cache-svc", found.ServiceName);
+        var found = Assert.IsType<ResourceConnectionEndpointsFound>((await lookup.LoadAsync(redis.TenantId, redis.Id, session)).Value);
         var endpoint = Assert.Single(found.Endpoints);
         Assert.Equal("redis", endpoint.Id);
-        Assert.Equal(6379, endpoint.ServicePort);
-        Assert.Equal(6379, endpoint.TargetPort);
-        Assert.IsType<RedisConnectionResourceMissing>((await lookup(Id(), redis.Id, session)).Value);
+        Assert.Equal("cache-svc", endpoint.ServiceName);
+        Assert.Equal(6379, endpoint.ServicePort.Value);
+        Assert.Equal(6379, endpoint.TargetPort.Value);
+        Assert.IsType<ResourceConnectionDestinationMissing>((await lookup.LoadAsync(Id(), redis.Id, session)).Value);
         await collection.ReplaceOneAsync(session, item => item.Id == redis.Id, redis.BeginDeletion(DateTime.UtcNow));
-        Assert.IsType<RedisConnectionResourceDeleting>((await lookup(redis.TenantId, redis.Id, session)).Value);
+        Assert.IsType<ResourceConnectionDestinationDeleting>((await lookup.LoadAsync(redis.TenantId, redis.Id, session)).Value);
         await session.AbortTransactionAsync();
     }
 
@@ -112,20 +112,24 @@ public sealed class ProviderConnectionEndpointTests(MongoReplicaSetFixture fixtu
             new CreatePostgresClusterOptions(FSharpOption<string>.Some(Id()), 1, 5));
         var collection = fixture.Database.GetCollection<PostgresCluster>("Postgres");
         await collection.InsertOneAsync(postgres);
-        var lookup = scope.ServiceProvider.GetRequiredService<LoadPostgresConnectionEndpoints>();
+        var lookup = Destination("pole/postgresql");
         using var session = await fixture.Client.StartSessionAsync();
         session.StartTransaction();
-        var found = Assert.IsType<PostgresConnectionEndpointsFound>((await lookup(postgres.TenantId, postgres.Id, session)).Value);
-        Assert.Equal(PostgresClusterKubernetesBuilder.buildReadWriteServiceName(postgres.Id), found.ServiceName);
+        var found = Assert.IsType<ResourceConnectionEndpointsFound>((await lookup.LoadAsync(postgres.TenantId, postgres.Id, session)).Value);
         var endpoint = Assert.Single(found.Endpoints);
         Assert.Equal("postgres", endpoint.Id);
-        Assert.Equal(5432, endpoint.ServicePort);
-        Assert.Equal(5432, endpoint.TargetPort);
-        Assert.IsType<PostgresConnectionResourceMissing>((await lookup(Id(), postgres.Id, session)).Value);
+        Assert.Equal(PostgresClusterKubernetesBuilder.buildReadWriteServiceName(postgres.Id), endpoint.ServiceName);
+        Assert.Equal(5432, endpoint.ServicePort.Value);
+        Assert.Equal(5432, endpoint.TargetPort.Value);
+        Assert.IsType<ResourceConnectionDestinationMissing>((await lookup.LoadAsync(Id(), postgres.Id, session)).Value);
         await collection.ReplaceOneAsync(session, item => item.Id == postgres.Id, postgres.BeginDeletion(DateTime.UtcNow));
-        Assert.IsType<PostgresConnectionResourceDeleting>((await lookup(postgres.TenantId, postgres.Id, session)).Value);
+        Assert.IsType<ResourceConnectionDestinationDeleting>((await lookup.LoadAsync(postgres.TenantId, postgres.Id, session)).Value);
         await session.AbortTransactionAsync();
     }
+
+    private IResourceConnectionDestinationCapability Destination(string resourceType) =>
+        scope.ServiceProvider.GetServices<IResourceConnectionDestinationCapability>()
+            .Single(capability => capability.ResourceType.Value == resourceType);
 
     private static string Id() => ObjectId.GenerateNewId().ToString();
 }

@@ -114,8 +114,7 @@ public sealed class ResourceConnectionPolicyTargetTests
 
         var result = await fixture.Target.ApplyAsync(fixture.Connection, fixture.Snapshot);
 
-        Assert.Equal(ResourceConnectionPolicyFailureReason.TargetUnavailable,
-            Assert.IsType<ResourceConnectionPolicyFailed>(result.Value).Reason);
+        Assert.IsType<ResourceConnectionPolicyTargetUnavailable>(result.Value);
         Assert.Equal(0, fixture.Api.CreateCount);
     }
 
