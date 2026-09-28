@@ -24,3 +24,7 @@ indent_size = 2
 
 [*.md]
 trim_trailing_whitespace = false
+
+# This consumer owns a closed provisioning outcome; a new unhandled case must fail the build.
+[src/features/Functions/Functions.Runtime/Consumers/FunctionRevisionCreatedConsumer.cs]
+dotnet_diagnostic.CS8509.severity = error

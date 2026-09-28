@@ -130,31 +130,36 @@ public sealed class ResourceDeploymentReconciler(
                 claimed.ResolvedPlacement.DeploymentTargetId,
                 claimed.ResolvedPlacement.KubernetesNamespace,
                 cancellationToken);
-            if (ingressBaseline is RuntimeCellIngressBaselineTargetUnavailable targetUnavailable)
+            (string Code, string Message, bool Retryable)? baselineFailure = ingressBaseline switch
+            {
+                null => throw new InvalidOperationException("The ingress baseline returned no outcome."),
+                RuntimeCellIngressBaselineReady => null,
+                RuntimeCellIngressBaselineTargetNotFound =>
+                    ("DeploymentTargetNotFound", "The deployment target Kubernetes client is unavailable.", true),
+                RuntimeCellIngressBaselineTargetDisabled =>
+                    ("DeploymentTargetDisabled", "The deployment target Kubernetes client is unavailable.", true),
+                RuntimeCellIngressBaselineDefaultTargetNotConfigured =>
+                    ("DeploymentTargetDefaultNotConfigured", "The deployment target Kubernetes client is unavailable.", true),
+                RuntimeCellIngressBaselineTargetConnectionUnavailable =>
+                    ("DeploymentTargetConnectionUnavailable", "The deployment target Kubernetes client is unavailable.", true),
+                RuntimeCellIngressBaselinePlacementMismatch =>
+                    ("IngressBaselinePlacementMismatch", "The runtime-cell ingress baseline belongs to another placement.", false),
+                RuntimeCellIngressBaselineNotReady or
+                RuntimeCellIngressBaselineNamespaceOwnershipConflict or
+                RuntimeCellIngressBaselineNamespaceUnavailable or
+                RuntimeCellIngressBaselinePolicyOwnershipConflict or
+                RuntimeCellIngressBaselinePolicyUnavailable =>
+                    ("IngressBaselineUnavailable", "The runtime-cell ingress baseline could not be established.", true)
+            };
+            if (baselineFailure is { } failure)
             {
                 await PersistFailureAsync(
                     claimed,
                     generation,
                     operation,
-                    $"DeploymentTarget{targetUnavailable.Reason}",
-                    "The deployment target Kubernetes client is unavailable.",
-                    retryable: true,
-                    cancellationToken);
-                return;
-            }
-
-            if (ingressBaseline is not RuntimeCellIngressBaselineReady)
-            {
-                var placementMismatch = ingressBaseline is RuntimeCellIngressBaselinePlacementMismatch;
-                await PersistFailureAsync(
-                    claimed,
-                    generation,
-                    operation,
-                    placementMismatch ? "IngressBaselinePlacementMismatch" : "IngressBaselineUnavailable",
-                    placementMismatch
-                        ? "The runtime-cell ingress baseline belongs to another placement."
-                        : "The runtime-cell ingress baseline could not be established.",
-                    retryable: !placementMismatch,
+                    failure.Code,
+                    failure.Message,
+                    failure.Retryable,
                     cancellationToken);
                 return;
             }

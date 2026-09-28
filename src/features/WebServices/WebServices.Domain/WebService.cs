@@ -84,7 +84,7 @@ public sealed record WebService(
 
 [BsonDiscriminator(RootClass = true)]
 [BsonKnownTypes(typeof(ActiveWebServiceLifecycle), typeof(DeletingWebServiceLifecycle))]
-public abstract record WebServiceLifecycle;
+public closed record WebServiceLifecycle;
 
 public sealed record ActiveWebServiceLifecycle : WebServiceLifecycle;
 
@@ -112,6 +112,9 @@ public sealed record WebServiceExposure(
     string GeneratedHostnameLabelPrefix)
 {
     public const string DefaultGeneratedHostnameLabelPrefix = "webservice";
+
+    public string GeneratedHostnameLabel(string resourceId) =>
+        $"{GeneratedHostnameLabelPrefix}-{resourceId}";
 
     public static WebServiceExposure Create(
         WebServiceExposureMode mode = WebServiceExposureMode.Private,

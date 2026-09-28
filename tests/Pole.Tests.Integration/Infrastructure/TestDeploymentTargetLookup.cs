@@ -32,13 +32,14 @@ internal sealed class TestDeploymentTargetLookup
                 "letsencrypt-prod",
                 "apps.test.local"),
             new DeploymentTargetNetworkSourcesDto(
-                new DeploymentTargetPodNetworkSourceDto(
+                ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty
+                .Add(DeploymentTargetNetworkSourcesDto.PublicIngressName, new DeploymentTargetPodNetworkSourceDto(
                     "kube-system",
-                    ImmutableDictionary<string, string>.Empty.Add("app.kubernetes.io/name", "traefik")),
-                new DeploymentTargetCidrNetworkSourceDto("192.0.2.9/32"),
-                new DeploymentTargetPodNetworkSourceDto(
+                    ImmutableDictionary<string, string>.Empty.Add("app.kubernetes.io/name", "traefik")))
+                .Add("functions/gateway", new DeploymentTargetCidrNetworkSourceDto("192.0.2.9/32"))
+                .Add("postgres/operator", new DeploymentTargetPodNetworkSourceDto(
                     "cnpg-system",
-                    ImmutableDictionary<string, string>.Empty.Add("app.kubernetes.io/name", "cloudnative-pg")))),
+                    ImmutableDictionary<string, string>.Empty.Add("app.kubernetes.io/name", "cloudnative-pg"))))),
         Revision: 1,
         Enabled: true,
         AcceptsWorkloads: true,
@@ -93,7 +94,8 @@ internal sealed class TestDeploymentTargetLookup
             {
                 NetworkSources = target.WorkloadConfiguration.NetworkSources with
                 {
-                    PublicIngress = null
+                    Entries = target.WorkloadConfiguration.NetworkSources.Entries.Remove(
+                        DeploymentTargetNetworkSourcesDto.PublicIngressName)
                 }
             }
         };
@@ -196,10 +198,9 @@ internal sealed class TestDeploymentTargetLookup
                 (!request.RequiredCapabilities.HasFlag(
                     DeploymentTargetRequiredCapabilities.PublicIngress) ||
                  target.WorkloadConfiguration.Ingress?.PublicBaseDomain is not null &&
-                 target.WorkloadConfiguration.NetworkSources.PublicIngress is not null) &&
-                (!request.RequiredCapabilities.HasFlag(
-                    DeploymentTargetRequiredCapabilities.FunctionRuntimeConnectivity) ||
-                 target.WorkloadConfiguration.NetworkSources.FunctionGateway is not null);
+                 target.WorkloadConfiguration.NetworkSources.Get(DeploymentTargetNetworkSourcesDto.PublicIngressName) is not null) &&
+                (request.RequiredNetworkSource is null ||
+                 target.WorkloadConfiguration.NetworkSources.Get(request.RequiredNetworkSource) is not null);
             return hasRequiredCapabilities
                 ? target
                 : new DeploymentTargetNewWorkloadAdmissionError(
@@ -215,11 +216,9 @@ internal sealed class TestDeploymentTargetLookup
                     !request.RequiredCapabilities.HasFlag(
                         DeploymentTargetRequiredCapabilities.PublicIngress) ||
                     target.WorkloadConfiguration.Ingress?.PublicBaseDomain is not null &&
-                    target.WorkloadConfiguration.NetworkSources.PublicIngress is not null)
-                .Where(target =>
-                    !request.RequiredCapabilities.HasFlag(
-                        DeploymentTargetRequiredCapabilities.FunctionRuntimeConnectivity) ||
-                    target.WorkloadConfiguration.NetworkSources.FunctionGateway is not null)
+                    target.WorkloadConfiguration.NetworkSources.Get(DeploymentTargetNetworkSourcesDto.PublicIngressName) is not null)
+                .Where(target => request.RequiredNetworkSource is null ||
+                    target.WorkloadConfiguration.NetworkSources.Get(request.RequiredNetworkSource) is not null)
                 .OrderBy(target => target.Id, StringComparer.Ordinal)
                 .ToArray();
         return eligible.Length switch
@@ -252,7 +251,7 @@ internal sealed class TestDeploymentTargetLookup
                 request.ExplicitDeploymentTargetId ?? string.Empty);
         }
         else if (target.WorkloadConfiguration.Ingress?.PublicBaseDomain is null ||
-                 target.WorkloadConfiguration.NetworkSources.PublicIngress is null)
+                 target.WorkloadConfiguration.NetworkSources.Get(DeploymentTargetNetworkSourcesDto.PublicIngressName) is null)
         {
             result = new DeploymentTargetPublicIngressUnavailable(target.Id);
         }
@@ -264,7 +263,7 @@ internal sealed class TestDeploymentTargetLookup
                 target.WorkloadConfiguration.Ingress!.IngressClassName,
                 target.WorkloadConfiguration.Ingress.ClusterIssuerName,
                 target.WorkloadConfiguration.Ingress.PublicBaseDomain!,
-                target.WorkloadConfiguration.NetworkSources.PublicIngress!);
+                target.WorkloadConfiguration.NetworkSources.Get(DeploymentTargetNetworkSourcesDto.PublicIngressName)!);
         }
 
         return Task.FromResult(result);
@@ -279,7 +278,7 @@ internal sealed class TestDeploymentTargetLookup
                 ? []
                 : _targets.Values
                     .Where(target => target.WorkloadConfiguration.Ingress?.PublicBaseDomain is not null &&
-                                     target.WorkloadConfiguration.NetworkSources.PublicIngress is not null)
+                                     target.WorkloadConfiguration.NetworkSources.Get(DeploymentTargetNetworkSourcesDto.PublicIngressName) is not null)
                     .OrderBy(target => target.Id, StringComparer.Ordinal)
                     .Select(target => new DeploymentTargetPublicIngressDto(
                         target.Id,
@@ -287,7 +286,7 @@ internal sealed class TestDeploymentTargetLookup
                         target.WorkloadConfiguration.Ingress!.IngressClassName,
                         target.WorkloadConfiguration.Ingress.ClusterIssuerName,
                         target.WorkloadConfiguration.Ingress.PublicBaseDomain!,
-                        target.WorkloadConfiguration.NetworkSources.PublicIngress!))
+                        target.WorkloadConfiguration.NetworkSources.Get(DeploymentTargetNetworkSourcesDto.PublicIngressName)!))
                     .ToArray());
 
     public Task<AdmitDeploymentTargetPublicIngressForDomainReservationOutcome> AdmitForDomainReservationAsync(
@@ -307,7 +306,7 @@ internal sealed class TestDeploymentTargetLookup
                 new DeploymentTargetNotFound(deploymentTargetId));
         }
         else if (target.WorkloadConfiguration.Ingress?.PublicBaseDomain is null ||
-                 target.WorkloadConfiguration.NetworkSources.PublicIngress is null)
+                 target.WorkloadConfiguration.NetworkSources.Get(DeploymentTargetNetworkSourcesDto.PublicIngressName) is null)
         {
             result = new DeploymentTargetDomainReservationAdmissionError(
                 new DeploymentTargetPublicIngressUnavailable(deploymentTargetId));
@@ -320,7 +319,7 @@ internal sealed class TestDeploymentTargetLookup
                     target.WorkloadConfiguration.Ingress!.IngressClassName,
                     target.WorkloadConfiguration.Ingress.ClusterIssuerName,
                     target.WorkloadConfiguration.Ingress.PublicBaseDomain,
-                    target.WorkloadConfiguration.NetworkSources.PublicIngress);
+                    target.WorkloadConfiguration.NetworkSources.Get(DeploymentTargetNetworkSourcesDto.PublicIngressName)!);
         }
 
         return Task.FromResult(result);

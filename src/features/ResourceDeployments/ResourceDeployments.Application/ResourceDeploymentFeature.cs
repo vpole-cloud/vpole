@@ -36,6 +36,7 @@ public static class ResourceDeploymentFeature
                 .Value);
 
         services.AddResourceDeploymentPersistence();
+        services.TryAddSingleton<ResourceIngressPolicyCatalog>();
         services.TryAddScoped<KubernetesResourceIngressPolicyManager>();
         services.TryAddScoped<ReconcileResourceIngressPolicy>(serviceProvider =>
             serviceProvider
@@ -56,8 +57,11 @@ public static class ResourceDeploymentFeature
         return services;
     }
 
-    public static void ValidateResourceDeploymentContributions(this IServiceProvider services) =>
+    public static void ValidateResourceDeploymentContributions(this IServiceProvider services)
+    {
         _ = services.GetRequiredService<ResourceDeploymentAdapterCatalog>();
+        _ = services.GetRequiredService<ResourceIngressPolicyCatalog>();
+    }
 
     public static IServiceProvider ScheduleResourceDeploymentRecurringJobs(
         this IServiceProvider services)

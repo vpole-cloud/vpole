@@ -131,7 +131,8 @@ public sealed class DeploymentTargetWorkloadConfigurationTests
             target.Enabled,
             target.AcceptsWorkloads,
             target.WorkloadConfiguration.Ingress,
-            new DeploymentTargetNetworkSources(source, null, null),
+            new DeploymentTargetNetworkSources(
+                ImmutableDictionary<string, DeploymentTargetNetworkSource>.Empty.Add("public-ingress", source)),
             CreatedAtUtc.AddMinutes(1));
 
         labels["app.kubernetes.io/name"] = "changed-after-factory";
@@ -148,11 +149,23 @@ public sealed class DeploymentTargetWorkloadConfigurationTests
             configured.Enabled,
             configured.AcceptsWorkloads,
             configured.WorkloadConfiguration.Ingress,
-            new DeploymentTargetNetworkSources(equivalent, null, null),
+            new DeploymentTargetNetworkSources(
+                ImmutableDictionary<string, DeploymentTargetNetworkSource>.Empty.Add("public-ingress", equivalent)),
             CreatedAtUtc.AddMinutes(2));
 
         Assert.Equal(configured.Revision, unchanged.Revision);
         Assert.Equal(configured.WorkloadConfiguration.Revision, unchanged.WorkloadConfiguration.Revision);
+    }
+
+    [Fact]
+    public void Create_RejectsInvalidSourceNameBeforePersistence()
+    {
+        var source = DeploymentTargetCidrNetworkSource.Create("192.0.2.9/32");
+        var sources = new DeploymentTargetNetworkSources(
+            ImmutableDictionary<string, DeploymentTargetNetworkSource>.Empty.Add("bad//name", source));
+
+        Assert.Throws<ArgumentException>(() =>
+            DeploymentTargetWorkloadConfiguration.Create(null, sources));
     }
 
     [Fact]

@@ -4,6 +4,7 @@ using k8s.Autorest;
 using k8s.Models;
 using Pole.Features.Core.Kubernetes;
 using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Security;
 using Pole.Features.ResourceGroups.Contracts;
@@ -373,7 +374,7 @@ public sealed class FunctionRevisionKubernetesManager(
         if (result is not DeploymentTargetLookupDto target ||
             !target.NetworkPolicy.AllowsWorkloads)
             return TargetWorkloadReadiness.EnforcementRequired;
-        return target.WorkloadConfiguration.NetworkSources.FunctionGateway is null
+        return target.WorkloadConfiguration.NetworkSources.Get(FunctionResourceDeployment.GatewaySourceName) is null
             ? TargetWorkloadReadiness.GatewaySourceUnavailable
             : TargetWorkloadReadiness.Ready;
     }

@@ -46,7 +46,7 @@ public static class UpdateFunctionApp
     }
 
     private static HttpProblem MapUpdateError(UpdateFunctionAppError error) =>
-        error.Value switch
+        error switch
         {
             FunctionAppNotFound notFound => MapNotFound(notFound),
             FunctionAppResourceDeploymentMissing missing => MapResourceDeploymentMissing(missing),

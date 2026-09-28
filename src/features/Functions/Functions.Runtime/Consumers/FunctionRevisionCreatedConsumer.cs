@@ -166,29 +166,31 @@ public sealed class FunctionRevisionCreatedConsumer(
         }
 
         var outcome = await provisioner.ProvisionAsync(kubernetesRevision, cancellationToken);
-        switch (outcome.Value)
+        await (outcome switch
         {
-            case FunctionRevisionProvisioningCompleted:
-                return;
-            case FunctionRevisionProvisioningDeferred deferred:
-                logger.LogWarning(
-                    "[function-revision-provisioning-deferred] Revision {RevisionId} of Function App {FunctionAppId}: {Reason}",
-                    revision.Id,
-                    app.Id,
-                    deferred.Reason);
-                return;
-            case FunctionRevisionProvisioningFailed failed:
-                await FailAsync(
-                    tenantId,
-                    app,
-                    revision,
-                    failed.Code,
-                    failed.Message,
-                    cancellationToken);
-                return;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(outcome));
-        }
+            FunctionRevisionProvisioningCompleted => Task.CompletedTask,
+            FunctionRevisionProvisioningDeferred deferred => DeferProvisioningAsync(app, revision, deferred),
+            FunctionRevisionProvisioningFailed failed => FailAsync(
+                tenantId,
+                app,
+                revision,
+                failed.Code,
+                failed.Message,
+                cancellationToken)
+        });
+    }
+
+    private Task DeferProvisioningAsync(
+        FunctionApp app,
+        FunctionRevision revision,
+        FunctionRevisionProvisioningDeferred deferred)
+    {
+        logger.LogWarning(
+            "[function-revision-provisioning-deferred] Revision {RevisionId} of Function App {FunctionAppId}: {Reason}",
+            revision.Id,
+            app.Id,
+            deferred.Reason);
+        return Task.CompletedTask;
     }
 
     private static bool Matches(

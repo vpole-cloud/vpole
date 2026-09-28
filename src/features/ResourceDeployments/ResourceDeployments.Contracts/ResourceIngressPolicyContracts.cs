@@ -3,19 +3,33 @@ using Pole.Workloads;
 
 namespace Pole.Features.ResourceDeployments.Contracts;
 
-/// <summary>Closed provider-owned ingress paths.</summary>
-public enum ResourceIngressPolicyPurpose
+/// <summary>A provider-owned ingress path resolved by resource type and purpose.</summary>
+public sealed record ResourceIngressPolicyDefinition(
+    ResourceTypeId ResourceType,
+    string Purpose,
+    bool RequiresIngressPlacement,
+    Func<ImmutableList<NetworkPort>, bool> AllowsPorts,
+    Func<ResourceIngressPolicyRequest, ImmutableDictionary<string, string>> DestinationPodLabels,
+    Func<ResourceIngressPolicyRequest, ResourceIngressPolicyTargetSources, ResourceIngressPolicyNetworkSource?> ResolveSource);
+
+public sealed record ResourceIngressPolicyTargetSources(
+    IReadOnlyDictionary<string, ResourceIngressPolicyNetworkSource?> Sources)
 {
-    WebServicePublic,
-    WebServiceHttp01,
-    FunctionGateway,
-    PostgresOperator,
-    PostgresReplication
+    public ResourceIngressPolicyNetworkSource? Get(string name) =>
+        Sources.TryGetValue(name, out var source) ? source : null;
 }
+
+public closed record ResourceIngressPolicyNetworkSource;
+
+public sealed record ResourceIngressPolicyPodSource(
+    string Namespace,
+    ImmutableDictionary<string, string> PodLabels) : ResourceIngressPolicyNetworkSource;
+
+public sealed record ResourceIngressPolicyCidrSource(string Cidr) : ResourceIngressPolicyNetworkSource;
 
 /// <summary>
 /// Both revisions advance independently. An empty port list leaves a deny tombstone.
-/// The writer resolves the purpose's platform source from the current target configuration.
+/// The registered provider definition resolves the source from the current target configuration.
 /// </summary>
 public sealed record ResourceIngressPolicyRequest(
     string TenantId,
@@ -25,10 +39,10 @@ public sealed record ResourceIngressPolicyRequest(
     string RuntimeCellId,
     string DeploymentTargetId,
     string KubernetesNamespace,
-    ResourceIngressPolicyPurpose Purpose,
+    string Purpose,
     long DeploymentDesiredGeneration,
     long TargetWorkloadConfigurationRevision,
-    ImmutableList<int> AllowedTcpPorts);
+    ImmutableList<NetworkPort> AllowedTcpPorts);
 
 public sealed record ResourceIngressPolicyApplied;
 

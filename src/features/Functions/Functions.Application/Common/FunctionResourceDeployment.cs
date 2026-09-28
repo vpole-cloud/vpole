@@ -8,6 +8,7 @@ namespace Pole.Features.Functions.Application.Common;
 
 public static class FunctionResourceDeployment
 {
+    public const string GatewaySourceName = "functions/gateway";
     public static ResourceTypeId ResourceType { get; } =
         ResourceTypeId.Create("pole/function-app");
 }

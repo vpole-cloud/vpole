@@ -54,7 +54,7 @@ public static class CreateFunctionApp
     }
 
     private static HttpProblem MapCreateError(CreateFunctionAppError error) =>
-        error.Value switch
+        error switch
         {
             FunctionAppDefaultDeploymentTargetUnavailable unavailable =>
                 MapDefaultDeploymentTargetUnavailable(unavailable),
@@ -114,8 +114,7 @@ public sealed record FunctionRevisionRequest(
                             timer.ConcurrencyPolicy,
                             timer.MisfirePolicy,
                             ScheduleVersion: 1,
-                            timer.Retry),
-                        _ => throw new InvalidOperationException("Unknown Function trigger request.")
+                            timer.Retry)
                     }))
                 .ToImmutableList());
 }
@@ -133,7 +132,7 @@ public sealed record FunctionHandlerRequest(
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(HttpFunctionTriggerRequest), "http")]
 [JsonDerivedType(typeof(TimerFunctionTriggerRequest), "timer")]
-public abstract record FunctionTriggerRequest;
+public closed record FunctionTriggerRequest;
 
 public sealed record HttpFunctionTriggerRequest(
     string Route,
@@ -193,7 +192,8 @@ public sealed class CreateFunctionAppHandler(
                 FunctionResourceDeployment.ResourceType,
                 IsolationScopeId: null,
                 configuredTarget.Id,
-                DeploymentTargetRequiredCapabilities.FunctionRuntimeConnectivity),
+                DeploymentTargetRequiredCapabilities.None,
+                FunctionResourceDeployment.GatewaySourceName),
             cancellationToken);
         if (targetResult is DeploymentTargetNewWorkloadAdmissionError targetError)
         {

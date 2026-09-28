@@ -53,19 +53,18 @@ public sealed class ResourceDeploymentTargetRoutingTests(
     }
 
     [Theory]
-    [InlineData(NetworkPolicyReadiness.EnforcementAttested, true, true, true, null)]
-    [InlineData(NetworkPolicyReadiness.IsolationNotEnforced, true, true, true, null)]
-    [InlineData(NetworkPolicyReadiness.EnforcementRequired, true, true, false, null)]
-    [InlineData(NetworkPolicyReadiness.EnforcementAttested, false, true, false, null)]
-    [InlineData(NetworkPolicyReadiness.EnforcementAttested, true, false, false, null)]
-    [InlineData(NetworkPolicyReadiness.EnforcementAttested, true, true, false,
-        RuntimeCellIngressBaselineTargetFailureReason.ConnectionUnavailable)]
+    [InlineData(NetworkPolicyReadiness.EnforcementAttested, true, true, true, false)]
+    [InlineData(NetworkPolicyReadiness.IsolationNotEnforced, true, true, true, false)]
+    [InlineData(NetworkPolicyReadiness.EnforcementRequired, true, true, false, false)]
+    [InlineData(NetworkPolicyReadiness.EnforcementAttested, false, true, false, false)]
+    [InlineData(NetworkPolicyReadiness.EnforcementAttested, true, false, false, false)]
+    [InlineData(NetworkPolicyReadiness.EnforcementAttested, true, true, false, true)]
     public async Task ReconciliationOnTargetB_ChecksCurrentEnforcementBeforeApplying(
         NetworkPolicyReadiness readiness,
         bool baselineReady,
         bool targetEnabled,
         bool allowed,
-        RuntimeCellIngressBaselineTargetFailureReason? baselineTargetFailure)
+        bool targetConnectionUnavailable)
     {
         var now = DateTime.UtcNow;
         var runtimeCell = RuntimeCellFactory.Create(
@@ -131,13 +130,11 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             {
                 baselineCalls++;
                 return Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
-                    baselineTargetFailure is { } reason
-                        ? new RuntimeCellIngressBaselineTargetUnavailable(cellId, reason)
+                    targetConnectionUnavailable
+                        ? new RuntimeCellIngressBaselineTargetConnectionUnavailable(cellId)
                         : baselineReady
                             ? new RuntimeCellIngressBaselineReady()
-                            : new RuntimeCellIngressBaselineUnavailable(
-                                cellId,
-                                RuntimeCellIngressBaselineFailureReason.PolicyUnavailable));
+                            : new RuntimeCellIngressBaselinePolicyUnavailable(cellId));
             },
             metrics,
             NullLogger<ResourceDeploymentReconciler>.Instance);
@@ -158,8 +155,8 @@ public sealed class ResourceDeploymentTargetRoutingTests(
                     ? "DeploymentTargetDisabled"
                     : readiness == NetworkPolicyReadiness.EnforcementRequired
                         ? "NetworkPolicyEnforcementRequired"
-                        : baselineTargetFailure is { } reason
-                            ? $"DeploymentTarget{reason}"
+                        : targetConnectionUnavailable
+                            ? "DeploymentTargetConnectionUnavailable"
                             : "IngressBaselineUnavailable",
                 Assert.IsType<FailedResourceDeploymentState>(blocked.State).FailureCode);
             Assert.Equal(targetEnabled && readiness != NetworkPolicyReadiness.EnforcementRequired ? 1 : 0, baselineCalls);

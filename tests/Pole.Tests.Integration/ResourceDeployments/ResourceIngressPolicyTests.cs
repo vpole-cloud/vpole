@@ -17,12 +17,52 @@ namespace Pole.Tests.Integration.ResourceDeployments;
 public sealed class ResourceIngressPolicyTests
 {
     [Fact]
+    public void Catalog_RejectsDuplicateAndInvalidPurposeContributions()
+    {
+        var definition = Definition("web-public");
+        Assert.Throws<InvalidOperationException>(() =>
+            new ResourceIngressPolicyCatalog([definition, definition]));
+        Assert.Throws<InvalidOperationException>(() =>
+            new ResourceIngressPolicyCatalog([definition with { Purpose = "-invalid" }]));
+    }
+
+    [Fact]
+    public void Manifest_RejectsProviderSourceWithInvalidNamespace()
+    {
+        var source = new DeploymentTargetPodNetworkSourceDto(
+            "Kube_System",
+            ImmutableDictionary<string, string>.Empty.Add("app", "gateway"));
+
+        Assert.Throws<ArgumentException>(() => Manifest(Request("web-public", [8080]), source));
+    }
+
+    [Fact]
+    public async Task DefaultNetworkPort_IsRejectedBeforeAnyInfrastructureAccess()
+    {
+        var loadCalled = false;
+        var subject = new KubernetesResourceIngressPolicyManager(
+            (_, _) =>
+            {
+                loadCalled = true;
+                throw new InvalidOperationException("Invalid ports must not load deployment state.");
+            },
+            (_, _) => throw new InvalidOperationException("Invalid ports must not load a target."),
+            (_, _, _, _, _) => throw new InvalidOperationException("Invalid ports must not check baseline."),
+            null!,
+            Catalog());
+
+        await Assert.ThrowsAsync<ArgumentException>(() => subject.InvokeAsync(
+            Request("web-public", [8080]) with { AllowedTcpPorts = [default(NetworkPort)] }));
+        Assert.False(loadCalled);
+    }
+
+    [Fact]
     public void Manifest_UsesStableDestinationAndSingleConjunctivePodSourcePeer()
     {
-        var request = Request(ResourceIngressPolicyPurpose.WebServicePublic, [8080]);
+        var request = Request("web-public", [8080]);
         var source = PodSource();
 
-        var policy = ResourceIngressPolicyManifestBuilder.Build(request, source);
+        var policy = Manifest(request, source);
 
         Assert.Equal($"pole-web-public-{DeploymentId}", policy.Metadata.Name);
         Assert.Equal(Namespace, policy.Metadata.NamespaceProperty);
@@ -42,8 +82,8 @@ public sealed class ResourceIngressPolicyTests
     [Fact]
     public void Manifest_UsesNarrowCidrWithoutPodOrNamespaceSelector()
     {
-        var policy = ResourceIngressPolicyManifestBuilder.Build(
-            Request(ResourceIngressPolicyPurpose.FunctionGateway, [8080]),
+        var policy = Manifest(
+            Request("function-gateway", [8080]),
             new DeploymentTargetCidrNetworkSourceDto("192.0.2.9/32"));
 
         var peer = Assert.Single(Assert.Single(policy.Spec.Ingress).FromProperty);
@@ -55,15 +95,15 @@ public sealed class ResourceIngressPolicyTests
     [Fact]
     public void Http01Manifest_SelectsOnlySolverPods_AndTombstoneHasNoAllowRule()
     {
-        var request = Request(ResourceIngressPolicyPurpose.WebServiceHttp01, [8089]);
-        var policy = ResourceIngressPolicyManifestBuilder.Build(request, PodSource());
+        var request = Request("web-http01", [8089]);
+        var policy = Manifest(request, PodSource());
 
         Assert.Equal(
             new Dictionary<string, string> { ["acme.cert-manager.io/http01-solver"] = "true" },
             policy.Spec.PodSelector.MatchLabels);
         Assert.Equal("8089", Assert.Single(Assert.Single(policy.Spec.Ingress).Ports).Port.Value);
 
-        var tombstone = ResourceIngressPolicyManifestBuilder.Build(
+        var tombstone = Manifest(
             request with { AllowedTcpPorts = [] },
             PodSource());
         Assert.Empty(tombstone.Spec.Ingress);
@@ -72,8 +112,8 @@ public sealed class ResourceIngressPolicyTests
     [Fact]
     public async Task OlderPlacementRevision_ReappliesCurrentSourceWithoutClosingIngress()
     {
-        var older = Request(ResourceIngressPolicyPurpose.WebServicePublic, [8080]);
-        var existing = ResourceIngressPolicyManifestBuilder.Build(
+        var older = Request("web-public", [8080]);
+        var existing = Manifest(
             older with { TargetWorkloadConfigurationRevision = 2 },
             PodSource("traefik-new"));
         existing.Metadata.ResourceVersion = "7";
@@ -88,7 +128,7 @@ public sealed class ResourceIngressPolicyTests
             (tenantId, cellId, targetId, kubernetesNamespace, ct) =>
                 Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
                     new RuntimeCellIngressBaselineReady()),
-            new FixedClientProvider(kubernetes));
+            new FixedClientProvider(kubernetes), Catalog());
 
         var result = await subject.InvokeAsync(older);
 
@@ -106,8 +146,8 @@ public sealed class ResourceIngressPolicyTests
     [Fact]
     public async Task MissingCurrentSource_ClosesOldAllowBeforeReportingUnavailable()
     {
-        var request = Request(ResourceIngressPolicyPurpose.WebServicePublic, [8080]);
-        var existing = ResourceIngressPolicyManifestBuilder.Build(request, PodSource());
+        var request = Request("web-public", [8080]);
+        var existing = Manifest(request, PodSource());
         existing.Metadata.ResourceVersion = "7";
         using var handler = new PolicyApiHandler(existing);
         using var kubernetes = new Kubernetes(
@@ -124,7 +164,7 @@ public sealed class ResourceIngressPolicyTests
                 return Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
                     new RuntimeCellIngressBaselineReady());
             },
-            new FixedClientProvider(kubernetes));
+            new FixedClientProvider(kubernetes), Catalog());
 
         var result = await subject.InvokeAsync(request);
 
@@ -138,8 +178,8 @@ public sealed class ResourceIngressPolicyTests
     [Fact]
     public async Task ForeignPolicyWithReservedName_IsNeverReplaced()
     {
-        var request = Request(ResourceIngressPolicyPurpose.WebServicePublic, [8080]);
-        var foreign = ResourceIngressPolicyManifestBuilder.Build(request, PodSource());
+        var request = Request("web-public", [8080]);
+        var foreign = Manifest(request, PodSource());
         foreign.Metadata.ResourceVersion = "7";
         foreign.Metadata.Labels["pole.io/resource-deployment-id"] = "another-deployment";
         using var handler = new PolicyApiHandler(foreign);
@@ -153,7 +193,7 @@ public sealed class ResourceIngressPolicyTests
             (tenantId, cellId, targetId, kubernetesNamespace, ct) =>
                 Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
                     new RuntimeCellIngressBaselineReady()),
-            new FixedClientProvider(kubernetes));
+            new FixedClientProvider(kubernetes), Catalog());
 
         var result = await subject.InvokeAsync(request);
 
@@ -166,12 +206,12 @@ public sealed class ResourceIngressPolicyTests
     {
         var deployment = Deployment().RequestDeletion(
             new DateTime(2026, 9, 27, 10, 1, 0, DateTimeKind.Utc));
-        var request = Request(ResourceIngressPolicyPurpose.WebServicePublic, []) with
+        var request = Request("web-public", []) with
         {
             DeploymentDesiredGeneration = deployment.DesiredGeneration
         };
         using var handler = new PolicyApiHandler(
-            ResourceIngressPolicyManifestBuilder.Build(request, null),
+            Manifest(request, null),
             HttpStatusCode.NotFound);
         using var kubernetes = new Kubernetes(
             new KubernetesClientConfiguration { Host = "http://kubernetes.test" },
@@ -182,7 +222,7 @@ public sealed class ResourceIngressPolicyTests
                 Target(revision: 1, source: null)),
             (tenantId, cellId, targetId, kubernetesNamespace, ct) =>
                 throw new InvalidOperationException("Cleanup does not require a Ready cell."),
-            new FixedClientProvider(kubernetes));
+            new FixedClientProvider(kubernetes), Catalog());
 
         var result = await subject.InvokeAsync(request);
 
@@ -191,8 +231,77 @@ public sealed class ResourceIngressPolicyTests
         Assert.Equal(0, handler.ReadRequests);
     }
 
+    [Fact]
+    public async Task ExternalProviderContribution_RevokesMissingCurrentSourceAtNewTargetRevision()
+    {
+        var type = ResourceTypeId.Create("vendor/metrics");
+        var request = Request("metrics-scrape", [9000]) with { ResourceType = type };
+        var definition = new ResourceIngressPolicyDefinition(
+            type,
+            request.Purpose,
+            RequiresIngressPlacement: false,
+            ports => ports.SequenceEqual([NetworkPort.Create(9000)]),
+            value => ImmutableDictionary<string, string>.Empty
+                .Add("pole.io/resource-deployment-id", value.ResourceDeploymentId)
+                .Add("metrics.example/role", "collector"),
+            (_, sources) => sources.Get("vendor/metrics"));
+        var existing = ResourceIngressPolicyManifestBuilder.Build(
+            request,
+            new ResourceIngressPolicyCidrSource("192.0.2.0/28"),
+            definition);
+        existing.Metadata.ResourceVersion = "7";
+        using var handler = new PolicyApiHandler(existing);
+        using var kubernetes = new Kubernetes(
+            new KubernetesClientConfiguration { Host = "http://kubernetes.test" }, handler);
+        var subject = new KubernetesResourceIngressPolicyManager(
+            (_, _) => Task.FromResult<ResourceDeployment?>(Deployment(type)),
+            (_, _) => Task.FromResult<LookupDeploymentTargetOutcome>(Target(2, null)),
+            (_, _, _, _, _) => throw new InvalidOperationException("Revocation needs no baseline."),
+            new FixedClientProvider(kubernetes),
+            new ResourceIngressPolicyCatalog([definition]));
+
+        var result = await subject.InvokeAsync(request);
+
+        Assert.IsType<ResourceIngressPolicySourceUnavailable>(result.Value);
+        Assert.Equal($"pole-metrics-scrape-{DeploymentId}", handler.ReplacedPolicy!.Metadata.Name);
+        Assert.Equal("collector", handler.ReplacedPolicy.Spec.PodSelector.MatchLabels["metrics.example/role"]);
+        Assert.Empty(handler.ReplacedPolicy.Spec.Ingress);
+        Assert.Equal("2", handler.ReplacedPolicy.Metadata.Annotations[
+            ResourceIngressPolicyManifestBuilder.TargetConfigurationRevisionAnnotation]);
+    }
+
+    private static V1NetworkPolicy Manifest(
+        ResourceIngressPolicyRequest request,
+        DeploymentTargetNetworkSourceDto? source) =>
+        ResourceIngressPolicyManifestBuilder.Build(
+            request,
+            source switch
+            {
+                DeploymentTargetPodNetworkSourceDto pod => new ResourceIngressPolicyPodSource(
+                    pod.Namespace, pod.PodLabels),
+                DeploymentTargetCidrNetworkSourceDto cidr => new ResourceIngressPolicyCidrSource(cidr.Cidr),
+                null => null
+            },
+            Definition(request.Purpose));
+
+    private static ResourceIngressPolicyCatalog Catalog() => new(
+        [Definition("web-public"), Definition("web-http01"), Definition("function-gateway")]);
+
+    private static ResourceIngressPolicyDefinition Definition(string purpose) => new(
+        ResourceTypeId.Create("pole/web-service"),
+        purpose,
+        purpose is "web-public" or "web-http01",
+        ports => ports.Count > 0,
+        request => purpose == "web-http01"
+            ? ImmutableDictionary<string, string>.Empty.Add("acme.cert-manager.io/http01-solver", "true")
+            : ImmutableDictionary<string, string>.Empty
+                .Add("pole.io/tenant-id", request.TenantId)
+                .Add("pole.io/runtime-cell-id", request.RuntimeCellId)
+                .Add("pole.io/resource-deployment-id", request.ResourceDeploymentId),
+        (_, sources) => sources.Get("public-ingress"));
+
     private static ResourceIngressPolicyRequest Request(
-        ResourceIngressPolicyPurpose purpose,
+        string purpose,
         ImmutableList<int> ports) => new(
             TenantId,
             ResourceTypeId.Create("pole/web-service"),
@@ -204,18 +313,18 @@ public sealed class ResourceIngressPolicyTests
             purpose,
             DeploymentDesiredGeneration: 1,
             TargetWorkloadConfigurationRevision: 1,
-            ports);
+            ports.Select(NetworkPort.Create).ToImmutableList());
 
     private static DeploymentTargetPodNetworkSourceDto PodSource(string name = "traefik") => new(
         "kube-system",
         ImmutableDictionary<string, string>.Empty.Add("app.kubernetes.io/name", name));
 
-    private static ResourceDeployment Deployment()
+    private static ResourceDeployment Deployment(ResourceTypeId? resourceType = null)
     {
         var now = new DateTime(2026, 9, 27, 10, 0, 0, DateTimeKind.Utc);
         return ResourceDeploymentFactory.Create(
             TenantId,
-            ResourceTypeId.Create("pole/web-service"),
+            resourceType ?? ResourceTypeId.Create("pole/web-service"),
             ResourceId,
             ResourceGroupId,
             ScopeId,
@@ -249,7 +358,9 @@ public sealed class ResourceIngressPolicyTests
         new DeploymentTargetWorkloadConfigurationLookupDto(
             revision,
             new DeploymentTargetIngressConfigurationLookupDto("traefik", "issuer", "example.test"),
-            new DeploymentTargetNetworkSourcesDto(source, null, null)),
+            new DeploymentTargetNetworkSourcesDto(source is null
+                ? ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty
+                : ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty.Add("public-ingress", source))),
         1,
         Enabled: true,
         AcceptsWorkloads: true,

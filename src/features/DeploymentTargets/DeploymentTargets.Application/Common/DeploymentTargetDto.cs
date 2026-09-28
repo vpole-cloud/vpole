@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 
@@ -140,10 +141,10 @@ public static class DeploymentTargetDtoExtensions
 
     public static DeploymentTargetNetworkSourcesDto ToDto(
         this DeploymentTargetNetworkSources sources) =>
-        new(
-            sources.PublicIngress?.ToDto(),
-            sources.FunctionGateway?.ToDto(),
-            sources.PostgresOperator?.ToDto());
+        new(sources.Entries.ToImmutableDictionary(
+            entry => entry.Key,
+            entry => entry.Value.ToDto(),
+            StringComparer.Ordinal));
 
     public static DeploymentTargetNetworkSourceDto ToDto(
         this DeploymentTargetNetworkSource source) => source switch
@@ -151,8 +152,7 @@ public static class DeploymentTargetDtoExtensions
             DeploymentTargetPodNetworkSource pod => new DeploymentTargetPodNetworkSourceDto(
                 pod.Namespace,
                 pod.PodLabels),
-            DeploymentTargetCidrNetworkSource cidr => new DeploymentTargetCidrNetworkSourceDto(cidr.Cidr),
-            _ => throw new InvalidOperationException("Unsupported network source type.")
+            DeploymentTargetCidrNetworkSource cidr => new DeploymentTargetCidrNetworkSourceDto(cidr.Cidr)
         };
 
     public static DeploymentTargetNetworkPolicyDto ToNetworkPolicyDto(this DeploymentTarget target)

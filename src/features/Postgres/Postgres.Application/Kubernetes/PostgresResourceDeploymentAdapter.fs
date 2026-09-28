@@ -12,6 +12,52 @@ open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.Secrets.Contracts
 open Pole.Workloads
 
+[<RequireQualifiedAccess>]
+module PostgresIngressPolicyDefinitions =
+    [<Literal>]
+    let ReplicationPurpose = "postgres-replication"
+
+    [<Literal>]
+    let OperatorPurpose = "postgres-operator"
+
+    [<Literal>]
+    let OperatorSourceName = "postgres/operator"
+
+    let private workloadLabels (request : ResourceIngressPolicyRequest) =
+        ImmutableDictionary<string, string>.Empty
+            .Add("pole.io/tenant-id", request.TenantId)
+            .Add("pole.io/runtime-cell-id", request.RuntimeCellId)
+            .Add("pole.io/resource-deployment-id", request.ResourceDeploymentId)
+
+    let Replication =
+        ResourceIngressPolicyDefinition(
+            PostgresResourceDeployment.ResourceType,
+            ReplicationPurpose,
+            false,
+            Func<ImmutableList<NetworkPort>, bool>(fun ports ->
+                ports.Count = 1 && ports[0].Value = 5432),
+            Func<ResourceIngressPolicyRequest, ImmutableDictionary<string, string>>(workloadLabels),
+            Func<ResourceIngressPolicyRequest, ResourceIngressPolicyTargetSources, ResourceIngressPolicyNetworkSource>(
+                fun request _ ->
+                    ResourceIngressPolicyPodSource(
+                        request.KubernetesNamespace,
+                        ImmutableDictionary<string, string>.Empty
+                            .Add("pole.io/tenant-id", request.TenantId)
+                            .Add("pole.io/resource-id", request.ResourceId)
+                            .Add("pole.io/resource-deployment-id", request.ResourceDeploymentId))))
+
+    let Operator =
+        ResourceIngressPolicyDefinition(
+            PostgresResourceDeployment.ResourceType,
+            OperatorPurpose,
+            false,
+            Func<ImmutableList<NetworkPort>, bool>(fun ports ->
+                ports.Count = 2 &&
+                (ports |> Seq.map (fun port -> port.Value) |> Seq.sort |> Seq.toArray) = [| 5432; 8000 |]),
+            Func<ResourceIngressPolicyRequest, ImmutableDictionary<string, string>>(workloadLabels),
+            Func<ResourceIngressPolicyRequest, ResourceIngressPolicyTargetSources, ResourceIngressPolicyNetworkSource>(
+                fun _ sources -> sources.Get(OperatorSourceName)))
+
 type PostgresResourceDeploymentAdapter(
     loadCluster : LoadPostgresClusterById,
     readCredentialKey : ReadManagedSecretKey,
@@ -35,7 +81,7 @@ type PostgresResourceDeploymentAdapter(
             purpose,
             deployment.DesiredGeneration,
             deployment.Placement.TargetWorkloadConfigurationRevision,
-            ImmutableList.CreateRange<int>(ports))
+            ImmutableList.CreateRange<NetworkPort>(ports |> Seq.map NetworkPort.Create))
 
     let ingressApplied (outcome : ReconcileResourceIngressPolicyOutcome) =
         outcome.Value :? ResourceIngressPolicyApplied
@@ -44,14 +90,14 @@ type PostgresResourceDeploymentAdapter(
         task {
             let! replication =
                 reconcileIngressPolicy.Invoke(
-                    ingressRequest deployment ResourceIngressPolicyPurpose.PostgresReplication [ 5432 ],
+                    ingressRequest deployment PostgresIngressPolicyDefinitions.ReplicationPurpose [ 5432 ],
                     cancellationToken)
             if not (ingressApplied replication) then
                 return Some("PostgresReplicationIngressUnavailable", "The PostgreSQL replication ingress policy is not ready.")
             elif mode = PostgresDeploymentMode.Operator then
                 let! operator =
                     reconcileIngressPolicy.Invoke(
-                        ingressRequest deployment ResourceIngressPolicyPurpose.PostgresOperator [ 5432; 8000 ],
+                        ingressRequest deployment PostgresIngressPolicyDefinitions.OperatorPurpose [ 5432; 8000 ],
                         cancellationToken)
                 return
                     if ingressApplied operator then None
@@ -64,11 +110,11 @@ type PostgresResourceDeploymentAdapter(
         task {
             let! replication =
                 reconcileIngressPolicy.Invoke(
-                    ingressRequest deployment ResourceIngressPolicyPurpose.PostgresReplication [],
+                    ingressRequest deployment PostgresIngressPolicyDefinitions.ReplicationPurpose [],
                     cancellationToken)
             let! operator =
                 reconcileIngressPolicy.Invoke(
-                    ingressRequest deployment ResourceIngressPolicyPurpose.PostgresOperator [],
+                    ingressRequest deployment PostgresIngressPolicyDefinitions.OperatorPurpose [],
                     cancellationToken)
             return
                 if not (ingressApplied replication) then

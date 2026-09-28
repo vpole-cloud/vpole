@@ -15,6 +15,7 @@ using Pole.Features.WebServices.Contracts;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.Search.Contracts;
 using Pole.Features.Quotas.Contracts;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.ResultType;
 
 namespace Pole.Features.WebServices.Application;
@@ -47,6 +48,8 @@ public static class WebServicesFeatureRegistration
             DeploySourceBuildWebServiceOutcome>();
         services.TryAddScoped<WebServiceResourceDeploymentAdapter>();
         services.AddSingleton(WebServiceResourceDeploymentAdapterRegistration.Descriptor);
+        services.AddSingleton<ResourceIngressPolicyDefinition>(WebServiceIngressPolicyDefinitions.Public);
+        services.AddSingleton<ResourceIngressPolicyDefinition>(WebServiceIngressPolicyDefinitions.Http01);
         return services;
     }
 

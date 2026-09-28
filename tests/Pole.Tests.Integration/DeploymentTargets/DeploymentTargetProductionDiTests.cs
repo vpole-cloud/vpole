@@ -160,7 +160,8 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
             {
                 NetworkSources = target.WorkloadConfiguration.NetworkSources with
                 {
-                    FunctionGateway = new DeploymentTargetCidrNetworkSourceDto("192.0.2.9/32")
+                    Entries = target.WorkloadConfiguration.NetworkSources.Entries.SetItem(
+                        "functions/gateway", new DeploymentTargetCidrNetworkSourceDto("192.0.2.9/32"))
                 }
             }
         };

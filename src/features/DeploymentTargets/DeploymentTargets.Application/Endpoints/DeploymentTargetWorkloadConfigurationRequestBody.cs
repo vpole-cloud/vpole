@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using FluentValidation;
 using System.Text.Json.Serialization;
 using Pole.Features.DeploymentTargets.Domain;
@@ -9,14 +10,12 @@ public sealed record DeploymentTargetWorkloadConfigurationRequestBody(
     DeploymentTargetNetworkSourcesRequestBody NetworkSources);
 
 public sealed record DeploymentTargetNetworkSourcesRequestBody(
-    DeploymentTargetNetworkSourceRequestBody? PublicIngress,
-    DeploymentTargetNetworkSourceRequestBody? FunctionGateway,
-    DeploymentTargetNetworkSourceRequestBody? PostgresOperator);
+    Dictionary<string, DeploymentTargetNetworkSourceRequestBody> Entries);
 
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
 [JsonDerivedType(typeof(DeploymentTargetPodNetworkSourceRequestBody), "Pod")]
 [JsonDerivedType(typeof(DeploymentTargetCidrNetworkSourceRequestBody), "Cidr")]
-public abstract record DeploymentTargetNetworkSourceRequestBody;
+public closed record DeploymentTargetNetworkSourceRequestBody;
 
 public sealed record DeploymentTargetPodNetworkSourceRequestBody(
     string Namespace,
@@ -50,21 +49,18 @@ public sealed class DeploymentTargetNetworkSourcesRequestBodyValidator
 {
     public DeploymentTargetNetworkSourcesRequestBodyValidator()
     {
-        RuleFor(body => body.PublicIngress).SetInheritanceValidator(validator =>
-        {
-            validator.Add(new DeploymentTargetPodNetworkSourceRequestBodyValidator());
-            validator.Add(new DeploymentTargetCidrNetworkSourceRequestBodyValidator());
-        });
-        RuleFor(body => body.FunctionGateway).SetInheritanceValidator(validator =>
-        {
-            validator.Add(new DeploymentTargetPodNetworkSourceRequestBodyValidator());
-            validator.Add(new DeploymentTargetCidrNetworkSourceRequestBodyValidator());
-        });
-        RuleFor(body => body.PostgresOperator).SetInheritanceValidator(validator =>
-        {
-            validator.Add(new DeploymentTargetPodNetworkSourceRequestBodyValidator());
-            validator.Add(new DeploymentTargetCidrNetworkSourceRequestBodyValidator());
-        });
+        RuleFor(body => body.Entries)
+            .Must(entries => entries is not null && entries.All(entry =>
+                DeploymentTargetNetworkSources.IsValidName(entry.Key) && (entry.Value switch
+                {
+                    DeploymentTargetPodNetworkSourceRequestBody pod =>
+                        DeploymentTargetPodNetworkSource.IsValidNamespace(pod.Namespace) &&
+                        DeploymentTargetPodNetworkSource.IsValid(pod.PodLabels),
+                    DeploymentTargetCidrNetworkSourceRequestBody cidr =>
+                        DeploymentTargetCidrNetworkSource.IsValid(cidr.Cidr),
+                    null => false
+                })))
+            .WithMessage("Network sources require valid names and bounded pod or CIDR selectors.");
     }
 }
 
@@ -126,10 +122,10 @@ internal static class DeploymentTargetWorkloadConfigurationRequestBodyExtensions
 
     public static DeploymentTargetNetworkSources ToDomain(
         this DeploymentTargetNetworkSourcesRequestBody body) =>
-        new(
-            body.PublicIngress?.ToDomain(),
-            body.FunctionGateway?.ToDomain(),
-            body.PostgresOperator?.ToDomain());
+        new(body.Entries.ToImmutableDictionary(
+            entry => entry.Key,
+            entry => entry.Value.ToDomain(),
+            StringComparer.Ordinal));
 
     public static DeploymentTargetNetworkSource ToDomain(
         this DeploymentTargetNetworkSourceRequestBody body) => body switch
@@ -137,8 +133,7 @@ internal static class DeploymentTargetWorkloadConfigurationRequestBodyExtensions
             DeploymentTargetPodNetworkSourceRequestBody pod => DeploymentTargetPodNetworkSource.Create(
                 pod.Namespace, pod.PodLabels),
             DeploymentTargetCidrNetworkSourceRequestBody cidr =>
-                DeploymentTargetCidrNetworkSource.Create(cidr.Cidr),
-            _ => throw new InvalidOperationException("Unsupported network source kind.")
+                DeploymentTargetCidrNetworkSource.Create(cidr.Cidr)
         };
 
     public static DeploymentTargetIngressConfiguration ToDomain(

@@ -32,7 +32,7 @@ public sealed class FunctionResourceDeploymentAdapterTests
         var result = await subject.DeleteAsync(Context());
 
         var request = Assert.Single(requests);
-        Assert.Equal(ResourceIngressPolicyPurpose.FunctionGateway, request.Purpose);
+        Assert.Equal("function-gateway", request.Purpose);
         Assert.Empty(request.AllowedTcpPorts);
         Assert.Equal(DeploymentId, request.ResourceDeploymentId);
         if (policyFailure)

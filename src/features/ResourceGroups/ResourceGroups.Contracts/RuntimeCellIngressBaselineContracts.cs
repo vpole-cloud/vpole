@@ -6,36 +6,27 @@ public sealed record RuntimeCellIngressBaselineNotReady(string RuntimeCellId);
 
 public sealed record RuntimeCellIngressBaselinePlacementMismatch(string RuntimeCellId);
 
-public enum RuntimeCellIngressBaselineFailureReason
-{
-    NamespaceOwnershipConflict,
-    NamespaceUnavailable,
-    PolicyOwnershipConflict,
-    PolicyUnavailable
-}
-
-public sealed record RuntimeCellIngressBaselineUnavailable(
-    string RuntimeCellId,
-    RuntimeCellIngressBaselineFailureReason Reason);
-
-public enum RuntimeCellIngressBaselineTargetFailureReason
-{
-    NotFound,
-    Disabled,
-    DefaultNotConfigured,
-    ConnectionUnavailable
-}
-
-public sealed record RuntimeCellIngressBaselineTargetUnavailable(
-    string RuntimeCellId,
-    RuntimeCellIngressBaselineTargetFailureReason Reason);
+public sealed record RuntimeCellIngressBaselineNamespaceOwnershipConflict(string RuntimeCellId);
+public sealed record RuntimeCellIngressBaselineNamespaceUnavailable(string RuntimeCellId);
+public sealed record RuntimeCellIngressBaselinePolicyOwnershipConflict(string RuntimeCellId);
+public sealed record RuntimeCellIngressBaselinePolicyUnavailable(string RuntimeCellId);
+public sealed record RuntimeCellIngressBaselineTargetNotFound(string RuntimeCellId);
+public sealed record RuntimeCellIngressBaselineTargetDisabled(string RuntimeCellId);
+public sealed record RuntimeCellIngressBaselineDefaultTargetNotConfigured(string RuntimeCellId);
+public sealed record RuntimeCellIngressBaselineTargetConnectionUnavailable(string RuntimeCellId);
 
 public union EnsureRuntimeCellIngressBaselineOutcome(
     RuntimeCellIngressBaselineReady,
     RuntimeCellIngressBaselineNotReady,
     RuntimeCellIngressBaselinePlacementMismatch,
-    RuntimeCellIngressBaselineUnavailable,
-    RuntimeCellIngressBaselineTargetUnavailable);
+    RuntimeCellIngressBaselineNamespaceOwnershipConflict,
+    RuntimeCellIngressBaselineNamespaceUnavailable,
+    RuntimeCellIngressBaselinePolicyOwnershipConflict,
+    RuntimeCellIngressBaselinePolicyUnavailable,
+    RuntimeCellIngressBaselineTargetNotFound,
+    RuntimeCellIngressBaselineTargetDisabled,
+    RuntimeCellIngressBaselineDefaultTargetNotConfigured,
+    RuntimeCellIngressBaselineTargetConnectionUnavailable);
 
 public delegate Task<EnsureRuntimeCellIngressBaselineOutcome> EnsureRuntimeCellIngressBaseline(
     string tenantId,

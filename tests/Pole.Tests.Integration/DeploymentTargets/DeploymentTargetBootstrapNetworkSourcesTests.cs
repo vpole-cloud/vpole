@@ -16,29 +16,29 @@ public sealed class DeploymentTargetBootstrapNetworkSourcesTests
     public void ConfigurationBinding_MapsTypedSourcesAndLeavesUnconfiguredPurposeAbsent()
     {
         var settings = ValidSettings();
-        settings[Prefix + "Cidrs:FunctionGateway"] = "192.0.2.9/32";
+        settings[Prefix + "Cidrs:functions/gateway"] = "192.0.2.9/32";
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
         var options = configuration.GetSection(DeploymentTargetOptions.SectionName)
             .Get<DeploymentTargetOptions>()!;
 
         Assert.True(new DeploymentTargetOptionsValidator().Validate(Options.DefaultName, options).Succeeded);
         var sources = options.Bootstrap.WorkloadConfiguration.NetworkSources.ToDomain();
-        var ingress = Assert.IsType<DeploymentTargetPodNetworkSource>(sources.PublicIngress);
+        var ingress = Assert.IsType<DeploymentTargetPodNetworkSource>(sources.Get("public-ingress"));
         Assert.Equal("kube-system", ingress.Namespace);
         Assert.Equal("traefik", ingress.PodLabels["app.kubernetes.io/name"]);
-        Assert.Equal("192.0.2.9/32", Assert.IsType<DeploymentTargetCidrNetworkSource>(sources.FunctionGateway).Cidr);
-        Assert.Null(sources.PostgresOperator);
+        Assert.Equal("192.0.2.9/32", Assert.IsType<DeploymentTargetCidrNetworkSource>(sources.Get("functions/gateway")).Cidr);
+        Assert.Null(sources.Get("postgres/operator"));
 
         options.Bootstrap.WorkloadConfiguration.NetworkSources.Pods[
-            DeploymentTargetBootstrapNetworkSourcePurpose.PublicIngress].PodLabels.Clear();
+            "public-ingress"].PodLabels.Clear();
         Assert.Equal("traefik", ingress.PodLabels["app.kubernetes.io/name"]);
     }
 
     [Theory]
-    [InlineData("Pods:PublicIngress:Namespace", "bad.namespace")]
-    [InlineData("Pods:PublicIngress:PodLabels:app.kubernetes.io/name", " padded ")]
-    [InlineData("Cidrs:FunctionGateway", "0.0.0.0/0")]
-    [InlineData("Cidrs:PublicIngress", "192.0.2.9/32")]
+    [InlineData("Pods:public-ingress:Namespace", "bad.namespace")]
+    [InlineData("Pods:public-ingress:PodLabels:app.kubernetes.io/name", " padded ")]
+    [InlineData("Cidrs:functions/gateway", "0.0.0.0/0")]
+    [InlineData("Cidrs:public-ingress", "192.0.2.9/32")]
     [InlineData("Cidrs:999", "192.0.2.9/32")]
     public async Task InvalidSourceConfiguration_FailsAtStartup(string key, string value)
     {
@@ -64,14 +64,14 @@ public sealed class DeploymentTargetBootstrapNetworkSourcesTests
     {
         var sources = new DeploymentTargetOptions().Bootstrap.WorkloadConfiguration.NetworkSources.ToDomain();
 
-        Assert.Null(sources.PublicIngress);
-        Assert.Null(sources.FunctionGateway);
-        Assert.Null(sources.PostgresOperator);
+        Assert.Null(sources.Get("public-ingress"));
+        Assert.Null(sources.Get("functions/gateway"));
+        Assert.Null(sources.Get("postgres/operator"));
     }
 
     private static Dictionary<string, string?> ValidSettings() => new()
     {
-        [Prefix + "Pods:PublicIngress:Namespace"] = "kube-system",
-        [Prefix + "Pods:PublicIngress:PodLabels:app.kubernetes.io/name"] = "traefik"
+        [Prefix + "Pods:public-ingress:Namespace"] = "kube-system",
+        [Prefix + "Pods:public-ingress:PodLabels:app.kubernetes.io/name"] = "traefik"
     };
 }

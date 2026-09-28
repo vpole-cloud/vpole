@@ -86,9 +86,10 @@ public sealed class ResourceIngressPolicyKubernetesTests : KubernetesIntegration
                 Assert.IsType<Unit>((await baseline.EnsureCreatedAsync(cell, cancellationToken)).Value);
                 return new RuntimeCellIngressBaselineReady();
             },
-            provider);
-        var appRequest = Request(ResourceIngressPolicyPurpose.WebServicePublic, [8080]);
-        var solverRequest = Request(ResourceIngressPolicyPurpose.WebServiceHttp01, [8089]);
+            provider,
+            Catalog());
+        var appRequest = Request("web-public", [8080]);
+        var solverRequest = Request("web-http01", [8089]);
         Assert.IsType<ResourceIngressPolicyApplied>((await writer.InvokeAsync(appRequest, ct)).Value);
         Assert.IsType<ResourceIngressPolicyApplied>((await writer.InvokeAsync(solverRequest, ct)).Value);
 
@@ -191,11 +192,28 @@ public sealed class ResourceIngressPolicyKubernetesTests : KubernetesIntegration
             $"Expected traffic {client} -> {address}:{port} allowed={allowed}.");
     }
 
+    private static ResourceIngressPolicyCatalog Catalog() => new(
+        [Definition("web-public"), Definition("web-http01")]);
+
+    private static ResourceIngressPolicyDefinition Definition(string purpose) => new(
+        ResourceTypeId.Create("pole/web-service"),
+        purpose,
+        RequiresIngressPlacement: true,
+        ports => ports.Count == 1,
+        request => purpose == "web-http01"
+            ? ImmutableDictionary<string, string>.Empty.Add("acme.cert-manager.io/http01-solver", "true")
+            : ImmutableDictionary<string, string>.Empty
+                .Add("pole.io/tenant-id", request.TenantId)
+                .Add("pole.io/runtime-cell-id", request.RuntimeCellId)
+                .Add("pole.io/resource-deployment-id", request.ResourceDeploymentId),
+        (_, sources) => sources.Get("public-ingress"));
+
     private ResourceIngressPolicyRequest Request(
-        ResourceIngressPolicyPurpose purpose,
+        string purpose,
         ImmutableList<int> ports) => new(
         TenantId, ResourceTypeId.Create("pole/web-service"), ResourceId, DeploymentId,
-        CellId, TargetId, NamespaceName, purpose, 1, 1, ports);
+        CellId, TargetId, NamespaceName, purpose, 1, 1,
+        ports.Select(NetworkPort.Create).ToImmutableList());
 
     private ResourceDeployment Deployment() => ResourceDeploymentFactory.Create(
         TenantId, ResourceTypeId.Create("pole/web-service"), ResourceId, GroupId, ScopeId,
@@ -211,7 +229,9 @@ public sealed class ResourceIngressPolicyKubernetesTests : KubernetesIntegration
         TargetId, "Target", "cluster", "InCluster", 1,
         new DeploymentTargetWorkloadConfigurationLookupDto(
             1, new DeploymentTargetIngressConfigurationLookupDto("traefik", "issuer", "example.test"),
-            new DeploymentTargetNetworkSourcesDto(source, null, null)),
+            new DeploymentTargetNetworkSourcesDto(
+                ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty.Add(
+                    "public-ingress", source))),
         1, true, true, false, "Healthy")
         {
             NetworkPolicy = new DeploymentTargetNetworkPolicyDto(

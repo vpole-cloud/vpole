@@ -1,7 +1,8 @@
 using System.Globalization;
+using System.Net;
 using k8s.Models;
-using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.KubernetesValidation;
 
 namespace Pole.Features.ResourceDeployments.Application.Kubernetes;
 
@@ -12,12 +13,18 @@ internal static class ResourceIngressPolicyManifestBuilder
     public const string PolicyPurposeLabel = "pole.io/policy-purpose";
 
     public static string Name(ResourceIngressPolicyRequest request) =>
-        $"pole-{PurposeName(request.Purpose)}-{request.ResourceDeploymentId}";
+        $"pole-{request.Purpose}-{request.ResourceDeploymentId}";
 
     public static V1NetworkPolicy Build(
         ResourceIngressPolicyRequest request,
-        DeploymentTargetNetworkSourceDto? source)
+        ResourceIngressPolicyNetworkSource? source,
+        ResourceIngressPolicyDefinition definition)
     {
+        var destinationLabels = definition.DestinationPodLabels(request);
+        ValidateLabels(destinationLabels);
+        if (source is not null)
+            ValidateSource(source);
+
         var labels = OwnershipLabels(request);
         var ingress = source is null || request.AllowedTcpPorts.Count == 0
             ? new List<V1NetworkPolicyIngressRule>()
@@ -27,11 +34,11 @@ internal static class ResourceIngressPolicyManifestBuilder
                 {
                     FromProperty = [ToPeer(source)],
                     Ports = request.AllowedTcpPorts
-                        .Order()
+                        .OrderBy(port => port.Value)
                         .Select(port => new V1NetworkPolicyPort
                         {
                             Protocol = "TCP",
-                            Port = port
+                            Port = port.Value
                         })
                         .ToList()
                 }
@@ -57,17 +64,8 @@ internal static class ResourceIngressPolicyManifestBuilder
             {
                 PodSelector = new V1LabelSelector
                 {
-                    MatchLabels = request.Purpose == ResourceIngressPolicyPurpose.WebServiceHttp01
-                        ? new Dictionary<string, string>(StringComparer.Ordinal)
-                        {
-                            ["acme.cert-manager.io/http01-solver"] = "true"
-                        }
-                        : new Dictionary<string, string>(StringComparer.Ordinal)
-                        {
-                            ["pole.io/tenant-id"] = request.TenantId,
-                            ["pole.io/runtime-cell-id"] = request.RuntimeCellId,
-                            ["pole.io/resource-deployment-id"] = request.ResourceDeploymentId
-                        }
+                    MatchLabels = destinationLabels.ToDictionary(
+                        label => label.Key, label => label.Value, StringComparer.Ordinal)
                 },
                 PolicyTypes = ["Ingress"],
                 Ingress = ingress
@@ -83,22 +81,60 @@ internal static class ResourceIngressPolicyManifestBuilder
             ["pole.io/deployment-target-id"] = request.DeploymentTargetId,
             ["pole.io/resource-id"] = request.ResourceId,
             ["pole.io/resource-deployment-id"] = request.ResourceDeploymentId,
-            [PolicyPurposeLabel] = PurposeName(request.Purpose)
+            [PolicyPurposeLabel] = request.Purpose
         };
 
-    public static DeploymentTargetNetworkSourceDto ReplicationSource(
-        ResourceIngressPolicyRequest request) =>
-        new DeploymentTargetPodNetworkSourceDto(
-            request.KubernetesNamespace,
-            System.Collections.Immutable.ImmutableDictionary<string, string>.Empty
-                .Add("pole.io/tenant-id", request.TenantId)
-                .Add("pole.io/resource-id", request.ResourceId)
-                .Add("pole.io/resource-deployment-id", request.ResourceDeploymentId));
-
-    private static V1NetworkPolicyPeer ToPeer(DeploymentTargetNetworkSourceDto source) =>
+    private static ResourceIngressPolicyNetworkSource ValidateSource(ResourceIngressPolicyNetworkSource source) =>
         source switch
         {
-            DeploymentTargetPodNetworkSourceDto pod => new V1NetworkPolicyPeer
+            ResourceIngressPolicyPodSource pod when IsValidPodSource(pod) => pod,
+            ResourceIngressPolicyPodSource =>
+                throw new ArgumentException("Ingress pod source must have an exact DNS namespace and labels.", nameof(source)),
+            ResourceIngressPolicyCidrSource cidr when IPNetwork.TryParse(cidr.Cidr, out var network) &&
+                                                        network.PrefixLength > 0 => cidr,
+            ResourceIngressPolicyCidrSource =>
+                throw new ArgumentException("Ingress source CIDR must be bounded.", nameof(source)),
+            null => throw new ArgumentNullException(nameof(source))
+        };
+
+    private static bool IsValidPodSource(ResourceIngressPolicyPodSource pod)
+    {
+        try
+        {
+            if (!string.Equals(
+                    KubernetesValueGuard.DnsLabel(pod.Namespace, nameof(pod)),
+                    pod.Namespace,
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+            ValidateLabels(pod.PodLabels);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    private static void ValidateLabels(IReadOnlyDictionary<string, string> labels)
+    {
+        if (labels.Count == 0)
+            throw new ArgumentException("Ingress selectors must contain at least one label.", nameof(labels));
+        foreach (var (key, value) in labels)
+        {
+            if (!string.Equals(KubernetesValueGuard.LabelKey(key, nameof(labels)), key, StringComparison.Ordinal) ||
+                !string.Equals(KubernetesValueGuard.LabelValue(value, nameof(labels)), value, StringComparison.Ordinal))
+            {
+                throw new ArgumentException("Ingress selector labels must be exact Kubernetes labels.", nameof(labels));
+            }
+        }
+    }
+
+    private static V1NetworkPolicyPeer ToPeer(ResourceIngressPolicyNetworkSource source) =>
+        source switch
+        {
+            ResourceIngressPolicyPodSource pod => new V1NetworkPolicyPeer
             {
                 NamespaceSelector = new V1LabelSelector
                 {
@@ -115,20 +151,9 @@ internal static class ResourceIngressPolicyManifestBuilder
                         StringComparer.Ordinal)
                 }
             },
-            DeploymentTargetCidrNetworkSourceDto cidr => new V1NetworkPolicyPeer
+            ResourceIngressPolicyCidrSource cidr => new V1NetworkPolicyPeer
             {
                 IpBlock = new V1IPBlock { Cidr = cidr.Cidr }
-            },
-            _ => throw new InvalidOperationException("Unsupported target network source.")
+            }
         };
-
-    private static string PurposeName(ResourceIngressPolicyPurpose purpose) => purpose switch
-    {
-        ResourceIngressPolicyPurpose.WebServicePublic => "web-public",
-        ResourceIngressPolicyPurpose.WebServiceHttp01 => "web-http01",
-        ResourceIngressPolicyPurpose.FunctionGateway => "function-gateway",
-        ResourceIngressPolicyPurpose.PostgresOperator => "postgres-operator",
-        ResourceIngressPolicyPurpose.PostgresReplication => "postgres-replication",
-        _ => throw new ArgumentOutOfRangeException(nameof(purpose))
-    };
 }

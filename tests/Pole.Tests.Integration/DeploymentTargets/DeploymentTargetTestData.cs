@@ -25,7 +25,7 @@ internal static class DeploymentTargetTestData
             new DeploymentTargetIngressConfigurationRequestBody(
                 ingressClassName,
                 clusterIssuerName),
-            new DeploymentTargetNetworkSourcesRequestBody(null, null, null));
+            new DeploymentTargetNetworkSourcesRequestBody([]));
 
     public static DeploymentTargetWorkloadConfigurationRequestBody ToRequestBody(
         this DeploymentTargetWorkloadConfigurationDto configuration) =>
@@ -49,17 +49,13 @@ internal static class DeploymentTargetTestData
 
     public static DeploymentTargetNetworkSourcesRequestBody ToRequestBody(
         this Pole.Features.DeploymentTargets.Contracts.DeploymentTargetNetworkSourcesDto sources) =>
-        new(
-            sources.PublicIngress?.ToRequestBody(),
-            sources.FunctionGateway?.ToRequestBody(),
-            sources.PostgresOperator?.ToRequestBody());
+        new(sources.Entries.ToDictionary(
+            entry => entry.Key, entry => entry.Value.ToRequestBody(), StringComparer.Ordinal));
 
     public static DeploymentTargetNetworkSourcesRequestBody ToRequestBody(
         this DeploymentTargetNetworkSources sources) =>
-        new(
-            sources.PublicIngress?.ToRequestBody(),
-            sources.FunctionGateway?.ToRequestBody(),
-            sources.PostgresOperator?.ToRequestBody());
+        new(sources.Entries.ToDictionary(
+            entry => entry.Key, entry => entry.Value.ToRequestBody(), StringComparer.Ordinal));
 
     private static DeploymentTargetNetworkSourceRequestBody ToRequestBody(
         this Pole.Features.DeploymentTargets.Contracts.DeploymentTargetNetworkSourceDto source) => source switch
@@ -69,8 +65,7 @@ internal static class DeploymentTargetTestData
                 pod.Namespace,
                 pod.PodLabels.ToDictionary(label => label.Key, label => label.Value)),
             Pole.Features.DeploymentTargets.Contracts.DeploymentTargetCidrNetworkSourceDto cidr =>
-                new DeploymentTargetCidrNetworkSourceRequestBody(cidr.Cidr),
-            _ => throw new InvalidOperationException("Unsupported source type.")
+                new DeploymentTargetCidrNetworkSourceRequestBody(cidr.Cidr)
         };
 
     private static DeploymentTargetNetworkSourceRequestBody ToRequestBody(
@@ -81,7 +76,6 @@ internal static class DeploymentTargetTestData
                 pod.Namespace,
                 pod.PodLabels.ToDictionary(label => label.Key, label => label.Value)),
             DeploymentTargetCidrNetworkSource cidr =>
-                new DeploymentTargetCidrNetworkSourceRequestBody(cidr.Cidr),
-            _ => throw new InvalidOperationException("Unsupported source type.")
+                new DeploymentTargetCidrNetworkSourceRequestBody(cidr.Cidr)
         };
 }
