@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using k8s;
 using k8s.Autorest;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Testing;
 using Pole.Tests.E2E.Infrastructure;
 using Xunit;
@@ -244,14 +245,17 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
 
     private static object LabNetworkSources() => new
     {
-        publicIngress = new
+        entries = new Dictionary<string, object>
         {
-            kind = "Pod",
-            @namespace = "kube-system",
-            podLabels = new Dictionary<string, string>
+            [DeploymentTargetNetworkSourcesDto.PublicIngressName] = new
             {
-                ["app.kubernetes.io/name"] = "traefik",
-                ["app.kubernetes.io/instance"] = "traefik-kube-system"
+                kind = "Pod",
+                @namespace = "kube-system",
+                podLabels = new Dictionary<string, string>
+                {
+                    ["app.kubernetes.io/name"] = "traefik",
+                    ["app.kubernetes.io/instance"] = "traefik-kube-system"
+                }
             }
         }
     };
