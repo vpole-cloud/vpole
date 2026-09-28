@@ -17,6 +17,7 @@ using k8s;
 using k8s.Autorest;
 using k8s.Models;
 using Microsoft.Extensions.DependencyInjection;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Testing;
 using Xunit;
 
@@ -688,13 +689,13 @@ public sealed class PoleE2EFixture : IAsyncLifetime
                 "DeploymentTargets__Bootstrap__WorkloadConfiguration__Ingress__PublicBaseDomain",
                 _kubernetesTarget.PublicBaseDomain)
             .WithEnvironment(
-                "DeploymentTargets__Bootstrap__WorkloadConfiguration__NetworkSources__Pods__PublicIngress__Namespace",
+                $"DeploymentTargets__Bootstrap__WorkloadConfiguration__NetworkSources__Pods__{DeploymentTargetNetworkSourcesDto.PublicIngressName}__Namespace",
                 "kube-system")
             .WithEnvironment(
-                "DeploymentTargets__Bootstrap__WorkloadConfiguration__NetworkSources__Pods__PublicIngress__PodLabels__app.kubernetes.io/name",
+                $"DeploymentTargets__Bootstrap__WorkloadConfiguration__NetworkSources__Pods__{DeploymentTargetNetworkSourcesDto.PublicIngressName}__PodLabels__app.kubernetes.io/name",
                 "traefik")
             .WithEnvironment(
-                "DeploymentTargets__Bootstrap__WorkloadConfiguration__NetworkSources__Pods__PublicIngress__PodLabels__app.kubernetes.io/instance",
+                $"DeploymentTargets__Bootstrap__WorkloadConfiguration__NetworkSources__Pods__{DeploymentTargetNetworkSourcesDto.PublicIngressName}__PodLabels__app.kubernetes.io/instance",
                 "traefik-kube-system");
     }
 
