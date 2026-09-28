@@ -204,8 +204,7 @@ public sealed record ResourceConnection(
         var targets = Lifecycle switch
         {
             ActiveResourceConnection current => current.RetiringTargets,
-            DeletingResourceConnection deleting => deleting.Targets,
-            _ => throw new InvalidOperationException("Unsupported connection lifecycle.")
+            DeletingResourceConnection deleting => deleting.Targets
         };
         var existing = targets.FirstOrDefault(target => target.Snapshot.PolicyLocation == location);
         if (existing is null)
@@ -229,8 +228,7 @@ public sealed record ResourceConnection(
                 DeletingResourceConnection deleting => deleting with
                 {
                     Targets = updatedTargets
-                },
-                _ => throw new InvalidOperationException("Unsupported connection lifecycle.")
+                }
             },
             Revision = checked(Revision + 1)
         });
@@ -303,10 +301,8 @@ public sealed record ConnectionTargetSnapshot(
         IEnumerable<ConnectionSourcePlacement> sources)
     {
         ArgumentNullException.ThrowIfNull(sources);
-        if (destinationServicePort is < 1 or > 65535)
-            throw new ArgumentOutOfRangeException(nameof(destinationServicePort));
-        if (destinationPort is < 1 or > 65535)
-            throw new ArgumentOutOfRangeException(nameof(destinationPort));
+        _ = NetworkPort.Create(destinationServicePort);
+        _ = NetworkPort.Create(destinationPort);
 
         var copiedSources = sources.ToImmutableList();
         if (copiedSources.Count == 0 ||
@@ -350,7 +346,7 @@ public sealed record ConnectionTargetSnapshot(
 
 [BsonDiscriminator(RootClass = true)]
 [BsonKnownTypes(typeof(ActiveResourceConnection), typeof(DeletingResourceConnection))]
-public abstract record ResourceConnectionLifecycle;
+public closed record ResourceConnectionLifecycle;
 
 public sealed record ActiveResourceConnection(
     ImmutableList<ApplyConnectionTarget> Targets,
@@ -373,7 +369,7 @@ public sealed record CleanupConnectionTarget(
     typeof(PendingConnectionApply),
     typeof(AppliedConnectionApply),
     typeof(FailedConnectionApply))]
-public abstract record ConnectionApplyStatus;
+public closed record ConnectionApplyStatus;
 
 public sealed record PendingConnectionApply : ConnectionApplyStatus;
 
@@ -388,7 +384,7 @@ public sealed record FailedConnectionApply(
     typeof(PendingConnectionCleanup),
     typeof(CompletedConnectionCleanup),
     typeof(FailedConnectionCleanup))]
-public abstract record ConnectionCleanupStatus;
+public closed record ConnectionCleanupStatus;
 
 public sealed record PendingConnectionCleanup : ConnectionCleanupStatus;
 

@@ -1,31 +1,35 @@
 using System.Collections.Immutable;
-using System.Globalization;
-using Pole.Features.WebServices.Contracts;
+using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.WebServices.Domain;
+using Pole.Workloads;
 
 namespace Pole.Features.WebServices.Application.Common;
 
 internal static class WebServiceConnectionEndpointCatalog
 {
-    public static ImmutableList<WebServiceConnectionEndpointDto> FromConfig(WebServiceConfig config) =>
+    public static ImmutableList<ResourceConnectionEndpoint> FromConfig(
+        WebServiceConfig config,
+        string serviceName) =>
         config.PortMappings
             .Where(mapping => !string.IsNullOrWhiteSpace(mapping.Name))
             .GroupBy(mapping => mapping.Name.Trim().ToLowerInvariant(), StringComparer.Ordinal)
             .Where(group => group.Count() == 1)
-            .Select(group => ToEndpoint(group.Key, group.Single()))
-            .OfType<WebServiceConnectionEndpointDto>()
+            .Select(group => ToEndpoint(group.Key, serviceName, group.Single()))
+            .OfType<ResourceConnectionEndpoint>()
             .OrderBy(endpoint => endpoint.Id, StringComparer.Ordinal)
             .ToImmutableList();
 
-    private static WebServiceConnectionEndpointDto? ToEndpoint(string id, PortMapping mapping)
+    private static ResourceConnectionEndpoint? ToEndpoint(
+        string id,
+        string serviceName,
+        PortMapping mapping)
     {
         if (!string.Equals(mapping.Protocol, "TCP", StringComparison.OrdinalIgnoreCase) ||
-            mapping.ServicePort is < 1 or > 65535 ||
-            !int.TryParse(mapping.TargetPort, NumberStyles.None, CultureInfo.InvariantCulture,
-                out var targetPort) || targetPort is < 1 or > 65535)
+            !NetworkPort.TryCreate(mapping.ServicePort, out var servicePort) ||
+            !NetworkPort.TryParse(mapping.TargetPort, out var targetPort))
         {
             return null;
         }
-        return new WebServiceConnectionEndpointDto(id, mapping.ServicePort, targetPort);
+        return new ResourceConnectionEndpoint(id, serviceName, servicePort, targetPort);
     }
 }

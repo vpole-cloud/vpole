@@ -7,7 +7,6 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceConnections.Application.Persistence;
 using Pole.Features.ResourceConnections.Domain;
-using Pole.Features.RedisServices.Contracts;
 using Pole.Mediator;
 using Pole.Validation;
 using Pole.Workloads;
@@ -50,7 +49,8 @@ public union CreateResourceConnectionOutcome(
 public sealed record ConnectionSourceUnsupported;
 
 public sealed class CreateResourceConnectionHandler(
-    PersistResourceConnectionCreation persist)
+    PersistResourceConnectionCreation persist,
+    ResourceConnectionEndpointCatalog endpointCatalog)
     : IMediatorOutcomeHandler<CreateResourceConnectionRequest, CreateResourceConnectionOutcome>
 {
     public async Task<CreateResourceConnectionOutcome> HandleAsync(
@@ -59,15 +59,12 @@ public sealed class CreateResourceConnectionHandler(
     {
         var body = request.Body;
         var destinationType = ResourceTypeId.Create(body.DestinationResourceType);
-        if (!ResourceConnectionEndpointCatalog.SupportsDestination(destinationType))
+        if (!endpointCatalog.SupportsDestination(destinationType))
         {
             return new ConnectionEndpointUnsupported();
         }
-        if (destinationType == RedisConnectionEndpoints.ResourceType &&
-            RedisConnectionEndpoints.Resolve(body.EndpointId) is null)
-            return new ConnectionEndpointUnsupported();
         var sourceType = ResourceTypeId.Create(body.SourceResourceType);
-        if (!ResourceConnectionSourceTypes.Contains(sourceType))
+        if (!endpointCatalog.SupportsSource(sourceType))
             return new ConnectionSourceUnsupported();
 
         var outcome = await persist(new CreateResourceConnectionCommand(

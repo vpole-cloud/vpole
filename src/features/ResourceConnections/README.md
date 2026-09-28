@@ -11,8 +11,12 @@ Names are unique within the tenant and this resource kind. References use stable
 deleting and recreating a resource with the same name never reconnects an old declaration.
 This preserves the future IaC address model of `kind/name` without implementing an IaC engine.
 
-Sources can be WebServices, Redis services, PostgreSQL clusters, or Function Apps. Functions
-are source-only. A destination publishes the following endpoint catalog:
+The built-in providers register WebServices, Redis services, PostgreSQL clusters, and Function Apps
+as sources. Functions are source-only. Any provider can register a source capability when its pods
+publish stable resource-deployment identity labels, and a destination capability when it can read
+desired endpoints in the caller's Mongo transaction. ResourceConnections discovers these
+capabilities through DI and rejects duplicate resource-type registrations at startup. The built-in
+destinations publish:
 
 | Destination | Endpoint ID | Service port | Pod target port |
 | --- | --- | --- | --- |
@@ -21,7 +25,7 @@ are source-only. A destination publishes the following endpoint catalog:
 | WebService | Normalized named TCP port | Configured service port | Configured numeric target port |
 
 WebService endpoint names are trimmed and lowercased. Unnamed, ambiguous, non-TCP, and unresolved
-named-target entries are excluded. The catalog reads the desired resource configuration in the
+named-target entries are excluded. The provider reads the desired resource configuration in the
 caller's Mongo transaction; it does not depend on a previous successful Kubernetes apply.
 
 The API accepts resource and endpoint identities. Kubernetes selectors, namespaces, raw addresses,
@@ -121,8 +125,8 @@ generate cleanup reads; there is currently no garbage-collection policy.
 
 `ResourceConnections.Domain` owns lifecycle and generation transitions. `ResourceConnections.Contracts`
 publishes transaction-joining mutation and deletion operations. Application owns Mongo persistence,
-HTTP endpoints, outbox consumers, Kubernetes policies, and the recurring recovery job. Redis,
-WebServices, and Postgres own their endpoint catalog contracts and implementations.
+HTTP endpoints, outbox consumers, Kubernetes policies, and the recurring recovery job. Destination
+providers own their endpoint knowledge and adapt it to the ResourceConnections capability contract.
 
 Focused tests cover tenant and role boundaries, exact target pairing, immutable identity,
 transaction rollback, endpoint refresh, cascade snapshots, stale writes, and recovery. Live CNI

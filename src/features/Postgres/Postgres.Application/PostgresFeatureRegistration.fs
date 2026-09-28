@@ -14,6 +14,7 @@ open Pole.Features.Postgres.Application.Persistence
 open Pole.Features.Postgres.Application.Search
 open Pole.Features.Postgres.Domain
 open Pole.Features.Quotas.Contracts
+open Pole.Features.ResourceConnections.Contracts
 open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.Search.Contracts
 
@@ -52,6 +53,9 @@ type PostgresFeatureRegistration =
             ServiceDescriptor.Singleton<IQuotaProfile, PostgresQuotaProfile>())
         |> ignore
         PostgresPersistenceRegistration.addPostgresPersistence services |> ignore
+        services.AddSingleton<ResourceConnectionSourceCapability>(
+            ResourceConnectionSourceCapability(PostgresResourceDeployment.ResourceType))
+        |> ignore
         services.TryAddScoped<RunMongoOutcomeTransaction<UpdatePostgresClusterPasswordOutcome>>(
             Func<IServiceProvider, RunMongoOutcomeTransaction<UpdatePostgresClusterPasswordOutcome>>(
                 fun serviceProvider ->

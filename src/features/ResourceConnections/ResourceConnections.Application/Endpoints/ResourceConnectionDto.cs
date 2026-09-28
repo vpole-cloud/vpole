@@ -1,4 +1,5 @@
 using Pole.Features.ResourceConnections.Domain;
+using Pole.Features.ResourceConnections.Application.Kubernetes;
 
 namespace Pole.Features.ResourceConnections.Application.Endpoints;
 
@@ -33,8 +34,7 @@ internal static class ResourceConnectionDtoMapping
                 {
                     PendingConnectionApply => ("Pending", null),
                     AppliedConnectionApply => ("Applied", null),
-                    FailedConnectionApply failed => ("Failed", failed.Reason),
-                    _ => throw new InvalidOperationException("Unknown apply state.")
+                    FailedConnectionApply failed => ("Failed", failed.Reason)
                 }))
                 .Concat(active.RetiringTargets.Select(target => ToTargetDto(
                     target.Snapshot,
@@ -43,8 +43,7 @@ internal static class ResourceConnectionDtoMapping
                     {
                         PendingConnectionCleanup => ("Pending", null),
                         CompletedConnectionCleanup => ("Completed", null),
-                        FailedConnectionCleanup failed => ("Failed", failed.Reason),
-                        _ => throw new InvalidOperationException("Unknown cleanup state.")
+                        FailedConnectionCleanup failed => ("Failed", failed.Reason)
                     })))
                 .ToArray(),
             DeletingResourceConnection deleting => deleting.Targets
@@ -52,11 +51,9 @@ internal static class ResourceConnectionDtoMapping
                 {
                     PendingConnectionCleanup => ("Pending", null),
                     CompletedConnectionCleanup => ("Completed", null),
-                    FailedConnectionCleanup failed => ("Failed", failed.Reason),
-                    _ => throw new InvalidOperationException("Unknown cleanup state.")
+                    FailedConnectionCleanup failed => ("Failed", failed.Reason)
                 }))
-                .ToArray(),
-            _ => throw new InvalidOperationException("Unknown connection lifecycle.")
+                .ToArray()
         };
         var status = connection.Lifecycle switch
         {
@@ -69,8 +66,7 @@ internal static class ResourceConnectionDtoMapping
                 target.Status is FailedConnectionApply) ||
                 active.RetiringTargets.Any(target =>
                     target.Status is FailedConnectionCleanup) => "Failed",
-            ActiveResourceConnection => "Pending",
-            _ => throw new InvalidOperationException("Unknown connection lifecycle.")
+            ActiveResourceConnection => "Pending"
         };
         return new ResourceConnectionDto(
             connection.Id,
@@ -92,7 +88,9 @@ internal static class ResourceConnectionDtoMapping
             snapshot.TargetId,
             phase,
             outcome.Status,
-            $"{snapshot.DestinationServiceName}.{snapshot.DestinationNamespace}.svc.cluster.local",
+            ResourceConnectionServiceDns.Build(
+                snapshot.DestinationServiceName,
+                snapshot.DestinationNamespace),
             snapshot.DestinationServicePort,
             outcome.FailureCode);
 }

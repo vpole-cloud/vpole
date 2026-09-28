@@ -273,10 +273,15 @@ public sealed class ResourceConnectionCreateApiTests(MongoReplicaSetFixture fixt
     }
 
     [Fact]
-    public async Task Create_RejectsUnpublishedSourceAndEndpointBeforePersistence()
+    public async Task Create_RejectsUnpublishedSourceAndEndpointWithoutWrites()
     {
         var sourceId = Id();
         var destinationId = Id();
+        await SeedReferenceAsync(SourceType, sourceId, "source-group");
+        await SeedReferenceAsync(
+            RedisConnectionEndpoints.ResourceType,
+            destinationId,
+            "destination-group");
         using var unsupportedSource = await Client.PostAsJsonAsync(
             "/api/v1/resource-connections",
             Body(sourceId, destinationId) with
@@ -294,6 +299,12 @@ public sealed class ResourceConnectionCreateApiTests(MongoReplicaSetFixture fixt
         Assert.Equal(0, await Connections.CountDocumentsAsync(
             item => item.TenantId == TestData.TenantId));
         Assert.Equal(0, await Fixture.DbContext.CountOutboxMessagesAsync(CreatedEventType));
+        Assert.Equal(0, (await Fixture.DbContext.ResourceRegistrations
+            .Find(item => item.ResourceId == sourceId)
+            .SingleAsync()).ReferenceFence);
+        Assert.Equal(0, (await Fixture.DbContext.ResourceRegistrations
+            .Find(item => item.ResourceId == destinationId)
+            .SingleAsync()).ReferenceFence);
     }
 
     [Fact]

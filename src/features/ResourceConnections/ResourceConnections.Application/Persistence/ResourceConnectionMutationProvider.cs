@@ -187,8 +187,8 @@ internal sealed class MongoResourceConnectionMutationProvider(
                 destination.RuntimeCellId,
                 destination.KubernetesNamespace,
                 endpoint.ServiceName,
-                endpoint.ServicePort,
-                endpoint.TargetPort,
+                endpoint.ServicePort.Value,
+                endpoint.TargetPort.Value,
                 sourcesOnTarget.Select(source => new ConnectionSourcePlacement(
                     source.DeploymentId,
                     source.RuntimeCellId,

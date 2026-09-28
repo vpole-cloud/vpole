@@ -4,6 +4,7 @@ using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence;
 using Pole.Features.Functions.Application.Persistence.Lifecycle;
 using Pole.Features.Quotas.Contracts;
+using Pole.Features.ResourceConnections.Contracts;
 
 namespace Pole.Features.Functions.Application;
 
@@ -13,6 +14,8 @@ public static class FunctionAppApplicationRegistration
         this IServiceCollection services)
     {
         services.AddFunctionAppPersistence();
+        services.AddSingleton(new ResourceConnectionSourceCapability(
+            FunctionResourceDeployment.ResourceType));
         services.TryAddSingleton<FunctionAppCountQuota>();
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<Quota, FunctionAppCountQuota>());

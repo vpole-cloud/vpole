@@ -15,6 +15,7 @@ using Pole.Features.WebServices.Contracts;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.Search.Contracts;
 using Pole.Features.Quotas.Contracts;
+using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.ResultType;
 
@@ -27,6 +28,8 @@ public static class WebServicesFeatureRegistration
     {
         services.AddSingleton<SearchSourceType>(WebServiceSearchProjection.SourceType);
         services.AddWebServicePersistence();
+        services.AddSingleton(new ResourceConnectionSourceCapability(
+            WebServiceResourceDeployment.ResourceType));
         services.TryAddSingleton<WebServiceCountQuota>();
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<Quota, WebServiceCountQuota>());

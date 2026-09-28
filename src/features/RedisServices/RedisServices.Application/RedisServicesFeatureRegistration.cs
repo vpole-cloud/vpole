@@ -8,6 +8,8 @@ using Pole.Features.RedisServices.Application.Persistence.Lifecycle;
 using Pole.Features.RedisServices.Application.Search;
 using Pole.Features.Search.Contracts;
 using Pole.Features.Quotas.Contracts;
+using Pole.Features.ResourceConnections.Contracts;
+using Pole.Features.RedisServices.Contracts;
 
 namespace Pole.Features.RedisServices.Application;
 
@@ -18,6 +20,8 @@ public static class RedisServicesFeatureRegistration
     {
         services.AddSingleton<SearchSourceType>(RedisServiceSearchProjection.SourceType);
         services.AddRedisPersistence();
+        services.AddSingleton(new ResourceConnectionSourceCapability(
+            RedisResourceDeployment.ResourceType));
         services.TryAddSingleton<RedisServiceCountQuota>();
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<Quota, RedisServiceCountQuota>());

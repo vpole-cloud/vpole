@@ -11,6 +11,7 @@ using Pole.Features.WebServices.Application.Persistence.Releases;
 using Pole.Features.WebServices.Application.Persistence.Tokens;
 using Pole.Features.WebServices.Contracts;
 using Pole.Features.WebServices.Domain;
+using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.SourceBuilds.Contracts;
 
 namespace Pole.Features.WebServices.Application.Persistence;
@@ -28,7 +29,8 @@ public static class WebServicePersistenceRegistration
         services.TryAddSingleton(serviceProvider => serviceProvider
             .GetRequiredService<IMongoDatabase>()
             .GetCollection<WebServiceDeploymentToken>("WebServiceDeploymentTokens"));
-        services.AddCapability<MongoLoadWebServiceConnectionEndpoints, LoadWebServiceConnectionEndpoints>(x => x.InvokeAsync);
+        services.AddScoped<IResourceConnectionDestinationCapability,
+            MongoLoadWebServiceConnectionEndpoints>();
         services.AddCapability<MongoLoadWebServiceById, LoadWebServiceById>(x => x.InvokeAsync);
         services.AddCapability<MongoWebServiceExists, WebServiceExists>(x => x.InvokeAsync);
         services.AddCapability<MongoWebServiceExists, SourceBuildWebServiceExists>(x => x.InvokeAsync);

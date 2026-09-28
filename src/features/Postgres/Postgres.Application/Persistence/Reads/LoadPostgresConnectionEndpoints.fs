@@ -6,27 +6,32 @@ open MongoDB.Driver
 open Pole.Features.Postgres.Application.Persistence
 open Pole.Features.Postgres.Contracts
 open Pole.Features.Postgres.Domain
+open Pole.Features.Postgres.Application.Common
+open Pole.Features.ResourceConnections.Contracts
+open Pole.Workloads
 
 type MongoLoadPostgresConnectionEndpoints(clusters : IMongoCollection<PostgresCluster>) =
-    member _.InvokeAsync(tenantId, resourceId, session : IClientSessionHandle, cancellationToken : CancellationToken) =
-        task {
-            if not session.IsInTransaction then
-                invalidOp "Connection endpoint lookup requires a transaction."
-            let! resource =
-                clusters.Find(session, PostgresFilters.byId tenantId resourceId)
-                    .FirstOrDefaultAsync(cancellationToken)
-            if isNull (box resource) then
-                return LoadPostgresConnectionEndpointsOutcome(PostgresConnectionResourceMissing())
-            elif resource.Lifecycle :? DeletingPostgresClusterLifecycle then
-                return LoadPostgresConnectionEndpointsOutcome(PostgresConnectionResourceDeleting())
-            else
-                let endpoint = PostgresConnectionEndpointDto(
-                    PostgresConnectionEndpoints.ReadWriteId,
-                    PostgresConnectionEndpoints.TcpPort,
-                    PostgresConnectionEndpoints.TcpPort)
-                return LoadPostgresConnectionEndpointsOutcome(
-                    PostgresConnectionEndpointsFound(
-                        resource.Id,
+    interface IResourceConnectionDestinationCapability with
+        member _.ResourceType = PostgresResourceDeployment.ResourceType
+
+        member _.LoadAsync(tenantId, resourceId, session : IClientSessionHandle, cancellationToken : CancellationToken) =
+            task {
+                if not session.IsInTransaction then
+                    invalidOp "Connection endpoint lookup requires a transaction."
+                let! resource =
+                    clusters.Find(session, PostgresFilters.byId tenantId resourceId)
+                        .FirstOrDefaultAsync(cancellationToken)
+                if isNull (box resource) then
+                    return LoadResourceConnectionEndpointsOutcome(ResourceConnectionDestinationMissing())
+                elif resource.Lifecycle :? DeletingPostgresClusterLifecycle then
+                    return LoadResourceConnectionEndpointsOutcome(ResourceConnectionDestinationDeleting())
+                else
+                    let port = NetworkPort.Create(PostgresConnectionEndpoints.TcpPort)
+                    let endpoint = ResourceConnectionEndpoint(
+                        PostgresConnectionEndpoints.ReadWriteId,
                         PostgresConnectionEndpoints.BuildReadWriteServiceName(resource.Id),
-                        ImmutableList.Create(endpoint)))
-        }
+                        port,
+                        port)
+                    return LoadResourceConnectionEndpointsOutcome(
+                        ResourceConnectionEndpointsFound(ImmutableList.Create(endpoint)))
+            }
