@@ -3,26 +3,23 @@ using Pole.Workloads;
 
 namespace Pole.Features.ResourceConnections.Contracts;
 
-public enum ResourceConnectionTopologyConflictReason
-{
-    SourceHasNoPlacements,
-    PlacementDeleting,
-    DestinationTargetMissing,
-    DestinationTargetAmbiguous,
-    EndpointMissing,
-    DestinationDeleting,
-    ConcurrentMutation
-}
-
 public sealed record ResourceConnectionTopologyValid(int RefreshedCount);
 
-public sealed record ResourceConnectionTopologyConflict(
-    string ConnectionId,
-    ResourceConnectionTopologyConflictReason Reason);
+public sealed record ResourceConnectionSourceHasNoPlacements(string ConnectionId);
+public sealed record ResourceConnectionDestinationTargetMissing(string ConnectionId);
+public sealed record ResourceConnectionDestinationTargetAmbiguous(string ConnectionId);
+public sealed record ResourceConnectionEndpointMissing(string ConnectionId);
+public sealed record ResourceConnectionDestinationDeletingConflict(string ConnectionId);
+public sealed record ResourceConnectionConcurrentMutation(string ConnectionId);
 
 public union ReconcileConnectionsForResourceOutcome(
     ResourceConnectionTopologyValid,
-    ResourceConnectionTopologyConflict);
+    ResourceConnectionSourceHasNoPlacements,
+    ResourceConnectionDestinationTargetMissing,
+    ResourceConnectionDestinationTargetAmbiguous,
+    ResourceConnectionEndpointMissing,
+    ResourceConnectionDestinationDeletingConflict,
+    ResourceConnectionConcurrentMutation);
 
 /// <summary>
 /// Caller has already acquired the resource registration write fence and made

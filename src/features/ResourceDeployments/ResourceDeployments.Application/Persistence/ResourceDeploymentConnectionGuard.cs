@@ -31,8 +31,18 @@ internal sealed class ResourceDeploymentConnectionGuard(
         return outcome switch
         {
             ResourceConnectionTopologyValid => null,
-            ResourceConnectionTopologyConflict conflict =>
-                new ResourceDeploymentConnectionConflict(resourceId, conflict.ConnectionId)
+            ResourceConnectionSourceHasNoPlacements error =>
+                new ResourceDeploymentConnectionConflict(resourceId, error.ConnectionId),
+            ResourceConnectionDestinationTargetMissing error =>
+                new ResourceDeploymentConnectionConflict(resourceId, error.ConnectionId),
+            ResourceConnectionDestinationTargetAmbiguous error =>
+                new ResourceDeploymentConnectionConflict(resourceId, error.ConnectionId),
+            ResourceConnectionEndpointMissing error =>
+                new ResourceDeploymentConnectionConflict(resourceId, error.ConnectionId),
+            ResourceConnectionDestinationDeletingConflict error =>
+                new ResourceDeploymentConnectionConflict(resourceId, error.ConnectionId),
+            ResourceConnectionConcurrentMutation error =>
+                new ResourceDeploymentConnectionConflict(resourceId, error.ConnectionId)
         };
     }
 }
