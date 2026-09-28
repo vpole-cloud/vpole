@@ -24,6 +24,10 @@ destinations publish:
 | PostgreSQL, either provider | `postgres` | 5432, read-write service | 5432 |
 | WebService | Normalized named TCP port | Configured service port | Configured numeric target port |
 
+F# callers of the connection-deletion contract use its exhaustive C# `Match` bridge. They
+handle the cascaded and conflict cases explicitly instead of switching on the union's `Value`
+with a wildcard success case.
+
 WebService endpoint names are trimmed and lowercased. Unnamed, ambiguous, non-TCP, and unresolved
 named-target entries are excluded. The provider reads the desired resource configuration in the
 caller's Mongo transaction; it does not depend on a previous successful Kubernetes apply.

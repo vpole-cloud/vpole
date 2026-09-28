@@ -45,8 +45,13 @@ internal sealed class MongoBeginFunctionAppDeletion(
             return new FunctionAppDeletionChanged(current.Id);
         var cascade = await cascadeConnections(
             current.TenantId, FunctionResourceDeployment.ResourceType, current.Id, session, cancellationToken);
-        if (cascade is ResourceConnectionCascadeConflict)
-            return new FunctionAppDeletionChanged(current.Id);
+        FunctionAppDeletionChanged? cascadeConflict = cascade switch
+        {
+            ResourceConnectionsCascaded => null,
+            ResourceConnectionCascadeConflict => new FunctionAppDeletionChanged(current.Id)
+        };
+        if (cascadeConflict is not null)
+            return cascadeConflict;
 
         var appResult = await functionApps.UpdateOneAsync(
             session,
