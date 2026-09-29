@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../PrivateAccess.Core/PrivateAccess.Core.csproj" />
+    <ProjectReference Include="../PrivateAccess.Tcp/PrivateAccess.Tcp.csproj" />
+  </ItemGroup>
+</Project>

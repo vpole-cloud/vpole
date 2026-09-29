@@ -9,6 +9,13 @@
   <Folder Name="/examples/">
     <Project Path="src/examples/Blog/Blog.csproj" />
   </Folder>
+  <Folder Name="/examples/PrivateAccess/">
+    <Project Path="src/examples/PrivateAccess/PrivateAccess.Core/PrivateAccess.Core.csproj" />
+    <Project Path="src/examples/PrivateAccess/PrivateAccess.Tcp/PrivateAccess.Tcp.csproj" />
+    <Project Path="src/examples/PrivateAccess/PrivateAccess.Tool/PrivateAccess.Tool.csproj" />
+    <Project Path="src/examples/PrivateAccess/PrivateAccess.Tests/PrivateAccess.Tests.csproj" />
+    <Project Path="src/examples/PrivateAccess/PrivateAccess.Tests.Integration/PrivateAccess.Tests.Integration.csproj" />
+  </Folder>
   <Folder Name="/shared/">
     <Project Path="src/shared/Mediator/Mediator.csproj" />
     <Project Path="src/shared/Mediator.Runtime/Mediator.Runtime.csproj" />
