@@ -28,7 +28,7 @@ namespace Pole.Features.Postgres.Tests.Integration;
 public sealed class PostgresFeatureHostTests(MongoReplicaSetFixture fixture)
 {
     [Fact]
-    public async Task StaticFeatureHost_EnforcesTenantAndUsesManagedSecretsWithoutAFeatureMigration()
+    public async Task StaticFeatureHost_EnforcesTenantAndUsesManagedSecretsWithNameIndexMigration()
     {
         await fixture.ResetDatabaseAsync();
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
@@ -105,7 +105,8 @@ public sealed class PostgresFeatureHostTests(MongoReplicaSetFixture fixture)
         await host.Services.GetRequiredService<EnsurePendingOutboxEventsRegistered>().InvokeAsync();
         var history = await fixture.Database.GetCollection<BsonDocument>("__migrations")
             .Find(new BsonDocument("_id", new BsonRegularExpression("^pole.postgres/"))).ToListAsync();
-        Assert.Empty(history);
+        Assert.Equal("pole.postgres/6a700003b213917a38c38001",
+            Assert.Single(history)["_id"].AsString);
         Assert.Equal(0, await fixture.Database.GetCollection<BsonDocument>("PostgresCredentials").CountDocumentsAsync(new BsonDocument()));
         host.Services.GetRequiredService<TestDeploymentTargetLookup>().RejectNewWorkloads = true;
         using var rejected = await client.PostAsJsonAsync(route,

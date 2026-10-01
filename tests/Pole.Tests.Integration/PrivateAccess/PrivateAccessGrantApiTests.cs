@@ -53,11 +53,15 @@ public sealed class PrivateAccessGrantApiTests(MongoReplicaSetFixture fixture)
             .InsertManyAsync([own, anotherTenant, anotherSubject]);
 
         var response = await Client.GetAsync(
-            "/api/v1/private-access/resources/redis/orders/grants");
+            "/api/v1/private-access/resources/redis/grants?name=orders");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var options = await response.Content.ReadFromJsonAsync<PrivateAccessResourceGrantOptions>();
         Assert.Equal(own.Id, Assert.Single(Assert.IsType<PrivateAccessResourceGrantOptions>(options).Items).GrantId);
+
+        using var nameWithSlash = await Client.GetAsync(
+            "/api/v1/private-access/resources/redis/grants?name=orders%2F2026");
+        Assert.Equal(HttpStatusCode.OK, nameWithSlash.StatusCode);
     }
 
     [Fact]

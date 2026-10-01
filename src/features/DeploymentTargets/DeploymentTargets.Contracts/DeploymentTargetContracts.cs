@@ -13,6 +13,15 @@ public interface IKubernetesClientProvider
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Supplies stored target credentials for ownership-checked cleanup after admission
+    /// has been disabled. Callers must only remove resources they own.
+    /// </summary>
+    Task<IKubernetes> GetForCleanupAsync(
+        string deploymentTargetId,
+        CancellationToken cancellationToken = default) =>
+        GetAsync(deploymentTargetId, cancellationToken);
+
+    /// <summary>
     /// Transitional single-cluster path for resources that do not carry placement yet.
     /// New placement-aware code should always call <see cref="GetAsync"/> with its persisted target ID.
     /// </summary>
@@ -351,6 +360,7 @@ public static class DeploymentTargetReferenceOwnerTypes
     public const string DomainZone = "domain-zone";
     public const string ComputeProfile = "compute-profile";
     public const string PrivateAccessSession = "private-access-session";
+    public const string PrivateAccessGateway = "private-access-gateway";
 }
 
 /// <summary>

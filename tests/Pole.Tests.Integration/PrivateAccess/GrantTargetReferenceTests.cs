@@ -1,6 +1,9 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Microsoft.Extensions.DependencyInjection;
 using Pole.Database;
+using Pole.Features.PrivateAccess.Application;
+using Pole.Features.PrivateAccess.Contracts;
 using Pole.Features.DeploymentTargets.Application.Persistence.Admission;
 using Pole.Features.DeploymentTargets.Application.Persistence.References;
 using Pole.Features.DeploymentTargets.Contracts;
@@ -99,6 +102,44 @@ public sealed class GrantTargetReferenceTests(MongoReplicaSetFixture fixture) : 
                         : transaction.Abort(admission);
                 });
         Assert.IsType<DeploymentTargetReferenceChangeRejected>(result.Value);
+    }
+
+    [Fact]
+    public async Task GatewayRegistration_HoldsTargetReferenceUntilCleanupCompletes()
+    {
+        var target = CreateTarget();
+        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        var services = new ServiceCollection();
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton(fixture.Client);
+        services.AddSingleton(fixture.Database);
+        services.AddSingleton<MongoRunTransaction>();
+        services.AddPrivateAccessFeature();
+        services.AddSingleton<ApplyDeploymentTargetReferenceChanges>(
+            new MongoApplyDeploymentTargetReferenceChanges(
+                fixture.DbContext.DeploymentTargets,
+                fixture.DbContext.DeploymentTargetReferences,
+                TimeProvider.System).InvokeAsync);
+        using var provider = services.BuildServiceProvider();
+        var tenantId = ObjectId.GenerateNewId().ToString();
+        var identity = new PrivateAccessGatewayIdentity(tenantId, target.Id,
+            PrivateAccessGatewayIds.StableId(tenantId, target.Id), 1, 1);
+
+        var saved = await provider.GetRequiredService<SavePrivateAccessGatewayRegistration>()(
+            identity, new string('a', 64), DateTime.UtcNow.AddDays(30), []);
+
+        Assert.True(saved);
+        var reference = Assert.Single(await fixture.DbContext.DeploymentTargetReferences
+            .Find(item => item.DeploymentTargetId == target.Id).ToListAsync());
+        Assert.Equal(DeploymentTargetReferenceOwnerTypes.PrivateAccessGateway,
+            reference.OwnerType);
+        Assert.Equal(identity.GatewayId, reference.OwnerId);
+        Assert.False(await provider.GetRequiredService<RemovePrivateAccessGatewayRegistration>()(
+            identity with { Revision = 2 }));
+        Assert.True(await provider.GetRequiredService<RemovePrivateAccessGatewayRegistration>()(
+            identity));
+        Assert.Empty(await fixture.DbContext.DeploymentTargetReferences
+            .Find(item => item.DeploymentTargetId == target.Id).ToListAsync());
     }
 
     private static DeploymentTarget CreateTarget()

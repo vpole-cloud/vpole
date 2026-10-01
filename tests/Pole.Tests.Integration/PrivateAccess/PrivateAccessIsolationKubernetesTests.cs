@@ -43,6 +43,8 @@ public sealed class PrivateAccessIsolationKubernetesTests : KubernetesIntegratio
                 WorkloadLabels(tenantId, DeploymentA), true, ct);
             var b = await PodAsync("database-b", NamespaceName,
                 WorkloadLabels(tenantId, DeploymentB), true, ct);
+            await ServiceAsync("database-a", WorkloadLabels(tenantId, DeploymentA), ct);
+            await ServiceAsync("database-b", WorkloadLabels(tenantId, DeploymentB), ct);
             await PodAsync("gateway-a", gatewayNamespace,
                 GatewayLabels(identity), false, ct);
             var otherLabels = GatewayLabels(identity);
@@ -76,7 +78,11 @@ public sealed class PrivateAccessIsolationKubernetesTests : KubernetesIntegratio
                 PrivateAccessGatewayManifest.BuildDestinationIngress(identity, endpoint),
                 NamespaceName, cancellationToken: ct);
             await TrafficAsync("gateway-a", gatewayNamespace, a, 8080, true, ct);
+            await TrafficAsync("gateway-a", gatewayNamespace,
+                $"database-a.{NamespaceName}.svc", 8080, true, ct);
             await TrafficAsync("gateway-a", gatewayNamespace, b, 8080, false, ct);
+            await TrafficAsync("gateway-a", gatewayNamespace,
+                $"database-b.{NamespaceName}.svc", 8080, false, ct);
             await TrafficAsync("gateway-a", gatewayNamespace, a, 9090, false, ct);
             await TrafficAsync("gateway-b", gatewayNamespace, a, 8080, false, ct);
 
@@ -102,6 +108,20 @@ public sealed class PrivateAccessIsolationKubernetesTests : KubernetesIntegratio
             current.Metadata.Labels[label.Key] = label.Value;
         await Kubernetes.CoreV1.ReplaceNamespaceAsync(current, name, cancellationToken: ct);
     }
+
+    private Task<V1Service> ServiceAsync(
+        string name,
+        Dictionary<string, string> selector,
+        CancellationToken ct) => Kubernetes.CoreV1.CreateNamespacedServiceAsync(
+        new V1Service
+        {
+            Metadata = new V1ObjectMeta { Name = name },
+            Spec = new V1ServiceSpec
+            {
+                Selector = selector,
+                Ports = [new V1ServicePort { Port = 8080, Protocol = "TCP" }]
+            }
+        }, NamespaceName, cancellationToken: ct);
 
     private async Task<string> PodAsync(
         string name,

@@ -53,7 +53,7 @@ public sealed class PrivateAccessApiClientTests
             "tenant-1", "postgres", "orders", "deployment-1", "primary", CancellationToken.None);
 
         Assert.Single(grants);
-        Assert.Equal("https://pole.example/api/v1/private-access/resources/postgres/orders/grants?deploymentId=deployment-1&endpointId=primary", observed!.RequestUri!.AbsoluteUri);
+        Assert.Equal("https://pole.example/api/v1/private-access/resources/postgres/grants?name=orders&deploymentId=deployment-1&endpointId=primary", observed!.RequestUri!.AbsoluteUri);
         Assert.Equal("Bearer access-jwt", observed.Headers.Authorization!.ToString());
         Assert.Equal("tenant-1", Assert.Single(observed.Headers.GetValues("X-Pole-Tenant-ID")));
     }

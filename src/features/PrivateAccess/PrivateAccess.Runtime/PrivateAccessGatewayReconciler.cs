@@ -74,10 +74,7 @@ public sealed class PrivateAccessGatewayReconciler(
             timeout.CancelAfter(TimeSpan.FromSeconds(30));
             try
             {
-                var deleted = await deleteGateway(current.Identity,
-                    current.Endpoints.Select(ToRuntimeEndpoint).ToArray(), timeout.Token);
-                if (deleted is PrivateAccessGatewayDeleted)
-                    await remove(current.Identity, timeout.Token);
+                await WithdrawAsync(current, timeout.Token);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception exception)
@@ -118,20 +115,52 @@ public sealed class PrivateAccessGatewayReconciler(
         byte[]? proposedPfx = CreateIdentityPfx(identity);
         try
         {
+            if (current is null || rotate)
+            {
+                // Persist the target reference and intended identity before writing
+                // Kubernetes objects. A failed write can then be retried or cleaned up.
+                var reserved = await ReserveAsync(identity, state, proposedPfx,
+                    cancellationToken);
+                if (reserved is null)
+                    return;
+                current = reserved;
+            }
+            else if (!current.Endpoints.SequenceEqual(state.Endpoints))
+            {
+                // Record every destination before creating its policy. If provisioning
+                // fails or the grant disappears, cleanup still knows what to remove.
+                if (!await save(identity, current.CertificateSha256Pin,
+                        current.CertificateNotAfterUtc, state.Endpoints, cancellationToken))
+                    return;
+                identity = identity with { Revision = checked(identity.Revision + 1) };
+                current = current with { Identity = identity, Endpoints = state.Endpoints };
+            }
+
             var result = await ensureGateway(identity, endpoints,
                 configured.Value.GatewaySettings(), proposedPfx, cancellationToken);
+            if (result is PrivateAccessGatewayTargetUnavailable or
+                PrivateAccessGatewayIsolationUnavailable)
+            {
+                await WithdrawAsync(current, cancellationToken);
+                return;
+            }
             if (result is not PrivateAccessGatewayReady ready)
                 return;
 
-            if (current is not null && !rotate &&
-                !string.Equals(ready.CertificateSha256Pin, current.CertificateSha256Pin,
+            if (!string.Equals(ready.CertificateSha256Pin, current.CertificateSha256Pin,
                     StringComparison.Ordinal))
             {
-                // A Secret with a different pin is never adopted under an existing registration.
+                // A Secret with a different pin is never adopted under an existing
+                // registration. Reserve the next generation before rotating it.
                 identity = NextGeneration(identity);
                 if (proposedPfx is not null)
                     CryptographicOperations.ZeroMemory(proposedPfx);
                 proposedPfx = CreateIdentityPfx(identity);
+                var reserved = await ReserveAsync(identity, state, proposedPfx,
+                    cancellationToken);
+                if (reserved is null)
+                    return;
+                current = reserved;
                 result = await ensureGateway(identity, endpoints,
                     configured.Value.GatewaySettings(), proposedPfx, cancellationToken);
                 if (result is not PrivateAccessGatewayReady rotated)
@@ -139,6 +168,9 @@ public sealed class PrivateAccessGatewayReconciler(
                 ready = rotated;
             }
 
+            if (!string.Equals(ready.CertificateSha256Pin, current.CertificateSha256Pin,
+                    StringComparison.Ordinal))
+                return;
             if (!await save(identity, ready.CertificateSha256Pin,
                     ready.CertificateNotAfter.UtcDateTime, state.Endpoints, cancellationToken))
                 logger.LogWarning("Private Access gateway registration changed concurrently; ensure will retry.");
@@ -148,6 +180,32 @@ public sealed class PrivateAccessGatewayReconciler(
             if (proposedPfx is not null)
                 CryptographicOperations.ZeroMemory(proposedPfx);
         }
+    }
+
+    private async Task WithdrawAsync(
+        PersistedGateway current,
+        CancellationToken cancellationToken)
+    {
+        var deleted = await deleteGateway(current.Identity,
+            current.Endpoints.Select(ToRuntimeEndpoint).ToArray(), cancellationToken);
+        if (deleted is PrivateAccessGatewayDeleted)
+            await remove(current.Identity, cancellationToken);
+    }
+
+    private async Task<PersistedGateway?> ReserveAsync(
+        PrivateAccessGatewayIdentity identity,
+        PrivateAccessGatewayDesiredState state,
+        byte[] proposedPfx,
+        CancellationToken cancellationToken)
+    {
+        using var certificate = X509CertificateLoader.LoadPkcs12(
+            proposedPfx, null, X509KeyStorageFlags.EphemeralKeySet);
+        var pin = certificate.GetCertHashString(HashAlgorithmName.SHA256)
+            .ToLowerInvariant();
+        var expiry = certificate.NotAfter.ToUniversalTime();
+        if (!await save(identity, pin, expiry, state.Endpoints, cancellationToken))
+            return null;
+        return new PersistedGateway(identity, pin, expiry, state.Endpoints);
     }
 
     private static PrivateAccessGatewayEndpoint ToRuntimeEndpoint(

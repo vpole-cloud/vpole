@@ -88,8 +88,8 @@ public sealed class PrivateAccessApiClient(
     {
         ValidateIdentifier(kind, nameof(kind));
         ValidateIdentifier(name, nameof(name));
-        var path = $"api/v1/private-access/resources/{Uri.EscapeDataString(kind)}/{Uri.EscapeDataString(name)}/grants";
-        var filters = new List<string>();
+        var path = $"api/v1/private-access/resources/{Uri.EscapeDataString(kind)}/grants";
+        var filters = new List<string> { "name=" + Uri.EscapeDataString(name) };
         if (deploymentId is not null)
         {
             ValidateIdentifier(deploymentId, nameof(deploymentId));

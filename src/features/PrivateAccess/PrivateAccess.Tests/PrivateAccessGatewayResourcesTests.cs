@@ -9,6 +9,7 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.PrivateAccess.Contracts;
 using Pole.Features.PrivateAccess.Runtime;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Features.PrivateAccess.Tests;
@@ -49,6 +50,49 @@ public sealed class PrivateAccessGatewayResourcesTests
         Assert.Equal(1, kube.SecretCreates);
         Assert.Equal(1, kube.DeploymentCreates);
         Assert.Equal(["networkpolicy", "networkpolicy", "secret", "deployment"], kube.CreatedAfterNamespace);
+
+        Assert.IsType<PrivateAccessGatewayCleanupPending>(
+            (await resources.DeleteAsync(identity, [], CancellationToken.None)).Value);
+        Assert.IsType<PrivateAccessGatewayDeleted>(
+            (await resources.DeleteAsync(identity, [], CancellationToken.None)).Value);
+    }
+
+    [Fact]
+    public async Task TwoDeploymentsWithSameProviderEndpoint_ProvisionDistinctPolicies()
+    {
+        var identity = new PrivateAccessGatewayIdentity(
+            "0123456789abcdef01234567", "89abcdef0123456701234567",
+            "fedcba9876543210fedcba98", 1, 1);
+        var endpoints = new[]
+        {
+            new PrivateAccessGatewayEndpoint("redis", "cell-a", "deployment-a",
+                "runtime-a", "redis-a", NetworkPort.Create(6379), NetworkPort.Create(6379)),
+            new PrivateAccessGatewayEndpoint("redis", "cell-b", "deployment-b",
+                "runtime-b", "redis-b", NetworkPort.Create(6379), NetworkPort.Create(6379))
+        };
+        var kube = new StoredKubernetes();
+        using var client = new Kubernetes(new KubernetesClientConfiguration
+        {
+            Host = "http://kubernetes.test"
+        }, kube);
+        var resources = new PrivateAccessGatewayResources(
+            new FixedKubernetesProvider(client),
+            (id, _) => Task.FromResult<LookupDeploymentTargetOutcome>(Target(id)),
+            (_, _, _, _, _) => Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
+                new RuntimeCellIngressBaselineReady()));
+        using var key = RSA.Create(2048);
+        var request = new CertificateRequest("CN=pole-access-gateway", key,
+            HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        using var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1),
+            DateTimeOffset.UtcNow.AddDays(7));
+
+        var result = await resources.EnsureAsync(identity, endpoints,
+            new PrivateAccessGatewaySettings("pole/gateway:1",
+                new Uri("https://broker.example:9444"), [IPAddress.Parse("192.0.2.8")]),
+            certificate.Export(X509ContentType.Pkcs12), CancellationToken.None);
+
+        Assert.IsType<PrivateAccessGatewayReady>(result.Value);
+        Assert.Equal(4, kube.CreatedAfterNamespace.Count(item => item == "networkpolicy"));
     }
 
     [Fact]
@@ -186,6 +230,10 @@ public sealed class PrivateAccessGatewayResourcesTests
                 objects[path] = body;
                 return Response(request, HttpStatusCode.OK, body.ToJsonString());
             }
+            if (request.Method == HttpMethod.Delete)
+                return objects.Remove(path)
+                    ? Response(request, HttpStatusCode.OK, "{}")
+                    : Response(request, HttpStatusCode.NotFound, "{}");
             throw new InvalidOperationException($"Unexpected Kubernetes call {request.Method} {path}.");
         }
 

@@ -16,7 +16,7 @@ All routes require an authenticated user and `X-Pole-Tenant-ID`.
 | `GET /api/v1/private-access/grants/{id}` | Subject or current tenant Owner or Admin | Gets grant metadata |
 | `DELETE /api/v1/private-access/grants/{id}` | Current tenant Owner or Admin | Revokes a grant |
 | `POST /api/v1/private-access/grants/{id}/sessions` | Grant subject, still a current tenant member | Issues one session ticket |
-| `GET /api/v1/private-access/resources/{kind}/{name}/grants` | Current tenant member | Finds the caller's eligible grant options for an immutable provider resource name |
+| `GET /api/v1/private-access/resources/{kind}/grants?name={name}` | Current tenant member | Finds the caller's eligible grant options for an immutable provider resource name, including names containing `/` |
 
 Grant creation accepts subject user ID, resource type and ID, exact deployment ID, endpoint ID,
 and UTC expiry. The API never accepts or returns a raw destination address. Grant and session

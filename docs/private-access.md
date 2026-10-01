@@ -31,6 +31,14 @@ the commands.
    gateway reconnects. Pole retries gateway reconciliation and ownership-checked cleanup after
    interruption.
 
+The gateway registration holds a durable reference to its deployment target. Pole creates the
+registration before provisioning Kubernetes resources and releases the reference only after
+owned Gateway resources have been removed. Disabling the target or losing NetworkPolicy
+attestation withdraws the Gateway; cleanup may still use the target's stored Kubernetes
+credentials. The dedicated namespace and its default-deny policy remain after cleanup. They
+contain no running workload or credential and are retained to avoid deleting unrelated objects
+that an operator may have placed in that namespace.
+
 The current broker keeps control connections and rendezvous tickets in process memory. Run one
 Pole Server replica for this feature until shared broker state or sticky routing is implemented.
 The gateway can serve concurrent TCP sessions, but transparent migration of an established TCP

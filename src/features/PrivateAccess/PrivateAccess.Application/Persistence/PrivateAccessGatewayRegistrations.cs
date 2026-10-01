@@ -1,11 +1,15 @@
 using MongoDB.Driver;
+using Pole.Database;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.PrivateAccess.Contracts;
 using Pole.Features.PrivateAccess.Domain;
 
 namespace Pole.Features.PrivateAccess.Application.Persistence;
 
 internal sealed class PrivateAccessGatewayRegistrations(
-    IMongoCollection<PrivateAccessGateway> gateways)
+    IMongoCollection<PrivateAccessGateway> gateways,
+    MongoRunTransaction transactions,
+    ApplyDeploymentTargetReferenceChanges targetReferences)
 {
     public async Task<IReadOnlyList<PrivateAccessGatewayRegistration>> LoadAsync(
         CancellationToken cancellationToken = default)
@@ -34,74 +38,92 @@ internal sealed class PrivateAccessGatewayRegistrations(
         var routes = endpoints.Select(ToDomain).ToArray();
         var filter = PrivateAccessGatewayFilters.ByTenantTarget(
             identity.TenantId, identity.DeploymentTargetId);
-        var current = await gateways.Find(filter).FirstOrDefaultAsync(cancellationToken);
-        if (current is null)
+        return await transactions.InvokeOutcomeAsync<bool>(async (transaction, ct) =>
         {
-            if (identity.Generation != 1 || identity.Revision != 1)
-                return false;
-            var created = PrivateAccessGatewayFactory.Create(
-                identity.GatewayId, identity.TenantId, identity.DeploymentTargetId,
-                certificateSha256Pin, certificateNotAfterUtc, routes);
-            try
+            var current = await gateways.Find(transaction.Session, filter)
+                .FirstOrDefaultAsync(ct);
+            if (current is null)
             {
-                await gateways.InsertOneAsync(created, cancellationToken: cancellationToken);
-                return true;
+                if (identity.Generation != 1 || identity.Revision != 1)
+                    return transaction.Abort(false);
+                var reference = await targetReferences(
+                    GatewayOwner(identity), [identity.DeploymentTargetId], [],
+                    transaction.Session, ct);
+                if (reference is DeploymentTargetReferenceChangeRejected)
+                    return transaction.Abort(false);
+                var created = PrivateAccessGatewayFactory.Create(
+                    identity.GatewayId, identity.TenantId, identity.DeploymentTargetId,
+                    certificateSha256Pin, certificateNotAfterUtc, routes);
+                await gateways.InsertOneAsync(transaction.Session, created,
+                    cancellationToken: ct);
+                return transaction.Commit(true);
             }
-            catch (MongoWriteException exception) when (
-                exception.WriteError.Category == ServerErrorCategory.DuplicateKey)
+            if (current.Id != identity.GatewayId ||
+                current.State is not ActivePrivateAccessGatewayState)
+                return transaction.Abort(false);
+            PrivateAccessGateway replacement;
+            if (current.Generation == identity.Generation &&
+                current.Revision == identity.Revision &&
+                current.CertificateSha256Pin == certificateSha256Pin &&
+                current.CertificateNotAfterUtc == certificateNotAfterUtc)
             {
-                return false;
+                if (current.Endpoints.SequenceEqual(routes))
+                    return transaction.Commit(true);
+                replacement = current with
+                {
+                    Endpoints = routes,
+                    Revision = checked(current.Revision + 1)
+                };
             }
-        }
-
-        if (current.Id != identity.GatewayId ||
-            current.State is not ActivePrivateAccessGatewayState)
-            return false;
-        PrivateAccessGateway replacement;
-        if (current.Generation == identity.Generation &&
-            current.Revision == identity.Revision &&
-            current.CertificateSha256Pin == certificateSha256Pin &&
-            current.CertificateNotAfterUtc == certificateNotAfterUtc)
-        {
-            if (current.Endpoints.SequenceEqual(routes))
-                return true;
-            replacement = current with
+            else if (identity.Generation == current.Generation + 1 &&
+                     identity.Revision == current.Revision + 1)
             {
-                Endpoints = routes,
-                Revision = checked(current.Revision + 1)
-            };
-        }
-        else if (identity.Generation == current.Generation + 1 &&
-                 identity.Revision == current.Revision + 1)
-        {
-            replacement = current.Rotate(certificateSha256Pin, certificateNotAfterUtc)
-                with
-            { Endpoints = routes };
-        }
-        else
-        {
-            return false;
-        }
+                replacement = current.Rotate(certificateSha256Pin, certificateNotAfterUtc)
+                    with
+                { Endpoints = routes };
+            }
+            else
+            {
+                return transaction.Abort(false);
+            }
 
-        var updated = await gateways.ReplaceOneAsync(
-            PrivateAccessGatewayFilters.Current(
-                current.TenantId, current.DeploymentTargetId,
-                current.Id, current.Generation, current.Revision),
-            replacement, cancellationToken: cancellationToken);
-        return updated.MatchedCount == 1;
+            var updated = await gateways.ReplaceOneAsync(transaction.Session,
+                PrivateAccessGatewayFilters.Current(
+                    current.TenantId, current.DeploymentTargetId,
+                    current.Id, current.Generation, current.Revision),
+                replacement, cancellationToken: ct);
+            return updated.MatchedCount == 1
+                ? transaction.Commit(true)
+                : transaction.Abort(false);
+        }, cancellationToken);
     }
 
     public async Task<bool> RemoveAsync(
         PrivateAccessGatewayIdentity identity,
         CancellationToken cancellationToken = default)
     {
-        var result = await gateways.DeleteOneAsync(
-            PrivateAccessGatewayFilters.Current(
-                identity.TenantId, identity.DeploymentTargetId,
-                identity.GatewayId, identity.Generation, identity.Revision),
-            cancellationToken);
-        return result.DeletedCount == 1;
+        return await transactions.InvokeOutcomeAsync<bool>(async (transaction, ct) =>
+        {
+            var result = await gateways.DeleteOneAsync(transaction.Session,
+                PrivateAccessGatewayFilters.Current(
+                    identity.TenantId, identity.DeploymentTargetId,
+                    identity.GatewayId, identity.Generation, identity.Revision),
+                cancellationToken: ct);
+            if (result.DeletedCount != 1)
+                return transaction.Abort(false);
+            var reference = await targetReferences(
+                GatewayOwner(identity), [], [identity.DeploymentTargetId],
+                transaction.Session, ct);
+            return reference is DeploymentTargetReferencesChanged
+                ? transaction.Commit(true)
+                : transaction.Abort(false);
+        }, cancellationToken);
     }
+
+    private static DeploymentTargetReferenceOwner GatewayOwner(
+        PrivateAccessGatewayIdentity identity) => new(
+        DeploymentTargetReferenceOwnerTypes.PrivateAccessGateway,
+        identity.GatewayId);
 
     private static PrivateAccessGatewayRegistration ToContract(PrivateAccessGateway gateway) =>
         new(

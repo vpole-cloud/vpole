@@ -15,7 +15,7 @@ namespace Pole.Features.PrivateAccess.Application.Endpoints;
 public sealed record ListPrivateAccessResourceGrantsRequest(
     [FromTenantHeader] string TenantId,
     [FromRoute] string Kind,
-    [FromRoute] string Name,
+    [FromQuery] string Name,
     [FromQuery] string? DeploymentId,
     [FromQuery] string? EndpointId,
     [FromClaim(Claims.UserId)] ClaimValue<string?> SubjectUserId = default)
@@ -91,7 +91,7 @@ public static class ListPrivateAccessResourceGrantsEndpoint
     public static IEndpointRouteBuilder MapListPrivateAccessResourceGrantsEndpoint(
         this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{Kind}/{Name}/grants", async (
+        app.MapGet("/{Kind}/grants", async (
                 IMediator mediator,
                 [AsParameters] ListPrivateAccessResourceGrantsRequest request,
                 CancellationToken cancellationToken) =>

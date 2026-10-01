@@ -178,9 +178,13 @@ public sealed class CliCommandRunner(
 
     private async Task<int> ForwardAsync(string[] arguments, CancellationToken cancellationToken)
     {
-        if (arguments.Length == 0 || arguments[0].Split('/') is not [var kind, var name] ||
-            string.IsNullOrWhiteSpace(kind) || string.IsNullOrWhiteSpace(name) ||
+        var separator = arguments.Length == 0 ? -1 : arguments[0].IndexOf('/');
+        if (separator <= 0 || separator == arguments[0].Length - 1 ||
             !TryReadForwardOptions(arguments[1..], out var deploymentId, out var endpointId, out var localPort))
+            return Usage();
+        var kind = arguments[0][..separator];
+        var name = arguments[0][(separator + 1)..];
+        if (string.IsNullOrWhiteSpace(kind) || string.IsNullOrWhiteSpace(name))
             return Usage();
 
         var (server, _, provider, accountKey, tenants) = await GetAuthenticatedTenantsAsync(cancellationToken);

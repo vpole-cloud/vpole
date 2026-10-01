@@ -46,7 +46,8 @@ public sealed class PrivateAccessGatewayResources(
     {
         var namespaceName = PrivateAccessGatewayManifest.Namespace(identity);
         if (identity.Generation < 1 || string.IsNullOrWhiteSpace(identity.GatewayId) ||
-            endpoints.Select(endpoint => endpoint.EndpointId).Distinct(StringComparer.Ordinal).Count() != endpoints.Count ||
+            endpoints.Select(endpoint => (endpoint.ResourceDeploymentId, endpoint.EndpointId))
+                .Distinct().Count() != endpoints.Count ||
             endpoints.Any(endpoint => endpoint.KubernetesNamespace == namespaceName))
             throw new ArgumentException("Invalid gateway identity or endpoint set.");
         if (proposedPfx is not null && ReadCertificate(proposedPfx) is null)
@@ -325,7 +326,7 @@ public sealed class PrivateAccessGatewayResources(
         PrivateAccessGatewayEndpoint endpoint,
         CancellationToken cancellationToken)
     {
-        var client = await clients.GetAsync(identity.DeploymentTargetId, cancellationToken);
+        var client = await clients.GetForCleanupAsync(identity.DeploymentTargetId, cancellationToken);
         var policy = PrivateAccessGatewayManifest.BuildDestinationIngress(identity, endpoint);
         var result = await DeleteOwnedAsync(
             () => client.NetworkingV1.ReadNamespacedNetworkPolicyAsync(
@@ -348,7 +349,7 @@ public sealed class PrivateAccessGatewayResources(
         IReadOnlyList<PrivateAccessGatewayEndpoint> knownEndpoints,
         CancellationToken cancellationToken)
     {
-        var client = await clients.GetAsync(identity.DeploymentTargetId, cancellationToken);
+        var client = await clients.GetForCleanupAsync(identity.DeploymentTargetId, cancellationToken);
         var namespaceName = PrivateAccessGatewayManifest.Namespace(identity);
         var labels = PrivateAccessGatewayManifest.Labels(identity);
         var results = new List<DeleteResult>
@@ -411,14 +412,16 @@ public sealed class PrivateAccessGatewayResources(
                 return DeleteResult.Pending;
             await delete(new V1DeleteOptions
             {
-                PropagationPolicy = "Background",
+                PropagationPolicy = "Foreground",
                 Preconditions = new V1Preconditions
                 {
                     Uid = existing.Metadata.Uid,
                     ResourceVersion = existing.Metadata.ResourceVersion
                 }
             });
-            return DeleteResult.Deleted;
+            // The delete request may only mark a Deployment for deletion. Keep the
+            // target reference until a later read confirms it and its Pods are gone.
+            return DeleteResult.Pending;
         }
         catch (HttpOperationException error) when (error.Response?.StatusCode == HttpStatusCode.NotFound)
         {

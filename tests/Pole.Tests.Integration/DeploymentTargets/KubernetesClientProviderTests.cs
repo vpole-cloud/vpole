@@ -114,6 +114,22 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
     }
 
     [Fact]
+    public async Task CleanupClient_UsesStoredConnectionAfterTargetIsDisabled()
+    {
+        var target = CreateTarget(enabled: false);
+        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        var factory = new RecordingClientFactory();
+        using var provider = CreateProvider(factory);
+
+        var client = await provider.GetForCleanupAsync(target.Id);
+
+        Assert.Same(Assert.Single(factory.Calls).Client, client);
+        var denied = await Assert.ThrowsAsync<DeploymentTargetUnavailableException>(
+            () => provider.GetAsync(target.Id));
+        Assert.Equal(DeploymentTargetUnavailableReason.Disabled, denied.Reason);
+    }
+
+    [Fact]
     public async Task GetAsync_ResolvesEnabledDegradedTarget()
     {
         var target = CreateTarget(degraded: true);

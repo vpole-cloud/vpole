@@ -174,7 +174,8 @@ internal static class DeploymentTargetFilters
                 {
                     DeploymentTargetReferenceOwnerTypes.ComputeProfile =>
                         AcceptingConfigurationReferences(),
-                    DeploymentTargetReferenceOwnerTypes.PrivateAccessSession =>
+                    DeploymentTargetReferenceOwnerTypes.PrivateAccessSession or
+                        DeploymentTargetReferenceOwnerTypes.PrivateAccessGateway =>
                         ExistingPrivateAccessAdmission(),
                     _ => AcceptingNewWorkloads()
                 })
