@@ -2,6 +2,7 @@ using System.Net;
 using Microsoft.AspNetCore.Http;
 using Pole.ASP.Helpers;
 using Pole.Features.DeploymentTargets.Application.Persistence.Mutations;
+using Pole.Features.DeploymentTargets.Application.Persistence.Connectors;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
 
@@ -19,6 +20,12 @@ public static class DeploymentTargetHttpMappings
 
     public static IResult Map(DeploymentTargetHasDurableReferences error) => MapReferences(error).ToHttpResult();
 
+    public static IResult Map(DeploymentTargetHasActiveConnectors error) => Problem(
+            HttpStatusCode.Conflict,
+            "deployment-targets.active-connectors-exist",
+            "Deployment target still has active connectors",
+            ("deploymentTargetId", error.DeploymentTargetId)).ToHttpResult();
+
     public static IResult Map(DeploymentTargetPublicBaseDomainReferenced error) => MapDomainReferences(error).ToHttpResult();
 
     public static IResult Map(DeploymentTargetPublicBaseDomainConflict error) => MapDomainConflict(error).ToHttpResult();
@@ -29,12 +36,40 @@ public static class DeploymentTargetHttpMappings
 
     public static IResult Map(DeploymentTargetCredentialRewrapConflict error) => MapCredentialRewrapConflict(error).ToHttpResult();
 
-    public static IResult Map(DeleteDeploymentTargetError error) => error.Value switch
+    public static IResult Map(DeploymentTargetConnectorEnrollmentRejected _) => Problem(
+            HttpStatusCode.Conflict,
+            "deployment-target-connectors.enrollment-rejected",
+            "Connector enrollment is unavailable").ToHttpResult();
+
+    public static IResult Map(DeploymentTargetConnectorCertificateConflict _) => Problem(
+            HttpStatusCode.Conflict,
+            "deployment-target-connectors.certificate-conflict",
+            "Connector certificate is already registered").ToHttpResult();
+
+    public static IResult Map(DeploymentTargetConnectorCertificateRejected _) => Problem(
+            HttpStatusCode.UnprocessableEntity,
+            "deployment-target-connectors.certificate-rejected",
+            "Connector certificate was rejected").ToHttpResult();
+
+    public static IResult Map(DeploymentTargetConnectorNotFound error) => Problem(
+            HttpStatusCode.NotFound,
+            "deployment-target-connectors.not-found",
+            "Connector not found",
+            ("connectorId", error.ConnectorId)).ToHttpResult();
+
+    public static IResult Map(DeploymentTargetConnectorRevisionConflict error) => Problem(
+            HttpStatusCode.Conflict,
+            "deployment-target-connectors.revision-conflict",
+            "Connector changed",
+            ("connectorId", error.ConnectorId)).ToHttpResult();
+
+    public static IResult Map(DeleteDeploymentTargetError error) => error switch
     {
         DeploymentTargetNotFound value => Map(value),
         DeploymentTargetRevisionConflict value => Map(value),
         DefaultDeploymentTargetDeletionRejected value => Map(value),
-        DeploymentTargetHasDurableReferences value => Map(value)
+        DeploymentTargetHasDurableReferences value => Map(value),
+        DeploymentTargetHasActiveConnectors value => Map(value)
     };
 
     private static HttpProblem MapRevisionConflict(DeploymentTargetRevisionConflict error) => Problem(

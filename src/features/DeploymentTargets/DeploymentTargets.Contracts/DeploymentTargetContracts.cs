@@ -350,6 +350,7 @@ public static class DeploymentTargetReferenceOwnerTypes
 {
     public const string DomainZone = "domain-zone";
     public const string ComputeProfile = "compute-profile";
+    public const string PrivateAccessSession = "private-access-session";
 }
 
 /// <summary>

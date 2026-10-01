@@ -18,7 +18,7 @@ internal sealed class MongoAdmitDefaultDeploymentTargetForNewWorkload(
         return target switch
         {
             DeploymentTarget value => DeploymentTargetAdmissionSupport.AdmitDefaultForNewWorkload(value),
-            DefaultDeploymentTargetLookupError error => error.Value switch
+            DefaultDeploymentTargetLookupError error => error switch
             {
                 DefaultDeploymentTargetNotConfigured notConfigured => new DefaultDeploymentTargetWorkloadAdmissionError(notConfigured)
             }

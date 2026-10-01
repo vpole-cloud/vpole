@@ -105,6 +105,26 @@ internal static class DeploymentTargetFilters
             ((AttestedNetworkPolicy)target.WorkloadConfiguration.NetworkPolicy).ConnectionVersion ==
                 target.Connection.Version);
 
+    // A private access session references an already applied deployment. Pausing new
+    // workload admission does not remove access, but enforcement must stay attested.
+    private static FilterDefinition<DeploymentTarget> ExistingPrivateAccessAdmission() =>
+        Builders<DeploymentTarget>.Filter.Where(target =>
+            target.Enabled &&
+            target.DeletionRequestedAtUtc == null &&
+            target.Health.FailureCode != "ClusterIdentityMismatch" &&
+            target.Capabilities.NetworkPolicyCapabilities.CanGet &&
+            target.Capabilities.NetworkPolicyCapabilities.CanCreate &&
+            target.Capabilities.NetworkPolicyCapabilities.CanUpdate &&
+            target.Capabilities.NetworkPolicyCapabilities.CanPatch &&
+            target.Capabilities.NetworkPolicyCapabilities.CanDelete &&
+            target.WorkloadConfiguration.NetworkPolicy is AttestedNetworkPolicy &&
+            ((AttestedNetworkPolicy)target.WorkloadConfiguration.NetworkPolicy).Enforcement ==
+                NetworkPolicyEnforcement.Supported &&
+            ((AttestedNetworkPolicy)target.WorkloadConfiguration.NetworkPolicy).ClusterIdentity ==
+                target.ClusterIdentity &&
+            ((AttestedNetworkPolicy)target.WorkloadConfiguration.NetworkPolicy).ConnectionVersion ==
+                target.Connection.Version);
+
     public static FilterDefinition<DeploymentTarget> WithConfiguredPublicBaseDomain() => Builders<DeploymentTarget>.Filter.And(
             Builders<DeploymentTarget>.Filter.Ne(
                 target => target.WorkloadConfiguration.Ingress,
@@ -150,9 +170,14 @@ internal static class DeploymentTargetFilters
                 filter,
                 // A profile configures future placement; it must exist before the operator
                 // can attest a fresh target. Runtime references still fence workload admission.
-                owner.Type == DeploymentTargetReferenceOwnerTypes.ComputeProfile
-                    ? AcceptingConfigurationReferences()
-                    : AcceptingNewWorkloads())
+                owner.Type switch
+                {
+                    DeploymentTargetReferenceOwnerTypes.ComputeProfile =>
+                        AcceptingConfigurationReferences(),
+                    DeploymentTargetReferenceOwnerTypes.PrivateAccessSession =>
+                        ExistingPrivateAccessAdmission(),
+                    _ => AcceptingNewWorkloads()
+                })
             : filter;
     }
 }

@@ -53,6 +53,10 @@ public static class TenantFeature
         services.TryAddScoped<LoadTenantIdentity>(provider => provider
             .GetRequiredService<MongoLoadTenantIdentity>()
             .InvokeAsync);
+        services.TryAddScoped<MongoLoadTenantMember>();
+        services.TryAddScoped<LoadTenantMember>(provider => provider
+            .GetRequiredService<MongoLoadTenantMember>()
+            .InvokeAsync);
         services.TryAddScoped<MongoEnsureTenantsExist>();
         services.TryAddScoped<EnsureTenantsExist>(provider => provider
             .GetRequiredService<MongoEnsureTenantsExist>()

@@ -86,6 +86,10 @@ internal static class ResourceDeploymentPersistenceRegistration
         AddCapability<MongoLoadExactResourceDeployment, LoadExactResourceDeployment>(
             services,
             implementation => implementation.InvokeAsync);
+        AddCapability<MongoLoadResourceDeploymentAccessPlacement,
+            LoadExactResourceDeploymentAccessPlacement>(
+            services,
+            implementation => implementation.InvokeAsync);
         AddCapability<MongoLoadIngressPolicyDeployment, LoadIngressPolicyDeployment>(
             services,
             implementation => implementation.InvokeAsync);

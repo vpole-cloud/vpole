@@ -11,7 +11,10 @@ public sealed record Tenant(
     string Id,
     string Name,
     DateTime CreatedAtUtc,
-    ImmutableList<TenantMember> Members);
+    ImmutableList<TenantMember> Members)
+{
+    public long ReferenceFence { get; init; }
+}
 
 public sealed record TenantMember(
     [property: BsonId]

@@ -68,6 +68,7 @@ public sealed class ArchitectureBoundaryTests
         "AddPostgresFeature",
         "AddWebServicesFeature",
         "AddQuotasFeature",
+        "AddPrivateAccessFeature",
         "AddDeploymentTargetsFeature",
         "AddSearchFeature",
         "AddGitProvidersFeature",
@@ -268,6 +269,37 @@ public sealed class ArchitectureBoundaryTests
                     "Mongo filter must be defined in a named *Filters helper")));
 
         AssertNoViolations(violations.Concat(fsharpViolations).ToArray());
+    }
+
+    [Fact]
+    public void LiteralMigrationIds_AreUniqueWithinEachFeature()
+    {
+        var identities = ArchitectureSources.ProductionCSharp()
+            .Where(source => source.RelativePath.StartsWith("src/features/", StringComparison.Ordinal) &&
+                source.RelativePath.Contains(".Application/", StringComparison.Ordinal))
+            .SelectMany(source => source.Root.DescendantNodes().OfType<ClassDeclarationSyntax>()
+                .Where(type => type.BaseList?.Types.Any(item => GetTypeName(item.Type) == "IMigration") == true)
+                .SelectMany(type => type.Members.OfType<PropertyDeclarationSyntax>()
+                    .Where(property => property.Identifier.ValueText == "Id")
+                    .SelectMany(property => property.DescendantNodes().OfType<LiteralExpressionSyntax>()
+                        .Where(literal => literal.IsKind(SyntaxKind.StringLiteralExpression) &&
+                            Regex.IsMatch(literal.Token.ValueText, "^[0-9a-fA-F]{24}$"))
+                        .Select(literal => new
+                        {
+                            Feature = source.RelativePath.Split('/')[2],
+                            Id = literal.Token.ValueText.ToLowerInvariant(),
+                            Location = ArchitectureSources.Describe(source, literal, "Migration ID")
+                        }))))
+            .ToArray();
+
+        // Different provider namespaces may deliberately scope the same ObjectId.
+        // Within one feature, a copied migration must always have a distinct ID.
+        var duplicates = identities.GroupBy(item => (item.Feature, item.Id))
+            .Where(group => group.Count() > 1)
+            .Select(group => $"Duplicate migration ID {group.Key.Id} in {group.Key.Feature}: " +
+                string.Join(", ", group.Select(item => item.Location)))
+            .ToArray();
+        AssertNoViolations(duplicates);
     }
 
     [Fact]

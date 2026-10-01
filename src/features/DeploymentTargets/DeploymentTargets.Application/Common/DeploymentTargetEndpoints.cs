@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
+using Pole.Features.DeploymentTargets.Application.Endpoints.Connectors;
 
 namespace Pole.Features.DeploymentTargets.Application.Common;
 
@@ -23,7 +24,17 @@ public static class DeploymentTargetEndpoints
                 .MapUpdateDeploymentTargetNetworkPolicyEndpoint()
                 .MapRotateDeploymentTargetCredentialsEndpoint()
                 .MapValidateDeploymentTargetEndpoint()
+                .MapIssueDeploymentTargetConnectorEnrollmentEndpoint()
+                .MapIssueDeploymentTargetConnectorRotationEndpoint()
+                .MapRevokeDeploymentTargetConnectorEndpoint()
+                .MapListDeploymentTargetConnectorsEndpoint()
+                .MapGetDeploymentTargetConnectorEndpoint()
                 .MapDeleteDeploymentTargetEndpoint();
+
+            app.MapGroup("/platform/deployment-targets")
+                .WithoutTenantContext()
+                .WithTags("PlatformDeploymentTargetConnectors")
+                .MapRedeemDeploymentTargetConnectorEnrollmentEndpoint();
 
             return app;
         }

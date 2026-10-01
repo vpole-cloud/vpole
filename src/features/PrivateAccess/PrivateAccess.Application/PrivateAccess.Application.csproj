@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <WarningsAsErrors>$(WarningsAsErrors);CS8509</WarningsAsErrors>
+    <AssemblyName>Pole.Features.PrivateAccess.Application</AssemblyName>
+    <RootNamespace>Pole.Features.PrivateAccess.Application</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../PrivateAccess.Domain/PrivateAccess.Domain.csproj" />
+    <ProjectReference Include="../PrivateAccess.Contracts/PrivateAccess.Contracts.csproj" />
+    <ProjectReference Include="../PrivateAccess.Events/PrivateAccess.Events.csproj" />
+    <ProjectReference Include="../../Tenants/Tenants.Contracts/Tenants.Contracts.csproj" />
+    <ProjectReference Include="../../DeploymentTargets/DeploymentTargets.Contracts/DeploymentTargets.Contracts.csproj" />
+    <ProjectReference Include="../../ResourceGroups/ResourceGroups.Contracts/ResourceGroups.Contracts.csproj" />
+    <ProjectReference Include="../../ResourceDeployments/ResourceDeployments.Contracts/ResourceDeployments.Contracts.csproj" />
+    <ProjectReference Include="../../ResourceConnections/ResourceConnections.Contracts/ResourceConnections.Contracts.csproj" />
+    <ProjectReference Include="../../Outbox/Outbox.Contracts/Outbox.Contracts.csproj" />
+    <ProjectReference Include="../../../shared/Database/Database.csproj" />
+    <ProjectReference Include="../../../shared/Events/Events.csproj" />
+    <ProjectReference Include="../../../shared/Multitenancy/Multitenancy.csproj" />
+    <ProjectReference Include="../../../shared/Mediator/Mediator.csproj" />
+    <ProjectReference Include="../../../shared/ResultType/ResultType.csproj" />
+    <ProjectReference Include="../../../shared/Workloads/Workloads.csproj" />
+    <ProjectReference Include="../../../shared/helpers/ASP/ASP.csproj" />
+    <ProjectReference Include="../../../shared/Validation/Validation.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" />
+    <PackageReference Include="MongoDB.Driver" />
+    <PackageReference Include="MassTransit" />
+  </ItemGroup>
+</Project>
