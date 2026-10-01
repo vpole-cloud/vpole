@@ -5,16 +5,9 @@ using Pole.Features.PrivateAccess.Contracts;
 
 namespace Pole.Features.PrivateAccess.Runtime;
 
-public delegate Task<DeletePrivateAccessWorkerOutcome> DeletePrivateAccessWorker(
-    string sessionId,
-    PrivateAccessWorkerDestination destination,
-    string workerNamespace,
-    CancellationToken cancellationToken);
-
 public sealed class PrivateAccessSessionCleanup(
     LoadExpiredPrivateAccessSessionCleanupPage loadPage,
     MarkPrivateAccessSessionCleaned markCleaned,
-    DeletePrivateAccessWorker deleteWorker,
     TimeProvider time,
     ILogger<PrivateAccessSessionCleanup> logger)
 {
@@ -28,22 +21,6 @@ public sealed class PrivateAccessSessionCleanup(
             timeout.CancelAfter(TimeSpan.FromSeconds(10));
             try
             {
-                if (session.WorkerNamespace is { } workerNamespace)
-                {
-                    var destination = new PrivateAccessWorkerDestination(
-                        session.TenantId,
-                        session.DeploymentTargetId,
-                        session.RuntimeCellId,
-                        session.ResourceDeploymentId,
-                        session.KubernetesNamespace,
-                        session.ServiceName,
-                        session.ServicePort,
-                        session.TargetPort);
-                    var deleted = await deleteWorker(
-                        session.SessionId, destination, workerNamespace, timeout.Token);
-                    if (deleted is PrivateAccessWorkerCleanupPending)
-                        continue;
-                }
                 await markCleaned(session.SessionId, timeout.Token);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -84,8 +61,7 @@ internal sealed class PrivateAccessSessionCleanupService(
             }
             catch (Exception exception)
             {
-                // Kubernetes error bodies can contain submitted objects, including
-                // ticket Secrets. Record the failure class without their contents.
+                // Database errors can contain sensitive values. Record only the failure class.
                 logger.LogWarning("Private Access cleanup will retry after {FailureType}.",
                     exception.GetType().Name);
             }

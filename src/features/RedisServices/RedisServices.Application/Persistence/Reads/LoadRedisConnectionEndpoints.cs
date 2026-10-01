@@ -10,9 +10,25 @@ using Pole.Workloads;
 namespace Pole.Features.RedisServices.Application.Persistence.Reads;
 
 internal sealed class MongoLoadRedisConnectionEndpoints(IMongoCollection<Redis> services)
-    : IResourceConnectionDestinationCapability
+    : IResourceConnectionDestinationCapability, IResourceConnectionDestinationNameCapability
 {
+    public string Kind => "redis";
+
     public ResourceTypeId ResourceType => RedisResourceDeployment.ResourceType;
+
+    public async Task<string?> ResolveResourceIdAsync(
+        string tenantId,
+        string name,
+        CancellationToken cancellationToken = default)
+    {
+        var matches = await services.Find(RedisFilters.ByName(tenantId, name))
+            .Limit(2)
+            .ToListAsync(cancellationToken);
+        return ResourceConnectionNameResolution.ResolveUniqueResourceId(
+            matches,
+            resource => resource.Lifecycle is not DeletingRedisLifecycle,
+            resource => resource.Id);
+    }
 
     public async Task<LoadResourceConnectionEndpointsOutcome> LoadAsync(
         string tenantId,

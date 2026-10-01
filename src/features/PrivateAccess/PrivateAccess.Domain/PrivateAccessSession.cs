@@ -29,8 +29,7 @@ public sealed record PrivateAccessSession(
     int ServicePort,
     int TargetPort,
     long DeploymentRevision,
-    long DesiredGeneration,
-    string? WorkerNamespace)
+    long DesiredGeneration)
 {
     public DateTime? CleanupLastAttemptAtUtc { get; init; }
 }

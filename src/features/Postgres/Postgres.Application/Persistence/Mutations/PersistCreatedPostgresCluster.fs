@@ -10,11 +10,14 @@ open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application.Persistence
 open Pole.Features.Postgres.Domain
 
+type PostgresClusterNameAlreadyExists =
+    { Name : string }
+
 type PersistCreatedPostgresCluster =
     delegate of
         session : IClientSessionHandle *
         cluster : PostgresCluster *
-        cancellationToken : CancellationToken -> Task
+        cancellationToken : CancellationToken -> Task<PostgresOutcome<unit, PostgresClusterNameAlreadyExists>>
 
 type MongoPersistCreatedPostgresCluster(
     clusters : IMongoCollection<PostgresCluster>,
@@ -24,8 +27,19 @@ type MongoPersistCreatedPostgresCluster(
         task {
             PostgresPersistenceGuards.transaction session "PostgreSQL creation"
             PostgresPersistenceGuards.cluster cluster
-            do! clusters.InsertOneAsync(session, cluster, cancellationToken = cancellationToken)
-            let writes : IReadOnlyCollection<OutboxWrite> =
-                [| OutboxWrite.Create(PostgresClusterEvents.created cluster) |]
-            do! storeOutboxWrites.Invoke(session, writes, cancellationToken)
+            let! inserted = task {
+                try
+                    do! clusters.InsertOneAsync(session, cluster, cancellationToken = cancellationToken)
+                    return true
+                with
+                | :? MongoWriteException as ex when ex.WriteError.Category = ServerErrorCategory.DuplicateKey ->
+                    return false
+            }
+            if not inserted then
+                return PostgresError { Name = cluster.Name }
+            else
+                let writes : IReadOnlyCollection<OutboxWrite> =
+                    [| OutboxWrite.Create(PostgresClusterEvents.created cluster) |]
+                do! storeOutboxWrites.Invoke(session, writes, cancellationToken)
+                return PostgresSuccess ()
         }

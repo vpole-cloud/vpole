@@ -22,6 +22,7 @@ type CreatePostgresClusterError =
     | CreateCredential of PostgresCredentialError
     | CreateDeployment of CreateResourceDeploymentError
     | CreateRegistration of ResourceRegistrationMutationError
+    | CreateNameAlreadyExists of PostgresClusterNameAlreadyExists
     | CreateQuota of QuotaExecutionError
 
 type DeletePostgresClusterStateError =

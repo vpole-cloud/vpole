@@ -8,6 +8,57 @@ namespace Pole.Cli.Tests;
 public sealed class PrivateAccessApiClientTests
 {
     [Fact]
+    public async Task Tenant_list_uses_bearer_without_a_tenant_header()
+    {
+        HttpRequestMessage? observed = null;
+        using var http = new HttpClient(new StubHandler(request =>
+        {
+            observed = request;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new[] { new TenantDto("tenant-1", "Tenant One", "Owner", true) })
+            };
+        }));
+        var client = new PrivateAccessApiClient(http, new Uri("https://pole.example"), _ => Task.FromResult("access-jwt"));
+
+        var tenants = await client.GetTenantsAsync(CancellationToken.None);
+
+        Assert.Single(tenants);
+        Assert.Equal("https://pole.example/api/v1/tenants", observed!.RequestUri!.AbsoluteUri);
+        Assert.Equal("Bearer access-jwt", observed.Headers.Authorization!.ToString());
+        Assert.DoesNotContain("X-Pole-Tenant-ID", observed.Headers.Select(header => header.Key));
+    }
+
+    [Fact]
+    public async Task Resource_grant_resolution_uses_kind_name_and_exact_optional_filters()
+    {
+        HttpRequestMessage? observed = null;
+        using var http = new HttpClient(new StubHandler(request =>
+        {
+            observed = request;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new
+                {
+                    items = new[]
+                    {
+                        new PrivateAccessResourceGrantDto("grant-1", "deployment-1", "primary", DateTimeOffset.UtcNow.AddHours(1))
+                    }
+                })
+            };
+        }));
+        var client = new PrivateAccessApiClient(http, new Uri("https://pole.example"), _ => Task.FromResult("access-jwt"));
+
+        var grants = await client.GetResourceGrantsAsync(
+            "tenant-1", "postgres", "orders", "deployment-1", "primary", CancellationToken.None);
+
+        Assert.Single(grants);
+        Assert.Equal("https://pole.example/api/v1/private-access/resources/postgres/orders/grants?deploymentId=deployment-1&endpointId=primary", observed!.RequestUri!.AbsoluteUri);
+        Assert.Equal("Bearer access-jwt", observed.Headers.Authorization!.ToString());
+        Assert.Equal("tenant-1", Assert.Single(observed.Headers.GetValues("X-Pole-Tenant-ID")));
+    }
+
+    [Fact]
     public async Task Grant_list_uses_bearer_and_selected_tenant_headers()
     {
         HttpRequestMessage? observed = null;

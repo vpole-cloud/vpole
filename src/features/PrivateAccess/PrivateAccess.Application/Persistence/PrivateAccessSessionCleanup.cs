@@ -174,6 +174,5 @@ internal sealed class MongoPrivateAccessSessionCleanup(
             session.KubernetesNamespace,
             session.ServiceName,
             NetworkPort.Create(session.ServicePort),
-            NetworkPort.Create(session.TargetPort),
-            session.WorkerNamespace);
+            NetworkPort.Create(session.TargetPort));
 }

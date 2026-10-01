@@ -63,7 +63,7 @@ public enum PrivateAccessSessionCloseReason
     ClientDisconnected,
     SetupFailed,
     BrokerFailure,
-    ConnectorFailure,
+    GatewayFailure,
     LeaseDenied,
     Cancelled
 }
@@ -88,22 +88,6 @@ public delegate Task<ClosePrivateAccessSessionOutcome> ClosePrivateAccessSession
     PrivateAccessSessionCloseReason reason,
     CancellationToken cancellationToken = default);
 
-public sealed record PrivateAccessWorkerNamespaceRecorded;
-public sealed record PrivateAccessWorkerNamespaceConflict;
-
-public union RecordPrivateAccessWorkerNamespaceOutcome(
-    PrivateAccessWorkerNamespaceRecorded,
-    PrivateAccessSessionUnavailable,
-    PrivateAccessWorkerNamespaceConflict);
-
-/// <summary>Records the worker namespace before any Kubernetes object is created.
-/// The namespace is immutable and only a redeemed session can record it.</summary>
-public delegate Task<RecordPrivateAccessWorkerNamespaceOutcome>
-    RecordPrivateAccessWorkerNamespace(
-        string sessionId,
-        string workerNamespace,
-        CancellationToken cancellationToken = default);
-
 public sealed record PrivateAccessSessionCleanupSnapshot(
     string SessionId,
     string TenantId,
@@ -115,8 +99,7 @@ public sealed record PrivateAccessSessionCleanupSnapshot(
     string KubernetesNamespace,
     string ServiceName,
     NetworkPort ServicePort,
-    NetworkPort TargetPort,
-    string? WorkerNamespace);
+    NetworkPort TargetPort);
 
 /// <summary>Atomically claims eligible sessions into Cleaning before returning them.
 /// Repeated calls also return previously claimed Cleaning sessions for crash recovery.</summary>

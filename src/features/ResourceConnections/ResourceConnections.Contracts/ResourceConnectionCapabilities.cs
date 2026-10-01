@@ -39,3 +39,32 @@ public interface IResourceConnectionDestinationCapability
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>A provider resolves an immutable resource name within an already validated tenant.</summary>
+public interface IResourceConnectionDestinationNameCapability
+{
+    string Kind { get; }
+
+    ResourceTypeId ResourceType { get; }
+
+    Task<string?> ResolveResourceIdAsync(
+        string tenantId,
+        string name,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>Resolves only a single matching provider resource; duplicates must never select arbitrarily.</summary>
+public static class ResourceConnectionNameResolution
+{
+    public static string? ResolveUniqueResourceId<TResource>(
+        IReadOnlyList<TResource> matches,
+        Func<TResource, bool> isEligible,
+        Func<TResource, string> getId)
+    {
+        if (matches.Count != 1)
+            return null;
+
+        var resource = matches[0];
+        return isEligible(resource) ? getId(resource) : null;
+    }
+}

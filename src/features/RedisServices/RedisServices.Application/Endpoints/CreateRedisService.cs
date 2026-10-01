@@ -45,6 +45,11 @@ public static class CreateRedisService
                     .ToHttpResult(outcome => outcome switch
                     {
                         CreateRedisServiceResponse response => Results.Accepted(value: response),
+                        RedisServiceNameAlreadyExists error => Results.Conflict(new
+                        {
+                            code = "redis.name-already-exists",
+                            title = $"Redis service name '{error.Name}' already exists in this tenant."
+                        }),
                         DeploymentTargetNewWorkloadAdmissionError error => MapNewWorkloadAdmissionError(error),
                         ComputeProfileResolutionError error => ComputeHttpMappings.MapResolutionError(error),
                         StorageProfileResolutionError error => StorageHttpMappings.MapResolutionError(error),
@@ -62,6 +67,7 @@ public static class CreateRedisService
 
 public union CreateRedisServiceOutcome(
     CreateRedisServiceResponse,
+    RedisServiceNameAlreadyExists,
     DeploymentTargetNewWorkloadAdmissionError,
     ComputeProfileResolutionError,
     StorageProfileResolutionError,
@@ -148,10 +154,16 @@ public sealed class CreateRedisServiceHandler(
             quotaError => quotaError,
             async (transaction, transactionCancellationToken) =>
             {
-                await persistCreatedRedis(
+                var created = await persistCreatedRedis(
                     transaction.Session,
                     newRedis,
                     transactionCancellationToken);
+                if (!created)
+                {
+                    return transaction.Abort(
+                        new CreateRedisServiceOutcome(
+                            new RedisServiceNameAlreadyExists(newRedis.Name)));
+                }
 
                 var registration = await resourceRegistrar.RegisterAsync(
                     newRedis.TenantId,

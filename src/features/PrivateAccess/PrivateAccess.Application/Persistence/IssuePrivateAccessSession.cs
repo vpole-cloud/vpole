@@ -112,7 +112,7 @@ internal sealed class MongoIssuePrivateAccessSession(
                 placement.RuntimeCellId, placement.IsolationScopeId,
                 placement.KubernetesNamespace, endpoint.ServiceName,
                 endpoint.ServicePort, endpoint.TargetPort,
-                placement.DeploymentRevision, placement.DesiredGeneration, null);
+                placement.DeploymentRevision, placement.DesiredGeneration);
 
             var checkedAccess = await admission.CheckAsync(
                 accessSession, transaction.Session, ct);

@@ -182,7 +182,7 @@
   <Folder Name="/tools/">
     <Project Path="src/tools/Pole.Cli/Pole.Cli.csproj" />
     <Project Path="src/tools/Pole.Cli.Tests/Pole.Cli.Tests.csproj" />
-    <Project Path="src/tools/Pole.Connector/Pole.Connector.csproj" />
-    <Project Path="src/tools/Pole.Connector.Tests/Pole.Connector.Tests.csproj" />
+    <Project Path="src/tools/Pole.AccessGateway/Pole.AccessGateway.csproj" />
+    <Project Path="src/tools/Pole.AccessGateway.Tests/Pole.AccessGateway.Tests.csproj" />
   </Folder>
 </Solution>

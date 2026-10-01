@@ -81,6 +81,14 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
                         "target", "cell", "scope", "namespace", deploymentRevision, 1,
                         "Applied", "Apply") : null);
             });
+        services.AddSingleton<LoadExactResourceDeploymentRuntimePlacement>(
+            (tenantId, _, resourceId, deploymentId, _) =>
+                Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(
+                    tenantId == TenantId && resourceId == ResourceId && deploymentId == DeploymentId
+                        ? new ResourceDeploymentRuntimePlacementDto(
+                            DeploymentId, ResourceId, "cell", "target", "namespace",
+                            deploymentRevision, 1, null!, "Applied", "Apply", "scope")
+                        : null));
         services.AddSingleton<FenceDeploymentTargetPrivateAccess>(
             (targetId, session, _) =>
             {
@@ -200,37 +208,6 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
     }
 
     [Fact]
-    public async Task WorkerNamespace_IsImmutableAndSurvivesCleanupClaim()
-    {
-        var grant = await CreateGrantAsync();
-        var issued = Assert.IsType<PrivateAccessSessionIssued>(
-            (await provider.GetRequiredService<IssuePrivateAccessSession>()(
-                TenantId, grant.Id, SubjectId)).Value);
-        var record = provider.GetRequiredService<RecordPrivateAccessWorkerNamespace>();
-        Assert.IsType<PrivateAccessSessionUnavailable>(
-            (await record(issued.SessionId, "workers-old")).Value);
-        Assert.IsType<PrivateAccessLeaseSnapshot>(
-            (await provider.GetRequiredService<RedeemPrivateAccessSession>()(
-                issued.Ticket)).Value);
-        Assert.IsType<PrivateAccessWorkerNamespaceRecorded>(
-            (await record(issued.SessionId, "workers-old")).Value);
-        Assert.IsType<PrivateAccessWorkerNamespaceRecorded>(
-            (await record(issued.SessionId, "workers-old")).Value);
-        Assert.IsType<PrivateAccessWorkerNamespaceConflict>(
-            (await record(issued.SessionId, "workers-new")).Value);
-
-        var persisted = await fixture.Database.GetCollection<PrivateAccessSession>(
-            "PrivateAccessSessions").Find(item => item.Id == issued.SessionId).SingleAsync();
-        Assert.Equal("workers-old", persisted.WorkerNamespace);
-        var snapshot = Assert.Single(await provider.GetRequiredService<
-            LoadExpiredPrivateAccessSessionCleanupPage>()(
-            issued.ExpiresAtUtc.AddMinutes(1), 10));
-        Assert.Equal("workers-old", snapshot.WorkerNamespace);
-        Assert.IsType<PrivateAccessSessionUnavailable>(
-            (await record(issued.SessionId, "workers-old")).Value);
-    }
-
-    [Fact]
     public async Task RedeemedSession_CannotReviveAfterAuthorizationExpires()
     {
         var grant = await CreateGrantAsync();
@@ -263,9 +240,6 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         Assert.IsType<PrivateAccessSessionUnavailable>(
             (await provider.GetRequiredService<MarkPrivateAccessSessionStarted>()(
                 issued.SessionId)).Value);
-        Assert.IsType<PrivateAccessSessionUnavailable>(
-            (await provider.GetRequiredService<RecordPrivateAccessWorkerNamespace>()(
-                issued.SessionId, "workers-old")).Value);
     }
 
     [Fact]
@@ -289,9 +263,6 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
                 State = redeemed with { RedeemedAtUtc = DateTime.UtcNow.AddSeconds(-20) },
                 Revision = current.Revision + 1
             });
-        Assert.IsType<PrivateAccessWorkerNamespaceRecorded>(
-            (await provider.GetRequiredService<RecordPrivateAccessWorkerNamespace>()(
-                issued.SessionId, "workers-old")).Value);
         Assert.IsType<PrivateAccessSessionUnavailable>(
             (await provider.GetRequiredService<MarkPrivateAccessSessionStarted>()(
                 issued.SessionId)).Value);
@@ -348,7 +319,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
     }
 
     [Fact]
-    public async Task Cleanup_ClaimsBeforeReturningAndAcknowledgesOnlyAfterWorkerCleanup()
+    public async Task Cleanup_ClaimsBeforeReturningAndAcknowledgesAfterSessionClosure()
     {
         var grant = await CreateGrantAsync();
         var issued = Assert.IsType<PrivateAccessSessionIssued>(
@@ -370,6 +341,54 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
             (await provider.GetRequiredService<MarkPrivateAccessSessionCleaned>()(
                 issued.SessionId)).Value);
         Assert.Empty(await loader(expired, 10));
+    }
+
+    [Fact]
+    public async Task GatewayDesiredState_TracksOnlyActiveGrantEndpoints()
+    {
+        var grant = await CreateGrantAsync();
+        var load = provider.GetRequiredService<LoadPrivateAccessGatewayDesiredStates>();
+        var desired = Assert.Single(await load());
+        Assert.Equal((TenantId, "target"), (desired.TenantId, desired.DeploymentTargetId));
+        var endpoint = Assert.Single(desired.Endpoints);
+        Assert.Equal((DeploymentId, "redis", "namespace", "redis-service", 6379),
+            (endpoint.ResourceDeploymentId, endpoint.EndpointId,
+                endpoint.KubernetesNamespace, endpoint.ServiceName, endpoint.TargetPort));
+
+        var grants = fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants");
+        await grants.ReplaceOneAsync(item => item.Id == grant.Id,
+            grant.Revoke(ActorId, DateTime.UtcNow));
+        Assert.Empty(await load());
+    }
+
+    [Fact]
+    public async Task GatewayRegistration_FencesRotationAndRevocationByGeneration()
+    {
+        const string targetId = "66a000000000000000000006";
+        var gatewayId = PrivateAccessGatewayIds.StableId(TenantId, targetId);
+        var identity = new PrivateAccessGatewayIdentity(TenantId, targetId, gatewayId, 1, 1);
+        var endpoint = new PrivateAccessGatewayEndpointSnapshot(
+            "redis", "cell", DeploymentId, "namespace", "redis-service", 6379, 6379);
+        var expiry = DateTime.UnixEpoch.AddDays(30000);
+        var save = provider.GetRequiredService<SavePrivateAccessGatewayRegistration>();
+        var load = provider.GetRequiredService<LoadPrivateAccessGatewayRegistrations>();
+        var resolve = provider.GetRequiredService<ResolvePrivateAccessGatewayIdentity>();
+        var remove = provider.GetRequiredService<RemovePrivateAccessGatewayRegistration>();
+        var oldPin = new string('a', 64);
+        var newPin = new string('b', 64);
+
+        Assert.True(await save(identity, oldPin, expiry, [endpoint]));
+        Assert.True(await save(identity, oldPin, expiry, [endpoint]));
+        Assert.Equal(identity, await resolve(oldPin));
+        Assert.Equal(endpoint, Assert.Single(Assert.Single(await load()).Endpoints));
+
+        var rotated = identity with { Generation = 2, Revision = 2 };
+        Assert.True(await save(rotated, newPin, expiry, [endpoint]));
+        Assert.Null(await resolve(oldPin));
+        Assert.Equal(rotated, await resolve(newPin));
+        Assert.False(await remove(identity));
+        Assert.True(await remove(rotated));
+        Assert.Empty(await load());
     }
 
     [Fact]

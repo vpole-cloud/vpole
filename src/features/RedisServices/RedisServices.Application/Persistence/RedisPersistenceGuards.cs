@@ -64,10 +64,11 @@ internal static class RedisPersistenceGuards
         ArgumentNullException.ThrowIfNull(current);
         ArgumentNullException.ThrowIfNull(replacement);
         if (!string.Equals(current.TenantId, replacement.TenantId, StringComparison.Ordinal) ||
-            !string.Equals(current.Id, replacement.Id, StringComparison.Ordinal))
+            !string.Equals(current.Id, replacement.Id, StringComparison.Ordinal) ||
+            !string.Equals(current.Name, replacement.Name, StringComparison.Ordinal))
         {
             throw new InvalidOperationException(
-                "A Redis replacement must preserve tenant and resource identity.");
+                "A Redis replacement must preserve tenant, resource identity, and immutable name.");
         }
     }
 

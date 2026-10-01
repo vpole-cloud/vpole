@@ -1,5 +1,7 @@
 namespace Pole.Cli.Authentication;
 
+public sealed class CliLoginRequiredException() : InvalidOperationException("Run 'pole login' to authenticate with the saved Pole server.");
+
 public sealed class OidcAccessTokenProvider(
     Uri issuer,
     string clientId,
@@ -12,7 +14,9 @@ public sealed class OidcAccessTokenProvider(
     private OidcTokens? tokens;
     private bool loaded;
 
-    public async Task<string> GetAccessTokenAsync(CancellationToken cancellationToken)
+    public async Task<string> GetAccessTokenAsync(
+        CancellationToken cancellationToken,
+        bool allowInteractiveLogin = true)
     {
         await gate.WaitAsync(cancellationToken);
         try
@@ -29,7 +33,12 @@ public sealed class OidcAccessTokenProvider(
             if (tokens is { } expired)
                 tokens = await authenticator.RefreshAsync(issuer, clientId, expired, cancellationToken);
 
-            tokens ??= await authenticator.LoginAsync(issuer, clientId, cancellationToken);
+            if (tokens is null)
+            {
+                if (!allowInteractiveLogin)
+                    throw new CliLoginRequiredException();
+                tokens = await authenticator.LoginAsync(issuer, clientId, cancellationToken);
+            }
             await tokenStore.SaveAsync(issuer, clientId, server, tokens, cancellationToken);
             return tokens.AccessToken;
         }

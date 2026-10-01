@@ -8,7 +8,6 @@ public sealed record DefaultDeploymentTargetDeletionRejected(string DeploymentTa
 
 public sealed record DeploymentTargetHasDurableReferences(string DeploymentTargetId);
 
-public sealed record DeploymentTargetHasActiveConnectors(string DeploymentTargetId);
 
 public sealed record DeploymentTargetPublicBaseDomainReferenced(string DeploymentTargetId);
 

@@ -85,6 +85,141 @@ public sealed class CliTokenStore
             : null;
     }
 
+    public async Task SaveProfileAsync(
+        Uri server,
+        PoleServerIdentity identity,
+        CancellationToken cancellationToken)
+    {
+        ValidateServer(server);
+        var path = GetProfilePath();
+        var directory = Path.GetDirectoryName(path)!;
+        Directory.CreateDirectory(directory);
+        ProtectDirectory(directory);
+        RejectReparsePoint(path);
+
+        var activeTenants = await ReadActiveTenantsAsync(path, cancellationToken);
+        var temporaryPath = path + ".tmp-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            var options = new FileStreamOptions
+            {
+                Mode = FileMode.CreateNew,
+                Access = FileAccess.Write,
+                Share = FileShare.None
+            };
+            if (!OperatingSystem.IsWindows())
+                options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+
+            await using (var stream = new FileStream(temporaryPath, options))
+            {
+                await JsonSerializer.SerializeAsync(
+                    stream,
+                    new StoredProfile(GetAuthority(server), identity.Issuer.AbsoluteUri, identity.ClientId, activeTenants),
+                    JsonOptions,
+                    cancellationToken);
+                await stream.FlushAsync(cancellationToken);
+            }
+
+            File.Move(temporaryPath, path, true);
+            ProtectFile(path);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+                File.Delete(temporaryPath);
+        }
+    }
+
+    public async Task<(Uri Server, PoleServerIdentity Identity)?> LoadProfileAsync(
+        CancellationToken cancellationToken)
+    {
+        var path = GetProfilePath();
+        if (!File.Exists(path))
+            return null;
+
+        var directory = Path.GetDirectoryName(path)!;
+        ProtectDirectory(directory);
+        ProtectFile(path);
+        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
+        var stored = await JsonSerializer.DeserializeAsync<StoredProfile>(stream, JsonOptions, cancellationToken);
+        if (stored is null ||
+            !Uri.TryCreate(stored.Server, UriKind.Absolute, out var server) ||
+            !Uri.TryCreate(stored.Issuer, UriKind.Absolute, out var issuer))
+            return null;
+
+        ValidateServer(server);
+        OidcAuthenticator.ValidateDiscoveredIssuer(issuer);
+        if (string.IsNullOrWhiteSpace(stored.ClientId) || stored.ClientId.Length > 256 || stored.ClientId.Any(char.IsControl))
+            return null;
+        return (server, new PoleServerIdentity(issuer, stored.ClientId));
+    }
+
+    public async Task<string?> GetActiveTenantAsync(string accountKey, CancellationToken cancellationToken)
+    {
+        var stored = await ReadProfileAsync(cancellationToken);
+        return stored?.ActiveTenants?.GetValueOrDefault(accountKey);
+    }
+
+    public async Task SaveActiveTenantAsync(
+        string accountKey,
+        string tenantId,
+        CancellationToken cancellationToken)
+    {
+        var path = GetProfilePath();
+        RejectReparsePoint(path);
+        var stored = await ReadProfileAsync(cancellationToken)
+            ?? throw new InvalidOperationException("No Pole server profile is saved. Run 'pole login --server <url>' first.");
+        var activeTenants = stored.ActiveTenants ?? new Dictionary<string, string>(StringComparer.Ordinal);
+        activeTenants[accountKey] = tenantId;
+        var directory = Path.GetDirectoryName(path)!;
+        Directory.CreateDirectory(directory);
+        ProtectDirectory(directory);
+        var temporaryPath = path + ".tmp-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            var options = new FileStreamOptions
+            {
+                Mode = FileMode.CreateNew,
+                Access = FileAccess.Write,
+                Share = FileShare.None
+            };
+            if (!OperatingSystem.IsWindows())
+                options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+            await using (var stream = new FileStream(temporaryPath, options))
+            {
+                await JsonSerializer.SerializeAsync(stream, stored with { ActiveTenants = activeTenants }, JsonOptions, cancellationToken);
+                await stream.FlushAsync(cancellationToken);
+            }
+            File.Move(temporaryPath, path, true);
+            ProtectFile(path);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+                File.Delete(temporaryPath);
+        }
+    }
+
+    public async Task RemoveActiveTenantAsync(string accountKey, CancellationToken cancellationToken)
+    {
+        var path = GetProfilePath();
+        var stored = await ReadProfileAsync(cancellationToken);
+        if (stored?.ActiveTenants?.Remove(accountKey) != true)
+            return;
+        await SaveStoredProfileAsync(path, stored, cancellationToken);
+    }
+
+    public void Clear()
+    {
+        var profilePath = GetProfilePath();
+        RejectReparsePoint(profilePath);
+        RejectReparsePoint(tokenPath);
+        if (File.Exists(profilePath))
+            File.Delete(profilePath);
+        if (File.Exists(tokenPath))
+            File.Delete(tokenPath);
+    }
+
     public static string GetTokenPath()
     {
         if (OperatingSystem.IsWindows())
@@ -99,6 +234,59 @@ public sealed class CliTokenStore
         if (string.IsNullOrWhiteSpace(dataDirectory))
             dataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share");
         return Path.Combine(dataDirectory, "pole", "cli", "tokens.json");
+    }
+
+    private string GetProfilePath() => Path.Combine(Path.GetDirectoryName(tokenPath)!, "server.json");
+
+    private async Task<StoredProfile?> ReadProfileAsync(CancellationToken cancellationToken)
+    {
+        var path = GetProfilePath();
+        if (!File.Exists(path))
+            return null;
+        var directory = Path.GetDirectoryName(path)!;
+        ProtectDirectory(directory);
+        ProtectFile(path);
+        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
+        return await JsonSerializer.DeserializeAsync<StoredProfile>(stream, JsonOptions, cancellationToken);
+    }
+
+    private async Task<Dictionary<string, string>> ReadActiveTenantsAsync(string path, CancellationToken cancellationToken)
+    {
+        if (!File.Exists(path))
+            return new Dictionary<string, string>(StringComparer.Ordinal);
+        var existing = await ReadProfileAsync(cancellationToken);
+        return existing?.ActiveTenants ?? new Dictionary<string, string>(StringComparer.Ordinal);
+    }
+
+    private async Task SaveStoredProfileAsync(string path, StoredProfile stored, CancellationToken cancellationToken)
+    {
+        var directory = Path.GetDirectoryName(path)!;
+        ProtectDirectory(directory);
+        RejectReparsePoint(path);
+        var temporaryPath = path + ".tmp-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            var options = new FileStreamOptions
+            {
+                Mode = FileMode.CreateNew,
+                Access = FileAccess.Write,
+                Share = FileShare.None
+            };
+            if (!OperatingSystem.IsWindows())
+                options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+            await using (var stream = new FileStream(temporaryPath, options))
+            {
+                await JsonSerializer.SerializeAsync(stream, stored, JsonOptions, cancellationToken);
+                await stream.FlushAsync(cancellationToken);
+            }
+            File.Move(temporaryPath, path, true);
+            ProtectFile(path);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+                File.Delete(temporaryPath);
+        }
     }
 
     internal static void ValidateServer(Uri server) => _ = GetAuthority(server);
@@ -167,4 +355,10 @@ public sealed class CliTokenStore
         string ClientId,
         string ServerAuthority,
         OidcTokens Tokens);
+
+    private sealed record StoredProfile(
+        string Server,
+        string Issuer,
+        string ClientId,
+        Dictionary<string, string>? ActiveTenants = null);
 }

@@ -53,7 +53,7 @@ using Pole.Features.Search.Application;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Secrets.Application;
 using Pole.Features.PrivateAccess.Application;
-using Pole.Features.DeploymentTargets.Application.Persistence.Connectors;
+using Pole.Features.DeploymentTargets.Application.Persistence.Admission;
 using Pole.Features.Secrets.Application.Migrations;
 using Pole.Features.SourceBuilds.Application;
 using Pole.Features.SourceBuilds.Application.Common;
@@ -199,7 +199,6 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddPostgresFeature(builder.Configuration);
         builder.Services.AddSecretsFeature();
         builder.Services.AddPrivateAccessFeature();
-        builder.Services.AddPrivateAccessTargetAdmission();
         builder.Services.AddTenantsFeature();
         builder.Services.AddUsersFeature(builder.Configuration);
         builder.Services.RemoveAll<IIdentityProvider>();
@@ -298,7 +297,6 @@ public sealed class TestApiApplication : IAsyncDisposable
 
         var app = builder.Build();
         await new DeploymentTargetMigration().Up(fixture.Database);
-        await new DeploymentTargetConnectorMigration().Up(fixture.Database);
         await new DeploymentTargetReferenceMigration().Up(fixture.Database);
         await new ResourceGroupPlacementMigration().Up(fixture.Database);
         await new ResourceRegistrationMigration().Up(fixture.Database);

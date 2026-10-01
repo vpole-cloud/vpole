@@ -14,6 +14,12 @@ internal static class PrivateAccessFilters
     public static FilterDefinition<PrivateAccessGrant> GrantsForTenant(string tenantId) =>
         Builders<PrivateAccessGrant>.Filter.ForTenant(tenantId);
 
+    public static FilterDefinition<PrivateAccessGrant> ActiveGrants(DateTime nowUtc) =>
+        Builders<PrivateAccessGrant>.Filter.And(
+            Builders<PrivateAccessGrant>.Filter.Gt(item => item.ExpiresAtUtc, nowUtc),
+            Builders<PrivateAccessGrant>.Filter
+                .OfType<PrivateAccessGrantState, ActivePrivateAccessGrant>(item => item.State));
+
     public static FilterDefinition<PrivateAccessGrant> OwnActiveGrants(
         string tenantId, string subjectUserId, DateTime nowUtc) =>
         Builders<PrivateAccessGrant>.Filter.And(

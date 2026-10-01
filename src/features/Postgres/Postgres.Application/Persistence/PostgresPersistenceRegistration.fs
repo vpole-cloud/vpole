@@ -24,6 +24,8 @@ module PostgresPersistenceRegistration =
         |> ignore
         services.AddScoped<IResourceConnectionDestinationCapability, MongoLoadPostgresConnectionEndpoints>()
         |> ignore
+        services.AddScoped<IResourceConnectionDestinationNameCapability, MongoLoadPostgresConnectionEndpoints>()
+        |> ignore
         services.AddScoped<MongoLoadPostgresClusterById>() |> ignore
         services.AddScoped<LoadPostgresClusterById>(
             Func<IServiceProvider, LoadPostgresClusterById>(fun serviceProvider ->

@@ -24,6 +24,8 @@ public static class RedisPersistenceRegistration
                 .GetCollection<Redis>(RedisCollectionName));
         services.AddScoped<IResourceConnectionDestinationCapability,
             MongoLoadRedisConnectionEndpoints>();
+        services.AddScoped<IResourceConnectionDestinationNameCapability,
+            MongoLoadRedisConnectionEndpoints>();
         services.AddScoped<MongoLoadRedisById>();
         services.AddScoped<MongoLoadRedisPage>();
         services.AddScoped<MongoPersistCreatedRedis>();

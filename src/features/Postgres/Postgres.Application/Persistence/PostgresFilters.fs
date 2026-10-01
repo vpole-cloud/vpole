@@ -17,6 +17,11 @@ module PostgresFilters =
             visibleToTenant tenantId,
             clusters.Eq((fun (cluster : PostgresCluster) -> cluster.Id), clusterId))
 
+    let byName tenantId name : FilterDefinition<PostgresCluster> =
+        clusters.And(
+            visibleToTenant tenantId,
+            clusters.Eq((fun (cluster : PostgresCluster) -> cluster.Name), name))
+
     let atRevision (cluster : PostgresCluster) : FilterDefinition<PostgresCluster> =
         clusters.And(
             byId cluster.TenantId cluster.Id,

@@ -81,6 +81,26 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
+    public async Task PersistUpdate_RejectsRename()
+    {
+        var current = await DbContext.InsertRedisAsync(
+            SeedRedis(RedisTestData.TenantId, "immutable-name"));
+        var replacement = current with { Name = "renamed" };
+        var persistUpdatedRedis = Services.GetRequiredService<PersistUpdatedRedis>();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            DbContext.RunOutcomeInTransactionAsync<Unit>(async (transaction, cancellationToken) =>
+            {
+                await persistUpdatedRedis(
+                    transaction.Session,
+                    current,
+                    replacement,
+                    cancellationToken);
+                return transaction.Commit(Unit.Value);
+            }));
+    }
+
+    [Fact]
     public async Task Create_Succeeds_WithValidRequest()
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(RedisTestData.SeedResourceGroup());
@@ -114,6 +134,40 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
             .SingleAsync();
         Assert.Equal(RedisResourceDeployment.ResourceType.Value, registration.ResourceTypeId);
         Assert.Equal(resourceGroup.Id, registration.ResourceGroupId);
+    }
+
+    [Fact]
+    public async Task Create_RejectsDuplicateNameWithinTenant()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(RedisTestData.SeedResourceGroup());
+        var request = RedisTestData.CreateRedisServiceRequest(resourceGroup.Id, "orders-cache");
+
+        _ = (await Mediator.Send(request)).AssertSuccess();
+        var duplicate = await Mediator.Send(request);
+
+        Assert.IsType<RedisServiceNameAlreadyExists>(
+            ResultAssertionExtensions.AssertSuccess<CreateRedisServiceOutcome>(duplicate).Value);
+    }
+
+    [Fact]
+    public async Task NameIndexAllowsSameNameInAnotherTenantAndAnotherKind()
+    {
+        var first = SeedRedis(RedisTestData.TenantId, "shared-name");
+        var otherTenant = SeedRedis(OtherTenantId, "shared-name");
+        await DbContext.RedisServices.InsertOneAsync(first);
+        await DbContext.RedisServices.InsertOneAsync(otherTenant);
+
+        var otherKind = DbContext.Database.GetCollection<BsonDocument>("Postgres");
+        await otherKind.InsertOneAsync(new BsonDocument
+        {
+            ["_id"] = ObjectId.GenerateNewId(),
+            ["TenantId"] = RedisTestData.TenantId,
+            ["Name"] = "shared-name"
+        });
+
+        Assert.Equal(2L, await DbContext.RedisServices.CountDocumentsAsync(
+            item => item.Name == "shared-name"));
+        Assert.Equal(1L, await otherKind.CountDocumentsAsync(new BsonDocument("Name", "shared-name")));
     }
 
     [Fact]

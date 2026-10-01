@@ -21,7 +21,25 @@ public static class PrivateAccessFeature
             .GetCollection<PrivateAccessSession>("PrivateAccessSessions"));
         services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
             .GetCollection<PrivateAccessAudit>("PrivateAccessAudit"));
+        services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
+            .GetCollection<PrivateAccessGateway>("PrivateAccessGateways"));
+        services.TryAddScoped<PrivateAccessGatewayIdentityReads>();
+        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.ResolvePrivateAccessGatewayIdentity>(
+            provider => provider.GetRequiredService<PrivateAccessGatewayIdentityReads>().ResolveAsync);
+        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.RecordPrivateAccessGatewayContact>(
+            provider => provider.GetRequiredService<PrivateAccessGatewayIdentityReads>().RecordContactAsync);
+        services.TryAddScoped<PrivateAccessGatewayDesiredStates>();
+        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.LoadPrivateAccessGatewayDesiredStates>(
+            provider => provider.GetRequiredService<PrivateAccessGatewayDesiredStates>().LoadAsync);
+        services.TryAddScoped<PrivateAccessGatewayRegistrations>();
+        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.LoadPrivateAccessGatewayRegistrations>(
+            provider => provider.GetRequiredService<PrivateAccessGatewayRegistrations>().LoadAsync);
+        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.SavePrivateAccessGatewayRegistration>(
+            provider => provider.GetRequiredService<PrivateAccessGatewayRegistrations>().SaveAsync);
+        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.RemovePrivateAccessGatewayRegistration>(
+            provider => provider.GetRequiredService<PrivateAccessGatewayRegistrations>().RemoveAsync);
         services.TryAddScoped<PrivateAccessEndpointCatalog>();
+        services.TryAddScoped<PrivateAccessResourceNameCatalog>();
         services.TryAddScoped<MongoLoadOwnPrivateAccessGrants>();
         services.TryAddScoped<LoadOwnPrivateAccessGrants>(provider => provider
             .GetRequiredService<MongoLoadOwnPrivateAccessGrants>().InvokeAsync);
@@ -61,9 +79,6 @@ public static class PrivateAccessFeature
         services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.ClosePrivateAccessSession>(
             provider => provider.GetRequiredService<MongoPrivateAccessSessionAdmission>()
                 .CloseAsync);
-        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.RecordPrivateAccessWorkerNamespace>(
-            provider => provider.GetRequiredService<MongoPrivateAccessSessionAdmission>()
-                .RecordWorkerNamespaceAsync);
         services.TryAddScoped<MongoPrivateAccessSessionCleanup>();
         services.TryAddScoped<
             Pole.Features.PrivateAccess.Contracts.LoadExpiredPrivateAccessSessionCleanupPage>(
@@ -85,6 +100,9 @@ public static class PrivateAccessFeature
             .MapGetPrivateAccessGrantEndpoint()
             .MapRevokePrivateAccessGrantEndpoint()
             .MapCreatePrivateAccessSessionEndpoint();
+        app.MapGroup("/private-access/resources")
+            .WithTags("PrivateAccess")
+            .MapListPrivateAccessResourceGrantsEndpoint();
         return app;
     }
 }

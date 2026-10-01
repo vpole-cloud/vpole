@@ -6,7 +6,6 @@ using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Persistence.Admission;
 using Pole.Features.DeploymentTargets.Application.Persistence.Bootstrap;
 using Pole.Features.DeploymentTargets.Application.Persistence.Credentials;
-using Pole.Features.DeploymentTargets.Application.Persistence.Connectors;
 using Pole.Features.DeploymentTargets.Application.Persistence.Mutations;
 using Pole.Features.DeploymentTargets.Application.Persistence.Reads;
 using Pole.Features.DeploymentTargets.Application.Persistence.References;
@@ -23,12 +22,6 @@ public static class DeploymentTargetPersistenceRegistration
         services.TryAddSingleton(serviceProvider => serviceProvider
             .GetRequiredService<IMongoDatabase>()
             .GetCollection<DeploymentTarget>("DeploymentTargets"));
-        services.TryAddSingleton(serviceProvider => serviceProvider
-            .GetRequiredService<IMongoDatabase>()
-            .GetCollection<DeploymentTargetConnector>("DeploymentTargetConnectors"));
-        services.TryAddSingleton(serviceProvider => serviceProvider
-            .GetRequiredService<IMongoDatabase>()
-            .GetCollection<DeploymentTargetConnectorEnrollment>("DeploymentTargetConnectorEnrollments"));
         services.TryAddSingleton(serviceProvider => serviceProvider
             .GetRequiredService<IMongoDatabase>()
             .GetCollection<DeploymentTargetReference>("DeploymentTargetReferences"));
@@ -126,32 +119,7 @@ public static class DeploymentTargetPersistenceRegistration
         AddCapability<MongoRewrapDeploymentTargetCredentials, RewrapDeploymentTargetCredentials>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<MongoIssueDeploymentTargetConnectorEnrollment, IssueDeploymentTargetConnectorEnrollment>(
-            services,
-            implementation => implementation.InvokeAsync);
-        AddCapability<MongoRedeemDeploymentTargetConnectorEnrollment, RedeemDeploymentTargetConnectorEnrollment>(
-            services,
-            implementation => implementation.InvokeAsync);
-        AddCapability<MongoIssueDeploymentTargetConnectorRotation, IssueDeploymentTargetConnectorRotation>(
-            services,
-            implementation => implementation.InvokeAsync);
-        AddCapability<MongoRevokeDeploymentTargetConnector, RevokeDeploymentTargetConnector>(
-            services,
-            implementation => implementation.InvokeAsync);
-        services.TryAddSingleton<MongoLoadDeploymentTargetConnectorStatus>();
-        services.TryAddSingleton<LoadDeploymentTargetConnectorList>(provider => provider
-            .GetRequiredService<MongoLoadDeploymentTargetConnectorStatus>()
-            .ListAsync);
-        services.TryAddSingleton<LoadDeploymentTargetConnectorStatus>(provider => provider
-            .GetRequiredService<MongoLoadDeploymentTargetConnectorStatus>()
-            .GetAsync);
-        services.TryAddSingleton<MongoConnectorBrokerCapabilities>();
-        services.TryAddSingleton<ResolveDeploymentTargetConnector>(provider => provider
-            .GetRequiredService<MongoConnectorBrokerCapabilities>()
-            .ResolveAsync);
-        services.TryAddSingleton<RecordDeploymentTargetConnectorContact>(provider => provider
-            .GetRequiredService<MongoConnectorBrokerCapabilities>()
-            .RecordContactAsync);
+        services.AddPrivateAccessTargetAdmission();
 
         services.TryAddSingleton<MongoLoadDeploymentTargetBootstrapState>();
         services.TryAddSingleton<LoadDeploymentTargetBootstrapState>(serviceProvider => serviceProvider
@@ -176,18 +144,6 @@ public static class DeploymentTargetPersistenceRegistration
             serviceProvider => serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
                 .InvokeOutcomeAsync<EnsureBootstrapDefaultDeploymentTargetOutcome>);
-        services.TryAddSingleton<RunMongoOutcomeTransaction<IssueDeploymentTargetConnectorEnrollmentPersistenceOutcome>>(
-            serviceProvider => serviceProvider
-                .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<IssueDeploymentTargetConnectorEnrollmentPersistenceOutcome>);
-        services.TryAddSingleton<RunMongoOutcomeTransaction<RedeemDeploymentTargetConnectorEnrollmentOutcome>>(
-            serviceProvider => serviceProvider
-                .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<RedeemDeploymentTargetConnectorEnrollmentOutcome>);
-        services.TryAddSingleton<RunMongoOutcomeTransaction<IssueDeploymentTargetConnectorRotationPersistenceOutcome>>(
-            serviceProvider => serviceProvider
-                .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<IssueDeploymentTargetConnectorRotationPersistenceOutcome>);
         return services;
     }
 

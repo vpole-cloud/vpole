@@ -45,5 +45,15 @@ public sealed class PrivateAccessIndexesMigration : IMigration
                     .Ascending("GrantId").Descending("AtUtc"),
                 new CreateIndexOptions { Name = "IX_PrivateAccessAudit_Tenant_Grant_At" }),
             cancellationToken: cancellationToken);
+        await context.GetCollection<BsonDocument>("PrivateAccessGateways").Indexes.CreateManyAsync(
+        [
+            new CreateIndexModel<BsonDocument>(
+                Builders<BsonDocument>.IndexKeys.Ascending("TenantId")
+                    .Ascending("DeploymentTargetId"),
+                new CreateIndexOptions { Unique = true, Name = "UX_PrivateAccessGateways_Tenant_Target" }),
+            new CreateIndexModel<BsonDocument>(
+                Builders<BsonDocument>.IndexKeys.Ascending("CertificateSha256Pin"),
+                new CreateIndexOptions { Unique = true, Name = "UX_PrivateAccessGateways_Pin" })
+        ], cancellationToken);
     }
 }

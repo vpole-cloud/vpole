@@ -3,7 +3,6 @@ using System.Reflection;
 using Pole.ASP.Helpers;
 using Pole.Features.Secrets.Application;
 using Pole.Features.PrivateAccess.Application;
-using Pole.Features.DeploymentTargets.Application.Persistence.Connectors;
 using Pole.Database;
 using Pole.Encryption;
 using Pole.Features.ContainerRegistries.Application;
@@ -87,7 +86,6 @@ public static class PolePlatform
     .AddDomainsFeature()
     .AddSecretsFeature()
     .AddPrivateAccessFeature()
-    .AddPrivateAccessTargetAdmission()
     .AddComputeProfilesFeature()
     .AddStorageProfilesFeature()
     .AddQuotasFeature(configuration)

@@ -3,7 +3,6 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.PrivateAccess.Contracts;
 using Pole.Features.PrivateAccess.Domain;
-using System.Text.RegularExpressions;
 
 namespace Pole.Features.PrivateAccess.Application.Persistence;
 
@@ -14,47 +13,6 @@ internal sealed class MongoPrivateAccessSessionAdmission(
     MongoRunTransaction transactions,
     TimeProvider timeProvider)
 {
-    private static readonly Regex NamespacePattern = new(
-        "^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$",
-        RegexOptions.CultureInvariant | RegexOptions.Compiled);
-
-    public Task<RecordPrivateAccessWorkerNamespaceOutcome> RecordWorkerNamespaceAsync(
-        string sessionId,
-        string workerNamespace,
-        CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(workerNamespace) ||
-            !NamespacePattern.IsMatch(workerNamespace))
-            throw new ArgumentException("Worker namespace must be a Kubernetes namespace name.",
-                nameof(workerNamespace));
-
-        return transactions.InvokeOutcomeAsync<RecordPrivateAccessWorkerNamespaceOutcome>(
-            async (transaction, ct) =>
-            {
-                var current = await FindSessionAsync(sessionId, transaction.Session, ct);
-                var now = timeProvider.GetUtcNow().UtcDateTime;
-                if (current is null || current.SessionDeadlineUtc <= now ||
-                    current.State is not PrivateAccessTicketRedeemed redeemed ||
-                    redeemed.RedeemedAtUtc.AddSeconds(30) <= now ||
-                    redeemed.LastAuthorizationExpiresAtUtc is not null &&
-                    redeemed.LastAuthorizationExpiresAtUtc <= now)
-                    return transaction.Abort(new RecordPrivateAccessWorkerNamespaceOutcome(
-                        new PrivateAccessSessionUnavailable()));
-                if (current.WorkerNamespace is not null)
-                    return current.WorkerNamespace == workerNamespace
-                        ? transaction.Abort(new RecordPrivateAccessWorkerNamespaceOutcome(
-                            new PrivateAccessWorkerNamespaceRecorded()))
-                        : transaction.Abort(new RecordPrivateAccessWorkerNamespaceOutcome(
-                            new PrivateAccessWorkerNamespaceConflict()));
-
-                await ReplaceAsync(current,
-                    current with { WorkerNamespace = workerNamespace },
-                    transaction.Session, ct);
-                return transaction.Commit(new RecordPrivateAccessWorkerNamespaceOutcome(
-                    new PrivateAccessWorkerNamespaceRecorded()));
-            }, cancellationToken);
-    }
-
     public Task<RedeemPrivateAccessSessionOutcome> RedeemAsync(
         string ticket,
         CancellationToken cancellationToken = default)

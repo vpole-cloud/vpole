@@ -232,6 +232,8 @@ public sealed class OidcAuthenticator(HttpClient httpClient, IOidcBrowser browse
         endpoint.Scheme == Uri.UriSchemeHttps ||
         endpoint.Scheme == Uri.UriSchemeHttp && IsLoopbackHost(endpoint.Host) && IsLoopbackHost(issuer.Host);
 
+    internal static void ValidateDiscoveredIssuer(Uri issuer) => ValidateIssuer(issuer);
+
     private static Uri ValidateEndpoint(string value, Uri issuer, string description)
     {
         if (!Uri.TryCreate(value, UriKind.Absolute, out var endpoint) || !IsSecureEndpoint(endpoint, issuer))

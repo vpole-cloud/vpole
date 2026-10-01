@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Collections.Immutable;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
@@ -7,7 +6,6 @@ using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using System.Text.Json.Nodes;
 using System.Threading.Channels;
 using k8s;
 using Microsoft.AspNetCore.Builder;
@@ -25,45 +23,43 @@ using Xunit;
 
 namespace Pole.Features.PrivateAccess.Tests.Integration;
 
-/// <summary>A real broker and worker transport with fake admission and Kubernetes writes.</summary>
+/// <summary>Real user and gateway WebSocket transport against containerized databases.</summary>
 internal sealed class DatabaseBrokerFixture : IAsyncDisposable
 {
     private readonly WebApplication app;
-    private readonly Kubernetes kubernetes;
     private readonly X509Certificate2 serverCertificate;
-    private readonly X509Certificate2 connectorCertificate;
-    private readonly ClientWebSocket connector;
-    private readonly CancellationTokenSource lifetime = new(TimeSpan.FromSeconds(45));
+    private readonly X509Certificate2 gatewayCertificate;
+    private readonly ClientWebSocket control;
+    private readonly CancellationTokenSource lifetime = new(TimeSpan.FromSeconds(60));
     private readonly ConcurrentDictionary<string, PrivateAccessLeaseSnapshot> sessions = new();
     private readonly ConcurrentQueue<PrivateAccessSessionCloseReason> closeReasons = new();
-    private readonly FakeKubernetes api;
+    private readonly Channel<string> gatewayTickets = Channel.CreateUnbounded<string>();
+    private readonly ConcurrentQueue<byte[]> challenges = new();
     private readonly int backendPort;
     private readonly Uri publicOrigin;
-    private readonly Task connectorLease;
+    private readonly Uri gatewayOrigin;
+    private Task controlReader = Task.CompletedTask;
+    private Task controlRenewal = Task.CompletedTask;
     private int sessionSequence;
     private int started;
     private int renewed;
 
     private DatabaseBrokerFixture(
         WebApplication app,
-        Kubernetes kubernetes,
-        FakeKubernetes api,
         X509Certificate2 serverCertificate,
-        X509Certificate2 connectorCertificate,
-        ClientWebSocket connector,
+        X509Certificate2 gatewayCertificate,
+        ClientWebSocket control,
         Uri publicOrigin,
-        int backendPort,
-        Task connectorLease)
+        Uri gatewayOrigin,
+        int backendPort)
     {
         this.app = app;
-        this.kubernetes = kubernetes;
-        this.api = api;
         this.serverCertificate = serverCertificate;
-        this.connectorCertificate = connectorCertificate;
-        this.connector = connector;
+        this.gatewayCertificate = gatewayCertificate;
+        this.control = control;
         this.publicOrigin = publicOrigin;
+        this.gatewayOrigin = gatewayOrigin;
         this.backendPort = backendPort;
-        this.connectorLease = connectorLease;
     }
 
     public int StartedSessions => Volatile.Read(ref started);
@@ -73,41 +69,48 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
     public static async Task<DatabaseBrokerFixture> StartAsync(int backendPort)
     {
         var serverCertificate = Certificate("localhost", true);
-        var connectorCertificate = Certificate("untrusted-subject", false);
-        var fingerprint = Convert.ToHexString(SHA256.HashData(connectorCertificate.RawData));
-        var connectorPort = FreePort();
+        var gatewayCertificate = Certificate("gateway", false);
+        var pin = Convert.ToHexString(SHA256.HashData(gatewayCertificate.RawData))
+            .ToLowerInvariant();
+        var gatewayPort = FreePort();
         var publicPort = FreePort();
-        var api = new FakeKubernetes();
-        var kubernetes = new Kubernetes(
-            new KubernetesClientConfiguration { Host = "http://kubernetes.test" }, api);
-        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
+        var gatewayIdentity = new PrivateAccessGatewayIdentity(
+            "tenant-a", "target-a", "gateway-a", 1, 1);
+        var builder = WebApplication.CreateBuilder(
+            new WebApplicationOptions { EnvironmentName = "Testing" });
         builder.Logging.ClearProviders();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["PrivateAccess:Enabled"] = "true",
-            ["PrivateAccess:ConnectorPort"] = connectorPort.ToString(CultureInfo.InvariantCulture),
-            ["PrivateAccess:WorkerImage"] = "test/worker:1",
+            ["PrivateAccess:GatewayPort"] = gatewayPort.ToString(CultureInfo.InvariantCulture),
+            ["PrivateAccess:GatewayImage"] = "test/gateway:1",
             ["PrivateAccess:BrokerUri"] = $"https://127.0.0.1:{publicPort}",
             ["PrivateAccess:BrokerAddresses:0"] = "192.0.2.8",
-            ["Kestrel:Endpoints:PrivateAccessConnector:Url"] = $"https://127.0.0.1:{connectorPort}",
+            ["Kestrel:Endpoints:PrivateAccessGateway:Url"] = $"https://127.0.0.1:{gatewayPort}",
             ["Kestrel:Endpoints:Public:Url"] = $"https://127.0.0.1:{publicPort}"
         });
         builder.WebHost.ConfigureKestrel(options => options.ConfigureHttpsDefaults(https =>
             https.ServerCertificate = serverCertificate));
         builder.ConfigurePrivateAccessListener();
         builder.Services.AddPrivateAccessRuntime(builder.Configuration);
-        builder.Services.AddSingleton<IKubernetesClientProvider>(new FixedKubernetesProvider(kubernetes));
-        builder.Services.AddSingleton<LookupDeploymentTarget>((id, _) =>
-            Task.FromResult<LookupDeploymentTargetOutcome>(Target(id)));
+        builder.Services.AddSingleton<IKubernetesClientProvider>(new UnusedKubernetesProvider());
+        builder.Services.AddSingleton<LookupDeploymentTarget>((_, _) =>
+            throw new InvalidOperationException("Gateway reconciliation has no desired routes."));
         builder.Services.AddSingleton<EnsureRuntimeCellIngressBaseline>((_, _, _, _, _) =>
-            Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(new RuntimeCellIngressBaselineReady()));
-        builder.Services.AddSingleton<ResolveDeploymentTargetConnector>((pin, _) =>
-            Task.FromResult<ResolveDeploymentTargetConnectorOutcome>(pin == fingerprint
-                ? new DeploymentTargetConnectorIdentity("target-a", "connector-a", 1, 1)
-                : new DeploymentTargetConnectorRejected()));
-        builder.Services.AddSingleton<RecordDeploymentTargetConnectorContact>((_, _) =>
-            Task.FromResult<RecordDeploymentTargetConnectorContactOutcome>(
-                new DeploymentTargetConnectorContactRecorded()));
+            throw new InvalidOperationException("Gateway reconciliation has no desired routes."));
+        builder.Services.AddSingleton<LoadPrivateAccessGatewayDesiredStates>(_ =>
+            Task.FromResult<IReadOnlyList<PrivateAccessGatewayDesiredState>>([]));
+        builder.Services.AddSingleton<LoadPrivateAccessGatewayRegistrations>(_ =>
+            Task.FromResult<IReadOnlyList<
+                Pole.Features.PrivateAccess.Contracts.PrivateAccessGatewayRegistration>>([]));
+        builder.Services.AddSingleton<SavePrivateAccessGatewayRegistration>((_, _, _, _, _) =>
+            throw new InvalidOperationException("Gateway registration is not used in transport tests."));
+        builder.Services.AddSingleton<RemovePrivateAccessGatewayRegistration>((_, _) =>
+            throw new InvalidOperationException("Gateway registration is not used in transport tests."));
+        builder.Services.AddSingleton<ResolvePrivateAccessGatewayIdentity>((fingerprint, _) =>
+            Task.FromResult(fingerprint == pin ? gatewayIdentity : null));
+        builder.Services.AddSingleton<RecordPrivateAccessGatewayContact>((_, _, _) =>
+            Task.FromResult(true));
 
         DatabaseBrokerFixture? fixture = null;
         builder.Services.AddSingleton<RedeemPrivateAccessSession>((ticket, _) =>
@@ -133,15 +136,13 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
             return Task.FromResult<MarkPrivateAccessSessionStartedOutcome>(
                 new PrivateAccessSessionStarted());
         });
-        builder.Services.AddSingleton<ClosePrivateAccessSession>((sessionId, reason, _) =>
+        builder.Services.AddSingleton<ClosePrivateAccessSession>((sessionId, reason, cancellationToken) =>
         {
-            fixture!.sessions.TryRemove(sessionId, out var removedLease);
+            fixture!.sessions.TryRemove(sessionId, out _);
             fixture.closeReasons.Enqueue(reason);
-            return Task.FromResult<ClosePrivateAccessSessionOutcome>(new PrivateAccessSessionClosed());
+            return Task.FromResult<ClosePrivateAccessSessionOutcome>(
+                new PrivateAccessSessionClosed());
         });
-        builder.Services.AddSingleton<RecordPrivateAccessWorkerNamespace>((_, _, _) =>
-            Task.FromResult<RecordPrivateAccessWorkerNamespaceOutcome>(
-                new PrivateAccessWorkerNamespaceRecorded()));
         builder.Services.AddSingleton<LoadExpiredPrivateAccessSessionCleanupPage>((_, _, _) =>
             Task.FromResult<IReadOnlyList<PrivateAccessSessionCleanupSnapshot>>([]));
         builder.Services.AddSingleton<MarkPrivateAccessSessionCleaned>((_, _) =>
@@ -149,49 +150,80 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
                 new PrivateAccessSessionCleaned()));
         var app = builder.Build();
         app.UsePrivateAccessRuntime();
-        app.MapPrivateAccessConnectorEndpoint();
-        app.MapPrivateAccessWorkerEndpoint();
+        app.MapPrivateAccessGatewayControlEndpoint();
+        app.MapPrivateAccessGatewayStreamEndpoint();
         app.MapPrivateAccessStreamEndpoint();
         await app.StartAsync();
 
-        var connector = Socket(serverCertificate, connectorCertificate);
-        await connector.ConnectAsync(
-            new Uri($"wss://127.0.0.1:{connectorPort}/private-access/connectors"),
+        var control = Socket(serverCertificate, gatewayCertificate);
+        await control.ConnectAsync(
+            new Uri($"wss://127.0.0.1:{gatewayPort}/private-access/gateways"),
             CancellationToken.None);
         var initial = RandomNumberGenerator.GetBytes(32);
-        await PrivateAccessFrames.SendAsync(connector, PrivateAccessFrameKind.LeaseChallenge, initial,
-            CancellationToken.None);
-        var accepted = await PrivateAccessFrames.ReceiveAsync(connector, CancellationToken.None);
+        await PrivateAccessFrames.SendAsync(
+            control, PrivateAccessFrameKind.LeaseChallenge, initial, CancellationToken.None);
+        var accepted = await PrivateAccessFrames.ReceiveAsync(control, CancellationToken.None);
         Assert.Equal(PrivateAccessFrameKind.LeaseAccepted, accepted.Kind);
         Assert.Equal(initial, accepted.Payload.ToArray());
 
-        var renewals = ConnectorLeaseAsync(connector);
-        fixture = new DatabaseBrokerFixture(app, kubernetes, api, serverCertificate,
-            connectorCertificate, connector, new Uri($"wss://127.0.0.1:{publicPort}"), backendPort,
-            renewals);
+        fixture = new DatabaseBrokerFixture(
+            app, serverCertificate, gatewayCertificate, control,
+            new Uri($"wss://127.0.0.1:{publicPort}"),
+            new Uri($"wss://127.0.0.1:{gatewayPort}"),
+            backendPort);
+        fixture.controlReader = fixture.ReadControlAsync();
+        fixture.controlRenewal = fixture.RenewControlAsync();
         return fixture;
+    }
 
-        async Task ConnectorLeaseAsync(ClientWebSocket socket)
+    private async Task ReadControlAsync()
+    {
+        try
         {
-            try
+            while (!lifetime.IsCancellationRequested)
             {
-                while (socket.State == WebSocketState.Open)
+                var frame = await PrivateAccessFrames.ReceiveAsync(control, lifetime.Token);
+                switch (frame.Kind)
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(3), fixture?.lifetime.Token ?? CancellationToken.None);
-                    var nonce = RandomNumberGenerator.GetBytes(32);
-                    await PrivateAccessFrames.SendAsync(socket, PrivateAccessFrameKind.LeaseChallenge,
-                        nonce, fixture?.lifetime.Token ?? CancellationToken.None);
-                    var reply = await PrivateAccessFrames.ReceiveAsync(socket,
-                        fixture?.lifetime.Token ?? CancellationToken.None);
-                    if (reply.Kind != PrivateAccessFrameKind.LeaseAccepted ||
-                        !nonce.AsSpan().SequenceEqual(reply.Payload.Span))
-                        throw new InvalidDataException("Connector lease was rejected.");
+                    case PrivateAccessFrameKind.Data:
+                        var ticket = PrivateAccessGatewayProtocol.ReadOpenStream(frame);
+                        await gatewayTickets.Writer.WriteAsync(ticket, lifetime.Token);
+                        break;
+                    case PrivateAccessFrameKind.LeaseAccepted:
+                        if (!challenges.TryDequeue(out var challenge) ||
+                            !challenge.AsSpan().SequenceEqual(frame.Payload.Span))
+                            throw new InvalidDataException("Gateway control lease was rejected.");
+                        break;
+                    default:
+                        throw new InvalidDataException("Unexpected gateway control frame.");
                 }
             }
-            catch (OperationCanceledException) { }
-            catch (IOException) { }
-            catch (WebSocketException) { }
-            catch (ObjectDisposedException) { }
+        }
+        catch (Exception error) when (error is OperationCanceledException or
+            IOException or WebSocketException or ObjectDisposedException or InvalidDataException)
+        {
+            gatewayTickets.Writer.TryComplete(error);
+        }
+    }
+
+    private async Task RenewControlAsync()
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
+        using var writer = new PrivateAccessFrameWriter(control);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(lifetime.Token))
+            {
+                var challenge = RandomNumberGenerator.GetBytes(32);
+                challenges.Enqueue(challenge);
+                await writer.SendAsync(
+                    PrivateAccessFrameKind.LeaseChallenge, challenge, lifetime.Token);
+            }
+        }
+        catch (Exception error) when (error is OperationCanceledException or
+            IOException or WebSocketException or ObjectDisposedException or InvalidDataException)
+        {
+            gatewayTickets.Writer.TryComplete(error);
         }
     }
 
@@ -221,53 +253,46 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
         return socket;
     }
 
+    internal ClientWebSocket GatewaySocket(string ticket)
+    {
+        var socket = Socket(serverCertificate, gatewayCertificate);
+        socket.Options.SetRequestHeader("Authorization", $"Bearer {ticket}");
+        return socket;
+    }
+
     internal Uri StreamUri => new(publicOrigin, "/private-access/streams");
-    internal Uri WorkerUri => new(publicOrigin, "/private-access/workers");
-    internal ChannelReader<string> WorkerTickets => api.Tickets.Reader;
+    internal Uri GatewayStreamUri => new(gatewayOrigin, "/private-access/gateway-streams");
+    internal ChannelReader<string> GatewayTickets => gatewayTickets.Reader;
     internal int BackendPort => backendPort;
     internal CancellationToken Token => lifetime.Token;
 
     public async ValueTask DisposeAsync()
     {
         await lifetime.CancelAsync();
-        connector.Abort();
-        try { await connectorLease; }
+        control.Abort();
+        try { await Task.WhenAll(controlReader, controlRenewal); }
         catch (Exception error) when (error is IOException or WebSocketException or
-            OperationCanceledException or ObjectDisposedException)
+            OperationCanceledException or ObjectDisposedException or InvalidDataException)
         { }
-        connector.Dispose();
+        control.Dispose();
         await app.StopAsync();
         await app.DisposeAsync();
-        kubernetes.Dispose();
         serverCertificate.Dispose();
-        connectorCertificate.Dispose();
+        gatewayCertificate.Dispose();
         lifetime.Dispose();
     }
 
-    private static DeploymentTargetLookupDto Target(string id) => new(
-        id, "Target", "cluster-a", "Kubernetes", 1,
-        new DeploymentTargetWorkloadConfigurationLookupDto(1, null,
-            new DeploymentTargetNetworkSourcesDto(
-                ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty)),
-        1, true, true, false, "Healthy")
-    {
-        NetworkPolicy = new DeploymentTargetNetworkPolicyDto(
-            NetworkPolicyEnforcementStatus.Supported,
-            NetworkPolicyReadiness.EnforcementAttested,
-            NetworkPolicyReason.OperatorAttestedSupported,
-            DateTime.UtcNow,
-            NetworkPolicyEvidenceSource.OperatorAttestation,
-            false)
-    };
-
-    private static ClientWebSocket Socket(X509Certificate2 server, X509Certificate2? client = null)
+    private static ClientWebSocket Socket(
+        X509Certificate2 server,
+        X509Certificate2? client = null)
     {
         var socket = new ClientWebSocket();
         if (client is not null)
             socket.Options.ClientCertificates.Add(client);
         socket.Options.RemoteCertificateValidationCallback = (_, certificate, _, _) =>
             certificate is not null && CryptographicOperations.FixedTimeEquals(
-                SHA256.HashData(certificate.GetRawCertData()), SHA256.HashData(server.RawData));
+                SHA256.HashData(certificate.GetRawCertData()),
+                SHA256.HashData(server.RawData));
         return socket;
     }
 
@@ -276,18 +301,23 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var request = new CertificateRequest($"CN={name}", key, HashAlgorithmName.SHA256);
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
-        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature, true));
+        request.CertificateExtensions.Add(new X509KeyUsageExtension(
+            X509KeyUsageFlags.DigitalSignature, true));
         request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(
-            new OidCollection { new(server ? "1.3.6.1.5.5.7.3.1" : "1.3.6.1.5.5.7.3.2") }, false));
+            new OidCollection
+            {
+                new(server ? "1.3.6.1.5.5.7.3.1" : "1.3.6.1.5.5.7.3.2")
+            }, false));
         if (server)
         {
             var names = new SubjectAlternativeNameBuilder();
             names.AddIpAddress(IPAddress.Loopback);
             request.CertificateExtensions.Add(names.Build());
         }
-        using var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1),
-            DateTimeOffset.UtcNow.AddHours(1));
-        return X509CertificateLoader.LoadPkcs12(certificate.Export(X509ContentType.Pfx), null);
+        using var certificate = request.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddHours(1));
+        return X509CertificateLoader.LoadPkcs12(
+            certificate.Export(X509ContentType.Pfx), null);
     }
 
     private static int FreePort()
@@ -297,60 +327,16 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
         return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
 
-    private sealed class FixedKubernetesProvider(IKubernetes client) : IKubernetesClientProvider
+    private sealed class UnusedKubernetesProvider : IKubernetesClientProvider
     {
-        public Task<IKubernetes> GetAsync(string id, CancellationToken ct = default)
-        {
-            Assert.Equal("target-a", id);
-            return Task.FromResult(client);
-        }
+        public Task<IKubernetes> GetAsync(
+            string id,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("No gateway resources are reconciled in transport tests.");
 
-        public Task<IKubernetes> GetDefaultAsync(CancellationToken ct = default) =>
-            throw new InvalidOperationException("Target-specific Kubernetes client required.");
-    }
-
-    private sealed class FakeKubernetes : DelegatingHandler
-    {
-        private readonly ConcurrentDictionary<string, string> objects = new();
-        public Channel<string> Tickets { get; } = Channel.CreateUnbounded<string>();
-
-        protected override async Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request,
-            CancellationToken cancellationToken)
-        {
-            var path = request.RequestUri!.AbsolutePath;
-            if (request.Method == HttpMethod.Post)
-            {
-                var body = JsonNode.Parse(await request.Content!.ReadAsStringAsync(cancellationToken))!.AsObject();
-                var metadata = body["metadata"]!.AsObject();
-                metadata["uid"] = "uid-owned";
-                metadata["resourceVersion"] = "1";
-                var key = $"{path}/{metadata["name"]!.GetValue<string>()}";
-                if (!objects.TryAdd(key, body.ToJsonString()))
-                    return Response(request, HttpStatusCode.Conflict, "{}");
-                if (path.EndsWith("/secrets", StringComparison.Ordinal))
-                    await Tickets.Writer.WriteAsync(body["stringData"]!["ticket"]!.GetValue<string>(),
-                        cancellationToken);
-                return Response(request, HttpStatusCode.Created, body.ToJsonString());
-            }
-            if (request.Method == HttpMethod.Get)
-                return objects.TryGetValue(path, out var value)
-                    ? Response(request, HttpStatusCode.OK, value)
-                    : Response(request, HttpStatusCode.NotFound, "{}");
-            if (request.Method == HttpMethod.Delete)
-            {
-                objects.TryRemove(path, out _);
-                return Response(request, HttpStatusCode.OK, "{}");
-            }
-            throw new InvalidOperationException($"Unexpected Kubernetes request {request.Method} {path}");
-        }
-
-        private static HttpResponseMessage Response(HttpRequestMessage request, HttpStatusCode status, string body) =>
-            new(status)
-            {
-                RequestMessage = request,
-                Content = new StringContent(body, Encoding.UTF8, "application/json")
-            };
+        public Task<IKubernetes> GetDefaultAsync(
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("No default gateway target is used.");
     }
 }
 
@@ -396,22 +382,24 @@ internal sealed class DatabaseLocalForward(DatabaseBrokerFixture broker) : IAsyn
             {
                 stage = "waiting-for-setup";
                 await setupGate.WaitAsync(lifetime.Token);
-                ClientWebSocket worker;
+                ClientWebSocket gateway;
                 try
                 {
                     stage = "connecting-stream";
                     var connecting = client.ConnectAsync(broker.StreamUri, lifetime.Token);
-                    var ticket = await broker.WorkerTickets.ReadAsync(lifetime.Token);
-                    worker = broker.PublicSocket(ticket);
+                    var ticket = await broker.GatewayTickets.ReadAsync(lifetime.Token);
+                    gateway = broker.GatewaySocket(ticket);
                     try
                     {
-                        stage = "connecting-worker";
-                        await worker.ConnectAsync(broker.WorkerUri, lifetime.Token);
+                        stage = "connecting-gateway";
+                        await gateway.ConnectAsync(broker.GatewayStreamUri, lifetime.Token);
+                        _ = PrivateAccessGatewayProtocol.ReadDestination(
+                            await PrivateAccessFrames.ReceiveAsync(gateway, lifetime.Token));
                         await connecting;
                     }
                     catch
                     {
-                        worker.Dispose();
+                        gateway.Dispose();
                         throw;
                     }
                 }
@@ -419,20 +407,20 @@ internal sealed class DatabaseLocalForward(DatabaseBrokerFixture broker) : IAsyn
                 {
                     setupGate.Release();
                 }
-                using (worker)
+                using (gateway)
                 {
                     stage = "pumping";
-                    var workerRun = new PrivateAccessWorker(TimeProvider.System).RunAsync(worker,
+                    var gatewayRun = new PrivateAccessTcpRelay(TimeProvider.System).RunAsync(gateway,
                         "127.0.0.1", broker.BackendPort, lifetime.Token);
                     var localStream = local.GetStream();
                     var outgoing = PumpToBrokerAsync(localStream, client, lifetime.Token);
                     var incoming = PumpFromBrokerAsync(localStream, local, client, lifetime.Token);
-                    await Task.WhenAny(Task.WhenAll(outgoing, incoming), workerRun);
+                    await Task.WhenAny(Task.WhenAll(outgoing, incoming), gatewayRun);
                     client.Abort();
-                    worker.Abort();
+                    gateway.Abort();
                     await ObserveAsync(outgoing);
                     await ObserveAsync(incoming);
-                    await ObserveAsync(workerRun);
+                    await ObserveAsync(gatewayRun);
                 }
             }
             catch (Exception error) when (error is IOException or WebSocketException or

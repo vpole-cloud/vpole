@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Options;
-using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.PrivateAccess.Contracts;
 using Pole.Features.PrivateAccess.Primitives;
 
@@ -49,12 +48,9 @@ public sealed class PrivateAccessSessionRunner(
     RenewPrivateAccessSession renew,
     MarkPrivateAccessSessionStarted markStarted,
     ClosePrivateAccessSession close,
-    RecordPrivateAccessWorkerNamespace recordWorkerNamespace,
-    ResolveDeploymentTargetConnector resolveConnector,
-    PrivateAccessConnectorRegistry connectors,
-    PrivateAccessWorkerRendezvous rendezvous,
-    PrivateAccessWorkerResources resources,
-    IOptions<PrivateAccessBrokerOptions> configured,
+    ResolvePrivateAccessGatewayIdentity resolveGateway,
+    PrivateAccessGatewayRegistry gateways,
+    PrivateAccessGatewayRendezvous rendezvous,
     TimeProvider time)
 {
     public async Task RunAsync(HttpContext context, string ticket)
@@ -66,41 +62,26 @@ public sealed class PrivateAccessSessionRunner(
             return;
         }
         var reason = PrivateAccessSessionCloseReason.SetupFailed;
-        var creationAttempted = false;
-        var pending = rendezvous.Prepare();
-        var settings = configured.Value.WorkerSettings();
-        var destination = new PrivateAccessWorkerDestination(lease.TenantId, lease.DeploymentTargetId,
-            lease.RuntimeCellId, lease.ResourceDeploymentId, lease.KubernetesNamespace,
-            lease.ServiceName, lease.ServicePort, lease.TargetPort);
+        PendingPrivateAccessGatewayStream? pending = null;
         try
         {
-            var connector = connectors.Find(lease.DeploymentTargetId);
-            if (connector is null)
+            var gateway = gateways.Find(lease.TenantId, lease.DeploymentTargetId);
+            if (gateway is null)
             {
                 context.Response.StatusCode = 503;
                 return;
             }
             using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(
-                context.RequestAborted, connector.Disconnected);
+                context.RequestAborted, gateway.Disconnected);
             lifetime.CancelAfter(TimeSpan.FromSeconds(30));
-            if (await recordWorkerNamespace(lease.SessionId, settings.Namespace, lifetime.Token)
-                is not PrivateAccessWorkerNamespaceRecorded)
-            {
-                context.Response.StatusCode = 401;
-                return;
-            }
-            creationAttempted = true;
-            var created = await resources.CreateAsync(lease.SessionId, destination, settings,
-                pending.Ticket, new DateTimeOffset(lease.SessionDeadlineUtc), lifetime.Token);
-            if (created is not PrivateAccessWorkerCreated)
-            {
-                context.Response.StatusCode = 503;
-                return;
-            }
-            using var worker = await pending.Connected.WaitAsync(lifetime.Token);
+            var destination = new PrivateAccessGatewayDestination(
+                $"{lease.ServiceName}.{lease.KubernetesNamespace}.svc", lease.ServicePort.Value);
+            pending = rendezvous.Prepare(gateway, destination);
+            await gateway.OpenStreamAsync(pending.Ticket, lifetime.Token);
+            using var gatewayStream = await pending.Connected.WaitAsync(lifetime.Token);
             using var client = await context.WebSockets.AcceptWebSocketAsync();
             reason = PrivateAccessSessionCloseReason.LeaseDenied;
-            reason = await RelayAsync(client, worker, lease.SessionId, connector, lifetime);
+            reason = await RelayAsync(client, gatewayStream, lease.SessionId, gateway, lifetime);
         }
         catch (OperationCanceledException)
         {
@@ -110,50 +91,46 @@ public sealed class PrivateAccessSessionRunner(
         }
         catch (Exception exception) when (exception is IOException or WebSocketException)
         {
-            reason = PrivateAccessSessionCloseReason.ConnectorFailure;
+            reason = PrivateAccessSessionCloseReason.GatewayFailure;
             context.Abort();
         }
         finally
         {
-            rendezvous.Remove(pending);
+            if (pending is not null)
+                rendezvous.Remove(pending);
             using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            try { await close(lease.SessionId, reason, cleanup.Token); }
-            finally
-            {
-                if (creationAttempted)
-                    await resources.DeleteAsync(lease.SessionId, destination, settings.Namespace, cleanup.Token);
-            }
+            await close(lease.SessionId, reason, cleanup.Token);
         }
     }
 
     private async Task<PrivateAccessSessionCloseReason> RelayAsync(
         WebSocket client,
-        WebSocket worker,
+        WebSocket gatewayStream,
         string sessionId,
-        PrivateAccessConnectorRegistration connector,
+        PrivateAccessGatewayRegistration gateway,
         CancellationTokenSource lifetime)
     {
-        using var toWorker = new PrivateAccessFrameWriter(worker);
+        using var toGateway = new PrivateAccessFrameWriter(gatewayStream);
         using var toClient = new PrivateAccessFrameWriter(client);
         var complete = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var workerReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gatewayReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var halfCloses = 0;
         var fromClient = GuardAsync(ClientAsync, lifetime);
-        var fromWorker = GuardAsync(WorkerAsync, lifetime);
+        var fromGateway = GuardAsync(GatewayAsync, lifetime);
         try
         {
-            var first = await Task.WhenAny(fromClient, fromWorker, complete.Task);
+            var first = await Task.WhenAny(fromClient, fromGateway, complete.Task);
             if (ReferenceEquals(first, complete.Task))
                 return PrivateAccessSessionCloseReason.ClientDisconnected;
-            return ReferenceEquals(first, fromClient) ? await fromClient : await fromWorker;
+            return ReferenceEquals(first, fromClient) ? await fromClient : await fromGateway;
         }
         finally
         {
             await lifetime.CancelAsync();
             client.Abort();
-            worker.Abort();
+            gatewayStream.Abort();
             await ObserveAsync(fromClient);
-            await ObserveAsync(fromWorker);
+            await ObserveAsync(fromGateway);
         }
 
         async Task<PrivateAccessSessionCloseReason> ClientAsync()
@@ -165,13 +142,13 @@ public sealed class PrivateAccessSessionRunner(
                 switch (frame.Kind)
                 {
                     case PrivateAccessFrameKind.Data when !halfClosed:
-                        await workerReady.Task.WaitAsync(lifetime.Token);
-                        await toWorker.SendAsync(frame.Kind, frame.Payload, lifetime.Token);
+                        await gatewayReady.Task.WaitAsync(lifetime.Token);
+                        await toGateway.SendAsync(frame.Kind, frame.Payload, lifetime.Token);
                         break;
                     case PrivateAccessFrameKind.HalfClose when !halfClosed:
-                        await workerReady.Task.WaitAsync(lifetime.Token);
+                        await gatewayReady.Task.WaitAsync(lifetime.Token);
                         halfClosed = true;
-                        await toWorker.SendAsync(frame.Kind, frame.Payload, lifetime.Token);
+                        await toGateway.SendAsync(frame.Kind, frame.Payload, lifetime.Token);
                         if (Interlocked.Increment(ref halfCloses) == 2)
                             complete.TrySetResult();
                         break;
@@ -183,21 +160,21 @@ public sealed class PrivateAccessSessionRunner(
             }
         }
 
-        async Task<PrivateAccessSessionCloseReason> WorkerAsync()
+        async Task<PrivateAccessSessionCloseReason> GatewayAsync()
         {
             var halfClosed = false;
             var ready = false;
             while (true)
             {
-                var frame = await PrivateAccessFrames.ReceiveAsync(worker, lifetime.Token);
+                var frame = await PrivateAccessFrames.ReceiveAsync(gatewayStream, lifetime.Token);
                 switch (frame.Kind)
                 {
                     case PrivateAccessFrameKind.LeaseChallenge:
                         var began = time.GetTimestamp();
-                        if (!connectors.IsCurrent(connector))
+                        if (!gateways.IsCurrent(gateway))
                             return PrivateAccessSessionCloseReason.LeaseDenied;
-                        var identity = await resolveConnector(connector.Fingerprint, lifetime.Token);
-                        if (identity is not DeploymentTargetConnectorIdentity current || current != connector.Identity)
+                        var identity = await resolveGateway(gateway.Fingerprint, lifetime.Token);
+                        if (identity != gateway.Identity)
                             return PrivateAccessSessionCloseReason.LeaseDenied;
                         var renewed = await renew(sessionId, lifetime.Token);
                         if (renewed is not PrivateAccessLeaseSnapshot authorized)
@@ -209,13 +186,13 @@ public sealed class PrivateAccessSessionRunner(
                         if (remaining <= TimeSpan.Zero || lifetime.IsCancellationRequested)
                             return PrivateAccessSessionCloseReason.LeaseDenied;
                         lifetime.CancelAfter(remaining);
-                        await toWorker.SendAsync(PrivateAccessFrameKind.LeaseAccepted, frame.Payload, lifetime.Token);
+                        await toGateway.SendAsync(PrivateAccessFrameKind.LeaseAccepted, frame.Payload, lifetime.Token);
                         break;
                     case PrivateAccessFrameKind.Ready when !ready:
                         if (await markStarted(sessionId, lifetime.Token) is not PrivateAccessSessionStarted)
                             return PrivateAccessSessionCloseReason.LeaseDenied;
                         ready = true;
-                        workerReady.TrySetResult();
+                        gatewayReady.TrySetResult();
                         break;
                     case PrivateAccessFrameKind.Data when ready && !halfClosed:
                         await toClient.SendAsync(frame.Kind, frame.Payload, lifetime.Token);
@@ -227,7 +204,7 @@ public sealed class PrivateAccessSessionRunner(
                             complete.TrySetResult();
                         break;
                     default:
-                        throw new InvalidDataException("Unexpected Private Access worker frame.");
+                        throw new InvalidDataException("Unexpected Private Access gateway frame.");
                 }
             }
         }

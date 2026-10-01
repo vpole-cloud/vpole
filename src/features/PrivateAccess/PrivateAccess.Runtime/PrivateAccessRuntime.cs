@@ -20,14 +20,20 @@ public static class PrivateAccessRuntime
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<PrivateAccessBrokerOptions>,
             PrivateAccessBrokerOptionsValidator>());
         services.TryAddSingleton(TimeProvider.System);
-        services.AddSingleton<PrivateAccessConnectorRegistry>();
-        services.AddSingleton<PrivateAccessWorkerRendezvous>();
+        services.AddSingleton<PrivateAccessGatewayRegistry>();
+        services.AddSingleton<PrivateAccessGatewayRendezvous>();
         services.AddSingleton<PrivateAccessSessionCapacity>();
-        services.AddScoped<PrivateAccessWorkerResources>();
+        services.AddScoped<PrivateAccessGatewayResources>();
+        services.AddScoped<EnsurePrivateAccessGateway>(provider =>
+            provider.GetRequiredService<PrivateAccessGatewayResources>().EnsureAsync);
+        services.AddScoped<DeletePrivateAccessGatewayEndpoint>(provider =>
+            provider.GetRequiredService<PrivateAccessGatewayResources>().DeleteEndpointAsync);
+        services.AddScoped<DeletePrivateAccessGateway>(provider =>
+            provider.GetRequiredService<PrivateAccessGatewayResources>().DeleteAsync);
+        services.AddScoped<PrivateAccessGatewayReconciler>();
         services.AddScoped<PrivateAccessSessionRunner>();
         services.AddScoped<PrivateAccessSessionCleanup>();
-        services.AddScoped<DeletePrivateAccessWorker>(provider =>
-            provider.GetRequiredService<PrivateAccessWorkerResources>().DeleteAsync);
+        services.AddHostedService<PrivateAccessGatewayReconciliationService>();
         services.AddHostedService<PrivateAccessSessionCleanupService>();
         return services;
     }
@@ -38,13 +44,13 @@ public static class PrivateAccessRuntime
             .Get<PrivateAccessBrokerOptions>();
         if (options?.Enabled != true)
             return builder;
-        var endpointUrl = builder.Configuration["Kestrel:Endpoints:PrivateAccessConnector:Url"];
+        var endpointUrl = builder.Configuration["Kestrel:Endpoints:PrivateAccessGateway:Url"];
         if (!Uri.TryCreate(endpointUrl, UriKind.Absolute, out var endpointUri) ||
-            endpointUri.Scheme != "https" || endpointUri.Port != options.ConnectorPort)
-            throw new InvalidOperationException("Configure the PrivateAccessConnector HTTPS Kestrel endpoint on PrivateAccess:ConnectorPort.");
+            endpointUri.Scheme != "https" || endpointUri.Port != options.GatewayPort)
+            throw new InvalidOperationException("Configure the PrivateAccessGateway HTTPS Kestrel endpoint on PrivateAccess:GatewayPort.");
         builder.WebHost.ConfigureKestrel((context, server) =>
             server.Configure(context.Configuration.GetSection("Kestrel"))
-                .Endpoint("PrivateAccessConnector", endpoint =>
+                .Endpoint("PrivateAccessGateway", endpoint =>
                 {
                     endpoint.HttpsOptions.ClientCertificateMode = ClientCertificateMode.RequireCertificate;
                     // TLS establishes possession. The route admits only a fresh database-backed
@@ -61,8 +67,9 @@ public static class PrivateAccessRuntime
         var options = app.Services.GetRequiredService<IOptions<PrivateAccessBrokerOptions>>().Value;
         app.Use(async (context, next) =>
         {
-            if (options.Enabled && context.Connection.LocalPort == options.ConnectorPort &&
-                context.Request.Path != "/private-access/connectors")
+            if (options.Enabled && context.Connection.LocalPort == options.GatewayPort &&
+                context.Request.Path != "/private-access/gateways" &&
+                context.Request.Path != "/private-access/gateway-streams")
             {
                 context.Response.StatusCode = 404;
                 return;
@@ -77,10 +84,10 @@ public static class PrivateAccessRuntime
 public sealed class PrivateAccessSessionCapacity(IOptions<PrivateAccessBrokerOptions> options) : IDisposable
 {
     public SemaphoreSlim Sessions { get; } = new(options.Value.MaximumSessions, options.Value.MaximumSessions);
-    public SemaphoreSlim Connectors { get; } = new(64, 64);
+    public SemaphoreSlim Gateways { get; } = new(64, 64);
     public void Dispose()
     {
         Sessions.Dispose();
-        Connectors.Dispose();
+        Gateways.Dispose();
     }
 }

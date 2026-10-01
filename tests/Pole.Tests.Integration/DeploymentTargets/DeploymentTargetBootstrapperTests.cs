@@ -300,7 +300,6 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
             new MongoDeleteDeploymentTarget(
                 fixture.DbContext.DeploymentTargets,
                 fixture.DbContext.DeploymentTargetSettings,
-                fixture.Database.GetCollection<Pole.Features.DeploymentTargets.Domain.DeploymentTargetConnector>("DeploymentTargetConnectors"),
                 new MongoEnsureNoDeploymentTargetReferences(
                         fixture.DbContext.DeploymentTargetReferences)
                     .InvokeAsync,

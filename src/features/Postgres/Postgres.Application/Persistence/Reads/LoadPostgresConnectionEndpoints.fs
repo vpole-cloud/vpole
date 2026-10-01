@@ -1,5 +1,6 @@
 namespace Pole.Features.Postgres.Application.Persistence.Reads
 
+open System
 open System.Collections.Immutable
 open System.Threading
 open MongoDB.Driver
@@ -11,6 +12,24 @@ open Pole.Features.ResourceConnections.Contracts
 open Pole.Workloads
 
 type MongoLoadPostgresConnectionEndpoints(clusters : IMongoCollection<PostgresCluster>) =
+    interface IResourceConnectionDestinationNameCapability with
+        member _.Kind = "postgres"
+        member _.ResourceType = PostgresResourceDeployment.ResourceType
+
+        member _.ResolveResourceIdAsync(tenantId, name, cancellationToken : CancellationToken) =
+            task {
+                let! matches =
+                    clusters.Find(PostgresFilters.byName tenantId name)
+                        .Limit(2)
+                        .ToListAsync(cancellationToken)
+                return
+                    ResourceConnectionNameResolution.ResolveUniqueResourceId(
+                        matches,
+                        Func<PostgresCluster, bool>(fun resource ->
+                            not (resource.Lifecycle :? DeletingPostgresClusterLifecycle)),
+                        Func<PostgresCluster, string>(fun resource -> resource.Id))
+            }
+
     interface IResourceConnectionDestinationCapability with
         member _.ResourceType = PostgresResourceDeployment.ResourceType
 

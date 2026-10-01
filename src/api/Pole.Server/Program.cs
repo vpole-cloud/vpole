@@ -115,8 +115,8 @@ app.MapWhen(
     });
 
 app.UsePrivateAccessRuntime();
-app.MapPrivateAccessConnectorEndpoint();
-app.MapPrivateAccessWorkerEndpoint();
+app.MapPrivateAccessGatewayControlEndpoint();
+app.MapPrivateAccessGatewayStreamEndpoint();
 app.MapPrivateAccessStreamEndpoint();
 app.MapDefaultEndpoints();
 app.UseTraceContext();
@@ -140,6 +140,7 @@ app.Services
     .ScheduleContainerRegistryRecurringJobs();
 
 app.MapGitHubCallbackEndpoints();
+app.MapPoleCliDiscovery(configuration);
 
 app.MapGet("/test-keycloak", () => "Hello World!")
     .RequireAuthorization();

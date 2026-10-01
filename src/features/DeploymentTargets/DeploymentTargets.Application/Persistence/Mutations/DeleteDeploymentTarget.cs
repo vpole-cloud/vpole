@@ -2,7 +2,6 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Persistence.References;
-using Pole.Features.DeploymentTargets.Application.Persistence.Connectors;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 
@@ -14,8 +13,7 @@ public union DeleteDeploymentTargetError(
     DeploymentTargetNotFound,
     DeploymentTargetRevisionConflict,
     DefaultDeploymentTargetDeletionRejected,
-    DeploymentTargetHasDurableReferences,
-    DeploymentTargetHasActiveConnectors);
+    DeploymentTargetHasDurableReferences);
 
 public union DeleteDeploymentTargetPersistenceOutcome(
     DeploymentTargetDeleted,
@@ -28,7 +26,6 @@ public delegate Task<DeleteDeploymentTargetPersistenceOutcome> DeleteDeploymentT
 internal sealed class MongoDeleteDeploymentTarget(
     IMongoCollection<DeploymentTarget> deploymentTargets,
     IMongoCollection<DeploymentTargetSettings> settings,
-    IMongoCollection<DeploymentTargetConnector> connectors,
     EnsureNoDeploymentTargetReferences ensureNoDeploymentTargetReferences,
     RunMongoOutcomeTransaction<DeleteDeploymentTargetPersistenceOutcome> runMongoTransaction,
     TimeProvider timeProvider)
@@ -102,16 +99,6 @@ internal sealed class MongoDeleteDeploymentTarget(
             {
                 return transaction.Abort(
                     Error(new DefaultDeploymentTargetDeletionRejected(current.Id)));
-            }
-
-            var activeConnector = await connectors
-                .Find(transaction.Session, DeploymentTargetConnectorFilters.ActiveOnTarget(current.Id))
-                .Limit(1)
-                .FirstOrDefaultAsync(ct);
-            if (activeConnector is not null)
-            {
-                return transaction.Abort(Error(
-                    new DeploymentTargetHasActiveConnectors(current.Id)));
             }
 
             var deletion = await deploymentTargets.DeleteOneAsync(

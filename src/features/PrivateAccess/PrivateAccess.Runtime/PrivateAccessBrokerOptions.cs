@@ -7,17 +7,15 @@ public sealed class PrivateAccessBrokerOptions
 {
     public const string Section = "PrivateAccess";
     public bool Enabled { get; set; }
-    public int ConnectorPort { get; set; } = 9444;
+    public int GatewayPort { get; set; } = 9444;
     public int MaximumSessions { get; set; } = 64;
-    public string WorkerNamespace { get; set; } = "pole-private-access";
-    public string WorkerImage { get; set; } = string.Empty;
+    public string GatewayImage { get; set; } = string.Empty;
     public string BrokerUri { get; set; } = string.Empty;
     public string[] BrokerAddresses { get; set; } = [];
 
-    public PrivateAccessWorkerSettings WorkerSettings() => new(
-        WorkerNamespace,
-        WorkerImage,
-        new Uri(BrokerUri),
+    public PrivateAccessGatewaySettings GatewaySettings() => new(
+        GatewayImage,
+        new UriBuilder(BrokerUri) { Port = GatewayPort }.Uri,
         BrokerAddresses.Select(IPAddress.Parse).ToArray());
 }
 
@@ -27,22 +25,27 @@ public sealed class PrivateAccessBrokerOptionsValidator : IValidateOptions<Priva
     {
         if (!options.Enabled)
             return ValidateOptionsResult.Success;
-        if (options.ConnectorPort is < 1 or > 65535 || options.MaximumSessions is < 1 or > 1024)
+        if (options.GatewayPort is < 1 or > 65535 ||
+            options.MaximumSessions is < 1 or > 1024)
             return ValidateOptionsResult.Fail("Private Access listener or session limits are invalid.");
-        if (!System.Text.RegularExpressions.Regex.IsMatch(options.WorkerNamespace,
-                "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"))
-            return ValidateOptionsResult.Fail("Private Access worker namespace must be a DNS label.");
-        if (string.IsNullOrWhiteSpace(options.WorkerImage) || options.WorkerImage.EndsWith(":latest", StringComparison.Ordinal))
-            return ValidateOptionsResult.Fail("Private Access requires an explicit, versioned worker image.");
+        if (string.IsNullOrWhiteSpace(options.GatewayImage) ||
+            options.GatewayImage.EndsWith(":latest", StringComparison.Ordinal))
+            return ValidateOptionsResult.Fail("Private Access requires an explicit, versioned gateway image.");
         if (!Uri.TryCreate(options.BrokerUri, UriKind.Absolute, out var uri) ||
             uri.Scheme != "https" || uri.UserInfo.Length != 0 || uri.Query.Length != 0 ||
             uri.Fragment.Length != 0 || uri.AbsolutePath != "/")
             return ValidateOptionsResult.Fail("Private Access broker URI must be an HTTPS origin.");
-        if (options.BrokerAddresses.Length == 0 || options.BrokerAddresses.Any(address =>
-                !IPAddress.TryParse(address, out var parsed) ||
-                parsed.Equals(IPAddress.Any) || parsed.Equals(IPAddress.IPv6Any) ||
-                IPAddress.IsLoopback(parsed) || parsed.IsIPv6Multicast))
-            return ValidateOptionsResult.Fail("Private Access requires exact reachable broker IP addresses for worker egress.");
+        if (options.BrokerAddresses.Length == 0 ||
+            options.BrokerAddresses.Any(address => !IsReachableAddress(address)))
+            return ValidateOptionsResult.Fail(
+                "Private Access requires exact reachable broker IP addresses for gateway egress.");
         return ValidateOptionsResult.Success;
     }
+
+    private static bool IsReachableAddress(string address) =>
+        IPAddress.TryParse(address, out var parsed) &&
+        !parsed.Equals(IPAddress.Any) &&
+        !parsed.Equals(IPAddress.IPv6Any) &&
+        !IPAddress.IsLoopback(parsed) &&
+        !parsed.IsIPv6Multicast;
 }
