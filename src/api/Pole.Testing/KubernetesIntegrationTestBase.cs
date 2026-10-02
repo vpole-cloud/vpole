@@ -137,7 +137,7 @@ public abstract class KubernetesIntegrationTestBase(
             return;
         }
 
-        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(3));
         V1Namespace existing;
         try
         {
@@ -185,7 +185,7 @@ public abstract class KubernetesIntegrationTestBase(
         catch (OperationCanceledException) when (timeout.IsCancellationRequested)
         {
             throw new TimeoutException(
-                $"Namespace '{NamespaceName}' on target '{Target.Key}' was not deleted within one minute.");
+                $"Namespace '{NamespaceName}' on target '{Target.Key}' was not deleted within three minutes.");
         }
     }
 }
