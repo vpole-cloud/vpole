@@ -35,6 +35,22 @@ internal sealed class PrivateAccessEndpointCatalog(
         };
     }
 
+    public async Task<PrivateAccessResolvedEndpoint?> ResolveReadOnlyAsync(
+        string tenantId,
+        ResourceTypeId resourceType,
+        string resourceId,
+        string endpointId,
+        CancellationToken cancellationToken)
+    {
+        if (!destinations.TryGetValue(resourceType, out var destination))
+            return null;
+        var found = await destination.LoadAvailableAsync(
+            tenantId, [resourceId], cancellationToken);
+        return found.TryGetValue(resourceId, out var endpoints)
+            ? Resolve(endpoints.Endpoints, endpointId)
+            : null;
+    }
+
     private static PrivateAccessResolvedEndpoint? Resolve(
         IReadOnlyCollection<ResourceConnectionEndpoint> endpoints,
         string endpointId)

@@ -1,4 +1,3 @@
-using Pole.Database;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Workloads;
 
@@ -14,8 +13,7 @@ public delegate Task<bool> IsPrivateAccessGrantRouteAvailable(
 
 internal sealed class MongoIsPrivateAccessGrantRouteAvailable(
     LoadExactResourceDeploymentRuntimePlacement loadPlacement,
-    PrivateAccessEndpointCatalog endpoints,
-    MongoRunTransaction transactions)
+    PrivateAccessEndpointCatalog endpoints)
 {
     public async Task<bool> InvokeAsync(
         string tenantId,
@@ -30,13 +28,8 @@ internal sealed class MongoIsPrivateAccessGrantRouteAvailable(
         if (placement is not { Status: "Applied", DesiredOperation: "Apply" })
             return false;
 
-        return await transactions.InvokeOutcomeAsync<bool>(
-            async (transaction, ct) =>
-            {
-                var endpoint = await endpoints.ResolveAsync(
-                    tenantId, resourceType, resourceId, endpointId,
-                    transaction.Session, ct);
-                return transaction.Abort(endpoint is not null);
-            }, cancellationToken);
+        var endpoint = await endpoints.ResolveReadOnlyAsync(
+            tenantId, resourceType, resourceId, endpointId, cancellationToken);
+        return endpoint is not null;
     }
 }

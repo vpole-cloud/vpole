@@ -44,6 +44,25 @@ internal sealed class MongoLoadRedisConnectionEndpoints(IMongoCollection<Redis> 
             return new ResourceConnectionDestinationMissing();
         if (resource.Lifecycle is DeletingRedisLifecycle)
             return new ResourceConnectionDestinationDeleting();
+        return Endpoints(resource);
+    }
+
+    public async Task<IReadOnlyDictionary<string, ResourceConnectionEndpointsFound>> LoadAvailableAsync(
+        string tenantId,
+        IReadOnlyCollection<string> resourceIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (resourceIds.Count == 0)
+            return new Dictionary<string, ResourceConnectionEndpointsFound>();
+        var resources = await services.Find(RedisFilters.ByIds(tenantId, resourceIds))
+            .ToListAsync(cancellationToken);
+        return resources
+            .Where(resource => resource.Lifecycle is not DeletingRedisLifecycle)
+            .ToDictionary(resource => resource.Id, Endpoints, StringComparer.Ordinal);
+    }
+
+    private static ResourceConnectionEndpointsFound Endpoints(Redis resource)
+    {
         var endpoint = RedisConnectionEndpoints.Redis;
         return new ResourceConnectionEndpointsFound(
             ImmutableList.Create(new ResourceConnectionEndpoint(

@@ -18,6 +18,13 @@ internal static class RedisFilters
             VisibleToTenant(tenantId),
             Builders<Redis>.Filter.Eq(redis => redis.Id, redisId));
 
+    public static FilterDefinition<Redis> ByIds(
+        string tenantId,
+        IReadOnlyCollection<string> redisIds) =>
+        Builders<Redis>.Filter.And(
+            VisibleToTenant(tenantId),
+            Builders<Redis>.Filter.In(redis => redis.Id, redisIds));
+
     public static FilterDefinition<Redis> ByName(
         string tenantId,
         string name) =>

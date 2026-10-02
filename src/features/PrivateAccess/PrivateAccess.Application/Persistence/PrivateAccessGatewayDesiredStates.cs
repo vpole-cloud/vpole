@@ -1,5 +1,4 @@
 using MongoDB.Driver;
-using Pole.Database;
 using Pole.Features.PrivateAccess.Contracts;
 using Pole.Features.PrivateAccess.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -7,10 +6,7 @@ using Pole.Workloads;
 
 namespace Pole.Features.PrivateAccess.Application.Persistence;
 
-internal sealed record PrivateAccessDesiredEndpoint(PrivateAccessResolvedEndpoint? Endpoint);
-
 internal sealed class PrivateAccessGatewayDesiredStates(
-    MongoRunTransaction transactions,
     IMongoCollection<PrivateAccessGrant> grants,
     LoadExactResourceDeploymentRuntimePlacement loadPlacement,
     PrivateAccessEndpointCatalog endpoints,
@@ -34,16 +30,9 @@ internal sealed class PrivateAccessGatewayDesiredStates(
             if (placement is not { Status: "Applied", DesiredOperation: "Apply" })
                 continue;
 
-            var resolved = await transactions.InvokeOutcomeAsync<PrivateAccessDesiredEndpoint>(
-                async (transaction, ct) =>
-                {
-                    var endpoint = await endpoints.ResolveAsync(
-                        grant.TenantId, resourceType, grant.ResourceId,
-                        grant.EndpointId, transaction.Session, ct);
-                    return transaction.Abort(new PrivateAccessDesiredEndpoint(endpoint));
-                },
-                cancellationToken);
-            var endpoint = resolved.Endpoint;
+            var endpoint = await endpoints.ResolveReadOnlyAsync(
+                grant.TenantId, resourceType, grant.ResourceId,
+                grant.EndpointId, cancellationToken);
             if (endpoint is null)
                 continue;
 

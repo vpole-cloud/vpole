@@ -38,6 +38,15 @@ public interface IResourceConnectionDestinationCapability
         string resourceId,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Advisory, tenant-scoped endpoint snapshots for listings and reconciliation.
+    /// Missing or deleting resources are omitted. Admission must use LoadAsync.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, ResourceConnectionEndpointsFound>> LoadAvailableAsync(
+        string tenantId,
+        IReadOnlyCollection<string> resourceIds,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>A provider resolves an immutable resource name within an already validated tenant.</summary>

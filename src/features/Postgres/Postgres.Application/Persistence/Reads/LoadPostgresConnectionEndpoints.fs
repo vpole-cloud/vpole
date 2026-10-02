@@ -1,6 +1,7 @@
 namespace Pole.Features.Postgres.Application.Persistence.Reads
 
 open System
+open System.Collections.Generic
 open System.Collections.Immutable
 open System.Threading
 open MongoDB.Driver
@@ -12,6 +13,15 @@ open Pole.Features.ResourceConnections.Contracts
 open Pole.Workloads
 
 type MongoLoadPostgresConnectionEndpoints(clusters : IMongoCollection<PostgresCluster>) =
+    let endpoints (resource : PostgresCluster) =
+        let port = NetworkPort.Create(PostgresConnectionEndpoints.TcpPort)
+        let endpoint = ResourceConnectionEndpoint(
+            PostgresConnectionEndpoints.ReadWriteId,
+            PostgresConnectionEndpoints.BuildReadWriteServiceName(resource.Id),
+            port,
+            port)
+        ResourceConnectionEndpointsFound(ImmutableList.Create(endpoint))
+
     interface IResourceConnectionDestinationNameCapability with
         member _.Kind = "postgres"
         member _.ResourceType = PostgresResourceDeployment.ResourceType
@@ -45,12 +55,18 @@ type MongoLoadPostgresConnectionEndpoints(clusters : IMongoCollection<PostgresCl
                 elif resource.Lifecycle :? DeletingPostgresClusterLifecycle then
                     return LoadResourceConnectionEndpointsOutcome(ResourceConnectionDestinationDeleting())
                 else
-                    let port = NetworkPort.Create(PostgresConnectionEndpoints.TcpPort)
-                    let endpoint = ResourceConnectionEndpoint(
-                        PostgresConnectionEndpoints.ReadWriteId,
-                        PostgresConnectionEndpoints.BuildReadWriteServiceName(resource.Id),
-                        port,
-                        port)
-                    return LoadResourceConnectionEndpointsOutcome(
-                        ResourceConnectionEndpointsFound(ImmutableList.Create(endpoint)))
+                    return LoadResourceConnectionEndpointsOutcome(endpoints resource)
+            }
+
+        member _.LoadAvailableAsync(tenantId, resourceIds : IReadOnlyCollection<string>, cancellationToken : CancellationToken) =
+            task {
+                let found = Dictionary<string, ResourceConnectionEndpointsFound>(StringComparer.Ordinal)
+                if resourceIds.Count > 0 then
+                    let! resources =
+                        clusters.Find(PostgresFilters.byIds tenantId resourceIds)
+                            .ToListAsync(cancellationToken)
+                    for resource in resources do
+                        if not (resource.Lifecycle :? DeletingPostgresClusterLifecycle) then
+                            found.Add(resource.Id, endpoints resource)
+                return found :> IReadOnlyDictionary<string, ResourceConnectionEndpointsFound>
             }

@@ -599,5 +599,15 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
                         "redis", "redis-service", NetworkPort.Create(6379),
                         NetworkPort.Create(6379)))));
         }
+
+        public Task<IReadOnlyDictionary<string, ResourceConnectionEndpointsFound>> LoadAvailableAsync(
+            string tenantId,
+            IReadOnlyCollection<string> resourceIds,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyDictionary<string, ResourceConnectionEndpointsFound>>(
+                resourceIds.ToDictionary(id => id, id =>
+                    new ResourceConnectionEndpointsFound(ImmutableList.Create(
+                        new ResourceConnectionEndpoint("redis", "redis-service",
+                            NetworkPort.Create(6379), NetworkPort.Create(6379))))));
     }
 }
