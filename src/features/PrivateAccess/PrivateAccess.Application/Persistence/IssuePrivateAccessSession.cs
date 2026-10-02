@@ -1,11 +1,10 @@
-using System.Security.Cryptography;
-using System.Text;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Outbox.Contracts;
+using Pole.Features.PrivateAccess.Application.Common;
 using Pole.Features.PrivateAccess.Contracts;
 using Pole.Features.PrivateAccess.Domain;
 using Pole.Features.PrivateAccess.Events;
@@ -98,8 +97,7 @@ internal sealed class MongoIssuePrivateAccessSession(
             if (endpoint is null)
                 return await DenyAsync(new PrivateAccessEndpointUnavailable(), PrivateAccessAuditReason.EndpointUnavailable);
 
-            var rawTicket = $"pole_pa_{Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant()}";
-            var ticketHash = HashTicket(rawTicket);
+            var (rawTicket, ticketHash) = PrivateAccessTicketCodec.Issue();
             var ticketExpiresAt = now.AddSeconds(30);
             if (ticketExpiresAt > grant.ExpiresAtUtc)
                 ticketExpiresAt = grant.ExpiresAtUtc;
@@ -168,7 +166,4 @@ internal sealed class MongoIssuePrivateAccessSession(
                 return transaction.Commit(denied);
             }
         }, cancellationToken);
-
-    internal static string HashTicket(string ticket) =>
-        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(ticket)));
 }

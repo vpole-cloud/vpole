@@ -2,6 +2,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.PrivateAccess.Contracts;
+using Pole.Features.PrivateAccess.Application.Common;
 using Pole.Features.PrivateAccess.Domain;
 
 namespace Pole.Features.PrivateAccess.Application.Persistence;
@@ -17,13 +18,10 @@ internal sealed class MongoPrivateAccessSessionAdmission(
         string ticket,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(ticket) ||
-            !ticket.StartsWith("pole_pa_", StringComparison.Ordinal) ||
-            ticket.Length != 72)
+        if (!PrivateAccessTicketCodec.TryHash(ticket, out var hash))
             return Task.FromResult<RedeemPrivateAccessSessionOutcome>(
                 new PrivateAccessTicketInvalid());
 
-        var hash = MongoIssuePrivateAccessSession.HashTicket(ticket);
         return transactions.InvokeOutcomeAsync<RedeemPrivateAccessSessionOutcome>(
             async (transaction, ct) =>
             {

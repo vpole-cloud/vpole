@@ -1,4 +1,6 @@
 using System.Collections.Immutable;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
@@ -209,6 +211,28 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         Assert.Contains(audit, item => item.Action == PrivateAccessAuditAction.SessionStarted);
         Assert.Contains(audit, item => item.Action == PrivateAccessAuditAction.SessionClosed);
         Assert.All(audit, item => Assert.DoesNotContain(issued.Ticket, item.ToBson().ToJson()));
+    }
+
+    [Fact]
+    public async Task NonCanonicalTicketCannotRedeemAnOtherwiseMatchingSession()
+    {
+        var grant = await CreateGrantAsync();
+        var issued = Assert.IsType<PrivateAccessSessionIssued>(
+            (await provider.GetRequiredService<IssuePrivateAccessSession>()(
+                TenantId, grant.Id, SubjectId)).Value);
+        var malformedTicket = "pole_pa_" + new string('g', 64);
+        var malformedHash = Convert.ToHexStringLower(SHA256.HashData(
+            Encoding.UTF8.GetBytes(malformedTicket)));
+        var sessions = fixture.Database.GetCollection<PrivateAccessSession>("PrivateAccessSessions");
+        await sessions.UpdateOneAsync(
+            item => item.Id == issued.SessionId,
+            Builders<PrivateAccessSession>.Update.Set(item => item.Ticket.Hash, malformedHash));
+
+        var outcome = await provider.GetRequiredService<RedeemPrivateAccessSession>()(malformedTicket);
+
+        Assert.IsType<PrivateAccessTicketInvalid>(outcome.Value);
+        var stored = await sessions.Find(item => item.Id == issued.SessionId).SingleAsync();
+        Assert.IsType<PrivateAccessTicketPending>(stored.State);
     }
 
     [Fact]
