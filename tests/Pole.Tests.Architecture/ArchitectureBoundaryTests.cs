@@ -78,6 +78,35 @@ public sealed class ArchitectureBoundaryTests
     ];
 
     [Fact]
+    public void PrivateAccessPersistedDomainModels_DeclareFactories()
+    {
+        var sources = ArchitectureSources.ProductionCSharp()
+            .Where(source => source.RelativePath.StartsWith(
+                "src/features/PrivateAccess/PrivateAccess.Domain/", StringComparison.Ordinal))
+            .ToArray();
+        var factories = sources.SelectMany(source => source.Root.DescendantNodes()
+                .OfType<ClassDeclarationSyntax>())
+            .ToDictionary(factory => factory.Identifier.ValueText, StringComparer.Ordinal);
+        var violations = sources.SelectMany(source => source.Root.DescendantNodes()
+                .OfType<RecordDeclarationSyntax>()
+                .Where(record => record.ParameterList?.Parameters.Any(parameter =>
+                    parameter.AttributeLists.SelectMany(list => list.Attributes)
+                        .Any(attribute => attribute.Name.ToString() == "BsonId")) == true)
+                .Where(record => !factories.TryGetValue(
+                    record.Identifier.ValueText + "Factory", out var factory) ||
+                    !factory.Members.OfType<MethodDeclarationSyntax>().Any(method =>
+                        method.Identifier.ValueText == "Create" &&
+                        method.ReturnType.ToString() == record.Identifier.ValueText &&
+                        method.Modifiers.Any(modifier => modifier.IsKind(SyntaxKind.PublicKeyword)) &&
+                        method.Modifiers.Any(modifier => modifier.IsKind(SyntaxKind.StaticKeyword))))
+                .Select(record => ArchitectureSources.Describe(source, record,
+                    $"persisted domain model '{record.Identifier.ValueText}' requires a factory")))
+            .ToArray();
+
+        AssertNoViolations(violations);
+    }
+
+    [Fact]
     public void ProductionSources_DoNotReferenceRemovedMongoContexts()
     {
         var csharpViolations = ArchitectureSources.ProductionCSharp()

@@ -17,6 +17,28 @@ public sealed record PrivateAccessAudit(
     [property: BsonRepresentation(BsonType.String)]
     PrivateAccessAuditReason? Reason = null);
 
+public static class PrivateAccessAuditFactory
+{
+    public static PrivateAccessAudit Create(
+        string tenantId,
+        string grantId,
+        string? sessionId,
+        string actorUserId,
+        PrivateAccessAuditAction action,
+        DateTime atUtc,
+        PrivateAccessAuditReason? reason = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(grantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(actorUserId);
+        if (atUtc.Kind != DateTimeKind.Utc)
+            throw new ArgumentException("Audit time must be UTC.", nameof(atUtc));
+
+        return new PrivateAccessAudit(ObjectId.GenerateNewId().ToString(),
+            tenantId, grantId, sessionId, actorUserId, action, atUtc, reason);
+    }
+}
+
 public enum PrivateAccessAuditAction
 {
     GrantCreated,

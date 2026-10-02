@@ -62,7 +62,7 @@ internal sealed class PrivateAccessGatewayRegistrations(
                     .FirstOrDefaultAsync(ct);
                 if (previousOwner is null)
                     await owners.InsertOneAsync(transaction.Session,
-                        PrivateAccessBrokerOwner.Create(
+                        PrivateAccessBrokerOwnerFactory.Create(
                             identity.GatewayId, identity.TenantId,
                             identity.DeploymentTargetId, identity.Generation,
                             identity.Revision), cancellationToken: ct);

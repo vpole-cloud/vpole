@@ -15,10 +15,8 @@ public sealed record PrivateAccessSession(
     DateTime SessionDeadlineUtc,
     DateTime CreatedAtUtc,
     long Revision,
-    PrivateAccessSessionState State)
-{
-    public DateTime? CleanupLastAttemptAtUtc { get; init; }
-}
+    PrivateAccessSessionState State,
+    DateTime? CleanupLastAttemptAtUtc);
 
 public sealed record PrivateAccessSessionGrantSnapshot(
     string Id,
@@ -80,7 +78,8 @@ public static class PrivateAccessSessionFactory
             sessionDeadlineUtc,
             createdAtUtc,
             1,
-            new PrivateAccessTicketPending());
+            new PrivateAccessTicketPending(),
+            null);
     }
 }
 

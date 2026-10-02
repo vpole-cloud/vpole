@@ -1,4 +1,3 @@
-using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.PrivateAccess.Contracts;
@@ -265,8 +264,8 @@ internal sealed class MongoPrivateAccessSessionAdmission(
         IClientSessionHandle session,
         CancellationToken cancellationToken) =>
         audit.InsertOneAsync(session,
-            new PrivateAccessAudit(
-                ObjectId.GenerateNewId().ToString(), current.TenantId,
+            PrivateAccessAuditFactory.Create(
+                current.TenantId,
                 current.Grant.Id, current.Id, current.SubjectUserId, action, now),
             cancellationToken: cancellationToken);
 }

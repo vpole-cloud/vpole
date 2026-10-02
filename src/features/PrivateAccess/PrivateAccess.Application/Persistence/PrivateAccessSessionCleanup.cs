@@ -1,4 +1,3 @@
-using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.PrivateAccess.Contracts;
@@ -83,7 +82,7 @@ internal sealed class MongoPrivateAccessSessionCleanup(
                         return transaction.Abort(new PrivateAccessCleanupClaim(null));
                     if (current.State is not PrivateAccessSessionCleaning)
                         await audit.InsertOneAsync(transaction.Session,
-                            new PrivateAccessAudit(ObjectId.GenerateNewId().ToString(),
+                            PrivateAccessAuditFactory.Create(
                                 current.TenantId, current.Grant.Id, current.Id,
                                 current.SubjectUserId, PrivateAccessAuditAction.CleanupClaimed, nowUtc),
                             cancellationToken: ct);
@@ -140,7 +139,7 @@ internal sealed class MongoPrivateAccessSessionCleanup(
                 if (changed.MatchedCount != 1)
                     throw new InvalidOperationException("Session changed during cleanup acknowledgment.");
                 await audit.InsertOneAsync(transaction.Session,
-                    new PrivateAccessAudit(ObjectId.GenerateNewId().ToString(),
+                    PrivateAccessAuditFactory.Create(
                         current.TenantId, current.Grant.Id, current.Id,
                         current.SubjectUserId, PrivateAccessAuditAction.CleanupCompleted, now),
                     cancellationToken: ct);

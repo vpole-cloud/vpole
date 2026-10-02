@@ -1,4 +1,3 @@
-using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
@@ -65,8 +64,8 @@ internal sealed class MongoRevokePrivateAccessGrant(
                 cancellationToken: ct);
             if (changed.ModifiedCount != 1)
                 throw new InvalidOperationException("Grant changed during revocation transaction.");
-            await audit.InsertOneAsync(transaction.Session, new PrivateAccessAudit(
-                ObjectId.GenerateNewId().ToString(), tenantId, grantId,
+            await audit.InsertOneAsync(transaction.Session, PrivateAccessAuditFactory.Create(
+                tenantId, grantId,
                 null, actorUserId, PrivateAccessAuditAction.GrantRevoked, now), cancellationToken: ct);
             await storeOutboxWrites(transaction.Session,
                 [OutboxWrite.Create(new PrivateAccessGrantRevokedEvent(grantId, updated.Revision)

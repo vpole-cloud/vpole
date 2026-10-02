@@ -1,4 +1,3 @@
-using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
@@ -104,8 +103,8 @@ internal sealed class MongoCreatePrivateAccessGrant(
                 command.ResourceId, command.ResourceDeploymentId, command.EndpointId,
                 command.ActorUserId, now, command.ExpiresAtUtc);
             await grants.InsertOneAsync(transaction.Session, grant, cancellationToken: ct);
-            await audit.InsertOneAsync(transaction.Session, new PrivateAccessAudit(
-                ObjectId.GenerateNewId().ToString(), command.TenantId,
+            await audit.InsertOneAsync(transaction.Session, PrivateAccessAuditFactory.Create(
+                command.TenantId,
                 grant.Id, null, command.ActorUserId, PrivateAccessAuditAction.GrantCreated, now),
                 cancellationToken: ct);
             await storeOutboxWrites(transaction.Session,

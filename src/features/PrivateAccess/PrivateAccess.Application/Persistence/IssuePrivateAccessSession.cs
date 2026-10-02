@@ -1,4 +1,3 @@
-using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
@@ -142,8 +141,8 @@ internal sealed class MongoIssuePrivateAccessSession(
 
             await sessions.InsertOneAsync(transaction.Session, accessSession,
                 cancellationToken: ct);
-            await audit.InsertOneAsync(transaction.Session, new PrivateAccessAudit(
-                ObjectId.GenerateNewId().ToString(), tenantId, grant.Id,
+            await audit.InsertOneAsync(transaction.Session, PrivateAccessAuditFactory.Create(
+                tenantId, grant.Id,
                 accessSession.Id, subjectUserId, PrivateAccessAuditAction.SessionIssued, now),
                 cancellationToken: ct);
             await storeOutboxWrites(transaction.Session,
@@ -159,8 +158,8 @@ internal sealed class MongoIssuePrivateAccessSession(
                 IssuePrivateAccessSessionOutcome denied,
                 PrivateAccessAuditReason reason)
             {
-                await audit.InsertOneAsync(transaction.Session, new PrivateAccessAudit(
-                    ObjectId.GenerateNewId().ToString(), tenantId, grantId,
+                await audit.InsertOneAsync(transaction.Session, PrivateAccessAuditFactory.Create(
+                    tenantId, grantId,
                     null, subjectUserId, PrivateAccessAuditAction.SessionIssueDenied, now, reason),
                     cancellationToken: ct);
                 return transaction.Commit(denied);
