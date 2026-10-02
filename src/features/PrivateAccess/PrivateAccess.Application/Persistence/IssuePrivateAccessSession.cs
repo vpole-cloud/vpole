@@ -143,7 +143,7 @@ internal sealed class MongoIssuePrivateAccessSession(
                 cancellationToken: ct);
             await audit.InsertOneAsync(transaction.Session, PrivateAccessAuditFactory.Create(
                 tenantId, grant.Id,
-                accessSession.Id, subjectUserId, PrivateAccessAuditAction.SessionIssued, now),
+                accessSession.Id, subjectUserId, now, new PrivateAccessSessionIssuedAudit()),
                 cancellationToken: ct);
             await storeOutboxWrites(transaction.Session,
                 [OutboxWrite.Create(new PrivateAccessSessionIssuedEvent(
@@ -160,7 +160,7 @@ internal sealed class MongoIssuePrivateAccessSession(
             {
                 await audit.InsertOneAsync(transaction.Session, PrivateAccessAuditFactory.Create(
                     tenantId, grantId,
-                    null, subjectUserId, PrivateAccessAuditAction.SessionIssueDenied, now, reason),
+                    null, subjectUserId, now, new PrivateAccessSessionIssueDeniedAudit(reason)),
                     cancellationToken: ct);
                 return transaction.Commit(denied);
             }

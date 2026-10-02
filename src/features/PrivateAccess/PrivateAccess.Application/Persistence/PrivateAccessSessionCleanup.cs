@@ -84,7 +84,7 @@ internal sealed class MongoPrivateAccessSessionCleanup(
                         await audit.InsertOneAsync(transaction.Session,
                             PrivateAccessAuditFactory.Create(
                                 current.TenantId, current.Grant.Id, current.Id,
-                                current.SubjectUserId, PrivateAccessAuditAction.CleanupClaimed, nowUtc),
+                                current.SubjectUserId, nowUtc, new PrivateAccessCleanupClaimedAudit()),
                             cancellationToken: ct);
                     return transaction.Commit(new PrivateAccessCleanupClaim(ToSnapshot(current)));
                 }, cancellationToken);
@@ -141,7 +141,7 @@ internal sealed class MongoPrivateAccessSessionCleanup(
                 await audit.InsertOneAsync(transaction.Session,
                     PrivateAccessAuditFactory.Create(
                         current.TenantId, current.Grant.Id, current.Id,
-                        current.SubjectUserId, PrivateAccessAuditAction.CleanupCompleted, now),
+                        current.SubjectUserId, now, new PrivateAccessCleanupCompletedAudit()),
                     cancellationToken: ct);
                 return transaction.Commit(new MarkPrivateAccessSessionCleanedOutcome(
                     new Pole.Features.PrivateAccess.Contracts.PrivateAccessSessionCleaned()));

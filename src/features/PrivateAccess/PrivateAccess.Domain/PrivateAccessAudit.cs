@@ -11,11 +11,8 @@ public sealed record PrivateAccessAudit(
     string GrantId,
     string? SessionId,
     string ActorUserId,
-    [property: BsonRepresentation(BsonType.String)]
-    PrivateAccessAuditAction Action,
     DateTime AtUtc,
-    [property: BsonRepresentation(BsonType.String)]
-    PrivateAccessAuditReason? Reason = null);
+    PrivateAccessAuditState State);
 
 public static class PrivateAccessAuditFactory
 {
@@ -24,34 +21,72 @@ public static class PrivateAccessAuditFactory
         string grantId,
         string? sessionId,
         string actorUserId,
-        PrivateAccessAuditAction action,
         DateTime atUtc,
-        PrivateAccessAuditReason? reason = null)
+        PrivateAccessAuditState state)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(grantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(actorUserId);
+        ArgumentNullException.ThrowIfNull(state);
         if (atUtc.Kind != DateTimeKind.Utc)
             throw new ArgumentException("Audit time must be UTC.", nameof(atUtc));
+        var requiresSession = state is PrivateAccessSessionIssuedAudit or
+            PrivateAccessSessionRedeemedAudit or PrivateAccessSessionDeniedAudit or
+            PrivateAccessSessionStartedAudit or PrivateAccessSessionClosedAudit or
+            PrivateAccessCleanupClaimedAudit or PrivateAccessCleanupCompletedAudit;
+        if (requiresSession == string.IsNullOrWhiteSpace(sessionId))
+            throw new ArgumentException("Audit session identity does not match its state.", nameof(sessionId));
 
         return new PrivateAccessAudit(ObjectId.GenerateNewId().ToString(),
-            tenantId, grantId, sessionId, actorUserId, action, atUtc, reason);
+            tenantId, grantId, sessionId, actorUserId, atUtc, state);
     }
 }
 
-public enum PrivateAccessAuditAction
-{
-    GrantCreated,
-    GrantRevoked,
-    SessionIssued,
-    SessionIssueDenied,
-    SessionRedeemed,
-    SessionDenied,
-    SessionStarted,
-    SessionClosed,
-    CleanupClaimed,
-    CleanupCompleted
-}
+[BsonDiscriminator(RootClass = true)]
+[BsonKnownTypes(
+    typeof(PrivateAccessGrantCreatedAudit),
+    typeof(PrivateAccessGrantRevokedAudit),
+    typeof(PrivateAccessSessionIssuedAudit),
+    typeof(PrivateAccessSessionIssueDeniedAudit),
+    typeof(PrivateAccessSessionRedeemedAudit),
+    typeof(PrivateAccessSessionDeniedAudit),
+    typeof(PrivateAccessSessionStartedAudit),
+    typeof(PrivateAccessSessionClosedAudit),
+    typeof(PrivateAccessCleanupClaimedAudit),
+    typeof(PrivateAccessCleanupCompletedAudit))]
+public closed record PrivateAccessAuditState;
+
+[BsonDiscriminator("GrantCreated")]
+public sealed record PrivateAccessGrantCreatedAudit : PrivateAccessAuditState;
+
+[BsonDiscriminator("GrantRevoked")]
+public sealed record PrivateAccessGrantRevokedAudit : PrivateAccessAuditState;
+
+[BsonDiscriminator("SessionIssued")]
+public sealed record PrivateAccessSessionIssuedAudit : PrivateAccessAuditState;
+
+[BsonDiscriminator("SessionIssueDenied")]
+public sealed record PrivateAccessSessionIssueDeniedAudit(
+    [property: BsonRepresentation(BsonType.String)]
+    PrivateAccessAuditReason Reason) : PrivateAccessAuditState;
+
+[BsonDiscriminator("SessionRedeemed")]
+public sealed record PrivateAccessSessionRedeemedAudit : PrivateAccessAuditState;
+
+[BsonDiscriminator("SessionDenied")]
+public sealed record PrivateAccessSessionDeniedAudit : PrivateAccessAuditState;
+
+[BsonDiscriminator("SessionStarted")]
+public sealed record PrivateAccessSessionStartedAudit : PrivateAccessAuditState;
+
+[BsonDiscriminator("SessionClosed")]
+public sealed record PrivateAccessSessionClosedAudit : PrivateAccessAuditState;
+
+[BsonDiscriminator("CleanupClaimed")]
+public sealed record PrivateAccessCleanupClaimedAudit : PrivateAccessAuditState;
+
+[BsonDiscriminator("CleanupCompleted")]
+public sealed record PrivateAccessCleanupCompletedAudit : PrivateAccessAuditState;
 
 public enum PrivateAccessAuditReason
 {

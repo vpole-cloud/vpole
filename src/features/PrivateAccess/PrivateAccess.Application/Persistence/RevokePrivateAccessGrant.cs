@@ -66,7 +66,7 @@ internal sealed class MongoRevokePrivateAccessGrant(
                 throw new InvalidOperationException("Grant changed during revocation transaction.");
             await audit.InsertOneAsync(transaction.Session, PrivateAccessAuditFactory.Create(
                 tenantId, grantId,
-                null, actorUserId, PrivateAccessAuditAction.GrantRevoked, now), cancellationToken: ct);
+                null, actorUserId, now, new PrivateAccessGrantRevokedAudit()), cancellationToken: ct);
             await storeOutboxWrites(transaction.Session,
                 [OutboxWrite.Create(new PrivateAccessGrantRevokedEvent(grantId, updated.Revision)
                 {

@@ -129,11 +129,13 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         var audit = Assert.Single(await fixture.Database.GetCollection<PrivateAccessAudit>("PrivateAccessAudit")
             .Find(Builders<PrivateAccessAudit>.Filter.Empty).ToListAsync());
         Assert.Equal(grant.Id, audit.GrantId);
-        Assert.Equal(PrivateAccessAuditAction.GrantCreated, audit.Action);
+        Assert.IsType<PrivateAccessGrantCreatedAudit>(audit.State);
         var storedAudit = await fixture.Database.GetCollection<BsonDocument>("PrivateAccessAudit")
             .Find(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(audit.Id)))
             .SingleAsync();
-        Assert.Equal("GrantCreated", storedAudit["Action"].AsString);
+        Assert.True(storedAudit.Contains("State"));
+        Assert.False(storedAudit.Contains("Action"));
+        Assert.False(storedAudit.Contains("Reason"));
         Assert.Equal(1, await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
             Builders<Pole.Features.Outbox.Application.Model.OutboxMessage>.Filter.Empty));
         var roundTrip = BsonSerializer.Deserialize<PrivateAccessGrant>(grant.ToBson());
@@ -208,8 +210,8 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
                 issued.SessionId)).Value);
         var audit = await fixture.Database.GetCollection<PrivateAccessAudit>("PrivateAccessAudit")
             .Find(item => item.SessionId == issued.SessionId).ToListAsync();
-        Assert.Contains(audit, item => item.Action == PrivateAccessAuditAction.SessionStarted);
-        Assert.Contains(audit, item => item.Action == PrivateAccessAuditAction.SessionClosed);
+        Assert.Contains(audit, item => item.State is PrivateAccessSessionStartedAudit);
+        Assert.Contains(audit, item => item.State is PrivateAccessSessionClosedAudit);
         Assert.All(audit, item => Assert.DoesNotContain(issued.Ticket, item.ToBson().ToJson()));
     }
 
@@ -526,8 +528,8 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         var audit = await fixture.Database.GetCollection<PrivateAccessAudit>("PrivateAccessAudit")
             .Find(item => item.GrantId == grant.Id).ToListAsync();
         Assert.Contains(audit, item =>
-            item.Action == PrivateAccessAuditAction.SessionIssueDenied &&
-            item.Reason == PrivateAccessAuditReason.SubjectMismatch);
+            item.State is PrivateAccessSessionIssueDeniedAudit
+            { Reason: PrivateAccessAuditReason.SubjectMismatch });
         Assert.All(audit, item => Assert.Null(item.SessionId));
         Assert.Equal(1, await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
             Builders<Pole.Features.Outbox.Application.Model.OutboxMessage>.Filter.Empty));
