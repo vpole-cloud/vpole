@@ -103,8 +103,8 @@ internal sealed class MongoIssuePrivateAccessSession(
             var ticketExpiresAt = now.AddSeconds(30);
             if (ticketExpiresAt > grant.ExpiresAtUtc)
                 ticketExpiresAt = grant.ExpiresAtUtc;
-            var accessSession = new PrivateAccessSession(
-                ObjectId.GenerateNewId().ToString(), tenantId, subjectUserId,
+            var accessSession = PrivateAccessSessionFactory.Create(
+                tenantId, subjectUserId,
                 new PrivateAccessSessionGrantSnapshot(
                     grant.Id, grant.Revision, grant.ResourceType, grant.ResourceId,
                     grant.ResourceDeploymentId, grant.EndpointId),
@@ -114,7 +114,7 @@ internal sealed class MongoIssuePrivateAccessSession(
                     placement.IsolationScopeId, placement.KubernetesNamespace,
                     endpoint.ServiceName, endpoint.ServicePort, endpoint.TargetPort,
                     placement.DeploymentRevision, placement.DesiredGeneration),
-                grant.ExpiresAtUtc, now, 1, new PrivateAccessTicketPending());
+                grant.ExpiresAtUtc, now);
 
             var checkedAccess = await admission.CheckAsync(
                 accessSession, transaction.Session, ct);

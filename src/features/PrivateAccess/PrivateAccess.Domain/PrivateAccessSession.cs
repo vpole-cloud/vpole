@@ -43,6 +43,47 @@ public sealed record PrivateAccessSessionRouteSnapshot(
     long DeploymentRevision,
     long DesiredGeneration);
 
+public static class PrivateAccessSessionFactory
+{
+    public static PrivateAccessSession Create(
+        string tenantId,
+        string subjectUserId,
+        PrivateAccessSessionGrantSnapshot grant,
+        PrivateAccessSessionTicket ticket,
+        PrivateAccessSessionRouteSnapshot route,
+        DateTime sessionDeadlineUtc,
+        DateTime createdAtUtc)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(subjectUserId);
+        ArgumentNullException.ThrowIfNull(grant);
+        ArgumentNullException.ThrowIfNull(ticket);
+        ArgumentNullException.ThrowIfNull(route);
+        if (createdAtUtc.Kind != DateTimeKind.Utc ||
+            sessionDeadlineUtc.Kind != DateTimeKind.Utc ||
+            ticket.ExpiresAtUtc.Kind != DateTimeKind.Utc ||
+            createdAtUtc >= ticket.ExpiresAtUtc ||
+            ticket.ExpiresAtUtc > sessionDeadlineUtc)
+            throw new ArgumentException("Private access session times must form a valid UTC window.");
+        if (grant.Revision < 1 || route.DeploymentRevision < 1 || route.DesiredGeneration < 1)
+            throw new ArgumentException("Private access session revisions must be positive.");
+        if (route.ServicePort is < 1 or > 65535 || route.TargetPort is < 1 or > 65535)
+            throw new ArgumentOutOfRangeException(nameof(route), "Private access route ports must be valid TCP ports.");
+
+        return new PrivateAccessSession(
+            ObjectId.GenerateNewId().ToString(),
+            tenantId,
+            subjectUserId,
+            grant,
+            ticket,
+            route,
+            sessionDeadlineUtc,
+            createdAtUtc,
+            1,
+            new PrivateAccessTicketPending());
+    }
+}
+
 [BsonDiscriminator(RootClass = true)]
 [BsonKnownTypes(
     typeof(PrivateAccessTicketPending),
