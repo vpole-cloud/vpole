@@ -162,6 +162,11 @@ public sealed class SecretProjectionTargetTests
             Assert.Equal("target", id);
             return Failure is null ? Task.FromResult(client) : Task.FromException<IKubernetes>(Failure);
         }
+        public Task<IKubernetes> GetForCleanupAsync(
+            string deploymentTargetId,
+            CancellationToken cancellationToken = default) =>
+            GetAsync(deploymentTargetId, cancellationToken);
+
         public Task<IKubernetes> GetDefaultAsync(CancellationToken ct = default) => throw new InvalidOperationException("Default target must not be used.");
     }
 

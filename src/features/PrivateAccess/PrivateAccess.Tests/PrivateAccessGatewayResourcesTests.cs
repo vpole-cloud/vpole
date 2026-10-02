@@ -142,6 +142,11 @@ public sealed class PrivateAccessGatewayResourcesTests
     {
         public Task<IKubernetes> GetAsync(string id, CancellationToken ct = default) => Task.FromResult(client);
 
+        public Task<IKubernetes> GetForCleanupAsync(
+            string deploymentTargetId,
+            CancellationToken cancellationToken = default) =>
+            GetAsync(deploymentTargetId, cancellationToken);
+
         public Task<IKubernetes> GetDefaultAsync(CancellationToken ct = default) =>
             throw new InvalidOperationException("Target-specific client required.");
     }

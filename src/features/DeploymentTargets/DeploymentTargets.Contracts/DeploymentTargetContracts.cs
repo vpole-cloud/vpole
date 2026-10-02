@@ -18,8 +18,7 @@ public interface IKubernetesClientProvider
     /// </summary>
     Task<IKubernetes> GetForCleanupAsync(
         string deploymentTargetId,
-        CancellationToken cancellationToken = default) =>
-        GetAsync(deploymentTargetId, cancellationToken);
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Transitional single-cluster path for resources that do not carry placement yet.

@@ -213,6 +213,11 @@ public sealed class ResourceConnectionPolicyKubernetesTests : KubernetesIntegrat
             string deploymentTargetId,
             CancellationToken cancellationToken = default) => Task.FromResult(kubernetes);
 
+        public Task<IKubernetes> GetForCleanupAsync(
+            string deploymentTargetId,
+            CancellationToken cancellationToken = default) =>
+            GetAsync(deploymentTargetId, cancellationToken);
+
         public Task<IKubernetes> GetDefaultAsync(CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("A persisted target is required.");
     }

@@ -91,6 +91,11 @@ internal sealed class ManagedProjectionFixture : IDisposable
             Xunit.Assert.Equal(target, deploymentTargetId);
             return Task.FromResult(kubernetes);
         }
+        public Task<IKubernetes> GetForCleanupAsync(
+            string deploymentTargetId,
+            CancellationToken cancellationToken = default) =>
+            GetAsync(deploymentTargetId, cancellationToken);
+
         public Task<IKubernetes> GetDefaultAsync(CancellationToken cancellationToken = default) =>
             throw new Xunit.Sdk.XunitException("Secret projection must use persisted target.");
     }

@@ -111,6 +111,11 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             Calls++;
             throw new InvalidOperationException("A revoked target must not reach Kubernetes.");
         }
+        public Task<IKubernetes> GetForCleanupAsync(
+            string deploymentTargetId,
+            CancellationToken cancellationToken = default) =>
+            GetAsync(deploymentTargetId, cancellationToken);
+
         public Task<IKubernetes> GetDefaultAsync(CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Default target must not be used.");
     }

@@ -334,6 +334,11 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
             CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("No gateway resources are reconciled in transport tests.");
 
+        public Task<IKubernetes> GetForCleanupAsync(
+            string deploymentTargetId,
+            CancellationToken cancellationToken = default) =>
+            GetAsync(deploymentTargetId, cancellationToken);
+
         public Task<IKubernetes> GetDefaultAsync(
             CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("No default gateway target is used.");

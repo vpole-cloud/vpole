@@ -359,6 +359,11 @@ public sealed class PostgresResourceDeploymentAdapterTests
             return Task.FromResult(kubernetes);
         }
 
+        public Task<IKubernetes> GetForCleanupAsync(
+            string deploymentTargetId,
+            CancellationToken cancellationToken = default) =>
+            GetAsync(deploymentTargetId, cancellationToken);
+
         public Task<IKubernetes> GetDefaultAsync(
             CancellationToken cancellationToken = default) =>
             throw new Xunit.Sdk.XunitException(

@@ -84,6 +84,11 @@ public sealed class SecretProjectionKubernetesTests(KubernetesClusterFixture fix
             Assert.Equal("selected-target", id);
             return Task.FromResult(client);
         }
+        public Task<IKubernetes> GetForCleanupAsync(
+            string deploymentTargetId,
+            CancellationToken cancellationToken = default) =>
+            GetAsync(deploymentTargetId, cancellationToken);
+
         public Task<IKubernetes> GetDefaultAsync(CancellationToken ct = default) => throw new InvalidOperationException("Ambient target is forbidden.");
     }
 }

@@ -144,6 +144,11 @@ public sealed class ComputeProfileTargetMappingValidatorTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult(kubernetes);
 
+        public Task<IKubernetes> GetForCleanupAsync(
+            string deploymentTargetId,
+            CancellationToken cancellationToken = default) =>
+            GetAsync(deploymentTargetId, cancellationToken);
+
         public Task<IKubernetes> GetDefaultAsync(
             CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("The default client must not be used.");
@@ -156,6 +161,11 @@ public sealed class ComputeProfileTargetMappingValidatorTests
             CancellationToken cancellationToken = default) =>
             throw new Xunit.Sdk.XunitException(
                 "Kubernetes must not be resolved after deployment-target admission fails.");
+
+        public Task<IKubernetes> GetForCleanupAsync(
+            string deploymentTargetId,
+            CancellationToken cancellationToken = default) =>
+            GetAsync(deploymentTargetId, cancellationToken);
 
         public Task<IKubernetes> GetDefaultAsync(
             CancellationToken cancellationToken = default) =>
@@ -171,6 +181,11 @@ public sealed class ComputeProfileTargetMappingValidatorTests
             Task.FromException<IKubernetes>(new DeploymentTargetUnavailableException(
                 deploymentTargetId,
                 DeploymentTargetUnavailableReason.ConnectionUnavailable));
+
+        public Task<IKubernetes> GetForCleanupAsync(
+            string deploymentTargetId,
+            CancellationToken cancellationToken = default) =>
+            GetAsync(deploymentTargetId, cancellationToken);
 
         public Task<IKubernetes> GetDefaultAsync(
             CancellationToken cancellationToken = default) =>

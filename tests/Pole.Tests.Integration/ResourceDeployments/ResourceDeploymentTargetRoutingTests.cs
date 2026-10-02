@@ -339,6 +339,11 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             return Task.FromResult(clients[deploymentTargetId]);
         }
 
+        public Task<IKubernetes> GetForCleanupAsync(
+            string deploymentTargetId,
+            CancellationToken cancellationToken = default) =>
+            GetAsync(deploymentTargetId, cancellationToken);
+
         public Task<IKubernetes> GetDefaultAsync(
             CancellationToken cancellationToken = default)
         {

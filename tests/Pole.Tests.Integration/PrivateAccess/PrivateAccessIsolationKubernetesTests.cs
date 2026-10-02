@@ -219,6 +219,11 @@ public sealed class PrivateAccessIsolationKubernetesTests : KubernetesIntegratio
     {
         public Task<IKubernetes> GetAsync(string deploymentTargetId, CancellationToken cancellationToken = default) =>
             Task.FromResult(client);
+        public Task<IKubernetes> GetForCleanupAsync(
+            string deploymentTargetId,
+            CancellationToken cancellationToken = default) =>
+            GetAsync(deploymentTargetId, cancellationToken);
+
         public Task<IKubernetes> GetDefaultAsync(CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Private Access requires an exact deployment target.");
     }
