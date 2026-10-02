@@ -12,19 +12,65 @@ public static class PrivateAccessStreamEndpoint
 {
     public static IEndpointRouteBuilder MapPrivateAccessStreamEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/private-access/streams", HandleAsync).AllowAnonymous();
+        app.MapGet("/private-access/streams", HandleExternalAsync).AllowAnonymous();
+        app.MapGet("/_private-access/relay/streams", HandleInternalAsync).AllowAnonymous();
         return app;
     }
 
-    private static async Task HandleAsync(
+    private static async Task HandleExternalAsync(
         HttpContext context,
         IOptions<PrivateAccessBrokerOptions> options,
+        LocatePrivateAccessTicket locate,
+        PrivateAccessBrokerRouting routing,
+        PrivateAccessPeerRelay relay,
+        PrivateAccessGatewayRegistry registry,
         PrivateAccessSessionCapacity capacity,
+        PrivateAccessDrainState drain,
         PrivateAccessSessionRunner runner)
     {
-        if (!options.Value.Enabled || !context.Request.IsHttps || !context.WebSockets.IsWebSocketRequest)
+        if (!options.Value.Enabled || !context.Request.IsHttps ||
+            !context.WebSockets.IsWebSocketRequest || drain.IsDraining)
         {
             context.Response.StatusCode = 404;
+            return;
+        }
+        await HandleVerifiedAsync(context, false, locate, routing, relay,
+            registry, capacity, drain, runner);
+    }
+
+    private static async Task HandleInternalAsync(
+        HttpContext context,
+        LocatePrivateAccessTicket locate,
+        PrivateAccessBrokerRouting routing,
+        PrivateAccessPeerRelay relay,
+        PrivateAccessGatewayRegistry registry,
+        PrivateAccessSessionCapacity capacity,
+        PrivateAccessDrainState drain,
+        PrivateAccessSessionRunner runner)
+    {
+        if (!await relay.IsAuthenticatedAsync(context))
+        {
+            context.Response.StatusCode = 401;
+            return;
+        }
+        await HandleVerifiedAsync(context, true, locate, routing, relay,
+            registry, capacity, drain, runner);
+    }
+
+    private static async Task HandleVerifiedAsync(
+        HttpContext context,
+        bool internalRequest,
+        LocatePrivateAccessTicket locate,
+        PrivateAccessBrokerRouting routing,
+        PrivateAccessPeerRelay relay,
+        PrivateAccessGatewayRegistry registry,
+        PrivateAccessSessionCapacity capacity,
+        PrivateAccessDrainState drain,
+        PrivateAccessSessionRunner runner)
+    {
+        if (drain.IsDraining)
+        {
+            context.Response.StatusCode = 503;
             return;
         }
         var ticket = PrivateAccessTicketHeader.Read(context.Request);
@@ -33,12 +79,41 @@ public static class PrivateAccessStreamEndpoint
             context.Response.StatusCode = 401;
             return;
         }
+        var route = await locate(ticket, context.RequestAborted);
+        if (route is null)
+        {
+            context.Response.StatusCode = 401;
+            return;
+        }
+        var owner = await routing.FindAsync(route.TenantId,
+            route.DeploymentTargetId, context.RequestAborted);
+        if (owner is null)
+        {
+            context.Response.StatusCode = 503;
+            return;
+        }
+        if (!routing.IsLocal(owner))
+        {
+            if (internalRequest)
+                context.Response.StatusCode = 503;
+            else
+                await relay.ProxyAsync(context, owner,
+                    "/_private-access/relay/streams", ticket);
+            return;
+        }
+        var gateway = registry.Find(route.TenantId, route.DeploymentTargetId);
+        if (gateway is null || gateway.Owner.Epoch != owner.Epoch ||
+            !await routing.IsCurrentAsync(owner, context.RequestAborted))
+        {
+            context.Response.StatusCode = 503;
+            return;
+        }
         if (!await capacity.Sessions.WaitAsync(0, context.RequestAborted))
         {
             context.Response.StatusCode = 503;
             return;
         }
-        try { await runner.RunAsync(context, ticket); }
+        try { await runner.RunAsync(context, ticket, gateway); }
         finally { capacity.Sessions.Release(); }
     }
 }
@@ -51,9 +126,13 @@ public sealed class PrivateAccessSessionRunner(
     ResolvePrivateAccessGatewayIdentity resolveGateway,
     PrivateAccessGatewayRegistry gateways,
     PrivateAccessGatewayRendezvous rendezvous,
+    PrivateAccessBrokerRouting routing,
     TimeProvider time)
 {
-    public async Task RunAsync(HttpContext context, string ticket)
+    public async Task RunAsync(
+        HttpContext context,
+        string ticket,
+        PrivateAccessGatewayRegistration gateway)
     {
         var result = await redeem(ticket, context.RequestAborted);
         if (result is not PrivateAccessLeaseSnapshot lease)
@@ -65,8 +144,10 @@ public sealed class PrivateAccessSessionRunner(
         PendingPrivateAccessGatewayStream? pending = null;
         try
         {
-            var gateway = gateways.Find(lease.TenantId, lease.DeploymentTargetId);
-            if (gateway is null)
+            if (lease.TenantId != gateway.Identity.TenantId ||
+                lease.DeploymentTargetId != gateway.Identity.DeploymentTargetId ||
+                !gateways.IsCurrent(gateway) ||
+                !await routing.IsCurrentAsync(gateway.Owner, context.RequestAborted))
             {
                 context.Response.StatusCode = 503;
                 return;
@@ -171,7 +252,8 @@ public sealed class PrivateAccessSessionRunner(
                 {
                     case PrivateAccessFrameKind.LeaseChallenge:
                         var began = time.GetTimestamp();
-                        if (!gateways.IsCurrent(gateway))
+                        if (!gateways.IsCurrent(gateway) ||
+                            !await routing.IsCurrentAsync(gateway.Owner, lifetime.Token))
                             return PrivateAccessSessionCloseReason.LeaseDenied;
                         var identity = await resolveGateway(gateway.Fingerprint, lifetime.Token);
                         if (identity != gateway.Identity)

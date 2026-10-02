@@ -8,6 +8,7 @@ namespace Pole.Features.PrivateAccess.Application.Persistence;
 
 internal sealed class PrivateAccessGatewayRegistrations(
     IMongoCollection<PrivateAccessGateway> gateways,
+    IMongoCollection<PrivateAccessBrokerOwner> owners,
     MongoRunTransaction transactions,
     ApplyDeploymentTargetReferenceChanges targetReferences)
 {
@@ -56,6 +57,24 @@ internal sealed class PrivateAccessGatewayRegistrations(
                     certificateSha256Pin, certificateNotAfterUtc, routes);
                 await gateways.InsertOneAsync(transaction.Session, created,
                     cancellationToken: ct);
+                var previousOwner = await owners.Find(transaction.Session,
+                        PrivateAccessBrokerOwnerFilters.ByGateway(identity.GatewayId))
+                    .FirstOrDefaultAsync(ct);
+                if (previousOwner is null)
+                    await owners.InsertOneAsync(transaction.Session,
+                        PrivateAccessBrokerOwner.Create(
+                            identity.GatewayId, identity.TenantId,
+                            identity.DeploymentTargetId, identity.Generation,
+                            identity.Revision), cancellationToken: ct);
+                else
+                {
+                    var reset = await owners.ReplaceOneAsync(transaction.Session,
+                        PrivateAccessBrokerOwnerFilters.Current(previousOwner),
+                        previousOwner.Reset(identity.Generation, identity.Revision),
+                        cancellationToken: ct);
+                    if (reset.MatchedCount != 1)
+                        return transaction.Abort(false);
+                }
                 return transaction.Commit(true);
             }
             if (current.Id != identity.GatewayId ||
@@ -92,7 +111,20 @@ internal sealed class PrivateAccessGatewayRegistrations(
                     current.TenantId, current.DeploymentTargetId,
                     current.Id, current.Generation, current.Revision),
                 replacement, cancellationToken: ct);
-            return updated.MatchedCount == 1
+            if (updated.MatchedCount != 1)
+                return transaction.Abort(false);
+
+            var owner = await owners.Find(transaction.Session,
+                    PrivateAccessBrokerOwnerFilters.ByGateway(identity.GatewayId))
+                .FirstOrDefaultAsync(ct);
+            if (owner is null || owner.GatewayGeneration != current.Generation ||
+                owner.GatewayRevision != current.Revision)
+                return transaction.Abort(false);
+            var ownerUpdated = await owners.ReplaceOneAsync(transaction.Session,
+                PrivateAccessBrokerOwnerFilters.Current(owner),
+                owner.Reset(replacement.Generation, replacement.Revision),
+                cancellationToken: ct);
+            return ownerUpdated.MatchedCount == 1
                 ? transaction.Commit(true)
                 : transaction.Abort(false);
         }, cancellationToken);
@@ -110,6 +142,18 @@ internal sealed class PrivateAccessGatewayRegistrations(
                     identity.GatewayId, identity.Generation, identity.Revision),
                 cancellationToken: ct);
             if (result.DeletedCount != 1)
+                return transaction.Abort(false);
+            var owner = await owners.Find(transaction.Session,
+                    PrivateAccessBrokerOwnerFilters.ByGateway(identity.GatewayId))
+                .FirstOrDefaultAsync(ct);
+            if (owner is null || owner.GatewayGeneration != identity.Generation ||
+                owner.GatewayRevision != identity.Revision)
+                return transaction.Abort(false);
+            var reset = await owners.ReplaceOneAsync(transaction.Session,
+                PrivateAccessBrokerOwnerFilters.Current(owner),
+                owner.Reset(identity.Generation, identity.Revision),
+                cancellationToken: ct);
+            if (reset.MatchedCount != 1)
                 return transaction.Abort(false);
             var reference = await targetReferences(
                 GatewayOwner(identity), [], [identity.DeploymentTargetId],

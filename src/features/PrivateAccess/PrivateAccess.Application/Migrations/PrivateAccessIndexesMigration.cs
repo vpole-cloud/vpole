@@ -55,5 +55,14 @@ public sealed class PrivateAccessIndexesMigration : IMigration
                 Builders<BsonDocument>.IndexKeys.Ascending("CertificateSha256Pin"),
                 new CreateIndexOptions { Unique = true, Name = "UX_PrivateAccessGateways_Pin" })
         ], cancellationToken);
+        await context.GetCollection<BsonDocument>("PrivateAccessBrokerOwners").Indexes.CreateOneAsync(
+            new CreateIndexModel<BsonDocument>(
+                Builders<BsonDocument>.IndexKeys.Ascending("TenantId")
+                    .Ascending("DeploymentTargetId"),
+                new CreateIndexOptions
+                {
+                    Unique = true,
+                    Name = "UX_PrivateAccessBrokerOwners_Tenant_Target"
+                }), cancellationToken: cancellationToken);
     }
 }

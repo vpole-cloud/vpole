@@ -23,6 +23,17 @@ public static class PrivateAccessFeature
             .GetCollection<PrivateAccessAudit>("PrivateAccessAudit"));
         services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
             .GetCollection<PrivateAccessGateway>("PrivateAccessGateways"));
+        services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
+            .GetCollection<PrivateAccessBrokerOwner>("PrivateAccessBrokerOwners"));
+        services.TryAddScoped<MongoPrivateAccessBrokerOwnership>();
+        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.ClaimPrivateAccessBrokerOwner>(
+            provider => provider.GetRequiredService<MongoPrivateAccessBrokerOwnership>().ClaimAsync);
+        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.RenewPrivateAccessBrokerOwner>(
+            provider => provider.GetRequiredService<MongoPrivateAccessBrokerOwnership>().RenewAsync);
+        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.ReleasePrivateAccessBrokerOwner>(
+            provider => provider.GetRequiredService<MongoPrivateAccessBrokerOwnership>().ReleaseAsync);
+        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.LoadPrivateAccessBrokerOwner>(
+            provider => provider.GetRequiredService<MongoPrivateAccessBrokerOwnership>().LoadAsync);
         services.TryAddScoped<PrivateAccessGatewayIdentityReads>();
         services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.ResolvePrivateAccessGatewayIdentity>(
             provider => provider.GetRequiredService<PrivateAccessGatewayIdentityReads>().ResolveAsync);
@@ -70,6 +81,8 @@ public static class PrivateAccessFeature
         services.TryAddScoped<IssuePrivateAccessSession>(provider => provider
             .GetRequiredService<MongoIssuePrivateAccessSession>().InvokeAsync);
         services.TryAddScoped<MongoPrivateAccessSessionAdmission>();
+        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.LocatePrivateAccessTicket>(provider =>
+            provider.GetRequiredService<MongoPrivateAccessSessionAdmission>().LocateAsync);
         services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.RedeemPrivateAccessSession>(
             provider => provider.GetRequiredService<MongoPrivateAccessSessionAdmission>()
                 .RedeemAsync);

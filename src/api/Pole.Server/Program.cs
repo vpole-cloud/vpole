@@ -115,9 +115,12 @@ app.MapWhen(
     });
 
 app.UsePrivateAccessRuntime();
-app.MapPrivateAccessGatewayControlEndpoint();
-app.MapPrivateAccessGatewayStreamEndpoint();
-app.MapPrivateAccessStreamEndpoint();
+if (configuration.GetValue<bool>($"{PrivateAccessBrokerOptions.Section}:Enabled"))
+{
+    app.MapPrivateAccessGatewayControlEndpoint();
+    app.MapPrivateAccessGatewayStreamEndpoint();
+    app.MapPrivateAccessStreamEndpoint();
+}
 app.MapDefaultEndpoints();
 app.UseTraceContext();
 

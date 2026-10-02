@@ -54,6 +54,14 @@ public delegate Task<RedeemPrivateAccessSessionOutcome> RedeemPrivateAccessSessi
     string ticket,
     CancellationToken cancellationToken = default);
 
+public sealed record PrivateAccessTicketRoute(
+    string TenantId,
+    string DeploymentTargetId);
+
+public delegate Task<PrivateAccessTicketRoute?> LocatePrivateAccessTicket(
+    string ticket,
+    CancellationToken cancellationToken = default);
+
 public delegate Task<RenewPrivateAccessSessionOutcome> RenewPrivateAccessSession(
     string sessionId,
     CancellationToken cancellationToken = default);

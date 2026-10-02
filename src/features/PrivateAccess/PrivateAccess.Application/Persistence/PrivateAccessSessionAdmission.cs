@@ -14,6 +14,21 @@ internal sealed class MongoPrivateAccessSessionAdmission(
     MongoRunTransaction transactions,
     TimeProvider timeProvider)
 {
+    public async Task<PrivateAccessTicketRoute?> LocateAsync(
+        string ticket,
+        CancellationToken cancellationToken = default)
+    {
+        if (!PrivateAccessTicketCodec.TryHash(ticket, out var hash))
+            return null;
+        var current = await sessions.Find(PrivateAccessFilters.TicketHash(hash))
+            .FirstOrDefaultAsync(cancellationToken);
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        return current is { State: PrivateAccessTicketPending } &&
+               current.Ticket.ExpiresAtUtc > now && current.SessionDeadlineUtc > now
+            ? new PrivateAccessTicketRoute(current.TenantId, current.Route.DeploymentTargetId)
+            : null;
+    }
+
     public Task<RedeemPrivateAccessSessionOutcome> RedeemAsync(
         string ticket,
         CancellationToken cancellationToken = default)

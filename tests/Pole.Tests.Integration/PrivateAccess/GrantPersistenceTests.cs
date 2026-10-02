@@ -420,6 +420,72 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
     }
 
     [Fact]
+    public async Task BrokerOwnership_FencesConcurrentClaimsExpiryAndGatewayRotation()
+    {
+        const string targetId = "66a000000000000000000006";
+        var gatewayId = PrivateAccessGatewayIds.StableId(TenantId, targetId);
+        var gateway = new PrivateAccessGatewayIdentity(TenantId, targetId, gatewayId, 1, 1);
+        var endpoint = new PrivateAccessGatewayEndpointSnapshot(
+            "redis", "cell", DeploymentId, "namespace", "redis-service", 6379, 6379);
+        var save = provider.GetRequiredService<SavePrivateAccessGatewayRegistration>();
+        var claim = provider.GetRequiredService<ClaimPrivateAccessBrokerOwner>();
+        var renew = provider.GetRequiredService<RenewPrivateAccessBrokerOwner>();
+        var release = provider.GetRequiredService<ReleasePrivateAccessBrokerOwner>();
+        var load = provider.GetRequiredService<LoadPrivateAccessBrokerOwner>();
+        var remove = provider.GetRequiredService<RemovePrivateAccessGatewayRegistration>();
+        var pin = new string('a', 64);
+        var expiry = DateTime.UnixEpoch.AddDays(30000);
+        Assert.True(await save(gateway, pin, expiry, [endpoint]));
+
+        var attempts = await Task.WhenAll(Enumerable.Range(0, 8).Select(index =>
+            claim(gateway, $"replica-{index}", $"https://replica-{index}.internal:9445")));
+        var first = Assert.Single(attempts.Select(result => result.Value)
+            .OfType<PrivateAccessBrokerOwnerLease>());
+        Assert.Equal(7, attempts.Count(result => result.Value is PrivateAccessBrokerOwnerBusy));
+        var loaded = Assert.IsType<PrivateAccessBrokerOwnerLease>(
+            await load(TenantId, targetId));
+        Assert.Equal(first.Gateway, loaded.Gateway);
+        Assert.Equal(first.InstanceId, loaded.InstanceId);
+        Assert.Equal(first.Epoch, loaded.Epoch);
+        Assert.InRange(Math.Abs((loaded.ExpiresAtUtc - first.ExpiresAtUtc).TotalMilliseconds),
+            0, 1);
+        Assert.True(await renew(first));
+        Assert.IsType<PrivateAccessBrokerOwnerBusy>((await claim(gateway,
+            "other", "https://other.internal:9445")).Value);
+
+        var owners = fixture.Database.GetCollection<PrivateAccessBrokerOwner>(
+            "PrivateAccessBrokerOwners");
+        await owners.UpdateOneAsync(item => item.Id == gatewayId,
+            Builders<PrivateAccessBrokerOwner>.Update.Set(
+                item => item.LeaseExpiresAtUtc, DateTime.UtcNow.AddSeconds(-1)));
+        Assert.False(await renew(first));
+        var recovered = Assert.IsType<PrivateAccessBrokerOwnerLease>((await claim(
+            gateway, "replacement", "https://replacement.internal:9445")).Value);
+        Assert.True(recovered.Epoch > first.Epoch);
+        await release(first);
+        Assert.Equal(recovered.Epoch, (await load(TenantId, targetId))?.Epoch);
+
+        var rotated = gateway with { Generation = 2, Revision = 2 };
+        Assert.True(await save(rotated, new string('b', 64), expiry, [endpoint]));
+        Assert.False(await renew(recovered));
+        Assert.Null(await load(TenantId, targetId));
+        Assert.IsType<PrivateAccessBrokerGatewayUnavailable>((await claim(
+            gateway, "stale", "https://stale.internal:9445")).Value);
+        var current = Assert.IsType<PrivateAccessBrokerOwnerLease>((await claim(
+            rotated, "replacement", "https://replacement.internal:9445")).Value);
+        Assert.True(current.Epoch > recovered.Epoch);
+        Assert.True(await remove(rotated));
+        Assert.Null(await load(TenantId, targetId));
+        Assert.False(await renew(current));
+        Assert.True(await save(gateway, new string('c', 64), expiry, [endpoint]));
+        var recreated = Assert.IsType<PrivateAccessBrokerOwnerLease>((await claim(
+            gateway, "replacement", "https://replacement.internal:9445")).Value);
+        Assert.True(recreated.Epoch > current.Epoch);
+        await release(current);
+        Assert.Equal(recreated.Epoch, (await load(TenantId, targetId))?.Epoch);
+    }
+
+    [Fact]
     public async Task Cleanup_UnacknowledgedPageRotatesToNextEligibleSession()
     {
         var grant = await CreateGrantAsync();

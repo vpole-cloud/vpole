@@ -29,6 +29,7 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
     private readonly WebApplication app;
     private readonly X509Certificate2 serverCertificate;
     private readonly X509Certificate2 gatewayCertificate;
+    private readonly string peerCertificatePath;
     private readonly ClientWebSocket control;
     private readonly CancellationTokenSource lifetime = new(TimeSpan.FromSeconds(60));
     private readonly ConcurrentDictionary<string, PrivateAccessLeaseSnapshot> sessions = new();
@@ -48,6 +49,7 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
         WebApplication app,
         X509Certificate2 serverCertificate,
         X509Certificate2 gatewayCertificate,
+        string peerCertificatePath,
         ClientWebSocket control,
         Uri publicOrigin,
         Uri gatewayOrigin,
@@ -56,6 +58,7 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
         this.app = app;
         this.serverCertificate = serverCertificate;
         this.gatewayCertificate = gatewayCertificate;
+        this.peerCertificatePath = peerCertificatePath;
         this.control = control;
         this.publicOrigin = publicOrigin;
         this.gatewayOrigin = gatewayOrigin;
@@ -74,6 +77,14 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
             .ToLowerInvariant();
         var gatewayPort = FreePort();
         var publicPort = FreePort();
+        var internalPort = FreePort();
+        var internalOrigin = $"https://127.0.0.1:{internalPort}";
+        var peerCertificatePath = Path.Combine(Path.GetTempPath(),
+            $"pole-peer-{Guid.NewGuid():N}.pfx");
+        File.WriteAllBytes(peerCertificatePath, serverCertificate.Export(X509ContentType.Pfx));
+        var ownerSync = new object();
+        PrivateAccessBrokerOwnerLease? owner = null;
+        long ownerEpoch = 0;
         var gatewayIdentity = new PrivateAccessGatewayIdentity(
             "tenant-a", "target-a", "gateway-a", 1, 1);
         var builder = WebApplication.CreateBuilder(
@@ -86,13 +97,57 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
             ["PrivateAccess:GatewayImage"] = "test/gateway:1",
             ["PrivateAccess:BrokerUri"] = $"https://127.0.0.1:{publicPort}",
             ["PrivateAccess:BrokerAddresses:0"] = "192.0.2.8",
+            ["PrivateAccess:InternalPort"] = internalPort.ToString(CultureInfo.InvariantCulture),
+            ["PrivateAccess:InstanceId"] = "test-instance",
+            ["PrivateAccess:InternalOrigin"] = internalOrigin,
+            ["PrivateAccess:InternalPeerOrigins:0"] = internalOrigin,
+            ["PrivateAccess:InternalCertificatePath"] = peerCertificatePath,
+            ["PrivateAccess:InternalCertificateSha256Pin"] = Convert.ToHexString(
+                SHA256.HashData(serverCertificate.RawData)).ToLowerInvariant(),
             ["Kestrel:Endpoints:PrivateAccessGateway:Url"] = $"https://127.0.0.1:{gatewayPort}",
+            ["Kestrel:Endpoints:PrivateAccessInternal:Url"] = internalOrigin,
             ["Kestrel:Endpoints:Public:Url"] = $"https://127.0.0.1:{publicPort}"
         });
         builder.WebHost.ConfigureKestrel(options => options.ConfigureHttpsDefaults(https =>
             https.ServerCertificate = serverCertificate));
         builder.ConfigurePrivateAccessListener();
         builder.Services.AddPrivateAccessRuntime(builder.Configuration);
+        builder.Services.AddSingleton<ClaimPrivateAccessBrokerOwner>((gateway, instance, origin, _) =>
+        {
+            lock (ownerSync)
+            {
+                owner = new PrivateAccessBrokerOwnerLease(gateway, instance, origin,
+                    ++ownerEpoch, DateTime.UtcNow.AddSeconds(10));
+                return Task.FromResult<ClaimPrivateAccessBrokerOwnerOutcome>(owner);
+            }
+        });
+        builder.Services.AddSingleton<RenewPrivateAccessBrokerOwner>((lease, _) =>
+        {
+            lock (ownerSync)
+            {
+                if (owner?.Epoch != lease.Epoch)
+                    return Task.FromResult(false);
+                owner = owner with { ExpiresAtUtc = DateTime.UtcNow.AddSeconds(10) };
+                return Task.FromResult(true);
+            }
+        });
+        builder.Services.AddSingleton<ReleasePrivateAccessBrokerOwner>((lease, _) =>
+        {
+            lock (ownerSync)
+            {
+                if (owner?.Epoch == lease.Epoch)
+                    owner = null;
+                return Task.CompletedTask;
+            }
+        });
+        builder.Services.AddSingleton<LoadPrivateAccessBrokerOwner>((tenant, target, _) =>
+        {
+            lock (ownerSync)
+                return Task.FromResult(owner is { } current &&
+                    current.Gateway.TenantId == tenant &&
+                    current.Gateway.DeploymentTargetId == target &&
+                    current.ExpiresAtUtc > DateTime.UtcNow ? current : null);
+        });
         builder.Services.AddSingleton<IKubernetesClientProvider>(new UnusedKubernetesProvider());
         builder.Services.AddSingleton<LookupDeploymentTarget>((_, _) =>
             throw new InvalidOperationException("Gateway reconciliation has no desired routes."));
@@ -113,6 +168,10 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
             Task.FromResult(true));
 
         DatabaseBrokerFixture? fixture = null;
+        builder.Services.AddSingleton<LocatePrivateAccessTicket>((ticket, _) =>
+            Task.FromResult(fixture!.sessions.TryGetValue(ticket, out var session)
+                ? new PrivateAccessTicketRoute(session.TenantId, session.DeploymentTargetId)
+                : null));
         builder.Services.AddSingleton<RedeemPrivateAccessSession>((ticket, _) =>
         {
             var found = fixture!.sessions.TryRemove(ticket, out var lease);
@@ -167,7 +226,7 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
         Assert.Equal(initial, accepted.Payload.ToArray());
 
         fixture = new DatabaseBrokerFixture(
-            app, serverCertificate, gatewayCertificate, control,
+            app, serverCertificate, gatewayCertificate, peerCertificatePath, control,
             new Uri($"wss://127.0.0.1:{publicPort}"),
             new Uri($"wss://127.0.0.1:{gatewayPort}"),
             backendPort);
@@ -279,6 +338,7 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
         await app.DisposeAsync();
         serverCertificate.Dispose();
         gatewayCertificate.Dispose();
+        File.Delete(peerCertificatePath);
         lifetime.Dispose();
     }
 

@@ -16,13 +16,19 @@ the commands.
    and one-replica Deployment. The gateway pod has no Kubernetes API credentials.
 3. The gateway opens an outbound mTLS control WebSocket to Pole Server. Pole verifies the exact
    certificate pin against its current tenant-and-target registration. The control connection
-   must renew its short lease; a revoked or expired identity loses its connection.
+   must renew its short lease; a revoked or expired identity loses its connection. One Server
+   replica atomically owns each `(tenant, deployment target)` in MongoDB. Its lease epoch fences
+   old owners after a takeover.
 4. `pole forward postgres/orders` uses the active tenant and an authorized grant. The CLI binds
    `127.0.0.1` only. Every accepted TCP connection receives a separate short-lived one-use
    session ticket and opens an HTTPS WebSocket to the server. The ticket is sent in the Bearer
    header, never in the URL.
-5. Pole rechecks membership, grant, placement, target isolation, and provider endpoint before
-   authorizing a stream. It gives the gateway a one-use rendezvous ticket. The gateway opens a
+5. Any Server replica can accept the CLI or gateway WebSocket. A replica that does not own the
+   target forwards it to the owner over a private, mutually authenticated HTTPS channel. The
+   gateway certificate is checked at ingress and its current pin is checked again at the owner.
+   Only the owner redeems a CLI ticket or claims a gateway rendezvous ticket. Pole rechecks
+   membership, grant, placement, target isolation, and provider endpoint before authorizing a
+   stream. It gives the gateway a one-use rendezvous ticket. The gateway opens a
    separate outbound mTLS WebSocket and dials only the server-supplied Service and port after a
    fresh lease succeeds. Pole relays bounded TCP frames, including half-close, between the CLI
    and gateway. It does not create a pod or Job per TCP connection.
@@ -39,10 +45,15 @@ credentials. The dedicated namespace and its default-deny policy remain after cl
 contain no running workload or credential and are retained to avoid deleting unrelated objects
 that an operator may have placed in that namespace.
 
-The current broker keeps control connections and rendezvous tickets in process memory. Run one
-Pole Server replica for this feature until shared broker state or sticky routing is implemented.
-The gateway can serve concurrent TCP sessions, but transparent migration of an established TCP
-session between broker or gateway processes is not supported.
+Control sockets and rendezvous tickets stay in the owning Server process. MongoDB stores only
+the short owner lease, epoch and private origin, never socket or ticket state. Claim, renewal and
+expiry checks use MongoDB server time, so replica clock drift cannot advance a takeover. The
+epoch remains monotonic even after a gateway is removed and recreated. Different targets
+may have different owners. No sticky public routing is required. If an owner crashes, its lease
+expires within ten seconds; the gateway reconnects and a new owner claims the target. Existing
+TCP sessions on the failed process end and the CLI may open new ones. A planned Server shutdown
+rejects new sessions, allows existing ones a 20-second drain window, then closes them. The
+`MaximumSessions` limit applies per owner replica across direct and forwarded sessions.
 
 ## Configuration
 
@@ -57,7 +68,16 @@ the gateway listener to the target cluster:
 | `PrivateAccess__BrokerUri` | `https://pole.example/` | Public HTTPS server origin. The gateway listener uses this host and `GatewayPort`. |
 | `PrivateAccess__BrokerAddresses__0` | `203.0.113.10` | Exact reachable IP for gateway egress policy; add indexed values for all addresses. |
 | `PrivateAccess__MaximumSessions` | `64` | Concurrent user TCP session limit. |
+| `PrivateAccess__MaximumGatewayControls` | `1024` | Concurrent direct or forwarded gateway control connections per Server replica. |
+| `PrivateAccess__InstanceId` | `pole-server-0` | Unique identity for this Server process; do not reuse concurrently. |
+| `PrivateAccess__InternalPort` | `9445` | Dedicated HTTPS listener for Server-to-Server forwarding. |
+| `PrivateAccess__InternalOrigin` | `https://pole-server-0.pole-server-internal:9445` | Stable private origin advertised by this replica. |
+| `PrivateAccess__InternalPeerOrigins__0` | `https://pole-server-0.pole-server-internal:9445` | Exact allowed peer origin; include every replica, including this one, on all replicas. |
+| `PrivateAccess__InternalCertificatePath` | `/run/secrets/pole-server-peer.pfx` | Shared Server peer certificate with client and server TLS use. |
+| `PrivateAccess__InternalCertificatePassword` | secret reference | Password for the peer PKCS#12 file. |
+| `PrivateAccess__InternalCertificateSha256Pin` | 64 lowercase hex characters | Exact SHA-256 pin for inbound peer clients and outbound peer servers. |
 | `Kestrel__Endpoints__PrivateAccessGateway__Url` | `https://0.0.0.0:9444` | mTLS listener URL; port must equal `GatewayPort`. |
+| `Kestrel__Endpoints__PrivateAccessInternal__Url` | `https://0.0.0.0:9445` | Private peer listener URL; port must equal `InternalPort`. |
 | `Kestrel__Endpoints__PrivateAccessGateway__Certificate__Path` | `/run/secrets/pole-gateway-listener.pfx` | Server TLS certificate. |
 | `Kestrel__Endpoints__PrivateAccessGateway__Certificate__Password` | secret reference | Certificate password from the deployment secret mechanism. |
 | `Cli__Issuer` | `https://identity.example/realms/pole.control-plane` | Public OIDC issuer returned by `/.well-known/pole-cli`. |
@@ -74,6 +94,13 @@ Pole supplies the image, broker origin, tenant/target identity and mounted PKCS#
 to the gateway Deployment. Operators do not run an enrollment command or copy a token. The
 gateway listener's TLS certificate must match the configured broker hostname and be trusted by
 the gateway image. Its port and each configured broker IP must be reachable from the target.
+The internal listener must be reachable only by Pole Server replicas. Give each replica a stable
+private hostname and list every replica's exact origin in `InternalPeerOrigins`; membership
+changes require updating that list on all replicas. Mount the same dedicated peer certificate
+on each replica, keep its private key in the deployment secret mechanism, and rotate the pin and
+certificate together. Do not expose the peer listener through the public ingress or gateway
+Service. The Server validates the peer certificate pin at both ends and refuses owner origins
+outside the configured list.
 The exact-IP egress policy uses `/32` IPv4 or `/128` IPv6 entries; update these when the broker
 address changes. The target must attest NetworkPolicy enforcement, and the destination workload
 must have the matching runtime-cell isolation baseline. An isolation override alone does not

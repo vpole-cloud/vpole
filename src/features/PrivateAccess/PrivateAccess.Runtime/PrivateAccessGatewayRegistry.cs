@@ -13,9 +13,11 @@ public sealed class PrivateAccessGatewayRegistry(TimeProvider time)
         PrivateAccessGatewayIdentity identity,
         string fingerprint,
         PrivateAccessFrameWriter writer,
-        long authorizedAt)
+        long authorizedAt,
+        PrivateAccessBrokerOwnerLease owner)
     {
-        var registration = new PrivateAccessGatewayRegistration(identity, fingerprint, writer, authorizedAt);
+        var registration = new PrivateAccessGatewayRegistration(
+            identity, fingerprint, writer, authorizedAt, owner);
         gateways.AddOrUpdate((identity.TenantId, identity.DeploymentTargetId), registration,
             (_, previous) =>
             {
@@ -48,13 +50,15 @@ public sealed class PrivateAccessGatewayRegistration(
     PrivateAccessGatewayIdentity identity,
     string fingerprint,
     PrivateAccessFrameWriter writer,
-    long authorizedAt)
+    long authorizedAt,
+    PrivateAccessBrokerOwnerLease owner)
 {
     private readonly CancellationTokenSource disconnected = new();
     private readonly TaskCompletionSource controlReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private long authorizedTimestamp = authorizedAt;
     public PrivateAccessGatewayIdentity Identity { get; } = identity;
     public string Fingerprint { get; } = fingerprint;
+    public PrivateAccessBrokerOwnerLease Owner { get; } = owner;
     public CancellationToken Disconnected => disconnected.Token;
     public long LastAuthorizationTimestamp => Interlocked.Read(ref authorizedTimestamp);
     public void Authorized(long timestamp) => Interlocked.Exchange(ref authorizedTimestamp, timestamp);
