@@ -114,6 +114,22 @@ public sealed class TenantContextHttpTests
             (await client.GetAsync("/unlisted/redis?PageNumber=1&PageSize=10")).StatusCode);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AuthenticatedPrincipalWithoutUserIdIsUnauthorized(bool platformAdmin)
+    {
+        await using var app = await StartAsync(userId: "", platformAdmin: platformAdmin);
+        using var client = app.GetTestClient();
+        client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, TenantId);
+
+        var response = await client.GetAsync("/unlisted/redis?PageNumber=1&PageSize=10");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Contains("tenant.authorization.user-identity-required",
+            await response.Content.ReadAsStringAsync());
+    }
+
     [Fact]
     public async Task FSharpRequestBindsTheSameCanonicalSelection()
     {

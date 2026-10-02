@@ -61,9 +61,13 @@ public sealed class TenantContextMiddleware(RequestDelegate next)
         }
 
         var userId = httpContext.User.FindFirstValue(Claims.UserId);
-        var member = userId is null
-            ? null
-            : tenant.Members.FirstOrDefault(m => m.UserId == userId);
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            await Reject(new TenantUserIdentityRequired());
+            return;
+        }
+
+        var member = tenant.Members.FirstOrDefault(m => m.UserId == userId);
         var isPlatformAdmin = httpContext.User.Claims.Any(
             claim => claim.Type == Claims.Roles && claim.Value == Roles.Admin);
         if (member is null && !isPlatformAdmin)

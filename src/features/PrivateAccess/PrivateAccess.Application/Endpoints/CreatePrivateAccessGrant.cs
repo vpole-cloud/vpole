@@ -23,7 +23,7 @@ public sealed record CreatePrivateAccessGrantBody(
 public sealed record CreatePrivateAccessGrantRequest(
     [FromBody] CreatePrivateAccessGrantBody Body,
     [FromTenantHeader] string TenantId,
-    [FromClaim(Claims.UserId)] ClaimValue<string?> ActorUserId = default)
+    [FromClaim(Claims.UserId)] ClaimValue ActorUserId)
     : IMediatorRequest<CreatePrivateAccessGrantOutcome>, ITenantCreateOperation;
 
 public sealed record PrivateAccessGrantDto(
@@ -53,8 +53,6 @@ public sealed class CreatePrivateAccessGrantHandler(PersistPrivateAccessGrant pe
         CreatePrivateAccessGrantRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(request.ActorUserId.Value))
-            return new PrivateAccessManageRoleRequired();
         var body = request.Body;
         var persisted = await persist(new CreatePrivateAccessGrantCommand(
             request.TenantId,

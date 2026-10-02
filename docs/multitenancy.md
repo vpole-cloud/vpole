@@ -59,8 +59,9 @@ route-prefix list. The underlying metadata has three modes:
 | `Optional` | Continue without an active context | Resolve and authorize the selection |
 | `None` | Continue without an active context | Ignore the header; it is not an active selection for this operation |
 
-Resolution requires authentication, exactly one ObjectId header, an existing tenant, and tenant
-membership or the platform-admin claim. Missing, blank, malformed, repeated, or comma-joined
+Resolution requires authentication, a nonblank user ID claim, exactly one ObjectId header, an
+existing tenant, and tenant membership or the platform-admin claim. An authenticated token without
+a user ID claim returns 401, including for platform administrators. Missing, blank, malformed, repeated, or comma-joined
 headers return the same structured 400 validation problem before ASP.NET binds endpoint arguments.
 An unknown tenant returns 404; an unjoined tenant returns 403. Uppercase ObjectIds are accepted and
 canonicalized to the persisted tenant identity before binding. Unexpected Mongo failures retain the

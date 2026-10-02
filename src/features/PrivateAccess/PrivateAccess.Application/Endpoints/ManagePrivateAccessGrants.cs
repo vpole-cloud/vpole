@@ -12,7 +12,7 @@ namespace Pole.Features.PrivateAccess.Application.Endpoints;
 
 public sealed record ManagePrivateAccessGrantsRequest(
     [FromTenantHeader] string TenantId,
-    [FromClaim(Claims.UserId)] ClaimValue<string?> ActorUserId = default)
+    [FromClaim(Claims.UserId)] ClaimValue ActorUserId)
     : IMediatorRequest<ManagePrivateAccessGrantsOutcome>, ITenantReadOperation;
 
 public sealed record ManagedPrivateAccessGrantList(
@@ -32,8 +32,7 @@ public sealed class ManagePrivateAccessGrantsHandler(
         CancellationToken cancellationToken = default)
     {
         var actor = request.ActorUserId.Value;
-        if (string.IsNullOrWhiteSpace(actor) ||
-            await loadTenantMember(request.TenantId, actor,
+        if (await loadTenantMember(request.TenantId, actor,
                 cancellationToken: cancellationToken) is not
                 TenantMemberSnapshot { Role: >= TenantMembershipRole.Admin })
             return new PrivateAccessManageRoleRequired();

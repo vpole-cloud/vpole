@@ -13,7 +13,7 @@ namespace Pole.Features.PrivateAccess.Application.Endpoints;
 
 public sealed record ListPrivateAccessGrantsRequest(
     [FromTenantHeader] string TenantId,
-    [FromClaim(Claims.UserId)] ClaimValue<string?> SubjectUserId = default)
+    [FromClaim(Claims.UserId)] ClaimValue SubjectUserId)
     : IMediatorRequest<ListPrivateAccessGrantsOutcome>, ITenantReadOperation;
 
 public sealed record PrivateAccessGrantList(IReadOnlyList<PrivateAccessGrantDto> Items);
@@ -33,8 +33,7 @@ public sealed class ListPrivateAccessGrantsHandler(
         CancellationToken cancellationToken = default)
     {
         var subjectId = request.SubjectUserId.Value;
-        if (string.IsNullOrWhiteSpace(subjectId) ||
-            await loadTenantMember(request.TenantId, subjectId,
+        if (await loadTenantMember(request.TenantId, subjectId,
                 cancellationToken: cancellationToken) is not TenantMemberSnapshot)
             return new PrivateAccessSubjectMembershipRequired();
 

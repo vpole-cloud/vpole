@@ -16,7 +16,7 @@ namespace Pole.Features.PrivateAccess.Application.Endpoints;
 public sealed record GetPrivateAccessGrantRequest(
     [FromRoute] string Id,
     [FromTenantHeader] string TenantId,
-    [FromClaim(Claims.UserId)] ClaimValue<string?> ActorUserId = default)
+    [FromClaim(Claims.UserId)] ClaimValue ActorUserId)
     : IMediatorRequest<GetPrivateAccessGrantOutcome>, ITenantReadOperation;
 
 public union GetPrivateAccessGrantOutcome(
@@ -35,8 +35,6 @@ public sealed class GetPrivateAccessGrantHandler(
         CancellationToken cancellationToken = default)
     {
         var actor = request.ActorUserId.Value;
-        if (string.IsNullOrWhiteSpace(actor))
-            return new PrivateAccessSubjectMembershipRequired();
         var member = await loadTenantMember(request.TenantId, actor,
             cancellationToken: cancellationToken);
         if (member is not TenantMemberSnapshot membership)

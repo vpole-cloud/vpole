@@ -14,7 +14,7 @@ namespace Pole.Features.PrivateAccess.Application.Endpoints;
 public sealed record RevokePrivateAccessGrantRequest(
     [FromRoute] string Id,
     [FromTenantHeader] string TenantId,
-    [FromClaim(Claims.UserId)] ClaimValue<string?> ActorUserId = default)
+    [FromClaim(Claims.UserId)] ClaimValue ActorUserId)
     : IMediatorRequest<RevokePrivateAccessGrantOutcome>, ITenantWriteOperation;
 
 public union RevokePrivateAccessGrantOutcome(
@@ -29,8 +29,6 @@ public sealed class RevokePrivateAccessGrantHandler(RevokePrivateAccessGrant rev
         RevokePrivateAccessGrantRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(request.ActorUserId.Value))
-            return new PrivateAccessManageRoleRequired();
         var outcome = await revoke(request.TenantId, request.Id,
             request.ActorUserId.Value, cancellationToken);
         return outcome switch

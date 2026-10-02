@@ -18,7 +18,7 @@ public sealed record ListPrivateAccessResourceGrantsRequest(
     [FromQuery] string Name,
     [FromQuery] string? DeploymentId,
     [FromQuery] string? EndpointId,
-    [FromClaim(Claims.UserId)] ClaimValue<string?> SubjectUserId = default)
+    [FromClaim(Claims.UserId)] ClaimValue SubjectUserId)
     : IMediatorRequest<ListPrivateAccessResourceGrantsOutcome>, ITenantReadOperation;
 
 public sealed record PrivateAccessResourceGrantOption(
@@ -48,8 +48,7 @@ public sealed class ListPrivateAccessResourceGrantsHandler(
         CancellationToken cancellationToken = default)
     {
         var subjectId = request.SubjectUserId.Value;
-        if (string.IsNullOrWhiteSpace(subjectId) ||
-            await loadTenantMember(request.TenantId, subjectId,
+        if (await loadTenantMember(request.TenantId, subjectId,
                 cancellationToken: cancellationToken) is not TenantMemberSnapshot)
             return new PrivateAccessSubjectMembershipRequired();
 

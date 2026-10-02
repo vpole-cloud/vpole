@@ -15,7 +15,7 @@ namespace Pole.Features.PrivateAccess.Application.Endpoints;
 public sealed record CreatePrivateAccessSessionRequest(
     [FromRoute] string Id,
     [FromTenantHeader] string TenantId,
-    [FromClaim(Claims.UserId)] ClaimValue<string?> SubjectUserId = default)
+    [FromClaim(Claims.UserId)] ClaimValue SubjectUserId)
     : IMediatorRequest<CreatePrivateAccessSessionOutcome>, ITenantReadOperation;
 
 public sealed record CreatePrivateAccessSessionResponse(
@@ -43,8 +43,6 @@ public sealed class CreatePrivateAccessSessionHandler(IssuePrivateAccessSession 
         CreatePrivateAccessSessionRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(request.SubjectUserId.Value))
-            return new PrivateAccessSessionSubjectMismatch();
         var outcome = await issue(
             request.TenantId, request.Id, request.SubjectUserId.Value,
             cancellationToken);
