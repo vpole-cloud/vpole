@@ -37,15 +37,11 @@ public static class PrivateAccessGatewayManifest
     public const string GenerationAnnotation = "pole.io/private-access-gateway-generation";
 
     public static string Namespace(PrivateAccessGatewayIdentity identity) =>
-        IsCanonicalObjectId(identity.TenantId) &&
-        IsCanonicalObjectId(identity.DeploymentTargetId) &&
-        IsCanonicalObjectId(identity.GatewayId)
+        PrivateAccessGatewayIds.IsCanonicalObjectId(identity.TenantId) &&
+        PrivateAccessGatewayIds.IsCanonicalObjectId(identity.DeploymentTargetId) &&
+        PrivateAccessGatewayIds.IsCanonicalObjectId(identity.GatewayId)
             ? $"pole-access-{identity.TenantId}-{identity.DeploymentTargetId}"
             : throw new ArgumentException("Gateway identity IDs must be canonical ObjectIds.", nameof(identity));
-
-    private static bool IsCanonicalObjectId(string value) =>
-        value is { Length: 24 } && value.All(character =>
-            character is >= '0' and <= '9' or >= 'a' and <= 'f');
 
     public static Dictionary<string, string> Labels(PrivateAccessGatewayIdentity identity) => new()
     {

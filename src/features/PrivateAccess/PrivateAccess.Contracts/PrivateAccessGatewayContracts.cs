@@ -13,7 +13,7 @@ public static class PrivateAccessGatewayIds
         return Convert.ToHexString(digest.AsSpan(0, 12)).ToLowerInvariant();
     }
 
-    private static bool IsCanonicalObjectId(string value) =>
+    public static bool IsCanonicalObjectId(string? value) =>
         value is { Length: 24 } && value.All(character =>
             character is >= '0' and <= '9' or >= 'a' and <= 'f');
 }
