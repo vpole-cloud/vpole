@@ -137,7 +137,16 @@ public sealed class TestApiApplication : IAsyncDisposable
     public void RejectDeploymentTargetReferenceRemoval() =>
         DeploymentTargetLookup.RejectReferenceRemoval = true;
 
-    public static async Task<TestApiApplication> StartAsync(MongoReplicaSetFixture fixture)
+    public void SetPrivateAccessTargetState(
+        bool enabled,
+        bool deletionRequested,
+        NetworkPolicyReadiness readiness) =>
+        DeploymentTargetLookup.SetPrivateAccessTargetState(
+            enabled, deletionRequested, readiness);
+
+    public static async Task<TestApiApplication> StartAsync(
+        MongoReplicaSetFixture fixture,
+        bool privateAccessEnabled = false)
     {
         var encryptionKeyDirectory = Path.Combine(
             Path.GetTempPath(),
@@ -168,6 +177,7 @@ public sealed class TestApiApplication : IAsyncDisposable
             ["EnvelopeEncryption:LocalKeyFile:Keys:0:Version"] = "1",
             ["EnvelopeEncryption:LocalKeyFile:Keys:0:Path"] = encryptionKeyPath,
             ["DeploymentTargets:Bootstrap:Enabled"] = "false",
+            ["PrivateAccess:Enabled"] = privateAccessEnabled.ToString(),
             ["kubernetes:NamespaceNamePrefix"] = "test"
         });
 

@@ -164,7 +164,8 @@ public static class PrivateAccessGatewayControlEndpoint
                 var checkedAt = time.GetTimestamp();
                 if (await resolve(fingerprint, lifetime.Token) != identity ||
                     !await routing.IsCurrentAsync(owner, lifetime.Token) ||
-                    !await recordContact(identity, "gateway-v1", lifetime.Token) ||
+                    !await recordContact(identity, PrivateAccessGatewayProtocolMetadata.Version,
+                        lifetime.Token) ||
                     time.GetElapsedTime(checkedAt) >= PrivateAccessLeaseClock.MaximumLease ||
                     registration?.Disconnected.IsCancellationRequested == true)
                     break;

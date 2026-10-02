@@ -45,6 +45,18 @@ credentials. The dedicated namespace and its default-deny policy remain after cl
 contain no running workload or credential and are retained to avoid deleting unrelated objects
 that an operator may have placed in that namespace.
 
+A platform administrator can inspect one tenant and target with
+`GET /api/v1/platform/private-access/gateways/{tenantId}/{deploymentTargetId}`. The route
+does not need `X-Pole-Tenant-ID`. `Required` reflects applicable active grants and applied
+placements. Availability identifies disabled configuration or target, missing NetworkPolicy
+attestation, provisioning, waiting for the first connection, disconnection, expired identity,
+removal, or connection. `Connected` requires a matching live broker-owner lease and a gateway
+contact in the last 20 seconds, so this is a point-in-time observation, not a probe of the
+Kubernetes pod. The response includes contact time, credential generation and expiry, and the
+gateway control protocol version. `gateway-v1` reports the `tcp-forward` capability; this is
+protocol metadata, not the image version. It does not expose certificate pins, private broker
+origins, destination addresses, or credentials.
+
 Control sockets and rendezvous tickets stay in the owning Server process. MongoDB stores only
 the short owner lease, epoch and private origin, never socket or ticket state. Claim, renewal and
 expiry checks use MongoDB server time, so replica clock drift cannot advance a takeover. The

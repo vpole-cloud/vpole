@@ -3,6 +3,12 @@ using System.Text;
 
 namespace Pole.Features.PrivateAccess.Contracts;
 
+public static class PrivateAccessGatewayProtocolMetadata
+{
+    public const string Version = "gateway-v1";
+    public const string TcpForwardCapability = "tcp-forward";
+}
+
 public static class PrivateAccessGatewayIds
 {
     public static string StableId(string tenantId, string targetId)

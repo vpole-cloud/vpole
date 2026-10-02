@@ -6,7 +6,9 @@ server-owned endpoint IDs and service names through `IResourceConnectionDestinat
 
 ## Control-plane API
 
-All routes require an authenticated user and `X-Pole-Tenant-ID`.
+Tenant routes require an authenticated user and `X-Pole-Tenant-ID`. The platform
+status route requires a platform administrator and takes the tenant ID from its path;
+it does not require an active tenant or tenant header.
 
 | Route | Access | Result |
 | --- | --- | --- |
@@ -17,6 +19,7 @@ All routes require an authenticated user and `X-Pole-Tenant-ID`.
 | `DELETE /api/v1/private-access/grants/{id}` | Current tenant Owner or Admin | Revokes a grant |
 | `POST /api/v1/private-access/grants/{id}/sessions` | Grant subject, still a current tenant member | Issues one session ticket |
 | `GET /api/v1/private-access/resources/{kind}/grants?name={name}` | Current tenant member | Finds the caller's eligible grant options for an immutable provider resource name, including names containing `/` |
+| `GET /api/v1/platform/private-access/gateways/{tenantId}/{deploymentTargetId}` | Platform administrator | Returns gateway requirement, availability, last contact, protocol and credential metadata for one tenant and target |
 
 Grant creation accepts subject user ID, resource type and ID, exact deployment ID, endpoint ID,
 and UTC expiry. The API never accepts or returns a raw destination address. Grant and session
@@ -58,6 +61,15 @@ Deployment and exact NetworkPolicies before registering its certificate pin. Rev
 grants remove their routes; when no routes remain, the owned gateway resources and registration
 are removed. The gateway opens one outbound mTLS control connection plus one outbound stream
 connection per TCP session. There is no session worker Job and no manual enrollment token.
+
+The platform status endpoint derives `Required` from applicable active grants and applied
+placements. `Connected` requires a current gateway registration, a matching active broker-owner
+lease, and contact within the last 20 seconds. Otherwise availability distinguishes feature or
+target disablement, missing NetworkPolicy attestation, provisioning, waiting for first contact,
+disconnection, expired gateway identity, and removal. `ProtocolVersion` is the gateway control
+protocol (`gateway-v1`), not the container image version. The `tcp-forward` capability is
+reported only for that protocol version. Status is a point-in-time observation and does not
+include certificate pins, private broker addresses, destination addresses, or database secrets.
 
 ## Verification
 

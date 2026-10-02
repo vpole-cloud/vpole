@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
+using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.PrivateAccess.Application.Endpoints;
 using Pole.Features.PrivateAccess.Application.Persistence;
@@ -35,6 +36,9 @@ public static class PrivateAccessFeature
         services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.LoadPrivateAccessBrokerOwner>(
             provider => provider.GetRequiredService<MongoPrivateAccessBrokerOwnership>().LoadAsync);
         services.TryAddScoped<PrivateAccessGatewayIdentityReads>();
+        services.TryAddScoped<MongoLoadPrivateAccessGatewayObservation>();
+        services.TryAddScoped<LoadPrivateAccessGatewayObservation>(provider => provider
+            .GetRequiredService<MongoLoadPrivateAccessGatewayObservation>().InvokeAsync);
         services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.ResolvePrivateAccessGatewayIdentity>(
             provider => provider.GetRequiredService<PrivateAccessGatewayIdentityReads>().ResolveAsync);
         services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.RecordPrivateAccessGatewayContact>(
@@ -121,6 +125,11 @@ public static class PrivateAccessFeature
         app.MapGroup("/private-access/resources")
             .WithTags("PrivateAccess")
             .MapListPrivateAccessResourceGrantsEndpoint();
+        app.MapGroup("/platform/private-access/gateways")
+            .WithoutTenantContext()
+            .WithTags("PlatformPrivateAccess")
+            .RequireAuthorization(Policy.Admin)
+            .MapGetPrivateAccessGatewayStatusEndpoint();
         return app;
     }
 }
