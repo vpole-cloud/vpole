@@ -1,4 +1,5 @@
 using MongoDB.Driver;
+using Pole.Database;
 using Pole.Features.PrivateAccess.Contracts;
 using Pole.Features.PrivateAccess.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -6,8 +7,10 @@ using Pole.Workloads;
 
 namespace Pole.Features.PrivateAccess.Application.Persistence;
 
+internal sealed record PrivateAccessDesiredEndpoint(PrivateAccessResolvedEndpoint? Endpoint);
+
 internal sealed class PrivateAccessGatewayDesiredStates(
-    IMongoClient mongoClient,
+    MongoRunTransaction transactions,
     IMongoCollection<PrivateAccessGrant> grants,
     LoadExactResourceDeploymentRuntimePlacement loadPlacement,
     PrivateAccessEndpointCatalog endpoints,
@@ -21,8 +24,6 @@ internal sealed class PrivateAccessGatewayDesiredStates(
             .ToListAsync(cancellationToken);
         var routes = new Dictionary<(string TenantId, string TargetId),
             Dictionary<(string DeploymentId, string EndpointId), PrivateAccessGatewayEndpointSnapshot>>();
-        using var session = await mongoClient.StartSessionAsync(cancellationToken: cancellationToken);
-
         foreach (var grant in active)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -33,18 +34,16 @@ internal sealed class PrivateAccessGatewayDesiredStates(
             if (placement is not { Status: "Applied", DesiredOperation: "Apply" })
                 continue;
 
-            session.StartTransaction();
-            PrivateAccessResolvedEndpoint? endpoint;
-            try
-            {
-                endpoint = await endpoints.ResolveAsync(
-                    grant.TenantId, resourceType, grant.ResourceId,
-                    grant.EndpointId, session, cancellationToken);
-            }
-            finally
-            {
-                await session.AbortTransactionAsync(CancellationToken.None);
-            }
+            var resolved = await transactions.InvokeOutcomeAsync<PrivateAccessDesiredEndpoint>(
+                async (transaction, ct) =>
+                {
+                    var endpoint = await endpoints.ResolveAsync(
+                        grant.TenantId, resourceType, grant.ResourceId,
+                        grant.EndpointId, transaction.Session, ct);
+                    return transaction.Abort(new PrivateAccessDesiredEndpoint(endpoint));
+                },
+                cancellationToken);
+            var endpoint = resolved.Endpoint;
             if (endpoint is null)
                 continue;
 
