@@ -38,6 +38,7 @@ public sealed class ListPrivateAccessResourceGrantsHandler(
     LoadTenantMember loadTenantMember,
     LoadOwnPrivateAccessGrants loadGrants,
     PrivateAccessResourceNameCatalog resources,
+    IsPrivateAccessGrantRouteAvailable routeAvailable,
     TimeProvider timeProvider)
     : IMediatorOutcomeHandler<
         ListPrivateAccessResourceGrantsRequest,
@@ -59,18 +60,27 @@ public sealed class ListPrivateAccessResourceGrantsHandler(
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var grants = await loadGrants(request.TenantId, subjectId, now, cancellationToken);
-        var options = grants
+        var candidates = grants
             .Where(grant => grant.ResourceType == resource.ResourceType.Value &&
                 grant.ResourceId == resource.ResourceId &&
                 (request.DeploymentId is null ||
                     grant.ResourceDeploymentId == request.DeploymentId) &&
                 (request.EndpointId is null || grant.EndpointId == request.EndpointId))
-            .Select(grant => new PrivateAccessResourceGrantOption(
-                grant.Id,
-                grant.ResourceDeploymentId,
-                grant.EndpointId,
-                grant.ExpiresAtUtc))
             .ToArray();
+
+        var options = new List<PrivateAccessResourceGrantOption>();
+        foreach (var grant in candidates)
+        {
+            if (!await routeAvailable(
+                request.TenantId, resource.ResourceType, resource.ResourceId,
+                grant.ResourceDeploymentId, grant.EndpointId, cancellationToken))
+                continue;
+
+            options.Add(new PrivateAccessResourceGrantOption(
+                grant.Id, grant.ResourceDeploymentId, grant.EndpointId,
+                grant.ExpiresAtUtc));
+        }
+
         return new PrivateAccessResourceGrantOptions(options);
     }
 }

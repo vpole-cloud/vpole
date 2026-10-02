@@ -7,8 +7,11 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.PrivateAccess.Application.Endpoints;
 using Pole.Features.PrivateAccess.Domain;
 using Pole.Features.RedisServices.Domain;
+using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.Tenants.Domain;
 using Pole.Tests.Integration.Infrastructure;
+using Pole.Tests.Integration.ResourceDeployments;
+using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Tests.Integration.PrivateAccess;
@@ -36,9 +39,13 @@ public sealed class PrivateAccessGrantApiTests(MongoReplicaSetFixture fixture)
         await Fixture.Database.GetCollection<Redis>("RedisServices")
             .InsertManyAsync([ownResource, otherResource]);
 
+        var deploymentId = ObjectId.GenerateNewId().ToString();
+        await Fixture.DbContext.ResourceDeployments.InsertOneAsync(
+            AppliedDeployment(ownResource.Id, deploymentId));
+
         var own = PrivateAccessGrantFactory.Create(
             TestData.TenantId, TestData.UserId, "pole/redis", ownResource.Id,
-            ObjectId.GenerateNewId().ToString(), "redis", TestData.UserId,
+            deploymentId, "redis", TestData.UserId,
             DateTime.UtcNow, DateTime.UtcNow.AddHours(1));
         var anotherTenant = PrivateAccessGrantFactory.Create(
             otherTenantId, TestData.UserId, "pole/redis", otherResource.Id,
@@ -62,6 +69,48 @@ public sealed class PrivateAccessGrantApiTests(MongoReplicaSetFixture fixture)
         using var nameWithSlash = await Client.GetAsync(
             "/api/v1/private-access/resources/redis/grants?name=orders%2F2026");
         Assert.Equal(HttpStatusCode.OK, nameWithSlash.StatusCode);
+    }
+
+    [Fact]
+    public async Task ResourceNameLookup_ExcludesStaleDeploymentAndRemovedEndpoint()
+    {
+        await SetViewerAsync();
+        var resource = RedisFactory.Create(
+            TestData.TenantId,
+            "orders",
+            ObjectId.GenerateNewId().ToString(),
+            new RedisSpec(new Storage(1, TestData.DefaultStorageProfileId)),
+            RedisFactory.DefaultCreateOptions);
+        await Fixture.Database.GetCollection<Redis>("RedisServices").InsertOneAsync(resource);
+
+        var deploymentId = ObjectId.GenerateNewId().ToString();
+        var applied = AppliedDeployment(resource.Id, deploymentId);
+        await Fixture.DbContext.ResourceDeployments.InsertOneAsync(applied);
+
+        var missingDeployment = GrantForResource(resource.Id, ObjectId.GenerateNewId().ToString(), "redis");
+        var removedEndpoint = GrantForResource(resource.Id, deploymentId, "removed");
+        await Fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
+            .InsertManyAsync([missingDeployment, removedEndpoint]);
+
+        var unavailable = await GetResourceGrantOptionsAsync();
+        Assert.Empty(unavailable.Items);
+
+        var available = GrantForResource(resource.Id, deploymentId, "redis");
+        await Fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
+            .InsertOneAsync(available);
+        var current = await GetResourceGrantOptionsAsync();
+        Assert.Equal(available.Id, Assert.Single(current.Items).GrantId);
+
+        var pending = applied with
+        {
+            State = new PendingResourceDeploymentState(
+                applied.DesiredGeneration, ResourceDeploymentOperation.Apply,
+                AttemptCount: 0, DateTime.UtcNow)
+        };
+        await Fixture.DbContext.ResourceDeployments.ReplaceOneAsync(
+            item => item.Id == deploymentId, pending);
+        var noLongerApplied = await GetResourceGrantOptionsAsync();
+        Assert.Empty(noLongerApplied.Items);
     }
 
     [Fact]
@@ -111,6 +160,54 @@ public sealed class PrivateAccessGrantApiTests(MongoReplicaSetFixture fixture)
             TestData.TenantId, TestData.UserId, TestData.UserEmail, TenantRole.Viewer));
         return Fixture.DbContext.Tenants.UpdateOneAsync(filter,
             Builders<Tenant>.Update.Set(item => item.Members, members));
+    }
+
+    private async Task<PrivateAccessResourceGrantOptions> GetResourceGrantOptionsAsync()
+    {
+        using var response = await Client.GetAsync(
+            "/api/v1/private-access/resources/redis/grants?name=orders");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        return Assert.IsType<PrivateAccessResourceGrantOptions>(
+            await response.Content.ReadFromJsonAsync<PrivateAccessResourceGrantOptions>());
+    }
+
+    private static PrivateAccessGrant GrantForResource(
+        string resourceId,
+        string deploymentId,
+        string endpointId) =>
+        PrivateAccessGrantFactory.Create(
+            TestData.TenantId, TestData.UserId, "pole/redis", resourceId,
+            deploymentId, endpointId, TestData.UserId,
+            DateTime.UtcNow, DateTime.UtcNow.AddHours(1));
+
+    private static ResourceDeployment AppliedDeployment(
+        string resourceId,
+        string deploymentId)
+    {
+        var now = DateTime.UtcNow;
+        var deployment = ResourceDeploymentFactory.Create(
+            TestData.TenantId,
+            ResourceTypeId.Create("pole/redis"),
+            resourceId,
+            ObjectId.GenerateNewId().ToString(),
+            ObjectId.GenerateNewId().ToString(),
+            ResolvedResourcePlacement.Create(
+                ObjectId.GenerateNewId().ToString(),
+                TestData.DefaultDeploymentTargetId,
+                "pole-private-access-test",
+                runtimeCellGeneration: 1,
+                targetWorkloadConfigurationRevision: 1,
+                ingress: null,
+                storage: null,
+                ResourceDeploymentTestData.Compute(),
+                now),
+            ResourcePlacementCapability.SingleTarget,
+            runtimeCellReady: true,
+            new ResourceDeploymentFactory.CreateOptions(deploymentId, now));
+        return deployment with
+        {
+            State = new AppliedResourceDeploymentState(1, now)
+        };
     }
 
     private static PrivateAccessGrant Grant(string tenantId, string subject) =>

@@ -39,6 +39,9 @@ public static class PrivateAccessFeature
         services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.RemovePrivateAccessGatewayRegistration>(
             provider => provider.GetRequiredService<PrivateAccessGatewayRegistrations>().RemoveAsync);
         services.TryAddScoped<PrivateAccessEndpointCatalog>();
+        services.TryAddScoped<MongoIsPrivateAccessGrantRouteAvailable>();
+        services.TryAddScoped<IsPrivateAccessGrantRouteAvailable>(provider => provider
+            .GetRequiredService<MongoIsPrivateAccessGrantRouteAvailable>().InvokeAsync);
         services.TryAddScoped<PrivateAccessResourceNameCatalog>();
         services.TryAddScoped<MongoLoadOwnPrivateAccessGrants>();
         services.TryAddScoped<LoadOwnPrivateAccessGrants>(provider => provider
