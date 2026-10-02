@@ -1,12 +1,19 @@
 using MongoDB.Driver;
 using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.RedisServices.Application.Migrations;
 using Pole.Features.RedisServices.Domain;
 
 namespace Pole.Features.RedisServices.Application.Persistence.Mutations;
 
 public sealed record RedisServiceNameAlreadyExists(string Name);
 
-public delegate Task<bool> PersistCreatedRedis(
+public sealed record RedisServicePersisted;
+
+public union PersistCreatedRedisOutcome(
+    RedisServicePersisted,
+    RedisServiceNameAlreadyExists);
+
+public delegate Task<PersistCreatedRedisOutcome> PersistCreatedRedis(
     IClientSessionHandle session,
     Redis redis,
     CancellationToken cancellationToken = default);
@@ -15,7 +22,7 @@ internal sealed class MongoPersistCreatedRedis(
     IMongoCollection<Redis> redisServices,
     StoreOutboxWrites storeOutboxWrites)
 {
-    public async Task<bool> InvokeAsync(
+    public async Task<PersistCreatedRedisOutcome> InvokeAsync(
         IClientSessionHandle session,
         Redis redis,
         CancellationToken cancellationToken = default)
@@ -31,14 +38,17 @@ internal sealed class MongoPersistCreatedRedis(
                 cancellationToken: cancellationToken);
         }
         catch (MongoWriteException exception) when (
-            exception.WriteError.Category == ServerErrorCategory.DuplicateKey)
+            exception.WriteError.Category == ServerErrorCategory.DuplicateKey &&
+            exception.WriteError.Message.Contains(
+                RedisNameIndexesMigration.TenantNameIndex,
+                StringComparison.Ordinal))
         {
-            return false;
+            return new RedisServiceNameAlreadyExists(redis.Name);
         }
         await storeOutboxWrites(
             session,
             [OutboxWrite.Create(redis.ToCreateEvent())],
             cancellationToken);
-        return true;
+        return new RedisServicePersisted();
     }
 }

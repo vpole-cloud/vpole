@@ -150,6 +150,30 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
+    public async Task PersistCreate_DoesNotReportIdCollisionAsNameCollision()
+    {
+        var existing = await DbContext.InsertRedisAsync(
+            SeedRedis(RedisTestData.TenantId, "existing-id"));
+        var collidingId = SeedRedis(RedisTestData.TenantId, "different-name") with
+        {
+            Id = existing.Id
+        };
+        var persistCreatedRedis = Services.GetRequiredService<PersistCreatedRedis>();
+
+        var exception = await Assert.ThrowsAsync<MongoWriteException>(() =>
+            DbContext.RunOutcomeInTransactionAsync<Unit>(async (transaction, cancellationToken) =>
+            {
+                await persistCreatedRedis(
+                    transaction.Session,
+                    collidingId,
+                    cancellationToken);
+                return transaction.Commit(Unit.Value);
+            }));
+
+        Assert.Equal(ServerErrorCategory.DuplicateKey, exception.WriteError.Category);
+    }
+
+    [Fact]
     public async Task NameIndexAllowsSameNameInAnotherTenantAndAnotherKind()
     {
         var first = SeedRedis(RedisTestData.TenantId, "shared-name");

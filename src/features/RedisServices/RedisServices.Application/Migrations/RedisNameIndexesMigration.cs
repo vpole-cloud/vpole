@@ -7,6 +7,8 @@ namespace Pole.Features.RedisServices.Application.Migrations;
 
 public sealed class RedisNameIndexesMigration : IMigration
 {
+    public const string TenantNameIndex = "UX_RedisServices_Tenant_Name";
+
     public ObjectId Id => new("6a700002b213917a38c38001");
     public string Name => "Redis tenant name uniqueness";
     public string Description =>
@@ -21,7 +23,7 @@ public sealed class RedisNameIndexesMigration : IMigration
                 new CreateIndexOptions
                 {
                     Unique = true,
-                    Name = "UX_RedisServices_Tenant_Name"
+                    Name = TenantNameIndex
                 }),
             cancellationToken: cancellationToken);
 }
