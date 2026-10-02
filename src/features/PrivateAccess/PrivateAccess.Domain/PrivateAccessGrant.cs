@@ -17,10 +17,9 @@ public sealed record PrivateAccessGrant(
     DateTime CreatedAtUtc,
     DateTime ExpiresAtUtc,
     long Revision,
+    long ReferenceFence,
     PrivateAccessGrantState State)
 {
-    public long ReferenceFence { get; init; }
-
     public bool IsActive(DateTime nowUtc) => State is ActivePrivateAccessGrant && ExpiresAtUtc > nowUtc;
 
     public PrivateAccessGrant Revoke(string actorUserId, DateTime nowUtc) =>
@@ -70,6 +69,7 @@ public static class PrivateAccessGrantFactory
             nowUtc,
             expiresAtUtc,
             1,
+            0,
             new ActivePrivateAccessGrant());
     }
 }

@@ -11,10 +11,8 @@ public sealed record Tenant(
     string Id,
     string Name,
     DateTime CreatedAtUtc,
-    ImmutableList<TenantMember> Members)
-{
-    public long ReferenceFence { get; init; }
-}
+    ImmutableList<TenantMember> Members,
+    long ReferenceFence);
 
 public sealed record TenantMember(
     [property: BsonId]
@@ -34,7 +32,8 @@ public static class TenantFactory
             Id: id ?? ObjectId.GenerateNewId().ToString(),
             Name: name,
             CreatedAtUtc: DateTime.UtcNow,
-            Members: []);
+            Members: [],
+            ReferenceFence: 0);
 
     public static TenantMember CreateMember(
         string tenantId,
