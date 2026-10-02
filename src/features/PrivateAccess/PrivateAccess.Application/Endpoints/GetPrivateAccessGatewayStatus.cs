@@ -54,7 +54,7 @@ public union GetPrivateAccessGatewayStatusOutcome(
 
 public sealed class GetPrivateAccessGatewayStatusHandler(
     LookupDeploymentTarget lookupTarget,
-    LoadPrivateAccessGatewayDesiredStates loadDesired,
+    LoadPrivateAccessGatewayDesiredStatesForTenant loadDesired,
     LoadPrivateAccessGatewayObservation loadObservation,
     IConfiguration configuration,
     TimeProvider timeProvider)
@@ -70,7 +70,7 @@ public sealed class GetPrivateAccessGatewayStatusHandler(
         if (target is not DeploymentTargetLookupDto found)
             return new DeploymentTargetNotFound(request.DeploymentTargetId);
 
-        var desired = await loadDesired(cancellationToken);
+        var desired = await loadDesired(request.TenantId, cancellationToken);
         var required = desired.Any(state =>
             state.TenantId == request.TenantId &&
             state.DeploymentTargetId == request.DeploymentTargetId &&

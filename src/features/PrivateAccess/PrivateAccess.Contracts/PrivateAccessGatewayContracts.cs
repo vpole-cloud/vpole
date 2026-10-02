@@ -67,6 +67,11 @@ public sealed record PrivateAccessGatewayRegistration(
 public delegate Task<IReadOnlyList<PrivateAccessGatewayDesiredState>>
     LoadPrivateAccessGatewayDesiredStates(CancellationToken cancellationToken = default);
 
+public delegate Task<IReadOnlyList<PrivateAccessGatewayDesiredState>>
+    LoadPrivateAccessGatewayDesiredStatesForTenant(
+        string tenantId,
+        CancellationToken cancellationToken = default);
+
 public delegate Task<IReadOnlyList<PrivateAccessGatewayRegistration>>
     LoadPrivateAccessGatewayRegistrations(CancellationToken cancellationToken = default);
 

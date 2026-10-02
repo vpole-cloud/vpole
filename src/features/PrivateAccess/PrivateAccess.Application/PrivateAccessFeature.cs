@@ -46,6 +46,8 @@ public static class PrivateAccessFeature
         services.TryAddScoped<PrivateAccessGatewayDesiredStates>();
         services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.LoadPrivateAccessGatewayDesiredStates>(
             provider => provider.GetRequiredService<PrivateAccessGatewayDesiredStates>().LoadAsync);
+        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.LoadPrivateAccessGatewayDesiredStatesForTenant>(
+            provider => provider.GetRequiredService<PrivateAccessGatewayDesiredStates>().LoadForTenantAsync);
         services.TryAddScoped<PrivateAccessGatewayRegistrations>();
         services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.LoadPrivateAccessGatewayRegistrations>(
             provider => provider.GetRequiredService<PrivateAccessGatewayRegistrations>().LoadAsync);

@@ -25,6 +25,17 @@ public sealed class PrivateAccessGatewayStatusApiTests(MongoReplicaSetFixture fi
     public async Task Status_RequiresPlatformAdmin_AndUsesRouteTenantWithoutActiveTenant()
     {
         var path = Path(TestData.TenantId, TestData.DefaultDeploymentTargetId);
+        var unrelatedTenant = ObjectId.GenerateNewId().ToString();
+        var unrelatedGrant = PrivateAccessGrantFactory.Create(
+            unrelatedTenant, TestData.UserId, "pole/redis",
+            ObjectId.GenerateNewId().ToString(),
+            ObjectId.GenerateNewId().ToString(), "redis", TestData.UserId,
+            DateTime.UtcNow, DateTime.UtcNow.AddHours(1)) with
+        {
+            ResourceType = "invalid-resource-type"
+        };
+        await Fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
+            .InsertOneAsync(unrelatedGrant);
         using var forbidden = await Client.GetAsync(path);
         Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
 

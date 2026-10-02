@@ -14,7 +14,23 @@ internal sealed class PrivateAccessGatewayDesiredStates(
         CancellationToken cancellationToken = default)
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        var active = await grants.Find(PrivateAccessFilters.ActiveGrants(now))
+        return await LoadFilteredAsync(PrivateAccessFilters.ActiveGrants(now), cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<PrivateAccessGatewayDesiredState>> LoadForTenantAsync(
+        string tenantId,
+        CancellationToken cancellationToken = default)
+    {
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        return await LoadFilteredAsync(
+            PrivateAccessFilters.ActiveGrantsForTenant(tenantId, now), cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<PrivateAccessGatewayDesiredState>> LoadFilteredAsync(
+        FilterDefinition<PrivateAccessGrant> filter,
+        CancellationToken cancellationToken)
+    {
+        var active = await grants.Find(filter)
             .ToListAsync(cancellationToken);
         var routes = new Dictionary<(string TenantId, string TargetId),
             Dictionary<(string DeploymentId, string EndpointId), PrivateAccessGatewayEndpointSnapshot>>();
