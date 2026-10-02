@@ -84,7 +84,7 @@ internal sealed class MongoPrivateAccessSessionCleanup(
                     if (current.State is not PrivateAccessSessionCleaning)
                         await audit.InsertOneAsync(transaction.Session,
                             new PrivateAccessAudit(ObjectId.GenerateNewId().ToString(),
-                                current.TenantId, current.GrantId, current.Id,
+                                current.TenantId, current.Grant.Id, current.Id,
                                 current.SubjectUserId, PrivateAccessAuditAction.CleanupClaimed, nowUtc),
                             cancellationToken: ct);
                     return transaction.Commit(new PrivateAccessCleanupClaim(ToSnapshot(current)));
@@ -120,7 +120,7 @@ internal sealed class MongoPrivateAccessSessionCleanup(
                         DeploymentTargetReferenceOwnerTypes.PrivateAccessSession,
                         current.Id),
                     [],
-                    [current.DeploymentTargetId],
+                    [current.Route.DeploymentTargetId],
                     transaction.Session,
                     ct);
                 if (reference is DeploymentTargetReferenceChangeRejected)
@@ -141,7 +141,7 @@ internal sealed class MongoPrivateAccessSessionCleanup(
                     throw new InvalidOperationException("Session changed during cleanup acknowledgment.");
                 await audit.InsertOneAsync(transaction.Session,
                     new PrivateAccessAudit(ObjectId.GenerateNewId().ToString(),
-                        current.TenantId, current.GrantId, current.Id,
+                        current.TenantId, current.Grant.Id, current.Id,
                         current.SubjectUserId, PrivateAccessAuditAction.CleanupCompleted, now),
                     cancellationToken: ct);
                 return transaction.Commit(new MarkPrivateAccessSessionCleanedOutcome(
@@ -151,7 +151,7 @@ internal sealed class MongoPrivateAccessSessionCleanup(
     private static bool IsEligible(PrivateAccessSession session, DateTime nowUtc) =>
         session.State switch
         {
-            PrivateAccessTicketPending => session.TicketExpiresAtUtc <= nowUtc,
+            PrivateAccessTicketPending => session.Ticket.ExpiresAtUtc <= nowUtc,
             PrivateAccessTicketRedeemed redeemed =>
                 redeemed.RedeemedAtUtc.AddSeconds(30) <= nowUtc ||
                 session.SessionDeadlineUtc <= nowUtc,
@@ -166,13 +166,13 @@ internal sealed class MongoPrivateAccessSessionCleanup(
         PrivateAccessSession session) => new(
             session.Id,
             session.TenantId,
-            session.GrantId,
-            session.DeploymentTargetId,
-            session.RuntimeCellId,
-            session.IsolationScopeId,
-            session.ResourceDeploymentId,
-            session.KubernetesNamespace,
-            session.ServiceName,
-            NetworkPort.Create(session.ServicePort),
-            NetworkPort.Create(session.TargetPort));
+            session.Grant.Id,
+            session.Route.DeploymentTargetId,
+            session.Route.RuntimeCellId,
+            session.Route.IsolationScopeId,
+            session.Grant.ResourceDeploymentId,
+            session.Route.KubernetesNamespace,
+            session.Route.ServiceName,
+            NetworkPort.Create(session.Route.ServicePort),
+            NetworkPort.Create(session.Route.TargetPort));
 }

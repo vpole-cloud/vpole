@@ -16,8 +16,8 @@ internal sealed record PrivateAccessGrantBinding(
             grant.ResourceDeploymentId, grant.EndpointId, grant.Revision);
 
     public static PrivateAccessGrantBinding From(PrivateAccessSession session) =>
-        new(session.SubjectUserId, session.ResourceType, session.ResourceId,
-            session.ResourceDeploymentId, session.EndpointId, session.GrantRevision);
+        new(session.SubjectUserId, session.Grant.ResourceType, session.Grant.ResourceId,
+            session.Grant.ResourceDeploymentId, session.Grant.EndpointId, session.Grant.Revision);
 }
 
 internal sealed record PrivateAccessResolvedBinding(
@@ -32,10 +32,10 @@ internal sealed record PrivateAccessResolvedBinding(
     int TargetPort)
 {
     public static PrivateAccessResolvedBinding From(PrivateAccessSession session) =>
-        new(session.DeploymentTargetId, session.RuntimeCellId,
-            session.IsolationScopeId, session.KubernetesNamespace,
-            session.DeploymentRevision, session.DesiredGeneration,
-            session.ServiceName, session.ServicePort, session.TargetPort);
+        new(session.Route.DeploymentTargetId, session.Route.RuntimeCellId,
+            session.Route.IsolationScopeId, session.Route.KubernetesNamespace,
+            session.Route.DeploymentRevision, session.Route.DesiredGeneration,
+            session.Route.ServiceName, session.Route.ServicePort, session.Route.TargetPort);
 
     public static PrivateAccessResolvedBinding From(
         ResourceDeploymentAccessPlacement placement,

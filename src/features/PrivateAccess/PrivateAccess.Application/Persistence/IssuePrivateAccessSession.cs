@@ -105,14 +105,16 @@ internal sealed class MongoIssuePrivateAccessSession(
                 ticketExpiresAt = grant.ExpiresAtUtc;
             var accessSession = new PrivateAccessSession(
                 ObjectId.GenerateNewId().ToString(), tenantId, subjectUserId,
-                grant.Id, grant.Revision, ticketHash, ticketExpiresAt,
-                grant.ExpiresAtUtc, now, 1, new PrivateAccessTicketPending(),
-                grant.ResourceType, grant.ResourceId, grant.ResourceDeploymentId,
-                grant.EndpointId, placement.DeploymentTargetId,
-                placement.RuntimeCellId, placement.IsolationScopeId,
-                placement.KubernetesNamespace, endpoint.ServiceName,
-                endpoint.ServicePort, endpoint.TargetPort,
-                placement.DeploymentRevision, placement.DesiredGeneration);
+                new PrivateAccessSessionGrantSnapshot(
+                    grant.Id, grant.Revision, grant.ResourceType, grant.ResourceId,
+                    grant.ResourceDeploymentId, grant.EndpointId),
+                new PrivateAccessSessionTicket(ticketHash, ticketExpiresAt),
+                new PrivateAccessSessionRouteSnapshot(
+                    placement.DeploymentTargetId, placement.RuntimeCellId,
+                    placement.IsolationScopeId, placement.KubernetesNamespace,
+                    endpoint.ServiceName, endpoint.ServicePort, endpoint.TargetPort,
+                    placement.DeploymentRevision, placement.DesiredGeneration),
+                grant.ExpiresAtUtc, now, 1, new PrivateAccessTicketPending());
 
             var checkedAccess = await admission.CheckAsync(
                 accessSession, transaction.Session, ct);
@@ -133,7 +135,7 @@ internal sealed class MongoIssuePrivateAccessSession(
                 new DeploymentTargetReferenceOwner(
                     DeploymentTargetReferenceOwnerTypes.PrivateAccessSession,
                     accessSession.Id),
-                [accessSession.DeploymentTargetId],
+                [accessSession.Route.DeploymentTargetId],
                 [],
                 transaction.Session,
                 ct);

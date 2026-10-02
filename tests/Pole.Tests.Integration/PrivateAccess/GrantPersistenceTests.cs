@@ -175,7 +175,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
                 TenantId, grant.Id, SubjectId)).Value);
         var stored = await fixture.Database.GetCollection<PrivateAccessSession>("PrivateAccessSessions")
             .Find(item => item.Id == issued.SessionId).SingleAsync();
-        Assert.NotEqual(issued.Ticket, stored.TicketHash);
+        Assert.NotEqual(issued.Ticket, stored.Ticket.Hash);
         Assert.IsType<PrivateAccessTicketPending>(stored.State);
         Assert.True(issued.ExpiresAtUtc <= DateTime.UtcNow.AddSeconds(30));
 

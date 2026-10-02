@@ -31,7 +31,7 @@ internal sealed class MongoPrivateAccessSessionAdmission(
                         PrivateAccessFilters.TicketHash(hash))
                     .FirstOrDefaultAsync(ct);
                 var now = timeProvider.GetUtcNow().UtcDateTime;
-                if (current is null || current.TicketExpiresAtUtc <= now ||
+                if (current is null || current.Ticket.ExpiresAtUtc <= now ||
                     current.SessionDeadlineUtc <= now)
                     return transaction.Abort(new RedeemPrivateAccessSessionOutcome(
                         new PrivateAccessTicketInvalid()));
@@ -254,6 +254,6 @@ internal sealed class MongoPrivateAccessSessionAdmission(
         audit.InsertOneAsync(session,
             new PrivateAccessAudit(
                 ObjectId.GenerateNewId().ToString(), current.TenantId,
-                current.GrantId, current.Id, current.SubjectUserId, action, now),
+                current.Grant.Id, current.Id, current.SubjectUserId, action, now),
             cancellationToken: cancellationToken);
 }

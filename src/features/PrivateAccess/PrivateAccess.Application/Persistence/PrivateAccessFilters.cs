@@ -44,7 +44,7 @@ internal static class PrivateAccessFilters
         Builders<PrivateAccessSession>.Filter.Eq(item => item.Id, sessionId);
 
     public static FilterDefinition<PrivateAccessSession> TicketHash(string ticketHash) =>
-        Builders<PrivateAccessSession>.Filter.Eq(item => item.TicketHash, ticketHash);
+        Builders<PrivateAccessSession>.Filter.Eq(item => item.Ticket.Hash, ticketHash);
 
     public static FilterDefinition<PrivateAccessSession> SessionRevision(
         string tenantId, string sessionId, long revision) =>
@@ -63,7 +63,7 @@ internal static class PrivateAccessFilters
             filter.And(
                 filter.OfType<PrivateAccessSessionState, PrivateAccessTicketPending>(
                     item => item.State),
-                filter.Lte(item => item.TicketExpiresAtUtc, nowUtc)),
+                filter.Lte(item => item.Ticket.ExpiresAtUtc, nowUtc)),
             filter.And(
                 filter.OfType<PrivateAccessSessionState, PrivateAccessTicketRedeemed>(
                     item => item.State),

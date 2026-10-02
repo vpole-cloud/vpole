@@ -26,10 +26,10 @@ public sealed class PrivateAccessIndexesMigration : IMigration
         await context.GetCollection<BsonDocument>("PrivateAccessSessions").Indexes.CreateManyAsync(
         [
             new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys.Ascending("TicketHash"),
+                Builders<BsonDocument>.IndexKeys.Ascending("Ticket.Hash"),
                 new CreateIndexOptions { Unique = true, Name = "UX_PrivateAccessSessions_TicketHash" }),
             new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys.Ascending("TenantId").Ascending("GrantId"),
+                Builders<BsonDocument>.IndexKeys.Ascending("TenantId").Ascending("Grant.Id"),
                 new CreateIndexOptions { Name = "IX_PrivateAccessSessions_Tenant_Grant" }),
             new CreateIndexModel<BsonDocument>(
                 Builders<BsonDocument>.IndexKeys.Ascending("State.CleanedAtUtc"),

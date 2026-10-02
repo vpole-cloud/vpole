@@ -9,18 +9,30 @@ public sealed record PrivateAccessSession(
     string Id,
     string TenantId,
     string SubjectUserId,
-    string GrantId,
-    long GrantRevision,
-    string TicketHash,
-    DateTime TicketExpiresAtUtc,
+    PrivateAccessSessionGrantSnapshot Grant,
+    PrivateAccessSessionTicket Ticket,
+    PrivateAccessSessionRouteSnapshot Route,
     DateTime SessionDeadlineUtc,
     DateTime CreatedAtUtc,
     long Revision,
-    PrivateAccessSessionState State,
+    PrivateAccessSessionState State)
+{
+    public DateTime? CleanupLastAttemptAtUtc { get; init; }
+}
+
+public sealed record PrivateAccessSessionGrantSnapshot(
+    string Id,
+    long Revision,
     string ResourceType,
     string ResourceId,
     string ResourceDeploymentId,
-    string EndpointId,
+    string EndpointId);
+
+public sealed record PrivateAccessSessionTicket(
+    string Hash,
+    DateTime ExpiresAtUtc);
+
+public sealed record PrivateAccessSessionRouteSnapshot(
     string DeploymentTargetId,
     string RuntimeCellId,
     string IsolationScopeId,
@@ -29,10 +41,7 @@ public sealed record PrivateAccessSession(
     int ServicePort,
     int TargetPort,
     long DeploymentRevision,
-    long DesiredGeneration)
-{
-    public DateTime? CleanupLastAttemptAtUtc { get; init; }
-}
+    long DesiredGeneration);
 
 [BsonDiscriminator(RootClass = true)]
 [BsonKnownTypes(

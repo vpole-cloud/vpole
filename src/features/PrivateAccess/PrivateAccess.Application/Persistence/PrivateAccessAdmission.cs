@@ -34,7 +34,7 @@ internal sealed class PrivateAccessAdmission(
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var grant = await grants.FindOneAndUpdateAsync(
             transactionSession,
-            PrivateAccessFilters.Grant(accessSession.TenantId, accessSession.GrantId),
+            PrivateAccessFilters.Grant(accessSession.TenantId, accessSession.Grant.Id),
             Builders<PrivateAccessGrant>.Update.Inc(item => item.ReferenceFence, 1),
             new FindOneAndUpdateOptions<PrivateAccessGrant> { ReturnDocument = ReturnDocument.After },
             cancellationToken);
@@ -50,15 +50,15 @@ internal sealed class PrivateAccessAdmission(
         if (member is not TenantMemberSnapshot)
             return new PrivateAccessSubjectMembershipRequired();
 
-        var resourceType = ResourceTypeId.Create(accessSession.ResourceType);
+        var resourceType = ResourceTypeId.Create(accessSession.Grant.ResourceType);
         var registered = await fenceResource(
-            accessSession.TenantId, resourceType, accessSession.ResourceId,
+            accessSession.TenantId, resourceType, accessSession.Grant.ResourceId,
             transactionSession, cancellationToken);
         if (registered is null)
             return new PrivateAccessDeploymentUnavailable();
         var placement = await loadPlacement(
-            accessSession.TenantId, resourceType, accessSession.ResourceId,
-            accessSession.ResourceDeploymentId, transactionSession, cancellationToken);
+            accessSession.TenantId, resourceType, accessSession.Grant.ResourceId,
+            accessSession.Grant.ResourceDeploymentId, transactionSession, cancellationToken);
         if (placement is null ||
             placement.ResourceGroupId != registered.ResourceGroupId ||
             placement.Status != "Applied" ||
@@ -69,8 +69,8 @@ internal sealed class PrivateAccessAdmission(
         if (target is not PrivateAccessDeploymentTargetReady)
             return new PrivateAccessDeploymentUnavailable();
         var endpoint = await endpointCatalog.ResolveAsync(
-            accessSession.TenantId, resourceType, accessSession.ResourceId,
-            accessSession.EndpointId, transactionSession, cancellationToken);
+            accessSession.TenantId, resourceType, accessSession.Grant.ResourceId,
+            accessSession.Grant.EndpointId, transactionSession, cancellationToken);
         if (endpoint is null)
             return new PrivateAccessEndpointUnavailable();
         if (PrivateAccessResolvedBinding.From(placement, endpoint) !=
@@ -86,20 +86,20 @@ internal sealed class PrivateAccessAdmission(
         return new PrivateAccessLeaseSnapshot(
             accessSession.TenantId,
             accessSession.SubjectUserId,
-            accessSession.GrantId,
+            accessSession.Grant.Id,
             accessSession.Id,
-            accessSession.ResourceType,
-            accessSession.ResourceId,
-            accessSession.ResourceDeploymentId,
-            accessSession.EndpointId,
-            accessSession.DeploymentTargetId,
-            accessSession.RuntimeCellId,
-            accessSession.IsolationScopeId,
-            accessSession.KubernetesNamespace,
-            accessSession.ServiceName,
-            NetworkPort.Create(accessSession.ServicePort),
-            NetworkPort.Create(accessSession.TargetPort),
-            accessSession.DeploymentRevision,
+            accessSession.Grant.ResourceType,
+            accessSession.Grant.ResourceId,
+            accessSession.Grant.ResourceDeploymentId,
+            accessSession.Grant.EndpointId,
+            accessSession.Route.DeploymentTargetId,
+            accessSession.Route.RuntimeCellId,
+            accessSession.Route.IsolationScopeId,
+            accessSession.Route.KubernetesNamespace,
+            accessSession.Route.ServiceName,
+            NetworkPort.Create(accessSession.Route.ServicePort),
+            NetworkPort.Create(accessSession.Route.TargetPort),
+            accessSession.Route.DeploymentRevision,
             expiresAt,
             grant.ExpiresAtUtc);
     }
