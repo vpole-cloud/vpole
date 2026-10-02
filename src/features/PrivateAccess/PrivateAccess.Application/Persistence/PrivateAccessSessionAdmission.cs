@@ -48,7 +48,7 @@ internal sealed class MongoPrivateAccessSessionAdmission(
                             State = new PrivateAccessTicketRedeemed(now, null)
                         },
                         transaction.Session, ct);
-                    await AuditAsync(current, "SessionRedeemed", now, transaction.Session, ct);
+                    await AuditAsync(current, PrivateAccessAuditAction.SessionRedeemed, now, transaction.Session, ct);
                     return transaction.Commit(new RedeemPrivateAccessSessionOutcome(lease));
                 }
 
@@ -57,7 +57,7 @@ internal sealed class MongoPrivateAccessSessionAdmission(
                     {
                         State = new PrivateAccessSessionTerminated(now, "AdmissionDenied")
                     }, transaction.Session, ct);
-                await AuditAsync(current, "SessionDenied", now, transaction.Session, ct);
+                await AuditAsync(current, PrivateAccessAuditAction.SessionDenied, now, transaction.Session, ct);
                 var denied = check switch
                 {
                     PrivateAccessGrantUnavailable error => new RedeemPrivateAccessSessionOutcome(error),
@@ -128,7 +128,7 @@ internal sealed class MongoPrivateAccessSessionAdmission(
                     {
                         State = new PrivateAccessSessionTerminated(now, "RenewalDenied")
                     }, transaction.Session, ct);
-                await AuditAsync(current, "SessionDenied", now, transaction.Session, ct);
+                await AuditAsync(current, PrivateAccessAuditAction.SessionDenied, now, transaction.Session, ct);
                 var denied = check switch
                 {
                     PrivateAccessGrantUnavailable error => new RenewPrivateAccessSessionOutcome(error),
@@ -175,7 +175,7 @@ internal sealed class MongoPrivateAccessSessionAdmission(
                         {
                             State = new PrivateAccessSessionTerminated(now, "StartDenied")
                         }, transaction.Session, ct);
-                    await AuditAsync(current, "SessionDenied", now, transaction.Session, ct);
+                    await AuditAsync(current, PrivateAccessAuditAction.SessionDenied, now, transaction.Session, ct);
                     return transaction.Commit(new MarkPrivateAccessSessionStartedOutcome(
                         new PrivateAccessSessionUnavailable()));
                 }
@@ -186,7 +186,7 @@ internal sealed class MongoPrivateAccessSessionAdmission(
                         State = new PrivateAccessSessionActive(
                             redeemed.RedeemedAtUtc, now, lease.ExpiresAtUtc)
                     }, transaction.Session, ct);
-                await AuditAsync(current, "SessionStarted", now, transaction.Session, ct);
+                await AuditAsync(current, PrivateAccessAuditAction.SessionStarted, now, transaction.Session, ct);
                 return transaction.Commit(new MarkPrivateAccessSessionStartedOutcome(
                     new PrivateAccessSessionStarted()));
             }, cancellationToken);
@@ -216,7 +216,7 @@ internal sealed class MongoPrivateAccessSessionAdmission(
                     {
                         State = new PrivateAccessSessionTerminated(now, reason.ToString())
                     }, transaction.Session, ct);
-                await AuditAsync(current, "SessionClosed", now, transaction.Session, ct);
+                await AuditAsync(current, PrivateAccessAuditAction.SessionClosed, now, transaction.Session, ct);
                 return transaction.Commit(new ClosePrivateAccessSessionOutcome(
                     new PrivateAccessSessionClosed()));
             }, cancellationToken);
@@ -247,7 +247,7 @@ internal sealed class MongoPrivateAccessSessionAdmission(
 
     private Task AuditAsync(
         PrivateAccessSession current,
-        string action,
+        PrivateAccessAuditAction action,
         DateTime now,
         IClientSessionHandle session,
         CancellationToken cancellationToken) =>

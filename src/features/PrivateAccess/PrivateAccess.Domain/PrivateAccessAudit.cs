@@ -11,5 +11,32 @@ public sealed record PrivateAccessAudit(
     string GrantId,
     string? SessionId,
     string ActorUserId,
-    string Action,
-    DateTime AtUtc);
+    [property: BsonRepresentation(BsonType.String)]
+    PrivateAccessAuditAction Action,
+    DateTime AtUtc,
+    [property: BsonRepresentation(BsonType.String)]
+    PrivateAccessAuditReason? Reason = null);
+
+public enum PrivateAccessAuditAction
+{
+    GrantCreated,
+    GrantRevoked,
+    SessionIssued,
+    SessionIssueDenied,
+    SessionRedeemed,
+    SessionDenied,
+    SessionStarted,
+    SessionClosed,
+    CleanupClaimed,
+    CleanupCompleted
+}
+
+public enum PrivateAccessAuditReason
+{
+    GrantUnavailable,
+    SubjectMismatch,
+    MembershipRequired,
+    DeploymentUnavailable,
+    EndpointUnavailable,
+    BindingChanged
+}

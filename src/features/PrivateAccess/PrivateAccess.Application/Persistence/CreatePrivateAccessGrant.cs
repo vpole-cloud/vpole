@@ -106,7 +106,7 @@ internal sealed class MongoCreatePrivateAccessGrant(
             await grants.InsertOneAsync(transaction.Session, grant, cancellationToken: ct);
             await audit.InsertOneAsync(transaction.Session, new PrivateAccessAudit(
                 ObjectId.GenerateNewId().ToString(), command.TenantId,
-                grant.Id, null, command.ActorUserId, "GrantCreated", now),
+                grant.Id, null, command.ActorUserId, PrivateAccessAuditAction.GrantCreated, now),
                 cancellationToken: ct);
             await storeOutboxWrites(transaction.Session,
                 [OutboxWrite.Create(new PrivateAccessGrantCreatedEvent(
