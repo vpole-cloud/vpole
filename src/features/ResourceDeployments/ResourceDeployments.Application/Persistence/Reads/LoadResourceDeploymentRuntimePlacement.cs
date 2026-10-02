@@ -26,6 +26,20 @@ internal sealed class MongoLoadResourceDeploymentRuntimePlacement(
         return deployment is null ? null : ToRuntimePlacement(deployment);
     }
 
+    public async Task<IReadOnlyList<ResourceDeploymentRuntimePlacementDto>> LoadForResourcesAsync(
+        string tenantId,
+        ResourceTypeId resourceType,
+        IReadOnlyCollection<string> resourceIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (resourceIds.Count == 0)
+            return [];
+        var deployments = await resourceDeployments
+            .Find(ResourceDeploymentFilters.ForResources(tenantId, resourceType, resourceIds))
+            .ToListAsync(cancellationToken);
+        return deployments.Select(ToRuntimePlacement).ToArray();
+    }
+
     public async Task<IReadOnlyList<string>> LoadTargetIdsAsync(
         ResourceTypeId resourceType,
         CancellationToken cancellationToken = default)

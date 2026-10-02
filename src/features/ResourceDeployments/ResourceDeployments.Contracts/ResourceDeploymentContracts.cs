@@ -229,6 +229,13 @@ public delegate Task<ResourceDeploymentRuntimePlacementDto?>
         string deploymentId,
         CancellationToken cancellationToken = default);
 
+public delegate Task<IReadOnlyList<ResourceDeploymentRuntimePlacementDto>>
+    LoadResourceDeploymentRuntimePlacements(
+        string tenantId,
+        ResourceTypeId resourceType,
+        IReadOnlyCollection<string> resourceIds,
+        CancellationToken cancellationToken = default);
+
 public delegate Task<IReadOnlyList<string>> LoadResourceDeploymentTargetIds(
     ResourceTypeId resourceType,
     CancellationToken cancellationToken = default);

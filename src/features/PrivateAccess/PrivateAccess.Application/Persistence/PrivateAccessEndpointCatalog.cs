@@ -4,7 +4,7 @@ using Pole.Workloads;
 
 namespace Pole.Features.PrivateAccess.Application.Persistence;
 
-internal sealed record PrivateAccessResolvedEndpoint(
+public sealed record PrivateAccessResolvedEndpoint(
     string Id,
     string ServiceName,
     int ServicePort,
@@ -35,21 +35,20 @@ internal sealed class PrivateAccessEndpointCatalog(
         };
     }
 
-    public async Task<PrivateAccessResolvedEndpoint?> ResolveReadOnlyAsync(
+    public Task<IReadOnlyDictionary<string, ResourceConnectionEndpointsFound>> LoadAvailableAsync(
         string tenantId,
         ResourceTypeId resourceType,
-        string resourceId,
-        string endpointId,
-        CancellationToken cancellationToken)
-    {
-        if (!destinations.TryGetValue(resourceType, out var destination))
-            return null;
-        var found = await destination.LoadAvailableAsync(
-            tenantId, [resourceId], cancellationToken);
-        return found.TryGetValue(resourceId, out var endpoints)
-            ? Resolve(endpoints.Endpoints, endpointId)
-            : null;
-    }
+        IReadOnlyCollection<string> resourceIds,
+        CancellationToken cancellationToken) =>
+        destinations.TryGetValue(resourceType, out var destination)
+            ? destination.LoadAvailableAsync(tenantId, resourceIds, cancellationToken)
+            : Task.FromResult<IReadOnlyDictionary<string, ResourceConnectionEndpointsFound>>(
+                new Dictionary<string, ResourceConnectionEndpointsFound>());
+
+    public PrivateAccessResolvedEndpoint? ResolveAvailable(
+        ResourceConnectionEndpointsFound endpoints,
+        string endpointId) =>
+        Resolve(endpoints.Endpoints, endpointId);
 
     private static PrivateAccessResolvedEndpoint? Resolve(
         IReadOnlyCollection<ResourceConnectionEndpoint> endpoints,

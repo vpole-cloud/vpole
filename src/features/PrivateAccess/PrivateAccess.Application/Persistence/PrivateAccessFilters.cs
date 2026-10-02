@@ -29,6 +29,17 @@ internal static class PrivateAccessFilters
             Builders<PrivateAccessGrant>.Filter
                 .OfType<PrivateAccessGrantState, ActivePrivateAccessGrant>(item => item.State));
 
+    public static FilterDefinition<PrivateAccessGrant> OwnActiveResourceGrants(
+        string tenantId,
+        string subjectUserId,
+        string resourceType,
+        string resourceId,
+        DateTime nowUtc) =>
+        Builders<PrivateAccessGrant>.Filter.And(
+            OwnActiveGrants(tenantId, subjectUserId, nowUtc),
+            Builders<PrivateAccessGrant>.Filter.Eq(item => item.ResourceType, resourceType),
+            Builders<PrivateAccessGrant>.Filter.Eq(item => item.ResourceId, resourceId));
+
     public static FilterDefinition<PrivateAccessGrant> GrantRevision(
         string tenantId, string grantId, long revision) =>
         Builders<PrivateAccessGrant>.Filter.And(

@@ -38,6 +38,8 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
     private ServiceProvider provider = null!;
     private bool targetAttested = true;
     private long deploymentRevision = 1;
+    private int placementBatchReads;
+    private readonly EndpointCapability endpointCapability = new();
 
     public async Task InitializeAsync()
     {
@@ -91,6 +93,17 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
                             DeploymentId, ResourceId, "cell", "target", "namespace",
                             deploymentRevision, 1, null!, "Applied", "Apply", "scope")
                         : null));
+        services.AddSingleton<LoadResourceDeploymentRuntimePlacements>(
+            (tenantId, _, resourceIds, _) =>
+            {
+                placementBatchReads++;
+                return Task.FromResult<IReadOnlyList<ResourceDeploymentRuntimePlacementDto>>(
+                    tenantId == TenantId && resourceIds.Contains(ResourceId)
+                        ? [new ResourceDeploymentRuntimePlacementDto(
+                            DeploymentId, ResourceId, "cell", "target", "namespace",
+                            deploymentRevision, 1, null!, "Applied", "Apply", "scope")]
+                        : []);
+            });
         services.AddSingleton<FenceDeploymentTargetPrivateAccess>(
             (targetId, session, _) =>
             {
@@ -107,7 +120,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
                 return Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(
                     new DeploymentTargetReferencesChanged());
             });
-        services.AddSingleton<IResourceConnectionDestinationCapability>(new EndpointCapability());
+        services.AddSingleton<IResourceConnectionDestinationCapability>(endpointCapability);
         provider = services.BuildServiceProvider();
     }
 
@@ -377,8 +390,16 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
     public async Task GatewayDesiredState_TracksOnlyActiveGrantEndpoints()
     {
         var grant = await CreateGrantAsync();
+        var second = PrivateAccessGrantFactory.Create(
+            TenantId, ActorId, ResourceType.Value, ResourceId,
+            DeploymentId, "redis", ActorId,
+            DateTime.UtcNow, DateTime.UtcNow.AddHours(1));
+        await fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
+            .InsertOneAsync(second);
         var load = provider.GetRequiredService<LoadPrivateAccessGatewayDesiredStates>();
         var desired = Assert.Single(await load());
+        Assert.Equal(1, placementBatchReads);
+        Assert.Equal(1, endpointCapability.BatchReads);
         Assert.Equal((TenantId, "target"), (desired.TenantId, desired.DeploymentTargetId));
         var endpoint = Assert.Single(desired.Endpoints);
         Assert.Equal((DeploymentId, "redis", "namespace", "redis-service", 6379),
@@ -388,6 +409,8 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         var grants = fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants");
         await grants.ReplaceOneAsync(item => item.Id == grant.Id,
             grant.Revoke(ActorId, DateTime.UtcNow));
+        await grants.ReplaceOneAsync(item => item.Id == second.Id,
+            second.Revoke(ActorId, DateTime.UtcNow));
         Assert.Empty(await load());
     }
 
@@ -584,6 +607,8 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
 
     private sealed class EndpointCapability : IResourceConnectionDestinationCapability
     {
+        public int BatchReads { get; private set; }
+
         public ResourceTypeId ResourceType => GrantPersistenceTests.ResourceType;
 
         public Task<LoadResourceConnectionEndpointsOutcome> LoadAsync(
@@ -603,11 +628,14 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         public Task<IReadOnlyDictionary<string, ResourceConnectionEndpointsFound>> LoadAvailableAsync(
             string tenantId,
             IReadOnlyCollection<string> resourceIds,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyDictionary<string, ResourceConnectionEndpointsFound>>(
+            CancellationToken cancellationToken = default)
+        {
+            BatchReads++;
+            return Task.FromResult<IReadOnlyDictionary<string, ResourceConnectionEndpointsFound>>(
                 resourceIds.ToDictionary(id => id, id =>
                     new ResourceConnectionEndpointsFound(ImmutableList.Create(
                         new ResourceConnectionEndpoint("redis", "redis-service",
                             NetworkPort.Create(6379), NetworkPort.Create(6379))))));
+        }
     }
 }

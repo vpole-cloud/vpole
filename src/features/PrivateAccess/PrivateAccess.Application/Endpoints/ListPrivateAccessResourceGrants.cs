@@ -36,9 +36,9 @@ public union ListPrivateAccessResourceGrantsOutcome(
 
 public sealed class ListPrivateAccessResourceGrantsHandler(
     LoadTenantMember loadTenantMember,
-    LoadOwnPrivateAccessGrants loadGrants,
+    LoadOwnPrivateAccessResourceGrants loadGrants,
     PrivateAccessResourceNameCatalog resources,
-    IsPrivateAccessGrantRouteAvailable routeAvailable,
+    LoadPrivateAccessGrantRoutes routes,
     TimeProvider timeProvider)
     : IMediatorOutcomeHandler<
         ListPrivateAccessResourceGrantsRequest,
@@ -59,21 +59,21 @@ public sealed class ListPrivateAccessResourceGrantsHandler(
             return new PrivateAccessResourceGrantOptions([]);
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        var grants = await loadGrants(request.TenantId, subjectId, now, cancellationToken);
+        var grants = await loadGrants(request.TenantId, subjectId,
+            resource.ResourceType.Value, resource.ResourceId, now, cancellationToken);
         var candidates = grants
-            .Where(grant => grant.ResourceType == resource.ResourceType.Value &&
-                grant.ResourceId == resource.ResourceId &&
-                (request.DeploymentId is null ||
+            .Where(grant => (request.DeploymentId is null ||
                     grant.ResourceDeploymentId == request.DeploymentId) &&
                 (request.EndpointId is null || grant.EndpointId == request.EndpointId))
             .ToArray();
+        var available = await routes(
+            request.TenantId, resource.ResourceType, candidates, cancellationToken);
 
         var options = new List<PrivateAccessResourceGrantOption>();
         foreach (var grant in candidates)
         {
-            if (!await routeAvailable(
-                request.TenantId, resource.ResourceType, resource.ResourceId,
-                grant.ResourceDeploymentId, grant.EndpointId, cancellationToken))
+            if (!available.ContainsKey((grant.ResourceId, grant.ResourceDeploymentId,
+                    grant.EndpointId)))
                 continue;
 
             options.Add(new PrivateAccessResourceGrantOption(

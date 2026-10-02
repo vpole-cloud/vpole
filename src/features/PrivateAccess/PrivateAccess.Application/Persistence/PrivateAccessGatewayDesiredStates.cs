@@ -1,15 +1,13 @@
 using MongoDB.Driver;
 using Pole.Features.PrivateAccess.Contracts;
 using Pole.Features.PrivateAccess.Domain;
-using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Workloads;
 
 namespace Pole.Features.PrivateAccess.Application.Persistence;
 
 internal sealed class PrivateAccessGatewayDesiredStates(
     IMongoCollection<PrivateAccessGrant> grants,
-    LoadExactResourceDeploymentRuntimePlacement loadPlacement,
-    PrivateAccessEndpointCatalog endpoints,
+    PrivateAccessGrantRoutes grantRoutes,
     TimeProvider timeProvider)
 {
     public async Task<IReadOnlyList<PrivateAccessGatewayDesiredState>> LoadAsync(
@@ -20,37 +18,36 @@ internal sealed class PrivateAccessGatewayDesiredStates(
             .ToListAsync(cancellationToken);
         var routes = new Dictionary<(string TenantId, string TargetId),
             Dictionary<(string DeploymentId, string EndpointId), PrivateAccessGatewayEndpointSnapshot>>();
-        foreach (var grant in active)
+        foreach (var group in active.GroupBy(grant =>
+                     (grant.TenantId, grant.ResourceType)))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var resourceType = ResourceTypeId.Create(grant.ResourceType);
-            var placement = await loadPlacement(
-                grant.TenantId, resourceType, grant.ResourceId,
-                grant.ResourceDeploymentId, cancellationToken);
-            if (placement is not { Status: "Applied", DesiredOperation: "Apply" })
-                continue;
-
-            var endpoint = await endpoints.ResolveReadOnlyAsync(
-                grant.TenantId, resourceType, grant.ResourceId,
-                grant.EndpointId, cancellationToken);
-            if (endpoint is null)
-                continue;
-
-            var pair = (grant.TenantId, placement.DeploymentTargetId);
-            if (!routes.TryGetValue(pair, out var pairRoutes))
+            var available = await grantRoutes.LoadAsync(
+                group.Key.TenantId, ResourceTypeId.Create(group.Key.ResourceType),
+                group.ToArray(), cancellationToken);
+            foreach (var grant in group)
             {
-                pairRoutes = new Dictionary<(string, string), PrivateAccessGatewayEndpointSnapshot>();
-                routes.Add(pair, pairRoutes);
-            }
+                if (!available.TryGetValue((grant.ResourceId, grant.ResourceDeploymentId,
+                        grant.EndpointId), out var resolved))
+                    continue;
+                var placement = resolved.Placement;
+                var endpoint = resolved.Endpoint;
+                var pair = (grant.TenantId, placement.DeploymentTargetId);
+                if (!routes.TryGetValue(pair, out var pairRoutes))
+                {
+                    pairRoutes = new Dictionary<(string, string), PrivateAccessGatewayEndpointSnapshot>();
+                    routes.Add(pair, pairRoutes);
+                }
 
-            var route = new PrivateAccessGatewayEndpointSnapshot(
-                endpoint.Id, placement.RuntimeCellId, placement.DeploymentId,
-                placement.KubernetesNamespace, endpoint.ServiceName,
-                endpoint.ServicePort, endpoint.TargetPort);
-            var key = (placement.DeploymentId, endpoint.Id);
-            if (pairRoutes.TryGetValue(key, out var previous) && previous != route)
-                throw new InvalidOperationException("Private Access provider returned inconsistent endpoint placement.");
-            pairRoutes[key] = route;
+                var route = new PrivateAccessGatewayEndpointSnapshot(
+                    endpoint.Id, placement.RuntimeCellId, placement.DeploymentId,
+                    placement.KubernetesNamespace, endpoint.ServiceName,
+                    endpoint.ServicePort, endpoint.TargetPort);
+                var key = (placement.DeploymentId, endpoint.Id);
+                if (pairRoutes.TryGetValue(key, out var previous) && previous != route)
+                    throw new InvalidOperationException("Private Access provider returned inconsistent endpoint placement.");
+                pairRoutes[key] = route;
+            }
         }
 
         return routes

@@ -97,6 +97,9 @@ internal static class ResourceDeploymentPersistenceRegistration
         services.TryAddSingleton<LoadExactResourceDeploymentRuntimePlacement>(serviceProvider =>
             serviceProvider.GetRequiredService<MongoLoadResourceDeploymentRuntimePlacement>()
                 .LoadExactAsync);
+        services.TryAddSingleton<LoadResourceDeploymentRuntimePlacements>(serviceProvider =>
+            serviceProvider.GetRequiredService<MongoLoadResourceDeploymentRuntimePlacement>()
+                .LoadForResourcesAsync);
         services.TryAddSingleton<LoadResourceDeploymentTargetIds>(serviceProvider =>
             serviceProvider.GetRequiredService<MongoLoadResourceDeploymentRuntimePlacement>()
                 .LoadTargetIdsAsync);

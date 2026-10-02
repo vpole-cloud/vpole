@@ -9,6 +9,14 @@ public delegate Task<IReadOnlyList<PrivateAccessGrant>> LoadOwnPrivateAccessGran
     DateTime nowUtc,
     CancellationToken cancellationToken = default);
 
+public delegate Task<IReadOnlyList<PrivateAccessGrant>> LoadOwnPrivateAccessResourceGrants(
+    string tenantId,
+    string subjectUserId,
+    string resourceType,
+    string resourceId,
+    DateTime nowUtc,
+    CancellationToken cancellationToken = default);
+
 public delegate Task<IReadOnlyList<PrivateAccessGrant>> LoadTenantPrivateAccessGrants(
     string tenantId,
     CancellationToken cancellationToken = default);
@@ -28,6 +36,21 @@ internal sealed class MongoLoadOwnPrivateAccessGrants(
         CancellationToken cancellationToken = default)
     {
         var filter = PrivateAccessFilters.OwnActiveGrants(tenantId, subjectUserId, nowUtc);
+        return await grants.Find(filter)
+            .SortByDescending(item => item.CreatedAtUtc)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<PrivateAccessGrant>> LoadResourceAsync(
+        string tenantId,
+        string subjectUserId,
+        string resourceType,
+        string resourceId,
+        DateTime nowUtc,
+        CancellationToken cancellationToken = default)
+    {
+        var filter = PrivateAccessFilters.OwnActiveResourceGrants(
+            tenantId, subjectUserId, resourceType, resourceId, nowUtc);
         return await grants.Find(filter)
             .SortByDescending(item => item.CreatedAtUtc)
             .ToListAsync(cancellationToken);
