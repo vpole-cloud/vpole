@@ -5,13 +5,17 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ConsoleShell } from '../../console/ConsoleShell'
 import { createConsoleRegistry } from '../../console/moduleRegistry'
 import { webServicesModule } from './WebServicesModule'
-import type { WebService } from '../../types'
+import type { IsolationScope, WebService } from '../../types'
 
 const registry = createConsoleRegistry([
   webServicesModule,
-  { id: 'test-groups', views: [{ id: 'resource-groups', label: 'Test groups', component: () => <p>Group provider</p>, access: 'tenant' }] },
+  { id: 'test-groups', views: [{ id: 'resource-groups', label: 'Resource groups', component: () => <p>Group provider</p>, access: 'tenant' }] },
 ])
 const group = { id: 'group', name: 'Applications', description: '', tags: [], resourceCount: 1 }
+const scope = (id: string, resourceGroupId = group.id, isDefault = false): IsolationScope => ({
+  id, resourceGroupId, name: isDefault ? 'default' : 'Production', isDefault, lifecycle: 'active', revision: 1,
+  createdAtUtc: '', updatedAtUtc: '',
+})
 const target = { id: 'target', displayName: 'Local target', workloadConfigurationRevision: 1, hasPublicIngress: true }
 const service: WebService = {
   id: 'service', name: 'sample', resourceGroupId: group.id, activeRevision: 1,
@@ -128,6 +132,73 @@ async function fillCreateForm() {
 async function submit() {
   await act(async () => { [...container.querySelectorAll('form')].find(visible)!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) })
 }
+
+it('lists active isolation scopes by name and sends the chosen identity with tenant headers', async () => {
+  const base = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation((url, init) => String(url).endsWith('/isolation-scopes') ? json([
+    scope('default-id', group.id, true), scope('production-id'),
+    { ...scope('deleting-id'), name: 'Deleting', lifecycle: 'deleting' }, scope('foreign-id', 'another-group'),
+  ]) : base(url, init))
+  await act(async () => { render() })
+  await fillCreateForm()
+  const selector = container.querySelector<HTMLSelectElement>('#new-web-service-isolation-scope')!
+  expect([...selector.options].map((option) => option.textContent)).toEqual(['Group default', 'Production'])
+  expect(selector.value).toBe('')
+  expect(container.textContent).not.toContain('MongoDB ObjectId')
+  const scopeRequest = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/resource-groups/group/isolation-scopes'))!
+  expect(scopeRequest[1]!.headers).toMatchObject({ Authorization: 'Bearer test-token', 'X-Pole-Tenant-ID': 'alpha' })
+  const targetRequests = () => fetchMock.mock.calls.filter(([url]) => String(url).includes('/deployment-targets/available'))
+  expect(new URL(String(targetRequests().at(-1)![0])).searchParams.get('isolationScopeId')).toBe('default-id')
+  await act(async () => { selector.value = 'production-id'; selector.dispatchEvent(new Event('change', { bubbles: true })) })
+  expect(new URL(String(targetRequests().at(-1)![0])).searchParams.get('isolationScopeId')).toBe('production-id')
+  await submit()
+  const [, request] = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')!
+  expect(JSON.parse(request!.body as string).placement.isolationScopeId).toBe('production-id')
+})
+
+it('resets scope selection on a group change and ignores late choices from the previous group', async () => {
+  const base = fetchMock.getMockImplementation()!
+  let finishOther!: (response: Response) => void
+  const pendingOther = new Promise<Response>((resolve) => { finishOther = resolve })
+  fetchMock.mockImplementation((url, init) => {
+    const path = new URL(String(url)).pathname
+    if (path.endsWith('/resource-groups')) return json(page([group, { ...group, id: 'other', name: 'Other group' }]))
+    if (path.endsWith('/other/isolation-scopes')) return pendingOther
+    if (path.endsWith('/group/isolation-scopes')) return json([scope('default-id', group.id, true), scope('production-id')])
+    return base(url, init)
+  })
+  await act(async () => { render() })
+  await fillCreateForm()
+  const selector = container.querySelector<HTMLSelectElement>('#new-web-service-isolation-scope')!
+  const groupSelector = [...container.querySelectorAll('select')].find((select) => select.querySelector('option[value="other"]'))!
+  await act(async () => { selector.value = 'production-id'; selector.dispatchEvent(new Event('change', { bubbles: true })) })
+  await act(async () => { groupSelector.value = 'other'; groupSelector.dispatchEvent(new Event('change', { bubbles: true })) })
+  expect(selector.value).toBe('')
+  expect(selector.disabled).toBe(true)
+  expect(button('Create service').disabled).toBe(true)
+  await act(async () => { groupSelector.value = group.id; groupSelector.dispatchEvent(new Event('change', { bubbles: true })) })
+  await act(async () => { finishOther(new Response(JSON.stringify([scope('other-id', 'other')]), { headers: { 'Content-Type': 'application/json' } })) })
+  expect([...selector.options].map((option) => option.value)).toEqual(['', 'production-id'])
+  expect(selector.value).toBe('')
+  const request = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/other/isolation-scopes'))!
+  expect(request[1]!.signal!.aborted).toBe(true)
+})
+
+it('keeps group default usable when named scopes fail to load and lets the user retry', async () => {
+  const base = fetchMock.getMockImplementation()!
+  let failScopes = true
+  fetchMock.mockImplementation((url, init) => String(url).endsWith('/isolation-scopes')
+    ? failScopes ? Promise.resolve(new Response('Scope list unavailable.', { status: 503 })) : json([scope('production-id')])
+    : base(url, init))
+  await act(async () => { render() })
+  await fillCreateForm()
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain('You can use the group default.')
+  expect(button('Create service').disabled).toBe(false)
+  failScopes = false
+  await click('Retry scopes')
+  expect(container.querySelector('[role="alert"]')).toBeNull()
+  expect(container.querySelector('#new-web-service-isolation-scope')!.textContent).toContain('Production')
+})
 const visibleText = () => {
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
   const text: string[] = []
