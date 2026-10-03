@@ -16,10 +16,15 @@ function useTenantApiOptions() {
 }
 
 export function OverviewView() {
-  const { auth } = useAppServices()
+  const { auth, tenant, resourceTypes, navigation } = useAppServices()
   const overview = useOverviewData(useTenantApiOptions())
-  return <OverviewPage authState={auth}
+  return <><OverviewPage authState={auth}
     onValidateIdentity={() => { void overview.runIdentityCheck() }} overview={overview} />
+    {tenant.active && <section className="panel" aria-label="Resource catalogs"><h2 className="panel__title">Resource catalogs</h2>
+      <p className="field__hint">Open a resource catalog in the active tenant.</p><div className="row-actions">
+        {resourceTypes.map((type) => <a key={type.id} className="button" href={navigation.resourceHref({ resourceTypeId: type.id, resourceId: 'catalog' })}>{type.label}</a>)}
+      </div></section>}
+    </>
 }
 
 export function DomainsView() {

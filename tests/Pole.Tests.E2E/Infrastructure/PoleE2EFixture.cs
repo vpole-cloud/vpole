@@ -610,18 +610,19 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         try
         {
             await foreach (var batch in resourceLogger.GetAllAsync("pole-server").WithCancellation(timeout.Token))
-            foreach (var line in batch)
-            {
-                foreach (Match match in Regex.Matches(line.Content, @"\b[A-Z][A-Za-z0-9.]*Exception\b"))
-                    kinds.Add(match.Value);
-                var frame = line.Content.TrimStart();
-                if (frame.StartsWith("at Pole.Features.Postgres.", StringComparison.Ordinal) ||
-                    frame.StartsWith("at Pole.Features.ResourceDeployments.", StringComparison.Ordinal))
-                    kinds.Add(frame.Split(" in ", StringSplitOptions.None)[0]);
-                foreach (var message in new[] { "No ingress policy contribution", "Ingress policy revision or TCP port is invalid", "Ingress policy ports do not match the provider path", "Ingress pod source must have an exact DNS namespace and labels", "No service for type", "Unable to resolve service for type" })
-                    if (line.Content.Contains(message, StringComparison.Ordinal)) kinds.Add(message);
-                if (kinds.Count >= 30) return string.Join(Environment.NewLine, kinds.Order());
-            }
+                foreach (var line in batch)
+                {
+                    foreach (Match match in Regex.Matches(line.Content, @"\b[A-Z][A-Za-z0-9.]*Exception\b"))
+                        kinds.Add(match.Value);
+                    var frame = line.Content.TrimStart();
+                    if (frame.StartsWith("at Pole.Features.Postgres.", StringComparison.Ordinal) ||
+                        frame.StartsWith("at Pole.Features.RedisServices.", StringComparison.Ordinal) ||
+                        frame.StartsWith("at Pole.Features.ResourceDeployments.", StringComparison.Ordinal))
+                        kinds.Add(frame.Split(" in ", StringSplitOptions.None)[0]);
+                    foreach (var message in new[] { "No ingress policy contribution", "Ingress policy revision or TCP port is invalid", "Ingress policy ports do not match the provider path", "Ingress pod source must have an exact DNS namespace and labels", "No service for type", "Unable to resolve service for type" })
+                        if (line.Content.Contains(message, StringComparison.Ordinal)) kinds.Add(message);
+                    if (kinds.Count >= 30) return string.Join(Environment.NewLine, kinds.Order());
+                }
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { }
         return string.Join(Environment.NewLine, kinds.Order());

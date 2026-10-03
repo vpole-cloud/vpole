@@ -104,6 +104,7 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
 
         await Task.WhenAll(
             AssertResourceDeletedAsync(() => Kubernetes.AppsV1.ReadNamespacedStatefulSetAsync(redis.Name, NamespaceName)),
+            AssertResourceDeletedAsync(() => Kubernetes.CoreV1.ReadNamespacedPersistentVolumeClaimAsync($"redis-data-{redis.Name}-0", NamespaceName)),
             AssertResourceDeletedAsync(() => Kubernetes.CoreV1.ReadNamespacedServiceAsync(
                 RedisInKubernetes.BuildServiceName(redis.Name),
                 NamespaceName)));

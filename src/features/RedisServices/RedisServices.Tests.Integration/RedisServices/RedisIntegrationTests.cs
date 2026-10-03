@@ -250,7 +250,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
-    public async Task Update_ChangesRedisSpec()
+    public async Task Update_ChangesTagsWithoutResizingStorage()
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(RedisTestData.SeedResourceGroup());
         var createResult = await Mediator.Send(RedisTestData.CreateRedisServiceRequest(resourceGroup.Id));
@@ -260,7 +260,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
             Id: created.RedisId,
             Body: new UpdateRedisServiceRequestBody(
                 Spec: new(
-                    Storage: new(10, RedisTestData.DefaultStorageProfileId)),
+                    Storage: new(5, RedisTestData.DefaultStorageProfileId)),
                 Tags: ["cache", "prod"]),
             TenantId: RedisTestData.TenantId);
 
@@ -270,7 +270,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
 
         var updated = await DbContext.RedisServices.Find(redis => redis.Id == created.RedisId).FirstOrDefaultAsync();
         Assert.NotNull(updated);
-        Assert.Equal(10, updated.Spec.Storage.SizeGb);
+        Assert.Equal(5, updated.Spec.Storage.SizeGb);
         Assert.Equal(RedisTestData.DefaultStorageProfileId, updated.Spec.Storage.StorageProfileId);
         Assert.Equal(["cache", "prod"], updated.Tags.Order());
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("pole.redis/v1/redis-service-updated"));
@@ -297,7 +297,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
             created.RedisId,
             new UpdateRedisServiceRequestBody(
                 new RedisSpecDto(new StorageDto(
-                    10,
+                    5,
                     RedisTestData.DefaultStorageProfileId)),
                 ImmutableHashSet.Create("updated")),
             RedisTestData.TenantId));
@@ -326,7 +326,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
             created.RedisId,
             new UpdateRedisServiceRequestBody(
                 new RedisSpecDto(new StorageDto(
-                    10,
+                    5,
                     RedisTestData.DefaultStorageProfileId)),
                 ImmutableHashSet.Create("updated"),
                 updatedProfile.Id),

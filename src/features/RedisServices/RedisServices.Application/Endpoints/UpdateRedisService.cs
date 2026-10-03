@@ -42,6 +42,7 @@ public static class UpdateRedisService
                         RedisServiceNotFound error => MapNotFound(error),
                         RedisUpdateUnavailable error => MapUpdateUnavailable(error),
                         RedisStorageProfileChangeNotAllowed error => MapStorageProfileChangeNotAllowed(error),
+                        RedisStorageResizeUnsupported error => MapStorageResizeUnsupported(error),
                         RedisUpdateConflict error => MapUpdateConflict(error),
                         LoadCurrentResourceDeploymentComputeError error => MapComputeError(error),
                         ComputeProfileResolutionError error => ComputeHttpMappings.MapResolutionError(error),
@@ -61,12 +62,14 @@ public sealed record RedisServiceNotFound(string RedisId);
 public sealed record RedisUpdateUnavailable(string RedisId);
 
 public sealed record RedisStorageProfileChangeNotAllowed(string RedisId);
+public sealed record RedisStorageResizeUnsupported(string RedisId);
 
 public union UpdateRedisServiceOutcome(
     UpdateRedisServiceResponse,
     RedisServiceNotFound,
     RedisUpdateUnavailable,
     RedisStorageProfileChangeNotAllowed,
+    RedisStorageResizeUnsupported,
     LoadCurrentResourceDeploymentComputeError,
     ComputeProfileResolutionError,
     RedisUpdateConflict,
@@ -123,6 +126,8 @@ public sealed class UpdateRedisServiceHandler(
         }
 
         var nextSpec = request.Body.Spec.ToDomain();
+        if (nextSpec.Storage.SizeGb != redis.Spec.Storage.SizeGb)
+            return new RedisStorageResizeUnsupported(redis.Id);
         var currentComputeResult = await loadDeploymentCompute(
             redis.TenantId,
             RedisResourceDeployment.ResourceType,

@@ -4,6 +4,15 @@ The Redis feature owns the desired state and lifecycle of tenant-scoped Redis se
 coordinates quota admission, resource placement, durable events, and Kubernetes reconciliation,
 while MongoDB remains the source of truth for the resource document.
 
+The browser module provides catalog/search, creation, overview and configuration workspaces.
+Read DTOs include the persisted revision and `Active`/`Deleting` lifecycle, with nullable deployment
+metadata. Provider descriptor registration is additive so Redis remains available when other
+resource adapters are already registered. Browser provisioning does not imply application readiness.
+Native storage resizing is unavailable in the browser. StatefulSet claim retention deletes its owned
+PVC when the service is deleted, while retaining storage during any replica scale-down.
+API updates return `redis-services.storage-resize-unsupported` before mutating desired state when
+capacity changes, avoiding an accepted request which cannot be applied to an immutable claim template.
+
 CPU, memory, extended resources, and Kubernetes scheduling are resolved from a
 [`ComputeProfile`](../ComputeProfiles/README.md) and stored in the resource's immutable
 `ResourceDeployment` snapshot. Create uses the default profile when no ID is supplied. Update

@@ -80,6 +80,23 @@ public sealed class RedisFeatureHostTests(MongoReplicaSetFixture fixture)
         var group = await store.InsertResourceGroupAsync(RedisTestData.SeedResourceGroup());
         using var created = await client.PostAsJsonAsync(route, RedisTestData.CreateRedisServiceRequest(group.Id).Body);
         Assert.True(created.StatusCode == HttpStatusCode.Accepted, await created.Content.ReadAsStringAsync());
+        var creation = await created.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        using var details = await client.GetAsync(route + creation.GetProperty("redisId").GetString());
+        Assert.Equal(HttpStatusCode.OK, details.StatusCode);
+        var metadata = await details.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal("Active", metadata.GetProperty("lifecycle").GetString());
+        Assert.Equal(1, metadata.GetProperty("revision").GetInt64());
+        using var resize = await client.PutAsJsonAsync(route + creation.GetProperty("redisId").GetString(),
+            new { spec = new { storage = new { sizeGb = 2, storageProfileId = metadata.GetProperty("spec").GetProperty("storage").GetProperty("storageProfileId").GetString() } }, tags = Array.Empty<string>() });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, resize.StatusCode);
+        Assert.Contains("redis-services.storage-resize-unsupported", await resize.Content.ReadAsStringAsync());
+        using var grow = await client.PutAsJsonAsync(route + creation.GetProperty("redisId").GetString(),
+            new { spec = new { storage = new { sizeGb = 10, storageProfileId = metadata.GetProperty("spec").GetProperty("storage").GetProperty("storageProfileId").GetString() } }, tags = Array.Empty<string>() });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, grow.StatusCode);
+        using var unchanged = await client.GetAsync(route + creation.GetProperty("redisId").GetString());
+        var unchangedMetadata = await unchanged.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal(1, unchangedMetadata.GetProperty("revision").GetInt64());
+        Assert.Equal(5, unchangedMetadata.GetProperty("spec").GetProperty("storage").GetProperty("sizeGb").GetInt32());
         const string eventName = "pole.redis/v1/redis-service-created";
         var outbox = await fixture.Database.GetCollection<BsonDocument>("OutboxMessages")
             .Find(new BsonDocument("EventType", eventName)).ToListAsync();

@@ -36,7 +36,7 @@ public static class RedisServicesFeatureRegistration
                 .GetRequiredService<MongoRunTransaction>()
                 .InvokeOutcomeAsync<FinalizeRedisDeletionOutcome>);
         services.TryAddScoped<RedisResourceDeploymentAdapter>();
-        services.TryAddSingleton(RedisResourceDeploymentAdapterRegistration.Descriptor);
+        services.AddSingleton(RedisResourceDeploymentAdapterRegistration.Descriptor);
         return services;
     }
 }
