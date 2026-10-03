@@ -22,6 +22,17 @@ export interface ResourceGroup {
   tags: string[]
 }
 
+export interface IsolationScope {
+  id: string
+  resourceGroupId: string
+  name: string
+  isDefault: boolean
+  lifecycle: 'active' | 'deleting'
+  revision: number
+  createdAtUtc: string
+  updatedAtUtc: string
+}
+
 export interface ResourceRegistration {
   registrationId: string
   resourceId: string

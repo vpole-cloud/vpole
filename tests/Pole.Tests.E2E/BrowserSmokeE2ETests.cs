@@ -125,8 +125,14 @@ public sealed class BrowserSmokeE2ETests(
             await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = resourceGroupName }).WaitForAsync();
 
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Web services", Exact = true }).ClickAsync();
+            Assert.Equal(1, await page.GetByRole(AriaRole.Combobox, new PageGetByRoleOptions { Name = "Tenant", Exact = true }).CountAsync());
+            Assert.Equal(0, await page.GetByText("Active tenant", new PageGetByTextOptions { Exact = true }).CountAsync());
+            Assert.Equal(0, await page.GetByText("Session", new PageGetByTextOptions { Exact = true }).CountAsync());
+            Assert.Equal(0, await page.Locator("#console-content").GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Resource groups", Exact = true }).CountAsync());
             Assert.Equal(0, await page.Locator("form:visible").CountAsync());
             await CaptureWorkspaceAsync(page, name, "catalog");
+            var scopesResponseTask = page.WaitForResponseAsync(response => response.Request.Method == HttpMethod.Get.Method &&
+                new Uri(response.Url).AbsolutePath.EndsWith("/isolation-scopes", StringComparison.Ordinal));
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "New service", Exact = true }).ClickAsync();
             var serviceName = $"browser-{Guid.NewGuid():N}"[..20];
             await page.GetByLabel("Name", new PageGetByLabelOptions { Exact = true }).FillAsync(serviceName);
@@ -137,6 +143,11 @@ public sealed class BrowserSmokeE2ETests(
             await page.GetByLabel("Probe path").FillAsync("/");
             await page.GetByLabel("Probe port").FillAsync("80");
             await page.GetByLabel("Target port").FillAsync("80");
+            Assert.True((await scopesResponseTask).Ok, "The browser must load named isolation scopes through the tenant API.");
+            var isolationScopeSelector = page.GetByRole(AriaRole.Combobox, new PageGetByRoleOptions { Name = "Isolation scope", Exact = true });
+            await page.WaitForFunctionAsync("!document.getElementById('new-web-service-isolation-scope').disabled");
+            Assert.Equal("Group default", await isolationScopeSelector.Locator("option:checked").InnerTextAsync());
+            Assert.Equal(0, await page.GetByPlaceholder("MongoDB ObjectId").CountAsync());
             await CaptureWorkspaceAsync(page, name, "create");
             var serviceResponse = await page.RunAndWaitForResponseAsync(
                 () => page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Create service", Exact = true }).ClickAsync(),

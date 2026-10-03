@@ -1285,8 +1285,9 @@
 .app-shell__workspace { min-width: 0; grid-template-rows: auto minmax(0, 1fr); }
 .app-shell__top-band { padding: 12px 24px; background: var(--color-surface); display: flex; align-items: center; gap: 20px; }
 .top-band { flex: 1; min-width: 0; gap: 20px; }
-.top-band__hint { margin-bottom: 0; overflow-wrap: anywhere; }
-.top-band > div { min-width: 0; }
+.top-band .tenant-selector { width: 100%; max-width: 520px; min-width: 0; }
+.top-band__error { margin: 0; color: var(--color-text-soft); font-size: .8rem; overflow-wrap: anywhere; }
+.console-header-actions { display: flex; flex: 0 0 auto; gap: 8px; }
 .side-nav { padding: 20px 12px; position: sticky; top: 0; height: 100dvh; }
 .side-nav__brand { padding: 0 8px 16px; }
 .side-nav__brand-mark { width: 32px; height: 32px; border-radius: 7px; background: var(--color-accent); color: var(--color-inverse); box-shadow: none; }
@@ -1295,10 +1296,6 @@
 .side-nav__item { min-height: 38px; padding: 8px 12px; font-size: .875rem; color: var(--color-text-soft); }
 .side-nav__item:hover { background: var(--color-surface-muted); color: var(--color-text-strong); }
 .side-nav__item.is-active { background: var(--color-accent-bg); color: var(--color-accent-strong); }
-.side-nav__footer { border-color: var(--color-border); background: var(--color-surface-muted); }
-.side-nav__footer-value { color: var(--color-text-strong); overflow-wrap: anywhere; }
-.side-nav__footer-label, .side-nav__footer-meta { color: var(--color-text-muted); }
-.side-nav__footer .button { margin-top: 8px; width: 100%; }
 .app-shell__content { min-width: 0; padding: 20px 24px; }
 .console-view-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--color-border); font-size: .8rem; color: var(--color-text-soft); }
 .console-page-header { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
@@ -1384,15 +1381,13 @@
   .side-nav__brand { padding-bottom: 4px; }
   .side-nav__menu { gap: 4px; }
   .side-nav__item { min-height: 36px; }
-  .side-nav__footer { display: block; padding: 8px; }
-  .side-nav__footer-label, .side-nav__footer-value { display: none; }
-  .side-nav__footer .button { width: auto; margin: 0; }
 }
 @media (max-width: 640px) {
   .web-service-facts { grid-template-columns: minmax(0, 1fr); }
   .web-service-resource .console-page-header p { overflow-wrap: anywhere; }
   .console-tabs--section { gap: 12px; }
   .app-shell__top-band { align-items: stretch; flex-direction: column; padding: 12px; gap: 12px; }
+  .console-header-actions .button { flex: 1; }
   .app-shell__content { padding: 16px 12px; }
   .console-page-header, .console-notification { flex-direction: column; align-items: stretch; }
   .list-row, .list-row__button { flex-direction: column; align-items: stretch; }

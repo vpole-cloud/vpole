@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { fetchIsolationScopes } from '../../api'
 import { WebServiceForm } from '../../components/WebServiceForm'
 import { useConsoleServices } from '../../console/ConsoleContext'
 import { useUnsavedChanges } from '../../console/useUnsavedChanges'
@@ -9,6 +10,8 @@ import { createId } from './workspaceState'
 export function NewWebServiceView({ groups, onCreated, onDirtyChange }:
   { groups: ResourceGroup[]; onCreated: (id: string, open: boolean) => void; onDirtyChange: (id: string, dirty: boolean) => void }) {
   const { api, notifications } = useConsoleServices()
+  const loadIsolationScopes = useCallback((groupId: string, signal?: AbortSignal) =>
+    fetchIsolationScopes(api.baseUrl, groupId, api.token, api.tenantId, signal), [api.baseUrl, api.token, api.tenantId])
   const manager = useWebServicesManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId,
     enabled: false, refreshAfterMutation: false })
   const [dirty, setDirty] = useState(false)
@@ -20,6 +23,7 @@ export function NewWebServiceView({ groups, onCreated, onDirtyChange }:
     return () => onDirtyChange(createId, false)
   }, [dirty, onDirtyChange])
   return <div className="web-service-editor"><WebServiceForm mode="create" resourceGroups={groups}
+    onLoadIsolationScopes={loadIsolationScopes}
     availableTargets={manager.availableTargets} targetsStatus={manager.targetsStatus} targetsError={manager.targetsError}
     computeProfilesByTarget={manager.computeProfilesByTarget} onLoadTargets={manager.loadAvailableTargets}
     onLoadComputeProfiles={manager.loadComputeProfiles} submitStatus={manager.submitStatus} submitError={manager.submitError}

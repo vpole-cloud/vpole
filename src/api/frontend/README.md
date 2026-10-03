@@ -22,6 +22,9 @@ completion notifications from a previous tenant are ignored. Neither tokens nor 
 are persisted by the shell. Theme preference is stored in `pole.console.theme`; tenant selection
 retains `pole.activeTenantId`.
 
+The header has one tenant selector with the membership role, plus theme and login/logout actions.
+The shell does not repeat the selected tenant or account name in a separate session card.
+
 Modules can register dirty forms with the shell's navigation service. Leaving a module, selecting
 another tenant or logging out asks for confirmation; browser unload uses the native warning.
 Browser Back/Forward uses a native confirmation when leaving a dirty view. Cancelling keeps the
@@ -47,6 +50,13 @@ Only resource IDs, selected sections and the active resource/catalog tab are sav
 restored resources). Creation drafts, form contents, secrets and tokens stay in memory. Corrupt
 or unavailable browser storage falls back to the catalog. Reload after confirming draft loss
 loads the current server configuration.
+
+Creation uses named active isolation scopes from the selected resource group's tenant API.
+`Group default` delegates default-scope resolution to the backend. Selecting another scope sends
+its opaque ID; changing groups clears the previous selection and aborts its pending read. Scope
+IDs are not entered manually. Default creation stays usable if additional scopes cannot load;
+the error and retry remain visible. Resource groups remain in primary navigation and the creation
+form, rather than an unrelated shortcut above the WebService workspace.
 
 Navigation supports registered `?view=` links and browser Back/Forward. This implements the
 WebService workspace slice of #12; resource trees, resource URLs and other providers' workspaces

@@ -9,6 +9,7 @@ import type {
   KubernetesStorageClass,
   PaginatedResponse,
   ResourceGroup,
+  IsolationScope,
   ResourceRegistration,
   ResourceGroupInput,
   PoleResourceType,
@@ -66,6 +67,19 @@ const buildHeaders = (token?: string, tenantId?: string) => {
   }
 
   return headers
+}
+
+export async function fetchIsolationScopes(
+  apiBaseUrl: string,
+  resourceGroupId: string,
+  token?: string,
+  tenantId?: string,
+  signal?: AbortSignal,
+) {
+  return fetchJson<IsolationScope[]>(`${apiBaseUrl}/api/v1/resource-groups/${encodeURIComponent(resourceGroupId)}/isolation-scopes`, {
+    headers: buildHeaders(token, tenantId),
+    signal,
+  })
 }
 
 export async function fetchTenants(

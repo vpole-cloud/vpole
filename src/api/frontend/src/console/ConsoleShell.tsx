@@ -105,6 +105,8 @@ export function ConsoleShell({ registry, auth, api, tenants, initialViewId }: Co
   const permitted = activeView && (activeView.access === 'public' ||
     (auth.authenticated && (activeView.access === 'authenticated' || activeTenant !== null)))
   const View = activeView?.component
+  const commands = permitted ? registry.commands.filter((command) => command.viewId === viewId &&
+    (command.available?.({ auth, tenant: tenantContext }) ?? true)) : []
 
   return <ConsoleContext.Provider value={services}>
     <div className="app-shell">
@@ -121,10 +123,6 @@ export function ConsoleShell({ registry, auth, api, tenants, initialViewId }: Co
               disabled={view.access !== 'public' && !auth.authenticated}
               onClick={() => goTo(view.id)}>{view.label}</button>)}
           </nav>
-          <div className="side-nav__footer"><p className="side-nav__footer-label">Session</p>
-            <p className="side-nav__footer-value">{auth.authenticated ? auth.userName ?? 'Signed in' : 'Guest'}</p>
-            <Button disabled={!auth.initialized} onClick={() => runGuarded(auth.authenticated ? auth.logout : auth.login)}>{auth.authenticated ? 'Log out' : 'Log in'}</Button>
-          </div>
         </div>
       </aside>
       <div className="app-shell__workspace">
@@ -134,17 +132,19 @@ export function ConsoleShell({ registry, auth, api, tenants, initialViewId }: Co
               setNotification(null)
               tenants.selectTenant(id)
             })} />
-          <Button aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
-            onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>{theme === 'light' ? 'Dark theme' : 'Light theme'}</Button>
+          <div className="console-header-actions">
+            <Button aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
+              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>{theme === 'light' ? 'Dark theme' : 'Light theme'}</Button>
+            <Button disabled={!auth.initialized} onClick={() => runGuarded(auth.authenticated ? auth.logout : auth.login)}>{auth.authenticated ? 'Log out' : 'Log in'}</Button>
+          </div>
         </header>
         <main id="console-content" className="app-shell__content" tabIndex={-1}>
           {notification?.scopeKey === scopeKey && <div className="console-notification"><Notice tone={notification.tone}>{notification.message}</Notice>
             <Button aria-label="Dismiss notification" onClick={() => setNotification(null)}>Dismiss</Button></div>}
-          <div className="console-view-bar"><span>{activeView?.label ?? 'Unavailable view'}</span>
-            <div className="row-actions">{permitted && registry.commands.filter((command) => command.viewId === viewId &&
-              (command.available?.({ auth, tenant: tenantContext }) ?? true)).map((command) =>
+          {commands.length > 0 && <div className="console-view-bar"><span>{activeView?.label ?? 'Unavailable view'}</span>
+            <div className="row-actions">{commands.map((command) =>
               <Button key={command.id} onClick={() => command.run(services)}>{command.label}</Button>)}</div>
-          </div>
+          </div>}
           {!auth.initialized ? <EmptyState title="Starting console…" /> : !activeView ?
             <EmptyState title="This view is unavailable." error><Button onClick={() => goTo(registry.views[0].id)}>Open overview</Button></EmptyState> :
             !permitted ? <EmptyState title={auth.authenticated ? 'Select an available tenant.' : 'Sign in to continue.'}>

@@ -53,6 +53,10 @@ describe('console module composition', () => {
     ])
     await act(async () => { root.render(<ConsoleShell registry={registry} auth={auth} api={{ baseUrl: '/api', token: 'test-token' }}
       tenants={tenants('alpha')} initialViewId="overview" />) })
+    expect(container.querySelectorAll('.tenant-selector select')).toHaveLength(1)
+    expect(container.querySelector('.tenant-selector option')?.textContent).toBe('alpha · Owner')
+    expect(container.textContent).not.toContain('Active tenant')
+    expect(container.querySelector('.side-nav__footer')).toBeNull()
     await act(async () => { button('Test resource').click() })
     expect(container.textContent).toContain('/api / alpha / light')
     expect(window.location.search).toBe('?view=extra')

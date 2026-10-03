@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Button, Notice } from '../console/components'
+import { useIsolationScopes, type LoadIsolationScopes } from '../hooks/useIsolationScopes'
 import type {
   AvailableComputeProfile,
   AvailableDeploymentTarget,
@@ -21,6 +22,7 @@ interface WebServiceFormProps {
   submitError?: string
   onLoadTargets: (isolationScopeId?: string, requiresPublicIngress?: boolean, signal?: AbortSignal) => Promise<AvailableDeploymentTarget[]>
   onLoadComputeProfiles: (deploymentTargetId: string) => Promise<AvailableComputeProfile[]>
+  onLoadIsolationScopes?: LoadIsolationScopes
   onSubmit: (input: WebServiceInput) => Promise<void>
   onCancelEdit?: () => void
   onDirtyChange?: (dirty: boolean) => void
@@ -74,6 +76,7 @@ export function WebServiceForm({
   submitError,
   onLoadTargets,
   onLoadComputeProfiles,
+  onLoadIsolationScopes,
   onSubmit,
   onCancelEdit,
   onDirtyChange,
@@ -83,6 +86,9 @@ export function WebServiceForm({
     initialValue?.resourceGroupId ?? resourceGroups[0]?.id ?? '',
   )
   const [isolationScopeId, setIsolationScopeId] = useState(initialValue?.isolationScopeId ?? '')
+  const scopes = useIsolationScopes(resourceGroupId, mode === 'create' ? onLoadIsolationScopes : undefined)
+  const resolvedScopeId = isolationScopeId || scopes.items.find((scope) => scope.isDefault)?.id
+  const unavailableScope = Boolean(isolationScopeId && !scopes.items.some((scope) => scope.id === isolationScopeId))
   const [exposure, setExposure] = useState<'Private' | 'Public'>(initialValue?.exposure.mode ?? 'Private')
   const [imageServer, setImageServer] = useState(initialValue?.spec.image.server ?? '')
   const [imageName, setImageName] = useState(initialValue?.spec.image.name ?? '')
@@ -144,17 +150,17 @@ export function WebServiceForm({
   }, [defaultTargetId, onLoadComputeProfiles, selectedTargets])
 
   useEffect(() => {
-    if (mode !== 'create') {
+    if (mode !== 'create' || scopes.status === 'loading') {
       return
     }
     const controller = new AbortController()
     void onLoadTargets(
-      isolationScopeId.trim() || undefined,
+      resolvedScopeId,
       exposure === 'Public',
       controller.signal,
     )
     return () => controller.abort()
-  }, [exposure, isolationScopeId, mode, onLoadTargets])
+  }, [exposure, resolvedScopeId, resourceGroupId, scopes.status, mode, onLoadTargets])
 
   const setTargetSelected = (targetId: string, selected: boolean) => {
     if (selected) void onLoadComputeProfiles(targetId)
@@ -181,6 +187,10 @@ export function WebServiceForm({
     }
     if (!resourceGroupId) {
       setValidationError('Resource group is required.')
+      return
+    }
+    if (mode === 'create' && (scopes.status === 'loading' || unavailableScope)) {
+      setValidationError('Select an available isolation scope or use the group default.')
       return
     }
     if (!imageServer.trim() || !imageName.trim() || !imageTag.trim()) {
@@ -246,21 +256,32 @@ export function WebServiceForm({
 
         <label className="field">
           <span className="field__label">Resource group</span>
-          <select className="field__control" disabled={mode === 'edit'} value={resourceGroupId} onChange={(event) => setResourceGroupId(event.target.value)}>
+          <select className="field__control" disabled={mode === 'edit'} value={resourceGroupId} onChange={(event) => {
+            setResourceGroupId(event.target.value)
+            setIsolationScopeId('')
+            setTargets(undefined)
+          }}>
             <option value="">Select a group</option>
             {resourceGroups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
           </select>
         </label>
 
         {mode === 'create' && (
-          <label className="field">
-            <span className="field__label">Isolation scope (optional)</span>
-            <input className="field__control" value={isolationScopeId} onChange={(event) => {
+          <div className="field">
+            <label className="field__label" htmlFor="new-web-service-isolation-scope">Isolation scope</label>
+            <select id="new-web-service-isolation-scope" className="field__control" value={isolationScopeId}
+              disabled={!resourceGroupId || scopes.status === 'loading' || !onLoadIsolationScopes} onChange={(event) => {
               setIsolationScopeId(event.target.value)
               setTargets(undefined)
-            }} placeholder="MongoDB ObjectId" />
-            <span className="field__hint">Eligible targets are refreshed for this placement scope.</span>
-          </label>
+            }}>
+              <option value="">{scopes.status === 'loading' ? 'Loading isolation scopes…' : 'Group default'}</option>
+              {scopes.items.filter((scope) => !scope.isDefault).map((scope) => <option key={scope.id} value={scope.id}>{scope.name}</option>)}
+              {unavailableScope && <option value={isolationScopeId} disabled>Selected scope unavailable</option>}
+            </select>
+            <span className="field__hint">Use the group's default isolation, or choose another scope by name.</span>
+            {scopes.status === 'error' && <Notice tone="error">{scopes.error} You can use the group default.
+              <Button onClick={scopes.retry}>Retry scopes</Button></Notice>}
+          </div>
         )}
 
         <div className="form-grid">
@@ -326,7 +347,7 @@ export function WebServiceForm({
         {mode === 'edit' && <div className="form-message">Shared runtime changes apply to every active deployment. Manage placement in the Deployments tab.</div>}
 
         <div className="resource-group-form__actions">
-          <Button variant="primary" disabled={submitStatus === 'loading' || (mode === 'create' && targetsStatus !== 'success')} type="submit">{submitStatus === 'loading' ? 'Saving…' : mode === 'create' ? 'Create service' : 'Save changes'}</Button>
+          <Button variant="primary" disabled={submitStatus === 'loading' || (mode === 'create' && (targetsStatus !== 'success' || scopes.status === 'loading' || unavailableScope))} type="submit">{submitStatus === 'loading' ? 'Saving…' : mode === 'create' ? 'Create service' : 'Save changes'}</Button>
           {mode === 'edit' && onCancelEdit && <button className="button" disabled={!dirty} onClick={onCancelEdit} type="button">Discard changes</button>}
         </div>
         </fieldset>
