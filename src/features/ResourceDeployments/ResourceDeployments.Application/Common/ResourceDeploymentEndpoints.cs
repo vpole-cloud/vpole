@@ -14,6 +14,7 @@ public static class ResourceDeploymentEndpoints
     {
         app.MapGroup(Route)
             .WithTags("ResourceDeployments")
+            .MapGetResourceDeploymentSetEndpoint()
             .MapRetryResourceDeploymentEndpoint();
 
         return app;

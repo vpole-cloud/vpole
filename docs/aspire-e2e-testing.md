@@ -26,6 +26,9 @@ The suite covers:
   operator manifests and managed password rotation are validated in the owning feature suites.
 - Redis browser catalog/create/details/configuration, tags update and reload, confirmed
   deletion, readable single-target placement and desktop/mobile light/dark screenshots.
+- Secret browser metadata/create/full-map rotation, version-aware writes, generic resource
+  binding, native projection convergence and detach cleanup. Screenshots cover desktop/mobile
+  light/dark views and are captured before values are entered or after sensitive forms unmount.
 
 The GitHub stub serves deterministic `v1` and `v2` source archives and never records credentials,
 OAuth state, private keys, or bearer tokens.

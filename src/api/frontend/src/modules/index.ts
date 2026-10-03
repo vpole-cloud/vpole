@@ -3,8 +3,9 @@ import { domainsModule, integrationsModule, overviewModule, resourceGroupsModule
 import { webServicesModule } from './web-services/WebServicesModule'
 import { postgresModule } from './postgres/PostgresModule'
 import { redisModule } from './redis/RedisModule'
+import { secretModule } from './secrets/SecretModule'
 
 // All modules are trusted, statically bundled contributions. This is the only composition root.
 export const appRegistry = createAppRegistry([
-  overviewModule, resourceGroupsModule, webServicesModule, postgresModule, redisModule, domainsModule, integrationsModule, storageModule,
+  overviewModule, resourceGroupsModule, webServicesModule, postgresModule, redisModule, secretModule, domainsModule, integrationsModule, storageModule,
 ])

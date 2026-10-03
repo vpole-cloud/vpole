@@ -1,5 +1,21 @@
 # Tenant Secrets
 
+## Control-plane workspace
+
+The Secrets workspace provides cursor-paged metadata, write-only creation and complete-map
+rotation, resource bindings and per-deployment projection state. Values stay in the active
+form's memory and are cleared on window blur/visibility changes, section changes, tab close,
+tenant/role changes and successful writes. They are never stored in workspace preferences.
+After a version conflict, refresh and explicitly review the current version before resubmitting.
+The API client displays fixed problem-code messages without echoing arbitrary response bodies.
+
+Binding choices use the group's generic resource inventory and tenant-scoped
+`GET /api/v1/resource-deployments/?resourceType=...&resourceId=...`; the authoritative write
+still checks tenant/group/scope and live placements transactionally. Provider-managed Secrets
+link to their owner, protect its binding and restrict generic rotation while permitting
+additional sharing bindings. A successful projection means Kubernetes accepted that version;
+it does not configure or restart the consuming application.
+
 Secrets are logical tenant-owned resources with encrypted, immutable value versions and explicit
 workload bindings. Multiple workloads can share one Secret within the same tenant, resource group,
 and isolation scope. Workload specifications never receive native Kubernetes Secret names.
