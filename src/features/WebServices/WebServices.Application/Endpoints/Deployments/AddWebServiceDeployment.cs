@@ -88,6 +88,7 @@ public union AddWebServiceDeploymentError(
     CreateResourceDeploymentError,
     AdvanceResourceDeploymentRevisionError,
     WebServiceConnectionConflict,
+    WebServiceDependencyUnavailable,
     WebServiceUpdateConflict,
     QuotaExecutionError);
 
@@ -358,6 +359,10 @@ public sealed class AddWebServiceDeploymentHandler(
             return Abort(
                 transaction,
                 new AddWebServiceDeploymentError(connectionConflict));
+        if (persisted is WebServiceDependencyUnavailable dependencyUnavailable)
+            return Abort(
+                transaction,
+                new AddWebServiceDeploymentError(dependencyUnavailable));
 
         await persistCurrentWebServiceRelease(
             transaction.Session,

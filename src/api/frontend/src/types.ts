@@ -62,6 +62,7 @@ export interface PortMapping {
 }
 
 export interface WebService {
+  tags?: string[]
   id: string
   name: string
   resourceGroupId: string
@@ -82,6 +83,8 @@ export interface WebServiceSpec {
   config: {
     environmentVariables: Record<string, string>
     portMappings: PortMapping[]
+    connectionEnvironmentReferences?: Record<string, ConnectionEnvironmentReference>
+    secretEnvironmentReferences?: Record<string, SecretEnvironmentReference>
   }
   probes: {
     startup: ProbeConfig
@@ -96,6 +99,14 @@ export interface WebServiceSpec {
       targetAverageUtilization: number
     }
   } | null
+}
+
+export interface ConnectionEnvironmentReference { connectionId: string; valueKind: 'Host' | 'Port' | 'Configuration'; configurationKey?: string | null }
+export interface SecretEnvironmentReference { secretId: string; key: string }
+export interface ResourceConnection {
+  id: string; name: string; sourceResourceType: string; sourceResourceId: string; destinationResourceType: string; destinationResourceId: string
+  endpointId: string; status: string; generation: number
+  targets: { targetId: string; phase: 'Apply' | 'Cleanup'; status: string; host: string; port: number; failureCode: string | null }[]
 }
 
 export interface ComputeProfileSummary {
@@ -527,6 +538,9 @@ export interface ResourceGroupInput {
 }
 
 export interface WebServiceInput {
+  connectionEnvironmentReferences?: Record<string, ConnectionEnvironmentReference>
+  secretEnvironmentReferences?: Record<string, SecretEnvironmentReference>
+  tags?: string[]
   exposure: 'Private' | 'Public'
   name: string
   resourceGroupId: string

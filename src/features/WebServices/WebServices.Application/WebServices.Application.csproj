@@ -11,6 +11,7 @@
 
     <ItemGroup>
       <ProjectReference Include="../../ResourceConnections/ResourceConnections.Contracts/ResourceConnections.Contracts.csproj" />
+      <ProjectReference Include="../../Secrets/Secrets.Contracts/Secrets.Contracts.csproj" />
       <ProjectReference Include="..\..\..\shared\Models\Models.csproj" />
       <ProjectReference Include="..\WebServices.Domain\WebServices.Domain.csproj" />
       <ProjectReference Include="..\WebServices.Contracts\WebServices.Contracts.csproj" />

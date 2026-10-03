@@ -64,7 +64,8 @@ public sealed record UpdateWebServiceRequestBody(
     WebServiceSpecDto Spec,
     ImmutableHashSet<string> Tags,
     [property: JsonConverter(typeof(WebServiceExposureModeJsonConverter))]
-    WebServiceExposureMode Exposure);
+    WebServiceExposureMode Exposure,
+    long? ExpectedRevision = null);
 
 public sealed record UpdateWebServiceResponse(
     string Id,
@@ -98,6 +99,8 @@ public sealed class UpdateWebServiceHandler(
         if (webService is null)
             return Error(new WebServiceLifecycleMutationStateError(
                 new WebServiceNotFound(request.Id)));
+        if (request.Body.ExpectedRevision is not null && request.Body.ExpectedRevision != webService.ActiveRevision)
+            return Error(new UpdateWebServiceError(new WebServiceUpdateConflict(webService.Id)));
         if (webService.Lifecycle is not ActiveWebServiceLifecycle)
             return Error(new WebServiceLifecycleMutationStateError(
                 new WebServiceUpdateUnavailable(webService.Id)));
@@ -115,6 +118,16 @@ public sealed class UpdateWebServiceHandler(
                 new WebServiceHasNoActiveDeployments(webService.Id)));
 
         var nextSpec = request.Body.Spec.ToDomain();
+        // Registry credentials are provider-owned and intentionally absent from the HTTP DTO.
+        // Configuration and tag updates within the same repository retain that authorization.
+        if (nextSpec.Image.Server == webService.Spec.Image.Server &&
+            nextSpec.Image.Name == webService.Spec.Image.Name)
+        {
+            nextSpec = nextSpec with
+            {
+                Image = nextSpec.Image with { SecretName = webService.Spec.Image.SecretName }
+            };
+        }
         var nextExposure = WebServiceExposure.Create(
             request.Body.Exposure,
             webService.Exposure.GeneratedHostnameLabelPrefix);
@@ -230,6 +243,11 @@ public sealed class UpdateWebServiceHandler(
                 {
                     return transaction.Abort(
                         Error(new UpdateWebServiceError(connectionConflict)));
+                }
+                if (persisted is WebServiceDependencyUnavailable dependencyUnavailable)
+                {
+                    return transaction.Abort(
+                        Error(new UpdateWebServiceError(dependencyUnavailable)));
                 }
 
                 var release = WebServiceReleaseFactory.CreatePending(
@@ -418,6 +436,7 @@ public sealed class UpdateWebServiceValidator : AbstractValidator<UpdateWebServi
             .NotNull().WithMessage("Web service specification is required.")
             .SetValidator(new WebServiceSpecDtoValidator());
         RuleFor(request => request.Body.Exposure).IsInEnum();
+        RuleFor(request => request.Body.ExpectedRevision).GreaterThan(0).When(request => request.Body.ExpectedRevision is not null);
         RuleFor(request => request)
             .Must(request => CreateWebServiceRequestBodyValidator.HasPublicIngressTarget(
                 request.Body.Spec?.Config?.PortMappings))

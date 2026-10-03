@@ -22,6 +22,8 @@ public sealed record ResourceConnection(
     long Generation,
     ResourceConnectionLifecycle Lifecycle)
 {
+    public long ReferenceFence { get; init; }
+
     public bool IsCleanupComplete => Lifecycle is DeletingResourceConnection deleting &&
         deleting.Targets.All(target => target.Status is CompletedConnectionCleanup);
 

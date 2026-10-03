@@ -31,6 +31,9 @@ public static class ResourceConnectionsFeature
                 "ResourceConnectionCleanupTombstones"));
         services.TryAddScoped<MongoCreateResourceConnection>();
         services.TryAddScoped<ResourceConnectionEndpointCatalog>();
+        services.AddScoped<ResourceConnectionReferenceProvider>();
+        services.AddScoped<AdmitResourceConnectionReferences>(provider => provider.GetRequiredService<ResourceConnectionReferenceProvider>().AdmitAsync);
+        services.AddScoped<ResolveResourceConnectionReferences>(provider => provider.GetRequiredService<ResourceConnectionReferenceProvider>().ResolveAsync);
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService,
             ResourceConnectionCapabilityStartupValidator>());
         services.TryAddScoped<MongoResourceConnectionMutationProvider>();

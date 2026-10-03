@@ -8,7 +8,10 @@ internal sealed record ResolvedConnectionEndpoint(
     string Id,
     string ServiceName,
     NetworkPort ServicePort,
-    NetworkPort TargetPort);
+    NetworkPort TargetPort)
+{
+    internal IReadOnlyList<ResourceConnectionConfigurationField> Configuration { get; init; } = [];
+}
 
 internal sealed record ConnectionEndpointMissing;
 
@@ -103,7 +106,8 @@ public sealed class ResourceConnectionEndpointCatalog
                 endpoint.Id,
                 endpoint.ServiceName,
                 endpoint.ServicePort,
-                endpoint.TargetPort);
+                endpoint.TargetPort)
+            { Configuration = endpoint.Configuration };
     }
 
     private static void Validate(IEnumerable<ResourceConnectionEndpoint> endpoints)

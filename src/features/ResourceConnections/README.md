@@ -72,7 +72,7 @@ Viewer can read. A foreign-tenant connection is not visible.
 | --- | --- |
 | `POST /` | Validate and persist a directed declaration; return `202 Accepted` with pending targets |
 | `GET /{id}` | Read current connection and per-target reconciliation state |
-| `GET /?pageNumber=1&pageSize=10` | List the tenant's connections; page size is bounded to 100 and the offset must fit a 32-bit integer |
+| `GET /?pageNumber=1&pageSize=10` | List the tenant's connections; optional `sourceResourceType` and `sourceResourceId` filter an exact consumer and must be supplied together; page size is bounded to 100 and the offset must fit a 32-bit integer |
 | `GET /endpoints?resourceType=...&resourceId=...` | Discover published endpoint identity, display name, application protocol, TCP service port and non-secret configuration |
 | `DELETE /{id}` | Request cleanup; return `202 Accepted` while deletion is pending |
 

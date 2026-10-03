@@ -173,6 +173,9 @@ public sealed class RetryWebServiceDeploymentHandler(
         if (persisted is WebServiceConnectionConflict connectionConflict)
             return transaction.Abort(Error(
                 new RetryWebServiceDeploymentError(connectionConflict)));
+        if (persisted is WebServiceDependencyUnavailable dependencyUnavailable)
+            return transaction.Abort(Error(
+                new RetryWebServiceDeploymentError(dependencyUnavailable)));
 
         var retainedReleaseEntries = WebServiceDeploymentWorkflow
             .ToReleaseDeployments(retainedDeployments);

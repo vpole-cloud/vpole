@@ -21,6 +21,7 @@ using Pole.Features.Secrets.Application.Migrations;
 using Pole.Features.Secrets.Application.Persistence;
 using Pole.Features.Secrets.Application;
 using Pole.Features.Secrets.Domain;
+using Pole.Features.Secrets.Contracts;
 using Pole.Features.Secrets.Events;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
@@ -33,6 +34,55 @@ namespace Pole.Tests.Integration.Secrets;
 public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
+    [Theory]
+    [InlineData("key", "SecretKeyUnavailable")]
+    [InlineData("coverage", "SecretDeploymentCoverageUnavailable")]
+    [InlineData("scope", "SecretBindingUnavailable")]
+    [InlineData("tenant", "SecretBindingUnavailable")]
+    public async Task Consumer_references_reject_unauthorized_keys_incomplete_coverage_foreign_scope_or_tenant(string scenario, string reason)
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var secret = Metadata(await CreateAsync(group.TenantId, group.Id, group.DefaultIsolationScopeId, "authority-refs", "tests", new() { ["password"] = "synthetic", ["other"] = "synthetic" }, default));
+        var consumer = await Consumer(group);
+        var binding = SecretBinding.Create(Id(), "pole/web-service", consumer.ResourceId, new SelectedSecretDeployments([consumer.Id]), new Dictionary<string, string> { ["password"] = "APP_PASSWORD" });
+        Metadata(await BindAsync(group.TenantId, secret.Id, binding, default));
+        if (scenario == "coverage") await DbContext.ResourceDeployments.InsertOneAsync(consumer with { Id = Id() });
+        using var session = await Fixture.Client.StartSessionAsync(); session.StartTransaction();
+        var result = await Services.GetRequiredService<AdmitConsumerSecretReferences>()(
+            scenario == "tenant" ? Id() : group.TenantId, group.Id, scenario == "scope" ? Id() : group.DefaultIsolationScopeId,
+            ResourceTypeId.Create("pole/web-service"), consumer.ResourceId, [], [new(secret.Id, scenario == "key" ? "other" : "password")], true, session, default);
+        Assert.Equal(reason, Assert.IsType<ConsumerSecretReferenceUnavailable>(result.Value).ReasonCode);
+        await session.AbortTransactionAsync();
+        Assert.Empty((await Services.GetRequiredService<LoadSecretById>()(group.TenantId, secret.Id, default))!.Bindings.Single(item => item.Id == binding.Id).RequiredKeys);
+    }
+
+    [Fact]
+    public async Task Consumer_references_pin_keys_without_changing_version_and_removal_releases_only_that_consumers_pins()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var secret = Metadata(await CreateAsync(group.TenantId, group.Id, group.DefaultIsolationScopeId, "logical-refs", "tests", Values(), default));
+        var first = await Consumer(group);
+        var second = await Consumer(group);
+        var binding = SecretBinding.Create(Id(), "pole/web-service", first.ResourceId, new AllSecretDeployments(), []);
+        var otherBinding = SecretBinding.Create(Id(), "pole/web-service", second.ResourceId, new AllSecretDeployments(), []);
+        Metadata(await BindAsync(group.TenantId, secret.Id, binding, default));
+        Metadata(await BindAsync(group.TenantId, secret.Id, otherBinding, default));
+        var before = (await Services.GetRequiredService<LoadSecretById>()(group.TenantId, secret.Id, default))!;
+        var admit = Services.GetRequiredService<AdmitConsumerSecretReferences>();
+        using var session = await Fixture.Client.StartSessionAsync(); session.StartTransaction();
+        var admitted = await admit(group.TenantId, group.Id, group.DefaultIsolationScopeId, ResourceTypeId.Create("pole/web-service"), first.ResourceId, [], [new(secret.Id, "password")], true, session, default);
+        Assert.IsType<ConsumerSecretReferencesAdmitted>(admitted.Value); await session.CommitTransactionAsync();
+        var pinned = (await Services.GetRequiredService<LoadSecretById>()(group.TenantId, secret.Id, default))!;
+        Assert.Equal(before.Revision, pinned.Revision); Assert.Equal(before.CurrentVersion, pinned.CurrentVersion);
+        Assert.Equal(new[] { "password" }, pinned.Bindings.Single(item => item.Id == binding.Id).RequiredKeys.ToArray());
+        Assert.Empty(pinned.Bindings.Single(item => item.Id == otherBinding.Id).RequiredKeys);
+        AssertError<SecretMappedKeysRequired>(await RotateAsync(group.TenantId, secret.Id, 1, new() { ["other"] = "new-value" }, default));
+        session.StartTransaction();
+        var removed = await admit(group.TenantId, group.Id, group.DefaultIsolationScopeId, ResourceTypeId.Create("pole/web-service"), first.ResourceId, [new(secret.Id, "password")], [], true, session, default);
+        Assert.IsType<ConsumerSecretReferencesAdmitted>(removed.Value); await session.CommitTransactionAsync();
+        Metadata(await RotateAsync(group.TenantId, secret.Id, 1, new() { ["other"] = "new-value" }, default));
+    }
+
 
     private IMongoCollection<SecretVersion> Versions => Fixture.Database.GetCollection<SecretVersion>("SecretVersions");
 

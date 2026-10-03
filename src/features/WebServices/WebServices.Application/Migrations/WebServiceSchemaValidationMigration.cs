@@ -19,7 +19,7 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
         IMongoDatabase context,
         CancellationToken cancellationToken = default)
     {
-        var validator = WebServiceDocumentSchema.CreateValidator();
+        var validator = CreateValidator();
         using var collectionNames = await context.ListCollectionNamesAsync(
             new ListCollectionNamesOptions
             {
@@ -52,6 +52,8 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
             },
             cancellationToken: cancellationToken);
     }
+
+    internal static BsonDocument CreateValidator() => WebServiceDocumentSchema.CreateValidator();
 
     private static class WebServiceDocumentSchema
     {

@@ -70,6 +70,14 @@ multi-cluster target. These tests exercise workload flows, not CNI enforcement, 
 claim `Supported` enforcement. This test-only API handshake preserves the production default
 that blocks workload admission until enforcement is attested or an operator explicitly overrides it.
 
+`DependencyBrowserE2ETests` additionally checks the lab's actual ingress-policy behavior with a
+source-built application: SQL and Redis operations are rejected before network declarations,
+succeed after the browser configures access, and PostgreSQL fails again after disconnect. Only
+application HTTP is port-forwarded; database traffic originates in the application pod. The test
+also replaces temporary literal addresses with target-resolved logical references and consumes
+managed PostgreSQL credentials through ordinary Secret key references. This observation does not
+change the platform target's `Unknown` attestation or claim broader CNI conformance.
+
 E2E configures an optional outbox trigger interval of one second so asynchronous workflows do
 not wait for the production minute-based recurring schedule. The production default remains
 unset, so this faster trigger is active only when a test or another environment enables it.

@@ -137,7 +137,28 @@ public sealed record AutoscalingMetric(
     int TargetAverageUtilization);
 public sealed record WebServiceConfig(
     ImmutableDictionary<string, string> EnvironmentVariables,
-    ImmutableList<PortMapping> PortMappings);
+    ImmutableList<PortMapping> PortMappings)
+{
+    public ImmutableDictionary<string, ConnectionEnvironmentReference> ConnectionEnvironmentReferences
+    {
+        get => field ?? ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty;
+        init;
+    } = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty;
+    public ImmutableDictionary<string, SecretEnvironmentReference> SecretEnvironmentReferences
+    {
+        get => field ?? ImmutableDictionary<string, SecretEnvironmentReference>.Empty;
+        init;
+    } = ImmutableDictionary<string, SecretEnvironmentReference>.Empty;
+}
+
+public sealed record ConnectionEnvironmentReference(
+    string ConnectionId,
+    string ValueKind,
+    string? ConfigurationKey = null);
+
+public sealed record SecretEnvironmentReference(
+    string SecretId,
+    string Key);
 public sealed record PortMapping(
     int ServicePort,
     string TargetPort,

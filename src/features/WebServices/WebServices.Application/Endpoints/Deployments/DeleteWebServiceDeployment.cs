@@ -188,6 +188,9 @@ public sealed class DeleteWebServiceDeploymentHandler(
                 if (saved is WebServiceConnectionConflict connectionConflict)
                     return transaction.Abort(Error(
                         new DeleteWebServiceDeploymentError(connectionConflict)));
+                if (saved is WebServiceDependencyUnavailable dependencyUnavailable)
+                    return transaction.Abort(Error(
+                        new DeleteWebServiceDeploymentError(dependencyUnavailable)));
 
                 var releaseDeployments = WebServiceDeploymentWorkflow
                     .ToReleaseDeployments(retainedSnapshots)

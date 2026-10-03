@@ -13,6 +13,7 @@ public sealed class GitHubStubState
     private readonly ConcurrentQueue<SanitizedRequest> _requests = new();
     private readonly IReadOnlyDictionary<string, Revision> _revisions = new Dictionary<string, Revision>(StringComparer.Ordinal)
     {
+        ["dependencies"] = new("dependencies", "3333333333333333333333333333333333333333", "e2e-tree-dependencies", DependencyProbeSample.Program),
         ["v1"] = new(
             "v1",
             "1111111111111111111111111111111111111111",
@@ -27,6 +28,8 @@ public sealed class GitHubStubState
     private string _currentRevision = "v1";
 
     public Revision CurrentRevision => _revisions[Volatile.Read(ref _currentRevision)];
+    public string CurrentProject => CurrentRevision.Name == "dependencies" ? DependencyProbeSample.Project : ProjectFile;
+    public string CurrentDockerfile => CurrentRevision.Name == "dependencies" ? DependencyProbeSample.Dockerfile : SourceDockerfile;
 
     public void Reset()
     {
@@ -66,8 +69,8 @@ public sealed class GitHubStubState
         using (var gzip = new GZipStream(archive, CompressionLevel.SmallestSize, leaveOpen: true))
         using (var tar = new TarWriter(gzip, leaveOpen: true))
         {
-            WriteFile(tar, $"{root}/Dockerfile", SourceDockerfile);
-            WriteFile(tar, $"{root}/src/Pole.E2E.Sample.csproj", ProjectFile);
+            WriteFile(tar, $"{root}/Dockerfile", revision.Name == "dependencies" ? DependencyProbeSample.Dockerfile : SourceDockerfile);
+            WriteFile(tar, $"{root}/src/Pole.E2E.Sample.csproj", revision.Name == "dependencies" ? DependencyProbeSample.Project : ProjectFile);
             WriteFile(tar, $"{root}/src/Program.cs", revision.ProgramSource);
         }
 

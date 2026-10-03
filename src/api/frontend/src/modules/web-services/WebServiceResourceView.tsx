@@ -12,9 +12,10 @@ import { useWebServicesManager } from '../../hooks/useWebServicesManager'
 import type { ResourceGroup, TenantDomainZone, WebService } from '../../types'
 import { useWebService } from './useWebService'
 import { serviceSections, type ServiceSection } from './workspaceState'
+import { WebServiceDependencies } from './WebServiceDependencies'
 
 const sectionLabels: Record<ServiceSection, string> = {
-  overview: 'Overview', configuration: 'Configuration', deployments: 'Deployments', builds: 'Builds',
+  overview: 'Overview', configuration: 'Configuration', dependencies: 'Dependencies', deployments: 'Deployments', builds: 'Builds',
 }
 
 export function WebServiceResourceView({ id, section, active, refreshVersion, groups, zones, onSection, onLoaded, onDirtyChange, onChanged }:
@@ -30,7 +31,8 @@ export function WebServiceResourceView({ id, section, active, refreshVersion, gr
   const [configurationDirty, setConfigurationDirty] = useState(false)
   const [deploymentDirty, setDeploymentDirty] = useState(false)
   const [buildDirty, setBuildDirty] = useState(false)
-  const dirty = configurationDirty || deploymentDirty || buildDirty
+  const [dependencyDirty, setDependencyDirty] = useState(false)
+  const dirty = configurationDirty || deploymentDirty || buildDirty || dependencyDirty
   const [formVersion, setFormVersion] = useState(0)
   const [saving, setSaving] = useState(false)
   const [discarding, setDiscarding] = useState(false)
@@ -130,6 +132,9 @@ export function WebServiceResourceView({ id, section, active, refreshVersion, gr
         onRetryDeployment={(...args) => mutate(() => manager.retryDeployment(...args))}
         onAddHostname={(...args) => mutate(() => manager.addHostname(...args))}
         onRemoveHostname={(...args) => mutate(() => manager.removeHostname(...args))} />}
+    </TabPanel>
+    <TabPanel id={panelId} tabId="dependencies" activeId={section}>
+      {visited.includes('dependencies') && <WebServiceDependencies key={`${api.baseUrl}:${api.tenantId}:${api.token}:${id}`} service={service} canWrite={tenant.canManage} onDirtyChange={setDependencyDirty} onChanged={async () => { await details.refresh(); onChanged() }} />}
     </TabPanel>
     <TabPanel id={panelId} tabId="builds" activeId={section}>
       {visited.includes('builds') && <SourceBuildPanel webService={service} manager={builds} canManage={tenant.canManage} onDirtyChange={setBuildDirty} />}

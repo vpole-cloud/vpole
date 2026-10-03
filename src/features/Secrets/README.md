@@ -129,9 +129,17 @@ Configure and back up the shared encryption key ring before use; see
 rewrap endpoint yet: retain old KEKs for retained immutable versions and backups. Value rotation
 creates a new encrypted version but does not eliminate older-key references in history.
 
-Ordinary reveal APIs, cross-scope sharing, frontend UI and platform credentials remain outside this
+Ordinary reveal APIs, cross-scope sharing and platform credentials remain outside this
 feature. A successful logical rotation creates desired runtime state; it does not itself prove that
 an application has consumed a new credential or restart workloads.
+
+The provider-owned `AdmitConsumerSecretReferences` and `EnsureConsumerSecretProjections` contracts
+let WebServices configure explicit logical Secret/key references. Admission requires a current
+binding, the same tenant/group/scope, every desired consumer deployment and authorized source keys.
+Consumer bindings pin `RequiredKeys`; rotation retains those keys, while removing references
+releases only that consumer's pins. These admission changes do not create encrypted versions or
+advance projection revisions. Runtime resolution checks exact consumer placement and current
+projection authority and returns generated native names and mapped keys, never plaintext values.
 
 ## Kubernetes projection flow
 

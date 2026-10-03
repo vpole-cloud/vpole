@@ -531,6 +531,55 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             ["get", "secret", secretName, "--namespace", GetNamespaceName(resourceGroupId)],
             cancellationToken) == 0;
 
+    public async Task WaitForWebServiceReadyAsync(string groupId, string name, CancellationToken ct)
+    {
+        var deadline = DateTime.UtcNow.AddMinutes(3);
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                var deployment = await _kubernetes.AppsV1.ReadNamespacedDeploymentAsync(name, GetNamespaceName(groupId), cancellationToken: ct);
+                if (deployment.Status?.ReadyReplicas >= deployment.Spec.Replicas &&
+                    deployment.Status.AvailableReplicas >= deployment.Spec.Replicas &&
+                    deployment.Status.UpdatedReplicas >= deployment.Spec.Replicas &&
+                    deployment.Status.Replicas == deployment.Spec.Replicas &&
+                    deployment.Status.ObservedGeneration >= deployment.Metadata.Generation)
+                    return;
+            }
+            catch (HttpOperationException exception) when (exception.Response?.StatusCode == HttpStatusCode.NotFound) { }
+            await Task.Delay(TimeSpan.FromSeconds(2), ct);
+        }
+        var pods = await _kubernetes.CoreV1.ListNamespacedPodAsync(GetNamespaceName(groupId), cancellationToken: ct);
+        var reasons = pods.Items.Where(pod => pod.Metadata.Name.StartsWith(name + "-", StringComparison.Ordinal))
+            .SelectMany(pod => pod.Status?.ContainerStatuses ?? [])
+            .Select(status => status.State?.Waiting)
+            .Where(waiting => waiting is not null)
+            .Select(waiting =>
+            {
+                var message = waiting!.Message ?? string.Empty;
+                var category = message.Contains("secret", StringComparison.OrdinalIgnoreCase) ? message.Contains("key", StringComparison.OrdinalIgnoreCase) ? "SecretKeyUnavailable" : "SecretUnavailable" :
+                    message.Contains("configmap", StringComparison.OrdinalIgnoreCase) ? "ConfigMapUnavailable" : "Other";
+                return $"{waiting.Reason}:{category}";
+            }).Distinct();
+        throw new TimeoutException("The application workload did not finish rollout within three minutes. Waiting categories: " + string.Join(", ", reasons));
+    }
+
+    /// <summary>Only forwards application HTTP. Database operations still originate inside the application and traverse its CNI policy.</summary>
+    public async Task<(string Postgres, string Redis)> ProbeApplicationDependenciesAsync(string groupId, string name, CancellationToken ct)
+    {
+        await using var forward = await KubernetesPortForwardSession.StartAsync(_kubernetesTarget, GetNamespaceName(groupId), $"deployment/{name}", 8080, ct);
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        using var response = await client.GetAsync($"http://127.0.0.1:{forward.LocalPort}/dependencies", ct);
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+        static string Outcome(JsonElement result, string field)
+        {
+            var value = result.GetProperty(field).GetString();
+            return value is "Succeeded" or "ConnectionRejected" or "MissingConfiguration" or "UnexpectedResult" ? value : throw new InvalidOperationException("The application probe returned an unsupported outcome.");
+        }
+        return (Outcome(result, "postgres"), Outcome(result, "redis"));
+    }
+
     public async Task<string> GetWebServiceDeploymentDiagnosticsAsync(CancellationToken cancellationToken)
     {
         if (_application is null)

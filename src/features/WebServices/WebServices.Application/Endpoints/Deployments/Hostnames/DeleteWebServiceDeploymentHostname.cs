@@ -179,6 +179,8 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
             return Abort(transaction, new WebServiceDeploymentHostnameError(persistenceError));
         if (persisted is WebServiceConnectionConflict connectionConflict)
             return Abort(transaction, new WebServiceDeploymentHostnameError(connectionConflict));
+        if (persisted is WebServiceDependencyUnavailable dependencyUnavailable)
+            return Abort(transaction, new WebServiceDeploymentHostnameError(dependencyUnavailable));
 
         var release = WebServiceReleaseFactory.CreatePending(
             updated.TenantId,
