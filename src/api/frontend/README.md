@@ -50,6 +50,7 @@ target mappings. Native StatefulSet mode supports one instance and cannot rotate
 database password; CloudNativePG supports the existing managed-secret rotation API.
 Name, version, group, target and storage profile are fixed after creation. Updates preserve the
 current resolved compute profile unless the user explicitly selects an eligible replacement.
+Native storage is fixed after creation; operator-managed storage can grow.
 Lifecycle, reconciliation generation and failure codes are shown without inferring DB readiness.
 Group tags are metadata of the group; the database API has no separate editable tags.
 

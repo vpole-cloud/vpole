@@ -47,6 +47,8 @@ module PostgresHttpMappings =
             problem HttpStatusCode.Conflict "postgres.update-unavailable" "PostgreSQL cluster cannot be updated in its current lifecycle" clusterId
         | PostgresClusterStatefulSetInstancesUnsupported clusterId ->
             problem HttpStatusCode.UnprocessableEntity "postgres.instances.stateful-set-unsupported" "StatefulSet PostgreSQL supports exactly one instance" clusterId
+        | PostgresClusterStatefulSetStorageResizeUnsupported clusterId ->
+            problem HttpStatusCode.UnprocessableEntity "postgres.storage.stateful-set-resize-unsupported" "Native PostgreSQL storage size is fixed after creation" clusterId
         | UpdatePostgresClusterStateError.PostgresClusterComputeRuntimeClassUnsupported clusterId ->
             problem HttpStatusCode.UnprocessableEntity "postgres.compute.runtime-class-unsupported" "CloudNativePG compute profiles cannot specify a runtime class" clusterId
 

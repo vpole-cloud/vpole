@@ -88,6 +88,14 @@ module private PostgresKubernetesApply =
                         namespaceName,
                         cancellationToken = cancellationToken)
                 manifest.Metadata.ResourceVersion <- current.Metadata.ResourceVersion
+                // Preserve immutable template metadata only when capacity/class are unchanged.
+                // Legacy resize requests must still fail instead of reporting unapplied storage.
+                let desiredClaim = manifest.Spec.VolumeClaimTemplates.[0]
+                if not (isNull current.Spec.VolumeClaimTemplates) && current.Spec.VolumeClaimTemplates.Count = 1 then
+                    let currentClaim = current.Spec.VolumeClaimTemplates.[0]
+                    if desiredClaim.Spec.StorageClassName = currentClaim.Spec.StorageClassName &&
+                       desiredClaim.Spec.Resources.Requests.["storage"].ToString() = currentClaim.Spec.Resources.Requests.["storage"].ToString() then
+                        manifest.Spec.VolumeClaimTemplates <- current.Spec.VolumeClaimTemplates
                 let! _ =
                     kubernetes.AppsV1.ReplaceNamespacedStatefulSetAsync(
                         manifest,

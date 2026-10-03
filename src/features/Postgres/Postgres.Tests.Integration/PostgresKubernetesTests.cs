@@ -165,6 +165,7 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
     public async Task StatefulSetCreateAsync_WaitsForPodReadiness_AndExecutesSimpleSql()
     {
         var cluster = BuildStatefulSetCluster();
+        var metadata = Metadata();
         IPostgresClusterDeploymentManager manager =
             new PostgresClusterDeploymentManager(CreateSettings());
         using var projection = new ManagedProjectionFixture(Kubernetes, cluster, NamespaceName);
@@ -177,7 +178,7 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
             NamespaceName,
             Target.StorageClassName,
             Compute(),
-            Metadata(),
+            metadata,
             CancellationToken.None);
         await WaitForStatefulSetReadyAsync(
             PostgresClusterKubernetesBuilder.buildResourceName(cluster.Id));
@@ -185,6 +186,21 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
         var result = await ExecuteSimpleSqlAsync(cluster);
 
         Assert.Equal(1, result);
+        var nextMetadata = new PostgresResourceDeploymentMetadata(metadata.DeploymentId,
+            metadata.IsolationScopeId, metadata.RuntimeCellId, metadata.DeploymentTargetId, 2);
+        var nextCompute = Compute() with { Requests = new KubernetesComputeResourceValues(500, 256) };
+        await manager.ApplyAsync(Kubernetes, cluster, projection.Credentials, NamespaceName,
+            Target.StorageClassName, nextCompute, nextMetadata, CancellationToken.None);
+        var reapplied = await Kubernetes.AppsV1.ReadNamespacedStatefulSetAsync(
+            PostgresClusterKubernetesBuilder.buildResourceName(cluster.Id), NamespaceName);
+        Assert.Equal("2", reapplied.Spec.Template.Metadata.Labels["pole.io/deployment-generation"]);
+        Assert.Equal("1", Assert.Single(reapplied.Spec.VolumeClaimTemplates).Metadata.Labels["pole.io/deployment-generation"]);
+        Assert.Equal("500m", Assert.Single(reapplied.Spec.Template.Spec.Containers).Resources.Requests["cpu"].ToString());
+        var legacyResize = PostgresCluster.Create(cluster.TenantId, cluster.Name, cluster.GroupId,
+            cluster.Spec.Version, cluster.Spec.DeploymentMode, cluster.Spec.StorageProfileId,
+            new CreatePostgresClusterOptions(FSharpOption<string>.Some(cluster.Id), 1, cluster.Spec.Storage + 1));
+        await Assert.ThrowsAsync<HttpOperationException>(() => manager.ApplyAsync(Kubernetes, legacyResize,
+            projection.Credentials, NamespaceName, Target.StorageClassName, nextCompute, nextMetadata, CancellationToken.None));
     }
 
     [KubernetesFact]

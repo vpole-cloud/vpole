@@ -40,6 +40,7 @@ type UpdatePostgresClusterStateError =
     | PostgresClusterUpdateNotFound of clusterId : string
     | PostgresClusterUpdateUnavailable of clusterId : string
     | PostgresClusterStatefulSetInstancesUnsupported of clusterId : string
+    | PostgresClusterStatefulSetStorageResizeUnsupported of clusterId : string
     | PostgresClusterComputeRuntimeClassUnsupported of clusterId : string
 
 type UpdatePostgresClusterError =

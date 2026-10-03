@@ -227,8 +227,10 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
             updatedDeployment.ResolvedPlacement.Compute);
     }
 
-    [Fact]
-    public async Task Update_StatefulSetCluster_RejectsMultipleInstances_FromPersistedMode()
+    [Theory]
+    [InlineData(2, 20, true)]
+    [InlineData(1, 21, false)]
+    public async Task Update_StatefulSetCluster_RejectsUnsupportedCapacity_FromPersistedMode(int instances, int storage, bool instancesError)
     {
         var cluster = PostgresCluster.Create(
             PostgresTestData.TenantId,
@@ -246,8 +248,8 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         var result = await Mediator.Send(new UpdatePostgresClusterRequest(
             cluster.Id,
             new UpdatePostgresClusterRequestBody(
-                FSharpOption<int>.Some(2),
-                FSharpOption<int>.None,
+                FSharpOption<int>.Some(instances),
+                FSharpOption<int>.Some(storage),
                 FSharpOption<string>.None),
             PostgresTestData.TenantId));
 
@@ -255,11 +257,13 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         var error = Assert.IsType<UpdatePostgresClusterOutcome.UpdatePostgresClusterRejected>(outcome)
             .Item;
         var state = Assert.IsType<UpdatePostgresClusterError.UpdateState>(error).Item;
-        Assert.IsType<UpdatePostgresClusterStateError.PostgresClusterStatefulSetInstancesUnsupported>(state);
+        if (instancesError) Assert.IsType<UpdatePostgresClusterStateError.PostgresClusterStatefulSetInstancesUnsupported>(state);
+        else Assert.IsType<UpdatePostgresClusterStateError.PostgresClusterStatefulSetStorageResizeUnsupported>(state);
         Assert.Equal(
             1,
             (await DbContext.Postgres.Find(item => item.Id == cluster.Id).SingleAsync())
             .Spec.Instances);
+        Assert.Equal(20, (await DbContext.Postgres.Find(item => item.Id == cluster.Id).SingleAsync()).Spec.Storage);
     }
 
     [Fact]

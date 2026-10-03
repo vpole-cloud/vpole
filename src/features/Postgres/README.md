@@ -19,6 +19,13 @@ modes: a native Kubernetes StatefulSet and the CloudNativePG operator.
 and lifecycle state. Credentials are managed by the [Secrets feature](../Secrets/README.md). Kubernetes placement and its resolved infrastructure configuration are
 stored in `ResourceDeployment`.
 
+The browser keeps native StatefulSet storage fixed after creation. Native reapply preserves the
+existing immutable claim template (including its initial generation labels), so compute changes
+and new pod-template generations do not attempt to mutate that template. Operator-mode storage
+growth remains controlled by CloudNativePG.
+API updates reject native capacity changes before persistence. Existing failed resize requests
+remain failed during reapply rather than reporting unchanged physical storage as applied.
+
 Create resolves the default or requested `ComputeProfile` for the active tenant and target. The
 deployment stores the resulting CPU, memory, extended-resource, and scheduling snapshot. Update
 without a profile ID preserves that snapshot; an explicit ID adopts the latest eligible profile

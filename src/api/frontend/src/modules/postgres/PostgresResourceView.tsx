@@ -61,7 +61,7 @@ export function PostgresResourceView({ id, section, active, version, onSection, 
         <div><dt>Revision</dt><dd>{cluster.revision}</dd></div><div><dt>Group tags</dt><dd>{group.resource?.tags.join(', ') || 'No tags'}</dd></div></dl>
       <p className="field__hint">This database has one deployment target. Network access and application credentials are configured separately.</p></section>
       <PlacementSummary placement={cluster.placement} targetName={targets.resource?.find((target) => target.id === cluster.placement.deploymentTargetId)?.displayName} />
-      {canWrite && cluster.placement.status === 'Failed' && <Button disabled={mutation.busy} onClick={() => {
+      {tenant.canManage && cluster.placement.status === 'Failed' && <Button disabled={mutation.busy} onClick={() => {
         void mutation.run((signal) => retryResourceDeployment(api.baseUrl, cluster.placement.deploymentId, api.token, api.tenantId, signal), async () => { await details.refresh(); actions.changed() }).catch(() => {})
       }}>Retry deployment</Button>}
     </TabPanel>
@@ -101,7 +101,8 @@ function PostgresConfiguration({ cluster, onDirtyChange, onSaved }: { cluster: P
   const [discarding, setDiscarding] = useState(false)
   const [validation, setValidation] = useState('')
   const fieldError = (field: string) => validationMessage(mutation.error, field)
-  return <section className="panel"><h2 className="panel__title">Database configuration</h2><p className="field__hint">Name, PostgreSQL version, group, target and storage profile are fixed after creation. Storage can grow; shrinking is rejected.</p>
+  const native = cluster.spec.deploymentMode === 'StatefulSet'
+  return <section className="panel"><h2 className="panel__title">Database configuration</h2><p className="field__hint">Name, PostgreSQL version, group, target and storage profile are fixed after creation. {native ? 'Native StatefulSet storage is fixed; compute can be updated.' : 'Operator-managed storage can grow; shrinking is rejected.'}</p>
     <form className="database-form" onSubmit={(event) => {
       event.preventDefault(); if (mutation.busy) return
       if (!Number.isInteger(instances) || instances < 1 || !Number.isInteger(storage) || storage < cluster.spec.storage || (computeId && (compute.status !== 'success' || !compute.resource?.some((profile) => profile.id === computeId)))) { setValidation('Choose valid capacity and an available compute profile. Storage cannot shrink.'); return }
@@ -111,7 +112,7 @@ function PostgresConfiguration({ cluster, onDirtyChange, onSaved }: { cluster: P
       }).catch(() => {})
     }}><fieldset disabled={mutation.busy}><div className="form-grid">
       <Field label="Instances"><input className="field__control" type="number" min="1" step="1" value={instances} disabled={cluster.spec.deploymentMode === 'StatefulSet'} onChange={(event) => setInstances(Number(event.target.value))} />{fieldError('Instances') && <span className="field-error">{fieldError('Instances')}</span>}</Field>
-      <Field label="Storage per instance (GiB)"><input className="field__control" type="number" min={cluster.spec.storage} step="1" value={storage} onChange={(event) => setStorage(Number(event.target.value))} />{fieldError('Storage') && <span className="field-error">{fieldError('Storage')}</span>}</Field>
+      <Field label="Storage per instance (GiB)"><input className="field__control" type="number" min={cluster.spec.storage} step="1" value={storage} disabled={native} onChange={(event) => setStorage(Number(event.target.value))} />{fieldError('Storage') && <span className="field-error">{fieldError('Storage')}</span>}</Field>
       <Field label="Compute profile" hint="Keeping the current profile preserves its resolved resource snapshot."><select className="field__control" value={computeId} onChange={(event) => setComputeId(event.target.value)}>
         <option value="">Keep current · {cluster.placement.compute.displayName}</option>{compute.resource?.map((profile) => <option key={profile.id} value={profile.id}>{profile.displayName}</option>)}</select>{fieldError('ComputeProfileId') && <span className="field-error">{fieldError('ComputeProfileId')}</span>}</Field>
     </div></fieldset>
