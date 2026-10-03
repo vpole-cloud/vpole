@@ -24,6 +24,7 @@ public sealed class ModuleBoundaryArchitectureTests
             ["Domains"] = FeatureRole.Platform,
             ["GitProviders"] = FeatureRole.BuiltIn,
             ["Outbox"] = FeatureRole.Platform,
+            ["PrivateAccess"] = FeatureRole.Platform,
             ["Quotas"] = FeatureRole.Platform,
             ["ResourceConnections"] = FeatureRole.Platform,
             ["ResourceDeployments"] = FeatureRole.Platform,

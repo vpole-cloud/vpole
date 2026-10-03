@@ -48,6 +48,7 @@ using Pole.Observability;
 using Pole.Server.Extensions;
 using Pole.Platform.Hosting;
 using Pole.ServiceDefaults;
+using Pole.Features.PrivateAccess.Runtime;
 
 var builder = WebApplication.CreateBuilder(args);
 var configuration = builder.Configuration;
@@ -67,6 +68,7 @@ Assembly[] serviceEventAssemblies = [
 ];
 Assembly[] assemblies = [.. PolePlatform.ApplicationAssemblies, .. serviceAssemblies];
 
+builder.ConfigurePrivateAccessListener();
 builder.AddServiceDefaults();
 builder.AddMongoDBClient("pole-database");
 builder.AddFunctionOrleansHosting();
@@ -76,6 +78,7 @@ builder.Services.AddPolePlatform(configuration, serviceAssemblies, serviceEventA
     .AddEventBus(configuration, assemblies)
     .AddFunctionAppsFeature()
     .AddFunctionRuntimeFeature(configuration)
+    .AddPrivateAccessRuntime(configuration)
     .AddWebServicesFeature()
     .AddRedisServicesFeature()
     .AddResourceConnectionsFeature()
@@ -111,6 +114,13 @@ app.MapWhen(
         functionApp.Run(FunctionGatewayEndpointMapping.DispatchAsync);
     });
 
+app.UsePrivateAccessRuntime();
+if (configuration.GetValue<bool>($"{PrivateAccessBrokerOptions.Section}:Enabled"))
+{
+    app.MapPrivateAccessGatewayControlEndpoint();
+    app.MapPrivateAccessGatewayStreamEndpoint();
+    app.MapPrivateAccessStreamEndpoint();
+}
 app.MapDefaultEndpoints();
 app.UseTraceContext();
 
@@ -133,6 +143,7 @@ app.Services
     .ScheduleContainerRegistryRecurringJobs();
 
 app.MapGitHubCallbackEndpoints();
+app.MapPoleCliDiscovery(configuration);
 
 app.MapGet("/test-keycloak", () => "Hello World!")
     .RequireAuthorization();

@@ -121,6 +121,79 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
+    public async Task Create_RejectsDuplicateNameWithinTenant()
+    {
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(
+            PostgresTestData.SeedResourceGroup());
+        var request = PostgresTestData.CreatePostgresClusterRequest(
+            resourceGroup.Id,
+            "orders-db");
+
+        _ = (await Mediator.Send(request)).AssertCreated();
+        var duplicate = await Mediator.Send(request);
+        var rejected = Assert.IsType<CreatePostgresClusterOutcome.CreatePostgresClusterRejected>(
+            duplicate.AssertSuccess());
+
+        Assert.IsType<CreatePostgresClusterError.CreateNameAlreadyExists>(rejected.Item);
+    }
+
+    [Fact]
+    public async Task PersistUpdate_RejectsRename()
+    {
+        var (current, _) = await CreateClusterAsync();
+        var replacement = new PostgresCluster(
+            current.Id,
+            current.TenantId,
+            "renamed",
+            current.GroupId,
+            current.Spec,
+            current.Revision,
+            current.Lifecycle);
+        var persistUpdated = Services.GetRequiredService<PersistUpdatedPostgresCluster>();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            DbContext.RunOutcomeInTransactionAsync<Pole.ResultType.Unit>(async (transaction, cancellationToken) =>
+            {
+                _ = await persistUpdated.Invoke(
+                    transaction.Session,
+                    current,
+                    replacement,
+                    cancellationToken);
+                return transaction.Commit(Pole.ResultType.Unit.Value);
+            }));
+    }
+
+    [Fact]
+    public async Task NameIndexAllowsSameNameInAnotherTenantAndAnotherKind()
+    {
+        var otherTenantId = "507f1f77bcf86cd799439010";
+        var clusters = DbContext.Database.GetCollection<BsonDocument>("Postgres");
+        await clusters.InsertOneAsync(new BsonDocument
+        {
+            ["_id"] = ObjectId.GenerateNewId(),
+            ["TenantId"] = PostgresTestData.TenantId,
+            ["Name"] = "shared-name"
+        });
+        await clusters.InsertOneAsync(new BsonDocument
+        {
+            ["_id"] = ObjectId.GenerateNewId(),
+            ["TenantId"] = otherTenantId,
+            ["Name"] = "shared-name"
+        });
+
+        var redis = DbContext.Database.GetCollection<BsonDocument>("RedisServices");
+        await redis.InsertOneAsync(new BsonDocument
+        {
+            ["_id"] = ObjectId.GenerateNewId(),
+            ["TenantId"] = PostgresTestData.TenantId,
+            ["Name"] = "shared-name"
+        });
+
+        Assert.Equal(2L, await clusters.CountDocumentsAsync(new BsonDocument("Name", "shared-name")));
+        Assert.Equal(1L, await redis.CountDocumentsAsync(new BsonDocument("Name", "shared-name")));
+    }
+
+    [Fact]
     public async Task Update_ChangesLogicalSpecAndAdvancesDeploymentGeneration()
     {
         var (cluster, deployment) = await CreateClusterAsync();

@@ -29,7 +29,7 @@ public static class DeploymentTargetHttpMappings
 
     public static IResult Map(DeploymentTargetCredentialRewrapConflict error) => MapCredentialRewrapConflict(error).ToHttpResult();
 
-    public static IResult Map(DeleteDeploymentTargetError error) => error.Value switch
+    public static IResult Map(DeleteDeploymentTargetError error) => error switch
     {
         DeploymentTargetNotFound value => Map(value),
         DeploymentTargetRevisionConflict value => Map(value),

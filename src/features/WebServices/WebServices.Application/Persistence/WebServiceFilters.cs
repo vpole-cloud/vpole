@@ -42,6 +42,13 @@ internal static class WebServiceFilters
             VisibleToTenant(tenantId),
             Builders<WebService>.Filter.Eq(item => item.Id, webServiceId));
 
+    public static FilterDefinition<WebService> ByIds(
+        string tenantId,
+        IReadOnlyCollection<string> webServiceIds) =>
+        Builders<WebService>.Filter.And(
+            VisibleToTenant(tenantId),
+            Builders<WebService>.Filter.In(item => item.Id, webServiceIds));
+
     public static FilterDefinition<WebService> AtRevision(WebService webService) =>
         Builders<WebService>.Filter.And(
             ById(webService.TenantId, webService.Id),

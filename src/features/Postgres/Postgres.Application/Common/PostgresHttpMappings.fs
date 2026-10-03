@@ -103,6 +103,16 @@ module PostgresHttpMappings =
     let private mapDeletionConflict (error : PostgresClusterDeletionConflict) =
         problem HttpStatusCode.Conflict "postgres.deletion.concurrent-change" "PostgreSQL cluster changed concurrently while deletion was being accepted" error.ClusterId
 
+    let private mapNameAlreadyExists (error : PostgresClusterNameAlreadyExists) =
+        let extensions = Dictionary<string, obj>()
+        extensions.Add("name", error.Name)
+        HttpProblem(
+            int HttpStatusCode.Conflict,
+            PoleProblemTypeId.FromCode("postgres.name-already-exists"),
+            "PostgreSQL cluster name already exists in this tenant",
+            "postgres.name-already-exists",
+            extensions = extensions)
+
     let mapCreateError (error : CreatePostgresClusterError) =
         match error with
         | CreateState value -> mapCreateState value
@@ -112,6 +122,7 @@ module PostgresHttpMappings =
         | CreateCredential value -> mapCredential value
         | CreateDeployment value -> ResourceDeploymentContractHttpMappings.MapDeploymentError(value)
         | CreateRegistration value -> ResourceGroupContractHttpMappings.MapRegistrationMutationError(value)
+        | CreateNameAlreadyExists value -> mapNameAlreadyExists value
         | CreateQuota value -> QuotaContractHttpMappings.MapExecutionError(value)
 
     let mapDeleteError (error : DeletePostgresClusterError) =

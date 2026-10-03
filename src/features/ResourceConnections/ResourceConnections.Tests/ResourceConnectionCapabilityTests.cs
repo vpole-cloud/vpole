@@ -166,6 +166,17 @@ public sealed class ResourceConnectionCapabilityTests
                         "queue", "queue-svc",
                         NetworkPort.Create(5672), NetworkPort.Create(5672)))));
         }
+
+        public Task<IReadOnlyDictionary<string, ResourceConnectionEndpointsFound>> LoadAvailableAsync(
+            string tenantId,
+            IReadOnlyCollection<string> resourceIds,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyDictionary<string, ResourceConnectionEndpointsFound>>(
+                resourceIds.ToDictionary(id => id, id =>
+                    new ResourceConnectionEndpointsFound(
+                        endpoints ?? ImmutableList.Create(new ResourceConnectionEndpoint(
+                            "queue", "queue-svc", NetworkPort.Create(5672),
+                            NetworkPort.Create(5672))))));
     }
 
     public class NoopSessionProxy : DispatchProxy

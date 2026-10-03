@@ -127,6 +127,29 @@ public sealed class ProviderConnectionEndpointTests(MongoReplicaSetFixture fixtu
         await session.AbortTransactionAsync();
     }
 
+    [Fact]
+    public async Task AdvisoryCatalog_BatchesOnlyAvailableResourcesFromRequestedTenant()
+    {
+        var available = RedisFactory.Create(TestData.TenantId, "available", Id(),
+            new RedisSpec(new Storage(1, Id())), RedisFactory.DefaultCreateOptions);
+        var deleting = RedisFactory.Create(TestData.TenantId, "deleting", Id(),
+            new RedisSpec(new Storage(1, Id())), RedisFactory.DefaultCreateOptions)
+            .BeginDeletion(DateTime.UtcNow);
+        var otherTenant = RedisFactory.Create(Id(), "other", Id(),
+            new RedisSpec(new Storage(1, Id())), RedisFactory.DefaultCreateOptions);
+        await fixture.Database.GetCollection<Redis>("RedisServices")
+            .InsertManyAsync([available, deleting, otherTenant]);
+        var lookup = Destination("pole/redis");
+
+        var found = await lookup.LoadAvailableAsync(TestData.TenantId,
+            [available.Id, deleting.Id, otherTenant.Id, Id()]);
+
+        var endpoint = Assert.Single(Assert.Single(found).Value.Endpoints);
+        Assert.Equal(available.Id, Assert.Single(found).Key);
+        Assert.Equal("available-svc", endpoint.ServiceName);
+        Assert.Empty(await lookup.LoadAvailableAsync(TestData.TenantId, []));
+    }
+
     private IResourceConnectionDestinationCapability Destination(string resourceType) =>
         scope.ServiceProvider.GetServices<IResourceConnectionDestinationCapability>()
             .Single(capability => capability.ResourceType.Value == resourceType);

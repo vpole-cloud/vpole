@@ -9,6 +9,12 @@ namespace Pole.Features.RedisServices.Application.Common;
 
 public static class RedisHttpMappings
 {
+    public static HttpProblem MapNameAlreadyExists(RedisServiceNameAlreadyExists error) => Problem(
+        HttpStatusCode.Conflict,
+        "redis.name-already-exists",
+        "Redis service name already exists in this tenant",
+        ("name", error.Name));
+
     public static HttpProblem MapNotFound(RedisServiceNotFound error) => Problem(
         HttpStatusCode.NotFound,
         "redis-services.not-found",

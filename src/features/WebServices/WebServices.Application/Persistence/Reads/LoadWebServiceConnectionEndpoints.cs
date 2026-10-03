@@ -28,6 +28,25 @@ internal sealed class MongoLoadWebServiceConnectionEndpoints(IMongoCollection<We
             return new ResourceConnectionDestinationMissing();
         if (resource.Lifecycle is DeletingWebServiceLifecycle)
             return new ResourceConnectionDestinationDeleting();
+        return Endpoints(resource);
+    }
+
+    public async Task<IReadOnlyDictionary<string, ResourceConnectionEndpointsFound>> LoadAvailableAsync(
+        string tenantId,
+        IReadOnlyCollection<string> resourceIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (resourceIds.Count == 0)
+            return new Dictionary<string, ResourceConnectionEndpointsFound>();
+        var resources = await services.Find(WebServiceFilters.ByIds(tenantId, resourceIds))
+            .ToListAsync(cancellationToken);
+        return resources
+            .Where(resource => resource.Lifecycle is not DeletingWebServiceLifecycle)
+            .ToDictionary(resource => resource.Id, Endpoints, StringComparer.Ordinal);
+    }
+
+    private static ResourceConnectionEndpointsFound Endpoints(WebService resource)
+    {
         var serviceName = WebServiceInKubernetes.BuildServiceName(resource.Name);
         return new ResourceConnectionEndpointsFound(
             WebServiceConnectionEndpointCatalog.FromConfig(resource.Spec.Config, serviceName));

@@ -169,4 +169,20 @@
   </Folder>
   <Project Path="src/features/Postgres/Postgres.Contracts/Postgres.Contracts.csproj" />
   <Project Path="src/features/ResourceConnections/ResourceConnections.Contracts/ResourceConnections.Contracts.csproj" />
+  <Folder Name="/features/PrivateAccess/">
+    <Project Path="src/features/PrivateAccess/PrivateAccess.Tests.Integration/PrivateAccess.Tests.Integration.csproj" />
+    <Project Path="src/features/PrivateAccess/PrivateAccess.Application/PrivateAccess.Application.csproj" />
+    <Project Path="src/features/PrivateAccess/PrivateAccess.Contracts/PrivateAccess.Contracts.csproj" />
+    <Project Path="src/features/PrivateAccess/PrivateAccess.Domain/PrivateAccess.Domain.csproj" />
+    <Project Path="src/features/PrivateAccess/PrivateAccess.Events/PrivateAccess.Events.csproj" />
+    <Project Path="src/features/PrivateAccess/PrivateAccess.Primitives/PrivateAccess.Primitives.csproj" />
+    <Project Path="src/features/PrivateAccess/PrivateAccess.Runtime/PrivateAccess.Runtime.csproj" />
+    <Project Path="src/features/PrivateAccess/PrivateAccess.Tests/PrivateAccess.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="src/tools/Pole.Cli/Pole.Cli.csproj" />
+    <Project Path="src/tools/Pole.Cli.Tests/Pole.Cli.Tests.csproj" />
+    <Project Path="src/tools/Pole.AccessGateway/Pole.AccessGateway.csproj" />
+    <Project Path="src/tools/Pole.AccessGateway.Tests/Pole.AccessGateway.Tests.csproj" />
+  </Folder>
 </Solution>

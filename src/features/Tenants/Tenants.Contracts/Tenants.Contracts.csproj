@@ -6,4 +6,7 @@
     <AssemblyName>Pole.Features.Tenants.Contracts</AssemblyName>
     <RootNamespace>Pole.Features.Tenants.Contracts</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MongoDB.Driver" />
+  </ItemGroup>
 </Project>

@@ -19,6 +19,7 @@ public abstract class ApiIntegrationTestBase : IAsyncLifetime
 
     protected MongoReplicaSetFixture Fixture { get; }
     protected HttpClient Client => _application!.Client;
+    protected virtual bool PrivateAccessEnabled => false;
     protected FakeGitHubAppClient GitHubClient => _application!.GitHubClient;
     protected void RejectNewDeploymentTargetWorkloads() =>
         _application!.RejectNewDeploymentTargetWorkloads();
@@ -30,13 +31,18 @@ public abstract class ApiIntegrationTestBase : IAsyncLifetime
             publicBaseDomain);
     protected void RejectDeploymentTargetReferenceRemoval() =>
         _application!.RejectDeploymentTargetReferenceRemoval();
+    protected void SetPrivateAccessTargetState(
+        bool enabled,
+        bool deletionRequested,
+        Pole.Features.DeploymentTargets.Contracts.NetworkPolicyReadiness readiness) =>
+        _application!.SetPrivateAccessTargetState(enabled, deletionRequested, readiness);
 
     public virtual async Task InitializeAsync()
     {
         await Fixture.ResetDatabaseAsync();
         await SeedDefaultTenantAsync();
         await Fixture.DbContext.StorageProfiles.InsertOneAsync(TestData.SeedStorageProfile());
-        _application = await TestApiApplication.StartAsync(Fixture);
+        _application = await TestApiApplication.StartAsync(Fixture, PrivateAccessEnabled);
     }
 
     public virtual async Task DisposeAsync()

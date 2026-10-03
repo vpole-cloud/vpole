@@ -40,8 +40,8 @@ module PostgresPersistenceGuards =
     let sameIdentity (current : PostgresCluster) (replacement : PostgresCluster) =
         cluster current
         cluster replacement
-        if current.TenantId <> replacement.TenantId || current.Id <> replacement.Id then
-            invalidOp "A PostgreSQL cluster replacement must preserve tenant and resource identity."
+        if current.TenantId <> replacement.TenantId || current.Id <> replacement.Id || current.Name <> replacement.Name then
+            invalidOp "A PostgreSQL cluster replacement must preserve tenant, resource identity, and immutable name."
 
     let activeUpdate (current : PostgresCluster) (replacement : PostgresCluster) =
         sameIdentity current replacement

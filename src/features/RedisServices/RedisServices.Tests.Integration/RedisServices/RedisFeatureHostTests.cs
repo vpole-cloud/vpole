@@ -89,6 +89,8 @@ public sealed class RedisFeatureHostTests(MongoReplicaSetFixture fixture)
         await host.Services.GetRequiredService<EnsurePendingOutboxEventsRegistered>().InvokeAsync();
         var history = await fixture.Database.GetCollection<BsonDocument>("__migrations")
             .Find(new BsonDocument("_id", new BsonRegularExpression("^pole.redis/"))).ToListAsync();
-        Assert.Single(history);
+        Assert.Equal(
+            ["pole.redis/6a700001b213917a38c38001", "pole.redis/6a700002b213917a38c38001"],
+            history.Select(item => item["_id"].AsString).Order(StringComparer.Ordinal));
     }
 }

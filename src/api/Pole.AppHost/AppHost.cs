@@ -281,6 +281,7 @@ if (e2eKeycloakPort is { } keycloakPort)
 {
     var keycloakIssuer = "http://localhost:" + keycloakPort + "/realms/pole.control-plane";
     api.WithEnvironment("Authentication__ValidIssuer", keycloakIssuer);
+    api.WithEnvironment("Cli__Issuer", keycloakIssuer);
 }
 if (githubAppEnabled)
 {

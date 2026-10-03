@@ -2,7 +2,6 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using Microsoft.Extensions.Options;
 using Pole.Features.Users.Application.Identity;
@@ -32,7 +31,7 @@ public sealed class KeycloakContainerFixture : IAsyncLifetime
             .WithTestOwnership(identity)
             .WithEnvironment("KC_BOOTSTRAP_ADMIN_USERNAME", "admin")
             .WithEnvironment("KC_BOOTSTRAP_ADMIN_PASSWORD", "admin")
-            .WithBindMount(realmFile, "/opt/keycloak/data/import/pole.control-plane.realm.json", AccessMode.ReadOnly)
+            .WithResourceMapping(new FileInfo(realmFile), "/opt/keycloak/data/import/")
             .WithPortBinding(KeycloakPort, true)
             .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(KeycloakPort))
             .WithCommand("start-dev", "--import-realm")
@@ -70,6 +69,13 @@ public sealed class KeycloakContainerFixture : IAsyncLifetime
 
     public async Task<string?> GetAdminAccessTokenAsync(CancellationToken cancellationToken = default)
     {
+        var result = await ProbeAdminAccessTokenAsync(cancellationToken);
+        return result.Token;
+    }
+
+    private async Task<(string? Token, System.Net.HttpStatusCode StatusCode)> ProbeAdminAccessTokenAsync(
+        CancellationToken cancellationToken)
+    {
         using var content = new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["grant_type"] = "client_credentials",
@@ -83,11 +89,11 @@ public sealed class KeycloakContainerFixture : IAsyncLifetime
             cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            return null;
+            return (null, response.StatusCode);
         }
 
         var token = await response.Content.ReadFromJsonAsync<KeycloakTokenResponse>(cancellationToken);
-        return token?.AccessToken;
+        return (token?.AccessToken, response.StatusCode);
     }
 
     public async Task<KeycloakAdminUser?> FindUserByUsernameAsync(string username, CancellationToken cancellationToken = default)
@@ -139,13 +145,15 @@ public sealed class KeycloakContainerFixture : IAsyncLifetime
     {
         var timeoutAt = DateTime.UtcNow.AddMinutes(2);
         Exception? lastError = null;
+        System.Net.HttpStatusCode? lastStatusCode = null;
 
         while (DateTime.UtcNow < timeoutAt)
         {
             try
             {
-                var token = await GetAdminAccessTokenAsync();
-                if (!string.IsNullOrWhiteSpace(token))
+                var result = await ProbeAdminAccessTokenAsync(CancellationToken.None);
+                lastStatusCode = result.StatusCode;
+                if (!string.IsNullOrWhiteSpace(result.Token))
                 {
                     return;
                 }
@@ -158,7 +166,10 @@ public sealed class KeycloakContainerFixture : IAsyncLifetime
             await Task.Delay(500);
         }
 
-        throw new TimeoutException("Keycloak realm did not become ready in time.", lastError);
+        throw new TimeoutException(
+            $"Keycloak realm did not become ready in time. Last token endpoint status: " +
+            (lastStatusCode is { } status ? ((int)status).ToString() : "no response"),
+            lastError);
     }
 
     private static string ResolveRealmFile()

@@ -68,6 +68,7 @@ public sealed class ArchitectureBoundaryTests
         "AddPostgresFeature",
         "AddWebServicesFeature",
         "AddQuotasFeature",
+        "AddPrivateAccessFeature",
         "AddDeploymentTargetsFeature",
         "AddSearchFeature",
         "AddGitProvidersFeature",
@@ -75,6 +76,35 @@ public sealed class ArchitectureBoundaryTests
         "AddSourceBuildsFeature",
         "AddUsersFeature"
     ];
+
+    [Fact]
+    public void PrivateAccessPersistedDomainModels_DeclareFactories()
+    {
+        var sources = ArchitectureSources.ProductionCSharp()
+            .Where(source => source.RelativePath.StartsWith(
+                "src/features/PrivateAccess/PrivateAccess.Domain/", StringComparison.Ordinal))
+            .ToArray();
+        var factories = sources.SelectMany(source => source.Root.DescendantNodes()
+                .OfType<ClassDeclarationSyntax>())
+            .ToDictionary(factory => factory.Identifier.ValueText, StringComparer.Ordinal);
+        var violations = sources.SelectMany(source => source.Root.DescendantNodes()
+                .OfType<RecordDeclarationSyntax>()
+                .Where(record => record.ParameterList?.Parameters.Any(parameter =>
+                    parameter.AttributeLists.SelectMany(list => list.Attributes)
+                        .Any(attribute => attribute.Name.ToString() == "BsonId")) == true)
+                .Where(record => !factories.TryGetValue(
+                    record.Identifier.ValueText + "Factory", out var factory) ||
+                    !factory.Members.OfType<MethodDeclarationSyntax>().Any(method =>
+                        method.Identifier.ValueText == "Create" &&
+                        method.ReturnType.ToString() == record.Identifier.ValueText &&
+                        method.Modifiers.Any(modifier => modifier.IsKind(SyntaxKind.PublicKeyword)) &&
+                        method.Modifiers.Any(modifier => modifier.IsKind(SyntaxKind.StaticKeyword))))
+                .Select(record => ArchitectureSources.Describe(source, record,
+                    $"persisted domain model '{record.Identifier.ValueText}' requires a factory")))
+            .ToArray();
+
+        AssertNoViolations(violations);
+    }
 
     [Fact]
     public void ProductionSources_DoNotReferenceRemovedMongoContexts()
@@ -268,6 +298,37 @@ public sealed class ArchitectureBoundaryTests
                     "Mongo filter must be defined in a named *Filters helper")));
 
         AssertNoViolations(violations.Concat(fsharpViolations).ToArray());
+    }
+
+    [Fact]
+    public void LiteralMigrationIds_AreUniqueWithinEachFeature()
+    {
+        var identities = ArchitectureSources.ProductionCSharp()
+            .Where(source => source.RelativePath.StartsWith("src/features/", StringComparison.Ordinal) &&
+                source.RelativePath.Contains(".Application/", StringComparison.Ordinal))
+            .SelectMany(source => source.Root.DescendantNodes().OfType<ClassDeclarationSyntax>()
+                .Where(type => type.BaseList?.Types.Any(item => GetTypeName(item.Type) == "IMigration") == true)
+                .SelectMany(type => type.Members.OfType<PropertyDeclarationSyntax>()
+                    .Where(property => property.Identifier.ValueText == "Id")
+                    .SelectMany(property => property.DescendantNodes().OfType<LiteralExpressionSyntax>()
+                        .Where(literal => literal.IsKind(SyntaxKind.StringLiteralExpression) &&
+                            Regex.IsMatch(literal.Token.ValueText, "^[0-9a-fA-F]{24}$"))
+                        .Select(literal => new
+                        {
+                            Feature = source.RelativePath.Split('/')[2],
+                            Id = literal.Token.ValueText.ToLowerInvariant(),
+                            Location = ArchitectureSources.Describe(source, literal, "Migration ID")
+                        }))))
+            .ToArray();
+
+        // Different provider namespaces may deliberately scope the same ObjectId.
+        // Within one feature, a copied migration must always have a distinct ID.
+        var duplicates = identities.GroupBy(item => (item.Feature, item.Id))
+            .Where(group => group.Count() > 1)
+            .Select(group => $"Duplicate migration ID {group.Key.Id} in {group.Key.Feature}: " +
+                string.Join(", ", group.Select(item => item.Location)))
+            .ToArray();
+        AssertNoViolations(duplicates);
     }
 
     [Fact]

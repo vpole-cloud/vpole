@@ -10,9 +10,25 @@ using Pole.Workloads;
 namespace Pole.Features.RedisServices.Application.Persistence.Reads;
 
 internal sealed class MongoLoadRedisConnectionEndpoints(IMongoCollection<Redis> services)
-    : IResourceConnectionDestinationCapability
+    : IResourceConnectionDestinationCapability, IResourceConnectionDestinationNameCapability
 {
+    public string Kind => "redis";
+
     public ResourceTypeId ResourceType => RedisResourceDeployment.ResourceType;
+
+    public async Task<string?> ResolveResourceIdAsync(
+        string tenantId,
+        string name,
+        CancellationToken cancellationToken = default)
+    {
+        var matches = await services.Find(RedisFilters.ByName(tenantId, name))
+            .Limit(2)
+            .ToListAsync(cancellationToken);
+        return ResourceConnectionNameResolution.ResolveUniqueResourceId(
+            matches,
+            resource => resource.Lifecycle is not DeletingRedisLifecycle,
+            resource => resource.Id);
+    }
 
     public async Task<LoadResourceConnectionEndpointsOutcome> LoadAsync(
         string tenantId,
@@ -28,6 +44,25 @@ internal sealed class MongoLoadRedisConnectionEndpoints(IMongoCollection<Redis> 
             return new ResourceConnectionDestinationMissing();
         if (resource.Lifecycle is DeletingRedisLifecycle)
             return new ResourceConnectionDestinationDeleting();
+        return Endpoints(resource);
+    }
+
+    public async Task<IReadOnlyDictionary<string, ResourceConnectionEndpointsFound>> LoadAvailableAsync(
+        string tenantId,
+        IReadOnlyCollection<string> resourceIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (resourceIds.Count == 0)
+            return new Dictionary<string, ResourceConnectionEndpointsFound>();
+        var resources = await services.Find(RedisFilters.ByIds(tenantId, resourceIds))
+            .ToListAsync(cancellationToken);
+        return resources
+            .Where(resource => resource.Lifecycle is not DeletingRedisLifecycle)
+            .ToDictionary(resource => resource.Id, Endpoints, StringComparer.Ordinal);
+    }
+
+    private static ResourceConnectionEndpointsFound Endpoints(Redis resource)
+    {
         var endpoint = RedisConnectionEndpoints.Redis;
         return new ResourceConnectionEndpointsFound(
             ImmutableList.Create(new ResourceConnectionEndpoint(

@@ -506,6 +506,11 @@ public sealed class RuntimeCellNamespaceTests
             return Task.FromResult(kubernetes);
         }
 
+        public Task<IKubernetes> GetForCleanupAsync(
+            string deploymentTargetId,
+            CancellationToken cancellationToken = default) =>
+            GetAsync(deploymentTargetId, cancellationToken);
+
         public Task<IKubernetes> GetDefaultAsync(CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("The default Kubernetes client must not be used.");
     }
@@ -517,6 +522,11 @@ public sealed class RuntimeCellNamespaceTests
             string deploymentTargetId,
             CancellationToken cancellationToken = default) =>
             Task.FromException<IKubernetes>(exception);
+
+        public Task<IKubernetes> GetForCleanupAsync(
+            string deploymentTargetId,
+            CancellationToken cancellationToken = default) =>
+            GetAsync(deploymentTargetId, cancellationToken);
 
         public Task<IKubernetes> GetDefaultAsync(CancellationToken cancellationToken = default) =>
             Task.FromException<IKubernetes>(exception);

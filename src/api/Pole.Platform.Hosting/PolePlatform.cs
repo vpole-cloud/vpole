@@ -2,6 +2,7 @@ using Pole.Features.Outbox.Application.Persistence.Delivery;
 using System.Reflection;
 using Pole.ASP.Helpers;
 using Pole.Features.Secrets.Application;
+using Pole.Features.PrivateAccess.Application;
 using Pole.Database;
 using Pole.Encryption;
 using Pole.Features.ContainerRegistries.Application;
@@ -47,6 +48,7 @@ public static class PolePlatform
 {
     public static Assembly[] ApplicationAssemblies => [
         typeof(SecretFeature).Assembly,
+        typeof(PrivateAccessFeature).Assembly,
     typeof(QuotaEndpoints).Assembly,
     typeof(DomainZoneEndpoints).Assembly,
     typeof(GitProviderEndpoints).Assembly,
@@ -64,6 +66,7 @@ public static class PolePlatform
 ];
     public static Assembly[] EventAssemblies => [
         typeof(Pole.Features.Secrets.Events.SecretChangedEvent).Assembly,
+        typeof(Pole.Features.PrivateAccess.Events.PrivateAccessGrantCreatedEvent).Assembly,
     typeof(Pole.Features.ResourceDeployments.Events.ResourceDeploymentAppliedEvent).Assembly,
     typeof(Pole.Features.ResourceGroups.Events.ResourceGroupCreatedEvent).Assembly,
     typeof(Pole.Features.SourceBuilds.Events.SourceBuildRequestedEvent).Assembly,
@@ -82,6 +85,7 @@ public static class PolePlatform
     .AddTenantsFeature()
     .AddDomainsFeature()
     .AddSecretsFeature()
+    .AddPrivateAccessFeature()
     .AddComputeProfilesFeature()
     .AddStorageProfilesFeature()
     .AddQuotasFeature(configuration)

@@ -27,3 +27,31 @@ public delegate Task<LoadTenantIdentityOutcome>
     LoadTenantIdentity(
         string tenantId,
         CancellationToken cancellationToken = default);
+
+/// <summary>Current membership, never a role asserted by a caller.</summary>
+public enum TenantMembershipRole
+{
+    Viewer,
+    Member,
+    Admin,
+    Owner
+}
+
+public sealed record TenantMemberSnapshot(
+    string TenantId,
+    string UserId,
+    TenantMembershipRole Role);
+
+public sealed record TenantMemberMissing(
+    string TenantId,
+    string UserId);
+
+public union LoadTenantMemberOutcome(
+    TenantMemberSnapshot,
+    TenantMemberMissing);
+
+public delegate Task<LoadTenantMemberOutcome> LoadTenantMember(
+    string tenantId,
+    string userId,
+    MongoDB.Driver.IClientSessionHandle? session = null,
+    CancellationToken cancellationToken = default);

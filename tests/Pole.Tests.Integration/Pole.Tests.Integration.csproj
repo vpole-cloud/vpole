@@ -8,6 +8,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <ProjectReference Include="../../src/features/PrivateAccess/PrivateAccess.Application/PrivateAccess.Application.csproj" />
         <PackageReference Include="FSharp.Core" />
         <PackageReference Include="Microsoft.AspNetCore.TestHost" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" />
@@ -21,6 +22,7 @@
     </ItemGroup>
 
     <ItemGroup>
+        <ProjectReference Include="../../src/features/PrivateAccess/PrivateAccess.Runtime/PrivateAccess.Runtime.csproj" />
         <ProjectReference Include="..\..\src\api\Pole.Server\Pole.Server.csproj" />
         <ProjectReference Include="..\..\src\features\ComputeProfiles\ComputeProfiles.Application\ComputeProfiles.Application.csproj" />
         <ProjectReference Include="..\..\src\features\ComputeProfiles\ComputeProfiles.Contracts\ComputeProfiles.Contracts.csproj" />

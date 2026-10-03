@@ -67,6 +67,20 @@ internal sealed class TestDeploymentTargetLookup
         set => Volatile.Write(ref _rejectReferenceRemoval, value ? 1 : 0);
     }
 
+    public void SetPrivateAccessTargetState(
+        bool enabled,
+        bool deletionRequested,
+        NetworkPolicyReadiness readiness)
+    {
+        var current = _targets[Target.Id];
+        _targets[Target.Id] = current with
+        {
+            Enabled = enabled,
+            DeletionRequested = deletionRequested,
+            NetworkPolicy = current.NetworkPolicy with { Readiness = readiness }
+        };
+    }
+
     public void AddEligibleTarget(string id, string publicBaseDomain)
     {
         _targets[id] = Target with

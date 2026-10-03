@@ -1,10 +1,19 @@
 using MongoDB.Driver;
 using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.RedisServices.Application.Migrations;
 using Pole.Features.RedisServices.Domain;
 
 namespace Pole.Features.RedisServices.Application.Persistence.Mutations;
 
-public delegate Task PersistCreatedRedis(
+public sealed record RedisServiceNameAlreadyExists(string Name);
+
+public sealed record RedisServicePersisted;
+
+public union PersistCreatedRedisOutcome(
+    RedisServicePersisted,
+    RedisServiceNameAlreadyExists);
+
+public delegate Task<PersistCreatedRedisOutcome> PersistCreatedRedis(
     IClientSessionHandle session,
     Redis redis,
     CancellationToken cancellationToken = default);
@@ -13,7 +22,7 @@ internal sealed class MongoPersistCreatedRedis(
     IMongoCollection<Redis> redisServices,
     StoreOutboxWrites storeOutboxWrites)
 {
-    public async Task InvokeAsync(
+    public async Task<PersistCreatedRedisOutcome> InvokeAsync(
         IClientSessionHandle session,
         Redis redis,
         CancellationToken cancellationToken = default)
@@ -21,13 +30,25 @@ internal sealed class MongoPersistCreatedRedis(
         RedisPersistenceGuards.EnsureTransaction(session, "Redis creation");
         RedisPersistenceGuards.EnsureCreated(redis);
 
-        await redisServices.InsertOneAsync(
-            session,
-            redis,
-            cancellationToken: cancellationToken);
+        try
+        {
+            await redisServices.InsertOneAsync(
+                session,
+                redis,
+                cancellationToken: cancellationToken);
+        }
+        catch (MongoWriteException exception) when (
+            exception.WriteError.Category == ServerErrorCategory.DuplicateKey &&
+            exception.WriteError.Message.Contains(
+                RedisNameIndexesMigration.TenantNameIndex,
+                StringComparison.Ordinal))
+        {
+            return new RedisServiceNameAlreadyExists(redis.Name);
+        }
         await storeOutboxWrites(
             session,
             [OutboxWrite.Create(redis.ToCreateEvent())],
             cancellationToken);
+        return new RedisServicePersisted();
     }
 }

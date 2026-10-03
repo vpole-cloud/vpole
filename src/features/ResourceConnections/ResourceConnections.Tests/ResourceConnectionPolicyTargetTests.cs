@@ -227,6 +227,11 @@ public sealed class ResourceConnectionPolicyTargetTests
             return Task.FromResult(client);
         }
 
+        public Task<IKubernetes> GetForCleanupAsync(
+            string deploymentTargetId,
+            CancellationToken cancellationToken = default) =>
+            GetAsync(deploymentTargetId, cancellationToken);
+
         public Task<IKubernetes> GetDefaultAsync(CancellationToken ct = default) =>
             throw new InvalidOperationException("A connection must use its target ID.");
     }

@@ -119,6 +119,7 @@ public static class DeploymentTargetPersistenceRegistration
         AddCapability<MongoRewrapDeploymentTargetCredentials, RewrapDeploymentTargetCredentials>(
             services,
             implementation => implementation.InvokeAsync);
+        services.AddPrivateAccessTargetAdmission();
 
         services.TryAddSingleton<MongoLoadDeploymentTargetBootstrapState>();
         services.TryAddSingleton<LoadDeploymentTargetBootstrapState>(serviceProvider => serviceProvider

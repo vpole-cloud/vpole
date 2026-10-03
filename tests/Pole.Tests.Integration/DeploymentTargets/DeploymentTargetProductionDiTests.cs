@@ -267,6 +267,11 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
             return Task.FromException<IKubernetes>(exception);
         }
 
+        public Task<IKubernetes> GetForCleanupAsync(
+            string deploymentTargetId,
+            CancellationToken cancellationToken = default) =>
+            GetAsync(deploymentTargetId, cancellationToken);
+
         public Task<IKubernetes> GetDefaultAsync(CancellationToken cancellationToken = default) =>
             Task.FromException<IKubernetes>(exception);
     }

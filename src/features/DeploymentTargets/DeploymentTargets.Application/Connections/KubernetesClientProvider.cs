@@ -22,9 +22,20 @@ public sealed class KubernetesClientProvider(
     private readonly ConcurrentBag<IKubernetes> _retiredClients = [];
     private int _disposed;
 
-    public async Task<IKubernetes> GetAsync(
+    public Task<IKubernetes> GetAsync(
         string deploymentTargetId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        GetClientAsync(deploymentTargetId, allowDisabled: false, cancellationToken);
+
+    public Task<IKubernetes> GetForCleanupAsync(
+        string deploymentTargetId,
+        CancellationToken cancellationToken = default) =>
+        GetClientAsync(deploymentTargetId, allowDisabled: true, cancellationToken);
+
+    private async Task<IKubernetes> GetClientAsync(
+        string deploymentTargetId,
+        bool allowDisabled,
+        CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
         if (!ObjectId.TryParse(deploymentTargetId, out _))
@@ -35,7 +46,7 @@ public sealed class KubernetesClientProvider(
         }
 
         var target = await LoadTargetAsync(deploymentTargetId, cancellationToken);
-        EnsureEnabled(target, deploymentTargetId);
+        EnsureAvailable(target, deploymentTargetId, allowDisabled);
         if (TryGetCurrent(target!, out var current))
             return current;
 
@@ -45,7 +56,7 @@ public sealed class KubernetesClientProvider(
         {
             ThrowIfDisposed();
             target = await LoadTargetAsync(deploymentTargetId, cancellationToken);
-            EnsureEnabled(target, deploymentTargetId);
+            EnsureAvailable(target, deploymentTargetId, allowDisabled);
             if (TryGetCurrent(target!, out current))
                 return current;
 
@@ -144,7 +155,10 @@ public sealed class KubernetesClientProvider(
         return false;
     }
 
-    private void EnsureEnabled(DeploymentTarget? target, string deploymentTargetId)
+    private void EnsureAvailable(
+        DeploymentTarget? target,
+        string deploymentTargetId,
+        bool allowDisabled)
     {
         if (target is null)
         {
@@ -152,7 +166,7 @@ public sealed class KubernetesClientProvider(
                 deploymentTargetId,
                 DeploymentTargetUnavailableReason.NotFound);
         }
-        if (target.Enabled)
+        if (target.Enabled || allowDisabled)
             return;
 
         Invalidate(deploymentTargetId);
