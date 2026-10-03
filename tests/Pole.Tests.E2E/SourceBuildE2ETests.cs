@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.Playwright;
 using Pole.Testing;
 using Pole.Tests.E2E.Infrastructure;
 using Xunit;
@@ -19,15 +20,226 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
 
     [SourceBuildFact]
+    public async Task Browser_git_creation_and_global_search_reach_the_same_source_built_resource()
+    {
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMinutes(15));
+        var token = cancellation.Token;
+        await fixture.EnsureSourceBuildInfrastructureReadyAsync(token);
+        await SetStubRevisionAsync("v1", token);
+        await EnsureGitHubConnectionAsync(token);
+        await using var resources = new TestResourceScope("browser Git source-build E2E");
+        var groupCleanup = resources.CreateCleanupSequence("browser Git resource group");
+        var groupId = await groupCleanup.CreateAsync("delete browser Git group", CreateResourceGroupAsync,
+            (id, cleanup) => DeleteAsync($"/api/v1/resource-groups/{id}", cleanup), token);
+        groupCleanup.Defer("wait for browser Git namespace deletion", cleanup => fixture.WaitForNamespaceDeletionAsync(groupId, cleanup));
+
+        await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+        await browserContainer.StartAsync(token);
+        using var playwright = await Playwright.CreateAsync();
+        await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
+            new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
+        await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+        {
+            ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
+            IgnoreHTTPSErrors = true
+        });
+        var page = await context.NewPageAsync();
+        await page.GotoAsync(fixture.FrontendBaseAddress.ToString());
+        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in", Exact = true }).ClickAsync();
+        await page.GetByLabel("Username or email").FillAsync(fixture.Alpha.Email);
+        await page.GetByRole(AriaRole.Textbox, new PageGetByRoleOptions { Name = "Password", Exact = true }).FillAsync(fixture.Alpha.Password);
+        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Sign In", Exact = true }).ClickAsync();
+        await page.GetByLabel("Tenant").SelectOptionAsync(fixture.Alpha.DefaultTenantId);
+        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Web services", Exact = true }).ClickAsync();
+        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "New service", Exact = true }).ClickAsync();
+        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Git repository", Exact = true }).ClickAsync();
+        await page.GetByLabel("Repository").SelectOptionAsync("9001");
+        await page.GetByLabel("Branch").SelectOptionAsync("main");
+        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Analyze branch", Exact = true }).ClickAsync();
+        var buildPlan = page.GetByLabel("Build plan");
+        var candidate = await buildPlan.Locator("option").Nth(1).GetAttributeAsync("value");
+        await buildPlan.SelectOptionAsync(candidate!);
+        Assert.Contains("FROM scratch", await page.Locator(".git-recipe-preview").TextContentAsync() ?? string.Empty, StringComparison.Ordinal);
+        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Use this source", Exact = true }).ClickAsync();
+        var sourceId = await WaitForBrowserSourceSelectionAsync(page, token);
+        resources.Defer("unlink browser source", cleanup => DeleteAsync($"/api/v1/source-repositories/{sourceId}", cleanup));
+        await page.GetByLabel("Linked source").SelectOptionAsync(sourceId);
+        var name = $"git-ui-{Guid.NewGuid():N}"[..20];
+        await page.GetByLabel("Name", new PageGetByLabelOptions { Exact = true }).FillAsync(name);
+        await page.GetByLabel("Resource group").SelectOptionAsync(groupId);
+        await page.GetByLabel("Image registry").FillAsync("docker.io");
+        await page.GetByLabel("Image name").FillAsync("library/nginx");
+        await page.GetByLabel("Tag", new PageGetByLabelOptions { Exact = true }).FillAsync("1.27.5-alpine");
+        await page.GetByLabel("Probe path").FillAsync("/");
+        await page.GetByLabel("Probe port").FillAsync("80");
+        await page.GetByLabel("Target port").FillAsync("80");
+        await CaptureDeliveryScreenshotsAsync(page, "git-create");
+        await page.SetViewportSizeAsync(1440, 900);
+        var createdResponse = await page.RunAndWaitForResponseAsync(
+            () => page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Create service and build", Exact = true }).ClickAsync(),
+            response => response.Request.Method == "POST" && new Uri(response.Url).AbsolutePath == "/api/v1/web-services");
+        Assert.True(createdResponse.Ok, $"Git service creation returned HTTP {createdResponse.Status}.");
+        var created = await createdResponse.JsonAsync() ?? throw new InvalidOperationException("The created service was empty.");
+        var serviceId = RequiredString(created, "webServiceId");
+        resources.Defer("delete browser Git service", cleanup => DeleteAsync($"/api/v1/web-services/{serviceId}", cleanup));
+        await fixture.WaitForNamespaceCreationAsync(groupId, token);
+        await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Source builds", Exact = true }).WaitForAsync();
+        var configurationId = await GetBrowserBuildConfigurationAsync(serviceId, token);
+        resources.Defer("delete browser source configuration", cleanup => DeleteAsync($"/api/v1/source-build-configurations/{configurationId}", cleanup));
+        var buildId = await GetBrowserBuildIdAsync(serviceId, token);
+        var completed = await WaitForBuildAsync(buildId, "succeeded", token);
+        var state = completed.GetProperty("state");
+        Assert.Equal(RevisionOneCommitSha, RequiredString(completed, "commitSha"));
+        var image = RequiredString(state, "imageReference");
+        var releaseId = RequiredString(state, "releaseId");
+        await AssertSourceBuildDeploymentAsync(groupId, new CreatedWebService(serviceId, name), image, releaseId, token);
+        Assert.Equal(RequiredString(state, "imageDigest"), await fixture.GetHarborArtifactDigestAsync(fixture.Alpha.DefaultTenantId, serviceId, buildId, token));
+        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Refresh", Exact = true }).Last.ClickAsync();
+        await page.GetByText("succeeded", new PageGetByTextOptions { Exact = true }).First.WaitForAsync();
+        Assert.Equal("Dockerfile", await page.Locator(".source-build-panel .panel__meta").InnerTextAsync());
+        await page.Locator(".build-recipe summary").ClickAsync();
+        var dockerfile = page.GetByRole(AriaRole.Textbox, new PageGetByRoleOptions { Name = "Dockerfile", Exact = true });
+        const string editedRecipe = "FROM scratch\n# browser recipe update";
+        await dockerfile.FillAsync(editedRecipe);
+        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Refresh", Exact = true }).Last.ClickAsync();
+        Assert.Equal(editedRecipe, await dockerfile.InputValueAsync());
+        var recipeResponse = await page.RunAndWaitForResponseAsync(
+            () => page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Save build recipe", Exact = true }).ClickAsync(),
+            response => response.Request.Method == "PUT" && new Uri(response.Url).AbsolutePath == $"/api/v1/source-build-configurations/{configurationId}");
+        Assert.True(recipeResponse.Ok, $"Build recipe update returned HTTP {recipeResponse.Status}.");
+        await page.GetByText("Build recipe · Customized", new PageGetByTextOptions { Exact = true }).WaitForAsync();
+        await CaptureDeliveryScreenshotsAsync(page, "git-builds");
+
+        await WaitForBrowserSearchProjectionAsync(serviceId, name, token);
+        foreach (var (viewport, width, height) in new[] { ("desktop", 1440, 900), ("mobile", 390, 844) })
+        {
+            await page.SetViewportSizeAsync(width, height);
+            foreach (var theme in new[] { "light", "dark" })
+            {
+                await SetBrowserThemeAsync(page, theme);
+                await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Search and commands", Exact = true }).ClickAsync();
+                var search = page.GetByRole(AriaRole.Combobox, new PageGetByRoleOptions { Name = "Find a resource or action" });
+                await search.FillAsync(name);
+                await page.GetByRole(AriaRole.Option, new PageGetByRoleOptions { Name = name }).WaitForAsync();
+                await CaptureDeliveryScreenshotAsync(page, viewport, "global-search", theme);
+                await search.PressAsync("Enter");
+                Assert.Contains($"resource={serviceId}", page.Url);
+                Assert.Equal(1, await page.GetByRole(AriaRole.Tablist, new PageGetByRoleOptions { Name = "Web service workspace", Exact = true })
+                    .GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = name, Exact = true }).CountAsync());
+                await page.Keyboard.PressAsync("Control+k");
+                await page.GetByRole(AriaRole.Option, new PageGetByRoleOptions { Name = "Copy service link" }).WaitForAsync();
+                await CaptureDeliveryScreenshotAsync(page, viewport, "commands", theme);
+                await search.PressAsync("Escape");
+                Assert.Equal("Search and commands", await page.EvaluateAsync<string>("document.activeElement.getAttribute('aria-label')"));
+            }
+        }
+        await page.SetViewportSizeAsync(1440, 900);
+        await page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "Builds", Exact = true }).ClickAsync();
+        await fixture.StopBuildKitAccessAsync();
+        try
+        {
+            var failedResponse = await page.RunAndWaitForResponseAsync(
+                () => page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Build and deploy", Exact = true }).ClickAsync(),
+                response => response.Request.Method == "POST" && new Uri(response.Url).AbsolutePath.TrimEnd('/').EndsWith("/builds", StringComparison.Ordinal));
+            Assert.True(failedResponse.Ok, $"Build queueing returned HTTP {failedResponse.Status}.");
+            var failedJob = await failedResponse.JsonAsync() ?? throw new InvalidOperationException("The queued failure-test job was empty.");
+            var failed = await WaitForBuildAsync(RequiredString(failedJob, "id"), "failed", token);
+            Assert.False(string.IsNullOrWhiteSpace(RequiredString(failed.GetProperty("state"), "failureCode")));
+            await page.GetByText("failed", new PageGetByTextOptions { Exact = true }).First.WaitForAsync();
+            Assert.Contains($"resource={serviceId}", page.Url);
+            await CaptureDeliveryScreenshotsAsync(page, "failed-build");
+        }
+        finally
+        {
+            await fixture.RestoreBuildKitAccessAsync(CancellationToken.None);
+        }
+    }
+
+    private async Task<string> GetBrowserBuildConfigurationAsync(string serviceId, CancellationToken token)
+    {
+        using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Get, "/api/v1/source-build-configurations", fixture.Alpha, fixture.Alpha.DefaultTenantId);
+        using var response = await fixture.Api.SendAsync(request, token);
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(token));
+        return RequiredString(document.RootElement.EnumerateArray().Single(item => RequiredString(item, "webServiceId") == serviceId), "id");
+    }
+
+    private static async Task<string> WaitForBrowserSourceSelectionAsync(IPage page, CancellationToken token)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (DateTime.UtcNow < deadline)
+        {
+            var selected = await page.GetByLabel("Linked source").InputValueAsync();
+            if (!string.IsNullOrWhiteSpace(selected)) return selected;
+            var errors = page.Locator(".git-source-picker [role=alert]");
+            if (await errors.CountAsync() > 0)
+                throw new InvalidOperationException($"Browser source setup failed: {await errors.First.InnerTextAsync()}");
+            await Task.Delay(PollInterval, token);
+        }
+        await CaptureDeliveryScreenshotAsync(page, "desktop", "source-diagnostic", "current");
+        var source = await page.Locator(".git-source-picker").InnerTextAsync();
+        throw new InvalidOperationException($"Browser linked-source selection did not complete. Fixture source UI: {source}");
+    }
+
+    private async Task<string> GetBrowserBuildIdAsync(string serviceId, CancellationToken token)
+    {
+        using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Get, $"/api/v1/source-build-jobs?webServiceId={serviceId}", fixture.Alpha, fixture.Alpha.DefaultTenantId);
+        using var response = await fixture.Api.SendAsync(request, token);
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(token));
+        return RequiredString(document.RootElement.GetProperty("items").EnumerateArray().Single(), "id");
+    }
+
+    private async Task WaitForBrowserSearchProjectionAsync(string serviceId, string name, CancellationToken token)
+    {
+        while (true)
+        {
+            using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Get, $"/api/v1/search?query={Uri.EscapeDataString(name)}&pageNumber=1&pageSize=20", fixture.Alpha, fixture.Alpha.DefaultTenantId);
+            using var response = await fixture.Api.SendAsync(request, token);
+            Assert.True(response.IsSuccessStatusCode,
+                $"Browser search returned HTTP {(int)response.StatusCode}: {await response.Content.ReadAsStringAsync(token)}");
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(token));
+            if (document.RootElement.GetProperty("items").EnumerateArray().Any(item => RequiredString(item, "sourceId") == serviceId)) return;
+            await Task.Delay(PollInterval, token);
+        }
+    }
+
+    private static async Task SetBrowserThemeAsync(IPage page, string theme)
+    {
+        if (await page.Locator("html").GetAttributeAsync("data-theme") != theme)
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = $"Switch to {theme} theme" }).ClickAsync();
+        Assert.Equal(theme, await page.Locator("html").GetAttributeAsync("data-theme"));
+    }
+
+    private static async Task CaptureDeliveryScreenshotsAsync(IPage page, string section)
+    {
+        foreach (var (viewport, width, height) in new[] { ("desktop", 1440, 900), ("mobile", 390, 844) })
+        {
+            await page.SetViewportSizeAsync(width, height);
+            foreach (var theme in new[] { "light", "dark" })
+            {
+                await SetBrowserThemeAsync(page, theme);
+                await CaptureDeliveryScreenshotAsync(page, viewport, section, theme);
+            }
+        }
+    }
+
+    private static async Task CaptureDeliveryScreenshotAsync(IPage page, string viewport, string section, string theme)
+    {
+        var directory = Path.GetFullPath(Path.Combine(".artifacts", "frontend-90-6"));
+        Directory.CreateDirectory(directory);
+        await page.EvaluateAsync("window.scrollTo(0, 0)");
+        await page.ScreenshotAsync(new PageScreenshotOptions { Path = Path.Combine(directory, $"{viewport}-{section}-{theme}.png"), FullPage = section is not ("global-search" or "commands"), Animations = ScreenshotAnimations.Disabled });
+        Assert.True(await page.EvaluateAsync<bool>("document.documentElement.scrollWidth <= window.innerWidth"), $"The {viewport}/{section}/{theme} page overflows.");
+    }
+
+    [SourceBuildFact]
     public async Task Source_build_uses_the_exact_repository_commit_pushes_an_artifact_and_records_release_provenance()
     {
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMinutes(15));
         var cancellationToken = cancellation.Token;
         await fixture.EnsureSourceBuildInfrastructureReadyAsync(cancellationToken);
         await using var resources = new TestResourceScope("source-build E2E");
-        resources.Defer(
-            "delete tenant Harbor project",
-            token => fixture.DeleteHarborProjectAsync(fixture.Alpha.DefaultTenantId, token));
 
         var resourceGroupCleanup = resources.CreateCleanupSequence("source-build resource group");
         var resourceGroupId = await resourceGroupCleanup.CreateAsync(
@@ -115,14 +327,21 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
             cancellationToken);
 
         await fixture.StopBuildKitAccessAsync();
-        var failedBuild = await StartBuildAsync(sourceBuildConfigurationId, cancellationToken);
-        var failed = await WaitForBuildAsync(failedBuild, "failed", cancellationToken);
-        var failedState = failed.GetProperty("state");
-        Assert.False(string.IsNullOrWhiteSpace(failedState.GetProperty("failureCode").GetString()));
-        Assert.DoesNotContain(
-            "password",
-            failedState.GetProperty("failureMessage").GetString() ?? string.Empty,
-            StringComparison.OrdinalIgnoreCase);
+        try
+        {
+            var failedBuild = await StartBuildAsync(sourceBuildConfigurationId, cancellationToken);
+            var failed = await WaitForBuildAsync(failedBuild, "failed", cancellationToken);
+            var failedState = failed.GetProperty("state");
+            Assert.False(string.IsNullOrWhiteSpace(failedState.GetProperty("failureCode").GetString()));
+            Assert.DoesNotContain(
+                "password",
+                failedState.GetProperty("failureMessage").GetString() ?? string.Empty,
+                StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            await fixture.RestoreBuildKitAccessAsync(CancellationToken.None);
+        }
     }
 
     private async Task<string> CreateResourceGroupAsync(CancellationToken cancellationToken)

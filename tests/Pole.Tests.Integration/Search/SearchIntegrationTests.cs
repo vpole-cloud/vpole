@@ -242,6 +242,7 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
         var hit = Assert.Single(response.Items);
         Assert.Equal(sourceId, hit.SourceId);
         Assert.Equal("Widget", hit.SourceType);
+        Assert.Equal("third-party/widget", hit.ResourceTypeId);
         Assert.Equal(2, await SearchSources.CountDocumentsAsync(source => source.SourceId == sourceId));
     }
 

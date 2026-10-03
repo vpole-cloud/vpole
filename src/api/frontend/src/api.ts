@@ -21,6 +21,7 @@ import type {
   SourceRepository,
   SourceBuildConfiguration,
   SourceBuildJob,
+  SourceBuildRecipe,
   WebServiceInput,
   WebService,
   Tenant,
@@ -31,6 +32,7 @@ import type {
   WebServiceDeploymentInput,
   WebServiceDeploymentUpdateInput,
   WebServiceReleaseHistory,
+  SearchHit,
 } from './types'
 
 type TenantResponse = Omit<Tenant, 'role'> & {
@@ -778,9 +780,10 @@ export async function fetchProviderRepositories(
   token?: string,
   tenantId?: string,
   signal?: AbortSignal,
+  page = 1,
 ) {
   return fetchJson<GitProviderPage<ProviderRepository>>(
-    `${apiBaseUrl}/api/v1/git-provider-connections/${encodeURIComponent(connectionId)}/repositories?page=1&pageSize=100`,
+    `${apiBaseUrl}/api/v1/git-provider-connections/${encodeURIComponent(connectionId)}/repositories?page=${page}&pageSize=100`,
     {
       headers: buildHeaders(token, tenantId),
       signal,
@@ -795,9 +798,10 @@ export async function fetchProviderBranches(
   token?: string,
   tenantId?: string,
   signal?: AbortSignal,
+  page = 1,
 ) {
   return fetchJson<GitProviderPage<ProviderBranch>>(
-    `${apiBaseUrl}/api/v1/git-provider-connections/${encodeURIComponent(connectionId)}/repositories/${encodeURIComponent(repositoryId)}/branches?page=1&pageSize=100`,
+    `${apiBaseUrl}/api/v1/git-provider-connections/${encodeURIComponent(connectionId)}/repositories/${encodeURIComponent(repositoryId)}/branches?page=${page}&pageSize=100`,
     {
       headers: buildHeaders(token, tenantId),
       signal,
@@ -931,6 +935,14 @@ export async function deleteSourceBuildConfiguration(
   )
 }
 
+export async function updateSourceBuildRecipe(
+  apiBaseUrl: string, configurationId: string, recipe: SourceBuildRecipe, token?: string, tenantId?: string,
+) {
+  return sendJson<SourceBuildConfiguration>(`${apiBaseUrl}/api/v1/source-build-configurations/${encodeURIComponent(configurationId)}`, {
+    method: 'PUT', headers: buildHeaders(token, tenantId), body: JSON.stringify({ recipe }),
+  })
+}
+
 export async function startSourceBuild(
   apiBaseUrl: string,
   configurationId: string,
@@ -965,6 +977,15 @@ export async function fetchSourceBuildJobs(
       signal,
     },
   )
+}
+
+export async function searchResources(
+  apiBaseUrl: string, query: string, token?: string, tenantId?: string, signal?: AbortSignal, pageNumber = 1,
+) {
+  const params = new URLSearchParams({ query: query.trim(), pageNumber: String(pageNumber), pageSize: '20' })
+  return fetchJson<PaginatedResponse<SearchHit>>(`${apiBaseUrl}/api/v1/search?${params}`, {
+    headers: buildHeaders(token, tenantId), signal,
+  })
 }
 
 async function sendWithoutResponse(input: RequestInfo | URL, init: RequestInit) {

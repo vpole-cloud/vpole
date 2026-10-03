@@ -77,11 +77,11 @@ export function WebServicesView() {
       navigation.setSearch(params, { replace: true })
     }
   }, [navigation, route.pageNumber, lastPage, services.status, services.isCurrentPage])
-  const open = (id: string, edit = false) => {
+  const open = (id: string, edit = false, section?: ServiceSection) => {
     const workspace = current.current.workspace
     navigateWorkspace({ activeId: id,
       tabs: workspace.tabs.some((tab) => tab.id === id) ? workspace.tabs.map((tab) =>
-        tab.id === id && edit ? { ...tab, section: 'configuration' } : tab) : [...workspace.tabs, { id, section: edit ? 'configuration' : 'overview' }],
+        tab.id === id && (edit || section) ? { ...tab, section: section ?? 'configuration' } : tab) : [...workspace.tabs, { id, section: section ?? (edit ? 'configuration' : 'overview') }],
     })
   }
   const close = (id: string) => {
@@ -122,9 +122,10 @@ export function WebServicesView() {
         }} onOpen={open} onDelete={async (id) => { await services.remove(id); close(id); invalidateResources() }} />
     </TabPanel>
     {creating && <TabPanel id={workspaceId} tabId={createId} activeId={activeId}>
-      {tenant.canManage ? <NewWebServiceView groups={groups.items} onDirtyChange={onDirtyChange} onCreated={(id, shouldOpen) => {
+      {tenant.canManage ? <NewWebServiceView groups={groups.items} groupsStatus={groups.status} groupsError={groups.error} onRefreshGroups={groups.refresh}
+        onDirtyChange={onDirtyChange} onCreated={(id, shouldOpen, section) => {
         refreshCatalog()
-        if (shouldOpen) { setCreating(false); open(id) }
+        if (shouldOpen) { setCreating(false); open(id, false, section) }
       }} /> : <EmptyState title="Tenant viewer access is read-only." />}
     </TabPanel>}
     {workspace.tabs.map((tab) => <TabPanel key={tab.id} id={workspaceId} tabId={tab.id} activeId={activeId}>

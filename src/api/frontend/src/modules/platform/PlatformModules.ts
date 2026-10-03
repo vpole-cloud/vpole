@@ -11,6 +11,9 @@ export const resourceGroupsModule: AppModule = {
   navigationPanel: ResourceTree,
   views: [{ id: 'resource-groups', label: 'Resource groups', component: ResourceGroupsView, access: 'tenant' }],
   resourceTypes: [{ id: 'pole/resource-group', label: 'Resource group', viewId: 'resource-groups' }],
+  commands: [{ id: 'resource-groups.create', label: 'Create resource group', viewId: 'resource-groups', surface: 'palette',
+    available: ({ tenant }) => tenant.canManage,
+    run: ({ navigation }) => navigation.openResource({ resourceTypeId: 'pole/resource-group', resourceId: 'create' }) }],
 }
 export const domainsModule: AppModule = {
   id: 'domains', views: [{ id: 'domains', label: 'Domains', component: DomainsView, access: 'tenant' }],

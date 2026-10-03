@@ -85,7 +85,7 @@ beforeEach(() => {
     }
     if (path.endsWith('/resource-groups')) return json(page([group]))
     if (path.endsWith('/deployment-targets/available')) return json([target])
-    if (path.endsWith('/compute-profiles/available')) return json([])
+    if (path.endsWith('/compute-profiles/available')) return json([{ id: 'profile', displayName: 'Default', isDefault: true }])
     if (path.endsWith('/releases')) return json({ activeRevision: 1, releases: page([]) })
     if (path.endsWith('/source-build-jobs')) return json(page([]))
     return json([])
@@ -694,4 +694,95 @@ it('moves tab focus with arrow keys and uses Delete to request dirty-tab closure
   expect(document.activeElement).toBe(workspaceTab('sample'))
   await act(async () => { workspaceTab('sample').dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true })) })
   expect(container.querySelector('dialog')?.textContent).toContain('Discard changes to sample?')
+})
+
+const gitSource = { id: 'source', connectionId: 'connection', externalRepositoryId: 'repository', repositoryFullName: 'team/app',
+  repositoryUrl: 'https://github.com/team/app', isPrivate: true, branch: 'main', commitSha: 'abc123456789', analyzedAtUtc: '2026-10-03T00:00:00Z',
+  selectedPlan: { candidateKey: 'docker', kind: 'Dockerfile', displayName: 'Dockerfile', manifestPath: 'Dockerfile', sourceRoot: '.',
+    confidence: 'High', signals: [], warnings: [], commands: [], dockerfilePreview: 'FROM scratch' } }
+const buildConfiguration = { id: 'configuration', webServiceId: service.id, sourceRepositoryId: gitSource.id, recipe: { kind: 0, manifestPath: 'Dockerfile', candidateKey: 'docker', sourceRoot: '.', commands: [], dockerfile: 'FROM scratch', isCustomized: false } }
+async function chooseGitSource() {
+  await click('Git repository')
+  const selector = [...container.querySelectorAll('select')].find((select) => visible(select) && select.querySelector('option[value="source"]'))!
+  await act(async () => { selector.value = 'source'; selector.dispatchEvent(new Event('change', { bubbles: true })) })
+}
+it('recovers accepted source configuration after a lost response without creating another service or configuration', async () => {
+  const base = fetchMock.getMockImplementation()!
+  let configurationAccepted = false
+  fetchMock.mockImplementation((url, init) => {
+    const path = new URL(String(url), 'http://localhost').pathname
+    if (path.endsWith('/source-repositories')) return json([gitSource])
+    if (path.endsWith('/source-build-configurations')) {
+      if (init?.method === 'POST') { configurationAccepted = true; return Promise.resolve(new Response('Connection lost after configuration acceptance.', { status: 503 })) }
+      return json(configurationAccepted ? [buildConfiguration] : [])
+    }
+    if (path.endsWith('/builds') && init?.method === 'POST') return json({ id: 'build', configurationId: 'configuration', webServiceId: service.id,
+      branch: 'main', commitSha: 'abc123456789', createdAtUtc: '2026-10-03T00:00:00Z', state: { status: 'queued' } })
+    return base(url, init)
+  })
+  await act(async () => render()); await fillCreateForm(); await chooseGitSource(); await submit()
+  expect(container.textContent).toContain('Your service is retained.')
+  expect(container.textContent).toContain('Connection lost after configuration acceptance.')
+  await click('Retry source setup')
+  expect(new URLSearchParams(window.location.search).get('section')).toBe('builds')
+  expect(fetchMock.mock.calls.filter(([url, init]) => String(url).endsWith('/web-services') && init?.method === 'POST')).toHaveLength(1)
+  expect(fetchMock.mock.calls.filter(([url, init]) => String(url).endsWith('/source-build-configurations') && init?.method === 'POST')).toHaveLength(1)
+  expect(fetchMock.mock.calls.filter(([url, init]) => String(url).endsWith('/builds') && init?.method === 'POST')).toHaveLength(1)
+  expect(container.textContent).toContain('A successful build does not establish application readiness.')
+})
+it('does not continue a multi-step Git mutation after the originating tenant workspace is unmounted', async () => {
+  const base = fetchMock.getMockImplementation()!
+  let resolveConfigurations!: (value: Response) => void
+  const pending = new Promise<Response>((resolve) => { resolveConfigurations = resolve })
+  fetchMock.mockImplementation((url, init) => {
+    const path = new URL(String(url), 'http://localhost').pathname
+    if (path.endsWith('/source-repositories')) return json([gitSource])
+    if (path.endsWith('/source-build-configurations') && !init?.method) return pending
+    return base(url, init)
+  })
+  await act(async () => render()); await fillCreateForm(); await chooseGitSource(); await submit()
+  expect(container.textContent).toContain('Service created')
+  const tenant = container.querySelector<HTMLSelectElement>('#active-tenant') ?? [...container.querySelectorAll('select')].find((item) => item.querySelector('option[value="beta"]'))!
+  await act(async () => { tenant.value = 'beta'; tenant.dispatchEvent(new Event('change', { bubbles: true })) })
+  await act(async () => resolveConfigurations(new Response('[]', { headers: { 'Content-Type': 'application/json' } })))
+  expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith('/source-build-configurations') && init?.method === 'POST')).toBe(false)
+  expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith('/builds') && init?.method === 'POST')).toBe(false)
+  expect(container.textContent).not.toContain('Git build queued.')
+})
+it('keeps the Git creation form disabled until a source is selected and retains the image draft when changing source modes', async () => {
+  const base = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation((url, init) => String(url).endsWith('/source-repositories') ? json([gitSource]) : base(url, init))
+  await act(async () => render()); await fillCreateForm(); await click('Git repository')
+  expect(button('Create service and build').disabled).toBe(true)
+  expect(textInput('library/nginx').value).toBe('library/nginx')
+  expect(container.textContent).toContain('Initial image: this runs until the first Git build is applied.')
+  await click('Container image'); expect(button('Create service').disabled).toBe(false)
+  expect(textInput('pole-api').value).toBe('sample')
+})
+
+it('selects repository, branch and an explicit build plan before linking a new Git source', async () => {
+  const base = fetchMock.getMockImplementation()!
+  let linked = false
+  fetchMock.mockImplementation((url, init) => {
+    const path = new URL(String(url), 'http://localhost').pathname
+    if (path.endsWith('/git-provider-connections')) return json([{ id: 'connection', accountLogin: 'team' }])
+    if (path.endsWith('/source-repositories')) return json(linked ? [gitSource] : [])
+    if (path.endsWith('/repositories')) return json({ items: [{ id: 'repository', fullName: 'team/app', defaultBranch: 'main' }], hasMore: false })
+    if (path.endsWith('/branches')) return json({ items: [{ name: 'main' }, { name: 'release' }], hasMore: false })
+    if (path.endsWith('/analysis')) return json({ repositoryFullName: 'team/app', commitSha: 'abc123456789', candidates: [gitSource.selectedPlan, { ...gitSource.selectedPlan, candidateKey: 'node', displayName: 'Node application' }] })
+    if (path.endsWith('/links') && init?.method === 'POST') { linked = true; return json(gitSource) }
+    return base(url, init)
+  })
+  await act(async () => render()); await fillCreateForm(); await click('Git repository')
+  const select = async (value: string) => {
+    const input = [...container.querySelectorAll('select')].find((item) => visible(item) && item.querySelector(`option[value="${value}"]`))!
+    await act(async () => { input.value = value; input.dispatchEvent(new Event('change', { bubbles: true })) })
+  }
+  await select('repository'); await select('release'); await click('Analyze branch')
+  expect([...container.querySelectorAll('button')].some((item) => item.textContent === 'Use this source')).toBe(false)
+  await select('docker'); await click('Use this source')
+  expect(button('Create service and build').disabled).toBe(false)
+  const link = fetchMock.mock.calls.find(([url, init]) => String(url).endsWith('/links') && init?.method === 'POST')!
+  expect(JSON.parse(String(link[1]?.body))).toEqual({ branch: 'release', candidateKey: 'docker' })
+  expect(container.textContent).toContain('team/app')
 })

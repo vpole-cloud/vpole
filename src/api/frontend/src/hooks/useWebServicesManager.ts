@@ -60,6 +60,7 @@ export function useWebServicesManager({
   const [computeProfilesByTarget, setComputeProfilesByTarget] = useState<
     Record<string, AvailableComputeProfile[]>
   >({})
+  const [computeProfilesStatusByTarget, setComputeProfilesStatusByTarget] = useState<Record<string, LoadStatus>>({})
   const [hostnameBindingsByDeployment, setHostnameBindingsByDeployment] = useState<
     Record<string, HostnameBinding[]>
   >({})
@@ -107,6 +108,7 @@ export function useWebServicesManager({
       return []
     }
 
+    setComputeProfilesStatusByTarget((items) => ({ ...items, [deploymentTargetId]: 'loading' }))
     try {
       const profiles = await fetchAvailableComputeProfiles(
         apiBaseUrl,
@@ -118,8 +120,10 @@ export function useWebServicesManager({
         ...current,
         [deploymentTargetId]: profiles,
       }))
+      setComputeProfilesStatusByTarget((items) => ({ ...items, [deploymentTargetId]: 'success' }))
       return profiles
     } catch (loadError) {
+      setComputeProfilesStatusByTarget((items) => ({ ...items, [deploymentTargetId]: 'error' }))
       setSubmitError(errorMessage(loadError, 'Unable to load compute profiles.'))
       return []
     }
@@ -269,6 +273,7 @@ export function useWebServicesManager({
     targetsStatus,
     targetsError,
     computeProfilesByTarget,
+    computeProfilesStatusByTarget,
     hostnameBindingsByDeployment,
     releasesByWebService,
     refresh,

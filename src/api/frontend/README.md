@@ -104,7 +104,34 @@ the API client parses problem details and forms display field validation while r
 
 This completes #12 for the currently registered resource types: ResourceGroup and WebService.
 Adding a new UI provider still requires its own registration and resource workspace.
-This does not complete #90's whole Git/image journey or #96's web UI release. GitOps
+The #90 creation workspace now offers container-image and Git paths. Git selection can use an
+existing linked source or select an accessible GitHub account, paginated repository/branch lists,
+analyzed commit and build plan without leaving the service workflow. A missing connection links
+to Integrations. The current WebService contract requires an initial image; the form explains
+that it runs until the first source-built image is applied. Source linking, service creation,
+configuration and queueing are separate durable operations. Failed setup retains the created
+service and retries recover accepted configuration/job IDs before sending further writes.
+
+Builds supports source configuration, latest-commit analysis, recipe inspection/editing, queueing,
+history, failure codes and linked deployment results. Recipe drafts stay in memory and remain
+guarded across refresh, tab/navigation and close. Completed jobs keep their immutable inputs;
+editing a recipe affects future builds. Eligible profile loading/empty/error states block invalid
+creation; a sole eligible profile or the target default supplies the ordinary path, with explicit
+multi-target controls still available. Reconciliation is refreshed while pending; it is separate
+from build completion and observed application readiness.
+The recipe editor changes the executable Dockerfile and manifest path. The source directory,
+detected build commands and start command are reference metadata; command changes belong in the
+Dockerfile that the existing executor uses.
+
+#6 adds the header Search control and Ctrl/⌘+K palette in every authenticated tenant workspace.
+The dialog supports arrow/Enter/Escape navigation, focus restoration, paginated tenant-scoped
+Search API reads and provider-registered commands. Resource results use the server's stable
+`resourceTypeId` and the same module registry as tree links. A missing UI provider is explicit;
+no endpoint is guessed. Query, auth or tenant changes cancel old reads; late results are ignored.
+Existing projections cover groups, WebServices, PostgreSQL and Redis; domain/DNS resources will
+appear when their backend projections exist. No separate index or cross-tenant search is added.
+
+This does not complete #96's web UI release. GitOps
 ownership and source management belong to #88; runtime diagnostics and readiness belong to #8/#95.
 
 The `src/shell` directory owns AppShell, AppContext, module contracts and navigation guards.
@@ -121,6 +148,8 @@ unavailable tenant links, server pagination/search, cancelled page reads, errors
 The repository's `BrowserSmokeE2ETests` uses real Keycloak/API/Kubernetes for image deployment,
 configuration updates, tab keyboard controls, draft retention, reload, confirmation-dialog focus,
 group metadata drafts/saves, tree/provider navigation, both themes and desktop/narrow screenshots
-of each workspace section. Its prerequisites and cleanup are documented in
+of each workspace section. `SourceBuildE2ETests` also covers browser Git creation, recipe edits
+across refresh, real artifact/reconciliation results, search/command navigation and failed builds.
+Its prerequisites and cleanup are documented in
 [Aspire E2E testing](../../../docs/aspire-e2e-testing.md). Publication requires the full
 [local quality gate](../../../docs/agent-delivery.md).

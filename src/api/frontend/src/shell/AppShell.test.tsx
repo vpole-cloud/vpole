@@ -183,3 +183,17 @@ it('focuses cancel and restores focus after keyboard dismissal of a confirmation
   expect(container.querySelector('dialog')).toBeNull()
   expect(document.activeElement?.textContent).toBe('Delete resource')
 })
+
+it('opens global commands by Ctrl+K and closes with Escape while restoring header focus', async () => {
+  Object.defineProperties(HTMLDialogElement.prototype, {
+    showModal: { configurable: true, value: function (this: HTMLDialogElement) { this.open = true } },
+    close: { configurable: true, value: function (this: HTMLDialogElement) { this.open = false } },
+  })
+  const registry = createAppRegistry([{ id: 'home', views: [{ id: 'overview', label: 'Overview', component: () => <p>Home</p>, access: 'public' }] }])
+  await act(async () => root.render(<AppShell registry={registry} auth={auth} api={{ baseUrl: '/api' }} tenants={tenants('alpha')} initialViewId="overview" />))
+  const opener = container.querySelector<HTMLButtonElement>('[aria-label="Search and commands"]')!; opener.focus()
+  await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })))
+  expect(container.querySelector('dialog')).not.toBeNull(); expect(document.activeElement?.getAttribute('role')).toBe('combobox')
+  await act(async () => container.querySelector('dialog')!.dispatchEvent(new Event('cancel', { bubbles: true, cancelable: true })))
+  expect(container.querySelector('dialog')).toBeNull(); expect(document.activeElement).toBe(opener)
+})

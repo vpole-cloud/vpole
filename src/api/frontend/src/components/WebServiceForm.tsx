@@ -19,6 +19,7 @@ interface WebServiceFormProps {
   targetsStatus: 'idle' | 'loading' | 'success' | 'error'
   targetsError?: string
   computeProfilesByTarget: Record<string, AvailableComputeProfile[]>
+  computeProfilesStatusByTarget?: Record<string, 'idle' | 'loading' | 'success' | 'error'>
   submitStatus: 'idle' | 'loading' | 'success' | 'error'
   submitError?: string
   onLoadTargets: (isolationScopeId?: string, requiresPublicIngress?: boolean, signal?: AbortSignal) => Promise<AvailableDeploymentTarget[]>
@@ -27,6 +28,9 @@ interface WebServiceFormProps {
   onSubmit: (input: WebServiceInput) => Promise<void>
   onCancelEdit?: () => void
   onDirtyChange?: (dirty: boolean) => void
+  submitLabel?: string
+  submitDisabled?: boolean
+  imageHint?: string
 }
 
 const parseEnvironmentVariables = (value: string) =>
@@ -40,10 +44,12 @@ const parseEnvironmentVariables = (value: string) =>
     })
     .filter((item) => item.key)
 
+type SelectedDeploymentInput = WebServiceDeploymentInput & { deploymentTargetId: string }
+
 const deploymentConfiguration = (
   targetId: string,
   current?: WebServiceDeploymentInput,
-): WebServiceDeploymentInput => ({
+): SelectedDeploymentInput => ({
   deploymentTargetId: targetId,
   fixedReplicas: current?.fixedReplicas ?? 1,
   computeProfileId: current?.computeProfileId,
@@ -73,6 +79,7 @@ export function WebServiceForm({
   targetsStatus,
   targetsError,
   computeProfilesByTarget,
+  computeProfilesStatusByTarget,
   submitStatus,
   submitError,
   onLoadTargets,
@@ -81,6 +88,9 @@ export function WebServiceForm({
   onSubmit,
   onCancelEdit,
   onDirtyChange,
+  submitLabel,
+  submitDisabled = false,
+  imageHint,
 }: WebServiceFormProps) {
   const [name, setName] = useState(initialValue?.name ?? '')
   const [resourceGroupId, setResourceGroupId] = useState(
@@ -110,10 +120,18 @@ export function WebServiceForm({
       .map(([key, value]) => `${key}=${value}`)
       .join('\n'),
   )
-  const [selectedTargets, setTargets] = useState<WebServiceDeploymentInput[] | undefined>()
+  const [selectedTargets, setTargets] = useState<SelectedDeploymentInput[] | undefined>()
   const eligibleTargets = targetsStatus === 'success' ? availableTargets : []
   const defaultTargetId = mode === 'create' && eligibleTargets.length === 1 ? eligibleTargets[0].id : undefined
-  const targets = selectedTargets ?? (defaultTargetId ? [deploymentConfiguration(defaultTargetId)] : [])
+  const targets = (selectedTargets ?? (defaultTargetId ? [deploymentConfiguration(defaultTargetId)] : [])).map((target) => {
+    const profiles = computeProfilesByTarget[target.deploymentTargetId] ?? []
+    return !target.computeProfileId && profiles.length === 1 && !profiles[0].isDefault ? { ...target, computeProfileId: profiles[0].id } : target
+  })
+  const profileBlockers = mode === 'create' && computeProfilesStatusByTarget ? targets.filter((target) => {
+    const profiles = computeProfilesByTarget[target.deploymentTargetId] ?? []
+    return computeProfilesStatusByTarget[target.deploymentTargetId] !== 'success' ||
+      (target.computeProfileId ? !profiles.some((profile) => profile.id === target.computeProfileId) : !profiles.some((profile) => profile.isDefault))
+  }) : []
   const [showAdvancedTargets, setShowAdvancedTargets] = useState(false)
   const [validationError, setValidationError] = useState('')
   const [failure, setFailure] = useState<unknown>(null)
@@ -178,7 +196,7 @@ export function WebServiceForm({
     })
   }
 
-  const updateTarget = (targetId: string, change: Partial<WebServiceDeploymentInput>) => {
+  const updateTarget = (targetId: string, change: Partial<Pick<WebServiceDeploymentInput, 'computeProfileId' | 'fixedReplicas'>>) => {
     setTargets((current) => (current ?? targets).map((target) =>
       target.deploymentTargetId === targetId ? { ...target, ...change } : target,
     ))
@@ -186,6 +204,7 @@ export function WebServiceForm({
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (submitDisabled || submitStatus === 'loading') return
     if (!name.trim()) {
       setValidationError('Name is required.')
       return
@@ -208,6 +227,10 @@ export function WebServiceForm({
     }
     if (mode === 'create' && targets.length === 0) {
       setValidationError('Select at least one eligible deployment target.')
+      return
+    }
+    if (profileBlockers.length) {
+      setValidationError('Each selected target needs an available compute profile. Check Placement options or ask a platform administrator to configure profiles.')
       return
     }
     if (targets.some((target) => !Number.isInteger(target.fixedReplicas) || target.fixedReplicas < 1)) {
@@ -299,6 +322,7 @@ export function WebServiceForm({
           <label className="field"><span className="field__label">Image name</span><input className="field__control" value={imageName} onChange={(event) => setImageName(event.target.value)} placeholder="library/nginx" aria-invalid={Boolean(fieldError('spec.image.name'))} aria-describedby={fieldError('spec.image') ? `${fieldId}-image-error` : undefined} /></label>
           <label className="field"><span className="field__label">Tag</span><input className="field__control" value={imageTag} onChange={(event) => setImageTag(event.target.value)} placeholder="latest" aria-invalid={Boolean(fieldError('spec.image.tag'))} aria-describedby={fieldError('spec.image') ? `${fieldId}-image-error` : undefined} /></label>
         </div>
+        {imageHint && <p className="field__hint">{imageHint}</p>}
         {fieldError('spec.image') && <p id={`${fieldId}-image-error`} className="field-error">{fieldError('spec.image')}</p>}
 
         <label className="field">
@@ -321,6 +345,12 @@ export function WebServiceForm({
             {targetsStatus === 'loading' && <p>Loading eligible deployment targets…</p>}
             {targetsStatus === 'error' && <p>{targetsError || 'Unable to load eligible targets.'}</p>}
             {targetsStatus === 'success' && availableTargets.length === 0 && <p>No eligible target is available. A target needs workload admission{exposure === 'Public' ? ' and a public ingress base domain' : ''}.</p>}
+            {profileBlockers.map((target) => <p role="status" key={target.deploymentTargetId}>
+              {availableTargets.find((item) => item.id === target.deploymentTargetId)?.displayName}: {computeProfilesStatusByTarget?.[target.deploymentTargetId] === 'loading' ? 'Loading compute profiles…' :
+                computeProfilesStatusByTarget?.[target.deploymentTargetId] === 'error' ? 'Compute profiles are unavailable. Retry loading them.' :
+                !(computeProfilesByTarget[target.deploymentTargetId]?.length) ? 'No eligible compute profile is available. Ask a platform administrator to configure one.' : 'Choose an available compute profile in Placement options.'}
+              {computeProfilesStatusByTarget?.[target.deploymentTargetId] === 'error' && <Button onClick={() => void onLoadComputeProfiles(target.deploymentTargetId)}>Retry profiles</Button>}
+            </p>)}
             {exactlyOneTarget && eligibleTargets[0] && (
               <p>{eligibleTargets[0].displayName} is selected automatically. <button className="button" type="button" onClick={() => setShowAdvancedTargets((current) => !current)}>Placement options</button></p>
             )}
@@ -362,7 +392,7 @@ export function WebServiceForm({
         {mode === 'edit' && <div className="form-message">Shared runtime changes apply to every active deployment. Manage placement in the Deployments tab.</div>}
 
         <div className="resource-group-form__actions">
-          <Button variant="primary" disabled={submitStatus === 'loading' || (mode === 'create' && (targetsStatus !== 'success' || scopes.status === 'loading' || unavailableScope))} type="submit">{submitStatus === 'loading' ? 'Saving…' : mode === 'create' ? 'Create service' : 'Save changes'}</Button>
+          <Button variant="primary" disabled={submitDisabled || profileBlockers.length > 0 || submitStatus === 'loading' || (mode === 'create' && (targetsStatus !== 'success' || targets.length === 0 || scopes.status === 'loading' || unavailableScope))} type="submit">{submitStatus === 'loading' ? 'Saving…' : submitLabel ?? (mode === 'create' ? 'Create service' : 'Save changes')}</Button>
           {mode === 'edit' && onCancelEdit && <button className="button" disabled={!dirty} onClick={onCancelEdit} type="button">Discard changes</button>}
         </div>
         </fieldset>

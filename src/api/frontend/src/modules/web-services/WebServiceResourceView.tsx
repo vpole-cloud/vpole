@@ -37,6 +37,15 @@ export function WebServiceResourceView({ id, section, active, refreshVersion, gr
   // Keep a section mounted after its first visit, including externally selected sections.
   if (!visited.includes(section)) setVisited([...visited, section])
   const service = details.service
+  const refreshDetails = details.refresh
+  const completedBuild = builds.jobs.filter((job) => ['succeeded', 'failed'].includes(job.state.status)).map((job) => `${job.id}:${job.state.status}`).join(',')
+  useEffect(() => { if (completedBuild) void refreshDetails() }, [completedBuild, refreshDetails])
+  const reconciling = service?.deployments.some((deployment) => ['PendingApply', 'Applying'].includes(deployment.status)) ?? false
+  useEffect(() => {
+    if (!active || !reconciling) return
+    const timer = window.setInterval(() => void refreshDetails(), 2500)
+    return () => window.clearInterval(timer)
+  }, [active, reconciling, refreshDetails])
   useUnsavedChanges(dirty, service?.name ?? 'Web service')
   useEffect(() => {
     onDirtyChange(id, dirty)

@@ -11,10 +11,27 @@ import {
   ApiError,
   validationMessage,
   retryWebServiceDeployment,
+  searchResources,
+  fetchProviderRepositories,
+  fetchProviderBranches,
 } from './api'
 import { retryOperationForStatus } from './components/webServiceDeploymentStatus'
 
 describe('shared inventory API', () => {
+  it('scopes search and paged Git discovery with bearer headers and cancellation', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [] }) })
+    vi.stubGlobal('fetch', fetchMock)
+    const signal = new AbortController().signal
+    await searchResources('https://pole.test', ' app & worker ', 'token', 'tenant', signal, 2)
+    await fetchProviderRepositories('https://pole.test', 'account/id', 'token', 'tenant', signal, 3)
+    await fetchProviderBranches('https://pole.test', 'account', 'repository/id', 'token', 'tenant', signal, 2)
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      'https://pole.test/api/v1/search?query=app+%26+worker&pageNumber=2&pageSize=20',
+      'https://pole.test/api/v1/git-provider-connections/account%2Fid/repositories?page=3&pageSize=100',
+      'https://pole.test/api/v1/git-provider-connections/account/repositories/repository%2Fid/branches?page=2&pageSize=100',
+    ])
+    for (const call of fetchMock.mock.calls) expect(call[1]).toEqual(expect.objectContaining({ signal, headers: expect.objectContaining({ Authorization: 'Bearer token', 'X-Pole-Tenant-ID': 'tenant' }) }))
+  })
   it('sends requested group pages and encoded direct identities with scoped headers and cancellation', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [] }) })
     vi.stubGlobal('fetch', fetchMock)

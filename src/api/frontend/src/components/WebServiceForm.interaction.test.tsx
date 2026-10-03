@@ -81,3 +81,21 @@ it('replaces private target selections with the refreshed public placement befor
     await act(async () => { root.unmount() })
   }
 })
+
+it('blocks creation without eligible compute profiles and recovers once an eligible default is available', async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+  const container = document.createElement('div'); const root = createRoot(container)
+  const props = { mode: 'create' as const, resourceGroups: [{ id: 'group', name: 'Group', description: '', tags: [], resourceCount: 0 }],
+    availableTargets: [{ id: 'target', displayName: 'Cluster', workloadConfigurationRevision: 1, hasPublicIngress: true }],
+    targetsStatus: 'success' as const, computeProfilesStatusByTarget: { target: 'success' as const }, submitStatus: 'idle' as const,
+    onLoadTargets: vi.fn().mockResolvedValue([]), onLoadComputeProfiles: vi.fn().mockResolvedValue([]), onSubmit: vi.fn() }
+  try {
+    await act(async () => root.render(<WebServiceForm {...props} computeProfilesByTarget={{ target: [] }} />))
+    expect(container.textContent).toContain('No eligible compute profile is available.')
+    expect(container.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true)
+    await act(async () => root.render(<WebServiceForm {...props} computeProfilesByTarget={{ target: [{ id: 'default', displayName: 'Default', description: '',
+      isDefault: true, architecture: 'amd64', extendedResources: [], revision: 1, resources: { requests: { cpuMillis: 100, memoryMi: 128 }, limits: { cpuMillis: 200, memoryMi: 256 } } }] }} />))
+    expect(container.textContent).not.toContain('No eligible compute profile is available.')
+    expect(container.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(false)
+  } finally { await act(async () => root.unmount()) }
+})

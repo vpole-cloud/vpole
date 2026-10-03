@@ -44,6 +44,9 @@ public sealed class PoleE2EFixture : IAsyncLifetime
     private readonly string _stubControlKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     private DistributedApplication? _application;
     private KubernetesPortForwardSession? _buildKitPortForward;
+    private int? _stoppedBuildKitLocalPort;
+    private bool _harborProjectCleanupRegistered;
+    private bool _harborProjectCleanupCompleted;
     private KubernetesPortForwardSession? _harborPortForward;
     private HarborCredentials? _harborCredentials;
     private KeycloakAdminClient? _keycloak;
@@ -263,6 +266,11 @@ public sealed class PoleE2EFixture : IAsyncLifetime
                 }
             }
         }
+
+        if (_harborProjectCleanupRegistered && !_harborProjectCleanupCompleted)
+        {
+            throw new InvalidOperationException("The source-build E2E Harbor project cleanup did not complete.");
+        }
     }
 
     private void ConfigureOwnedContainerResources(IDistributedApplicationBuilder appHost)
@@ -334,13 +342,38 @@ public sealed class PoleE2EFixture : IAsyncLifetime
     {
         await WaitForBuildKitReadyAsync(cancellationToken);
         await WaitForHarborHealthAsync(cancellationToken);
+        if (!_harborProjectCleanupRegistered)
+        {
+            _cleanup.Add(async token =>
+            {
+                await DeleteHarborProjectAsync(Alpha.DefaultTenantId, token);
+                _harborProjectCleanupCompleted = true;
+            });
+            _harborProjectCleanupRegistered = true;
+        }
     }
 
     public async Task StopBuildKitAccessAsync()
     {
         var portForward = Interlocked.Exchange(ref _buildKitPortForward, null)
                           ?? throw new InvalidOperationException("BuildKit access has already been stopped.");
+        _stoppedBuildKitLocalPort = portForward.LocalPort;
         await portForward.DisposeAsync();
+    }
+
+    public async Task RestoreBuildKitAccessAsync(CancellationToken cancellationToken)
+    {
+        var localPort = _stoppedBuildKitLocalPort
+                        ?? throw new InvalidOperationException("BuildKit access has not been stopped.");
+        _buildKitPortForward = await KubernetesPortForwardSession.StartAsync(
+            _serviceTarget,
+            _labServices.BuildKit.Namespace,
+            $"service/{_labServices.BuildKit.Service}",
+            _labServices.BuildKit.Port,
+            cancellationToken,
+            localPort);
+        _stoppedBuildKitLocalPort = null;
+        await WaitForBuildKitReadyAsync(cancellationToken);
     }
 
     public async Task DeleteHarborProjectAsync(string tenantId, CancellationToken cancellationToken)

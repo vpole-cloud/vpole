@@ -242,6 +242,16 @@ export interface PaginatedResponse<T> {
   pageSize: number
 }
 
+export interface SearchHit {
+  resourceTypeId: string
+  sourceType: string
+  sourceId: string
+  title: string
+  resourceGroupId?: string | null
+  resourceGroupName?: string | null
+  operationalStatus?: { status: string; failureCode?: string | null } | null
+}
+
 export type GitProviderKind = 'GitHub'
 export type GitProviderAccountType = 'User' | 'Organization'
 export type GitProviderRepositorySelection = 'All' | 'Selected'
@@ -325,14 +335,9 @@ export interface SourceRepository {
   selectedPlan: SourceBuildPlan
 }
 
-export type SourceBuildRecipeKind = 'Dockerfile' | 'DotNet' | 'Node'
-export type SourceBuildPhase =
-  | 'Queued'
-  | 'Cloning'
-  | 'Analyzing'
-  | 'Building'
-  | 'Pushing'
-  | 'Deploying'
+// SourceBuild DTOs serialize these .NET enums numerically.
+export type SourceBuildRecipeKind = 0 | 1 | 2
+export type SourceBuildPhase = 0 | 1 | 2 | 3 | 4 | 5
 
 export interface SourceBuildRecipe {
   candidateKey: string
