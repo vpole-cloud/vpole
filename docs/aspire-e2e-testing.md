@@ -21,7 +21,7 @@ The suite covers:
 - tenant-scoped global search and contextual commands, keyboard selection, focus restoration,
   and reuse of the existing resource tab after opening a search result.
 - PostgreSQL browser catalog/create/details/configuration, readable single-target placement,
-  native provisioning, accepted storage update/reload and credential UI without secret screenshots.
+  native provisioning, compute update/reload and credential UI without secret screenshots.
   The fixture selects native StatefulSet mode because the shared lab has no PostgreSQL operator;
   operator manifests and managed password rotation are validated in the owning feature suites.
 

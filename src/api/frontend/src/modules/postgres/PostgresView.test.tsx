@@ -99,7 +99,9 @@ it('uses the native server mode and forbids multiple instances and password rota
   mode = 'StatefulSet'; cluster.spec.deploymentMode = 'StatefulSet'
   await render(); await click('New PostgreSQL')
   expect(field('Instances').disabled).toBe(true)
-  await tab('All databases'); await click('orders'); await tab('Credentials')
+  await tab('All databases'); await click('orders'); await tab('Configuration')
+  expect(field('Storage per instance (GiB)').disabled).toBe(true)
+  await tab('Credentials')
   expect(text()).toContain('Password rotation is unavailable for native StatefulSet databases.')
   expect([...container.querySelectorAll('input[type=password]')].filter(visible)).toHaveLength(0)
 })
@@ -160,6 +162,14 @@ it('confirms deletion before issuing a tenant-scoped mutation', async () => {
   await click('Cancel'); await click('Delete database'); await click('Delete database')
   const deletion = fetchMock.mock.calls.find(([, init]) => init?.method === 'DELETE')!
   expect(deletion[1]?.headers).toEqual(expect.objectContaining({ Authorization: 'Bearer token', 'X-Pole-Tenant-ID': 'alpha' }))
+})
+
+it('allows a writer to retry failed deletion without enabling configuration changes', async () => {
+  cluster.lifecycle = 'Deleting'; cluster.placement.status = 'Failed'; cluster.placement.desiredOperation = 'Delete'
+  await open(); await click('Retry deployment')
+  expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith('/resource-deployments/deployment/retry') && init?.method === 'POST')).toBe(true)
+  expect(text()).not.toContain('Delete database')
+  await tab('Configuration'); expect(text()).toContain('Database configuration is read-only.')
 })
 
 it('confirms closing an unsaved password rotation and clears it after switching resources', async () => {

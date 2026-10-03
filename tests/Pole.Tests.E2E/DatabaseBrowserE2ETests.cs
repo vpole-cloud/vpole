@@ -28,7 +28,8 @@ public sealed class DatabaseBrowserE2ETests(PoleE2EFixture fixture, ITestOutputH
             new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
         await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
         {
-            ViewportSize = new ViewportSize { Width = 1440, Height = 900 }, IgnoreHTTPSErrors = true
+            ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
+            IgnoreHTTPSErrors = true
         });
         var page = await context.NewPageAsync();
         await LoginAsync(page);
@@ -65,17 +66,21 @@ public sealed class DatabaseBrowserE2ETests(PoleE2EFixture fixture, ITestOutputH
         await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Refresh database", Exact = true }).ClickAsync();
         await CaptureAsync(page, "postgres", "overview");
         await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Configuration", Exact = true }).ClickAsync();
-        await content.GetByLabel("Storage per instance (GiB)", new LocatorGetByLabelOptions { Exact = true }).FillAsync("2");
+        Assert.True(await content.GetByLabel("Storage per instance (GiB)", new LocatorGetByLabelOptions { Exact = true }).IsDisabledAsync());
+        var compute = content.GetByLabel("Compute profile");
+        var profile = await compute.Locator("option").Nth(1).GetAttributeAsync("value");
+        await compute.SelectOptionAsync(profile!);
         await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Overview", Exact = true }).ClickAsync();
         await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Configuration", Exact = true }).ClickAsync();
-        Assert.Equal("2", await content.GetByLabel("Storage per instance (GiB)", new LocatorGetByLabelOptions { Exact = true }).InputValueAsync());
+        Assert.Equal(profile, await compute.InputValueAsync());
         await CaptureAsync(page, "postgres", "configuration");
         var updated = await page.RunAndWaitForResponseAsync(() => content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Save changes", Exact = true }).ClickAsync(),
             response => response.Request.Method == "PUT" && new Uri(response.Url).AbsolutePath.EndsWith($"/postgres/{id}", StringComparison.Ordinal));
         Assert.Equal(202, updated.Status);
         await page.ReloadAsync();
         await content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = "Database configuration", Exact = true }).WaitForAsync();
-        Assert.Equal("2", await content.GetByLabel("Storage per instance (GiB)", new LocatorGetByLabelOptions { Exact = true }).InputValueAsync());
+        Assert.Equal("1", await content.GetByLabel("Storage per instance (GiB)", new LocatorGetByLabelOptions { Exact = true }).InputValueAsync());
+        await WaitForAppliedAsync("postgres", id, timeout.Token);
         await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Credentials", Exact = true }).ClickAsync();
         await CaptureAsync(page, "postgres", "credentials");
         // Native rotation is unsupported, independent of deployment reconciliation.
@@ -116,8 +121,18 @@ public sealed class DatabaseBrowserE2ETests(PoleE2EFixture fixture, ITestOutputH
         var classes = await classesResponse.Content.ReadFromJsonAsync<JsonElement>(token);
         var storageClassName = classes.EnumerateArray().First().GetProperty("name").GetString()!;
         using var request = fixture.CreatePlatformAdminRequest(HttpMethod.Post, "/api/v1/platform/storage/profiles");
-        request.Content = JsonContent.Create(new { displayName = "Browser test disk", description = "Ephemeral test profile", mediaType = "Network", performanceTier = "Standard", isEnabled = true, isDefault = false,
-            targetMappings = new[] { new { deploymentTargetId = targetId, storageClassName } }, allowedResourceTypes = new[] { resourceType }, tenantAccess = new { mode = "SelectedTenants", tenantIds = new[] { fixture.Alpha.DefaultTenantId } } });
+        request.Content = JsonContent.Create(new
+        {
+            displayName = $"Browser test disk {resourceType}",
+            description = "Ephemeral test profile",
+            mediaType = "Network",
+            performanceTier = "Standard",
+            isEnabled = true,
+            isDefault = false,
+            targetMappings = new[] { new { deploymentTargetId = targetId, storageClassName } },
+            allowedResourceTypes = new[] { resourceType },
+            tenantAccess = new { mode = "SelectedTenants", tenantIds = new[] { fixture.Alpha.DefaultTenantId } }
+        });
         using var response = await fixture.Api.SendAsync(request, token);
         response.EnsureSuccessStatusCode();
     }

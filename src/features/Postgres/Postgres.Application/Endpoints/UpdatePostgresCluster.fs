@@ -126,6 +126,14 @@ module private UpdatePostgresClusterWorkflow =
                         UpdatePostgresClusterRejected(
                             UpdateState(
                                 PostgresClusterStatefulSetInstancesUnsupported cluster.Id)))
+            | Some cluster
+                when cluster.Spec.DeploymentMode = PostgresDeploymentMode.StatefulSet &&
+                     defaultArg request.Body.Storage cluster.Spec.Storage <> cluster.Spec.Storage ->
+                return
+                    Completed(
+                        UpdatePostgresClusterRejected(
+                            UpdateState(
+                                PostgresClusterStatefulSetStorageResizeUnsupported cluster.Id)))
             | Some cluster ->
                 let updatedInstances =
                     defaultArg request.Body.Instances cluster.Spec.Instances
