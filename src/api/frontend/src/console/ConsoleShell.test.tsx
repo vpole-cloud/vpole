@@ -37,6 +37,19 @@ afterEach(async () => {
 })
 
 describe('console module composition', () => {
+  it('reports an unregistered URL view explicitly and clears its resource selection on recovery', async () => {
+    window.history.replaceState({}, '', '/?view=removed-provider&tenant=alpha&resource=old-resource')
+    const registry = createConsoleRegistry([{ id: 'home', views: [
+      { id: 'overview', label: 'Overview', component: () => <p>Home</p>, access: 'public' },
+    ] }])
+    await act(async () => { root.render(<ConsoleShell registry={registry} auth={auth} api={{ baseUrl: '/api' }}
+      tenants={tenants('alpha')} initialViewId="overview" />) })
+    expect(container.textContent).toContain('This view is unavailable.')
+    await act(async () => { button('Open overview').click() })
+    expect(container.textContent).toContain('Home')
+    expect(new URLSearchParams(window.location.search).has('resource')).toBe(false)
+  })
+
   it('navigates an independent module and passes current services to its view and command', async () => {
     const command = vi.fn()
     function ExtraView() {
@@ -59,7 +72,7 @@ describe('console module composition', () => {
     expect(container.querySelector('.side-nav__footer')).toBeNull()
     await act(async () => { button('Test resource').click() })
     expect(container.textContent).toContain('/api / alpha / light')
-    expect(window.location.search).toBe('?view=extra')
+    expect(window.location.search).toBe('?view=extra&tenant=alpha')
     expect(readIntegrationNavigation('?view=extra', registry.views.map((view) => view.id)).view).toBe('extra')
     await act(async () => { button('Run test').click() })
     expect(command).toHaveBeenCalledWith(expect.objectContaining({ api: { baseUrl: '/api', token: 'test-token', tenantId: 'alpha' } }))

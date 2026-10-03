@@ -28,7 +28,15 @@ The shell does not repeat the selected tenant or account name in a separate sess
 Modules can register dirty forms with the shell's navigation service. Leaving a module, selecting
 another tenant or logging out asks for confirmation; browser unload uses the native warning.
 Browser Back/Forward uses a native confirmation when leaving a dirty view. Cancelling keeps the
-current view and restores its URL.
+current view and restores the history position, preserving Forward entries. Resource/section/page
+navigation retains mounted drafts without asking for abandonment confirmation.
+
+The generic navigation service exposes the current query and `setSearch` to registered providers;
+providers own resource and section decoding. URLs include `tenant`, resolved only against the
+current user's tenant discovery results before a view can issue requests. Unavailable tenants and
+unregistered views have explicit states. Switching tenant clears the previous provider's URL
+selection and remounts the workspace. The active tenant preference is synchronized only after
+the URL tenant is confirmed accessible.
 
 ## Current slice and next stage
 
@@ -51,6 +59,19 @@ restored resources). Creation drafts, form contents, secrets and tokens stay in 
 or unavailable browser storage falls back to the catalog. Reload after confirming draft loss
 loads the current server configuration.
 
+WebService links use `?view=web-services&tenant=<id>&resource=<id>&section=configuration`.
+`resource=catalog` selects the inventory; `resource=create` opens a fresh creation form after
+reload. An explicit URL wins over stored active references and opens one tab per resource. A
+legacy view-only link restores the stored workspace and receives a canonical URL without adding
+a history entry. Resource IDs and section preferences remain references, never authorization.
+
+The catalog reads every requested page from the tenant API. `page`, `pageSize` (1–100, default 8)
+and `search` survive reload/history. Search applies server-side to service name or exact service
+ID across all pages, rather than filtering the currently loaded page. Applying search or changing
+page size starts at page 1. Superseded reads are aborted and late responses ignored. Refresh/page
+errors retain the last loaded results with an explicit error and retry; unavailable pages clamp
+to the last page. Drafts remain mounted while catalog parameters change.
+
 Creation uses named active isolation scopes from the selected resource group's tenant API.
 `Group default` delegates default-scope resolution to the backend. Selecting another scope sends
 its opaque ID; changing groups clears the previous selection and aborts its pending read. Scope
@@ -59,8 +80,8 @@ the error and retry remain visible. Resource groups remain in primary navigation
 form, rather than an unrelated shortcut above the WebService workspace.
 
 Navigation supports registered `?view=` links and browser Back/Forward. This implements the
-WebService workspace slice of #12; resource trees, resource URLs and other providers' workspaces
-remain separate work.
+WebService workspace/URL/pagination slice of #12; resource trees, resource-group URLs and other
+providers' workspaces remain separate work.
 This slice does not complete #90's whole Git/image journey or #96's console release. GitOps
 ownership and source management belong to #88; runtime diagnostics and readiness belong to #8/#95.
 
@@ -72,7 +93,8 @@ light/dark themes, with responsive layout in `src/App.css`.
 
 Run `npm test`, `npm run build` and `npm run lint` from this directory. Tests include independent
 module composition, registration conflicts, tenant races, image mutation/errors, separate drafts,
-dirty-close/navigation/unload guards, restoration, missing resources and Viewer access.
+dirty-close/navigation/unload guards, restoration, missing resources, URL precedence/history,
+unavailable tenant links, server pagination/search, cancelled page reads, errors and Viewer access.
 The repository's `BrowserSmokeE2ETests` uses real Keycloak/API/Kubernetes for image deployment,
 configuration updates, tab keyboard controls, draft retention, reload, confirmation-dialog focus,
 both themes and desktop/narrow screenshots of each workspace section. Its prerequisites and cleanup are documented in

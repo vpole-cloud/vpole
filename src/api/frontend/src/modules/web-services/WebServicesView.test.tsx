@@ -208,9 +208,251 @@ const visibleText = () => {
   return text.join(' ')
 }
 
+async function traverseHistory(delta: number, events = 1) {
+  await act(async () => {
+    await new Promise<void>((resolve) => {
+      const listener = () => { if (--events === 0) { window.removeEventListener('popstate', listener); resolve() } }
+      window.addEventListener('popstate', listener)
+      window.history.go(delta)
+    })
+  })
+}
+
+it('opens an exact tenant/resource/section URL before storage, deduplicates tabs and reloads without draft values', async () => {
+  localStorage.setItem('pole.web-services.workspace.v1.user.beta', JSON.stringify({ tabs: [{ id: service.id, section: 'builds' }], activeId: service.id }))
+  window.history.replaceState({}, '', '/?view=web-services&tenant=beta&resource=second&section=configuration')
+  await act(async () => { render() })
+  expect(textInput('ASPNETCORE_ENVIRONMENT=Production\nLOG_LEVEL=Information').value).toBe('')
+  expect(workspaceTab('worker').getAttribute('aria-selected')).toBe('true')
+  const [, request] = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/web-services/second'))!
+  expect(request!.headers).toMatchObject({ 'X-Pole-Tenant-ID': 'beta' })
+  await fill(textInput('ASPNETCORE_ENVIRONMENT=Production\nLOG_LEVEL=Information'), 'URL_DRAFT=private')
+  await click('Deployments')
+  expect(new URLSearchParams(window.location.search).get('section')).toBe('deployments')
+  await traverseHistory(-1)
+  expect(textInput('ASPNETCORE_ENVIRONMENT=Production\nLOG_LEVEL=Information').value).toBe('URL_DRAFT=private')
+  await traverseHistory(1)
+  expect(visibleText()).toContain('Physical deployments')
+  expect(container.querySelectorAll('#web-services-workspace > [role="tablist"] [role="tab"]')).toHaveLength(3)
+  expect(localStorage.getItem('pole.web-services.workspace.v1.user.beta')).not.toContain('URL_DRAFT')
+  await act(async () => { root.unmount(); root = createRoot(container); render() })
+  expect(visibleText()).toContain('Physical deployments')
+  await click('Configuration')
+  expect(textInput('ASPNETCORE_ENVIRONMENT=Production\nLOG_LEVEL=Information').value).toBe('')
+})
+
+it('keeps Back/Forward entries when cancelling departure from a dirty view', async () => {
+  created = true
+  await act(async () => { render() })
+  await click('Resource groups')
+  await click('Web services')
+  await click('sample')
+  await click('Configuration')
+  // Reload keeps the history index, so cancellation traverses back to the right entry.
+  await act(async () => { root.unmount(); root = createRoot(container); render() })
+  await fill(textInput('ASPNETCORE_ENVIRONMENT=Production\nLOG_LEVEL=Information'), 'KEEP=true')
+  const currentUrl = window.location.href
+  const length = window.history.length
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  await traverseHistory(-3, 2)
+  expect(window.location.href).toBe(currentUrl)
+  expect(window.history.length).toBe(length)
+  expect(textInput('ASPNETCORE_ENVIRONMENT=Production\nLOG_LEVEL=Information').value).toBe('KEEP=true')
+  confirm.mockReturnValue(true)
+  await traverseHistory(-3)
+  expect(visibleText()).toContain('Group provider')
+  await traverseHistory(1)
+  expect(visibleText()).toContain('All web services')
+  confirm.mockRestore()
+})
+
+it.each(['missing-tenant', ''])('does not issue resource reads for an unavailable URL tenant %s', async (tenant) => {
+  window.history.replaceState({}, '', `/?view=web-services&tenant=${tenant}&resource=service`)
+  await act(async () => { render() })
+  expect(visibleText()).toContain('This tenant is unavailable to your account.')
+  expect(fetchMock).not.toHaveBeenCalled()
+  expect(selectTenant).not.toHaveBeenCalled()
+  const selector = container.querySelector<HTMLSelectElement>('.tenant-selector select')!
+  expect(selector.value).toBe('')
+  await act(async () => { selector.value = 'alpha'; selector.dispatchEvent(new Event('change', { bubbles: true })) })
+  expect(visibleText()).toContain('All web services')
+  expect(new URLSearchParams(window.location.search).get('tenant')).toBe('alpha')
+})
+
+it('paginates and searches across the server inventory, restoring the page through history', async () => {
+  const base = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation((url, init) => {
+    const request = new URL(String(url))
+    if (request.pathname.endsWith('/web-services') && !init?.method) {
+      const number = Number(request.searchParams.get('pageNumber'))
+      const size = Number(request.searchParams.get('pageSize'))
+      const search = request.searchParams.get('search') ?? ''
+      const all = [...records.values()].filter((item) => item.name.includes(search))
+      return json({ items: all.slice((number - 1) * size, number * size), totalCount: all.length, pageNumber: number, pageSize: size })
+    }
+    return base(url, init)
+  })
+  window.history.replaceState({}, '', '/?view=web-services&tenant=alpha&resource=catalog&pageSize=1')
+  await act(async () => { render() })
+  expect(visibleText()).toContain('Page 1 of 2')
+  await click('Next page')
+  expect(visibleText()).toContain('worker')
+  expect(visibleText()).not.toContain('sample')
+  expect(new URLSearchParams(window.location.search).get('page')).toBe('2')
+  await traverseHistory(-1)
+  expect(visibleText()).toContain('Page 1 of 2')
+  await traverseHistory(1)
+  expect(visibleText()).toContain('Page 2 of 2')
+  await fill(textInput('Find by name or service ID'), 'sample')
+  await click('Search')
+  expect(visibleText()).toContain('Page 1 of 1')
+  expect(visibleText()).toContain('sample')
+  const [url, init] = fetchMock.mock.calls.filter(([url]) => new URL(String(url)).pathname.endsWith('/web-services')).at(-1)!
+  expect(new URL(String(url)).searchParams.get('search')).toBe('sample')
+  expect(init!.headers).toMatchObject({ Authorization: 'Bearer test-token', 'X-Pole-Tenant-ID': 'alpha' })
+  // Search has fewer pages; its old count must not clamp the page restored by Back.
+  await traverseHistory(-1)
+  expect(visibleText()).toContain('Page 2 of 2')
+  expect(visibleText()).toContain('worker')
+  expect(textInput('Find by name or service ID').value).toBe('')
+  await traverseHistory(1)
+  expect(visibleText()).toContain('Page 1 of 1')
+  expect(textInput('Find by name or service ID').value).toBe('sample')
+})
+
+it('ignores a late prior-page response and keeps loaded results when refresh fails', async () => {
+  const base = fetchMock.getMockImplementation()!
+  let finish!: (response: Response) => void
+  const pending = new Promise<Response>((resolve) => { finish = resolve })
+  let fail = false
+  fetchMock.mockImplementation((url, init) => {
+    const request = new URL(String(url))
+    if (request.pathname.endsWith('/web-services') && !init?.method) {
+      if (fail) return Promise.resolve(new Response('Inventory temporarily unavailable.', { status: 503 }))
+      if (request.searchParams.get('pageNumber') === '2') return pending
+      return json({ items: [service], totalCount: 2, pageNumber: 1, pageSize: 1 })
+    }
+    return base(url, init)
+  })
+  window.history.replaceState({}, '', '/?view=web-services&tenant=alpha&resource=catalog&pageSize=1')
+  await act(async () => { render() })
+  await click('Next page')
+  const [, request] = fetchMock.mock.calls.find(([url]) => String(url).includes('pageNumber=2'))!
+  await click('Previous page')
+  expect(request!.signal!.aborted).toBe(true)
+  await act(async () => { finish(new Response(JSON.stringify({ items: [secondService], totalCount: 2, pageNumber: 2, pageSize: 1 }))) })
+  expect(visibleText()).not.toContain('worker')
+  fail = true
+  await click('Refresh web services')
+  expect(visibleText()).toContain('Inventory temporarily unavailable.')
+  expect(visibleText()).toContain('sample')
+  fail = false
+  await click('Retry inventory')
+  expect(visibleText()).not.toContain('Inventory temporarily unavailable.')
+})
+
+it('clamps a stale empty page and rejects an invalid resource link safely', async () => {
+  window.history.replaceState({}, '', '/?view=web-services&tenant=alpha&resource=catalog&page=99')
+  await act(async () => { render() })
+  expect(new URLSearchParams(window.location.search).get('page')).toBe('1')
+  await act(async () => {
+    window.history.pushState({}, '', '/?view=web-services&tenant=alpha&resource=')
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  })
+  expect(visibleText()).toContain('This service link is invalid.')
+  await click('Open service catalog')
+  expect(visibleText()).toContain('All web services')
+})
+
+it('aborts a pending inventory on tenant change and does not accept its late response', async () => {
+  const base = fetchMock.getMockImplementation()!
+  let finish!: (response: Response) => void
+  const pending = new Promise<Response>((resolve) => { finish = resolve })
+  fetchMock.mockImplementation((url, init) => {
+    if (new URL(String(url)).pathname.endsWith('/web-services') && !init?.method) {
+      return (init!.headers as Record<string, string>)['X-Pole-Tenant-ID'] === 'alpha'
+        ? pending : json(page([secondService]))
+    }
+    return base(url, init)
+  })
+  await act(async () => { render() })
+  const [, oldRequest] = fetchMock.mock.calls.find(([url]) => new URL(String(url)).pathname.endsWith('/web-services'))!
+  const selector = container.querySelector<HTMLSelectElement>('.tenant-selector select')!
+  await act(async () => { selector.value = 'beta'; selector.dispatchEvent(new Event('change', { bubbles: true })) })
+  expect(oldRequest!.signal!.aborted).toBe(true)
+  expect(visibleText()).toContain('worker')
+  await act(async () => { finish(new Response(JSON.stringify(page([service])))) })
+  expect(visibleText()).not.toContain('sample')
+  expect(new URLSearchParams(window.location.search).get('tenant')).toBe('beta')
+})
+
+it('retains mounted drafts while reporting an invalid history link', async () => {
+  created = true
+  await act(async () => { render() })
+  await click('sample')
+  await click('Configuration')
+  await fill(textInput('latest'), 'retain-invalid-link-draft')
+  await act(async () => {
+    window.history.pushState({}, '', '/?view=web-services&tenant=alpha&resource=')
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  })
+  expect(visibleText()).toContain('This service link is invalid.')
+  expect(visibleText()).not.toContain('Service configuration')
+  await selectTab('sample')
+  expect(textInput('latest').value).toBe('retain-invalid-link-draft')
+})
+
+it('does not expose a creation form through a direct URL for a Viewer', async () => {
+  window.history.replaceState({}, '', '/?view=web-services&tenant=alpha&resource=create')
+  await act(async () => { render('alpha', 'Viewer') })
+  expect(visibleText()).toContain('Tenant viewer access is read-only.')
+  expect(container.querySelector('form:not(.inventory-search)')).toBeNull()
+})
+
+it('keeps tabs and drafts opened while a creation request is completing', async () => {
+  created = true
+  let finish!: (response: Response) => void
+  pendingCreate = new Promise<Response>((resolve) => { finish = resolve })
+  await act(async () => { render() })
+  await fillCreateForm()
+  await submit()
+  await selectTab('All services')
+  await click('worker')
+  await click('Configuration')
+  await fill(textInput('latest'), 'opened-during-create')
+  await act(async () => { finish(new Response(JSON.stringify({ webServiceId: service.id, deployments: service.deployments }))) })
+  expect(visibleText()).toContain('Service overview')
+  await selectTab('worker')
+  expect(textInput('latest').value).toBe('opened-during-create')
+})
+
+it('returns to the previous page when its last service is deleted', async () => {
+  const base = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation((url, init) => {
+    const request = new URL(String(url))
+    if (request.pathname.endsWith(`/web-services/${secondService.id}`) && init?.method === 'DELETE') {
+      records.delete(secondService.id)
+      return Promise.resolve(new Response(null, { status: 204 }))
+    }
+    if (request.pathname.endsWith('/web-services') && !init?.method) {
+      const pageNumber = Number(request.searchParams.get('pageNumber'))
+      return json({ items: [...records.values()].slice(pageNumber - 1, pageNumber), totalCount: records.size, pageNumber, pageSize: 1 })
+    }
+    return base(url, init)
+  })
+  window.history.replaceState({}, '', '/?view=web-services&tenant=alpha&resource=catalog&page=2&pageSize=1')
+  await act(async () => { render() })
+  await click('Delete worker')
+  await click('Delete service')
+  expect(visibleText()).toContain('Page 1 of 1')
+  expect(visibleText()).toContain('sample')
+  expect(visibleText()).not.toContain('worker')
+  expect(new URLSearchParams(window.location.search).get('page')).toBe('1')
+})
+
 it('keeps the catalog separate, then creates an image with auth/tenant headers and opens Overview', async () => {
   await act(async () => { render() })
-  expect(container.querySelector('form')).toBeNull()
+  expect(container.querySelector('form:not(.inventory-search)')).toBeNull()
   await fillCreateForm()
   await submit()
   const [, request] = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')!
@@ -268,7 +510,7 @@ it('cancels dirty-tab closure and discards only after confirmation', async () =>
   expect(textInput('pole-api').value).toBe('sample')
   await click('Close New service')
   await click('Discard and close')
-  expect(container.querySelector('form')).toBeNull()
+  expect(container.querySelector('form:not(.inventory-search)')).toBeNull()
   expect(workspaceTab('All services').getAttribute('aria-selected')).toBe('true')
 })
 
@@ -364,7 +606,7 @@ it('loads restored resource references directly and reports missing resources wi
   localStorage.setItem(storageKey, JSON.stringify({ tabs: [{ id: 'missing', section: 'configuration' }], activeId: 'missing' }))
   await act(async () => { render() })
   expect(visibleText()).toContain('Unable to open this service.')
-  expect(container.querySelector('form')).toBeNull()
+  expect(container.querySelector('form:not(.inventory-search)')).toBeNull()
   const [, request] = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/web-services/missing'))!
   expect(request!.headers).toMatchObject({ Authorization: 'Bearer test-token', 'X-Pole-Tenant-ID': 'alpha' })
 })
@@ -389,7 +631,7 @@ it('allows a viewer to inspect each section without showing mutation forms', asy
   await click('Inspect')
   await click('Configuration')
   expect(visibleText()).toContain('Tenant viewer access is read-only.')
-  expect(container.querySelector('form')).toBeNull()
+  expect(container.querySelector('form:not(.inventory-search)')).toBeNull()
   await click('Deployments')
   expect(visibleText()).toContain('Physical deployments')
   expect(button('Retry').disabled).toBe(true)
@@ -405,7 +647,7 @@ it('does not restore old-tenant tabs or announce an old-tenant creation completi
   await act(async () => { resolveCreate(new Response(JSON.stringify({ webServiceId: service.id }))) })
   expect(container.textContent).not.toContain('Service configuration accepted.')
   expect(workspaceTab('sample')).toBeUndefined()
-  expect(container.querySelector('form')).toBeNull()
+  expect(container.querySelector('form:not(.inventory-search)')).toBeNull()
 })
 
 it('does not reopen a creation tab when a mutation completes after the draft was closed', async () => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import {
   addWebServiceDeployment,
   addWebServiceHostnameBinding,
@@ -10,7 +10,6 @@ import {
   fetchAvailableDeploymentTargets,
   fetchWebServiceHostnameBindings,
   fetchWebServiceReleases,
-  fetchWebServices,
   retryWebServiceDeployment,
   updateWebService,
   updateWebServiceDeployment,
@@ -20,12 +19,12 @@ import type {
   AvailableDeploymentTarget,
   HostnameBinding,
   LoadStatus,
-  WebService,
   WebServiceDeploymentInput,
   WebServiceDeploymentUpdateInput,
   WebServiceInput,
   WebServiceReleaseHistory,
 } from '../types'
+import { useWebServiceInventory } from './useWebServiceInventory'
 
 interface UseWebServicesManagerOptions {
   apiBaseUrl: string
@@ -33,6 +32,9 @@ interface UseWebServicesManagerOptions {
   tenantId?: string
   enabled: boolean
   refreshAfterMutation?: boolean
+  pageNumber?: number
+  pageSize?: number
+  search?: string
 }
 
 const errorMessage = (error: unknown, fallback: string) =>
@@ -44,10 +46,11 @@ export function useWebServicesManager({
   tenantId,
   enabled,
   refreshAfterMutation = true,
+  pageNumber,
+  pageSize,
+  search,
 }: UseWebServicesManagerOptions) {
-  const [items, setItems] = useState<WebService[]>([])
-  const [status, setStatus] = useState<LoadStatus>('idle')
-  const [error, setError] = useState('')
+  const { items, page, isCurrentPage, status, error, refresh, removeItem } = useWebServiceInventory({ apiBaseUrl, token, tenantId, enabled, pageNumber, pageSize, search })
   const [submitStatus, setSubmitStatus] = useState<LoadStatus>('idle')
   const [submitError, setSubmitError] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -63,21 +66,6 @@ export function useWebServicesManager({
   const [releasesByWebService, setReleasesByWebService] = useState<
     Record<string, WebServiceReleaseHistory>
   >({})
-
-  const refresh = async () => {
-    setStatus('loading')
-    setError('')
-
-    try {
-      const response = await fetchWebServices(apiBaseUrl, token, tenantId)
-      setItems(response.items)
-      setStatus('success')
-    } catch (loadError) {
-      setItems([])
-      setStatus('error')
-      setError(errorMessage(loadError, 'Unable to load web services.'))
-    }
-  }
 
   const loadAvailableTargets = useCallback(async (
     isolationScopeId?: string,
@@ -164,34 +152,6 @@ export function useWebServicesManager({
       return undefined
     }
   }, [apiBaseUrl, tenantId, token])
-
-  useEffect(() => {
-    if (!enabled) {
-      return
-    }
-
-    const controller = new AbortController()
-    const load = async () => {
-      setStatus('loading')
-      setError('')
-      try {
-        const response = await fetchWebServices(apiBaseUrl, token, tenantId, controller.signal)
-        if (!controller.signal.aborted) {
-          setItems(response.items)
-          setStatus('success')
-        }
-      } catch (loadError) {
-        if (!controller.signal.aborted) {
-          setItems([])
-          setStatus('error')
-          setError(errorMessage(loadError, 'Unable to load web services.'))
-        }
-      }
-    }
-
-    void load()
-    return () => controller.abort()
-  }, [apiBaseUrl, enabled, tenantId, token])
 
   const submit = async <T,>(action: () => Promise<T>, fallback: string) => {
     setSubmitStatus('loading')
@@ -287,7 +247,7 @@ export function useWebServicesManager({
     setSubmitError('')
     try {
       await deleteWebService(apiBaseUrl, id, token, tenantId)
-      setItems((current) => current.filter((item) => item.id !== id))
+      removeItem(id)
     } catch (submitErrorValue) {
       setSubmitError(errorMessage(submitErrorValue, 'Unable to delete the web service.'))
       throw submitErrorValue
@@ -298,6 +258,8 @@ export function useWebServicesManager({
 
   return {
     items,
+    page,
+    isCurrentPage,
     status,
     error,
     submitStatus,

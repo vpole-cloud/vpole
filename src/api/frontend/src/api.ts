@@ -242,9 +242,12 @@ export async function fetchWebServices(
   token?: string,
   tenantId?: string,
   signal?: AbortSignal,
+  inventory: { pageNumber?: number; pageSize?: number; search?: string } = {},
 ) {
+  const query = new URLSearchParams({ pageNumber: String(inventory.pageNumber ?? 1), pageSize: String(inventory.pageSize ?? 8) })
+  if (inventory.search?.trim()) query.set('search', inventory.search.trim())
   return fetchJson<PaginatedResponse<WebService>>(
-    `${apiBaseUrl}/api/v1/web-services?pageNumber=1&pageSize=8`,
+    `${apiBaseUrl}/api/v1/web-services?${query}`,
     {
       headers: buildHeaders(token, tenantId),
       signal,

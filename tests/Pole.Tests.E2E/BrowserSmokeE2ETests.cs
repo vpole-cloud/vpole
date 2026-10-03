@@ -129,7 +129,7 @@ public sealed class BrowserSmokeE2ETests(
             Assert.Equal(0, await page.GetByText("Active tenant", new PageGetByTextOptions { Exact = true }).CountAsync());
             Assert.Equal(0, await page.GetByText("Session", new PageGetByTextOptions { Exact = true }).CountAsync());
             Assert.Equal(0, await page.Locator("#console-content").GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Resource groups", Exact = true }).CountAsync());
-            Assert.Equal(0, await page.Locator("form:visible").CountAsync());
+            Assert.Equal(0, await page.Locator("form:not(.inventory-search):visible").CountAsync());
             await CaptureWorkspaceAsync(page, name, "catalog");
             var scopesResponseTask = page.WaitForResponseAsync(response => response.Request.Method == HttpMethod.Get.Method &&
                 new Uri(response.Url).AbsolutePath.EndsWith("/isolation-scopes", StringComparison.Ordinal));
@@ -173,6 +173,15 @@ public sealed class BrowserSmokeE2ETests(
             await CaptureWorkspaceAsync(page, name, "deployments");
             await page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "Configuration", Exact = true }).ClickAsync();
             await page.GetByLabel("Environment variables").FillAsync("UI_REVIEW=true");
+            var configurationUrl = page.Url;
+            Assert.Contains($"tenant={fixture.Alpha.DefaultTenantId}", configurationUrl);
+            Assert.Contains($"resource={serviceId}", configurationUrl);
+            Assert.Contains("section=configuration", configurationUrl);
+            await page.GoBackAsync();
+            await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Physical deployments", Exact = true }).WaitForAsync();
+            await page.GoForwardAsync();
+            Assert.Equal("UI_REVIEW=true", await page.GetByLabel("Environment variables").InputValueAsync());
+            Assert.Equal(configurationUrl, page.Url);
             await CaptureWorkspaceAsync(page, name, "configuration");
             var workspaceTabs = page.GetByRole(AriaRole.Tablist, new PageGetByRoleOptions { Name = "Web service workspace", Exact = true });
             var resourceTab = workspaceTabs.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = serviceName });
@@ -199,6 +208,8 @@ public sealed class BrowserSmokeE2ETests(
             await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Source builds", Exact = true }).WaitForAsync();
             await CaptureWorkspaceAsync(page, name, "builds");
             await page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "Configuration", Exact = true }).ClickAsync();
+            // The URL opens this resource even without stored workspace references.
+            await page.EvaluateAsync("Object.keys(localStorage).filter(key => key.startsWith('pole.web-services.workspace.')).forEach(key => localStorage.removeItem(key))");
             await page.ReloadAsync();
             await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Service configuration", Exact = true }).WaitForAsync();
             Assert.Equal("UI_REVIEW=true", await page.GetByLabel("Environment variables").InputValueAsync());
@@ -215,6 +226,36 @@ public sealed class BrowserSmokeE2ETests(
                 Assert.Equal("UI_REVIEW=true", await page.GetByLabel("Environment variables").InputValueAsync());
                 await page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "All services", Exact = true }).ClickAsync();
             }
+            var catalogUrl = new UriBuilder(page.Url);
+            catalogUrl.Query = $"view=web-services&tenant={fixture.Alpha.DefaultTenantId}&resource=catalog&pageSize=1";
+            await page.GotoAsync(catalogUrl.Uri.ToString());
+            await page.GetByText(previousServiceName is null ? "Page 1 of 1" : "Page 1 of 2", new PageGetByTextOptions { Exact = true }).WaitForAsync();
+            if (previousServiceName is not null)
+            {
+                await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Next page", Exact = true }).ClickAsync();
+                await page.GetByText("Page 2 of 2", new PageGetByTextOptions { Exact = true }).WaitForAsync();
+                await CaptureWorkspaceAsync(page, name, "page-two");
+                await page.GoBackAsync();
+                await page.GetByText("Page 1 of 2", new PageGetByTextOptions { Exact = true }).WaitForAsync();
+                await page.GoForwardAsync();
+                await page.GetByText("Page 2 of 2", new PageGetByTextOptions { Exact = true }).WaitForAsync();
+            }
+            await page.GetByPlaceholder("Find by name or service ID").FillAsync(serviceName);
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Search", Exact = true }).ClickAsync();
+            await page.GetByText("Page 1 of 1", new PageGetByTextOptions { Exact = true }).WaitForAsync();
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = serviceName, Exact = true }).WaitForAsync();
+            Assert.Contains($"search={serviceName}", page.Url);
+            await page.GoBackAsync();
+            await page.GetByText(previousServiceName is null ? "Page 1 of 1" : "Page 2 of 2", new PageGetByTextOptions { Exact = true }).WaitForAsync();
+            Assert.Equal("", await page.GetByPlaceholder("Find by name or service ID").InputValueAsync());
+            await page.GoForwardAsync();
+            await page.GetByText("Page 1 of 1", new PageGetByTextOptions { Exact = true }).WaitForAsync();
+            Assert.Equal(serviceName, await page.GetByPlaceholder("Find by name or service ID").InputValueAsync());
+            await CaptureWorkspaceAsync(page, name, "search");
+            await page.GetByPlaceholder("Find by name or service ID").FillAsync("");
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Search", Exact = true }).ClickAsync();
+            await page.GetByRole(AriaRole.Combobox, new PageGetByRoleOptions { Name = "Services per page", Exact = true }).SelectOptionAsync("8");
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = serviceName, Exact = true }).WaitForAsync();
             await CaptureWorkspaceAsync(page, name, "catalog");
             var deleteButton = page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = $"Delete {serviceName}", Exact = true });
             await deleteButton.ClickAsync();

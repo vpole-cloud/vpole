@@ -5,6 +5,42 @@ export interface WebServiceWorkspace { tabs: ServiceTab[]; activeId: string }
 export const catalogId = 'catalog'
 export const createId = 'create'
 
+export function readServiceRoute(search: string) {
+  const params = new URLSearchParams(search)
+  const resourceId = params.get('resource')
+  const section = params.get('section')
+  const integer = (key: string, fallback: number, maximum: number) => {
+    const value = Number(params.get(key))
+    return Number.isSafeInteger(value) && value > 0 && value <= maximum ? value : fallback
+  }
+  return {
+    resourceId,
+    valid: resourceId === null || (resourceId.length > 0 && resourceId.length <= 128 && [...resourceId].every((character) => character.charCodeAt(0) >= 32)),
+    section: serviceSections.includes(section as ServiceSection) ? section as ServiceSection : 'overview' as ServiceSection,
+    pageNumber: integer('page', 1, 1_000_000),
+    pageSize: integer('pageSize', 8, 100),
+    search: params.get('search') ?? '',
+  }
+}
+
+export function workspaceAtRoute(current: WebServiceWorkspace, route: ReturnType<typeof readServiceRoute>): WebServiceWorkspace {
+  if (route.resourceId === null || !route.valid) return current
+  const id = route.resourceId
+  if (id === catalogId || id === createId) return { ...current, activeId: id }
+  return { activeId: id, tabs: current.tabs.some((tab) => tab.id === id)
+    ? current.tabs.map((tab) => tab.id === id ? { ...tab, section: route.section } : tab)
+    : [...current.tabs, { id, section: route.section }] }
+}
+
+export function serviceRouteParams(search: string, workspace: WebServiceWorkspace) {
+  const params = new URLSearchParams(search)
+  params.set('resource', workspace.activeId)
+  const section = workspace.tabs.find((tab) => tab.id === workspace.activeId)?.section
+  if (section) params.set('section', section)
+  else params.delete('section')
+  return params
+}
+
 export function readWorkspace(storageKey: string): WebServiceWorkspace {
   try {
     const stored: unknown = JSON.parse(localStorage.getItem(storageKey) ?? 'null')
