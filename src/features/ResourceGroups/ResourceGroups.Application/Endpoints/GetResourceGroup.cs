@@ -1,0 +1,68 @@
+using FluentValidation;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
+using Pole.ASP.Helpers;
+using Pole.Features.Core.Multitenancy;
+using Pole.Features.ResourceGroups.Application.Common;
+using Pole.Features.ResourceGroups.Application.Persistence;
+using Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
+using Pole.Features.ResourceGroups.Application.Persistence.ResourceRegistrations;
+using Pole.Mediator;
+using Pole.Validation;
+
+namespace Pole.Features.ResourceGroups.Application.Endpoints;
+
+public static class GetResourceGroup
+{
+    public static IEndpointRouteBuilder MapGetResourceGroupEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapGet("/{Id}", async (
+                IMediator mediator,
+                [AsParameters] GetResourceGroupRequest request,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await mediator.Send(request, cancellationToken);
+                return result.ToHttpResult(outcome => outcome switch
+                {
+                    ResourceGroupDto group => Results.Ok(group),
+                    ResourceGroupNotFound error => ResourceGroupHttpMappings.Map(error)
+                });
+            })
+            .WithName("GetResourceGroup")
+            .WithSummary("Retrieves a resource group in the selected tenant.")
+            .Produces<ResourceGroupDto>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
+        return app;
+    }
+}
+
+public sealed record GetResourceGroupRequest(
+    [FromRoute] string Id,
+    [FromTenantHeader] string TenantId)
+    : IMediatorRequest<GetResourceGroupOutcome>, ITenantReadOperation;
+
+public union GetResourceGroupOutcome(
+    ResourceGroupDto,
+    ResourceGroupNotFound);
+
+public sealed class GetResourceGroupHandler(
+    LoadResourceGroup loadResourceGroup,
+    LoadResourceRegistrationCount loadResourceRegistrationCount)
+    : IMediatorOutcomeHandler<GetResourceGroupRequest, GetResourceGroupOutcome>
+{
+    public async Task<GetResourceGroupOutcome> HandleAsync(
+        GetResourceGroupRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var group = await loadResourceGroup(request.TenantId, request.Id, cancellationToken);
+        if (group is null) return new ResourceGroupNotFound(request.Id);
+        return group.ToDto(await loadResourceRegistrationCount(request.TenantId, request.Id, cancellationToken));
+    }
+}
+
+public sealed class GetResourceGroupRequestValidator : AbstractValidator<GetResourceGroupRequest>
+{
+    public GetResourceGroupRequestValidator() => RuleFor(request => request.Id).MongoObjectId("Resource group ID");
+}

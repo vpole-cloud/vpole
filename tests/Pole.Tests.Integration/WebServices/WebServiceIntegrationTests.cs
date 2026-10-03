@@ -905,6 +905,22 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
+    public async Task GetList_OrdersPagesByNameAndExcludesOtherTenants()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var zed = TestData.SeedWebService(group.Id, name: "zed");
+        var alpha = TestData.SeedWebService(group.Id, name: "alpha");
+        var foreign = TestData.SeedWebService(group.Id, tenantId: ObjectId.GenerateNewId().ToString(), name: "a-foreign");
+        await Fixture.Database.WebServices().InsertManyAsync([zed, alpha, foreign]);
+        var request = new GetWebServicesRequest { TenantId = TestData.TenantId, PageNumber = 1, PageSize = 1 };
+        var first = (await Mediator.Send(request)).AssertSuccess();
+        var second = (await Mediator.Send(request with { PageNumber = 2 })).AssertSuccess();
+        Assert.Equal(2, first.TotalCount);
+        Assert.Equal(alpha.Id, Assert.Single(first.Items).Id);
+        Assert.Equal(zed.Id, Assert.Single(second.Items).Id);
+    }
+
+    [Fact]
     public async Task Delete_RetainsBindingsUntilTerminalDeployment_ThenFinalizesEverything()
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
