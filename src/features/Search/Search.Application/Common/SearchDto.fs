@@ -13,7 +13,8 @@ type SearchOperationalStatusDto =
       FailureCode : string option }
 
 type SearchHitDto =
-    { SourceType : string
+    { ResourceTypeId : string
+      SourceType : string
       SourceId : string
       Title : string
       ResourceGroupId : string option

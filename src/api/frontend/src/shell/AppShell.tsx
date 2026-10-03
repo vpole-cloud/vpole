@@ -4,6 +4,7 @@ import type { useTenants } from '../hooks/useTenants'
 import { AppContext } from './AppContext'
 import { Button, ConfirmationDialog, EmptyState, Notice } from '../ui/components'
 import type { AppRegistry, AppServices, ResourceIdentity, Theme } from './contracts'
+import { SearchPalette } from './SearchPalette'
 
 interface AppShellProps {
   registry: AppRegistry
@@ -34,6 +35,7 @@ export function AppShell({ registry, auth, api, tenants, initialViewId }: AppShe
   const requestedTenantId = new URLSearchParams(location.search).get('tenant')
   const [theme, setTheme] = useState(initialTheme)
   const [resourceVersion, setResourceVersion] = useState(0)
+  const [searchOpen, setSearchOpen] = useState(false)
   const [notification, setNotification] = useState<{ message: string; tone: 'info' | 'error'; scopeKey: string } | null>(null)
   const activeTenant = auth.authenticated ? requestedTenantId !== null
     ? tenants.items.find((tenant) => tenant.id === requestedTenantId) ?? null : tenants.activeTenant : null
@@ -48,6 +50,7 @@ export function AppShell({ registry, auth, api, tenants, initialViewId }: AppShe
   if (navigationScope !== scopeKey) {
     setNavigationScope(scopeKey)
     setPendingNavigation(null)
+    setSearchOpen(false)
   }
   const dirtyLabels = [...unsavedChanges.values()].filter((entry) => entry.scopeKey === scopeKey).map((entry) => entry.label)
   const registerUnsavedChanges = useCallback((label: string) => {
@@ -168,6 +171,16 @@ export function AppShell({ registry, auth, api, tenants, initialViewId }: AppShe
     document.documentElement.dataset.theme = theme
     try { localStorage.setItem('pole.console.theme', theme) } catch { /* The theme remains usable in memory. */ }
   }, [theme])
+  useEffect(() => {
+    const shortcut = (event: KeyboardEvent) => {
+      if (auth.authenticated && activeTenant && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setSearchOpen((current) => !current)
+      }
+    }
+    window.addEventListener('keydown', shortcut)
+    return () => window.removeEventListener('keydown', shortcut)
+  }, [auth.authenticated, activeTenant])
 
   const services: AppServices = {
     auth,
@@ -183,8 +196,9 @@ export function AppShell({ registry, auth, api, tenants, initialViewId }: AppShe
   const permitted = activeView && (activeView.access === 'public' ||
     (auth.authenticated && (activeView.access === 'authenticated' || activeTenant !== null)))
   const View = activeView?.component
-  const commands = permitted ? registry.commands.filter((command) => command.viewId === viewId &&
-    (command.available?.({ auth, tenant: tenantContext }) ?? true)) : []
+  const commands = permitted ? registry.commands.filter((command) => command.surface !== 'palette' && command.viewId === viewId &&
+    (command.available?.({ auth, tenant: tenantContext, resourceTypes: registry.resourceTypes,
+      location: { viewId, search: location.search } }) ?? true)) : []
 
   return <AppContext.Provider value={services}>
     <div className="app-shell">
@@ -218,6 +232,7 @@ export function AppShell({ registry, auth, api, tenants, initialViewId }: AppShe
               })
             }} />
           <div className="ui-header-actions">
+            {auth.authenticated && activeTenant && <Button onClick={() => setSearchOpen(true)} aria-label="Search and commands" aria-keyshortcuts="Control+k Meta+k">Search <kbd>⌘/Ctrl K</kbd></Button>}
             <Button aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
               onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>{theme === 'light' ? 'Dark theme' : 'Light theme'}</Button>
             <Button disabled={!auth.initialized} onClick={() => runGuarded(auth.authenticated ? auth.logout : auth.login)}>{auth.authenticated ? 'Log out' : 'Log in'}</Button>
@@ -246,6 +261,7 @@ export function AppShell({ registry, auth, api, tenants, initialViewId }: AppShe
           pendingNavigation.run()
           setPendingNavigation(null)
         }}><p>Your changes in {dirtyLabels.join(', ')} will be lost.</p></ConfirmationDialog>}
+      {searchOpen && auth.authenticated && activeTenant && <SearchPalette key={scopeKey} registry={registry} onClose={() => setSearchOpen(false)} />}
     </div>
   </AppContext.Provider>
 }

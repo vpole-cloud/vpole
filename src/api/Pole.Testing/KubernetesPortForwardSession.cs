@@ -29,14 +29,17 @@ public sealed class KubernetesPortForwardSession : IAsyncDisposable
         string namespaceName,
         string resource,
         int remotePort,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        int? localPort = null)
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentException.ThrowIfNullOrWhiteSpace(namespaceName);
         ArgumentException.ThrowIfNullOrWhiteSpace(resource);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(remotePort);
 
-        var localPort = GetFreeTcpPort();
+        var assignedPort = localPort ?? GetFreeTcpPort();
+        ArgumentOutOfRangeException.ThrowIfLessThan(assignedPort, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(assignedPort, 65535);
         var startInfo = new ProcessStartInfo
         {
             FileName = target.KubectlPath,
@@ -50,12 +53,12 @@ public sealed class KubernetesPortForwardSession : IAsyncDisposable
         startInfo.ArgumentList.Add(namespaceName);
         startInfo.ArgumentList.Add("port-forward");
         startInfo.ArgumentList.Add(resource);
-        startInfo.ArgumentList.Add($"{localPort}:{remotePort}");
+        startInfo.ArgumentList.Add($"{assignedPort}:{remotePort}");
 
         var process = Process.Start(startInfo)
                       ?? throw new InvalidOperationException("Failed to start kubectl port-forward process.");
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var forwardingMessage = $"Forwarding from 127.0.0.1:{localPort} ->";
+        var forwardingMessage = $"Forwarding from 127.0.0.1:{assignedPort} ->";
         var standardOutput = ReadBoundedOutputAsync(
             process.StandardOutput,
             line =>
@@ -65,7 +68,7 @@ public sealed class KubernetesPortForwardSession : IAsyncDisposable
             },
             cancellationToken);
         var standardError = ReadBoundedOutputAsync(process.StandardError, cancellationToken);
-        var session = new KubernetesPortForwardSession(process, localPort, standardOutput, standardError);
+        var session = new KubernetesPortForwardSession(process, assignedPort, standardOutput, standardError);
 
         try
         {

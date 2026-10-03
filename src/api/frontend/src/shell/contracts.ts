@@ -49,7 +49,10 @@ export interface AppCommand {
   id: string
   label: string
   viewId: string
-  available?: (context: Pick<AppServices, 'auth' | 'tenant'>) => boolean
+  surface?: 'palette' | 'both'
+  available?: (context: Pick<AppServices, 'auth' | 'tenant' | 'resourceTypes'> & {
+    location: Pick<AppServices['navigation'], 'viewId' | 'search'>
+  }) => boolean
   run: (services: AppServices) => void
 }
 

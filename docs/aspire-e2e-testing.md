@@ -16,7 +16,10 @@ The suite covers:
   resource-group metadata tabs, dirty-close confirmation, direct URLs/reload, and typed resource
   links from group contents and the paginated navigation tree;
 - multi-target Kubernetes placement and isolated target failure/retry;
-- deterministic source analysis, BuildKit build/push, Harbor artifacts, and Kubernetes deployment.
+- browser Git repository/branch/build-plan selection, source-linked service creation, BuildKit
+  build/push, Harbor artifacts, Kubernetes deployment, and a visible failed-build result;
+- tenant-scoped global search and contextual commands, keyboard selection, focus restoration,
+  and reuse of the existing resource tab after opening a search result.
 
 The GitHub stub serves deterministic `v1` and `v2` source archives and never records credentials,
 OAuth state, private keys, or bearer tokens.
@@ -75,7 +78,9 @@ Source-build tests use Harbor and BuildKit running inside the lab's default clus
 opens temporary port-forwards for host-side API/buildctl access while image references use the
 lab's stable registry authority. Failure injection closes only that fixture's BuildKit
 port-forward; it never stops or mutates the shared BuildKit deployment. This keeps concurrent test
-runs and other worktrees independent.
+runs and other worktrees independent. The test restores its port-forward at the original local
+port in `finally`, so later tests in the fixture can build again. The fixture keeps its tenant's
+Harbor project until all source-build tests finish, then deletes it during teardown.
 
 The source image is deliberately `FROM scratch`, so the test proves build, push, release,
 provenance, image-pull-secret, and reconciliation behavior without an external base image. It does

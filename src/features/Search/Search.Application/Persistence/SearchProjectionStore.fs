@@ -28,7 +28,8 @@ type internal SearchProjectionStore(database : IMongoDatabase) =
                 { Status = value.Status
                   FailureCode = value.FailureCode })
 
-        { SourceType = document.SourceApiName
+        { ResourceTypeId = document.ResourceTypeId
+          SourceType = document.SourceApiName
           SourceId = document.SourceId
           Title = document.Title
           ResourceGroupId = document.ResourceGroupId
