@@ -9,7 +9,7 @@ import { useResourceGroupsManager } from '../../hooks/useResourceGroupsManager'
 import { useDomainZonesManager } from '../../hooks/useDomainZonesManager'
 import { useGitIntegrationsManager } from '../../hooks/useGitIntegrationsManager'
 import { useStorageSettingsManager } from '../../hooks/useStorageSettingsManager'
-import { clearTransientIntegrationParams, readIntegrationNavigation } from '../../integrationsState'
+import { readIntegrationNavigation } from '../../integrationsState'
 import { useConsoleServices } from '../../console/ConsoleContext'
 
 function useTenantApiOptions() {
@@ -39,13 +39,16 @@ export function DomainsView() {
 }
 
 export function IntegrationsView() {
-  const { tenant } = useConsoleServices()
+  const { tenant, navigation: { search, setSearch } } = useConsoleServices()
   const [notice, setNotice] = useState(() => readIntegrationNavigation(window.location.search).githubNotice)
   const manager = useGitIntegrationsManager({ ...useTenantApiOptions(),
     preferredConnectionId: notice?.status === 'connected' ? notice.connectionId : undefined })
   useEffect(() => {
-    window.history.replaceState({}, '', clearTransientIntegrationParams(window.location.href))
-  }, [])
+    const params = new URLSearchParams(search)
+    if (!['github', 'connectionId', 'reason'].some((key) => params.has(key))) return
+    for (const key of ['github', 'connectionId', 'reason']) params.delete(key)
+    setSearch(params, { replace: true })
+  }, [search, setSearch])
   return <IntegrationsPage manager={manager} notice={notice}
     onDismissNotice={() => setNotice(null)} canManage={tenant.canManage} />
 }
@@ -56,4 +59,3 @@ export function StorageView() {
   return <StorageSettingsPage {...storage} onRefresh={storage.refresh} onCreate={storage.create}
     onUpdate={storage.update} canManage={auth.isPlatformAdmin || storage.status === 'success'} />
 }
-

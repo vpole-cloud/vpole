@@ -20,10 +20,19 @@ function initialTheme(): Theme {
 }
 
 export function ConsoleShell({ registry, auth, api, tenants, initialViewId }: ConsoleShellProps) {
-  const [viewId, setViewId] = useState(initialViewId)
+  const [location, setLocation] = useState(() => ({
+    viewId: new URLSearchParams(window.location.search).get('view') ?? initialViewId,
+    search: window.location.search,
+  }))
+  const { viewId } = location
+  const requestedTenantId = new URLSearchParams(location.search).get('tenant')
   const [theme, setTheme] = useState(initialTheme)
   const [notification, setNotification] = useState<{ message: string; tone: 'info' | 'error'; scopeKey: string } | null>(null)
-  const activeTenant = auth.authenticated ? tenants.activeTenant : null
+  const activeTenant = auth.authenticated ? requestedTenantId !== null
+    ? tenants.items.find((tenant) => tenant.id === requestedTenantId) ?? null : tenants.activeTenant : null
+  useEffect(() => {
+    if (activeTenant && requestedTenantId && tenants.activeTenantId !== activeTenant.id) tenants.selectTenant(activeTenant.id)
+  }, [activeTenant, requestedTenantId, tenants])
   const tenantContext = { active: activeTenant, canManage: ['Owner', 'Admin', 'Member'].includes(activeTenant?.role ?? '') }
   const scopeKey = `${auth.authenticated ? auth.userId : 'guest'}:${activeTenant?.id ?? 'no-tenant'}`
   const [unsavedChanges, setUnsavedChanges] = useState<Map<symbol, { label: string; scopeKey: string }>>(new Map())
@@ -48,38 +57,68 @@ export function ConsoleShell({ registry, auth, api, tenants, initialViewId }: Co
     else run()
   }
   const currentScope = useRef(scopeKey)
-  useLayoutEffect(() => { currentScope.current = scopeKey }, [scopeKey])
+  const currentView = useRef(viewId)
+  useLayoutEffect(() => { currentScope.current = scopeKey; currentView.current = viewId }, [scopeKey, viewId])
   const publish = useCallback((message: string, tone: 'info' | 'error' = 'info') => {
     if (currentScope.current === scopeKey) setNotification({ message, tone, scopeKey })
   }, [scopeKey])
   const activeView = registry.views.find((view) => view.id === viewId)
+  const historyEntry = useRef({ url: window.location.href,
+    index: typeof window.history.state?.poleNavigationIndex === 'number' ? window.history.state.poleNavigationIndex : 0 })
+  const restoringHistory = useRef(false)
+  useLayoutEffect(() => {
+    window.history.replaceState({ ...window.history.state, poleNavigationIndex: historyEntry.current.index }, '', window.location.href)
+  }, [])
+  const writeLocation = useCallback((params: URLSearchParams, nextViewId: string, replace = false) => {
+    const url = new URL(window.location.href)
+    url.search = params.toString()
+    if (url.href === historyEntry.current.url) return
+    const index = historyEntry.current.index + (replace ? 0 : 1)
+    window.history[replace ? 'replaceState' : 'pushState']({ ...window.history.state, poleNavigationIndex: index }, '', url)
+    historyEntry.current = { url: url.href, index }
+    setLocation({ viewId: nextViewId, search: url.search })
+  }, [])
+  const setSearch = useCallback((params: URLSearchParams, options?: { replace?: boolean }) => {
+    // A completion from an unmounted tenant/view cannot change the current URL.
+    if (currentScope.current !== scopeKey || currentView.current !== viewId) return
+    const next = new URLSearchParams(params)
+    next.set('view', viewId)
+    if (activeTenant) next.set('tenant', activeTenant.id)
+    writeLocation(next, viewId, options?.replace)
+  }, [activeTenant, scopeKey, viewId, writeLocation])
   const goTo = (nextId: string) => {
     if (!registry.views.some((view) => view.id === nextId)) throw new Error(`Unknown console view: ${nextId}`)
     if (nextId === viewId) return
     runGuarded(() => {
-      setViewId(nextId)
       setNotification(null)
-      const url = new URL(window.location.href)
-      if (nextId === registry.views[0]?.id) url.searchParams.delete('view')
-      else url.searchParams.set('view', nextId)
-      window.history.pushState({}, '', `${url.pathname}${url.search}${url.hash}`)
+      const params = new URLSearchParams()
+      if (nextId !== registry.views[0]?.id) params.set('view', nextId)
+      if (activeTenant) params.set('tenant', activeTenant.id)
+      writeLocation(params, nextId)
     })
   }
   useEffect(() => {
-    const currentUrl = window.location.href
     const onPopState = () => {
-      const nextViewId = new URLSearchParams(window.location.search).get('view') ?? registry.views[0]?.id ?? ''
-      if (nextViewId === viewId) return
-      if (dirtyLabels.length && !window.confirm('Discard unsaved changes and leave this view?')) {
-        window.history.pushState({}, '', currentUrl)
+      if (restoringHistory.current) { restoringHistory.current = false; return }
+      const params = new URLSearchParams(window.location.search)
+      const nextViewId = params.get('view') ?? registry.views[0]?.id ?? ''
+      const nextTenantId = params.get('tenant') ?? tenants.activeTenant?.id
+      const index = window.history.state?.poleNavigationIndex
+      const abandonsView = nextViewId !== viewId || nextTenantId !== activeTenant?.id
+      if (abandonsView && dirtyLabels.length && !window.confirm('Discard unsaved changes and leave this view?')) {
+        if (typeof index === 'number' && index !== historyEntry.current.index) {
+          restoringHistory.current = true
+          window.history.go(historyEntry.current.index - index)
+        } else window.history.replaceState({ ...window.history.state, poleNavigationIndex: historyEntry.current.index }, '', historyEntry.current.url)
         return
       }
-      setViewId(nextViewId)
+      historyEntry.current = { url: window.location.href, index: typeof index === 'number' ? index : 0 }
+      setLocation({ viewId: nextViewId, search: window.location.search })
       setNotification(null)
     }
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
-  }, [registry, viewId, dirtyLabels.length])
+  }, [registry, viewId, activeTenant?.id, tenants.activeTenant?.id, dirtyLabels.length])
   useEffect(() => {
     if (!dirtyLabels.length) return
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -98,7 +137,7 @@ export function ConsoleShell({ registry, auth, api, tenants, initialViewId }: Co
     auth,
     api: { ...api, tenantId: activeTenant?.id },
     tenant: tenantContext,
-    navigation: { viewId, goTo, registerUnsavedChanges },
+    navigation: { viewId, search: location.search, setSearch, goTo, registerUnsavedChanges },
     theme: { value: theme, set: setTheme },
     notifications: { publish },
   }
@@ -128,10 +167,15 @@ export function ConsoleShell({ registry, auth, api, tenants, initialViewId }: Co
       <div className="app-shell__workspace">
         <header className="app-shell__top-band">
           <TopBandPlaceholder tenants={auth.authenticated ? tenants.items : []} activeTenantId={activeTenant?.id ?? ''}
-            status={tenants.status} error={tenants.error} onSelectTenant={(id) => runGuarded(() => {
-              setNotification(null)
-              tenants.selectTenant(id)
-            })} />
+            status={tenants.status} error={tenants.error} onSelectTenant={(id) => {
+              if (id === activeTenant?.id) return
+              runGuarded(() => {
+                setNotification(null)
+                tenants.selectTenant(id)
+                const params = new URLSearchParams({ view: viewId, tenant: id })
+                writeLocation(params, viewId)
+              })
+            }} />
           <div className="console-header-actions">
             <Button aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
               onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>{theme === 'light' ? 'Dark theme' : 'Light theme'}</Button>
@@ -147,7 +191,8 @@ export function ConsoleShell({ registry, auth, api, tenants, initialViewId }: Co
           </div>}
           {!auth.initialized ? <EmptyState title="Starting console…" /> : !activeView ?
             <EmptyState title="This view is unavailable." error><Button onClick={() => goTo(registry.views[0].id)}>Open overview</Button></EmptyState> :
-            !permitted ? <EmptyState title={auth.authenticated ? 'Select an available tenant.' : 'Sign in to continue.'}>
+            !permitted ? <EmptyState title={auth.authenticated ? requestedTenantId !== null && tenants.status === 'success'
+              ? 'This tenant is unavailable to your account. Select an available tenant.' : 'Select an available tenant.' : 'Sign in to continue.'}>
               {tenants.status === 'error' && tenants.error}
               {!auth.authenticated && <Button onClick={auth.login}>Log in</Button>}
             </EmptyState> : View && <View key={`${scopeKey}:${viewId}`} />}

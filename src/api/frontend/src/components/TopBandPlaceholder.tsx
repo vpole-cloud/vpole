@@ -25,6 +25,7 @@ export function TopBandPlaceholder({
           value={activeTenantId}
           onChange={(event) => onSelectTenant(event.target.value)}
         >
+          {tenants.length > 0 && !activeTenantId && <option value="" disabled>Select a tenant</option>}
           {tenants.length === 0 ? (
             <option value="">{status === 'loading' ? 'Loading tenants…' : 'No tenants available'}</option>
           ) : (

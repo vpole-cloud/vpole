@@ -17,6 +17,8 @@ export interface ConsoleServices {
   api: { baseUrl: string; token?: string; tenantId?: string }
   navigation: {
     viewId: string
+    search: string
+    setSearch: (params: URLSearchParams, options?: { replace?: boolean }) => void
     goTo: (viewId: string) => void
     registerUnsavedChanges: (label: string) => () => void
   }
