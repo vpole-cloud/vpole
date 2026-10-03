@@ -64,6 +64,7 @@ public sealed class DatabaseBrowserE2ETests(PoleE2EFixture fixture, ITestOutputH
         await CaptureAsync(page, "postgres", "overview-pending");
         await WaitForAppliedAsync("postgres", id, timeout.Token);
         await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Refresh database", Exact = true }).ClickAsync();
+        await Assertions.Expect(content.GetByText("postgresql · TCP", new LocatorGetByTextOptions { Exact = true })).ToBeVisibleAsync();
         await CaptureAsync(page, "postgres", "overview");
         await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Configuration", Exact = true }).ClickAsync();
         Assert.True(await content.GetByLabel("Storage per instance (GiB)", new LocatorGetByLabelOptions { Exact = true }).IsDisabledAsync());
@@ -129,6 +130,7 @@ public sealed class DatabaseBrowserE2ETests(PoleE2EFixture fixture, ITestOutputH
         await WaitForAppliedAsync("redis-services", id, timeout.Token);
         await content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = name, Exact = true }).WaitForAsync();
         await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Refresh Redis", Exact = true }).ClickAsync();
+        await Assertions.Expect(content.GetByText("redis · TCP", new LocatorGetByTextOptions { Exact = true })).ToBeVisibleAsync();
         await CaptureAsync(page, "redis", "overview");
         await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Configuration", Exact = true }).ClickAsync();
         Assert.True(await content.GetByLabel("Storage (GiB)", new LocatorGetByLabelOptions { Exact = true }).IsDisabledAsync());

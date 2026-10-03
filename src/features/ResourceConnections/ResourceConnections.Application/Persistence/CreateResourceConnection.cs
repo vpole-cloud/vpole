@@ -110,10 +110,6 @@ internal sealed class MongoCreateResourceConnection(
                         ct))
                         .Where(item => !item.DeletionRequested)
                         .ToArray();
-                    if (sourcePlacements.Length == 0)
-                        return transaction.Abort(new CreateResourceConnectionPersistenceOutcome(
-                            new ConnectionSourceHasNoPlacements()));
-
                     var destinationPlacements = (await loadPlacements(
                         command.TenantId,
                         destination.Type,
@@ -123,25 +119,21 @@ internal sealed class MongoCreateResourceConnection(
                         .Where(item => !item.DeletionRequested)
                         .ToArray();
 
+                    var topology = ResourceConnectionTopology.Evaluate(sourcePlacements.Select(item => item.DeploymentTargetId), destinationPlacements.Select(item => item.DeploymentTargetId));
+                    switch (topology.Kind)
+                    {
+                        case ConnectionTopologyKind.SourceHasNoPlacements:
+                            return transaction.Abort(new CreateResourceConnectionPersistenceOutcome(new ConnectionSourceHasNoPlacements()));
+                        case ConnectionTopologyKind.DestinationTargetMissing:
+                            return transaction.Abort(new CreateResourceConnectionPersistenceOutcome(new ConnectionDestinationTargetMissing(topology.TargetId!)));
+                        case ConnectionTopologyKind.DestinationTargetAmbiguous:
+                            return transaction.Abort(new CreateResourceConnectionPersistenceOutcome(new ConnectionDestinationTargetAmbiguous(topology.TargetId!)));
+                    }
                     var snapshots = new List<ConnectionTargetSnapshot>();
                     foreach (var sourcesOnTarget in sourcePlacements
                         .GroupBy(item => item.DeploymentTargetId, StringComparer.Ordinal))
                     {
-                        var destinationsOnTarget = destinationPlacements
-                            .Where(item => item.DeploymentTargetId == sourcesOnTarget.Key)
-                            .ToArray();
-                        if (destinationsOnTarget.Length == 0)
-                        {
-                            return transaction.Abort(new CreateResourceConnectionPersistenceOutcome(
-                                new ConnectionDestinationTargetMissing(sourcesOnTarget.Key)));
-                        }
-                        if (destinationsOnTarget.Length > 1)
-                        {
-                            return transaction.Abort(new CreateResourceConnectionPersistenceOutcome(
-                                new ConnectionDestinationTargetAmbiguous(sourcesOnTarget.Key)));
-                        }
-
-                        var destinationPlacement = destinationsOnTarget[0];
+                        var destinationPlacement = destinationPlacements.Single(item => item.DeploymentTargetId == sourcesOnTarget.Key);
                         snapshots.Add(ConnectionTargetSnapshot.Create(
                             sourcesOnTarget.Key,
                             destinationPlacement.DeploymentId,

@@ -80,3 +80,10 @@ public delegate Task<RegisteredResource?> FenceRegisteredResource(
     string resourceId,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
+
+/// <summary>Tenant-scoped advisory identity read. Does not acquire a mutation fence.</summary>
+public delegate Task<RegisteredResource?> LoadRegisteredResource(
+    string tenantId,
+    ResourceTypeId resourceTypeId,
+    string resourceId,
+    CancellationToken cancellationToken = default);

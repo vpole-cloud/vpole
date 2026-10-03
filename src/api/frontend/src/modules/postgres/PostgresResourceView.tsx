@@ -7,6 +7,7 @@ import { useUnsavedChanges } from '../../shell/useUnsavedChanges'
 import type { PostgresCluster } from '../../types'
 import { Button, ConfirmationDialog, EmptyState, Field, Notice, StatusBadge } from '../../ui/components'
 import { PlacementSummary } from '../../ui/PlacementSummary'
+import { ResourceEndpoints } from '../../ui/ResourceEndpoints'
 import { Tabs, TabPanel } from '../../ui/Tabs'
 import type { WorkspaceActions } from '../../ui/ResourceWorkspace'
 import type { PostgresSection } from './workspaceState'
@@ -61,6 +62,7 @@ export function PostgresResourceView({ id, section, active, version, onSection, 
         <div><dt>Revision</dt><dd>{cluster.revision}</dd></div><div><dt>Group tags</dt><dd>{group.resource?.tags.join(', ') || 'No tags'}</dd></div></dl>
       <p className="field__hint">This database has one deployment target. Network access and application credentials are configured separately.</p></section>
       <PlacementSummary placement={cluster.placement} targetName={targets.resource?.find((target) => target.id === cluster.placement.deploymentTargetId)?.displayName} />
+      {active && section === 'overview' && <ResourceEndpoints resourceType="pole/postgresql" resourceId={id} />}
       {tenant.canManage && cluster.placement.status === 'Failed' && <Button disabled={mutation.busy} onClick={() => {
         void mutation.run((signal) => retryResourceDeployment(api.baseUrl, cluster.placement.deploymentId, api.token, api.tenantId, signal), async () => { await details.refresh(); actions.changed() }).catch(() => {})
       }}>Retry deployment</Button>}

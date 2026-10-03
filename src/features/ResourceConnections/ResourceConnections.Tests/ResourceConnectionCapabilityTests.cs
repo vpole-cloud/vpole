@@ -89,6 +89,49 @@ public sealed class ResourceConnectionCapabilityTests
     }
 
     [Fact]
+    public async Task AdvisoryDiscovery_UsesCustomProviderMetadataWithoutProviderSwitches()
+    {
+        var endpoint = new ResourceConnectionEndpoint("queue", "queue-svc", NetworkPort.Create(5672), NetworkPort.Create(5672))
+        {
+            DisplayName = "Application queue",
+            Protocol = "amqp",
+            Configuration = [new("virtualHost", "Virtual host", "/app")]
+        };
+        var provider = new CustomDestinationCapability(ImmutableList.Create(endpoint));
+        var catalog = new ResourceConnectionEndpointCatalog([], [provider]);
+        var found = await catalog.LoadAvailableAsync("tenant", CustomType, "resource");
+        Assert.Equal(endpoint, Assert.Single(found!.Endpoints));
+        Assert.Equal("tenant", provider.LastTenantId);
+        Assert.Equal("resource", provider.LastResourceId);
+        Assert.Null(provider.LastSession);
+        Assert.Null(await catalog.LoadAvailableAsync("tenant", ResourceTypeId.Create("example/unsupported"), "resource"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InvalidMetadata_IsRejectedByDiscoveryAndAdmission(bool advisory)
+    {
+        var catalog = new ResourceConnectionEndpointCatalog([], [new CustomDestinationCapability(ImmutableList.Create(
+            new ResourceConnectionEndpoint("queue", "svc", NetworkPort.Create(1), NetworkPort.Create(1)) { DisplayName = "" }))]);
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        {
+            if (advisory) await catalog.LoadAvailableAsync("tenant", CustomType, "resource");
+            else await catalog.ResolveAsync("tenant", CustomType, "resource", "queue", DispatchProxy.Create<IClientSessionHandle, NoopSessionProxy>(), CancellationToken.None);
+        });
+    }
+
+    [Theory]
+    [InlineData("", "a", "SourceHasNoPlacements")]
+    [InlineData("a", "a", "Eligible")]
+    [InlineData("a,a", "a", "Eligible")]
+    [InlineData("a,b", "a", "DestinationTargetMissing")]
+    [InlineData("a", "b", "DestinationTargetMissing")]
+    [InlineData("a", "a,a", "DestinationTargetAmbiguous")]
+    public void SharedTopology_RequiresExactlyOneDestinationOnEachSourceTarget(string source, string destination, string kind) =>
+        Assert.Equal(kind, ResourceConnectionTopology.Evaluate(source.Split(',', StringSplitOptions.RemoveEmptyEntries), destination.Split(',', StringSplitOptions.RemoveEmptyEntries)).Kind.ToString());
+
+    [Fact]
     public async Task NoProviders_AllowsHostStartup()
     {
         var builder = Host.CreateApplicationBuilder();
@@ -170,13 +213,17 @@ public sealed class ResourceConnectionCapabilityTests
         public Task<IReadOnlyDictionary<string, ResourceConnectionEndpointsFound>> LoadAvailableAsync(
             string tenantId,
             IReadOnlyCollection<string> resourceIds,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyDictionary<string, ResourceConnectionEndpointsFound>>(
+            CancellationToken cancellationToken = default)
+        {
+            LastTenantId = tenantId;
+            LastResourceId = resourceIds.Single();
+            return Task.FromResult<IReadOnlyDictionary<string, ResourceConnectionEndpointsFound>>(
                 resourceIds.ToDictionary(id => id, id =>
                     new ResourceConnectionEndpointsFound(
                         endpoints ?? ImmutableList.Create(new ResourceConnectionEndpoint(
                             "queue", "queue-svc", NetworkPort.Create(5672),
                             NetworkPort.Create(5672))))));
+        }
     }
 
     public class NoopSessionProxy : DispatchProxy

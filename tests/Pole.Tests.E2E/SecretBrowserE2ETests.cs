@@ -39,6 +39,17 @@ public sealed class SecretBrowserE2ETests(PoleE2EFixture fixture, ITestOutputHel
         }, token)).GetProperty("webServiceId").GetString()!;
         resources.Defer("delete Secret consumer", cleanup => DeleteResourceAsync("web-services", consumer, cleanup));
         await fixture.WaitForNamespaceCreationAsync(group, token);
+        var endpointPath = $"/api/v1/resource-connections/endpoints?resourceType=pole%2Fweb-service&resourceId={consumer}";
+        var discovery = await SendAsync(HttpMethod.Get, endpointPath, null, token);
+        var endpoint = Assert.Single(discovery.GetProperty("endpoints").EnumerateArray());
+        Assert.Equal("http", endpoint.GetProperty("id").GetString());
+        Assert.Equal("tcp", endpoint.GetProperty("protocol").GetString());
+        Assert.Equal(80, endpoint.GetProperty("port").GetInt32());
+        using (var unauthenticated = await fixture.Api.GetAsync(endpointPath, token))
+            Assert.Equal(HttpStatusCode.Unauthorized, unauthenticated.StatusCode);
+        using (var foreignRequest = fixture.CreateAuthenticatedRequest(HttpMethod.Get, endpointPath, fixture.Beta, fixture.Beta.DefaultTenantId))
+        using (var foreignResponse = await fixture.Api.SendAsync(foreignRequest, token))
+            Assert.Equal(HttpStatusCode.NotFound, foreignResponse.StatusCode);
         await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
         await browserContainer.StartAsync(token);
         using var playwright = await Playwright.CreateAsync();

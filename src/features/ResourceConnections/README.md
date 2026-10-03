@@ -73,7 +73,26 @@ Viewer can read. A foreign-tenant connection is not visible.
 | `POST /` | Validate and persist a directed declaration; return `202 Accepted` with pending targets |
 | `GET /{id}` | Read current connection and per-target reconciliation state |
 | `GET /?pageNumber=1&pageSize=10` | List the tenant's connections; page size is bounded to 100 and the offset must fit a 32-bit integer |
+| `GET /endpoints?resourceType=...&resourceId=...` | Discover published endpoint identity, display name, application protocol, TCP service port and non-secret configuration |
 | `DELETE /{id}` | Request cleanup; return `202 Accepted` while deletion is pending |
+
+Discovery optionally accepts the paired `sourceResourceType` and `sourceResourceId` query
+fields. Its topology is `NotEvaluated`, `Eligible`, or `Ineligible` with a fixed reason code.
+Both resource identities are tenant-checked before endpoint or topology reads. `Unsupported`
+availability is distinct from a supported provider publishing zero endpoints; unavailable or
+deleting provider resources return the same safe missing-resource response. Failures remain
+errors, rather than becoming empty catalogs. No credentials, Kubernetes namespaces, selectors
+or arbitrary addresses are returned.
+
+Providers contribute through the existing `IResourceConnectionDestinationCapability` and
+`LoadAvailableAsync`; static registration validation rejects duplicate resource types. The
+endpoint catalog validates stable identities, ports and bounded metadata for both advisory
+discovery and transactional admission. PostgreSQL publishes its database name, Redis its
+default database index, and named WebService ports remain `tcp` because a name such as `http`
+does not prove an application protocol. The frontend renders these contributions generically.
+Discovery uses read-only registration and deployment snapshots. Creation and mutation keep
+their transaction fences and share the same target-cardinality evaluator, so a stale eligible
+response never authorizes a connection after topology changes.
 
 Example creation body:
 

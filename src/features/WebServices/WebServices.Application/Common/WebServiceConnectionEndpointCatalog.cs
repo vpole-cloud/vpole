@@ -32,6 +32,10 @@ internal static class WebServiceConnectionEndpointCatalog
         {
             return null;
         }
-        return new ResourceConnectionEndpoint(id, serviceName, servicePort, targetPort);
+        return new ResourceConnectionEndpoint(id, serviceName, servicePort, targetPort)
+        {
+            DisplayName = mapping.Name.Trim(),
+            Protocol = "tcp"
+        };
     }
 }

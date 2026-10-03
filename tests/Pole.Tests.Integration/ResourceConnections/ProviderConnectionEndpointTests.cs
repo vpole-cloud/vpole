@@ -75,6 +75,9 @@ public sealed class ProviderConnectionEndpointTests(MongoReplicaSetFixture fixtu
         Assert.Equal($"{web.Name}-svc", endpoint.ServiceName);
         Assert.Equal(80, endpoint.ServicePort.Value);
         Assert.Equal(8080, endpoint.TargetPort.Value);
+        Assert.Equal("HTTP", endpoint.DisplayName);
+        Assert.Equal("tcp", endpoint.Protocol);
+        Assert.Empty(endpoint.Configuration);
         Assert.IsType<ResourceConnectionDestinationMissing>((await lookup.LoadAsync(Id(), web.Id, session)).Value);
         await session.AbortTransactionAsync();
         Assert.Equal(0, await fixture.Database.GetCollection<WebService>("WebServices")
@@ -97,6 +100,8 @@ public sealed class ProviderConnectionEndpointTests(MongoReplicaSetFixture fixtu
         Assert.Equal("cache-svc", endpoint.ServiceName);
         Assert.Equal(6379, endpoint.ServicePort.Value);
         Assert.Equal(6379, endpoint.TargetPort.Value);
+        Assert.Equal("redis", endpoint.Protocol);
+        Assert.Equal("0", Assert.Single(endpoint.Configuration).Value);
         Assert.IsType<ResourceConnectionDestinationMissing>((await lookup.LoadAsync(Id(), redis.Id, session)).Value);
         await collection.ReplaceOneAsync(session, item => item.Id == redis.Id, redis.BeginDeletion(DateTime.UtcNow));
         Assert.IsType<ResourceConnectionDestinationDeleting>((await lookup.LoadAsync(redis.TenantId, redis.Id, session)).Value);
@@ -121,6 +126,8 @@ public sealed class ProviderConnectionEndpointTests(MongoReplicaSetFixture fixtu
         Assert.Equal(PostgresClusterKubernetesBuilder.buildReadWriteServiceName(postgres.Id), endpoint.ServiceName);
         Assert.Equal(5432, endpoint.ServicePort.Value);
         Assert.Equal(5432, endpoint.TargetPort.Value);
+        Assert.Equal("postgresql", endpoint.Protocol);
+        Assert.Equal(postgres.Id, Assert.Single(endpoint.Configuration).Value);
         Assert.IsType<ResourceConnectionDestinationMissing>((await lookup.LoadAsync(Id(), postgres.Id, session)).Value);
         await collection.ReplaceOneAsync(session, item => item.Id == postgres.Id, postgres.BeginDeletion(DateTime.UtcNow));
         Assert.IsType<ResourceConnectionDestinationDeleting>((await lookup.LoadAsync(postgres.TenantId, postgres.Id, session)).Value);

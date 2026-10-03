@@ -1,5 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.ResourceGroups.Contracts;
+using Pole.Workloads;
 
 namespace Pole.Features.ResourceGroups.Application.Persistence.ResourceRegistrations;
 
@@ -25,6 +27,16 @@ public delegate Task<long> LoadResourceRegistrationCount(
 internal sealed class MongoResourceRegistrationReads(
     IMongoCollection<ResourceRegistration> registrations)
 {
+    public async Task<RegisteredResource?> LoadOneAsync(string tenantId, ResourceTypeId type, string resourceId,
+        CancellationToken cancellationToken = default)
+    {
+        var registration = await registrations.Find(ResourceRegistrationFilters.ByIdentity(tenantId, type, resourceId))
+            .FirstOrDefaultAsync(cancellationToken);
+        return registration is null ? null : new RegisteredResource(registration.Id, registration.TenantId,
+            registration.ResourceGroupId, ResourceTypeId.Create(registration.ResourceTypeId), registration.ResourceId,
+            registration.DisplayName, registration.OwningPluginId, registration.CreatedAtUtc, registration.UpdatedAtUtc);
+    }
+
     public async Task<ResourceRegistrationPage> LoadPageAsync(
         ResourceRegistrationPageQuery query,
         CancellationToken cancellationToken = default)

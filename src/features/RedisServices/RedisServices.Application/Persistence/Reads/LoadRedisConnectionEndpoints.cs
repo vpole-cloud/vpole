@@ -69,6 +69,11 @@ internal sealed class MongoLoadRedisConnectionEndpoints(IMongoCollection<Redis> 
                 endpoint.Id,
                 RedisInKubernetes.BuildServiceName(resource.Name),
                 NetworkPort.Create(endpoint.TcpPort),
-                NetworkPort.Create(endpoint.TcpPort))));
+                NetworkPort.Create(endpoint.TcpPort))
+            {
+                DisplayName = "Redis",
+                Protocol = "redis",
+                Configuration = [new("database", "Database index", "0")]
+            }));
     }
 }
