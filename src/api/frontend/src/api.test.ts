@@ -14,10 +14,35 @@ import {
   searchResources,
   fetchProviderRepositories,
   fetchProviderBranches,
+  createSecret,
+  fetchSecret,
+  SecretApiError,
 } from './api'
 import { retryOperationForStatus } from './components/webServiceDeploymentStatus'
 
 describe('shared inventory API', () => {
+  it.each([
+    JSON.stringify({ code: 'secrets.version-conflict', detail: 'private-canary', errors: { 'Body.Values': ['private-canary'] } }),
+    JSON.stringify({ code: 'private-canary', title: 'private-canary' }),
+    'private-canary',
+  ])('never surfaces Secret values or arbitrary problem details: case %#', async (body) => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(body, { status: 409 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const failure = await createSecret('https://pole.test', { name: 'app', purpose: '', resourceGroupId: 'group', isolationScopeId: 'scope', values: { token: 'private-canary' } }, 'bearer', 'tenant').catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(SecretApiError)
+    expect(JSON.stringify(failure)).not.toContain('private-canary')
+    expect((failure as Error).message).not.toContain('private-canary')
+    expect((failure as SecretApiError).fieldErrors).toEqual({})
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ cache: 'no-store', headers: { Authorization: 'Bearer bearer', 'X-Pole-Tenant-ID': 'tenant' } })
+    vi.unstubAllGlobals()
+  })
+  it('redacts Secret read and network errors as well as write errors', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('private-canary')))
+    const failure = await fetchSecret('https://pole.test', 'id').catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(SecretApiError)
+    expect((failure as Error).message).not.toContain('private-canary')
+    vi.unstubAllGlobals()
+  })
   it('scopes search and paged Git discovery with bearer headers and cancellation', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [] }) })
     vi.stubGlobal('fetch', fetchMock)

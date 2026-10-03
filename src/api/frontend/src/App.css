@@ -1476,3 +1476,7 @@
   .source-build-configuration { grid-template-columns: minmax(0, 1fr); }
   .source-build-configuration .row-actions { justify-content: flex-start; }
 }
+.secret-values { display: grid; gap: 1rem; min-width: 0; }
+.secret-value-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 1rem; align-items: end; }
+.secret-value-row .field > .button { justify-self: start; }
+@media (max-width: 640px) { .secret-value-row { grid-template-columns: minmax(0, 1fr); } }
