@@ -46,6 +46,7 @@ import type {
   SecretBindingInput,
   SecretUsage,
   SecretProjection,
+  ResourceEndpointDiscovery,
 } from './types'
 
 type TenantResponse = Omit<Tenant, 'role'> & {
@@ -259,6 +260,15 @@ export const bindSecret = (base: string, id: string, input: SecretBindingInput, 
 export const detachSecret = (base: string, id: string, bindingId: string, token?: string, tenantId?: string, signal?: AbortSignal) => secretRequest<SecretMetadata>(base, `/${encodeURIComponent(id)}/bindings/${encodeURIComponent(bindingId)}`, token, tenantId, signal, 'DELETE')
 export function fetchResourceDeploymentSet(base: string, resourceType: string, resourceId: string, token?: string, tenantId?: string, signal?: AbortSignal) {
   return fetchJson<ResourcePlacement[]>(`${base}/api/v1/resource-deployments/?${new URLSearchParams({ resourceType, resourceId })}`, { headers: buildHeaders(token, tenantId), signal })
+}
+
+export async function fetchResourceEndpoints(base: string, resourceType: string, resourceId: string, token?: string, tenantId?: string, signal?: AbortSignal,
+  source?: { resourceType: string; resourceId: string }) {
+  const query = new URLSearchParams({ resourceType, resourceId })
+  if (source) { query.set('sourceResourceType', source.resourceType); query.set('sourceResourceId', source.resourceId) }
+  const response = await fetchJson<ResourceEndpointDiscovery>(`${base}/api/v1/resource-connections/endpoints?${query}`, { headers: buildHeaders(token, tenantId), signal })
+  if (!response || !['Supported', 'Unsupported'].includes(response.availability) || !Array.isArray(response.endpoints) || !response.topology || !['NotEvaluated', 'Eligible', 'Ineligible'].includes(response.topology.status)) throw new ApiError('Endpoint discovery response is unavailable.', 502)
+  return response
 }
 
 export function validationMessage(error: unknown, field: string): string {

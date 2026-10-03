@@ -19,7 +19,10 @@ type MongoLoadPostgresConnectionEndpoints(clusters : IMongoCollection<PostgresCl
             PostgresConnectionEndpoints.ReadWriteId,
             PostgresConnectionEndpoints.BuildReadWriteServiceName(resource.Id),
             port,
-            port)
+            port,
+            DisplayName = "PostgreSQL read/write",
+            Protocol = "postgresql",
+            Configuration = ImmutableList.Create(ResourceConnectionConfigurationField("database", "Database", resource.Id)))
         ResourceConnectionEndpointsFound(ImmutableList.Create(endpoint))
 
     interface IResourceConnectionDestinationNameCapability with

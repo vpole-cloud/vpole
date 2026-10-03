@@ -208,6 +208,15 @@ export interface SecretProjection {
   failureCode: string | null
 }
 
+export interface ResourceEndpointDiscovery {
+  resourceType: string
+  resourceId: string
+  displayName: string
+  availability: 'Supported' | 'Unsupported'
+  endpoints: { id: string; displayName: string; protocol: string; transport: string; port: number; configuration: { key: string; displayName: string; value: string }[] }[]
+  topology: { status: 'NotEvaluated' | 'Eligible' | 'Ineligible'; reasonCode: string | null }
+}
+
 export interface RedisService {
   id: string
   name: string

@@ -195,8 +195,6 @@ internal sealed class MongoResourceConnectionMutationProvider(
             cancellationToken))
             .Where(item => !item.DeletionRequested)
             .ToArray();
-        if (sourcePlacements.Length == 0)
-            return new ResourceConnectionSourceHasNoPlacements(connection.Id);
         var destinationPlacements = (await loadPlacements(
             connection.TenantId,
             destinationType,
@@ -206,18 +204,18 @@ internal sealed class MongoResourceConnectionMutationProvider(
             .Where(item => !item.DeletionRequested)
             .ToArray();
 
+        var topology = ResourceConnectionTopology.Evaluate(sourcePlacements.Select(item => item.DeploymentTargetId), destinationPlacements.Select(item => item.DeploymentTargetId));
+        switch (topology.Kind)
+        {
+            case ConnectionTopologyKind.SourceHasNoPlacements: return new ResourceConnectionSourceHasNoPlacements(connection.Id);
+            case ConnectionTopologyKind.DestinationTargetMissing: return new ResourceConnectionDestinationTargetMissing(connection.Id);
+            case ConnectionTopologyKind.DestinationTargetAmbiguous: return new ResourceConnectionDestinationTargetAmbiguous(connection.Id);
+        }
         var snapshots = new List<ConnectionTargetSnapshot>();
         foreach (var sourcesOnTarget in sourcePlacements
             .GroupBy(item => item.DeploymentTargetId, StringComparer.Ordinal))
         {
-            var destinations = destinationPlacements
-                .Where(item => item.DeploymentTargetId == sourcesOnTarget.Key)
-                .ToArray();
-            if (destinations.Length == 0)
-                return new ResourceConnectionDestinationTargetMissing(connection.Id);
-            if (destinations.Length > 1)
-                return new ResourceConnectionDestinationTargetAmbiguous(connection.Id);
-            var destination = destinations[0];
+            var destination = destinationPlacements.Single(item => item.DeploymentTargetId == sourcesOnTarget.Key);
             snapshots.Add(ConnectionTargetSnapshot.Create(
                 sourcesOnTarget.Key,
                 destination.DeploymentId,

@@ -7,6 +7,7 @@ import { useUnsavedChanges } from '../../shell/useUnsavedChanges'
 import type { RedisService } from '../../types'
 import { Button, ConfirmationDialog, EmptyState, Field, Notice, StatusBadge } from '../../ui/components'
 import { PlacementSummary } from '../../ui/PlacementSummary'
+import { ResourceEndpoints } from '../../ui/ResourceEndpoints'
 import { Tabs, TabPanel } from '../../ui/Tabs'
 import type { WorkspaceActions } from '../../ui/ResourceWorkspace'
 import { parseRedisTags, redisType, type RedisSection } from './workspaceState'
@@ -46,6 +47,7 @@ export function RedisResourceView({ id, section, active, version, onSection, act
       <div><dt>Storage</dt><dd>{redis.spec.storage.sizeGb} GiB</dd></div><div><dt>Storage profile</dt><dd>{storage.resource?.find((item) => item.id === redis.spec.storage.storageProfileId)?.displayName ?? redis.spec.storage.storageProfileId}</dd></div>
       <div><dt>Tags</dt><dd>{redis.tags.join(', ') || 'No tags'}</dd></div><div><dt>Revision</dt><dd>{redis.revision}</dd></div></dl><p className="field__hint">Application network access and workload configuration are managed separately.</p></section>
       {placement ? <PlacementSummary placement={placement} targetName={targets.resource?.find((item) => item.id === placement.deploymentTargetId)?.displayName} /> : <Notice>Deployment metadata is unavailable. No readiness result is known.</Notice>}
+      {active && section === 'overview' && <ResourceEndpoints resourceType={redisType} resourceId={id} />}
       {tenant.canManage && placement?.status === 'Failed' && <Button disabled={mutation.busy} onClick={() => {
         void mutation.run((signal) => retryResourceDeployment(api.baseUrl, placement.deploymentId, api.token, api.tenantId, signal), async () => { await details.refresh(); actions.changed() }).catch(() => {})
       }}>Retry deployment</Button>}

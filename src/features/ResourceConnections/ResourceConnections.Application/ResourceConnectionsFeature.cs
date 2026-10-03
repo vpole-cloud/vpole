@@ -115,6 +115,7 @@ public static class ResourceConnectionsFeature
         app.MapGroup("/resource-connections")
             .WithTags("ResourceConnections")
             .MapCreateResourceConnectionEndpoint()
+            .MapGetResourceConnectionEndpointsEndpoint()
             .MapGetResourceConnectionEndpoint()
             .MapGetResourceConnectionsEndpoint()
             .MapDeleteResourceConnectionEndpoint();

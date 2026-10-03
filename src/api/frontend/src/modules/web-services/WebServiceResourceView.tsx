@@ -5,6 +5,7 @@ import { WebServiceForm } from '../../components/WebServiceForm'
 import { useAppServices } from '../../shell/AppContext'
 import { Button, ConfirmationDialog, EmptyState, Notice, StatusBadge } from '../../ui/components'
 import { TabPanel, Tabs } from '../../ui/Tabs'
+import { ResourceEndpoints } from '../../ui/ResourceEndpoints'
 import { useUnsavedChanges } from '../../shell/useUnsavedChanges'
 import { useSourceBuildsManager } from '../../hooks/useSourceBuildsManager'
 import { useWebServicesManager } from '../../hooks/useWebServicesManager'
@@ -99,6 +100,7 @@ export function WebServiceResourceView({ id, section, active, refreshVersion, gr
         </div>)}</div>
         <p className="field__hint">Deployment status reports reconciliation. Inspect targets, generations and hostnames in Deployments.</p>
       </section>
+      {active && section === 'overview' && <ResourceEndpoints resourceType="pole/web-service" resourceId={id} />}
     </TabPanel>
     <TabPanel id={panelId} tabId="configuration" activeId={section}>
       {visited.includes('configuration') && (tenant.canManage ? <div className="web-service-editor"><WebServiceForm key={formVersion}

@@ -11,7 +11,19 @@ public sealed record ResourceConnectionEndpoint(
     string Id,
     string ServiceName,
     NetworkPort ServicePort,
-    NetworkPort TargetPort);
+    NetworkPort TargetPort)
+{
+    public string DisplayName { get; init; } = Id;
+    public string Protocol { get; init; } = "tcp";
+    public string Transport { get; init; } = "TCP";
+    public ImmutableList<ResourceConnectionConfigurationField> Configuration { get; init; } = [];
+}
+
+/// <summary>Provider-published non-secret configuration only. Never publish credentials or connection strings.</summary>
+public sealed record ResourceConnectionConfigurationField(
+    string Key,
+    string DisplayName,
+    string Value);
 
 public sealed record ResourceConnectionEndpointsFound(
     ImmutableList<ResourceConnectionEndpoint> Endpoints);
