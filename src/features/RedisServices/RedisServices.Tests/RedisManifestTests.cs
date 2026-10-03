@@ -77,6 +77,8 @@ public sealed class RedisManifestTests
         Assert.Equal("pole-cache", statefulSet.Metadata.NamespaceProperty);
         Assert.Equal("redis-cache-svc", statefulSet.Spec.ServiceName);
         Assert.Equal(1, statefulSet.Spec.Replicas);
+        Assert.Equal("Delete", statefulSet.Spec.PersistentVolumeClaimRetentionPolicy.WhenDeleted);
+        Assert.Equal("Retain", statefulSet.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled);
         Assert.Equal("redis:8-alpine", container.Image);
         Assert.Equal("redis", container.Name);
         Assert.Equal(6379, Assert.Single(container.Ports).ContainerPort);

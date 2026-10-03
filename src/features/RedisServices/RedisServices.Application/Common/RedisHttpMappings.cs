@@ -41,6 +41,12 @@ public static class RedisHttpMappings
         "Deleting Redis service has no resource deployment",
         ("redisId", missing.RedisId));
 
+    public static HttpProblem MapStorageResizeUnsupported(RedisStorageResizeUnsupported rejected) => Problem(
+        HttpStatusCode.UnprocessableEntity,
+        "redis-services.storage-resize-unsupported",
+        "Native Redis storage size is fixed after creation",
+        ("redisId", rejected.RedisId));
+
     public static HttpProblem MapUpdateConflict(RedisUpdateConflict error) => Problem(
         HttpStatusCode.Conflict,
         "redis-services.update.concurrent-change",

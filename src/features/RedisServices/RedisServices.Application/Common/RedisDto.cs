@@ -12,7 +12,9 @@ public sealed record RedisDto(
     string ResourceGroupId,
     RedisSpecDto Spec,
     ImmutableHashSet<string> Tags,
-    PlacementSummaryDto? Placement
+    PlacementSummaryDto? Placement,
+    long Revision,
+    string Lifecycle
 );
 
 public sealed record RedisSpecDto(
@@ -35,7 +37,9 @@ public static class RedisDtoExtensions
         redis.ResourceGroupId,
         redis.Spec.ToDto(),
         redis.Tags,
-        placement
+        placement,
+        redis.Revision,
+        redis.Lifecycle is DeletingRedisLifecycle ? "Deleting" : "Active"
     );
 
     private static RedisSpecDto ToDto(this RedisSpec spec) => new(
@@ -46,11 +50,11 @@ public static class RedisDtoExtensions
         storage.SizeGb,
         storage.StorageProfileId
     );
-    
+
     public static RedisSpec ToDomain(this RedisSpecDto dto) => new(
         dto.Storage.ToDomain()
     );
-    
+
     private static Storage ToDomain(this StorageDto dto) => new(
         dto.SizeGb,
         dto.StorageProfileId

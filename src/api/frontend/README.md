@@ -6,6 +6,14 @@ the generic shell does not import resource providers.
 
 ## Module ownership
 
+Redis owns a paginated/searchable catalog and URL-backed create, overview and configuration tabs.
+Its single-target forms use backend-eligible storage/compute profiles and send `spec.storage` and
+tags. Updates preserve the existing compute snapshot unless a replacement profile is selected.
+Deletion is confirmed, deleting resources are read-only, and failed reconciliation can be retried.
+Native StatefulSet storage size is fixed after creation; Redis updates only compute and tags.
+`Applied` describes reconciliation; application connectivity is verified separately. Resource
+catalog links on Overview are rendered from module registrations, including PostgreSQL and Redis.
+
 Modules contribute view registrations, stable resource type identities, contextual commands and
 optional navigation panels. ResourceGroups owns the paginated group/resource tree; the shell renders
 registered panels without importing providers.

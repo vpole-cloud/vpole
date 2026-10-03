@@ -24,6 +24,8 @@ The suite covers:
   native provisioning, compute update/reload and credential UI without secret screenshots.
   The fixture selects native StatefulSet mode because the shared lab has no PostgreSQL operator;
   operator manifests and managed password rotation are validated in the owning feature suites.
+- Redis browser catalog/create/details/configuration, tags update and reload, confirmed
+  deletion, readable single-target placement and desktop/mobile light/dark screenshots.
 
 The GitHub stub serves deterministic `v1` and `v2` source archives and never records credentials,
 OAuth state, private keys, or bearer tokens.

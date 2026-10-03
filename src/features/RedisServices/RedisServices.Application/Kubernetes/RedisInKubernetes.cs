@@ -90,6 +90,11 @@ public readonly record struct RedisInKubernetes(
             {
                 ServiceName = ServiceName,
                 Replicas = 1,
+                PersistentVolumeClaimRetentionPolicy = new V1StatefulSetPersistentVolumeClaimRetentionPolicy
+                {
+                    WhenDeleted = "Delete",
+                    WhenScaled = "Retain"
+                },
                 Selector = new V1LabelSelector
                 {
                     MatchLabels = new Dictionary<string, string>

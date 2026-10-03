@@ -88,6 +88,69 @@ public sealed class DatabaseBrowserE2ETests(PoleE2EFixture fixture, ITestOutputH
         await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Overview", Exact = true }).ClickAsync();
     }
 
+    [Fact]
+    public async Task User_can_provision_edit_and_delete_Redis_with_readable_single_target_placement()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+        await using var resources = new TestResourceScope("Redis browser E2E");
+        var name = $"redis-{Guid.NewGuid():N}"[..18];
+        var group = await CreateGroupAsync(name, timeout.Token);
+        resources.Defer("delete Redis browser group", token => DeleteGroupAsync(group, token));
+        await PrepareStorageProfileAsync("pole/redis", timeout.Token);
+        await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+        await browserContainer.StartAsync(timeout.Token);
+        using var playwright = await Playwright.CreateAsync();
+        await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
+            new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
+        await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+        {
+            ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
+            IgnoreHTTPSErrors = true
+        });
+        var page = await context.NewPageAsync();
+        await LoginAsync(page);
+        var content = page.Locator("#app-content");
+        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Redis", Exact = true }).ClickAsync();
+        await content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = "Redis services", Exact = true }).WaitForAsync();
+        await CaptureAsync(page, "redis", "catalog");
+        await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "New Redis", Exact = true }).ClickAsync();
+        await content.GetByLabel("Resource group").SelectOptionAsync(group);
+        await content.GetByLabel("Name").FillAsync(name);
+        await content.GetByLabel("Tags").FillAsync("e2e, cache");
+        var create = content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Create Redis", Exact = true });
+        await Assertions.Expect(create).ToBeEnabledAsync(new LocatorAssertionsToBeEnabledOptions { Timeout = 20_000 });
+        await CaptureAsync(page, "redis", "create");
+        var accepted = await page.RunAndWaitForResponseAsync(() => create.ClickAsync(), response => response.Request.Method == "POST" && new Uri(response.Url).AbsolutePath.TrimEnd('/') == "/api/v1/redis-services");
+        Assert.Equal(202, accepted.Status);
+        var created = await accepted.JsonAsync() ?? throw new InvalidOperationException("Redis response is missing.");
+        var id = created.GetProperty("redisId").GetString()!;
+        resources.Defer("delete browser Redis", token => DeleteDatabaseAsync("redis-services", id, token));
+        await fixture.WaitForNamespaceCreationAsync(group, timeout.Token);
+        await WaitForAppliedAsync("redis-services", id, timeout.Token);
+        await content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = name, Exact = true }).WaitForAsync();
+        await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Refresh Redis", Exact = true }).ClickAsync();
+        await CaptureAsync(page, "redis", "overview");
+        await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Configuration", Exact = true }).ClickAsync();
+        Assert.True(await content.GetByLabel("Storage (GiB)", new LocatorGetByLabelOptions { Exact = true }).IsDisabledAsync());
+        await content.GetByLabel("Tags").FillAsync("e2e, updated");
+        await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Overview", Exact = true }).ClickAsync();
+        await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Configuration", Exact = true }).ClickAsync();
+        Assert.Contains("updated", await content.GetByLabel("Tags").InputValueAsync());
+        await CaptureAsync(page, "redis", "configuration");
+        var updated = await page.RunAndWaitForResponseAsync(() => content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Save changes", Exact = true }).ClickAsync(),
+            response => response.Request.Method == "PUT" && new Uri(response.Url).AbsolutePath.EndsWith($"/redis-services/{id}", StringComparison.Ordinal));
+        Assert.Equal(202, updated.Status);
+        await page.ReloadAsync();
+        await content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = "Redis configuration", Exact = true }).WaitForAsync();
+        Assert.Equal("1", await content.GetByLabel("Storage (GiB)", new LocatorGetByLabelOptions { Exact = true }).InputValueAsync());
+        Assert.Contains("updated", await content.GetByLabel("Tags").InputValueAsync());
+        await WaitForAppliedAsync("redis-services", id, timeout.Token);
+        await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Delete Redis", Exact = true }).ClickAsync();
+        var deleted = await page.RunAndWaitForResponseAsync(() => page.GetByRole(AriaRole.Dialog).GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Delete Redis", Exact = true }).ClickAsync(),
+            response => response.Request.Method == "DELETE" && new Uri(response.Url).AbsolutePath.EndsWith($"/redis-services/{id}", StringComparison.Ordinal));
+        Assert.Equal(202, deleted.Status);
+    }
+
     private async Task LoginAsync(IPage page)
     {
         await page.GotoAsync(fixture.FrontendBaseAddress.ToString(), new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
