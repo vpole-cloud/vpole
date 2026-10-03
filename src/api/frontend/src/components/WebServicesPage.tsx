@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, ConfirmationDialog, DataTable, EmptyState, Field, StatusBadge } from '../console/components'
+import { Button, ConfirmationDialog, DataTable, EmptyState, Field, StatusBadge } from '../ui/components'
 import type { LoadStatus, PaginatedResponse, ResourceGroup, WebService } from '../types'
 
 export function WebServicesPage({ items, resourceGroups, status, error, page, pageNumber, pageSize, search, onPage, onPageSize, onSearch, deletingId, deleteError, canManage, onRefresh, onCreate, onOpen, onDelete }:
@@ -16,7 +16,7 @@ export function WebServicesPage({ items, resourceGroups, status, error, page, pa
   const loadedTotalPages = page ? Math.max(1, Math.ceil(page.totalCount / page.pageSize)) : totalPages
 
   return <div className="web-service-catalog">
-    <header className="console-page-header"><div><h1>Web services</h1><p>Open a service to inspect its configuration, deployments and builds.</p></div>
+    <header className="ui-page-header"><div><h1>Web services</h1><p>Open a service to inspect its configuration, deployments and builds.</p></div>
       <div className="row-actions"><Button aria-label="Refresh web services" onClick={onRefresh}>Refresh</Button>
         <Button variant="primary" disabled={!canManage} onClick={onCreate}>New service</Button></div></header>
     <section className="panel resource-groups-list-panel"><div className="panel__header">
@@ -31,7 +31,7 @@ export function WebServicesPage({ items, resourceGroups, status, error, page, pa
       {status === 'success' && items.length === 0 && <EmptyState title={search ? 'No matching services.' : 'No web services yet.'}>
         {!search && 'Create your first service using a container image.'}</EmptyState>}
       {items.length > 0 && <DataTable label="Web service inventory" items={items} itemKey={(item) => item.id} columns={[
-        { id: 'name', label: 'Service', render: (item) => <><Button className="console-resource-link" onClick={() => onOpen(item.id)}>{item.name}</Button>
+        { id: 'name', label: 'Service', render: (item) => <><Button className="ui-resource-link" onClick={() => onOpen(item.id)}>{item.name}</Button>
           <small>{resourceGroups.find((group) => group.id === item.resourceGroupId)?.name ?? 'Unknown group'}</small></> },
         { id: 'image', label: 'Image', render: (item) => <code>{item.spec.image.server}/{item.spec.image.name}:{item.spec.image.tag}</code> },
         { id: 'placement', label: 'Deployments', render: (item) => <><StatusBadge tone="info">{item.deployments.length} target{item.deployments.length === 1 ? '' : 's'}</StatusBadge>

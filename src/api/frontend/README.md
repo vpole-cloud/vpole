@@ -1,18 +1,18 @@
-# Pole web console
+# Pole web UI
 
-The Vite/React console talks to Pole's authenticated API. Its initial static module boundary is
-in `src/console/contracts.ts`. `src/modules/index.ts` explicitly composes trusted bundled modules;
+The Vite/React UI talks to Pole's authenticated API. Its static module boundary is
+in `src/shell/contracts.ts`. `src/modules/index.ts` explicitly composes trusted bundled modules;
 the generic shell does not import resource providers.
 
 ## Module ownership
 
 Modules contribute view registrations, stable resource type identities and contextual commands.
-`createConsoleRegistry` rejects duplicate module/view/resource/command IDs and missing view
+`createAppRegistry` rejects duplicate module/view/resource/command IDs and missing view
 references. Providers own React views, hooks, DTOs and resource behavior. Registration metadata
 stays in `.ts` files and components in `.tsx` files so React Fast Refresh works.
 
 The shell exposes explicit auth, active tenant, API connection, navigation, theme and notification
-services through `useConsoleServices`. API functions remain centralized in `src/api.ts`; tenant
+services through `useAppServices`. API functions remain centralized in `src/api.ts`; tenant
 requests use bearer authentication and `X-Pole-Tenant-ID`. View access and disabled actions guide
 the user; the server remains authoritative for authorization.
 
@@ -85,7 +85,8 @@ providers' workspaces remain separate work.
 This slice does not complete #90's whole Git/image journey or #96's console release. GitOps
 ownership and source management belong to #88; runtime diagnostics and readiness belong to #8/#95.
 
-Shared components in `src/console/components.tsx` cover buttons, fields, tables, status, notices,
+The `src/shell` directory owns AppShell, AppContext, module contracts and navigation guards.
+Shared components in `src/ui/components.tsx` cover buttons, fields, tables, status, notices,
 empty/error states and accessible confirmation dialogs. Semantic tokens in `src/index.css` provide
 light/dark themes, with responsive layout in `src/App.css`.
 

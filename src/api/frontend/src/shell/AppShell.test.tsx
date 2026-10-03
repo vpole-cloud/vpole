@@ -2,17 +2,17 @@
 import { act, useEffect, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ConsoleShell } from './ConsoleShell'
-import { useConsoleServices } from './ConsoleContext'
-import { createConsoleRegistry } from './moduleRegistry'
-import { ConfirmationDialog } from './components'
-import type { ConsoleModule, ConsoleServices } from './contracts'
+import { AppShell } from './AppShell'
+import { useAppServices } from './AppContext'
+import { createAppRegistry } from './moduleRegistry'
+import { ConfirmationDialog } from '../ui/components'
+import type { AppModule, AppServices } from './contracts'
 import type { Tenant } from '../types'
 import { readIntegrationNavigation } from '../integrationsState'
 
 let container: HTMLDivElement
 let root: Root
-const auth: ConsoleServices['auth'] = {
+const auth: AppServices['auth'] = {
   initialized: true, authenticated: true, userId: 'user-a', userName: 'Developer',
   isPlatformAdmin: false, login: vi.fn(), logout: vi.fn(),
 }
@@ -36,13 +36,13 @@ afterEach(async () => {
   vi.restoreAllMocks()
 })
 
-describe('console module composition', () => {
+describe('app module composition', () => {
   it('reports an unregistered URL view explicitly and clears its resource selection on recovery', async () => {
     window.history.replaceState({}, '', '/?view=removed-provider&tenant=alpha&resource=old-resource')
-    const registry = createConsoleRegistry([{ id: 'home', views: [
+    const registry = createAppRegistry([{ id: 'home', views: [
       { id: 'overview', label: 'Overview', component: () => <p>Home</p>, access: 'public' },
     ] }])
-    await act(async () => { root.render(<ConsoleShell registry={registry} auth={auth} api={{ baseUrl: '/api' }}
+    await act(async () => { root.render(<AppShell registry={registry} auth={auth} api={{ baseUrl: '/api' }}
       tenants={tenants('alpha')} initialViewId="overview" />) })
     expect(container.textContent).toContain('This view is unavailable.')
     await act(async () => { button('Open overview').click() })
@@ -53,18 +53,18 @@ describe('console module composition', () => {
   it('navigates an independent module and passes current services to its view and command', async () => {
     const command = vi.fn()
     function ExtraView() {
-      const { api, tenant: activeTenant, theme } = useConsoleServices()
+      const { api, tenant: activeTenant, theme } = useAppServices()
       return <p>{api.baseUrl} / {activeTenant.active?.id} / {theme.value}</p>
     }
-    const extra: ConsoleModule = {
+    const extra: AppModule = {
       id: 'extra', views: [{ id: 'extra', label: 'Test resource', component: ExtraView, access: 'tenant' }],
       resourceTypes: [{ id: 'test/resource', label: 'Test', viewId: 'extra' }],
       commands: [{ id: 'test.command', label: 'Run test', viewId: 'extra', run: command }],
     }
-    const registry = createConsoleRegistry([
+    const registry = createAppRegistry([
       { id: 'home', views: [{ id: 'overview', label: 'Overview', component: () => <p>Home</p>, access: 'public' }] }, extra,
     ])
-    await act(async () => { root.render(<ConsoleShell registry={registry} auth={auth} api={{ baseUrl: '/api', token: 'test-token' }}
+    await act(async () => { root.render(<AppShell registry={registry} auth={auth} api={{ baseUrl: '/api', token: 'test-token' }}
       tenants={tenants('alpha')} initialViewId="overview" />) })
     expect(container.querySelectorAll('.tenant-selector select')).toHaveLength(1)
     expect(container.querySelector('.tenant-selector option')?.textContent).toBe('alpha · Owner')
@@ -84,17 +84,17 @@ describe('console module composition', () => {
 
   it.each(['module', 'view', 'resource type', 'command'])('rejects duplicate %s identifiers with a useful diagnostic', (category) => {
     const view = { id: 'view', label: 'View', component: () => null, access: 'public' as const }
-    const first: ConsoleModule = { id: 'first', views: [view] }
-    const second: ConsoleModule = { id: 'second', views: [{ ...view, id: 'second-view' }] }
+    const first: AppModule = { id: 'first', views: [view] }
+    const second: AppModule = { id: 'second', views: [{ ...view, id: 'second-view' }] }
     if (category === 'module') second.id = first.id
     if (category === 'view') second.views = [view]
     if (category === 'resource type') first.resourceTypes = second.resourceTypes = [{ id: 'resource', label: 'Resource', viewId: view.id }]
     if (category === 'command') first.commands = second.commands = [{ id: 'command', label: 'Command', viewId: view.id, run: () => {} }]
-    expect(() => createConsoleRegistry([first, second])).toThrow(`Duplicate console ${category} identifier`)
+    expect(() => createAppRegistry([first, second])).toThrow(`Duplicate app ${category} identifier`)
   })
 
   it('rejects a resource registration pointing at a missing view', () => {
-    expect(() => createConsoleRegistry([{ id: 'broken', views: [],
+    expect(() => createAppRegistry([{ id: 'broken', views: [],
       resourceTypes: [{ id: 'resource', label: 'Resource', viewId: 'missing' }] }])).toThrow('references missing view missing')
   })
 
@@ -102,7 +102,7 @@ describe('console module composition', () => {
     let completeOld!: () => void
     const oldResult = new Promise<void>((resolve) => { completeOld = resolve })
     function AsyncView() {
-      const services = useConsoleServices()
+      const services = useAppServices()
       const id = services.tenant.active!.id
       const publish = services.notifications.publish
       const [value, setValue] = useState('loading')
@@ -115,8 +115,8 @@ describe('console module composition', () => {
       }, [id, publish])
       return <p>Result: {value}</p>
     }
-    const registry = createConsoleRegistry([{ id: 'async', views: [{ id: 'async', label: 'Async', component: AsyncView, access: 'tenant' }] }])
-    const render = (id: string) => root.render(<ConsoleShell registry={registry} auth={auth} api={{ baseUrl: '/api' }}
+    const registry = createAppRegistry([{ id: 'async', views: [{ id: 'async', label: 'Async', component: AsyncView, access: 'tenant' }] }])
+    const render = (id: string) => root.render(<AppShell registry={registry} auth={auth} api={{ baseUrl: '/api' }}
       tenants={tenants(id)} initialViewId="async" />)
     await act(async () => { render('alpha') })
     await act(async () => { render('beta') })
@@ -129,8 +129,8 @@ describe('console module composition', () => {
 
   it('gates tenant views after logout', async () => {
     const view = vi.fn(() => <p>Private resource</p>)
-    const registry = createConsoleRegistry([{ id: 'private', views: [{ id: 'private', label: 'Private', component: view, access: 'tenant' }] }])
-    await act(async () => { root.render(<ConsoleShell registry={registry} auth={{ ...auth, authenticated: false }}
+    const registry = createAppRegistry([{ id: 'private', views: [{ id: 'private', label: 'Private', component: view, access: 'tenant' }] }])
+    await act(async () => { root.render(<AppShell registry={registry} auth={{ ...auth, authenticated: false }}
       api={{ baseUrl: '/api' }} tenants={tenants('alpha')} initialViewId="private" />) })
     expect(view).not.toHaveBeenCalled()
     expect(container.textContent).toContain('Sign in to continue.')
@@ -138,14 +138,14 @@ describe('console module composition', () => {
 
   it('clears tenant context and existing notifications when the account logs out', async () => {
     function PublicProbe() {
-      const { tenant: activeTenant, notifications } = useConsoleServices()
+      const { tenant: activeTenant, notifications } = useAppServices()
       const publish = notifications.publish
       const id = activeTenant.active?.id
       useEffect(() => { if (id) publish(`Notice for ${id}`) }, [id, publish])
       return <p>Context: {id ?? 'guest'}</p>
     }
-    const registry = createConsoleRegistry([{ id: 'public', views: [{ id: 'public', label: 'Public', component: PublicProbe, access: 'public' }] }])
-    const render = (authenticated: boolean) => root.render(<ConsoleShell registry={registry} auth={{ ...auth, authenticated }}
+    const registry = createAppRegistry([{ id: 'public', views: [{ id: 'public', label: 'Public', component: PublicProbe, access: 'public' }] }])
+    const render = (authenticated: boolean) => root.render(<AppShell registry={registry} auth={{ ...auth, authenticated }}
       api={{ baseUrl: '/api' }} tenants={tenants('alpha')} initialViewId="public" />)
     await act(async () => { render(true) })
     expect(container.textContent).toContain('Notice for alpha')

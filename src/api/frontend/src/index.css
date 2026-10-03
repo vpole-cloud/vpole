@@ -1,4 +1,4 @@
-/* Shared console tokens also style the existing feature screens during migration. */
+/* Shared UI tokens also style the existing feature screens during migration. */
 :root {
   font-family: "Inter", "Segoe UI", system-ui, sans-serif;
   line-height: 1.5;

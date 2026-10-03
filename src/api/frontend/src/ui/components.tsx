@@ -7,7 +7,7 @@ export function Button({ variant = 'default', className = '', type = 'button', .
 }
 
 export function Notice({ children, tone = 'info' }: { children: ReactNode; tone?: 'info' | 'error' | 'success' }) {
-  return <div className={`console-notice console-notice--${tone}`} role={tone === 'error' ? 'alert' : 'status'}>{children}</div>
+  return <div className={`ui-notice ui-notice--${tone}`} role={tone === 'error' ? 'alert' : 'status'}>{children}</div>
 }
 
 export function EmptyState({ title, children, error = false }: { title: string; children?: ReactNode; error?: boolean }) {
@@ -35,8 +35,8 @@ export interface TableColumn<T> {
 
 export function DataTable<T>({ label, items, columns, itemKey, selectedKey }:
   { label: string; items: readonly T[]; columns: readonly TableColumn<T>[]; itemKey: (item: T) => string; selectedKey?: string | null }) {
-  return <div className="console-table-scroll" tabIndex={0} role="region" aria-label={label}>
-    <table className="console-table"><caption className="visually-hidden">{label}</caption>
+  return <div className="ui-table-scroll" tabIndex={0} role="region" aria-label={label}>
+    <table className="ui-table"><caption className="visually-hidden">{label}</caption>
       <thead><tr>{columns.map((column) => <th scope="col" key={column.id}>{column.label}</th>)}</tr></thead>
       <tbody>{items.map((item) => <tr key={itemKey(item)} className={itemKey(item) === selectedKey ? 'is-selected' : ''}>
         {columns.map((column) => <td key={column.id}>{column.render(item)}</td>)}
@@ -60,12 +60,12 @@ export function ConfirmationDialog({ title, children, confirmLabel, busy = false
       previousFocus?.focus()
     }
   }, [])
-  return <dialog className="console-dialog" ref={dialog} aria-labelledby={titleId} onCancel={(event) => {
+  return <dialog className="ui-dialog" ref={dialog} aria-labelledby={titleId} onCancel={(event) => {
     event.preventDefault()
     if (!busy) onCancel()
   }}>
     <h2 id={titleId}>{title}</h2><div>{children}</div>
-    <div className="console-dialog__actions">
+    <div className="ui-dialog__actions">
       <button className="button" ref={cancel} disabled={busy} onClick={onCancel} type="button">Cancel</button>
       <Button variant="danger" disabled={busy} onClick={onConfirm}>{busy ? 'Deleting…' : confirmLabel}</Button>
     </div>

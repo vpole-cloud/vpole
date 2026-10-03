@@ -2,12 +2,12 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { ConsoleShell } from '../../console/ConsoleShell'
-import { createConsoleRegistry } from '../../console/moduleRegistry'
+import { AppShell } from '../../shell/AppShell'
+import { createAppRegistry } from '../../shell/moduleRegistry'
 import { webServicesModule } from './WebServicesModule'
 import type { IsolationScope, WebService } from '../../types'
 
-const registry = createConsoleRegistry([
+const registry = createAppRegistry([
   webServicesModule,
   { id: 'test-groups', views: [{ id: 'resource-groups', label: 'Resource groups', component: () => <p>Group provider</p>, access: 'tenant' }] },
 ])
@@ -100,7 +100,7 @@ afterEach(async () => {
 
 function render(tenantId = 'alpha', role: 'Owner' | 'Viewer' = 'Owner', authenticated = true) {
   const tenant = { id: tenantId, name: tenantId, role, isDefault: true }
-  root.render(<ConsoleShell registry={registry} initialViewId="web-services"
+  root.render(<AppShell registry={registry} initialViewId="web-services"
     api={{ baseUrl: 'http://localhost', token: 'test-token' }}
     auth={{ initialized: true, authenticated, userId: 'user', isPlatformAdmin: false, login: () => {}, logout: () => {} }}
     tenants={{ items: [tenant, { ...tenant, id: 'beta', name: 'beta' }], activeTenant: tenant, activeTenantId: tenantId,

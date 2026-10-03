@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchIsolationScopes } from '../../api'
 import { WebServiceForm } from '../../components/WebServiceForm'
-import { useConsoleServices } from '../../console/ConsoleContext'
-import { useUnsavedChanges } from '../../console/useUnsavedChanges'
+import { useAppServices } from '../../shell/AppContext'
+import { useUnsavedChanges } from '../../shell/useUnsavedChanges'
 import { useWebServicesManager } from '../../hooks/useWebServicesManager'
 import type { ResourceGroup } from '../../types'
 import { createId } from './workspaceState'
 
 export function NewWebServiceView({ groups, onCreated, onDirtyChange }:
   { groups: ResourceGroup[]; onCreated: (id: string, open: boolean) => void; onDirtyChange: (id: string, dirty: boolean) => void }) {
-  const { api, notifications } = useConsoleServices()
+  const { api, notifications } = useAppServices()
   const loadIsolationScopes = useCallback((groupId: string, signal?: AbortSignal) =>
     fetchIsolationScopes(api.baseUrl, groupId, api.token, api.tenantId, signal), [api.baseUrl, api.token, api.tenantId])
   const manager = useWebServicesManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId,

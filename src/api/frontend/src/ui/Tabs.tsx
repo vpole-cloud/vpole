@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, type ReactNode } from 'react'
 
-export interface ConsoleTab {
+export interface TabItem {
   id: string
   label: string
   dirty?: boolean
@@ -8,7 +8,7 @@ export interface ConsoleTab {
 }
 
 export function Tabs({ id, label, tabs, activeId, onSelect, variant = 'workspace' }:
-  { id: string; label: string; tabs: readonly ConsoleTab[]; activeId: string; onSelect: (id: string) => void; variant?: 'workspace' | 'section' }) {
+  { id: string; label: string; tabs: readonly TabItem[]; activeId: string; onSelect: (id: string) => void; variant?: 'workspace' | 'section' }) {
   const list = useRef<HTMLDivElement>(null)
   const layout = tabs.map((tab) => `${tab.id}:${tab.label}:${Boolean(tab.dirty)}`).join('|')
   useLayoutEffect(() => {
@@ -20,8 +20,8 @@ export function Tabs({ id, label, tabs, activeId, onSelect, variant = 'workspace
     if (tabBounds.left < listBounds.left) element.scrollLeft -= listBounds.left - tabBounds.left
     else if (tabBounds.right > listBounds.right) element.scrollLeft += tabBounds.right - listBounds.right
   }, [activeId, layout])
-  return <div ref={list} className={`console-tabs console-tabs--${variant}`} role="tablist" aria-label={label}>
-    {tabs.map((tab, index) => <div className={`console-tab${tab.id === activeId ? ' is-active' : ''}`} role="presentation" key={tab.id}>
+  return <div ref={list} className={`ui-tabs ui-tabs--${variant}`} role="tablist" aria-label={label}>
+    {tabs.map((tab, index) => <div className={`ui-tab${tab.id === activeId ? ' is-active' : ''}`} role="presentation" key={tab.id}>
       <button type="button" role="tab" id={`${id}-tab-${tab.id}`} aria-controls={`${id}-panel-${tab.id}`}
         aria-selected={tab.id === activeId} tabIndex={tab.id === activeId ? 0 : -1}
         aria-label={`${tab.label}${tab.dirty ? ', unsaved changes' : ''}`} title={tab.label}
@@ -39,8 +39,8 @@ export function Tabs({ id, label, tabs, activeId, onSelect, variant = 'workspace
           onSelect(tabs[next].id)
           event.currentTarget.closest('[role="tablist"]')!
             .querySelectorAll<HTMLButtonElement>('[role="tab"]')[next].focus()
-        }}><span>{tab.label}</span>{tab.dirty && <span className="console-tab__dirty" aria-hidden="true">●</span>}</button>
-      {tab.onClose && <button className="console-tab__close" type="button" tabIndex={-1}
+        }}><span>{tab.label}</span>{tab.dirty && <span className="ui-tab__dirty" aria-hidden="true">●</span>}</button>
+      {tab.onClose && <button className="ui-tab__close" type="button" tabIndex={-1}
         aria-label={`Close ${tab.label}`} title={`Close ${tab.label} (Delete)`} onClick={tab.onClose}>×</button>}
     </div>)}
   </div>

@@ -128,7 +128,7 @@ public sealed class BrowserSmokeE2ETests(
             Assert.Equal(1, await page.GetByRole(AriaRole.Combobox, new PageGetByRoleOptions { Name = "Tenant", Exact = true }).CountAsync());
             Assert.Equal(0, await page.GetByText("Active tenant", new PageGetByTextOptions { Exact = true }).CountAsync());
             Assert.Equal(0, await page.GetByText("Session", new PageGetByTextOptions { Exact = true }).CountAsync());
-            Assert.Equal(0, await page.Locator("#console-content").GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Resource groups", Exact = true }).CountAsync());
+            Assert.Equal(0, await page.Locator("#app-content").GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Resource groups", Exact = true }).CountAsync());
             Assert.Equal(0, await page.Locator("form:not(.inventory-search):visible").CountAsync());
             await CaptureWorkspaceAsync(page, name, "catalog");
             var scopesResponseTask = page.WaitForResponseAsync(response => response.Request.Method == HttpMethod.Get.Method &&

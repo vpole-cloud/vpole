@@ -3,7 +3,7 @@ import type { Tenant } from '../types'
 
 export type Theme = 'light' | 'dark'
 
-export interface ConsoleServices {
+export interface AppServices {
   auth: {
     initialized: boolean
     authenticated: boolean
@@ -26,36 +26,36 @@ export interface ConsoleServices {
   notifications: { publish: (message: string, tone?: 'info' | 'error') => void }
 }
 
-export interface ConsoleView {
+export interface AppView {
   id: string
   label: string
   component: ComponentType
   access: 'public' | 'authenticated' | 'tenant'
 }
 
-export interface ConsoleResourceType {
+export interface ResourceTypeRegistration {
   id: string
   label: string
   viewId: string
 }
 
-export interface ConsoleCommand {
+export interface AppCommand {
   id: string
   label: string
   viewId: string
-  available?: (context: Pick<ConsoleServices, 'auth' | 'tenant'>) => boolean
-  run: (services: ConsoleServices) => void
+  available?: (context: Pick<AppServices, 'auth' | 'tenant'>) => boolean
+  run: (services: AppServices) => void
 }
 
-export interface ConsoleModule {
+export interface AppModule {
   id: string
-  views: readonly ConsoleView[]
-  resourceTypes?: readonly ConsoleResourceType[]
-  commands?: readonly ConsoleCommand[]
+  views: readonly AppView[]
+  resourceTypes?: readonly ResourceTypeRegistration[]
+  commands?: readonly AppCommand[]
 }
 
-export interface ConsoleRegistry {
-  views: readonly ConsoleView[]
-  resourceTypes: readonly ConsoleResourceType[]
-  commands: readonly ConsoleCommand[]
+export interface AppRegistry {
+  views: readonly AppView[]
+  resourceTypes: readonly ResourceTypeRegistration[]
+  commands: readonly AppCommand[]
 }

@@ -10,36 +10,36 @@ import { useDomainZonesManager } from '../../hooks/useDomainZonesManager'
 import { useGitIntegrationsManager } from '../../hooks/useGitIntegrationsManager'
 import { useStorageSettingsManager } from '../../hooks/useStorageSettingsManager'
 import { readIntegrationNavigation } from '../../integrationsState'
-import { useConsoleServices } from '../../console/ConsoleContext'
+import { useAppServices } from '../../shell/AppContext'
 
 function useTenantApiOptions() {
-  const { api, tenant } = useConsoleServices()
+  const { api, tenant } = useAppServices()
   return { apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId, enabled: Boolean(tenant.active) }
 }
 
 export function OverviewView() {
-  const { auth } = useConsoleServices()
+  const { auth } = useAppServices()
   const overview = useOverviewData(useTenantApiOptions())
   return <OverviewPage authState={auth}
     onValidateIdentity={() => { void overview.runIdentityCheck() }} overview={overview} />
 }
 
 export function ResourceGroupsView() {
-  const { tenant } = useConsoleServices()
+  const { tenant } = useAppServices()
   const groups = useResourceGroupsManager(useTenantApiOptions())
   return <ResourceGroupsPage {...groups} onRefresh={groups.refresh} onCreate={groups.create}
     onUpdate={groups.update} onDelete={groups.remove} canManage={tenant.canManage} />
 }
 
 export function DomainsView() {
-  const { tenant } = useConsoleServices()
+  const { tenant } = useAppServices()
   const zones = useDomainZonesManager(useTenantApiOptions())
   return <DomainZonesPage {...zones} onRefresh={zones.refresh} onCreate={zones.create}
     onDelete={zones.remove} canManage={tenant.canManage} />
 }
 
 export function IntegrationsView() {
-  const { tenant, navigation: { search, setSearch } } = useConsoleServices()
+  const { tenant, navigation: { search, setSearch } } = useAppServices()
   const [notice, setNotice] = useState(() => readIntegrationNavigation(window.location.search).githubNotice)
   const manager = useGitIntegrationsManager({ ...useTenantApiOptions(),
     preferredConnectionId: notice?.status === 'connected' ? notice.connectionId : undefined })
@@ -54,7 +54,7 @@ export function IntegrationsView() {
 }
 
 export function StorageView() {
-  const { api, auth } = useConsoleServices()
+  const { api, auth } = useAppServices()
   const storage = useStorageSettingsManager({ apiBaseUrl: api.baseUrl, token: api.token, enabled: auth.authenticated })
   return <StorageSettingsPage {...storage} onRefresh={storage.refresh} onCreate={storage.create}
     onUpdate={storage.update} canManage={auth.isPlatformAdmin || storage.status === 'success'} />

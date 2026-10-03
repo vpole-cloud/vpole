@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchWebService } from '../../api'
-import type { ConsoleServices } from '../../console/contracts'
+import type { AppServices } from '../../shell/contracts'
 import type { LoadStatus, WebService } from '../../types'
 
-export function useWebService(id: string, api: ConsoleServices['api'], refreshVersion: number) {
+export function useWebService(id: string, api: AppServices['api'], refreshVersion: number) {
   const [service, setService] = useState<WebService | null>(null)
   const [status, setStatus] = useState<LoadStatus>('loading')
   const [error, setError] = useState('')
