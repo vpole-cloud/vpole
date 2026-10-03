@@ -27,7 +27,7 @@ internal sealed class MongoRotateManagedSecret(
         var kubernetesType = ((ProviderManagedSecret)current.Management).KubernetesType == KubernetesSecretType.BasicAuthentication
             ? ManagedSecretKubernetesType.BasicAuthentication : ManagedSecretKubernetesType.Opaque;
         if (kubernetesType != prepared.KubernetesType || current.Id != prepared.SecretId || current.CurrentVersion != expectedVersion || current.Name != prepared.Name ||
-            current.Bindings.Any(x => x.KeyMappings.Keys.Except(prepared.Keys).Any()))
+            current.Bindings.Any(x => x.KeyMappings.Keys.Concat(x.RequiredKeys).Except(prepared.Keys).Any()))
             return new ManagedSecretChanged();
         var now = clock.GetUtcNow().UtcDateTime;
         var rotated = current.Rotate(prepared.Keys, now);

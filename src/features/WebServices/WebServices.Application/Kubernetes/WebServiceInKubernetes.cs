@@ -80,6 +80,8 @@ public readonly record struct WebServiceInKubernetes(
     int FixedReplicas,
     WorkloadIdentityLabels PlacementIdentity)
 {
+    public ImmutableList<V1EnvVar> ResolvedEnvironment { get; init; } = [];
+
     public static WebServiceInKubernetes Create(
         WebService webService,
         string kubernetesNamespace,
@@ -153,6 +155,11 @@ public readonly record struct WebServiceInKubernetes(
 
     private V1PodSpec BuildPodSpec()
     {
+        var expectedNames = WebService.Spec.Config.ConnectionEnvironmentReferences.Keys.Concat(WebService.Spec.Config.SecretEnvironmentReferences.Keys).ToArray();
+        if (expectedNames.Distinct(StringComparer.Ordinal).Count() != expectedNames.Length ||
+            expectedNames.Intersect(WebService.Spec.Config.EnvironmentVariables.Keys, StringComparer.Ordinal).Any() ||
+            !expectedNames.Order(StringComparer.Ordinal).SequenceEqual(ResolvedEnvironment.Select(item => item.Name).Order(StringComparer.Ordinal)))
+            throw new InvalidOperationException("Logical dependency references must be resolved without environment name collisions before rendering.");
         var podSpec = new V1PodSpec
         {
             ImagePullSecrets = WebService.Spec.Image.SecretName is null
@@ -175,6 +182,7 @@ public readonly record struct WebServiceInKubernetes(
                             }
                         }
                     ],
+                    Env = ResolvedEnvironment.ToList(),
                     StartupProbe = WebService.Spec.Probes.Startup.ToV1Probe(),
                     LivenessProbe = WebService.Spec.Probes.Liveness.ToV1Probe(),
                     ReadinessProbe = WebService.Spec.Probes.Readiness.ToV1Probe(),

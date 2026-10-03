@@ -83,6 +83,7 @@ public union UpdateWebServiceError(
     ResourceDeploymentMutationError,
     AdvanceResourceDeploymentRevisionError,
     WebServiceConnectionConflict,
+    WebServiceDependencyUnavailable,
     WebServiceUpdateConflict,
     QuotaExecutionError);
 
@@ -90,12 +91,14 @@ public union RedeployWebServiceError(
     WebServiceLifecycleMutationStateError,
     ResourceDeploymentMutationError,
     WebServiceConnectionConflict,
+    WebServiceDependencyUnavailable,
     WebServiceUpdateConflict);
 
 public union RollbackWebServiceError(
     RollbackWebServiceStateError,
     ResourceDeploymentMutationError,
     WebServiceConnectionConflict,
+    WebServiceDependencyUnavailable,
     WebServiceUpdateConflict,
     QuotaExecutionError);
 
@@ -103,6 +106,7 @@ public union UpdateWebServiceImageTagError(
     WebServiceImageTagStateError,
     ResourceDeploymentMutationError,
     WebServiceConnectionConflict,
+    WebServiceDependencyUnavailable,
     WebServiceUpdateConflict);
 
 public union UpdateWebServiceDeploymentError(
@@ -111,6 +115,7 @@ public union UpdateWebServiceDeploymentError(
     ResourceDeploymentMutationError,
     AdvanceResourceDeploymentRevisionError,
     WebServiceConnectionConflict,
+    WebServiceDependencyUnavailable,
     WebServiceUpdateConflict,
     QuotaExecutionError);
 
@@ -119,6 +124,7 @@ public union DeleteWebServiceDeploymentError(
     ResourceDeploymentMutationError,
     AdvanceResourceDeploymentRevisionError,
     WebServiceConnectionConflict,
+    WebServiceDependencyUnavailable,
     WebServiceUpdateConflict,
     QuotaExecutionError);
 
@@ -127,6 +133,7 @@ public union RetryWebServiceDeploymentError(
     ResourceDeploymentMutationError,
     AdvanceResourceDeploymentRevisionError,
     WebServiceConnectionConflict,
+    WebServiceDependencyUnavailable,
     WebServiceUpdateConflict);
 
 public union WebServiceDeploymentHostnameError(
@@ -136,6 +143,7 @@ public union WebServiceDeploymentHostnameError(
     ResourceDeploymentMutationError,
     AdvanceResourceDeploymentRevisionError,
     WebServiceConnectionConflict,
+    WebServiceDependencyUnavailable,
     WebServiceUpdateConflict);
 
 public sealed record WebServiceHostnameAttachmentUnavailable(string WebServiceId);

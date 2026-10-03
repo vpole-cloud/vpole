@@ -537,6 +537,10 @@
 }
 
 .database-form { display: flex; flex-direction: column; gap: 18px; }
+.dependency-workflow { display: flex; flex-direction: column; gap: 18px; }
+.dependency-connection { padding-block: 16px; border-bottom: 1px solid var(--color-border); }
+.dependency-reference { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 14px; align-items: end; padding-block: 14px; }
+.dependency-host { overflow-wrap: anywhere; }
 .database-form fieldset { min-width: 0; margin: 0; padding: 16px; border: 1px solid var(--color-border); border-radius: 12px; }
 .database-form legend { padding: 0 6px; font-weight: 600; }
 

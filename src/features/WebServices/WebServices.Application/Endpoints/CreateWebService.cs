@@ -493,6 +493,9 @@ public sealed class CreateWebServiceRequestBodyValidator : AbstractValidator<Cre
         RuleFor(body => body.Name).NotEmpty().MaximumLength(30);
         RuleFor(body => body.ResourceGroupId).NotEmpty().MongoObjectId("Resource group ID");
         RuleFor(body => body.Spec).NotNull().SetValidator(new WebServiceSpecDtoValidator());
+        RuleFor(body => body.Spec).Must(spec => spec?.Config is null ||
+            (spec.Config.ConnectionEnvironmentReferences?.Count ?? 0) == 0 && (spec.Config.SecretEnvironmentReferences?.Count ?? 0) == 0)
+            .WithMessage("Create the web service before authorizing dependency references.");
         RuleFor(body => body.Placement).NotNull().SetValidator(new WebServicePlacementRequestValidator());
         RuleFor(body => body.Exposure).IsInEnum();
         RuleFor(body => body)
@@ -560,5 +563,24 @@ public sealed class WebServiceSpecDtoValidator : AbstractValidator<WebServiceSpe
         RuleFor(spec => spec.Image).NotNull();
         RuleFor(spec => spec.Probes).NotNull();
         RuleFor(spec => spec.Config).NotNull();
+        RuleFor(spec => spec.Config).Must(ValidDependencyReferences)
+            .WithMessage("Use distinct environment names and valid logical connection or Secret references.");
+    }
+
+    private static bool ValidDependencyReferences(WebServiceConfigDto? config)
+    {
+        if (config is null) return true;
+        var connections = config.ConnectionEnvironmentReferences;
+        var secrets = config.SecretEnvironmentReferences;
+        if (connections is null || secrets is null || config.EnvironmentVariables is null) return false;
+        if (connections.Count + secrets.Count > 64) return false;
+        var names = config.EnvironmentVariables.Keys.Concat(connections.Keys).Concat(secrets.Keys).ToArray();
+        if (names.Distinct(StringComparer.Ordinal).Count() != names.Length || connections.Keys.Concat(secrets.Keys).Any(name =>
+                name.Length > 128 || !System.Text.RegularExpressions.Regex.IsMatch(name, "^[A-Za-z_][A-Za-z0-9_]*$"))) return false;
+        return connections.Values.All(reference => reference is not null && MongoDB.Bson.ObjectId.TryParse(reference.ConnectionId, out _) &&
+                   (reference.ValueKind is "Host" or "Port" && reference.ConfigurationKey is null || reference.ValueKind == "Configuration" &&
+                       !string.IsNullOrWhiteSpace(reference.ConfigurationKey) && reference.ConfigurationKey.Length <= 128 && !reference.ConfigurationKey.Any(char.IsControl))) &&
+               secrets.Values.All(reference => reference is not null && MongoDB.Bson.ObjectId.TryParse(reference.SecretId, out _) &&
+                   reference.Key is { Length: > 0 and <= 253 } && System.Text.RegularExpressions.Regex.IsMatch(reference.Key, "^[A-Za-z0-9._-]+$"));
     }
 }

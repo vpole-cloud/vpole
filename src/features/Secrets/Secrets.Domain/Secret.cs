@@ -33,6 +33,12 @@ public sealed record SecretBinding(
     SecretDeploymentSelection Selection,
     ImmutableDictionary<string, string> KeyMappings)
 {
+    public ImmutableArray<string> RequiredKeys
+    {
+        get => field.IsDefault ? [] : field;
+        init;
+    } = [];
+
     public static SecretBinding Create(
         string id,
         string consumerType,
@@ -85,13 +91,14 @@ public sealed record Secret(
     DateTime UpdatedAtUtc)
 {
     public const int MaximumBindings = 256;
+    public long ReferenceFence { get; init; }
 
     public Secret Rotate(
         IEnumerable<string> keys,
         DateTime now)
     {
         var ownedKeys = keys.ToImmutableArray();
-        if (Bindings.Any(binding => binding.KeyMappings.Keys.Except(ownedKeys).Any()))
+        if (Bindings.Any(binding => binding.KeyMappings.Keys.Concat(binding.RequiredKeys).Except(ownedKeys).Any()))
             throw new InvalidOperationException("Rotation must retain keys used by bindings.");
         return this with
         {

@@ -23,6 +23,49 @@ namespace Pole.Tests.Integration.WebServices;
 public sealed class WebServiceResourceDeploymentAdapterTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Apply_rejects_unavailable_or_pending_Secret_reference_before_any_native_workload_write(bool pending)
+    {
+        var webService = CreateWebService();
+        webService = webService with
+        {
+            Spec = webService.Spec with
+            {
+                Config = webService.Spec.Config with
+                {
+                    SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty.Add("APPLICATION_TOKEN", new("secret", "token"))
+                }
+            }
+        };
+        var reader = new RecordingReader(webService);
+        using var handler = new RecordingKubernetesHandler();
+        using var kubernetes = new Kubernetes(new KubernetesClientConfiguration { Host = "http://kubernetes.test" }, handler);
+        var subject = new WebServiceResourceDeploymentAdapter(reader.LoadSnapshot, reader.LoadById, reader.LoadExactDeployment, UnexpectedRegistryAccess,
+            new FixedKubernetesClientProvider(kubernetes), (_, _) => throw new InvalidOperationException("Unresolved references must not reach policy or workload writes."), EmptyConnectionReferences,
+            (tenant, type, consumer, deployment, references, _) =>
+            {
+                Assert.Equal(TenantId, tenant); Assert.Equal(ResourceId, consumer); Assert.Equal(DeploymentId, deployment);
+                Assert.Equal("token", Assert.Single(references).Key);
+                return Task.FromResult<Pole.Features.Secrets.Contracts.EnsureConsumerSecretProjectionsOutcome>(pending
+                    ? new Pole.Features.Secrets.Contracts.ConsumerSecretProjectionPending("secret")
+                    : new Pole.Features.Secrets.Contracts.ConsumerSecretReferenceUnavailable("secret", "SecretBindingUnavailable"));
+            });
+        var result = Assert.IsType<ResourceDeploymentAdapterResult.Failed>(await subject.ApplyAsync(CreateContext(includeIngress: true)));
+        Assert.Equal(pending ? "SecretProjectionPending" : "SecretConfigurationUnavailable", result.FailureCode);
+        Assert.Empty(handler.Requests);
+    }
+
+    private static Task<Pole.Features.ResourceConnections.Contracts.ResolveResourceConnectionReferencesOutcome> EmptyConnectionReferences(
+        string tenantId, ResourceTypeId type, string sourceId, string deploymentId,
+        IReadOnlyCollection<Pole.Features.ResourceConnections.Contracts.ResourceConnectionValueReference> references, CancellationToken ct) =>
+        Task.FromResult<Pole.Features.ResourceConnections.Contracts.ResolveResourceConnectionReferencesOutcome>(new Pole.Features.ResourceConnections.Contracts.ResolvedResourceConnectionValues([]));
+    private static Task<Pole.Features.Secrets.Contracts.EnsureConsumerSecretProjectionsOutcome> EmptySecretReferences(
+        string tenantId, ResourceTypeId type, string consumerId, string deploymentId,
+        IReadOnlyCollection<Pole.Features.Secrets.Contracts.ConsumerSecretKeyReference> references, CancellationToken ct) =>
+        Task.FromResult<Pole.Features.Secrets.Contracts.EnsureConsumerSecretProjectionsOutcome>(new Pole.Features.Secrets.Contracts.ConsumerSecretProjectionKeys([]));
+
+    [Theory]
     [InlineData("0", "TCP")]
     [InlineData("65536", "TCP")]
     [InlineData("8080", "UDP")]
@@ -38,7 +81,9 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             reader.LoadExactDeployment,
             UnexpectedRegistryAccess,
             new FixedKubernetesClientProvider(kubernetes),
-            (_, _) => throw new InvalidOperationException("Invalid ports must not reach the policy writer."));
+            (_, _) => throw new InvalidOperationException("Invalid ports must not reach the policy writer."),
+            EmptyConnectionReferences,
+            EmptySecretReferences);
 
         var result = await subject.ApplyAsync(CreateContext(includeIngress: true));
 
@@ -73,7 +118,9 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             reader.LoadExactDeployment,
             UnexpectedRegistryAccess,
             new FixedKubernetesClientProvider(kubernetes),
-            ApplyPolicy);
+            ApplyPolicy,
+            EmptyConnectionReferences,
+            EmptySecretReferences);
         var context = CreateContext(includeIngress: true);
 
         var result = await subject.ApplyAsync(context);
@@ -175,7 +222,9 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             reader.LoadExactDeployment,
             UnexpectedRegistryAccess,
             new FixedKubernetesClientProvider(kubernetes),
-            SuccessfulPolicy);
+            SuccessfulPolicy,
+            EmptyConnectionReferences,
+            EmptySecretReferences);
 
         var result = await subject.ApplyAsync(
             CreateContext(includeIngress: false));
@@ -219,7 +268,9 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             reader.LoadExactDeployment,
             UnexpectedRegistryAccess,
             new FixedKubernetesClientProvider(kubernetes),
-            ApplyPolicy);
+            ApplyPolicy,
+            EmptyConnectionReferences,
+            EmptySecretReferences);
 
         var result = await subject.ApplyAsync(CreateContext(includeIngress: false));
 
@@ -252,7 +303,9 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             reader.LoadExactDeployment,
             UnexpectedRegistryAccess,
             new FixedKubernetesClientProvider(kubernetes),
-            SuccessfulPolicy);
+            SuccessfulPolicy,
+            EmptyConnectionReferences,
+            EmptySecretReferences);
 
         var result = await subject.ApplyAsync(CreateContext(includeIngress: false));
 
@@ -279,7 +332,9 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             reader.LoadExactDeployment,
             UnexpectedRegistryAccess,
             new FixedKubernetesClientProvider(kubernetes),
-            SuccessfulPolicy);
+            SuccessfulPolicy,
+            EmptyConnectionReferences,
+            EmptySecretReferences);
 
         var result = await subject.ApplyAsync(CreateContext(includeIngress: true));
 
@@ -329,7 +384,9 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             reader.LoadExactDeployment,
             UnexpectedRegistryAccess,
             new FixedKubernetesClientProvider(kubernetes),
-            SuccessfulPolicy);
+            SuccessfulPolicy,
+            EmptyConnectionReferences,
+            EmptySecretReferences);
 
         var applyTask = subject.ApplyAsync(CreateContext(includeIngress: true));
         await handler.IngressReadStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -369,7 +426,9 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             reader.LoadExactDeployment,
             UnexpectedRegistryAccess,
             new FixedKubernetesClientProvider(kubernetes),
-            SuccessfulPolicy);
+            SuccessfulPolicy,
+            EmptyConnectionReferences,
+            EmptySecretReferences);
 
         var applyTask = subject.ApplyAsync(CreateContext(includeIngress: true));
         await handler.IngressWriteStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -411,7 +470,9 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             reader.LoadExactDeployment,
             UnexpectedRegistryAccess,
             new FixedKubernetesClientProvider(kubernetes),
-            SuccessfulPolicy);
+            SuccessfulPolicy,
+            EmptyConnectionReferences,
+            EmptySecretReferences);
 
         var applyTask = subject.ApplyAsync(CreateContext(includeIngress: true));
         await handler.IngressWriteStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -449,7 +510,9 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             reader.LoadExactDeployment,
             UnexpectedRegistryAccess,
             new FixedKubernetesClientProvider(kubernetes),
-            SuccessfulPolicy);
+            SuccessfulPolicy,
+            EmptyConnectionReferences,
+            EmptySecretReferences);
 
         var applyTask = subject.ApplyAsync(CreateContext(includeIngress: true));
         await handler.IngressWriteStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -493,7 +556,9 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             reader.LoadExactDeployment,
             UnexpectedRegistryAccess,
             new FixedKubernetesClientProvider(kubernetes),
-            ApplyPolicy);
+            ApplyPolicy,
+            EmptyConnectionReferences,
+            EmptySecretReferences);
 
         var result = await subject.ApplyAsync(CreateContext(includeIngress: true));
 
@@ -537,7 +602,9 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             reader.LoadExactDeployment,
             UnavailableRegistryAccess,
             new FixedKubernetesClientProvider(kubernetes),
-            ApplyPolicy);
+            ApplyPolicy,
+            EmptyConnectionReferences,
+            EmptySecretReferences);
 
         var result = await subject.ApplyAsync(CreateContext(includeIngress: false));
 
@@ -563,7 +630,9 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             reader.LoadExactDeployment,
             UnexpectedRegistryAccess,
             new FixedKubernetesClientProvider(kubernetes),
-            SuccessfulPolicy);
+            SuccessfulPolicy,
+            EmptyConnectionReferences,
+            EmptySecretReferences);
 
         var result = await subject.DeleteAsync(
             CreateContext(includeIngress: true));
@@ -607,7 +676,9 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             reader.LoadExactDeployment,
             UnexpectedRegistryAccess,
             new FixedKubernetesClientProvider(kubernetes),
-            ApplyPolicy);
+            ApplyPolicy,
+            EmptyConnectionReferences,
+            EmptySecretReferences);
 
         var result = await subject.DeleteAsync(CreateContext(includeIngress: true));
 
@@ -643,7 +714,9 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             reader.LoadExactDeployment,
             UnexpectedRegistryAccess,
             new FixedKubernetesClientProvider(kubernetes),
-            ApplyPolicy);
+            ApplyPolicy,
+            EmptyConnectionReferences,
+            EmptySecretReferences);
 
         var result = await subject.DeleteAsync(CreateContext(includeIngress: false));
 

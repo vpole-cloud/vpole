@@ -19,6 +19,31 @@ namespace Pole.Tests.Integration.WebServices;
 public sealed class WebServiceManifestTests
 {
     [Fact]
+    public void Dependency_environment_uses_target_values_and_native_key_references_without_plaintext_in_ConfigMap()
+    {
+        var subject = CreateSubject();
+        var config = subject.WebService.Spec.Config with
+        {
+            ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty.Add("PGHOST", new("connection", "Host")),
+            SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty.Add("PGPASSWORD", new("logical-secret", "password"))
+        };
+        subject = subject with { WebService = subject.WebService with { Spec = subject.WebService.Spec with { Config = config } } };
+        Assert.Throws<InvalidOperationException>(() => subject.ToDeployment());
+        subject = subject with
+        {
+            ResolvedEnvironment = [new k8s.Models.V1EnvVar { Name = "PGHOST", Value = "database.first.svc.cluster.local" },
+            new k8s.Models.V1EnvVar { Name = "PGPASSWORD", ValueFrom = new k8s.Models.V1EnvVarSource { SecretKeyRef = new k8s.Models.V1SecretKeySelector { Name = "projection", Key = "MAPPED_PASSWORD", Optional = false } } }]
+        };
+        var env = Assert.Single(subject.ToDeployment().Spec.Template.Spec.Containers).Env;
+        Assert.Equal("database.first.svc.cluster.local", env.Single(item => item.Name == "PGHOST").Value);
+        var password = env.Single(item => item.Name == "PGPASSWORD");
+        Assert.Null(password.Value); Assert.Equal("MAPPED_PASSWORD", password.ValueFrom.SecretKeyRef.Key); Assert.False(password.ValueFrom.SecretKeyRef.Optional);
+        Assert.DoesNotContain("PGPASSWORD", subject.ToConfigMap().Data.Keys);
+        var other = subject with { ResolvedEnvironment = subject.ResolvedEnvironment.SetItem(0, new k8s.Models.V1EnvVar { Name = "PGHOST", Value = "database.second.svc.cluster.local" }) };
+        Assert.NotEqual(env[0].Value, Assert.Single(other.ToDeployment().Spec.Template.Spec.Containers).Env[0].Value);
+    }
+
+    [Fact]
     public void PlacementIdentity_IsStableAcrossRevisions_AndSeparatesRecreatedResources()
     {
         var subject = CreateSubject();

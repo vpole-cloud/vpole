@@ -8,6 +8,9 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceConnections.Application.Persistence;
 using Pole.Features.Request;
 using Pole.Mediator;
+using Pole.Workloads;
+using Pole.Validation;
+using MongoDB.Bson;
 
 namespace Pole.Features.ResourceConnections.Application.Endpoints;
 
@@ -17,6 +20,8 @@ public sealed record GetResourceConnectionsRequest
     [FromTenantHeader] public string TenantId { get; init; } = string.Empty;
     [FromQuery] public int PageNumber { get; init; } = 1;
     [FromQuery] public int PageSize { get; init; } = 10;
+    [FromQuery] public string? SourceResourceType { get; init; }
+    [FromQuery] public string? SourceResourceId { get; init; }
 }
 
 public union GetResourceConnectionsOutcome(PaginatedResponse<ResourceConnectionDto>);
@@ -28,6 +33,11 @@ public sealed class GetResourceConnectionsRequestValidator
     {
         RuleFor(request => request.PageNumber).GreaterThan(0);
         RuleFor(request => request.PageSize).InclusiveBetween(1, 100);
+        When(request => request.SourceResourceType is not null || request.SourceResourceId is not null, () =>
+        {
+            RuleFor(request => request.SourceResourceType).NotEmpty().Must(value => ResourceTypeId.TryCreate(value, out _));
+            RuleFor(request => request.SourceResourceId).NotEmpty().MongoObjectId("Source resource ID");
+        });
         RuleFor(request => request)
             .Must(request => request.PageNumber <= 0 || request.PageSize <= 0 ||
                 (long)(request.PageNumber - 1) * request.PageSize <= int.MaxValue)
@@ -47,7 +57,9 @@ public sealed class GetResourceConnectionsHandler(
             request.TenantId,
             request.PageNumber,
             request.PageSize,
-            cancellationToken);
+            cancellationToken,
+            request.SourceResourceType is null ? null : ResourceTypeId.Create(request.SourceResourceType),
+            request.SourceResourceId is null ? null : ObjectId.Parse(request.SourceResourceId).ToString());
         return new PaginatedResponse<ResourceConnectionDto>(
             page.Items.Select(connection => connection.ToDto()).ToArray(),
             page.TotalCount,

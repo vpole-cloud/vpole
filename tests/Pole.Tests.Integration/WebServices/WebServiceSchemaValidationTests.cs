@@ -19,9 +19,31 @@ public sealed class WebServiceSchemaValidationTests(MongoReplicaSetFixture fixtu
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
+    public async Task Additive_reference_schema_accepts_legacy_and_logical_fields_and_rejects_native_identity()
+    {
+        await new WebServiceSchemaValidationMigration().Up(fixture.Database);
+        await new WebServiceDependencyReferencesSchemaMigration().Up(fixture.Database);
+        var service = CreateWebService(new ActiveWebServiceLifecycle());
+        service = service with
+        {
+            Spec = service.Spec with
+            {
+                Config = service.Spec.Config with
+                {
+                    ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty.Add("HOST", new(ObjectId.GenerateNewId().ToString(), "Host")),
+                    SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty.Add("PASSWORD", new(ObjectId.GenerateNewId().ToString(), "password"))
+                }
+            }
+        };
+        await CreateContract().AssertAcceptsAsync([service]);
+        await CreateContract().AssertRejectsAsync(service, document => document["Spec"]["Config"]["SecretEnvironmentReferences"]["PASSWORD"]["SecretId"] = "native-secret-name");
+    }
+
+    [Fact]
     public async Task Migration_creates_collection_that_accepts_current_document_shapes()
     {
         await new WebServiceSchemaValidationMigration().Up(fixture.Database);
+        await new WebServiceDependencyReferencesSchemaMigration().Up(fixture.Database);
         var contract = CreateContract();
 
         await contract.AssertStrictErrorValidationAsync();
@@ -45,6 +67,7 @@ public sealed class WebServiceSchemaValidationTests(MongoReplicaSetFixture fixtu
     {
         await fixture.Database.CreateCollectionAsync(CollectionName);
         await new WebServiceSchemaValidationMigration().Up(fixture.Database);
+        await new WebServiceDependencyReferencesSchemaMigration().Up(fixture.Database);
         var contract = CreateContract();
 
         await contract.AssertStrictErrorValidationAsync();
@@ -57,6 +80,7 @@ public sealed class WebServiceSchemaValidationTests(MongoReplicaSetFixture fixtu
     public async Task Validator_rejects_deleting_lifecycle_without_requested_timestamp()
     {
         await new WebServiceSchemaValidationMigration().Up(fixture.Database);
+        await new WebServiceDependencyReferencesSchemaMigration().Up(fixture.Database);
 
         await CreateContract().AssertRejectsAsync(
             CreateWebService(new DeletingWebServiceLifecycle(DateTime.UtcNow)),
@@ -68,6 +92,7 @@ public sealed class WebServiceSchemaValidationTests(MongoReplicaSetFixture fixtu
     public async Task Validator_rejects_unknown_lifecycle_discriminator()
     {
         await new WebServiceSchemaValidationMigration().Up(fixture.Database);
+        await new WebServiceDependencyReferencesSchemaMigration().Up(fixture.Database);
 
         await CreateContract().AssertRejectsAsync(
             CreateWebService(new ActiveWebServiceLifecycle()),
@@ -79,6 +104,7 @@ public sealed class WebServiceSchemaValidationTests(MongoReplicaSetFixture fixtu
     public async Task Validator_requires_a_known_exposure_mode()
     {
         await new WebServiceSchemaValidationMigration().Up(fixture.Database);
+        await new WebServiceDependencyReferencesSchemaMigration().Up(fixture.Database);
         var contract = CreateContract();
 
         await contract.AssertRejectsAsync(

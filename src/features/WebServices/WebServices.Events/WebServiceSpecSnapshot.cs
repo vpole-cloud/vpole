@@ -33,7 +33,20 @@ public sealed record AutoscalingMetricSnapshot(
 
 public sealed record WebServiceConfigSnapshot(
     ImmutableDictionary<string, string> EnvironmentVariables,
-    ImmutableList<PortMappingSnapshot> PortMappings);
+    ImmutableList<PortMappingSnapshot> PortMappings)
+{
+    public ImmutableDictionary<string, ConnectionEnvironmentReferenceSnapshot> ConnectionEnvironmentReferences { get; init; } = ImmutableDictionary<string, ConnectionEnvironmentReferenceSnapshot>.Empty;
+    public ImmutableDictionary<string, SecretEnvironmentReferenceSnapshot> SecretEnvironmentReferences { get; init; } = ImmutableDictionary<string, SecretEnvironmentReferenceSnapshot>.Empty;
+}
+
+public sealed record ConnectionEnvironmentReferenceSnapshot(
+    string ConnectionId,
+    string ValueKind,
+    string? ConfigurationKey = null);
+
+public sealed record SecretEnvironmentReferenceSnapshot(
+    string SecretId,
+    string Key);
 
 public sealed record PortMappingSnapshot(
     int ServicePort,

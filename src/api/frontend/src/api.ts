@@ -11,6 +11,8 @@ import type {
   ResourceGroup,
   IsolationScope,
   ResourceRegistration,
+  ResourceConnection,
+  WebServiceSpec,
   ResourceGroupInput,
   PoleResourceType,
   StorageProfile,
@@ -269,6 +271,23 @@ export async function fetchResourceEndpoints(base: string, resourceType: string,
   const response = await fetchJson<ResourceEndpointDiscovery>(`${base}/api/v1/resource-connections/endpoints?${query}`, { headers: buildHeaders(token, tenantId), signal })
   if (!response || !['Supported', 'Unsupported'].includes(response.availability) || !Array.isArray(response.endpoints) || !response.topology || !['NotEvaluated', 'Eligible', 'Ineligible'].includes(response.topology.status)) throw new ApiError('Endpoint discovery response is unavailable.', 502)
   return response
+}
+
+export function fetchResourceConnections(base: string, sourceResourceId: string, pageNumber: number, token?: string, tenantId?: string, signal?: AbortSignal) {
+  const query = new URLSearchParams({ sourceResourceType: 'pole/web-service', sourceResourceId, pageNumber: String(pageNumber), pageSize: '100' })
+  return fetchJson<PaginatedResponse<ResourceConnection>>(`${base}/api/v1/resource-connections/?${query}`, { headers: buildHeaders(token, tenantId), signal })
+}
+export function createResourceConnection(base: string, input: { name: string; sourceResourceType: string; sourceResourceId: string; destinationResourceType: string; destinationResourceId: string; endpointId: string }, token?: string, tenantId?: string, signal?: AbortSignal) {
+  return sendJson<{ id: string; name: string; generation: number; status: string }>(`${base}/api/v1/resource-connections/`, { method: 'POST', headers: buildHeaders(token, tenantId), body: JSON.stringify(input), signal })
+}
+export function deleteResourceConnection(base: string, id: string, token?: string, tenantId?: string, signal?: AbortSignal) {
+  return sendJson<{ id: string; generation: number; status: string }>(`${base}/api/v1/resource-connections/${encodeURIComponent(id)}`, { method: 'DELETE', headers: buildHeaders(token, tenantId), signal })
+}
+export function updateWebServiceDependencies(base: string, service: WebService, config: WebServiceSpec['config'], token?: string, tenantId?: string, signal?: AbortSignal) {
+  return sendJson<{ id: string; resourceRevision: number }>(`${base}/api/v1/web-services/${encodeURIComponent(service.id)}`, {
+    method: 'PUT', headers: buildHeaders(token, tenantId), signal,
+    body: JSON.stringify({ spec: { ...service.spec, config }, exposure: service.exposure.mode, tags: service.tags ?? [], expectedRevision: service.activeRevision }),
+  })
 }
 
 export function validationMessage(error: unknown, field: string): string {
@@ -581,6 +600,8 @@ const buildWebServiceSpec = (input: WebServiceInput) => ({
     tag: input.imageTag,
   },
   config: {
+    connectionEnvironmentReferences: input.connectionEnvironmentReferences ?? {},
+    secretEnvironmentReferences: input.secretEnvironmentReferences ?? {},
     environmentVariables: Object.fromEntries(
       input.environmentVariables.map((item) => [item.key, item.value]),
     ),
@@ -649,7 +670,7 @@ export async function createWebService(
       exposure: input.exposure,
       spec: buildWebServiceSpec(input),
       placement: buildWebServicePlacement(input),
-      tags: [],
+      tags: input.tags ?? [],
     }),
   })
 }
@@ -667,7 +688,7 @@ export async function updateWebService(
     body: JSON.stringify({
       spec: buildWebServiceSpec(input),
       exposure: input.exposure,
-      tags: [],
+      tags: input.tags ?? [],
     }),
   })
 }

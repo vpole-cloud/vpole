@@ -17,6 +17,10 @@ internal static class ResourceConnectionFilters
     public static FilterDefinition<ResourceConnection> ByTenant(string tenantId) =>
         Builders<ResourceConnection>.Filter.Eq(item => item.TenantId, tenantId);
 
+    public static FilterDefinition<ResourceConnection> BySource(string tenantId, ResourceTypeId sourceType, string sourceId) =>
+        ByTenant(tenantId) & Builders<ResourceConnection>.Filter.Eq(item => item.SourceResourceTypeId, sourceType.Value) &
+        Builders<ResourceConnection>.Filter.Eq(item => item.SourceResourceId, sourceId);
+
     public static FilterDefinition<ResourceConnection> ByTenantAndId(
         string tenantId,
         string connectionId) =>

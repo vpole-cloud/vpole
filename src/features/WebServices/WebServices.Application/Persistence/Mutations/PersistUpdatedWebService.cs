@@ -1,4 +1,5 @@
 using Pole.Features.ResourceConnections.Contracts;
+using Pole.Features.Secrets.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using MongoDB.Driver;
@@ -15,8 +16,13 @@ public sealed record WebServiceConnectionConflict(
     string WebServiceId,
     string ConnectionId);
 
+public sealed record WebServiceDependencyUnavailable(
+    string WebServiceId,
+    string ReasonCode);
+
 public union PersistWebServiceUpdateResult(
     WebServiceConnectionConflict,
+    WebServiceDependencyUnavailable,
     WebServiceUpdateAccepted,
     WebServiceUpdateConflict);
 
@@ -32,7 +38,9 @@ internal sealed class MongoPersistUpdatedWebService(
     IMongoCollection<WebService> webServices,
     StoreOutboxWrites storeOutboxWrites,
     FenceRegisteredResource fenceRegisteredResource,
-    ReconcileConnectionsForResource reconcileConnections)
+    ReconcileConnectionsForResource reconcileConnections,
+    AdmitResourceConnectionReferences admitConnectionReferences,
+    AdmitConsumerSecretReferences admitSecretReferences)
 {
     public async Task<PersistWebServiceUpdateResult>
         InvokeOutcomeAsync(
@@ -92,6 +100,23 @@ internal sealed class MongoPersistUpdatedWebService(
         };
         if (connectionConflict is not null)
             return connectionConflict;
+
+        var cleanup = updatedEvent.Deployments.Any(item => item.Operation == "Delete") &&
+            current.Spec.Config.ConnectionEnvironmentReferences.OrderBy(pair => pair.Key).SequenceEqual(replacement.Spec.Config.ConnectionEnvironmentReferences.OrderBy(pair => pair.Key)) &&
+            current.Spec.Config.SecretEnvironmentReferences.OrderBy(pair => pair.Key).SequenceEqual(replacement.Spec.Config.SecretEnvironmentReferences.OrderBy(pair => pair.Key));
+        if (!cleanup)
+        {
+            var admittedConnections = await admitConnectionReferences(current.TenantId, WebServiceResourceDeployment.ResourceType, current.Id,
+                replacement.Spec.Config.ConnectionEnvironmentReferences.Values.Select(reference => new ResourceConnectionValueReference(reference.ConnectionId, reference.ValueKind, reference.ConfigurationKey)).ToArray(), session, cancellationToken);
+            if (admittedConnections is ResourceConnectionReferencesUnavailable unavailable)
+                return new WebServiceDependencyUnavailable(current.Id, unavailable.ReasonCode);
+        }
+        var admittedSecrets = await admitSecretReferences(current.TenantId, current.ResourceGroupId, current.IsolationScopeId, WebServiceResourceDeployment.ResourceType, current.Id,
+            current.Spec.Config.SecretEnvironmentReferences.Values.Select(reference => new ConsumerSecretKeyReference(reference.SecretId, reference.Key)).ToArray(),
+            replacement.Spec.Config.SecretEnvironmentReferences.Values.Select(reference => new ConsumerSecretKeyReference(reference.SecretId, reference.Key)).ToArray(),
+            !cleanup, session, cancellationToken);
+        if (admittedSecrets is ConsumerSecretReferenceUnavailable secretUnavailable)
+            return new WebServiceDependencyUnavailable(current.Id, secretUnavailable.ReasonCode);
 
         await storeOutboxWrites(
             session,

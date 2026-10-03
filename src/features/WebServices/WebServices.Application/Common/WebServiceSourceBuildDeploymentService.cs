@@ -106,6 +106,12 @@ public sealed class WebServiceSourceBuildDeploymentService(
                     new SourceBuildWebServiceUpdateConflict(connectionConflict.WebServiceId));
                 return transaction.Abort(rejected);
             }
+            if (update is WebServiceDependencyUnavailable dependencyUnavailable)
+            {
+                DeploySourceBuildWebServiceOutcome rejected = new SourceBuildWebServiceDeploymentError(
+                    new SourceBuildWebServiceUpdateConflict(dependencyUnavailable.WebServiceId));
+                return transaction.Abort(rejected);
+            }
 
             var release = WebServiceReleaseFactory.CreatePending(
                 request.TenantId,

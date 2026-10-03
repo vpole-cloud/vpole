@@ -15,6 +15,51 @@ namespace Pole.Tests.Integration.WebServices;
 public sealed class WebServiceBoundarySerializationTests
 {
     [Fact]
+    public void Logical_references_round_trip_HTTP_BSON_and_legacy_missing_fields_default_empty()
+    {
+        var id = ObjectId.GenerateNewId().ToString();
+        var config = new WebServiceConfigDto(ImmutableDictionary<string, string>.Empty, [])
+        {
+            ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReferenceDto>.Empty.Add("PGHOST", new(id, "Host")),
+            SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReferenceDto>.Empty.Add("PGPASSWORD", new(id, "password"))
+        };
+        var json = JsonSerializer.Serialize(config, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var restored = JsonSerializer.Deserialize<WebServiceConfigDto>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var domain = restored.ToDomain();
+        var bson = domain.ToBsonDocument();
+        var roundTrip = MongoDB.Bson.Serialization.BsonSerializer.Deserialize<WebServiceConfig>(bson);
+        Assert.Equal(id, roundTrip.ConnectionEnvironmentReferences["PGHOST"].ConnectionId);
+        Assert.Equal("password", roundTrip.SecretEnvironmentReferences["PGPASSWORD"].Key);
+        Assert.DoesNotContain("KubernetesName", bson.ToJson());
+        bson.Remove("ConnectionEnvironmentReferences"); bson.Remove("SecretEnvironmentReferences");
+        var legacy = MongoDB.Bson.Serialization.BsonSerializer.Deserialize<WebServiceConfig>(bson);
+        Assert.Empty(legacy.ConnectionEnvironmentReferences); Assert.Empty(legacy.SecretEnvironmentReferences);
+        var absent = JsonSerializer.Deserialize<WebServiceConfigDto>("{\"environmentVariables\":{},\"portMappings\":[]}", new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        Assert.Empty(absent.ToDomain().SecretEnvironmentReferences);
+    }
+
+    [Theory]
+    [InlineData("collision")]
+    [InlineData("native-name")]
+    [InlineData("invalid-kind")]
+    [InlineData("unexpected-key")]
+    public void Reference_validation_rejects_collisions_native_identity_and_invalid_field_shape(string failure)
+    {
+        var config = new WebServiceConfigDto(ImmutableDictionary<string, string>.Empty, [])
+        {
+            ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReferenceDto>.Empty.Add("HOST", new(ObjectId.GenerateNewId().ToString(), "Host"))
+        };
+        config = failure switch
+        {
+            "collision" => config with { EnvironmentVariables = config.EnvironmentVariables.Add("HOST", "literal") },
+            "native-name" => config with { SecretEnvironmentReferences = config.SecretEnvironmentReferences.Add("PASSWORD", new("native-secret-name", "password")) },
+            "invalid-kind" => config with { ConnectionEnvironmentReferences = config.ConnectionEnvironmentReferences.SetItem("HOST", new(ObjectId.GenerateNewId().ToString(), "Address")) },
+            _ => config with { ConnectionEnvironmentReferences = config.ConnectionEnvironmentReferences.SetItem("HOST", new(ObjectId.GenerateNewId().ToString(), "Host", "database")) }
+        };
+        Assert.False(new WebServiceSpecDtoValidator().Validate(TestData.ValidWebServiceSpec() with { Config = config }).IsValid);
+    }
+
+    [Fact]
     public void CreateRequest_OmittedExposureDefaultsPrivate_AndNumericEnumsAreRejected()
     {
         var webJsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);

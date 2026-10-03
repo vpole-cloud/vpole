@@ -3,6 +3,9 @@ using Pole.Features.Core.Kubernetes;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceConnections.Contracts;
+using Pole.Features.Secrets.Contracts;
+using k8s.Models;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Application.Persistence.Deployments;
@@ -18,7 +21,9 @@ public sealed class WebServiceResourceDeploymentAdapter(
     LoadExactResourceDeployment loadExactResourceDeployment,
     ResolveRuntimeRegistryAccess resolveRuntimeRegistryAccess,
     IKubernetesClientProvider kubernetesClientProvider,
-    ReconcileResourceIngressPolicy reconcileResourceIngressPolicy)
+    ReconcileResourceIngressPolicy reconcileResourceIngressPolicy,
+    ResolveResourceConnectionReferences resolveConnectionReferences,
+    EnsureConsumerSecretProjections ensureSecretProjections)
     : IResourceDeploymentAdapter
 {
     public async Task<ResourceDeploymentAdapterResult> ApplyAsync(
@@ -73,6 +78,31 @@ public sealed class WebServiceResourceDeploymentAdapter(
                 "The public web-service target port could not be resolved.",
                 retryable: false);
         }
+        var connectionReferences = webService.Spec.Config.ConnectionEnvironmentReferences;
+        var connectionValues = await resolveConnectionReferences(context.Deployment.TenantId, WebServiceResourceDeployment.ResourceType, webService.Id, context.Deployment.Id,
+            connectionReferences.Values.Select(reference => new ResourceConnectionValueReference(reference.ConnectionId, reference.ValueKind, reference.ConfigurationKey)).ToArray(), cancellationToken);
+        if (connectionValues is ResourceConnectionReferencesUnavailable)
+            return ResourceDeploymentAdapterResult.Failed.Create("ConnectionConfigurationUnavailable", "A configured connection or field is no longer available for this deployment.", retryable: true);
+        var secretReferences = webService.Spec.Config.SecretEnvironmentReferences;
+        var projectedSecrets = await ensureSecretProjections(context.Deployment.TenantId, WebServiceResourceDeployment.ResourceType, webService.Id, context.Deployment.Id,
+            secretReferences.Values.Select(reference => new ConsumerSecretKeyReference(reference.SecretId, reference.Key)).ToArray(), cancellationToken);
+        if (projectedSecrets is ConsumerSecretReferenceUnavailable)
+            return ResourceDeploymentAdapterResult.Failed.Create("SecretConfigurationUnavailable", "A configured Secret key or binding is no longer authorized for this deployment.", retryable: true);
+        if (projectedSecrets is ConsumerSecretProjectionPending)
+            return ResourceDeploymentAdapterResult.Failed.Create("SecretProjectionPending", "An authorized Secret projection is not ready on this target. Retry after projection completes.", retryable: true);
+        var resolvedEnvironment = ImmutableList.CreateBuilder<V1EnvVar>();
+        foreach (var (name, reference) in connectionReferences)
+            resolvedEnvironment.Add(new V1EnvVar
+            {
+                Name = name,
+                Value = ((ResolvedResourceConnectionValues)connectionValues.Value).Values.Single(value =>
+                value.Reference == new ResourceConnectionValueReference(reference.ConnectionId, reference.ValueKind, reference.ConfigurationKey)).Value
+            });
+        foreach (var (name, reference) in secretReferences)
+        {
+            var key = ((ConsumerSecretProjectionKeys)projectedSecrets.Value).Keys.Single(key => key.SecretId == reference.SecretId && key.SourceKey == reference.Key);
+            resolvedEnvironment.Add(new V1EnvVar { Name = name, ValueFrom = new V1EnvVarSource { SecretKeyRef = new V1SecretKeySelector { Key = key.ProjectedKey, Name = key.KubernetesName, Optional = false } } });
+        }
         var inKubernetes = webService.ToKubernetes(
             context.Deployment.Placement.KubernetesNamespace,
             context.Deployment.Placement.Ingress,
@@ -86,7 +116,8 @@ public sealed class WebServiceResourceDeploymentAdapter(
                 context.Deployment.Placement.DeploymentTargetId,
                 "WebService",
                 context.Deployment.ResourceId,
-                context.Deployment.Id));
+                context.Deployment.Id)) with
+        { ResolvedEnvironment = resolvedEnvironment.ToImmutable() };
         var metadata = WebServiceResourceDeploymentMetadata.Create(
             desired.ReleaseId,
             context.Deployment.Id,

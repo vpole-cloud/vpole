@@ -181,6 +181,9 @@ public sealed class UpdateWebServiceDeploymentHandler(
                 if (saved is WebServiceConnectionConflict connectionConflict)
                     return transaction.Abort(Error(
                         new UpdateWebServiceDeploymentError(connectionConflict)));
+                if (saved is WebServiceDependencyUnavailable dependencyUnavailable)
+                    return transaction.Abort(Error(
+                        new UpdateWebServiceDeploymentError(dependencyUnavailable)));
 
                 var release = WebServiceReleaseFactory.CreatePending(
                     updated.TenantId,

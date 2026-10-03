@@ -55,6 +55,38 @@ resource version returned by that write, then rejected; a missing ingress or a n
 cannot be removed by the stale attempt. If Kubernetes omits that identity, reconciliation rejects
 the stale attempt without issuing an unfenced delete.
 
+## Application dependencies
+
+The WebService Dependencies tab exposes three independent persisted steps: a directed network
+connection, an optional Secret binding, and explicitly chosen application environment references.
+Reload reconstructs completed steps. Retrying one step does not undo the others or delete a shared
+database or Secret. Network policy `Applied` and Secret projection `Ready` acknowledge their own
+infrastructure operations; application SQL or Redis operations are still needed to prove connectivity.
+
+`Spec.Config.ConnectionEnvironmentReferences` maps application environment names to a logical
+connection ID and `Host`, `Port`, or a published `Configuration` key. ResourceConnections checks
+the exact tenant, consumer, desired target coverage and endpoint under the caller's transaction.
+Runtime resolution uses the exact physical consumer deployment and its current connection snapshot;
+each target receives its own service DNS and service port. Native service names are not user input.
+
+`Spec.Config.SecretEnvironmentReferences` maps environment names to logical Secret IDs and source
+keys. Secrets owns binding authorization, same-group/scope and deployment coverage checks, and native
+projection resolution. WebServices receives generated Secret names and mapped keys, never decrypted
+values, and renders non-optional Kubernetes `secretKeyRef` environment entries. Required keys are
+pinned on the consumer binding without advancing the encrypted version or projection revision.
+Rotation must retain those keys; removing references releases the pins. Rotation alone does not
+restart an application or replace values already loaded into a running process.
+
+Dependency configuration updates can send `ExpectedRevision`; a stale revision returns a conflict
+without writes. References are retained in events and release specifications and through source-build
+image updates. Apply mutations revalidate current authority; deployment cleanup may retain unchanged
+references after independent revocation. Removing network access or a binding does not rewrite saved
+configuration, and later applies fail with a typed dependency error until unavailable references are
+removed or authorization is restored.
+
+The additive `WebServiceDependencyReferencesSchemaMigration` accepts legacy documents without the
+maps and validates new logical reference shapes. Domain reads normalize absent maps to empty maps.
+
 ## Persistence boundary
 
 `WebServices.Application/Persistence` exposes named delegates for the exact operations used by

@@ -349,6 +349,14 @@ public sealed class ResourceConnectionCreateApiTests(MongoReplicaSetFixture fixt
         Assert.Equal(1, page.TotalCount);
         Assert.Single(page.Items);
 
+        using var sourceFiltered = await Client.GetAsync($"/api/v1/resource-connections?pageNumber=1&pageSize=10&sourceResourceType=pole/web-service&sourceResourceId={sourceId}");
+        Assert.Equal(HttpStatusCode.OK, sourceFiltered.StatusCode);
+        Assert.Equal(accepted.Id, Assert.Single((await sourceFiltered.Content.ReadFromJsonAsync<PaginatedResponse<ResourceConnectionDto>>())!.Items).Id);
+        using var unrelatedSource = await Client.GetAsync($"/api/v1/resource-connections?pageNumber=1&pageSize=10&sourceResourceType=pole/web-service&sourceResourceId={Id()}");
+        Assert.Equal(0, (await unrelatedSource.Content.ReadFromJsonAsync<PaginatedResponse<ResourceConnectionDto>>())!.TotalCount);
+        using var incompleteFilter = await Client.GetAsync($"/api/v1/resource-connections?pageNumber=1&pageSize=10&sourceResourceId={sourceId}");
+        Assert.Equal(HttpStatusCode.BadRequest, incompleteFilter.StatusCode);
+
         using var deniedDelete = await Client.DeleteAsync($"/api/v1/resource-connections/{accepted.Id}");
         Assert.Equal(HttpStatusCode.Forbidden, deniedDelete.StatusCode);
         await SetTenantRoleAsync(TenantRole.Member);

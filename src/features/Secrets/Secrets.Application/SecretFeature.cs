@@ -17,6 +17,10 @@ public static class SecretFeature
     public static IServiceCollection AddSecretsFeature(this IServiceCollection services)
     {
         services.AddSecretPersistence();
+        services.AddScoped<ConsumerSecretReferenceAdmission>();
+        services.AddScoped<AdmitConsumerSecretReferences>(sp => sp.GetRequiredService<ConsumerSecretReferenceAdmission>().InvokeAsync);
+        services.AddScoped<ConsumerSecretProjectionResolver>();
+        services.AddScoped<EnsureConsumerSecretProjections>(sp => sp.GetRequiredService<ConsumerSecretProjectionResolver>().InvokeAsync);
         services.AddScoped<EnvelopePrepareManagedSecret>();
         services.AddScoped<PrepareManagedSecret>(sp => sp.GetRequiredService<EnvelopePrepareManagedSecret>().InvokeAsync);
         services.AddScoped<EnvelopeReadManagedSecretKey>();

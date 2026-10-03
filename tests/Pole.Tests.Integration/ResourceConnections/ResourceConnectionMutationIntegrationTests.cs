@@ -29,6 +29,40 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
         .GetCollection<WebService>("WebServices");
 
     [Fact]
+    public async Task Logical_connection_fields_resolve_exact_target_host_and_service_port_and_reject_revoked_or_foreign_source()
+    {
+        var connection = await CreateWebConnectionAsync();
+        var source = await DbContext.ResourceDeployments.Find(item => item.ResourceId == connection.SourceResourceId).SingleAsync();
+        var destination = await DbContext.ResourceDeployments.Find(item => item.ResourceId == connection.DestinationResourceId).SingleAsync();
+        var secondTarget = ObjectId.GenerateNewId().ToString();
+        var secondSource = OnSecondTarget(source, secondTarget, "caller");
+        var secondDestination = OnSecondTarget(destination, secondTarget, "receiver");
+        await DbContext.ResourceDeployments.InsertManyAsync([secondSource, secondDestination]);
+        using var session = await Fixture.Client.StartSessionAsync(); session.StartTransaction();
+        Assert.IsType<ResourceConnectionTopologyValid>((await Services.GetRequiredService<ReconcileConnectionsForResource>()(
+            TestData.TenantId, WebServiceResourceDeployment.ResourceType, connection.SourceResourceId, session)).Value);
+        ResourceConnectionValueReference[] references = [new(connection.Id, "Host"), new(connection.Id, "Port")];
+        Assert.IsType<ResourceConnectionReferencesAdmitted>((await Services.GetRequiredService<AdmitResourceConnectionReferences>()(
+            TestData.TenantId, WebServiceResourceDeployment.ResourceType, connection.SourceResourceId, references, session, default)).Value);
+        await session.CommitTransactionAsync();
+        var refreshed = await LoadConnectionAsync(connection.Id);
+        var resolver = Services.GetRequiredService<ResolveResourceConnectionReferences>();
+        var first = Assert.IsType<ResolvedResourceConnectionValues>((await resolver(TestData.TenantId, WebServiceResourceDeployment.ResourceType, connection.SourceResourceId, source.Id, references, default)).Value);
+        var second = Assert.IsType<ResolvedResourceConnectionValues>((await resolver(TestData.TenantId, WebServiceResourceDeployment.ResourceType, connection.SourceResourceId, secondSource.Id, references, default)).Value);
+        Assert.NotEqual(first.Values.Single(item => item.Reference.ValueKind == "Host").Value, second.Values.Single(item => item.Reference.ValueKind == "Host").Value);
+        Assert.Equal("80", first.Values.Single(item => item.Reference.ValueKind == "Port").Value); // Target port is 8080.
+        var destinationService = await WebServices.Find(item => item.Id == connection.DestinationResourceId).SingleAsync();
+        var changedSpec = destinationService.Spec with { Config = destinationService.Spec.Config with { PortMappings = [new PortMapping(81, "8080", "TCP", "http")] } };
+        await WebServices.ReplaceOneAsync(item => item.Id == destinationService.Id, destinationService with { Spec = changedSpec });
+        Assert.Equal("EndpointChanged", Assert.IsType<ResourceConnectionReferencesUnavailable>((await resolver(TestData.TenantId, WebServiceResourceDeployment.ResourceType, connection.SourceResourceId, source.Id, references, default)).Value).ReasonCode);
+        await WebServices.ReplaceOneAsync(item => item.Id == destinationService.Id, destinationService);
+        Assert.IsType<ResourceConnectionReferencesUnavailable>((await resolver(TestData.TenantId, WebServiceResourceDeployment.ResourceType, connection.DestinationResourceId, destination.Id, references, default)).Value);
+        Assert.IsType<ResourceConnectionReferencesUnavailable>((await resolver(ObjectId.GenerateNewId().ToString(), WebServiceResourceDeployment.ResourceType, connection.SourceResourceId, source.Id, references, default)).Value);
+        await Connections.ReplaceOneAsync(item => item.Id == connection.Id, refreshed.BeginDeletion(DateTime.UtcNow));
+        Assert.IsType<ResourceConnectionReferencesUnavailable>((await resolver(TestData.TenantId, WebServiceResourceDeployment.ResourceType, connection.SourceResourceId, source.Id, references, default)).Value);
+    }
+
+    [Fact]
     public async Task PlacementDeletion_RejectsBrokenConnection_AndCallerAbortRestoresAllWrites()
     {
         var connection = await CreateWebConnectionAsync();

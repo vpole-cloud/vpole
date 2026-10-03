@@ -255,6 +255,9 @@ export function WebServiceForm({
         targetPort: targetPort.trim(),
         portName: portName.trim(),
         environmentVariables: parseEnvironmentVariables(environmentText),
+        connectionEnvironmentReferences: initialValue?.spec.config.connectionEnvironmentReferences ?? {},
+        secretEnvironmentReferences: initialValue?.spec.config.secretEnvironmentReferences ?? {},
+        tags: initialValue?.tags ?? [],
         autoscaling: initialValue?.spec.autoscaling ?? null,
         targets,
       })

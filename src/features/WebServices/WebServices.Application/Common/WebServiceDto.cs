@@ -17,7 +17,10 @@ public sealed record WebServiceDto(
     WebServiceSpecDto Spec,
     WebServiceExposureDto Exposure,
     IReadOnlyList<PlacementSummaryDto> Deployments
-);
+)
+{
+    public ImmutableHashSet<string> Tags { get; init; } = [];
+}
 
 public sealed record WebServiceReleaseDto(
     string Id,
@@ -118,7 +121,20 @@ public record ProbeConfigDto(
 public sealed record WebServiceConfigDto(
     ImmutableDictionary<string, string> EnvironmentVariables,
     ImmutableList<PortMappingDto> PortMappings
-);
+)
+{
+    public ImmutableDictionary<string, ConnectionEnvironmentReferenceDto> ConnectionEnvironmentReferences { get; init; } = ImmutableDictionary<string, ConnectionEnvironmentReferenceDto>.Empty;
+    public ImmutableDictionary<string, SecretEnvironmentReferenceDto> SecretEnvironmentReferences { get; init; } = ImmutableDictionary<string, SecretEnvironmentReferenceDto>.Empty;
+}
+
+public sealed record ConnectionEnvironmentReferenceDto(
+    string ConnectionId,
+    string ValueKind,
+    string? ConfigurationKey = null);
+
+public sealed record SecretEnvironmentReferenceDto(
+    string SecretId,
+    string Key);
 
 public sealed record PortMappingDto(
     int ServicePort,
@@ -145,7 +161,8 @@ public static class WebServiceDtoExtensions
         webService.Spec.ToDto(),
         webService.Exposure.ToDto(),
         deployments ?? []
-    );
+    )
+        { Tags = webService.Tags };
     public static WebServiceReleaseDto ToDto(this WebServiceRelease release) => new(
         release.Id,
         release.ResourceRevision,
@@ -241,7 +258,13 @@ public static class WebServiceDtoExtensions
         config.PortMappings
             .Select(pm => new PortMappingDto(pm.ServicePort, pm.TargetPort, pm.Protocol, pm.Name))
             .ToImmutableList()
-    );
+    )
+    {
+        ConnectionEnvironmentReferences = config.ConnectionEnvironmentReferences.ToImmutableDictionary(pair => pair.Key,
+            pair => new ConnectionEnvironmentReferenceDto(pair.Value.ConnectionId, pair.Value.ValueKind, pair.Value.ConfigurationKey)),
+        SecretEnvironmentReferences = config.SecretEnvironmentReferences.ToImmutableDictionary(pair => pair.Key,
+            pair => new SecretEnvironmentReferenceDto(pair.Value.SecretId, pair.Value.Key))
+    };
     public static ImageInfoDto ToDto(this ImageInfo image) => new(
         image.Server,
         image.Name,
@@ -282,7 +305,13 @@ public static class WebServiceDtoExtensions
         dto.PortMappings
             .Select(pm => new PortMapping(pm.ServicePort, pm.TargetPort, pm.Protocol, pm.Name))
             .ToImmutableList()
-    );
+    )
+    {
+        ConnectionEnvironmentReferences = (dto.ConnectionEnvironmentReferences ?? ImmutableDictionary<string, ConnectionEnvironmentReferenceDto>.Empty)
+            .ToImmutableDictionary(pair => pair.Key, pair => new ConnectionEnvironmentReference(MongoDB.Bson.ObjectId.Parse(pair.Value.ConnectionId).ToString(), pair.Value.ValueKind, pair.Value.ConfigurationKey)),
+        SecretEnvironmentReferences = (dto.SecretEnvironmentReferences ?? ImmutableDictionary<string, SecretEnvironmentReferenceDto>.Empty)
+            .ToImmutableDictionary(pair => pair.Key, pair => new SecretEnvironmentReference(MongoDB.Bson.ObjectId.Parse(pair.Value.SecretId).ToString(), pair.Value.Key))
+    };
     public static ImageInfo ToDomain(this ImageInfoDto dto) => new(
         dto.Server,
         dto.Name,

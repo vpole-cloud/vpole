@@ -17,6 +17,7 @@ using Pole.Features.WebServices.Application.Endpoints.Releases;
 using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Application.Persistence.Deployments;
 using Pole.Features.WebServices.Application.Persistence.Lifecycle;
+using Pole.Features.WebServices.Application.Persistence.Mutations;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
 using Pole.ResultType;
@@ -29,6 +30,65 @@ namespace Pole.Tests.Integration.WebServices;
 public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
+    [Theory]
+    [InlineData("registry.test", "tenant/application", "built", true)]
+    [InlineData("registry.test", "tenant/application", "next", true)]
+    [InlineData("another.test", "tenant/application", "built", false)]
+    [InlineData("registry.test", "tenant/another", "built", false)]
+    public async Task SharedUpdate_preserves_provider_owned_pull_reference_only_for_the_same_repository(
+        string server, string name, string tag, bool retainPullReference)
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var created = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id))).AssertSuccess();
+        var services = Fixture.Database.WebServices();
+        var current = await services.Find(item => item.Id == created.WebServiceId).SingleAsync();
+        current = current with
+        {
+            Spec = current.Spec with
+            {
+                Image = new ImageInfo("registry.test", "tenant/application", "built", "managed-pull")
+            }
+        };
+        await services.ReplaceOneAsync(item => item.Id == current.Id, current);
+        var dto = current.Spec.ToDto() with
+        {
+            Image = new ImageInfoDto(server, name, tag),
+            Config = current.Spec.Config.ToDto() with
+            {
+                EnvironmentVariables = current.Spec.Config.EnvironmentVariables.SetItem("APP_MODE", "production")
+            }
+        };
+
+        var updated = (await Mediator.Send(new UpdateWebServiceRequest(
+            current.Id,
+            new UpdateWebServiceRequestBody(dto, current.Tags, current.Exposure.Mode, current.ActiveRevision),
+            current.TenantId))).AssertSuccess();
+
+        var saved = await services.Find(item => item.Id == current.Id).SingleAsync();
+        var release = await Fixture.Database.WebServiceReleases()
+            .Find(item => item.WebServiceId == current.Id && item.ResourceRevision == updated.ResourceRevision)
+            .SingleAsync();
+        var expectedPullReference = retainPullReference ? "managed-pull" : null;
+        Assert.Equal(expectedPullReference, saved.Spec.Image.SecretName);
+        Assert.Equal(expectedPullReference, release.Spec.Image.SecretName);
+        Assert.Equal(tag, saved.Spec.Image.Tag);
+        Assert.Equal("production", saved.Spec.Config.EnvironmentVariables["APP_MODE"]);
+        Assert.DoesNotContain("managed-pull", JsonSerializer.Serialize(saved.Spec.ToDto()));
+    }
+
+    [Fact]
+    public async Task Update_with_stale_expected_revision_rejects_without_deployment_or_outbox_changes()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var created = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id))).AssertSuccess();
+        var current = await Fixture.Database.WebServices().Find(item => item.Id == created.WebServiceId).SingleAsync();
+        var result = await Mediator.Send(new UpdateWebServiceRequest(current.Id, new UpdateWebServiceRequestBody(current.Spec.ToDto(), current.Tags, current.Exposure.Mode, ExpectedRevision: 99), current.TenantId));
+        var error = Assert.IsType<UpdateWebServiceError>(result.AssertHandlerOutcome().Value);
+        Assert.IsType<WebServiceUpdateConflict>(error.Value);
+        Assert.Equal(current.ActiveRevision, (await Fixture.Database.WebServices().Find(item => item.Id == current.Id).SingleAsync()).ActiveRevision);
+        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync("pole.web-services/v1/web-service-updated"));
+    }
+
     [Fact]
     public async Task Create_PersistsGeneratedHostnameAndMultiTargetPlacementSnapshot()
     {

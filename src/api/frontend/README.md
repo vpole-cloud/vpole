@@ -6,6 +6,15 @@ the generic shell does not import resource providers.
 
 ## Module ownership
 
+WebService Dependencies separates network declarations, optional Secret authorization and explicit
+environment references into independent steps. Saved connections and bindings survive reload;
+partial target failures remain visible alongside successful targets. Provider endpoint metadata
+supplies choices without a database-specific switch. Connection fields resolve separately on each
+target; Secret keys use server-owned native references. Configuration requires confirmation and
+the draft's expected revision. Conflicts preserve the draft and require review before adopting
+a newer revision. Disconnect and detach confirmations identify their effects on shared resources.
+See [WebService dependencies](../../features/WebServices/README.md#application-dependencies).
+
 Redis owns a paginated/searchable catalog and URL-backed create, overview and configuration tabs.
 Its single-target forms use backend-eligible storage/compute profiles and send `spec.storage` and
 tags. Updates preserve the existing compute snapshot unless a replacement profile is selected.

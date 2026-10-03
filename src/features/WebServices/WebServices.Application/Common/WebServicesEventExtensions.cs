@@ -69,12 +69,24 @@ internal static class WebServicesEventExtensions
     extension(WebServiceConfig config)
     {
         private WebServiceConfigSnapshot ToSnapshot() => new(config.EnvironmentVariables,
-            config.PortMappings.Select(mapping => new PortMappingSnapshot(mapping.ServicePort, mapping.TargetPort, mapping.Protocol, mapping.Name)).ToImmutableList());
+            config.PortMappings.Select(mapping => new PortMappingSnapshot(mapping.ServicePort, mapping.TargetPort, mapping.Protocol, mapping.Name)).ToImmutableList())
+        {
+            ConnectionEnvironmentReferences = config.ConnectionEnvironmentReferences.ToImmutableDictionary(pair => pair.Key,
+                pair => new ConnectionEnvironmentReferenceSnapshot(pair.Value.ConnectionId, pair.Value.ValueKind, pair.Value.ConfigurationKey)),
+            SecretEnvironmentReferences = config.SecretEnvironmentReferences.ToImmutableDictionary(pair => pair.Key,
+                pair => new SecretEnvironmentReferenceSnapshot(pair.Value.SecretId, pair.Value.Key))
+        };
     }
     extension(WebServiceConfigSnapshot config)
     {
         private WebServiceConfig ToDomain() => new(config.EnvironmentVariables ?? ImmutableDictionary<string, string>.Empty,
-            config.PortMappings.Select(mapping => new PortMapping(mapping.ServicePort, mapping.TargetPort, mapping.Protocol, mapping.Name)).ToImmutableList());
+            config.PortMappings.Select(mapping => new PortMapping(mapping.ServicePort, mapping.TargetPort, mapping.Protocol, mapping.Name)).ToImmutableList())
+        {
+            ConnectionEnvironmentReferences = (config.ConnectionEnvironmentReferences ?? ImmutableDictionary<string, ConnectionEnvironmentReferenceSnapshot>.Empty).ToImmutableDictionary(pair => pair.Key,
+                pair => new ConnectionEnvironmentReference(pair.Value.ConnectionId, pair.Value.ValueKind, pair.Value.ConfigurationKey)),
+            SecretEnvironmentReferences = (config.SecretEnvironmentReferences ?? ImmutableDictionary<string, SecretEnvironmentReferenceSnapshot>.Empty).ToImmutableDictionary(pair => pair.Key,
+                pair => new SecretEnvironmentReference(pair.Value.SecretId, pair.Value.Key))
+        };
     }
     extension(AutoscalingSpec autoscaling) { private AutoscalingSpecSnapshot ToSnapshot() => new(autoscaling.MinReplicas, autoscaling.MaxReplicas, new AutoscalingMetricSnapshot(autoscaling.Metric.Type, autoscaling.Metric.TargetAverageUtilization)); }
     extension(AutoscalingSpecSnapshot autoscaling) { private AutoscalingSpec ToDomain() => new(autoscaling.MinReplicas, autoscaling.MaxReplicas, new AutoscalingMetric(autoscaling.Metric.Type, autoscaling.Metric.TargetAverageUtilization)); }

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from 'react'
+import { cloneElement, isValidElement, useEffect, useId, useRef } from 'react'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 
 export function Button({ variant = 'default', className = '', type = 'button', ...props }:
@@ -22,7 +22,10 @@ export function StatusBadge({ children, tone = 'neutral' }:
 }
 
 export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
-  return <label className="field"><span className="field__label">{label}</span>{children}
+  const labelId = useId()
+  const control = isValidElement<{ 'aria-labelledby'?: string }>(children) && typeof children.type === 'string' && ['input', 'select', 'textarea'].includes(children.type)
+    ? cloneElement(children, { 'aria-labelledby': labelId }) : children
+  return <label className="field"><span className="field__label" id={labelId}>{label}</span>{control}
     {hint && <span className="field__hint">{hint}</span>}
   </label>
 }
@@ -67,7 +70,7 @@ export function ConfirmationDialog({ title, children, confirmLabel, busy = false
     <h2 id={titleId}>{title}</h2><div>{children}</div>
     <div className="ui-dialog__actions">
       <button className="button" ref={cancel} disabled={busy} onClick={onCancel} type="button">Cancel</button>
-      <Button variant="danger" disabled={busy} onClick={onConfirm}>{busy ? 'Deleting…' : confirmLabel}</Button>
+      <Button variant="danger" disabled={busy} onClick={onConfirm}>{busy ? 'Working…' : confirmLabel}</Button>
     </div>
   </dialog>
 }
