@@ -9,7 +9,9 @@ The suite covers:
 - real Keycloak login, JWT validation, roles, and the platform-admin user policy;
 - asynchronous default-tenant creation through MongoDB transactions and RabbitMQ;
 - tenant isolation and GitHub App installation/OAuth flows against the local stub;
-- browser login, tenant selection, and resource-group creation at desktop and mobile viewports;
+- browser login, tenant selection, resource-group and image-service creation, observed Kubernetes
+  replica availability, reload, confirmation-dialog keyboard focus, and light/dark screenshots at
+  desktop and mobile viewports;
 - multi-target Kubernetes placement and isolated target failure/retry;
 - deterministic source analysis, BuildKit build/push, Harbor artifacts, and Kubernetes deployment.
 

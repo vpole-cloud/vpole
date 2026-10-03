@@ -5,8 +5,6 @@ import type { AuthViewState, LoadStatus, OverviewData } from '../types'
 
 interface OverviewPageProps {
   authState: AuthViewState
-  onLogin: () => void
-  onLogout: () => void
   onValidateIdentity: () => void
   overview: {
     status: LoadStatus
@@ -46,8 +44,6 @@ const getPlatformHealth = (
 
 export function OverviewPage({
   authState,
-  onLogin,
-  onLogout,
   onValidateIdentity,
   overview,
 }: OverviewPageProps) {
@@ -64,9 +60,8 @@ export function OverviewPage({
           <p className="hero-panel__eyebrow">Overview</p>
           <h1 className="hero-panel__title">Control plane</h1>
           <p className="hero-panel__description">
-            A desktop-first workspace for operating your self-hosted platform
-            with a calmer portal shell and quick access to the resources that
-            matter first.
+            Inspect resources in the active tenant and open their configuration
+            and deployment details.
           </p>
         </div>
 
@@ -84,22 +79,6 @@ export function OverviewPage({
             </div>
 
             <div className="session-card__actions">
-              <button
-                className="button button--primary"
-                onClick={onLogin}
-                disabled={!authState.initialized || authState.authenticated}
-                type="button"
-              >
-                Log in
-              </button>
-              <button
-                className="button"
-                onClick={onLogout}
-                disabled={!authState.authenticated}
-                type="button"
-              >
-                Log out
-              </button>
               <button
                 className="button"
                 onClick={onValidateIdentity}

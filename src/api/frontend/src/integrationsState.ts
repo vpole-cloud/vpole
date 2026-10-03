@@ -1,29 +1,23 @@
-import type { AppView, RepositoryAnalysis } from './types'
+import type { RepositoryAnalysis } from './types'
 
 export type GitHubConnectionNotice =
   | { status: 'connected'; connectionId?: string }
   | { status: 'error'; reason: string }
 
 export interface IntegrationNavigation {
-  view: AppView
+  view: string
   githubNotice: GitHubConnectionNotice | null
 }
 
-const appViews = new Set<AppView>([
-  'overview',
-  'resource-groups',
-  'web-services',
-  'domains',
-  'integrations',
-  'storage',
-])
-
-export function readIntegrationNavigation(search: string): IntegrationNavigation {
+export function readIntegrationNavigation(
+  search: string,
+  registeredViews: readonly string[] = ['overview', 'integrations'],
+): IntegrationNavigation {
   const query = new URLSearchParams(search)
-  const requestedView = query.get('view') as AppView | null
+  const requestedView = query.get('view')
   const githubStatus = query.get('github')
   const view =
-    requestedView && appViews.has(requestedView)
+    requestedView && registeredViews.includes(requestedView)
       ? requestedView
       : githubStatus
         ? 'integrations'

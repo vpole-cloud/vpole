@@ -1,61 +1,78 @@
+/* Shared console tokens also style the existing feature screens during migration. */
 :root {
-  font-family:
-    "Segoe UI",
-    "SF Pro Display",
-    "Helvetica Neue",
-    sans-serif;
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color: #10233d;
-  background-color: #e9eef5;
+  color: var(--color-text-strong);
+  background: var(--color-app-bg-top);
+  color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-
-  --top-band-height: 92px;
-  --color-app-bg-top: #edf2f9;
-  --color-app-bg-bottom: #e4ebf4;
-  --color-surface: rgba(252, 253, 255, 0.88);
-  --color-surface-raised: rgba(255, 255, 255, 0.92);
-  --color-surface-muted: rgba(236, 242, 249, 0.92);
-  --color-border: rgba(127, 153, 186, 0.22);
-  --color-border-strong: rgba(91, 122, 163, 0.26);
-  --color-text-strong: #10233d;
-  --color-text-soft: #51647f;
-  --color-text-muted: #69809f;
-  --color-accent: #3d7ddf;
-  --color-accent-strong: #1f5fc7;
-  --shadow-soft: 0 18px 48px rgba(24, 51, 91, 0.08);
+  --top-band-height: 68px;
+  --color-app-bg-top: #f4f5f7;
+  --color-app-bg-bottom: #f4f5f7;
+  --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
+  --color-surface-muted: #f0f2f5;
+  --color-border: #e0e3e8;
+  --color-border-strong: #c9cfd8;
+  --color-text-strong: #222833;
+  --color-text-soft: #555f70;
+  --color-text-muted: #687284;
+  --color-accent: #385dd3;
+  --color-accent-strong: #294bb6;
+  --color-accent-bg: #edf1ff;
+  --color-info: #315d9e;
+  --color-info-bg: #edf3fb;
+  --color-success: #226441;
+  --color-success-bg: #edf7f0;
+  --color-warning: #755516;
+  --color-warning-bg: #fff6df;
+  --color-danger: #9e3040;
+  --color-danger-bg: #fff0f2;
+  --color-inverse: #ffffff;
+  --color-code-bg: #202632;
+  --color-code-text: #e2e8f0;
+  --shadow-soft: 0 1px 2px rgb(20 30 45 / 4%);
 }
-
-* {
-  box-sizing: border-box;
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-app-bg-top: #14171c;
+  --color-app-bg-bottom: #14171c;
+  --color-surface: #1c2027;
+  --color-surface-raised: #232832;
+  --color-surface-muted: #252b35;
+  --color-border: #343c48;
+  --color-border-strong: #4d586a;
+  --color-text-strong: #e6eaf1;
+  --color-text-soft: #b4bece;
+  --color-text-muted: #a0adc1;
+  --color-accent: #9bb0ff;
+  --color-accent-strong: #b9c7ff;
+  --color-accent-bg: #29365d;
+  --color-info: #a5c7fa;
+  --color-info-bg: #23374d;
+  --color-success: #9cddb1;
+  --color-success-bg: #223b30;
+  --color-warning: #f1d389;
+  --color-warning-bg: #403721;
+  --color-danger: #ffb0b9;
+  --color-danger-bg: #482931;
+  --color-inverse: #17213d;
+  --color-code-bg: #12151b;
+  --color-code-text: #e2e8f0;
 }
-
-html {
-  min-width: 1280px;
+* { box-sizing: border-box; }
+html, body { min-width: 320px; }
+body { margin: 0; min-height: 100vh; }
+body, button, input, textarea, select { font: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
+#root { min-height: 100vh; }
+button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible,
+textarea:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
 }
-
-body {
-  margin: 0;
-  min-width: 1280px;
-  min-height: 100vh;
-}
-
-body,
-button,
-input,
-textarea,
-select {
-  font: inherit;
-}
-
-button,
-a {
-  -webkit-tap-highlight-color: transparent;
-}
-
-#root {
-  min-height: 100vh;
-}
+a { color: var(--color-accent); }

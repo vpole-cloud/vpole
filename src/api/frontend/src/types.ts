@@ -1,12 +1,4 @@
 export type LoadStatus = 'idle' | 'loading' | 'success' | 'error'
-export type AppView =
-  | 'overview'
-  | 'resource-groups'
-  | 'web-services'
-  | 'domains'
-  | 'integrations'
-  | 'storage'
-
 export interface AuthViewState {
   initialized: boolean
   authenticated: boolean

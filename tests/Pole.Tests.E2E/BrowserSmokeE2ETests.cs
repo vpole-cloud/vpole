@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Net;
+using System.Text.Json;
 using Microsoft.Playwright;
 using Pole.Testing;
 using Pole.Tests.E2E.Infrastructure;
@@ -13,14 +15,14 @@ public sealed class BrowserSmokeE2ETests(
     ITestOutputHelper output)
 {
     [Fact]
-    public async Task User_can_sign_in_select_a_tenant_and_create_resource_groups_at_desktop_and_mobile_widths()
+    public async Task User_can_sign_in_and_deploy_an_image_at_desktop_and_mobile_widths_in_both_themes()
     {
         await using var resources = new TestResourceScope("browser smoke E2E");
         await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
         using (var startup = new CancellationTokenSource(TimeSpan.FromMinutes(20)))
             await browserContainer.StartAsync(startup.Token);
 
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromMinutes(7));
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         using var playwright = await Playwright.CreateAsync();
         await using var browser = await playwright.Chromium.ConnectAsync(
             browserContainer.WebSocketEndpoint,
@@ -120,6 +122,61 @@ public sealed class BrowserSmokeE2ETests(
                 $"delete browser-created resource group '{resourceGroupId}'",
                 token => DeleteResourceGroupAsync(resourceGroupId, token));
             await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = resourceGroupName }).WaitForAsync();
+
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Web services", Exact = true }).ClickAsync();
+            var serviceName = $"browser-{Guid.NewGuid():N}"[..20];
+            await page.GetByLabel("Name", new PageGetByLabelOptions { Exact = true }).FillAsync(serviceName);
+            await page.GetByRole(AriaRole.Combobox, new PageGetByRoleOptions { Name = "Resource group" }).SelectOptionAsync(resourceGroupId);
+            await page.GetByLabel("Image registry").FillAsync("docker.io");
+            await page.GetByLabel("Image name").FillAsync("library/nginx");
+            await page.GetByLabel("Tag", new PageGetByLabelOptions { Exact = true }).FillAsync("1.27.5-alpine");
+            await page.GetByLabel("Probe path").FillAsync("/");
+            await page.GetByLabel("Probe port").FillAsync("80");
+            await page.GetByLabel("Target port").FillAsync("80");
+            var serviceResponse = await page.RunAndWaitForResponseAsync(
+                () => page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Create service", Exact = true }).ClickAsync(),
+                response => response.Request.Method == HttpMethod.Post.Method &&
+                            new Uri(response.Url).AbsolutePath.TrimEnd('/') == "/api/v1/web-services");
+            Assert.True(serviceResponse.Ok, $"Browser image creation returned HTTP {serviceResponse.Status}.");
+            var createdService = await serviceResponse.JsonAsync()
+                                 ?? throw new InvalidOperationException("The browser-created service response was empty.");
+            var serviceId = createdService.GetProperty("webServiceId").GetString()
+                            ?? throw new InvalidOperationException("The browser-created service has no id.");
+            resources.Defer(
+                $"delete browser-created service '{serviceId}'",
+                token => DeleteWebServiceAsync(serviceId, token));
+            await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Physical deployments" }).WaitForAsync();
+            await fixture.WaitForNamespaceCreationAsync(resourceGroupId, cancellation.Token);
+            await WaitForImageDeploymentAsync(resourceGroupId, serviceId, serviceName, cancellation.Token);
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Refresh web services", Exact = true }).ClickAsync();
+            await page.GetByText("Applied", new PageGetByTextOptions { Exact = true }).WaitForAsync();
+
+            var screenshotDirectory = Path.GetFullPath(Path.Combine(".artifacts", "frontend-shell"));
+            Directory.CreateDirectory(screenshotDirectory);
+            foreach (var theme in new[] { "light", "dark" })
+            {
+                var currentTheme = await page.Locator("html").GetAttributeAsync("data-theme");
+                if (currentTheme != theme)
+                    await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = $"Switch to {theme} theme" }).ClickAsync();
+                Assert.Equal(theme, await page.Locator("html").GetAttributeAsync("data-theme"));
+                await page.EvaluateAsync("window.scrollTo(0, 0)");
+                var screenshotPath = Path.Combine(screenshotDirectory, $"{name}-{theme}.png");
+                await page.ScreenshotAsync(new PageScreenshotOptions { Path = screenshotPath, FullPage = true, Animations = ScreenshotAnimations.Disabled });
+                output.WriteLine($"Frontend shell screenshot: {screenshotPath}");
+                Assert.True(await page.EvaluateAsync<bool>("document.documentElement.scrollWidth <= window.innerWidth"),
+                    $"The {name}/{theme} workspace overflows its viewport. Screenshot: {screenshotPath}");
+            }
+            await page.ReloadAsync();
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = serviceName, Exact = true }).WaitForAsync();
+            var deleteButton = page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = $"Delete {serviceName}", Exact = true });
+            await deleteButton.ClickAsync();
+            var dialog = page.GetByRole(AriaRole.Dialog, new PageGetByRoleOptions { Name = $"Delete {serviceName}?", Exact = true });
+            await dialog.WaitForAsync();
+            Assert.True(await dialog.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Cancel", Exact = true })
+                .EvaluateAsync<bool>("element => element === document.activeElement"));
+            await page.Keyboard.PressAsync("Escape");
+            await dialog.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Hidden });
+            Assert.True(await deleteButton.EvaluateAsync<bool>("element => element === document.activeElement"));
         }
     }
 
@@ -131,7 +188,62 @@ public sealed class BrowserSmokeE2ETests(
             fixture.Alpha,
             fixture.Alpha.DefaultTenantId);
         using var response = await fixture.Api.SendAsync(request, cancellationToken);
-        Assert.Equal(System.Net.HttpStatusCode.NoContent, response.StatusCode);
+        Assert.True(response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound);
+        await fixture.WaitForNamespaceDeletionAsync(resourceGroupId, cancellationToken);
+    }
+
+    private async Task WaitForImageDeploymentAsync(
+        string resourceGroupId,
+        string serviceId,
+        string serviceName,
+        CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            using var request = fixture.CreateAuthenticatedRequest(
+                HttpMethod.Get,
+                $"/api/v1/web-services/{serviceId}",
+                fixture.Alpha,
+                fixture.Alpha.DefaultTenantId);
+            using var response = await fixture.Api.SendAsync(request, cancellationToken);
+            response.EnsureSuccessStatusCode();
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
+            var placements = document.RootElement.GetProperty("deployments");
+            if (placements.GetArrayLength() == 1 && placements[0].GetProperty("status").GetString() == "Applied")
+            {
+                var deployment = await fixture.GetWebServiceDeploymentAsync(resourceGroupId, serviceName, cancellationToken);
+                Assert.Equal("docker.io/library/nginx:1.27.5-alpine",
+                    deployment.GetProperty("spec").GetProperty("template").GetProperty("spec")
+                        .GetProperty("containers")[0].GetProperty("image").GetString());
+                if (deployment.TryGetProperty("status", out var state) &&
+                    state.TryGetProperty("availableReplicas", out var replicas) && replicas.GetInt32() >= 1)
+                    return;
+            }
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
+    }
+
+    private async Task DeleteWebServiceAsync(string serviceId, CancellationToken cancellationToken)
+    {
+        using (var request = fixture.CreateAuthenticatedRequest(
+                   HttpMethod.Delete,
+                   $"/api/v1/web-services/{serviceId}",
+                   fixture.Alpha,
+                   fixture.Alpha.DefaultTenantId))
+        using (var response = await fixture.Api.SendAsync(request, cancellationToken))
+            Assert.True(response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound);
+        while (true)
+        {
+            using var request = fixture.CreateAuthenticatedRequest(
+                HttpMethod.Get,
+                $"/api/v1/web-services/{serviceId}",
+                fixture.Alpha,
+                fixture.Alpha.DefaultTenantId);
+            using var response = await fixture.Api.SendAsync(request, cancellationToken);
+            if (response.StatusCode == HttpStatusCode.NotFound) return;
+            response.EnsureSuccessStatusCode();
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
     }
 
     private async Task CaptureAuthDiagnosticAsync(
