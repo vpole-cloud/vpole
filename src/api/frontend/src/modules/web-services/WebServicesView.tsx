@@ -3,9 +3,9 @@ import { WebServicesPage } from '../../components/WebServicesPage'
 import { useDomainZonesManager } from '../../hooks/useDomainZonesManager'
 import { useResourceGroupsManager } from '../../hooks/useResourceGroupsManager'
 import { useWebServicesManager } from '../../hooks/useWebServicesManager'
-import { useConsoleServices } from '../../console/ConsoleContext'
-import { Button, ConfirmationDialog, EmptyState } from '../../console/components'
-import { TabPanel, Tabs } from '../../console/Tabs'
+import { useAppServices } from '../../shell/AppContext'
+import { Button, ConfirmationDialog, EmptyState } from '../../ui/components'
+import { TabPanel, Tabs } from '../../ui/Tabs'
 import type { WebService } from '../../types'
 import { NewWebServiceView } from './NewWebServiceView'
 import { WebServiceResourceView } from './WebServiceResourceView'
@@ -14,7 +14,7 @@ import { catalogId, createId, readServiceRoute, readWorkspace, saveWorkspace, se
 const workspaceId = 'web-services-workspace'
 
 export function WebServicesView() {
-  const { api, auth, tenant, navigation } = useConsoleServices()
+  const { api, auth, tenant, navigation } = useAppServices()
   const route = readServiceRoute(navigation.search)
   const options = { apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId, enabled: Boolean(tenant.active) }
   const storageKey = `pole.web-services.workspace.v1.${auth.userId}.${api.tenantId}`

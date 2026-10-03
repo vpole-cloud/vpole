@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Button, Notice } from '../console/components'
+import { Button, Notice } from '../ui/components'
 import { useIsolationScopes, type LoadIsolationScopes } from '../hooks/useIsolationScopes'
 import type {
   AvailableComputeProfile,

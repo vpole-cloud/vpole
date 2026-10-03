@@ -1,9 +1,9 @@
 import './App.css'
 import { useKeycloak } from '@react-keycloak/web'
-import { ConsoleShell } from './console/ConsoleShell'
+import { AppShell } from './shell/AppShell'
 import { useTenants } from './hooks/useTenants'
 import { readIntegrationNavigation } from './integrationsState'
-import { consoleRegistry } from './modules'
+import { appRegistry } from './modules'
 
 type RoleClaims = {
   roles?: string[]
@@ -12,7 +12,7 @@ type RoleClaims = {
 }
 
 const initialViewId = readIntegrationNavigation(
-  window.location.search, consoleRegistry.views.map((view) => view.id),
+  window.location.search, appRegistry.views.map((view) => view.id),
 ).view
 
 function App() {
@@ -26,7 +26,7 @@ function App() {
     ...(claims?.roles ?? []), ...(claims?.realm_access?.roles ?? []),
     ...Object.values(claims?.resource_access ?? {}).flatMap((resource) => resource.roles ?? []),
   ]
-  return <ConsoleShell registry={consoleRegistry} initialViewId={initialViewId} tenants={tenants}
+  return <AppShell registry={appRegistry} initialViewId={initialViewId} tenants={tenants}
     api={{ baseUrl: apiBaseUrl, token }} auth={{
       initialized, authenticated, userId: keycloak.subject ?? '',
       userName: keycloak.tokenParsed?.preferred_username, isPlatformAdmin: roles.includes('pole-platform-admin'),

@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { TopBandPlaceholder } from '../components/TopBandPlaceholder'
 import type { useTenants } from '../hooks/useTenants'
-import { ConsoleContext } from './ConsoleContext'
-import { Button, ConfirmationDialog, EmptyState, Notice } from './components'
-import type { ConsoleRegistry, ConsoleServices, Theme } from './contracts'
+import { AppContext } from './AppContext'
+import { Button, ConfirmationDialog, EmptyState, Notice } from '../ui/components'
+import type { AppRegistry, AppServices, Theme } from './contracts'
 
-interface ConsoleShellProps {
-  registry: ConsoleRegistry
-  auth: ConsoleServices['auth']
-  api: ConsoleServices['api']
+interface AppShellProps {
+  registry: AppRegistry
+  auth: AppServices['auth']
+  api: AppServices['api']
   tenants: ReturnType<typeof useTenants>
   initialViewId: string
 }
@@ -19,7 +19,7 @@ function initialTheme(): Theme {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
-export function ConsoleShell({ registry, auth, api, tenants, initialViewId }: ConsoleShellProps) {
+export function AppShell({ registry, auth, api, tenants, initialViewId }: AppShellProps) {
   const [location, setLocation] = useState(() => ({
     viewId: new URLSearchParams(window.location.search).get('view') ?? initialViewId,
     search: window.location.search,
@@ -87,7 +87,7 @@ export function ConsoleShell({ registry, auth, api, tenants, initialViewId }: Co
     writeLocation(next, viewId, options?.replace)
   }, [activeTenant, scopeKey, viewId, writeLocation])
   const goTo = (nextId: string) => {
-    if (!registry.views.some((view) => view.id === nextId)) throw new Error(`Unknown console view: ${nextId}`)
+    if (!registry.views.some((view) => view.id === nextId)) throw new Error(`Unknown app view: ${nextId}`)
     if (nextId === viewId) return
     runGuarded(() => {
       setNotification(null)
@@ -133,7 +133,7 @@ export function ConsoleShell({ registry, auth, api, tenants, initialViewId }: Co
     localStorage.setItem('pole.console.theme', theme)
   }, [theme])
 
-  const services: ConsoleServices = {
+  const services: AppServices = {
     auth,
     api: { ...api, tenantId: activeTenant?.id },
     tenant: tenantContext,
@@ -147,9 +147,9 @@ export function ConsoleShell({ registry, auth, api, tenants, initialViewId }: Co
   const commands = permitted ? registry.commands.filter((command) => command.viewId === viewId &&
     (command.available?.({ auth, tenant: tenantContext }) ?? true)) : []
 
-  return <ConsoleContext.Provider value={services}>
+  return <AppContext.Provider value={services}>
     <div className="app-shell">
-      <a className="skip-link" href="#console-content">Skip to content</a>
+      <a className="skip-link" href="#app-content">Skip to content</a>
       <aside className="app-shell__side-nav">
         <div className="side-nav">
           <div className="side-nav__brand"><span className="side-nav__brand-mark" aria-hidden="true">P</span>
@@ -176,20 +176,20 @@ export function ConsoleShell({ registry, auth, api, tenants, initialViewId }: Co
                 writeLocation(params, viewId)
               })
             }} />
-          <div className="console-header-actions">
+          <div className="ui-header-actions">
             <Button aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
               onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>{theme === 'light' ? 'Dark theme' : 'Light theme'}</Button>
             <Button disabled={!auth.initialized} onClick={() => runGuarded(auth.authenticated ? auth.logout : auth.login)}>{auth.authenticated ? 'Log out' : 'Log in'}</Button>
           </div>
         </header>
-        <main id="console-content" className="app-shell__content" tabIndex={-1}>
-          {notification?.scopeKey === scopeKey && <div className="console-notification"><Notice tone={notification.tone}>{notification.message}</Notice>
+        <main id="app-content" className="app-shell__content" tabIndex={-1}>
+          {notification?.scopeKey === scopeKey && <div className="ui-notification"><Notice tone={notification.tone}>{notification.message}</Notice>
             <Button aria-label="Dismiss notification" onClick={() => setNotification(null)}>Dismiss</Button></div>}
-          {commands.length > 0 && <div className="console-view-bar"><span>{activeView?.label ?? 'Unavailable view'}</span>
+          {commands.length > 0 && <div className="ui-view-bar"><span>{activeView?.label ?? 'Unavailable view'}</span>
             <div className="row-actions">{commands.map((command) =>
               <Button key={command.id} onClick={() => command.run(services)}>{command.label}</Button>)}</div>
           </div>}
-          {!auth.initialized ? <EmptyState title="Starting console…" /> : !activeView ?
+          {!auth.initialized ? <EmptyState title="Starting workspace…" /> : !activeView ?
             <EmptyState title="This view is unavailable." error><Button onClick={() => goTo(registry.views[0].id)}>Open overview</Button></EmptyState> :
             !permitted ? <EmptyState title={auth.authenticated ? requestedTenantId !== null && tenants.status === 'success'
               ? 'This tenant is unavailable to your account. Select an available tenant.' : 'Select an available tenant.' : 'Sign in to continue.'}>
@@ -204,5 +204,5 @@ export function ConsoleShell({ registry, auth, api, tenants, initialViewId }: Co
           setPendingNavigation(null)
         }}><p>Your changes in {dirtyLabels.join(', ')} will be lost.</p></ConfirmationDialog>}
     </div>
-  </ConsoleContext.Provider>
+  </AppContext.Provider>
 }

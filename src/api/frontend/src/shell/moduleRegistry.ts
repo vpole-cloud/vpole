@@ -1,11 +1,11 @@
-import type { ConsoleModule, ConsoleRegistry } from './contracts'
+import type { AppModule, AppRegistry } from './contracts'
 
-export function createConsoleRegistry(modules: readonly ConsoleModule[]): ConsoleRegistry {
+export function createAppRegistry(modules: readonly AppModule[]): AppRegistry {
   const assertUnique = (category: string, entries: readonly { id: string }[]) => {
     const ids = new Set<string>()
     for (const entry of entries) {
-      if (!entry.id.trim()) throw new Error(`Console ${category} registration needs an identifier.`)
-      if (ids.has(entry.id)) throw new Error(`Duplicate console ${category} identifier: ${entry.id}`)
+      if (!entry.id.trim()) throw new Error(`App ${category} registration needs an identifier.`)
+      if (ids.has(entry.id)) throw new Error(`Duplicate app ${category} identifier: ${entry.id}`)
       ids.add(entry.id)
     }
   }
@@ -20,7 +20,7 @@ export function createConsoleRegistry(modules: readonly ConsoleModule[]): Consol
   const viewIds = new Set(views.map((view) => view.id))
   for (const contribution of [...resourceTypes, ...commands]) {
     if (!viewIds.has(contribution.viewId)) {
-      throw new Error(`Console registration ${contribution.id} references missing view ${contribution.viewId}.`)
+      throw new Error(`App registration ${contribution.id} references missing view ${contribution.viewId}.`)
     }
   }
   return { views, resourceTypes, commands }

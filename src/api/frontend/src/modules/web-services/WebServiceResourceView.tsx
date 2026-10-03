@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react'
 import { SourceBuildPanel } from '../../components/SourceBuildPanel'
 import { WebServiceDeploymentsPanel } from '../../components/WebServiceDeploymentsPanel'
 import { WebServiceForm } from '../../components/WebServiceForm'
-import { useConsoleServices } from '../../console/ConsoleContext'
-import { Button, ConfirmationDialog, EmptyState, Notice, StatusBadge } from '../../console/components'
-import { TabPanel, Tabs } from '../../console/Tabs'
-import { useUnsavedChanges } from '../../console/useUnsavedChanges'
+import { useAppServices } from '../../shell/AppContext'
+import { Button, ConfirmationDialog, EmptyState, Notice, StatusBadge } from '../../ui/components'
+import { TabPanel, Tabs } from '../../ui/Tabs'
+import { useUnsavedChanges } from '../../shell/useUnsavedChanges'
 import { useSourceBuildsManager } from '../../hooks/useSourceBuildsManager'
 import { useWebServicesManager } from '../../hooks/useWebServicesManager'
 import type { ResourceGroup, TenantDomainZone, WebService } from '../../types'
@@ -20,7 +20,7 @@ export function WebServiceResourceView({ id, section, active, refreshVersion, gr
   { id: string; section: ServiceSection; active: boolean; refreshVersion: number; groups: ResourceGroup[]; zones: TenantDomainZone[];
     onSection: (id: string, section: ServiceSection) => void; onLoaded: (service: WebService) => void;
     onDirtyChange: (id: string, dirty: boolean) => void; onChanged: () => void }) {
-  const { api, tenant, notifications } = useConsoleServices()
+  const { api, tenant, notifications } = useAppServices()
   const details = useWebService(id, api, refreshVersion)
   const manager = useWebServicesManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId,
     enabled: false, refreshAfterMutation: false })
@@ -66,8 +66,8 @@ export function WebServiceResourceView({ id, section, active, refreshVersion, gr
 
   const panelId = `web-service-${id}`
   return <div className="web-service-resource">
-    <header className="console-page-header">
-      <div><p className="console-page-eyebrow">Web service · {groups.find((group) => group.id === service.resourceGroupId)?.name ?? 'Resource group'}</p>
+    <header className="ui-page-header">
+      <div><p className="ui-page-eyebrow">Web service · {groups.find((group) => group.id === service.resourceGroupId)?.name ?? 'Resource group'}</p>
         <h1>{service.name}</h1><p>{service.spec.image.server}/{service.spec.image.name}:{service.spec.image.tag}</p></div>
       <Button aria-label="Refresh service details" onClick={() => void details.refresh()} disabled={details.status === 'loading'}>Refresh</Button>
     </header>
