@@ -19,9 +19,12 @@ public static class GetResourceGroups
 {
     public static IEndpointRouteBuilder MapGetResourceGroupsEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/", async (IMediator mediator, [AsParameters] GetResourceGroupsRequest request) =>
+        app.MapGet("/", async (
+                IMediator mediator,
+                [AsParameters] GetResourceGroupsRequest request,
+                CancellationToken cancellationToken) =>
             {
-                var result = await mediator.Send(request);
+                var result = await mediator.Send(request, cancellationToken);
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     PaginatedResponse<ResourceGroupDto> page => Results.Ok(page)
@@ -29,8 +32,8 @@ public static class GetResourceGroups
             })
             .WithName("GetResourceGroups")
             .WithSummary("Retrieves all resource groups.")
-            .WithDescription("Retrieves a list of all resource groups available in the system.")
-            .Produces<IEnumerable<ResourceGroupDto>>(StatusCodes.Status200OK);
+            .WithDescription("Retrieves a paginated list of resource groups in the selected tenant.")
+            .Produces<PaginatedResponse<ResourceGroupDto>>(StatusCodes.Status200OK);
 
         return app;
     }

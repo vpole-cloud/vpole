@@ -52,7 +52,12 @@ repaired before any packet can arrive.
 
 ## Tenant API
 
-ResourceGroup list responses expose `resourceCount`, loaded for the complete page with one grouped
+`GET /api/v1/resource-groups?pageNumber=1&pageSize=20&search=prod` returns a tenant-scoped
+`PaginatedResponse<ResourceGroupDto>`; search matches group names. `GET /api/v1/resource-groups/{id}`
+reads a group directly for workspace links independently of its inventory page. Missing and
+foreign-tenant IDs both return 404. Both endpoints propagate request cancellation.
+
+Group responses expose `resourceCount`; lists load counts for the complete page with one grouped
 registration query. Registrations are listed with:
 
 ```http

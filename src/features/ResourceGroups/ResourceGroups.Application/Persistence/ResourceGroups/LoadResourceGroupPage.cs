@@ -37,6 +37,8 @@ internal sealed class MongoLoadResourceGroupPage(
             cancellationToken: cancellationToken);
         var items = await resourceGroups
             .Find(filter)
+            .SortBy(group => group.Name)
+            .ThenBy(group => group.Id)
             .Skip(checked((query.PageNumber - 1) * query.PageSize))
             .Limit(query.PageSize)
             .ToListAsync(cancellationToken);

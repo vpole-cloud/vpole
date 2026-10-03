@@ -21,9 +21,12 @@ public static class GetWebServices
     {
         public IEndpointRouteBuilder MapGetWebServicesEndpoint()
         {
-            app.MapGet("/", async (IMediator mediator, [AsParameters] GetWebServicesRequest request) =>
+            app.MapGet("/", async (
+                IMediator mediator,
+                [AsParameters] GetWebServicesRequest request,
+                CancellationToken cancellationToken) =>
             {
-                var result = await mediator.Send(request);
+                var result = await mediator.Send(request, cancellationToken);
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     PaginatedResponse<WebServiceDto> page => Results.Ok(page)
@@ -31,7 +34,7 @@ public static class GetWebServices
             })
             .WithName("GetWebServices")
             .WithSummary("Retrieves all web services.")
-            .WithDescription("Fetches a list of all web services available in the system.")
+            .WithDescription("Fetches a paginated list of web services in the selected tenant.")
             .Produces<PaginatedResponse<WebServiceDto>>();
 
             return app;

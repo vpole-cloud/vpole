@@ -33,6 +33,8 @@ internal sealed class MongoLoadWebServicePage(IMongoCollection<WebService> webSe
             filter,
             cancellationToken: cancellationToken);
         var items = await webServices.Find(filter)
+            .SortBy(service => service.Name)
+            .ThenBy(service => service.Id)
             .Skip(query.Skip)
             .Limit(query.PageSize)
             .ToListAsync(cancellationToken);
