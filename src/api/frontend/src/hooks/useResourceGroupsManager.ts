@@ -12,6 +12,7 @@ interface UseResourceGroupsManagerOptions {
   token?: string
   tenantId?: string
   enabled: boolean
+  loadInventory?: boolean
 }
 
 export function useResourceGroupsManager({
@@ -19,6 +20,7 @@ export function useResourceGroupsManager({
   token,
   tenantId,
   enabled,
+  loadInventory = true,
 }: UseResourceGroupsManagerOptions) {
   const [items, setItems] = useState<ResourceGroup[]>([])
   const [status, setStatus] = useState<LoadStatus>('idle')
@@ -51,12 +53,19 @@ export function useResourceGroupsManager({
     setStatus('loading')
     setError('')
     try {
-      const response = await fetchResourceGroups(apiBaseUrl, token, tenantId, controller.signal)
+      const response = await fetchResourceGroups(apiBaseUrl, token, tenantId, controller.signal, { pageSize: 200 })
+      const allItems = [...response.items]
+      for (let pageNumber = 2; allItems.length < response.totalCount; pageNumber++) {
+        if (controller.signal.aborted) return
+        const next = await fetchResourceGroups(apiBaseUrl, token, tenantId, controller.signal, { pageNumber, pageSize: 200 })
+        allItems.push(...next.items)
+        if (!next.items.length) break
+      }
       if (controller.signal.aborted) return
-      const responseIds = new Set(response.items.map((item) => item.id))
+      const responseIds = new Set(allItems.map((item) => item.id))
       setItems([
         ...Array.from(changes.values()).filter((item): item is ResourceGroup => item !== null && !responseIds.has(item.id)),
-        ...response.items.flatMap((item) => {
+        ...Array.from(new Map(allItems.map((item) => [item.id, item])).values()).flatMap((item) => {
           const changed = changes.has(item.id) ? changes.get(item.id) : item
           return changed ? [changed] : []
         }),
@@ -64,7 +73,6 @@ export function useResourceGroupsManager({
       setStatus('success')
     } catch (loadError) {
       if (controller.signal.aborted) return
-      setItems([])
       setStatus('error')
       setError(loadError instanceof Error ? loadError.message : 'Unable to load resource groups.')
     } finally {
@@ -77,13 +85,13 @@ export function useResourceGroupsManager({
     const controller = new AbortController()
     scopeController.current = controller
     queueMicrotask(() => {
-      if (!controller.signal.aborted) void load()
+      if (!controller.signal.aborted && loadInventory) void load()
     })
     return () => {
       controller.abort()
       listController.current?.abort()
     }
-  }, [enabled, load])
+  }, [enabled, load, loadInventory])
 
   const refresh = async () => {
     if (scopeController.current?.signal.aborted || !enabled) return
@@ -104,10 +112,11 @@ export function useResourceGroupsManager({
 
     try {
       const created = await createResourceGroup(apiBaseUrl, input, token, tenantId)
-      if (signal?.aborted) return
+      if (signal?.aborted) return created
       acceptMutation(created.id, created)
       setItems((current) => [created, ...current.filter((item) => item.id !== created.id)])
       setSubmitStatus('success')
+      return created
     } catch (submitErrorValue) {
       if (signal?.aborted) throw submitErrorValue
       setSubmitStatus('error')

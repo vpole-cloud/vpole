@@ -109,7 +109,11 @@ function render(tenantId = 'alpha', role: 'Owner' | 'Viewer' = 'Owner', authenti
 const visible = (element: Element) => !element.closest('[hidden]')
 const button = (label: string) => [...(container.querySelector('dialog') ?? container).querySelectorAll<HTMLButtonElement>('button')]
   .find((node) => visible(node) && (node.textContent === label || node.getAttribute('aria-label') === label))!
-const click = async (label: string) => { await act(async () => { button(label).click() }) }
+const click = async (label: string) => { await act(async () => {
+  const action = [...(container.querySelector('dialog') ?? container).querySelectorAll<HTMLButtonElement | HTMLAnchorElement>('button, a')]
+    .find((node) => visible(node) && (node.textContent === label || node.getAttribute('aria-label') === label))!
+  action.click()
+}) }
 const workspaceTab = (name: string) => [...container.querySelectorAll<HTMLButtonElement>('#web-services-workspace > [role="tablist"] [role="tab"]')]
   .find((node) => node.title === name)!
 async function selectTab(name: string) { await act(async () => { workspaceTab(name).click() }) }
@@ -132,6 +136,20 @@ async function fillCreateForm() {
 async function submit() {
   await act(async () => { [...container.querySelectorAll('form')].find(visible)!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) })
 }
+
+it('shows backend field validation beside editable service input and retains the failed draft', async () => {
+  const base = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation((url, init) => init?.method === 'POST' && String(url).endsWith('/web-services')
+    ? Promise.resolve(new Response(JSON.stringify({ title: 'Validation failed', errors: { 'Body.Name': ['Choose a unique service name.'], 'Body.Spec.Image.Name': ['Image was rejected.'] } }), { status: 400 })) : base(url, init))
+  await act(async () => render())
+  await fillCreateForm(); await submit()
+  expect(textInput('pole-api').value).toBe('sample')
+  expect(textInput('pole-api').getAttribute('aria-invalid')).toBe('true')
+  expect(textInput('library/nginx').getAttribute('aria-invalid')).toBe('true')
+  expect(container.textContent).toContain('Choose a unique service name.')
+  expect(container.textContent).toContain('Image was rejected.')
+  expect(container.textContent).not.toContain('"errors"')
+})
 
 it('lists active isolation scopes by name and sends the chosen identity with tenant headers', async () => {
   const base = fetchMock.getMockImplementation()!

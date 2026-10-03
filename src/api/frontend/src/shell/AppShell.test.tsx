@@ -37,6 +37,14 @@ afterEach(async () => {
 })
 
 describe('app module composition', () => {
+  it('resolves typed resource URLs through an independent registration even when the view hint is stale', async () => {
+    window.history.replaceState({}, '', '/?view=old-view&resourceType=test%2Fwidget&resource=widget&tenant=alpha')
+    function Widget() { const { navigation } = useAppServices(); return <p>Widget {new URLSearchParams(navigation.search).get('resource')}</p> }
+    const registry = createAppRegistry([{ id: 'widgets', views: [{ id: 'widgets', label: 'Widgets', component: Widget, access: 'tenant' }], resourceTypes: [{ id: 'test/widget', label: 'Widget', viewId: 'widgets' }] }])
+    await act(async () => root.render(<AppShell registry={registry} auth={auth} api={{ baseUrl: '/api' }} tenants={tenants('alpha')} initialViewId="widgets" />))
+    expect(container.textContent).toContain('Widget widget')
+    expect(new URLSearchParams(window.location.search).get('view')).toBe('widgets')
+  })
   it('reports an unregistered URL view explicitly and clears its resource selection on recovery', async () => {
     window.history.replaceState({}, '', '/?view=removed-provider&tenant=alpha&resource=old-resource')
     const registry = createAppRegistry([{ id: 'home', views: [

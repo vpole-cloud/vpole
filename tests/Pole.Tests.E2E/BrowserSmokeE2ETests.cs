@@ -42,6 +42,7 @@ public sealed class BrowserSmokeE2ETests(
                 IgnoreHTTPSErrors = true
             });
             var page = await context.NewPageAsync();
+            var content = page.Locator("#app-content");
             var navigation = new ConcurrentQueue<string>();
             void Record(string item)
             {
@@ -102,6 +103,7 @@ public sealed class BrowserSmokeE2ETests(
             await page.GetByLabel("Name").FillAsync(resourceGroupName);
             await page.GetByLabel("Description").FillAsync($"{name} browser smoke test");
             await page.GetByLabel("Tags").FillAsync("e2e, browser");
+            await CaptureWorkspaceAsync(page, name, "group-create");
             var createResponse = await page.RunAndWaitForResponseAsync(
                 () => page.GetByRole(
                         AriaRole.Button,
@@ -122,6 +124,27 @@ public sealed class BrowserSmokeE2ETests(
             resources.Defer(
                 $"delete browser-created resource group '{resourceGroupId}'",
                 token => DeleteResourceGroupAsync(resourceGroupId, token));
+
+            await content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = resourceGroupName, Exact = true }).WaitForAsync();
+            Assert.Contains($"resource={resourceGroupId}", page.Url);
+            await CaptureWorkspaceAsync(page, name, "group-resources");
+            await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Configuration", Exact = true }).ClickAsync();
+            await page.GetByLabel("Description").FillAsync($"{name} metadata saved through group workspace");
+            await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "All groups", Exact = true }).ClickAsync();
+            await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = resourceGroupName }).ClickAsync();
+            Assert.Equal($"{name} metadata saved through group workspace", await page.GetByLabel("Description").InputValueAsync());
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = $"Close {resourceGroupName}", Exact = true }).ClickAsync();
+            var groupDraftDialog = page.GetByRole(AriaRole.Dialog);
+            await groupDraftDialog.WaitForAsync();
+            await groupDraftDialog.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Cancel", Exact = true }).ClickAsync();
+            var groupSaveResponse = await page.RunAndWaitForResponseAsync(
+                () => content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Save changes", Exact = true }).ClickAsync(),
+                response => response.Request.Method == HttpMethod.Put.Method && new Uri(response.Url).AbsolutePath.EndsWith($"/resource-groups/{resourceGroupId}", StringComparison.Ordinal));
+            Assert.True(groupSaveResponse.Ok, "Group metadata must save through the tenant API.");
+            await page.ReloadAsync();
+            await content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = "Edit resource group", Exact = true }).WaitForAsync();
+            Assert.Equal($"{name} metadata saved through group workspace", await page.GetByLabel("Description").InputValueAsync());
+            await CaptureWorkspaceAsync(page, name, "group-configuration");
             await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = resourceGroupName }).WaitForAsync();
 
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Web services", Exact = true }).ClickAsync();
@@ -214,10 +237,10 @@ public sealed class BrowserSmokeE2ETests(
             await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Service configuration", Exact = true }).WaitForAsync();
             Assert.Equal("UI_REVIEW=true", await page.GetByLabel("Environment variables").InputValueAsync());
             await page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "All services", Exact = true }).ClickAsync();
-            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = serviceName, Exact = true }).WaitForAsync();
+            await content.GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = serviceName, Exact = true }).WaitForAsync();
             if (previousServiceName is not null)
             {
-                await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = previousServiceName, Exact = true }).ClickAsync();
+                await content.GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = previousServiceName, Exact = true }).ClickAsync();
                 Assert.Equal(3, await workspaceTabs.GetByRole(AriaRole.Tab).CountAsync());
                 await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Service overview", Exact = true }).WaitForAsync();
                 Assert.True(await workspaceTabs.EvaluateAsync<bool>("element => { const tab = element.querySelector('[aria-selected=\"true\"]').parentElement.getBoundingClientRect(); const strip = element.getBoundingClientRect(); return tab.left >= strip.left - 1 && tab.right <= strip.right + 1; }"),
@@ -229,33 +252,33 @@ public sealed class BrowserSmokeE2ETests(
             var catalogUrl = new UriBuilder(page.Url);
             catalogUrl.Query = $"view=web-services&tenant={fixture.Alpha.DefaultTenantId}&resource=catalog&pageSize=1";
             await page.GotoAsync(catalogUrl.Uri.ToString());
-            await page.GetByText(previousServiceName is null ? "Page 1 of 1" : "Page 1 of 2", new PageGetByTextOptions { Exact = true }).WaitForAsync();
+            await content.GetByText(previousServiceName is null ? "Page 1 of 1" : "Page 1 of 2", new LocatorGetByTextOptions { Exact = true }).WaitForAsync();
             if (previousServiceName is not null)
             {
-                await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Next page", Exact = true }).ClickAsync();
-                await page.GetByText("Page 2 of 2", new PageGetByTextOptions { Exact = true }).WaitForAsync();
+                await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Next page", Exact = true }).ClickAsync();
+                await content.GetByText("Page 2 of 2", new LocatorGetByTextOptions { Exact = true }).WaitForAsync();
                 await CaptureWorkspaceAsync(page, name, "page-two");
                 await page.GoBackAsync();
-                await page.GetByText("Page 1 of 2", new PageGetByTextOptions { Exact = true }).WaitForAsync();
+                await content.GetByText("Page 1 of 2", new LocatorGetByTextOptions { Exact = true }).WaitForAsync();
                 await page.GoForwardAsync();
-                await page.GetByText("Page 2 of 2", new PageGetByTextOptions { Exact = true }).WaitForAsync();
+                await content.GetByText("Page 2 of 2", new LocatorGetByTextOptions { Exact = true }).WaitForAsync();
             }
             await page.GetByPlaceholder("Find by name or service ID").FillAsync(serviceName);
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Search", Exact = true }).ClickAsync();
-            await page.GetByText("Page 1 of 1", new PageGetByTextOptions { Exact = true }).WaitForAsync();
-            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = serviceName, Exact = true }).WaitForAsync();
+            await content.GetByText("Page 1 of 1", new LocatorGetByTextOptions { Exact = true }).WaitForAsync();
+            await content.GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = serviceName, Exact = true }).WaitForAsync();
             Assert.Contains($"search={serviceName}", page.Url);
             await page.GoBackAsync();
-            await page.GetByText(previousServiceName is null ? "Page 1 of 1" : "Page 2 of 2", new PageGetByTextOptions { Exact = true }).WaitForAsync();
+            await content.GetByText(previousServiceName is null ? "Page 1 of 1" : "Page 2 of 2", new LocatorGetByTextOptions { Exact = true }).WaitForAsync();
             Assert.Equal("", await page.GetByPlaceholder("Find by name or service ID").InputValueAsync());
             await page.GoForwardAsync();
-            await page.GetByText("Page 1 of 1", new PageGetByTextOptions { Exact = true }).WaitForAsync();
+            await content.GetByText("Page 1 of 1", new LocatorGetByTextOptions { Exact = true }).WaitForAsync();
             Assert.Equal(serviceName, await page.GetByPlaceholder("Find by name or service ID").InputValueAsync());
             await CaptureWorkspaceAsync(page, name, "search");
             await page.GetByPlaceholder("Find by name or service ID").FillAsync("");
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Search", Exact = true }).ClickAsync();
             await page.GetByRole(AriaRole.Combobox, new PageGetByRoleOptions { Name = "Services per page", Exact = true }).SelectOptionAsync("8");
-            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = serviceName, Exact = true }).WaitForAsync();
+            await content.GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = serviceName, Exact = true }).WaitForAsync();
             await CaptureWorkspaceAsync(page, name, "catalog");
             var deleteButton = page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = $"Delete {serviceName}", Exact = true });
             await deleteButton.ClickAsync();
@@ -266,6 +289,25 @@ public sealed class BrowserSmokeE2ETests(
             await page.Keyboard.PressAsync("Escape");
             await dialog.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Hidden });
             Assert.True(await deleteButton.EvaluateAsync<bool>("element => element === document.activeElement"));
+
+            var groupUrl = new UriBuilder(page.Url) { Query = $"view=resource-groups&tenant={fixture.Alpha.DefaultTenantId}&resource={resourceGroupId}&section=resources" };
+            await page.GotoAsync(groupUrl.Uri.ToString());
+            await content.GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = serviceName, Exact = true }).WaitForAsync();
+            await CaptureWorkspaceAsync(page, name, "group-resources");
+            if (await page.Locator(".resource-tree").GetAttributeAsync("open") is null)
+                await page.Locator(".resource-tree > summary").ClickAsync();
+            var tree = page.GetByRole(AriaRole.Navigation, new PageGetByRoleOptions { Name = "Resource tree", Exact = true });
+            await tree.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = $"Expand {resourceGroupName}", Exact = true }).ClickAsync();
+            await tree.GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = serviceName, Exact = true }).WaitForAsync();
+            await CaptureWorkspaceAsync(page, name, "resource-tree");
+            await content.GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = serviceName, Exact = true }).ClickAsync();
+            await content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = "Service overview", Exact = true }).WaitForAsync();
+            Assert.Contains("resourceType=pole%2Fweb-service", page.Url);
+            Assert.Equal(1, await page.GetByRole(AriaRole.Tablist, new PageGetByRoleOptions { Name = "Web service workspace", Exact = true })
+                .GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = serviceName, Exact = true }).CountAsync());
+            await tree.GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = serviceName, Exact = true }).ClickAsync();
+            Assert.Equal(1, await page.GetByRole(AriaRole.Tablist, new PageGetByRoleOptions { Name = "Web service workspace", Exact = true })
+                .GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = serviceName, Exact = true }).CountAsync());
             previousServiceName = serviceName;
         }
     }

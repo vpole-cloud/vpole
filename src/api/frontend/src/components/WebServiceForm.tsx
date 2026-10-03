@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
+import { validationMessage } from '../api'
 import { Button, Notice } from '../ui/components'
 import { useIsolationScopes, type LoadIsolationScopes } from '../hooks/useIsolationScopes'
 import type {
@@ -115,6 +116,9 @@ export function WebServiceForm({
   const targets = selectedTargets ?? (defaultTargetId ? [deploymentConfiguration(defaultTargetId)] : [])
   const [showAdvancedTargets, setShowAdvancedTargets] = useState(false)
   const [validationError, setValidationError] = useState('')
+  const [failure, setFailure] = useState<unknown>(null)
+  const fieldId = useId()
+  const fieldError = (field: string) => validationMessage(failure, field)
   const snapshot = JSON.stringify({ name, resourceGroupId, isolationScopeId, exposure, imageServer,
     imageName, imageTag, probePath, probePort, servicePort, targetPort, portName, environmentText, selectedTargets })
   const [savedSnapshot, setSavedSnapshot] = useState(snapshot)
@@ -139,6 +143,7 @@ export function WebServiceForm({
     setEnvironmentText(fields.environmentText)
     setTargets(undefined)
     setValidationError('')
+    setFailure(null)
     setSavedSnapshot(JSON.stringify(fields))
   }
   useEffect(() => { onDirtyChange?.(dirty) }, [dirty, onDirtyChange])
@@ -211,6 +216,7 @@ export function WebServiceForm({
     }
 
     setValidationError('')
+    setFailure(null)
     try {
       await onSubmit({
         name: name.trim(),
@@ -231,6 +237,7 @@ export function WebServiceForm({
       })
       setSavedSnapshot(snapshot)
     } catch (error) {
+      setFailure(error)
       setValidationError(error instanceof Error ? error.message : 'Unable to save the service.')
     }
   }
@@ -250,7 +257,9 @@ export function WebServiceForm({
         <fieldset className="web-service-form__fields" disabled={submitStatus === 'loading'}>
         <label className="field">
           <span className="field__label">Name</span>
-          <input className="field__control" disabled={mode === 'edit'} value={name} onChange={(event) => setName(event.target.value)} placeholder="pole-api" />
+          <input className="field__control" disabled={mode === 'edit'} value={name} onChange={(event) => setName(event.target.value)} placeholder="pole-api"
+            aria-invalid={Boolean(fieldError('name'))} aria-describedby={fieldError('name') ? `${fieldId}-name-error` : undefined} />
+          {fieldError('name') && <span id={`${fieldId}-name-error`} className="field-error">{fieldError('name')}</span>}
           {mode === 'edit' && <span className="field__hint">Web service names are fixed after creation.</span>}
         </label>
 
@@ -264,6 +273,7 @@ export function WebServiceForm({
             <option value="">Select a group</option>
             {resourceGroups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
           </select>
+          {fieldError('resourceGroupId') && <span className="field-error">{fieldError('resourceGroupId')}</span>}
         </label>
 
         {mode === 'create' && (
@@ -285,10 +295,11 @@ export function WebServiceForm({
         )}
 
         <div className="form-grid">
-          <label className="field"><span className="field__label">Image registry</span><input className="field__control" value={imageServer} onChange={(event) => setImageServer(event.target.value)} placeholder="docker.io" /></label>
-          <label className="field"><span className="field__label">Image name</span><input className="field__control" value={imageName} onChange={(event) => setImageName(event.target.value)} placeholder="library/nginx" /></label>
-          <label className="field"><span className="field__label">Tag</span><input className="field__control" value={imageTag} onChange={(event) => setImageTag(event.target.value)} placeholder="latest" /></label>
+          <label className="field"><span className="field__label">Image registry</span><input className="field__control" value={imageServer} onChange={(event) => setImageServer(event.target.value)} placeholder="docker.io" aria-invalid={Boolean(fieldError('spec.image.server'))} aria-describedby={fieldError('spec.image') ? `${fieldId}-image-error` : undefined} /></label>
+          <label className="field"><span className="field__label">Image name</span><input className="field__control" value={imageName} onChange={(event) => setImageName(event.target.value)} placeholder="library/nginx" aria-invalid={Boolean(fieldError('spec.image.name'))} aria-describedby={fieldError('spec.image') ? `${fieldId}-image-error` : undefined} /></label>
+          <label className="field"><span className="field__label">Tag</span><input className="field__control" value={imageTag} onChange={(event) => setImageTag(event.target.value)} placeholder="latest" aria-invalid={Boolean(fieldError('spec.image.tag'))} aria-describedby={fieldError('spec.image') ? `${fieldId}-image-error` : undefined} /></label>
         </div>
+        {fieldError('spec.image') && <p id={`${fieldId}-image-error`} className="field-error">{fieldError('spec.image')}</p>}
 
         <label className="field">
           <span className="field__label">Exposure</span>
@@ -300,11 +311,13 @@ export function WebServiceForm({
             <option value="Public">Public</option>
           </select>
           <span className="field__hint">Private services have no public ingress; resource-to-resource access requires declared connections. Public services receive generated hostnames.</span>
+          {fieldError('exposure') && <span className="field-error">{fieldError('exposure')}</span>}
         </label>
 
         {mode === 'create' && (
           <section className="form-message" aria-label="Deployment placement">
             <strong>Deployment targets</strong>
+            {fieldError('placement') && <p className="field-error">{fieldError('placement')}</p>}
             {targetsStatus === 'loading' && <p>Loading eligible deployment targets…</p>}
             {targetsStatus === 'error' && <p>{targetsError || 'Unable to load eligible targets.'}</p>}
             {targetsStatus === 'success' && availableTargets.length === 0 && <p>No eligible target is available. A target needs workload admission{exposure === 'Public' ? ' and a public ingress base domain' : ''}.</p>}
@@ -343,6 +356,8 @@ export function WebServiceForm({
 
         <label className="field"><span className="field__label">Environment variables</span><textarea className="field__control field__control--textarea" value={environmentText} onChange={(event) => setEnvironmentText(event.target.value)} placeholder={'ASPNETCORE_ENVIRONMENT=Production\nLOG_LEVEL=Information'} /><span className="field__hint">One `KEY=value` per line.</span></label>
 
+        {fieldError('spec.config') && <p className="field-error">{fieldError('spec.config')}</p>}
+        {fieldError('spec.probes') && <p className="field-error">{fieldError('spec.probes')}</p>}
         {(validationError || submitError) && <Notice tone="error">{validationError || submitError}</Notice>}
         {mode === 'edit' && <div className="form-message">Shared runtime changes apply to every active deployment. Manage placement in the Deployments tab.</div>}
 

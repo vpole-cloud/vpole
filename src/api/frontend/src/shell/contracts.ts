@@ -2,6 +2,7 @@ import type { ComponentType } from 'react'
 import type { Tenant } from '../types'
 
 export type Theme = 'light' | 'dark'
+export interface ResourceIdentity { resourceTypeId: string; resourceId: string; section?: string }
 
 export interface AppServices {
   auth: {
@@ -20,10 +21,15 @@ export interface AppServices {
     search: string
     setSearch: (params: URLSearchParams, options?: { replace?: boolean }) => void
     goTo: (viewId: string) => void
+    openResource: (resource: ResourceIdentity) => void
+    resourceHref: (resource: ResourceIdentity) => string
     registerUnsavedChanges: (label: string) => () => void
   }
   theme: { value: Theme; set: (theme: Theme) => void }
   notifications: { publish: (message: string, tone?: 'info' | 'error') => void }
+  resourceTypes: readonly ResourceTypeRegistration[]
+  resourceVersion: number
+  invalidateResources: () => void
 }
 
 export interface AppView {
@@ -52,10 +58,12 @@ export interface AppModule {
   views: readonly AppView[]
   resourceTypes?: readonly ResourceTypeRegistration[]
   commands?: readonly AppCommand[]
+  navigationPanel?: ComponentType
 }
 
 export interface AppRegistry {
   views: readonly AppView[]
   resourceTypes: readonly ResourceTypeRegistration[]
   commands: readonly AppCommand[]
+  navigationPanels: readonly { id: string; component: ComponentType }[]
 }

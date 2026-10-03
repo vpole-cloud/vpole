@@ -172,6 +172,44 @@ export async function fetchKubernetesPersistentVolumeClaims(
   )
 }
 
+export class ApiError extends Error {
+  status: number
+  fieldErrors: Record<string, string[]>
+  constructor(message: string, status: number, fieldErrors: Record<string, string[]> = {}) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.fieldErrors = fieldErrors
+  }
+}
+
+export function validationMessage(error: unknown, field: string): string {
+  if (!(error instanceof ApiError)) return ''
+  return Object.entries(error.fieldErrors).filter(([path]) => {
+    const normalized = path.replace(/^body\./i, '').replace(/\[\d+\]/g, '').toLowerCase()
+    return normalized === field.toLowerCase() || normalized.startsWith(`${field.toLowerCase()}.`)
+  }).flatMap(([, messages]) => messages).join(' ')
+}
+
+async function responseError(response: Response): Promise<ApiError> {
+  const text = await response.text()
+  const fallback = text || `Request failed with status ${response.status}`
+  try {
+    const problem: unknown = JSON.parse(text)
+    if (!problem || typeof problem !== 'object') return new ApiError(fallback, response.status)
+    const value = problem as { detail?: unknown; title?: unknown; errors?: unknown }
+    const fields: Record<string, string[]> = {}
+    if (value.errors && typeof value.errors === 'object') {
+      for (const [key, messages] of Object.entries(value.errors)) {
+        if (Array.isArray(messages)) fields[key] = messages.filter((message): message is string => typeof message === 'string')
+      }
+    }
+    const description = typeof value.detail === 'string' ? value.detail : typeof value.title === 'string' ? value.title : ''
+    const messages = Object.values(fields).flat().join(' ')
+    return new ApiError([description, messages].filter(Boolean).join(' ') || fallback, response.status, fields)
+  } catch { return new ApiError(fallback, response.status) }
+}
+
 async function fetchJson<T>(
   input: RequestInfo | URL,
   init?: RequestInit,
@@ -179,8 +217,7 @@ async function fetchJson<T>(
   const response = await fetch(input, init)
 
   if (!response.ok) {
-    const message = await response.text()
-    throw new Error(message || `Request failed with status ${response.status}`)
+    throw await responseError(response)
   }
 
   return (await response.json()) as T
@@ -204,14 +241,23 @@ export async function fetchResourceGroups(
   token?: string,
   tenantId?: string,
   signal?: AbortSignal,
+  inventory: { pageNumber?: number; pageSize?: number; search?: string } = {},
 ) {
+  const query = new URLSearchParams({ pageNumber: String(inventory.pageNumber ?? 1), pageSize: String(inventory.pageSize ?? 6) })
+  if (inventory.search?.trim()) query.set('search', inventory.search.trim())
   return fetchJson<PaginatedResponse<ResourceGroup>>(
-    `${apiBaseUrl}/api/v1/resource-groups?pageNumber=1&pageSize=6`,
+    `${apiBaseUrl}/api/v1/resource-groups?${query}`,
     {
       headers: buildHeaders(token, tenantId),
       signal,
     },
   )
+}
+
+export async function fetchResourceGroup(apiBaseUrl: string, id: string, token?: string, tenantId?: string, signal?: AbortSignal) {
+  return fetchJson<ResourceGroup>(`${apiBaseUrl}/api/v1/resource-groups/${encodeURIComponent(id)}`, {
+    headers: buildHeaders(token, tenantId), signal,
+  })
 }
 
 export async function fetchResourceGroupResources(
@@ -229,7 +275,7 @@ export async function fetchResourceGroupResources(
   })
 
   return fetchJson<PaginatedResponse<ResourceRegistration>>(
-    `${apiBaseUrl}/api/v1/resource-groups/${resourceGroupId}/resources?${query.toString()}`,
+    `${apiBaseUrl}/api/v1/resource-groups/${encodeURIComponent(resourceGroupId)}/resources?${query.toString()}`,
     {
       headers: buildHeaders(token, tenantId),
       signal,
@@ -384,7 +430,7 @@ export async function updateResourceGroup(
   token?: string,
   tenantId?: string,
 ) {
-  return sendJson<ResourceGroup>(`${apiBaseUrl}/api/v1/resource-groups/${id}`, {
+  return sendJson<ResourceGroup>(`${apiBaseUrl}/api/v1/resource-groups/${encodeURIComponent(id)}`, {
     method: 'PUT',
     headers: buildHeaders(token, tenantId),
     body: JSON.stringify(input),
@@ -428,14 +474,13 @@ export async function deleteResourceGroup(
   token?: string,
   tenantId?: string,
 ) {
-  const response = await fetch(`${apiBaseUrl}/api/v1/resource-groups/${id}`, {
+  const response = await fetch(`${apiBaseUrl}/api/v1/resource-groups/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: buildHeaders(token, tenantId),
   })
 
   if (!response.ok) {
-    const message = await response.text()
-    throw new Error(message || `Request failed with status ${response.status}`)
+    throw await responseError(response)
   }
 }
 
@@ -679,8 +724,7 @@ export async function deleteWebService(
   })
 
   if (!response.ok) {
-    const message = await response.text()
-    throw new Error(message || `Request failed with status ${response.status}`)
+    throw await responseError(response)
   }
 }
 
@@ -926,7 +970,6 @@ export async function fetchSourceBuildJobs(
 async function sendWithoutResponse(input: RequestInfo | URL, init: RequestInit) {
   const response = await fetch(input, init)
   if (!response.ok) {
-    const message = await response.text()
-    throw new Error(message || `Request failed with status ${response.status}`)
+    throw await responseError(response)
   }
 }
