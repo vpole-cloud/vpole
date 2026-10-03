@@ -10,8 +10,9 @@ The suite covers:
 - asynchronous default-tenant creation through MongoDB transactions and RabbitMQ;
 - tenant isolation and GitHub App installation/OAuth flows against the local stub;
 - browser login, tenant selection, resource-group and image-service creation, observed Kubernetes
-  replica availability, reload, confirmation-dialog keyboard focus, and light/dark screenshots at
-  desktop and mobile viewports;
+  replica availability, configuration updates, independent catalog/create/resource sections,
+  draft retention, tab keyboard controls, reload, confirmation-dialog focus, and light/dark
+  screenshots of each workspace section at desktop and mobile viewports;
 - multi-target Kubernetes placement and isolated target failure/retry;
 - deterministic source analysis, BuildKit build/push, Harbor artifacts, and Kubernetes deployment.
 

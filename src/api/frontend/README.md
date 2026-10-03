@@ -22,15 +22,35 @@ completion notifications from a previous tenant are ignored. Neither tokens nor 
 are persisted by the shell. Theme preference is stored in `pole.console.theme`; tenant selection
 retains `pole.activeTenantId`.
 
+Modules can register dirty forms with the shell's navigation service. Leaving a module, selecting
+another tenant or logging out asks for confirmation; browser unload uses the native warning.
+Browser Back/Forward uses a native confirmation when leaving a dirty view. Cancelling keeps the
+current view and restores its URL.
+
 ## Current slice and next stage
 
-WebService uses the module contract for the existing image/configuration, deployment, hostname,
-release and source-build screens. Successful image creation selects the created service and reports
-configuration acceptance. `Applied` reports reconciliation, not observed application readiness.
-All existing overview, resource-group, domain, Git integration and storage screens remain registered.
+WebService has an independent catalog, one creation tab and multiple open resource tabs. Each
+resource offers Overview, Configuration, Deployments (including hostnames/releases) and Builds.
+Visited sections remain mounted so drafts survive switching sections and resources. Closing a
+dirty resource or creation tab asks for confirmation; successful saves clear the dirty marker.
+Source configuration and placement/alias drafts participate in the same guard. Viewer access
+remains read-only. A late creation completion refreshes the catalog without reopening a closed tab.
 
-Navigation supports registered `?view=` links and browser Back/Forward. Resource trees, resource
-URLs, persistent tabs, dirty-form protection and workspace layout persistence belong to #12.
+Successful image creation opens the resource's Overview and reports configuration acceptance.
+`Applied` reports reconciliation, not observed application readiness. Restored resources are read
+directly by ID, independently of the first catalog page; missing/unavailable resources show an
+explicit retry state. All other overview, resource-group, domain, Git integration and storage
+screens remain registered.
+
+Workspace references are stored under `pole.web-services.workspace.v1.<user-id>.<tenant-id>`.
+Only resource IDs, selected sections and the active resource/catalog tab are saved (up to 50
+restored resources). Creation drafts, form contents, secrets and tokens stay in memory. Corrupt
+or unavailable browser storage falls back to the catalog. Reload after confirming draft loss
+loads the current server configuration.
+
+Navigation supports registered `?view=` links and browser Back/Forward. This implements the
+WebService workspace slice of #12; resource trees, resource URLs and other providers' workspaces
+remain separate work.
 This slice does not complete #90's whole Git/image journey or #96's console release. GitOps
 ownership and source management belong to #88; runtime diagnostics and readiness belong to #8/#95.
 
@@ -41,8 +61,10 @@ light/dark themes, with responsive layout in `src/App.css`.
 ## Verification
 
 Run `npm test`, `npm run build` and `npm run lint` from this directory. Tests include independent
-module composition, registration conflicts, tenant races, image mutation/errors and Viewer access.
+module composition, registration conflicts, tenant races, image mutation/errors, separate drafts,
+dirty-close/navigation/unload guards, restoration, missing resources and Viewer access.
 The repository's `BrowserSmokeE2ETests` uses real Keycloak/API/Kubernetes for image deployment,
-reload, confirmation-dialog keyboard focus, both themes and desktop/narrow screenshots. Its prerequisites and cleanup are documented in
+configuration updates, tab keyboard controls, draft retention, reload, confirmation-dialog focus,
+both themes and desktop/narrow screenshots of each workspace section. Its prerequisites and cleanup are documented in
 [Aspire E2E testing](../../../docs/aspire-e2e-testing.md). Publication requires the full
 [local quality gate](../../../docs/agent-delivery.md).

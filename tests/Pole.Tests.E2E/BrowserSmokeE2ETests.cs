@@ -15,7 +15,7 @@ public sealed class BrowserSmokeE2ETests(
     ITestOutputHelper output)
 {
     [Fact]
-    public async Task User_can_sign_in_and_deploy_an_image_at_desktop_and_mobile_widths_in_both_themes()
+    public async Task User_can_manage_image_services_in_separate_workspace_tabs_at_desktop_and_mobile_widths()
     {
         await using var resources = new TestResourceScope("browser smoke E2E");
         await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
@@ -28,6 +28,7 @@ public sealed class BrowserSmokeE2ETests(
             browserContainer.WebSocketEndpoint,
             new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
 
+        string? previousServiceName = null;
         foreach (var (name, width, height) in new[]
         {
             ("desktop", 1440, 900),
@@ -124,6 +125,9 @@ public sealed class BrowserSmokeE2ETests(
             await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = resourceGroupName }).WaitForAsync();
 
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Web services", Exact = true }).ClickAsync();
+            Assert.Equal(0, await page.Locator("form:visible").CountAsync());
+            await CaptureWorkspaceAsync(page, name, "catalog");
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "New service", Exact = true }).ClickAsync();
             var serviceName = $"browser-{Guid.NewGuid():N}"[..20];
             await page.GetByLabel("Name", new PageGetByLabelOptions { Exact = true }).FillAsync(serviceName);
             await page.GetByRole(AriaRole.Combobox, new PageGetByRoleOptions { Name = "Resource group" }).SelectOptionAsync(resourceGroupId);
@@ -133,6 +137,7 @@ public sealed class BrowserSmokeE2ETests(
             await page.GetByLabel("Probe path").FillAsync("/");
             await page.GetByLabel("Probe port").FillAsync("80");
             await page.GetByLabel("Target port").FillAsync("80");
+            await CaptureWorkspaceAsync(page, name, "create");
             var serviceResponse = await page.RunAndWaitForResponseAsync(
                 () => page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Create service", Exact = true }).ClickAsync(),
                 response => response.Request.Method == HttpMethod.Post.Method &&
@@ -145,29 +150,61 @@ public sealed class BrowserSmokeE2ETests(
             resources.Defer(
                 $"delete browser-created service '{serviceId}'",
                 token => DeleteWebServiceAsync(serviceId, token));
-            await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Physical deployments" }).WaitForAsync();
+            await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Service overview", Exact = true }).WaitForAsync();
             await fixture.WaitForNamespaceCreationAsync(resourceGroupId, cancellation.Token);
             await WaitForImageDeploymentAsync(resourceGroupId, serviceId, serviceName, cancellation.Token);
-            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Refresh web services", Exact = true }).ClickAsync();
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Refresh service details", Exact = true }).ClickAsync();
             await page.GetByText("Applied", new PageGetByTextOptions { Exact = true }).WaitForAsync();
-
-            var screenshotDirectory = Path.GetFullPath(Path.Combine(".artifacts", "frontend-shell"));
-            Directory.CreateDirectory(screenshotDirectory);
-            foreach (var theme in new[] { "light", "dark" })
-            {
-                var currentTheme = await page.Locator("html").GetAttributeAsync("data-theme");
-                if (currentTheme != theme)
-                    await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = $"Switch to {theme} theme" }).ClickAsync();
-                Assert.Equal(theme, await page.Locator("html").GetAttributeAsync("data-theme"));
-                await page.EvaluateAsync("window.scrollTo(0, 0)");
-                var screenshotPath = Path.Combine(screenshotDirectory, $"{name}-{theme}.png");
-                await page.ScreenshotAsync(new PageScreenshotOptions { Path = screenshotPath, FullPage = true, Animations = ScreenshotAnimations.Disabled });
-                output.WriteLine($"Frontend shell screenshot: {screenshotPath}");
-                Assert.True(await page.EvaluateAsync<bool>("document.documentElement.scrollWidth <= window.innerWidth"),
-                    $"The {name}/{theme} workspace overflows its viewport. Screenshot: {screenshotPath}");
-            }
+            await CaptureWorkspaceAsync(page, name, "overview");
+            await page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "Deployments", Exact = true }).ClickAsync();
+            await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Physical deployments", Exact = true }).WaitForAsync();
+            Assert.Equal(0, await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Service overview", Exact = true }).CountAsync());
+            await CaptureWorkspaceAsync(page, name, "deployments");
+            await page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "Configuration", Exact = true }).ClickAsync();
+            await page.GetByLabel("Environment variables").FillAsync("UI_REVIEW=true");
+            await CaptureWorkspaceAsync(page, name, "configuration");
+            var workspaceTabs = page.GetByRole(AriaRole.Tablist, new PageGetByRoleOptions { Name = "Web service workspace", Exact = true });
+            var resourceTab = workspaceTabs.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = serviceName });
+            await resourceTab.FocusAsync();
+            await page.Keyboard.PressAsync("Home");
+            await workspaceTabs.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "All services", Exact = true }).WaitForAsync();
+            await page.Keyboard.PressAsync("End");
+            Assert.Equal("UI_REVIEW=true", await page.GetByLabel("Environment variables").InputValueAsync());
+            await page.Keyboard.PressAsync("Delete");
+            var dirtyDialog = page.GetByRole(AriaRole.Dialog, new PageGetByRoleOptions { Name = $"Discard changes to {serviceName}?", Exact = true });
+            await dirtyDialog.WaitForAsync();
+            Assert.True(await dirtyDialog.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Cancel", Exact = true })
+                .EvaluateAsync<bool>("element => element === document.activeElement"));
+            await page.Keyboard.PressAsync("Escape");
+            await dirtyDialog.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Hidden });
+            Assert.Equal("UI_REVIEW=true", await page.GetByLabel("Environment variables").InputValueAsync());
+            var updateResponse = await page.RunAndWaitForResponseAsync(
+                () => page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Save changes", Exact = true }).ClickAsync(),
+                response => response.Request.Method == HttpMethod.Put.Method && new Uri(response.Url).AbsolutePath == $"/api/v1/web-services/{serviceId}");
+            Assert.True(updateResponse.Ok, $"Browser configuration update returned HTTP {updateResponse.Status}.");
+            await resourceTab.WaitForAsync();
+            await WaitForImageDeploymentAsync(resourceGroupId, serviceId, serviceName, cancellation.Token);
+            await page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "Builds", Exact = true }).ClickAsync();
+            await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Source builds", Exact = true }).WaitForAsync();
+            await CaptureWorkspaceAsync(page, name, "builds");
+            await page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "Configuration", Exact = true }).ClickAsync();
             await page.ReloadAsync();
+            await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Service configuration", Exact = true }).WaitForAsync();
+            Assert.Equal("UI_REVIEW=true", await page.GetByLabel("Environment variables").InputValueAsync());
+            await page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "All services", Exact = true }).ClickAsync();
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = serviceName, Exact = true }).WaitForAsync();
+            if (previousServiceName is not null)
+            {
+                await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = previousServiceName, Exact = true }).ClickAsync();
+                Assert.Equal(3, await workspaceTabs.GetByRole(AriaRole.Tab).CountAsync());
+                await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Service overview", Exact = true }).WaitForAsync();
+                Assert.True(await workspaceTabs.EvaluateAsync<bool>("element => { const tab = element.querySelector('[aria-selected=\"true\"]').parentElement.getBoundingClientRect(); const strip = element.getBoundingClientRect(); return tab.left >= strip.left - 1 && tab.right <= strip.right + 1; }"),
+                    "The active resource tab and its close control must stay within the tab strip.");
+                await resourceTab.ClickAsync();
+                Assert.Equal("UI_REVIEW=true", await page.GetByLabel("Environment variables").InputValueAsync());
+                await page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "All services", Exact = true }).ClickAsync();
+            }
+            await CaptureWorkspaceAsync(page, name, "catalog");
             var deleteButton = page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = $"Delete {serviceName}", Exact = true });
             await deleteButton.ClickAsync();
             var dialog = page.GetByRole(AriaRole.Dialog, new PageGetByRoleOptions { Name = $"Delete {serviceName}?", Exact = true });
@@ -177,6 +214,26 @@ public sealed class BrowserSmokeE2ETests(
             await page.Keyboard.PressAsync("Escape");
             await dialog.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Hidden });
             Assert.True(await deleteButton.EvaluateAsync<bool>("element => element === document.activeElement"));
+            previousServiceName = serviceName;
+        }
+    }
+
+    private async Task CaptureWorkspaceAsync(IPage page, string viewport, string section)
+    {
+        await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+        var directory = Path.GetFullPath(Path.Combine(".artifacts", "frontend-tabs"));
+        Directory.CreateDirectory(directory);
+        foreach (var theme in new[] { "light", "dark" })
+        {
+            if (await page.Locator("html").GetAttributeAsync("data-theme") != theme)
+                await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = $"Switch to {theme} theme" }).ClickAsync();
+            Assert.Equal(theme, await page.Locator("html").GetAttributeAsync("data-theme"));
+            await page.EvaluateAsync("window.scrollTo(0, 0)");
+            var screenshot = Path.Combine(directory, $"{viewport}-{section}-{theme}.png");
+            await page.ScreenshotAsync(new PageScreenshotOptions { Path = screenshot, FullPage = true, Animations = ScreenshotAnimations.Disabled });
+            output.WriteLine($"Frontend workspace screenshot: {screenshot}");
+            Assert.True(await page.EvaluateAsync<bool>("document.documentElement.scrollWidth <= window.innerWidth"),
+                $"The {viewport}/{section}/{theme} workspace overflows its viewport. Screenshot: {screenshot}");
         }
     }
 

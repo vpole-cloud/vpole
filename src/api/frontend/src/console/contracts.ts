@@ -15,7 +15,11 @@ export interface ConsoleServices {
   }
   tenant: { active: Tenant | null; canManage: boolean }
   api: { baseUrl: string; token?: string; tenantId?: string }
-  navigation: { viewId: string; goTo: (viewId: string) => void }
+  navigation: {
+    viewId: string
+    goTo: (viewId: string) => void
+    registerUnsavedChanges: (label: string) => () => void
+  }
   theme: { value: Theme; set: (theme: Theme) => void }
   notifications: { publish: (message: string, tone?: 'info' | 'error') => void }
 }
