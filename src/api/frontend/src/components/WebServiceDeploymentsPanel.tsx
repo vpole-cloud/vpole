@@ -18,6 +18,7 @@ interface WebServiceDeploymentsPanelProps {
   releases?: WebServiceReleaseHistory
   zones: TenantDomainZone[]
   canManage: boolean
+  onDirtyChange?: (dirty: boolean) => void
   onLoadComputeProfiles: (targetId: string) => Promise<AvailableComputeProfile[]>
   onLoadHostnameBindings: (webServiceId: string, deploymentId: string) => Promise<HostnameBinding[]>
   onLoadReleases: (webServiceId: string) => Promise<WebServiceReleaseHistory | undefined>
@@ -44,6 +45,7 @@ export function WebServiceDeploymentsPanel({
   releases,
   zones,
   canManage,
+  onDirtyChange,
   onLoadComputeProfiles,
   onLoadHostnameBindings,
   onLoadReleases,
@@ -58,6 +60,12 @@ export function WebServiceDeploymentsPanel({
   const [addReplicas, setAddReplicas] = useState('1')
   const [addComputeProfileId, setAddComputeProfileId] = useState('')
   const [aliasDrafts, setAliasDrafts] = useState<Record<string, { zoneId: string; relativeName: string }>>({})
+  const dirty = Boolean(addTargetId || addComputeProfileId || addReplicas !== '1' || webService.deployments.some((deployment) => {
+    const draft = aliasDrafts[deployment.deploymentId]
+    return draft?.zoneId || draft?.relativeName
+  }))
+  useEffect(() => { onDirtyChange?.(dirty) }, [dirty, onDirtyChange])
+  const run = (action: Promise<unknown>) => { void action.catch(() => {}) }
 
   useEffect(() => {
     void onLoadReleases(webService.id)
@@ -81,14 +89,16 @@ export function WebServiceDeploymentsPanel({
 
   const addTarget = async () => {
     if (!addTargetId) return
-    await onAddDeployment(webService.id, {
-      deploymentTargetId: addTargetId,
-      fixedReplicas: Number(addReplicas),
-      computeProfileId: addComputeProfileId || undefined,
-    })
-    setAddTargetId('')
-    setAddComputeProfileId('')
-    setAddReplicas('1')
+    try {
+      await onAddDeployment(webService.id, {
+        deploymentTargetId: addTargetId,
+        fixedReplicas: Number(addReplicas),
+        computeProfileId: addComputeProfileId || undefined,
+      })
+      setAddTargetId('')
+      setAddComputeProfileId('')
+      setAddReplicas('1')
+    } catch { /* Keep the draft; the manager exposes the API error. */ }
   }
 
   return (
@@ -122,20 +132,20 @@ export function WebServiceDeploymentsPanel({
               </div>
 
               <div className="form-grid">
-                <label className="field"><span className="field__label">Fixed replicas</span><input className="field__control" disabled={!canManage} type="number" min="1" max="1000" defaultValue={deployment.fixedReplicas} onBlur={(event) => { const fixedReplicas = Number(event.target.value); if (fixedReplicas !== deployment.fixedReplicas && fixedReplicas > 0) void onUpdateDeployment(webService.id, deployment.deploymentId, { fixedReplicas, computeProfileId: deployment.compute.profile.computeProfileId }) }} /></label>
-                <label className="field"><span className="field__label">Compute profile</span><select className="field__control" disabled={!canManage} defaultValue={deployment.compute.profile.computeProfileId} onChange={(event) => void onUpdateDeployment(webService.id, deployment.deploymentId, { fixedReplicas: deployment.fixedReplicas, computeProfileId: event.target.value || undefined })}><option value="">Target default</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.displayName}</option>)}</select></label>
+                <label className="field"><span className="field__label">Fixed replicas</span><input className="field__control" disabled={!canManage} type="number" min="1" max="1000" defaultValue={deployment.fixedReplicas} onBlur={(event) => { const fixedReplicas = Number(event.target.value); if (fixedReplicas !== deployment.fixedReplicas && fixedReplicas > 0) run(onUpdateDeployment(webService.id, deployment.deploymentId, { fixedReplicas, computeProfileId: deployment.compute.profile.computeProfileId })) }} /></label>
+                <label className="field"><span className="field__label">Compute profile</span><select className="field__control" disabled={!canManage} defaultValue={deployment.compute.profile.computeProfileId} onChange={(event) => run(onUpdateDeployment(webService.id, deployment.deploymentId, { fixedReplicas: deployment.fixedReplicas, computeProfileId: event.target.value || undefined }))}><option value="">Target default</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.displayName}</option>)}</select></label>
               </div>
 
               <div className="form-message">
                 <strong>Hostnames</strong>
                 {bindings.length === 0 && <p>{deployment.ingress?.hostnames.join(', ') || 'No ingress hostnames reported yet.'}</p>}
-                {bindings.map((binding) => <p key={binding.id}>{binding.hostname} {binding.kind === 'generated' ? <span className="field__hint">generated</span> : <button className="button button--danger" disabled={!canManage} type="button" onClick={() => void onRemoveHostname(webService.id, deployment.deploymentId, binding.id)}>Remove alias</button>}</p>)}
-                {canManage && matchingZones.length > 0 && <div className="form-grid"><select className="field__control" value={draft.zoneId} onChange={(event) => setAliasDrafts((current) => ({ ...current, [deployment.deploymentId]: { ...draft, zoneId: event.target.value } }))}><option value="">Select a reserved zone</option>{matchingZones.map((zone) => <option key={zone.id} value={zone.id}>{zone.domain}</option>)}</select><input className="field__control" value={draft.relativeName} onChange={(event) => setAliasDrafts((current) => ({ ...current, [deployment.deploymentId]: { ...draft, relativeName: event.target.value } }))} placeholder="api" /><button className="button" type="button" disabled={!draft.zoneId || !draft.relativeName.trim()} onClick={() => void onAddHostname(webService.id, deployment.deploymentId, { tenantDomainZoneId: draft.zoneId, relativeName: draft.relativeName.trim() })}>Add alias</button></div>}
+                {bindings.map((binding) => <p key={binding.id}>{binding.hostname} {binding.kind === 'generated' ? <span className="field__hint">generated</span> : <button className="button button--danger" disabled={!canManage} type="button" onClick={() => run(onRemoveHostname(webService.id, deployment.deploymentId, binding.id))}>Remove alias</button>}</p>)}
+                {canManage && matchingZones.length > 0 && <div className="form-grid"><select className="field__control" value={draft.zoneId} onChange={(event) => setAliasDrafts((current) => ({ ...current, [deployment.deploymentId]: { ...draft, zoneId: event.target.value } }))}><option value="">Select a reserved zone</option>{matchingZones.map((zone) => <option key={zone.id} value={zone.id}>{zone.domain}</option>)}</select><input className="field__control" value={draft.relativeName} onChange={(event) => setAliasDrafts((current) => ({ ...current, [deployment.deploymentId]: { ...draft, relativeName: event.target.value } }))} placeholder="api" /><button className="button" type="button" disabled={!draft.zoneId || !draft.relativeName.trim()} onClick={() => run(onAddHostname(webService.id, deployment.deploymentId, { tenantDomainZoneId: draft.zoneId, relativeName: draft.relativeName.trim() }).then(() => setAliasDrafts((current) => ({ ...current, [deployment.deploymentId]: { zoneId: '', relativeName: '' } }))))}>Add alias</button></div>}
               </div>
 
               <div className="row-actions">
-                <button className="button" disabled={!canManage} type="button" onClick={() => void onRetryDeployment(webService.id, deployment.deploymentId, deployment.deploymentRevision, retryOperationForStatus(deployment.status))}>Retry</button>
-                <button className="button button--danger" disabled={!canManage || webService.deployments.length <= 1} type="button" onClick={() => { if (window.confirm('Remove this physical deployment? The last deployment cannot be removed.')) void onRemoveDeployment(webService.id, deployment.deploymentId) }}>Remove target</button>
+                <button className="button" disabled={!canManage} type="button" onClick={() => run(onRetryDeployment(webService.id, deployment.deploymentId, deployment.deploymentRevision, retryOperationForStatus(deployment.status)))}>Retry</button>
+                <button className="button button--danger" disabled={!canManage || webService.deployments.length <= 1} type="button" onClick={() => { if (window.confirm('Remove this physical deployment? The last deployment cannot be removed.')) run(onRemoveDeployment(webService.id, deployment.deploymentId)) }}>Remove target</button>
               </div>
             </article>
           )

@@ -238,6 +238,19 @@ export async function fetchWebServices(
   )
 }
 
+export async function fetchWebService(
+  apiBaseUrl: string,
+  id: string,
+  token?: string,
+  tenantId?: string,
+  signal?: AbortSignal,
+) {
+  return fetchJson<WebService>(`${apiBaseUrl}/api/v1/web-services/${encodeURIComponent(id)}`, {
+    headers: buildHeaders(token, tenantId),
+    signal,
+  })
+}
+
 const webServiceResourceType = 'pole/web-service'
 
 export async function fetchAvailableDeploymentTargets(

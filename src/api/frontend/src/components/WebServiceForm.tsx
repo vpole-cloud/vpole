@@ -23,6 +23,7 @@ interface WebServiceFormProps {
   onLoadComputeProfiles: (deploymentTargetId: string) => Promise<AvailableComputeProfile[]>
   onSubmit: (input: WebServiceInput) => Promise<void>
   onCancelEdit?: () => void
+  onDirtyChange?: (dirty: boolean) => void
 }
 
 const parseEnvironmentVariables = (value: string) =>
@@ -45,6 +46,22 @@ const deploymentConfiguration = (
   computeProfileId: current?.computeProfileId,
 })
 
+const fieldsFor = (service: WebService) => ({
+  name: service.name,
+  resourceGroupId: service.resourceGroupId,
+  isolationScopeId: service.isolationScopeId ?? '',
+  exposure: service.exposure.mode,
+  imageServer: service.spec.image.server,
+  imageName: service.spec.image.name,
+  imageTag: service.spec.image.tag,
+  probePath: service.spec.probes?.readiness.path ?? '/health',
+  probePort: service.spec.probes?.readiness.port ?? '8080',
+  servicePort: String(service.spec.config.portMappings[0]?.servicePort ?? 80),
+  targetPort: service.spec.config.portMappings[0]?.targetPort ?? '8080',
+  portName: service.spec.config.portMappings[0]?.name ?? 'http',
+  environmentText: Object.entries(service.spec.config.environmentVariables).map(([key, value]) => `${key}=${value}`).join('\n'),
+})
+
 export function WebServiceForm({
   mode,
   resourceGroups,
@@ -59,6 +76,7 @@ export function WebServiceForm({
   onLoadComputeProfiles,
   onSubmit,
   onCancelEdit,
+  onDirtyChange,
 }: WebServiceFormProps) {
   const [name, setName] = useState(initialValue?.name ?? '')
   const [resourceGroupId, setResourceGroupId] = useState(
@@ -91,6 +109,33 @@ export function WebServiceForm({
   const targets = selectedTargets ?? (defaultTargetId ? [deploymentConfiguration(defaultTargetId)] : [])
   const [showAdvancedTargets, setShowAdvancedTargets] = useState(false)
   const [validationError, setValidationError] = useState('')
+  const snapshot = JSON.stringify({ name, resourceGroupId, isolationScopeId, exposure, imageServer,
+    imageName, imageTag, probePath, probePort, servicePort, targetPort, portName, environmentText, selectedTargets })
+  const [savedSnapshot, setSavedSnapshot] = useState(snapshot)
+  const dirty = snapshot !== savedSnapshot
+  const [loadedRevision, setLoadedRevision] = useState(initialValue?.activeRevision)
+  // Adopt refreshed server values only when this form has no unsaved draft.
+  if (initialValue && initialValue.activeRevision !== loadedRevision && !dirty) {
+    const fields = fieldsFor(initialValue)
+    setLoadedRevision(initialValue.activeRevision)
+    setName(fields.name)
+    setResourceGroupId(fields.resourceGroupId)
+    setIsolationScopeId(fields.isolationScopeId)
+    setExposure(fields.exposure)
+    setImageServer(fields.imageServer)
+    setImageName(fields.imageName)
+    setImageTag(fields.imageTag)
+    setProbePath(fields.probePath)
+    setProbePort(fields.probePort)
+    setServicePort(fields.servicePort)
+    setTargetPort(fields.targetPort)
+    setPortName(fields.portName)
+    setEnvironmentText(fields.environmentText)
+    setTargets(undefined)
+    setValidationError('')
+    setSavedSnapshot(JSON.stringify(fields))
+  }
+  useEffect(() => { onDirtyChange?.(dirty) }, [dirty, onDirtyChange])
 
   useEffect(() => {
     if (selectedTargets === undefined && defaultTargetId) {
@@ -174,6 +219,7 @@ export function WebServiceForm({
         autoscaling: initialValue?.spec.autoscaling ?? null,
         targets,
       })
+      setSavedSnapshot(snapshot)
     } catch (error) {
       setValidationError(error instanceof Error ? error.message : 'Unable to save the service.')
     }
@@ -186,11 +232,12 @@ export function WebServiceForm({
       <div className="panel__header">
         <div>
           <p className="panel__eyebrow">{mode === 'create' ? 'Create' : 'Edit'}</p>
-          <h2 className="panel__title">{mode === 'create' ? 'New web service' : 'Edit web service'}</h2>
+          <h2 className="panel__title">{mode === 'create' ? 'New web service' : 'Service configuration'}</h2>
         </div>
       </div>
 
       <form className="resource-group-form" onSubmit={(event) => void handleSubmit(event)}>
+        <fieldset className="web-service-form__fields" disabled={submitStatus === 'loading'}>
         <label className="field">
           <span className="field__label">Name</span>
           <input className="field__control" disabled={mode === 'edit'} value={name} onChange={(event) => setName(event.target.value)} placeholder="pole-api" />
@@ -276,12 +323,13 @@ export function WebServiceForm({
         <label className="field"><span className="field__label">Environment variables</span><textarea className="field__control field__control--textarea" value={environmentText} onChange={(event) => setEnvironmentText(event.target.value)} placeholder={'ASPNETCORE_ENVIRONMENT=Production\nLOG_LEVEL=Information'} /><span className="field__hint">One `KEY=value` per line.</span></label>
 
         {(validationError || submitError) && <Notice tone="error">{validationError || submitError}</Notice>}
-        {mode === 'edit' && <div className="form-message">Placement is managed per target below. Shared runtime changes fan out atomically to every active deployment.</div>}
+        {mode === 'edit' && <div className="form-message">Shared runtime changes apply to every active deployment. Manage placement in the Deployments tab.</div>}
 
         <div className="resource-group-form__actions">
           <Button variant="primary" disabled={submitStatus === 'loading' || (mode === 'create' && targetsStatus !== 'success')} type="submit">{submitStatus === 'loading' ? 'Saving…' : mode === 'create' ? 'Create service' : 'Save changes'}</Button>
-          {mode === 'edit' && onCancelEdit && <button className="button" onClick={onCancelEdit} type="button">Cancel</button>}
+          {mode === 'edit' && onCancelEdit && <button className="button" disabled={!dirty} onClick={onCancelEdit} type="button">Discard changes</button>}
         </div>
+        </fieldset>
       </form>
     </section>
   )

@@ -32,6 +32,7 @@ interface UseWebServicesManagerOptions {
   token?: string
   tenantId?: string
   enabled: boolean
+  refreshAfterMutation?: boolean
 }
 
 const errorMessage = (error: unknown, fallback: string) =>
@@ -42,6 +43,7 @@ export function useWebServicesManager({
   token,
   tenantId,
   enabled,
+  refreshAfterMutation = true,
 }: UseWebServicesManagerOptions) {
   const [items, setItems] = useState<WebService[]>([])
   const [status, setStatus] = useState<LoadStatus>('idle')
@@ -191,23 +193,12 @@ export function useWebServicesManager({
     return () => controller.abort()
   }, [apiBaseUrl, enabled, tenantId, token])
 
-  useEffect(() => {
-    if (!enabled) return
-    let active = true
-    queueMicrotask(() => {
-      if (active) void loadAvailableTargets()
-    })
-    return () => {
-      active = false
-    }
-  }, [enabled, loadAvailableTargets])
-
   const submit = async <T,>(action: () => Promise<T>, fallback: string) => {
     setSubmitStatus('loading')
     setSubmitError('')
     try {
       const result = await action()
-      await refresh()
+      if (refreshAfterMutation) await refresh()
       setSubmitStatus('success')
       return result
     } catch (submitErrorValue) {

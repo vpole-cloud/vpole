@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { SourceBuildsManager } from '../hooks/useSourceBuildsManager'
 import type { SourceBuildJob, WebService } from '../types'
 
@@ -6,6 +6,7 @@ interface SourceBuildPanelProps {
   webService: WebService
   manager: SourceBuildsManager
   canManage: boolean
+  onDirtyChange?: (dirty: boolean) => void
 }
 
 const shortSha = (value: string) => value.slice(0, 10)
@@ -31,6 +32,7 @@ export function SourceBuildPanel({
   webService,
   manager,
   canManage,
+  onDirtyChange,
 }: SourceBuildPanelProps) {
   const [sourceRepositoryId, setSourceRepositoryId] = useState('')
   const configuration = manager.configurations.find(
@@ -40,6 +42,8 @@ export function SourceBuildPanel({
     (item) => item.id === configuration?.sourceRepositoryId,
   )
   const busy = manager.actionStatus === 'loading'
+  const dirty = !configuration && Boolean(sourceRepositoryId)
+  useEffect(() => { onDirtyChange?.(dirty) }, [dirty, onDirtyChange])
 
   const remove = async () => {
     if (
@@ -128,7 +132,7 @@ export function SourceBuildPanel({
           <button
             className="button button--primary"
             disabled={!canManage || busy || !sourceRepositoryId}
-            onClick={() => void manager.create(sourceRepositoryId, webService.id)}
+            onClick={() => void manager.create(sourceRepositoryId, webService.id).then(() => setSourceRepositoryId('')).catch(() => {})}
             type="button"
           >
             Configure source builds
