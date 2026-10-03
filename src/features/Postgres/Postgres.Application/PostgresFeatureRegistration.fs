@@ -73,7 +73,7 @@ type PostgresFeatureRegistration =
         services.TryAddScoped<PostgresResourceDeploymentAdapter>() |> ignore
         services.TryAddSingleton<IPostgresClusterDeploymentManager, PostgresClusterDeploymentManager>()
         |> ignore
-        services.TryAddSingleton(PostgresResourceDeploymentAdapterRegistration.Descriptor)
+        services.AddSingleton(PostgresResourceDeploymentAdapterRegistration.Descriptor)
         |> ignore
         services.AddSingleton<ResourceIngressPolicyDefinition>(PostgresIngressPolicyDefinitions.Replication)
         |> ignore
