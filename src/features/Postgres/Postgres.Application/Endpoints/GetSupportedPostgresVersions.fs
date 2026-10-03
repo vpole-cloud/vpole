@@ -11,7 +11,8 @@ open Pole.Mediator
 
 type GetSupportedPostgresVersionsResponse =
     { From : int
-      ``To`` : int }
+      ``To`` : int
+      DefaultDeploymentMode : string }
 
 type GetSupportedPostgresVersionsOutcome =
     | SupportedPostgresVersions of GetSupportedPostgresVersionsResponse
@@ -25,7 +26,8 @@ type GetSupportedPostgresVersionsHandler(settings : PostgresSettings) =
             task {
                 return
                     { From = settings.SupportedVersions.From
-                      ``To`` = settings.SupportedVersions.``To`` }
+                      ``To`` = settings.SupportedVersions.``To``
+                      DefaultDeploymentMode = settings.DefaultDeploymentMode.ToString() }
                     |> SupportedPostgresVersions
             }
 

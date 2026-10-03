@@ -42,6 +42,24 @@ the URL tenant is confirmed accessible.
 
 ## Resource workspaces
 
+PostgreSQL contributes its own catalog/create/resource workspace (`pole/postgresql`) and scoped
+command. Overview, Configuration and privileged Credentials sections use a single deployment.
+Creation reads the supported-version range and server-selected provisioning mode, named group
+scopes, eligible targets and compute/storage profiles. Storage profiles are filtered by their
+target mappings. Native StatefulSet mode supports one instance and cannot rotate an initialized
+database password; CloudNativePG supports the existing managed-secret rotation API.
+Name, version, group, target and storage profile are fixed after creation. Updates preserve the
+current resolved compute profile unless the user explicitly selects an eligible replacement.
+Lifecycle, reconciliation generation and failure codes are shown without inferring DB readiness.
+Group tags are metadata of the group; the database API has no separate editable tags.
+
+PostgreSQL workspace persistence saves only identities and sections under
+`pole.postgres.workspace.v1.<user-id>.<tenant-id>`. Initial username/password clear when creation
+becomes inactive. Revealed connection strings and rotation passwords clear on section/resource,
+tenant/role changes or browser blur. Credential reads use `no-store`, require write access and
+wait for the current deployment generation to be applied. Values never enter URLs or storage.
+The screenshot suite captures credential sections before any value is entered or revealed.
+
 WebService has an independent catalog, one creation tab and multiple open resource tabs. Each
 resource offers Overview, Configuration, Deployments (including hostnames/releases) and Builds.
 Visited sections remain mounted so drafts survive switching sections and resources. Closing a

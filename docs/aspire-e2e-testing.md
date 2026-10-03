@@ -20,6 +20,10 @@ The suite covers:
   build/push, Harbor artifacts, Kubernetes deployment, and a visible failed-build result;
 - tenant-scoped global search and contextual commands, keyboard selection, focus restoration,
   and reuse of the existing resource tab after opening a search result.
+- PostgreSQL browser catalog/create/details/configuration, readable single-target placement,
+  native provisioning, accepted storage update/reload and credential UI without secret screenshots.
+  The fixture selects native StatefulSet mode because the shared lab has no PostgreSQL operator;
+  operator manifests and managed password rotation are validated in the owning feature suites.
 
 The GitHub stub serves deterministic `v1` and `v2` source archives and never records credentials,
 OAuth state, private keys, or bearer tokens.

@@ -1,5 +1,10 @@
 # PostgreSQL clusters
 
+The frontend PostgreSQL provider uses the existing tenant CRUD, credential and rotation endpoints.
+`GET /api/v1/postgres/supported-versions` returns the version range and additive
+`defaultDeploymentMode` metadata (`Operator` or `StatefulSet`). Creation uses this configured mode;
+the UI does not offer a client-side mode override.
+
 `Postgres.Tests`
 owns infrastructure-free domain, credential, quota, HTTP-mapping, and manifest checks;
 `Postgres.Tests.Integration` owns Mongo, HTTP/outbox, and live Kubernetes checks. The tests use the

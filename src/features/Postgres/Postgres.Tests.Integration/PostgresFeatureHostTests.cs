@@ -78,6 +78,7 @@ public sealed class PostgresFeatureHostTests(MongoReplicaSetFixture fixture)
         using var versionsJson = System.Text.Json.JsonDocument.Parse(await versions.Content.ReadAsStringAsync());
         Assert.Equal(16, versionsJson.RootElement.GetProperty("from").GetInt32());
         Assert.Equal(18, versionsJson.RootElement.GetProperty("to").GetInt32());
+        Assert.Equal("Operator", versionsJson.RootElement.GetProperty("defaultDeploymentMode").GetString());
         using var invalid = await client.PostAsJsonAsync(route,
             PostgresTestData.CreatePostgresClusterRequest("not-an-object-id", "invalid").Body);
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);

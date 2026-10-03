@@ -122,6 +122,9 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         ConfigureLabServices(api, harborAdminPassword);
         ConfigureLabDeploymentTarget(api);
         api.WithEnvironment("Outbox__ProcessingTriggerInterval", "00:00:01");
+        // The shared lab has no PostgreSQL operator. Database browser scenarios exercise native
+        // provisioning; operator manifests/rotation remain covered by the owning feature suites.
+        api.WithEnvironment("Postgres__DefaultDeploymentMode", "StatefulSet");
         var githubStub = appHost
             .AddProject(
                 "github-stub",
@@ -594,6 +597,34 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         }
 
         return diagnostics.ToString();
+    }
+
+    public async Task<string> GetDatabaseFailureKindsAsync(CancellationToken cancellationToken)
+    {
+        // Report exception types/frames and known code messages only. Never expose log arguments,
+        // Kubernetes Secret request bodies, connection strings or arbitrary exception messages.
+        var resourceLogger = _application!.Services.GetRequiredService<ResourceLoggerService>();
+        var kinds = new HashSet<string>(StringComparer.Ordinal);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(3));
+        try
+        {
+            await foreach (var batch in resourceLogger.GetAllAsync("pole-server").WithCancellation(timeout.Token))
+            foreach (var line in batch)
+            {
+                foreach (Match match in Regex.Matches(line.Content, @"\b[A-Z][A-Za-z0-9.]*Exception\b"))
+                    kinds.Add(match.Value);
+                var frame = line.Content.TrimStart();
+                if (frame.StartsWith("at Pole.Features.Postgres.", StringComparison.Ordinal) ||
+                    frame.StartsWith("at Pole.Features.ResourceDeployments.", StringComparison.Ordinal))
+                    kinds.Add(frame.Split(" in ", StringSplitOptions.None)[0]);
+                foreach (var message in new[] { "No ingress policy contribution", "Ingress policy revision or TCP port is invalid", "Ingress policy ports do not match the provider path", "Ingress pod source must have an exact DNS namespace and labels", "No service for type", "Unable to resolve service for type" })
+                    if (line.Content.Contains(message, StringComparison.Ordinal)) kinds.Add(message);
+                if (kinds.Count >= 30) return string.Join(Environment.NewLine, kinds.Order());
+            }
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { }
+        return string.Join(Environment.NewLine, kinds.Order());
     }
 
     public async Task<string> GetGitHubStubRequestDiagnosticsAsync(CancellationToken cancellationToken)
