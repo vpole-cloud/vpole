@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react'
 import { OverviewPage } from '../../components/OverviewPage'
-import { ResourceGroupsPage } from '../../components/ResourceGroupsPage'
 import { DomainZonesPage } from '../../components/DomainZonesPage'
 import { IntegrationsPage } from '../../components/IntegrationsPage'
 import { StorageSettingsPage } from '../../components/StorageSettingsPage'
 import { useOverviewData } from '../../hooks/useOverviewData'
-import { useResourceGroupsManager } from '../../hooks/useResourceGroupsManager'
 import { useDomainZonesManager } from '../../hooks/useDomainZonesManager'
 import { useGitIntegrationsManager } from '../../hooks/useGitIntegrationsManager'
 import { useStorageSettingsManager } from '../../hooks/useStorageSettingsManager'
@@ -22,13 +20,6 @@ export function OverviewView() {
   const overview = useOverviewData(useTenantApiOptions())
   return <OverviewPage authState={auth}
     onValidateIdentity={() => { void overview.runIdentityCheck() }} overview={overview} />
-}
-
-export function ResourceGroupsView() {
-  const { tenant } = useAppServices()
-  const groups = useResourceGroupsManager(useTenantApiOptions())
-  return <ResourceGroupsPage {...groups} onRefresh={groups.refresh} onCreate={groups.create}
-    onUpdate={groups.update} onDelete={groups.remove} canManage={tenant.canManage} />
 }
 
 export function DomainsView() {

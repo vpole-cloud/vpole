@@ -6,7 +6,9 @@ the generic shell does not import resource providers.
 
 ## Module ownership
 
-Modules contribute view registrations, stable resource type identities and contextual commands.
+Modules contribute view registrations, stable resource type identities, contextual commands and
+optional navigation panels. ResourceGroups owns the paginated group/resource tree; the shell renders
+registered panels without importing providers.
 `createAppRegistry` rejects duplicate module/view/resource/command IDs and missing view
 references. Providers own React views, hooks, DTOs and resource behavior. Registration metadata
 stays in `.ts` files and components in `.tsx` files so React Fast Refresh works.
@@ -38,7 +40,7 @@ unregistered views have explicit states. Switching tenant clears the previous pr
 selection and remounts the workspace. The active tenant preference is synchronized only after
 the URL tenant is confirmed accessible.
 
-## Current slice and next stage
+## Resource workspaces
 
 WebService has an independent catalog, one creation tab and multiple open resource tabs. Each
 resource offers Overview, Configuration, Deployments (including hostnames/releases) and Builds.
@@ -53,7 +55,14 @@ directly by ID, independently of the first catalog page; missing/unavailable res
 explicit retry state. All other overview, resource-group, domain, Git integration and storage
 screens remain registered.
 
-Workspace references are stored under `pole.web-services.workspace.v1.<user-id>.<tenant-id>`.
+Resource groups have an independent paginated catalog, creation tab and multiple open group tabs,
+with Resources and Configuration sections. Metadata drafts use the same close/navigation guards
+as service drafts. Group details are read directly by ID through the tenant-scoped API.
+Group search matches names across all pages. Group resources paginate separately; their
+`resourcePage` and `resourcePageSize` URL parameters preserve history and reload position.
+
+Workspace references are stored under `pole.web-services.workspace.v1.<user-id>.<tenant-id>` and
+`pole.resource-groups.workspace.v1.<user-id>.<tenant-id>`.
 Only resource IDs, selected sections and the active resource/catalog tab are saved (up to 50
 restored resources). Creation drafts, form contents, secrets and tokens stay in memory. Corrupt
 or unavailable browser storage falls back to the catalog. Reload after confirming draft loss
@@ -79,10 +88,23 @@ IDs are not entered manually. Default creation stays usable if additional scopes
 the error and retry remain visible. Resource groups remain in primary navigation and the creation
 form, rather than an unrelated shortcut above the WebService workspace.
 
-Navigation supports registered `?view=` links and browser Back/Forward. This implements the
-WebService workspace/URL/pagination slice of #12; resource trees, resource-group URLs and other
-providers' workspaces remain separate work.
-This slice does not complete #90's whole Git/image journey or #96's console release. GitOps
+Group links use `?view=resource-groups&tenant=<id>&resource=<id>&section=resources`.
+Generic links add `resourceType=pole%2Fweb-service` or another registered type. The shell resolves
+the provider from that type, including when a stored view hint is stale. The group catalog, group
+contents and tree use real links that support copying and opening a new browser tab. Reopening
+an identity selects its existing workspace tab. Unregistered resource types show an explicit
+unavailable-provider state without guessing resource endpoints.
+
+The tree stores only expanded group IDs and its page/open preference under
+`pole.resource-tree.v1.<user-id>.<tenant-id>`. Restored IDs are matched against authorized loaded
+groups before child requests; collapsed or superseded reads are aborted. Mutation acceptance
+refreshes the tree. Group choices in service forms load every page, rather than just the first six
+groups. Shared inventory hooks preserve loaded rows on failures and fence tenant/page responses;
+the API client parses problem details and forms display field validation while retaining input.
+
+This completes #12 for the currently registered resource types: ResourceGroup and WebService.
+Adding a new UI provider still requires its own registration and resource workspace.
+This does not complete #90's whole Git/image journey or #96's web UI release. GitOps
 ownership and source management belong to #88; runtime diagnostics and readiness belong to #8/#95.
 
 The `src/shell` directory owns AppShell, AppContext, module contracts and navigation guards.
@@ -98,6 +120,7 @@ dirty-close/navigation/unload guards, restoration, missing resources, URL preced
 unavailable tenant links, server pagination/search, cancelled page reads, errors and Viewer access.
 The repository's `BrowserSmokeE2ETests` uses real Keycloak/API/Kubernetes for image deployment,
 configuration updates, tab keyboard controls, draft retention, reload, confirmation-dialog focus,
-both themes and desktop/narrow screenshots of each workspace section. Its prerequisites and cleanup are documented in
+group metadata drafts/saves, tree/provider navigation, both themes and desktop/narrow screenshots
+of each workspace section. Its prerequisites and cleanup are documented in
 [Aspire E2E testing](../../../docs/aspire-e2e-testing.md). Publication requires the full
 [local quality gate](../../../docs/agent-delivery.md).

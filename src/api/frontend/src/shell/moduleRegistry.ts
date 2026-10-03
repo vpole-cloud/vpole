@@ -23,5 +23,6 @@ export function createAppRegistry(modules: readonly AppModule[]): AppRegistry {
       throw new Error(`App registration ${contribution.id} references missing view ${contribution.viewId}.`)
     }
   }
-  return { views, resourceTypes, commands }
+  return { views, resourceTypes, commands, navigationPanels: modules.flatMap((module) =>
+    module.navigationPanel ? [{ id: module.id, component: module.navigationPanel }] : []) }
 }

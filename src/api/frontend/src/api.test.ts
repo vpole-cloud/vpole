@@ -6,9 +6,40 @@ import {
   fetchAvailableDeploymentTargets,
   fetchWebServiceHostnameBindings,
   normalizeTenantRole,
+  fetchResourceGroups,
+  fetchResourceGroup,
+  ApiError,
+  validationMessage,
   retryWebServiceDeployment,
 } from './api'
 import { retryOperationForStatus } from './components/webServiceDeploymentStatus'
+
+describe('shared inventory API', () => {
+  it('sends requested group pages and encoded direct identities with scoped headers and cancellation', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [] }) })
+    vi.stubGlobal('fetch', fetchMock)
+    const signal = new AbortController().signal
+    await fetchResourceGroups('https://pole.test', 'token', 'tenant', signal, { pageNumber: 3, pageSize: 20, search: ' prod ' })
+    await fetchResourceGroup('https://pole.test', 'group/identity', 'token', 'tenant', signal)
+    expect(fetchMock.mock.calls[0]).toEqual(['https://pole.test/api/v1/resource-groups?pageNumber=3&pageSize=20&search=prod', expect.objectContaining({ signal, headers: expect.objectContaining({ Authorization: 'Bearer token', 'X-Pole-Tenant-ID': 'tenant' }) })])
+    expect(fetchMock.mock.calls[1][0]).toBe('https://pole.test/api/v1/resource-groups/group%2Fidentity')
+  })
+  it('parses problem details and associates nested validation messages with their fields', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ title: 'Validation failed', errors: { 'Body.Name': ['Name already exists.'], 'Body.Spec.Image.Name': ['Choose an image.'], 'Body.Tags[0]': ['Tag too long.'] } }), { status: 400 })))
+    const failure = await fetchResourceGroup('https://pole.test', 'group').catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(ApiError)
+    expect((failure as ApiError).status).toBe(400)
+    expect(validationMessage(failure, 'name')).toBe('Name already exists.')
+    expect(validationMessage(failure, 'spec.image')).toBe('Choose an image.')
+    expect(validationMessage(failure, 'tags')).toBe('Tag too long.')
+    expect(validationMessage(failure, 'description')).toBe('')
+    expect((failure as Error).message).not.toContain('"errors"')
+  })
+  it.each(['Upstream unavailable', ''])('keeps non-problem failures readable', async (body) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, { status: 503 })))
+    await expect(fetchResourceGroup('https://pole.test', 'group')).rejects.toThrow(body || 'Request failed with status 503')
+  })
+})
 
 describe('tenant role normalization', () => {
   it('maps the numeric API enum to the frontend role contract', () => {

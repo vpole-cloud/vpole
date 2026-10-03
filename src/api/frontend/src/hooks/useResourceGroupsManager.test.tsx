@@ -54,7 +54,7 @@ it('does not apply an old tenant mutation after a scope change', async () => {
   vi.mocked(api.fetchResourceGroups).mockResolvedValue(emptyPage)
   vi.mocked(api.createResourceGroup).mockReturnValue(mutation.promise)
   await act(async () => { root.render(<Probe tenantId="old" />) })
-  let pending!: Promise<void>
+  let pending!: Promise<unknown>
   await act(async () => { pending = state.create(created) })
   await act(async () => { root.render(<Probe tenantId="new" />) })
   await act(async () => { mutation.resolve(created); await pending })
@@ -78,4 +78,17 @@ it.each(['update', 'remove'] as const)('does not undo %s when a stale refresh fi
   await act(async () => { oldList.resolve(stalePage); await refresh })
   expect(state.status).toBe('success')
   expect(state.items).toEqual(operation === 'update' ? [{ ...created, description: 'updated' }] : [])
+})
+
+it('loads every page for group choices and preserves them if a later refresh fails', async () => {
+  const later = { ...created, id: 'later', name: 'Outside first page' }
+  const firstPage = Array.from({ length: 200 }, (_, index) => ({ ...created, id: `group-${index}` }))
+  vi.mocked(api.fetchResourceGroups).mockResolvedValueOnce({ ...emptyPage, pageSize: 200, totalCount: 201, items: firstPage })
+    .mockResolvedValueOnce({ ...emptyPage, pageNumber: 2, pageSize: 200, totalCount: 201, items: [later] })
+  await act(async () => root.render(<Probe />))
+  expect(state.items).toEqual([...firstPage, later])
+  expect(vi.mocked(api.fetchResourceGroups).mock.calls[1][4]).toEqual({ pageNumber: 2, pageSize: 200 })
+  vi.mocked(api.fetchResourceGroups).mockRejectedValue(new Error('Refresh failed'))
+  await act(async () => { await state.refresh() })
+  expect(state.status).toBe('error'); expect(state.items).toEqual([...firstPage, later])
 })

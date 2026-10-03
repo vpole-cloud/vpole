@@ -14,7 +14,7 @@ import { catalogId, createId, readServiceRoute, readWorkspace, saveWorkspace, se
 const workspaceId = 'web-services-workspace'
 
 export function WebServicesView() {
-  const { api, auth, tenant, navigation } = useAppServices()
+  const { api, auth, tenant, navigation, invalidateResources } = useAppServices()
   const route = readServiceRoute(navigation.search)
   const options = { apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId, enabled: Boolean(tenant.active) }
   const storageKey = `pole.web-services.workspace.v1.${auth.userId}.${api.tenantId}`
@@ -96,7 +96,7 @@ export function WebServicesView() {
   }
   const requestClose = (id: string) => dirtyTabs[id] ? setClosingId(id) : close(id)
   const label = (id: string) => id === createId ? 'New service' : names[id] ?? services.items.find((item) => item.id === id)?.name ?? `Service ${id.slice(0, 8)}`
-  const refreshCatalog = () => { void services.refresh() }
+  const refreshCatalog = () => { void services.refresh(); invalidateResources() }
 
   const activeId = route.valid ? workspace.activeId : 'invalid-link'
   return <div className="web-service-workspace" id={workspaceId}>
@@ -111,6 +111,7 @@ export function WebServicesView() {
       ]} />
     <TabPanel id={workspaceId} tabId={catalogId} activeId={activeId}>
       <WebServicesPage items={services.items} resourceGroups={groups.items} status={services.status} error={services.error}
+        resourceHref={(id) => navigation.resourceHref({ resourceTypeId: 'pole/web-service', resourceId: id, section: workspace.tabs.find((tab) => tab.id === id)?.section ?? 'overview' })}
         page={services.page} pageNumber={route.pageNumber} pageSize={route.pageSize} search={route.search}
         onPage={(pageNumber) => setInventory({ pageNumber })} onPageSize={(pageSize) => setInventory({ pageSize, pageNumber: 1 })}
         onSearch={(search) => setInventory({ search, pageNumber: 1 })}
@@ -118,7 +119,7 @@ export function WebServicesView() {
         onRefresh={() => { refreshCatalog(); setRefreshVersion((current) => current + 1) }} onCreate={() => {
           setCreating(true)
           navigateWorkspace({ ...workspace, activeId: createId })
-        }} onOpen={open} onDelete={async (id) => { await services.remove(id); close(id) }} />
+        }} onOpen={open} onDelete={async (id) => { await services.remove(id); close(id); invalidateResources() }} />
     </TabPanel>
     {creating && <TabPanel id={workspaceId} tabId={createId} activeId={activeId}>
       {tenant.canManage ? <NewWebServiceView groups={groups.items} onDirtyChange={onDirtyChange} onCreated={(id, shouldOpen) => {

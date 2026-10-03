@@ -13,6 +13,8 @@ The suite covers:
   replica availability, configuration updates, independent catalog/create/resource sections,
   draft retention, tab keyboard controls, reload, confirmation-dialog focus, and light/dark
   screenshots of each workspace section at desktop and mobile viewports;
+  resource-group metadata tabs, dirty-close confirmation, direct URLs/reload, and typed resource
+  links from group contents and the paginated navigation tree;
 - multi-target Kubernetes placement and isolated target failure/retry;
 - deterministic source analysis, BuildKit build/push, Harbor artifacts, and Kubernetes deployment.
 

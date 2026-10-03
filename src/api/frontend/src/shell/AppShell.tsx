@@ -3,7 +3,7 @@ import { TopBandPlaceholder } from '../components/TopBandPlaceholder'
 import type { useTenants } from '../hooks/useTenants'
 import { AppContext } from './AppContext'
 import { Button, ConfirmationDialog, EmptyState, Notice } from '../ui/components'
-import type { AppRegistry, AppServices, Theme } from './contracts'
+import type { AppRegistry, AppServices, ResourceIdentity, Theme } from './contracts'
 
 interface AppShellProps {
   registry: AppRegistry
@@ -14,19 +14,26 @@ interface AppShellProps {
 }
 
 function initialTheme(): Theme {
-  const stored = localStorage.getItem('pole.console.theme')
+  let stored: string | null = null
+  try { stored = localStorage.getItem('pole.console.theme') } catch { /* Use the system preference when storage is disabled. */ }
   if (stored === 'light' || stored === 'dark') return stored
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
 export function AppShell({ registry, auth, api, tenants, initialViewId }: AppShellProps) {
+  const readView = (params: URLSearchParams, fallback: string) => {
+    const type = params.get('resourceType')
+    return type ? registry.resourceTypes.find((entry) => entry.id === type)?.viewId ?? 'unavailable-resource'
+      : params.get('view') ?? fallback
+  }
   const [location, setLocation] = useState(() => ({
-    viewId: new URLSearchParams(window.location.search).get('view') ?? initialViewId,
+    viewId: readView(new URLSearchParams(window.location.search), initialViewId),
     search: window.location.search,
   }))
   const { viewId } = location
   const requestedTenantId = new URLSearchParams(location.search).get('tenant')
   const [theme, setTheme] = useState(initialTheme)
+  const [resourceVersion, setResourceVersion] = useState(0)
   const [notification, setNotification] = useState<{ message: string; tone: 'info' | 'error'; scopeKey: string } | null>(null)
   const activeTenant = auth.authenticated ? requestedTenantId !== null
     ? tenants.items.find((tenant) => tenant.id === requestedTenantId) ?? null : tenants.activeTenant : null
@@ -97,11 +104,40 @@ export function AppShell({ registry, auth, api, tenants, initialViewId }: AppShe
       writeLocation(params, nextId)
     })
   }
+  const resourceParams = (resource: ResourceIdentity) => {
+    const registration = registry.resourceTypes.find((entry) => entry.id === resource.resourceTypeId)
+    const params = new URLSearchParams({ view: registration?.viewId ?? 'unavailable-resource',
+      resourceType: resource.resourceTypeId, resource: resource.resourceId })
+    if (activeTenant) params.set('tenant', activeTenant.id)
+    if (resource.section) params.set('section', resource.section)
+    return params
+  }
+  const resourceHref = (resource: ResourceIdentity) => {
+    const url = new URL(window.location.href)
+    url.search = resourceParams(resource).toString()
+    return `${url.pathname}${url.search}${url.hash}`
+  }
+  const openResource = (resource: ResourceIdentity) => {
+    const params = resourceParams(resource)
+    const nextId = params.get('view')!
+    const run = () => { setNotification(null); writeLocation(params, nextId) }
+    if (nextId === viewId) run()
+    else runGuarded(run)
+  }
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    if (params.has('resourceType') && params.get('view') !== viewId) {
+      params.set('view', viewId)
+      writeLocation(params, viewId, true)
+    }
+  }, [location.search, viewId, writeLocation])
   useEffect(() => {
     const onPopState = () => {
       if (restoringHistory.current) { restoringHistory.current = false; return }
       const params = new URLSearchParams(window.location.search)
-      const nextViewId = params.get('view') ?? registry.views[0]?.id ?? ''
+      const type = params.get('resourceType')
+      const nextViewId = type ? registry.resourceTypes.find((entry) => entry.id === type)?.viewId ?? 'unavailable-resource'
+        : params.get('view') ?? registry.views[0]?.id ?? ''
       const nextTenantId = params.get('tenant') ?? tenants.activeTenant?.id
       const index = window.history.state?.poleNavigationIndex
       const abandonsView = nextViewId !== viewId || nextTenantId !== activeTenant?.id
@@ -130,16 +166,19 @@ export function AppShell({ registry, auth, api, tenants, initialViewId }: AppShe
   }, [dirtyLabels.length])
   useEffect(() => {
     document.documentElement.dataset.theme = theme
-    localStorage.setItem('pole.console.theme', theme)
+    try { localStorage.setItem('pole.console.theme', theme) } catch { /* The theme remains usable in memory. */ }
   }, [theme])
 
   const services: AppServices = {
     auth,
     api: { ...api, tenantId: activeTenant?.id },
     tenant: tenantContext,
-    navigation: { viewId, search: location.search, setSearch, goTo, registerUnsavedChanges },
+    navigation: { viewId, search: location.search, setSearch, goTo, openResource, resourceHref, registerUnsavedChanges },
     theme: { value: theme, set: setTheme },
     notifications: { publish },
+    resourceTypes: registry.resourceTypes,
+    resourceVersion,
+    invalidateResources: () => { if (currentScope.current === scopeKey) setResourceVersion((version) => version + 1) },
   }
   const permitted = activeView && (activeView.access === 'public' ||
     (auth.authenticated && (activeView.access === 'authenticated' || activeTenant !== null)))
@@ -162,6 +201,8 @@ export function AppShell({ registry, auth, api, tenants, initialViewId }: AppShe
               disabled={view.access !== 'public' && !auth.authenticated}
               onClick={() => goTo(view.id)}>{view.label}</button>)}
           </nav>
+          {auth.authenticated && activeTenant && registry.navigationPanels.map(({ id, component: Panel }) =>
+            <Panel key={`${scopeKey}:${id}`} />)}
         </div>
       </aside>
       <div className="app-shell__workspace">
@@ -190,7 +231,9 @@ export function AppShell({ registry, auth, api, tenants, initialViewId }: AppShe
               <Button key={command.id} onClick={() => command.run(services)}>{command.label}</Button>)}</div>
           </div>}
           {!auth.initialized ? <EmptyState title="Starting workspace…" /> : !activeView ?
-            <EmptyState title="This view is unavailable." error><Button onClick={() => goTo(registry.views[0].id)}>Open overview</Button></EmptyState> :
+            <EmptyState title={viewId === 'unavailable-resource' ? 'This resource provider is unavailable.' : 'This view is unavailable.'} error>
+              {viewId === 'unavailable-resource' && <p>The UI for {new URLSearchParams(location.search).get('resourceType')} is not registered. This link does not grant resource access.</p>}
+              <Button onClick={() => goTo(registry.views[0].id)}>Open overview</Button></EmptyState> :
             !permitted ? <EmptyState title={auth.authenticated ? requestedTenantId !== null && tenants.status === 'success'
               ? 'This tenant is unavailable to your account. Select an available tenant.' : 'Select an available tenant.' : 'Sign in to continue.'}>
               {tenants.status === 'error' && tenants.error}
