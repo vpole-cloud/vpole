@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Button, ConfirmationDialog, DataTable, EmptyState, Field, StatusBadge } from '../console/components'
 import { WebServiceForm } from './WebServiceForm'
 import { WebServiceDeploymentsPanel } from './WebServiceDeploymentsPanel'
 import { SourceBuildPanel } from './SourceBuildPanel'
@@ -81,6 +82,7 @@ export function WebServicesPage({
   onRemoveHostname,
 }: WebServicesPageProps) {
   const [query, setQuery] = useState('')
+  const [deleteCandidate, setDeleteCandidate] = useState<WebService | null>(null)
 
   const filteredItems = items.filter((item) =>
     [
@@ -102,51 +104,26 @@ export function WebServicesPage({
   const resolveResourceGroupName = (resourceGroupId: string) =>
     resourceGroups.find((group) => group.id === resourceGroupId)?.name ?? 'Unknown group'
 
-  const handleDelete = async (item: WebService) => {
-    const confirmed = window.confirm(`Delete web service "${item.name}"?`)
-
-    if (!confirmed) {
-      return
-    }
-
-    await onDelete(item.id)
-
-    if (selectedId === item.id) {
-      onSelect(null)
+  const handleDelete = async () => {
+    if (!deleteCandidate) return
+    try {
+      await onDelete(deleteCandidate.id)
+      if (selectedId === deleteCandidate.id) onSelect(null)
+      setDeleteCandidate(null)
+    } catch {
+      // The manager preserves the concrete API error; leave the dialog available for retry.
     }
   }
 
   return (
     <div className="resource-groups-page">
-      <section className="hero-panel">
-        <div className="hero-panel__main">
-          <p className="hero-panel__eyebrow">Web services</p>
-          <h1 className="hero-panel__title">Application runtime</h1>
-          <p className="hero-panel__description">
-            Manage deployed applications, image versions, runtime resources, and health settings from one operator workspace.
-          </p>
+      <header className="console-page-header">
+        <div><h1>Web services</h1><p>Deploy an image and manage its configuration and targets.</p></div>
+        <div className="row-actions">
+          <Button aria-label="Refresh web services" onClick={() => void onRefresh()}>Refresh</Button>
+          <Button variant="primary" disabled={!canManage} onClick={() => onSelect(null)}>New service</Button>
         </div>
-
-        <aside className="hero-panel__utility">
-          <div className="session-card">
-            <div>
-              <p className="session-card__label">Workspace tools</p>
-              <p className="session-card__value">Manage services</p>
-            </div>
-            <div className="session-card__actions">
-              <button className="button" onClick={() => void onRefresh()} type="button">
-                Refresh
-              </button>
-              <button className="button" disabled={!canManage} onClick={() => onSelect(null)} type="button">
-                New service
-              </button>
-            </div>
-            <p className="session-card__note">
-              Create new deployments or select an existing service to update its runtime settings.
-            </p>
-          </div>
-        </aside>
-      </section>
+      </header>
 
       <div className="resource-groups-layout resource-groups-layout--wide-form">
         <section className="panel resource-groups-list-panel">
@@ -158,82 +135,31 @@ export function WebServicesPage({
             <span className="panel__meta">{filteredItems.length} visible</span>
           </div>
 
-          <label className="field">
-            <span className="field__label">Search</span>
-            <input
-              className="field__control"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Find by name, domain, or image"
-            />
-          </label>
+          <Field label="Search">
+            <input className="field__control" value={query} onChange={(event) => setQuery(event.target.value)}
+              placeholder="Find by name, domain, or image" />
+          </Field>
+          {status === 'loading' && <EmptyState title="Loading web services…" />}
+          {status === 'error' && <EmptyState title="Unable to load web services." error>{error}</EmptyState>}
+          {status === 'success' && filteredItems.length === 0 && <EmptyState
+            title={items.length === 0 ? 'No web services yet.' : 'No matching services.'}>
+            {items.length === 0 && 'Create your first service using a container image.'}
+          </EmptyState>}
+          {status === 'success' && filteredItems.length > 0 && <DataTable label="Web service inventory"
+            items={filteredItems} itemKey={(item) => item.id} selectedKey={selectedId} columns={[
+              { id: 'name', label: 'Service', render: (item) => <><Button className="console-resource-link"
+                onClick={() => onSelect(item.id)}>{item.name}</Button><small>{resolveResourceGroupName(item.resourceGroupId)}</small></> },
+              { id: 'image', label: 'Image', render: (item) => <code>{item.spec.image.server}/{item.spec.image.name}:{item.spec.image.tag}</code> },
+              { id: 'placement', label: 'Deployments', render: (item) => <><StatusBadge tone="info">
+                {item.deployments.length} target{item.deployments.length === 1 ? '' : 's'}</StatusBadge>
+                <small>{item.exposure.mode}</small></> },
+              { id: 'actions', label: 'Actions', render: (item) => <div className="row-actions">
+                <Button onClick={() => onSelect(item.id)}>{canManage ? 'Edit' : 'Inspect'}</Button>
+                <Button variant="danger" disabled={deletingId === item.id || !canManage}
+                  aria-label={`Delete ${item.name}`} onClick={() => setDeleteCandidate(item)}>Delete</Button>
+              </div> },
+            ]} />}
 
-          {status === 'loading' && (
-            <div className="empty-state">Loading web services...</div>
-          )}
-
-          {status === 'error' && (
-            <div className="empty-state empty-state--error">
-              {error || 'Unable to load web services.'}
-            </div>
-          )}
-
-          {status === 'success' && filteredItems.length === 0 && (
-            <div className="empty-state">
-              {items.length === 0
-                ? 'No web services exist yet. Create the first one in the side panel.'
-                : 'No web services match this search.'}
-            </div>
-          )}
-
-          {status === 'success' && filteredItems.length > 0 && (
-            <div className="list">
-              {filteredItems.map((item) => {
-                const image = `${item.spec.image.server}/${item.spec.image.name}:${item.spec.image.tag}`
-                const isDeleting = deletingId === item.id
-
-                return (
-                  <article
-                    className={`list-row list-row--interactive${selectedId === item.id ? ' is-selected' : ''}`}
-                    key={item.id}
-                  >
-                    <button
-                      className="list-row__button"
-                      onClick={() => onSelect(item.id)}
-                      type="button"
-                    >
-                      <div className="list-row__primary">
-                        <h3>{item.name}</h3>
-                        <p>{item.deployments.flatMap((deployment) => deployment.ingress?.hostnames ?? []).join(', ') || 'No public hostname reported yet.'}</p>
-                      </div>
-                      <div className="list-row__secondary">
-                        <span className="status-pill status-pill--accent">
-                          {item.deployments.length} target{item.deployments.length === 1 ? '' : 's'}
-                        </span>
-                        <span className="list-row__meta">
-                          {resolveResourceGroupName(item.resourceGroupId)} · {image}
-                        </span>
-                      </div>
-                    </button>
-
-                    <div className="row-actions">
-                      <button className="button" onClick={() => onSelect(item.id)} type="button">
-                        Edit
-                      </button>
-                      <button
-                        className="button button--danger"
-                        disabled={isDeleting || !canManage}
-                        onClick={() => void handleDelete(item)}
-                        type="button"
-                      >
-                        {isDeleting ? 'Deleting...' : 'Delete'}
-                      </button>
-                    </div>
-                  </article>
-                )
-              })}
-            </div>
-          )}
         </section>
 
         {canManage ? (
@@ -295,6 +221,12 @@ export function WebServicesPage({
           canManage={canManage}
         />
       )}
+      {deleteCandidate && <ConfirmationDialog title={`Delete ${deleteCandidate.name}?`}
+        confirmLabel="Delete service" busy={deletingId === deleteCandidate.id}
+        onCancel={() => setDeleteCandidate(null)} onConfirm={() => { void handleDelete() }}>
+        <p>This requests deletion of the service and its deployments.</p>
+        {submitError && <EmptyState title="Deletion failed." error>{submitError}</EmptyState>}
+      </ConfirmationDialog>}
     </div>
   )
 }

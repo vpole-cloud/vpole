@@ -218,7 +218,7 @@ export function useWebServicesManager({
   }
 
   const create = async (input: WebServiceInput) => {
-    await submit(
+    return submit(
       () => createWebService(apiBaseUrl, input, token, tenantId),
       'Unable to create the web service.',
     )

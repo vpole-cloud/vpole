@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Button, Notice } from '../console/components'
 import type {
   AvailableComputeProfile,
   AvailableDeploymentTarget,
@@ -155,23 +156,27 @@ export function WebServiceForm({
     }
 
     setValidationError('')
-    await onSubmit({
-      name: name.trim(),
-      exposure,
-      resourceGroupId,
-      isolationScopeId: isolationScopeId.trim() || undefined,
-      imageServer: imageServer.trim(),
-      imageName: imageName.trim(),
-      imageTag: imageTag.trim(),
-      probePath: probePath.trim(),
-      probePort: probePort.trim(),
-      servicePort: Number(servicePort),
-      targetPort: targetPort.trim(),
-      portName: portName.trim(),
-      environmentVariables: parseEnvironmentVariables(environmentText),
-      autoscaling: initialValue?.spec.autoscaling ?? null,
-      targets,
-    })
+    try {
+      await onSubmit({
+        name: name.trim(),
+        exposure,
+        resourceGroupId,
+        isolationScopeId: isolationScopeId.trim() || undefined,
+        imageServer: imageServer.trim(),
+        imageName: imageName.trim(),
+        imageTag: imageTag.trim(),
+        probePath: probePath.trim(),
+        probePort: probePort.trim(),
+        servicePort: Number(servicePort),
+        targetPort: targetPort.trim(),
+        portName: portName.trim(),
+        environmentVariables: parseEnvironmentVariables(environmentText),
+        autoscaling: initialValue?.spec.autoscaling ?? null,
+        targets,
+      })
+    } catch (error) {
+      setValidationError(error instanceof Error ? error.message : 'Unable to save the service.')
+    }
   }
 
   const exactlyOneTarget = eligibleTargets.length === 1
@@ -270,11 +275,11 @@ export function WebServiceForm({
 
         <label className="field"><span className="field__label">Environment variables</span><textarea className="field__control field__control--textarea" value={environmentText} onChange={(event) => setEnvironmentText(event.target.value)} placeholder={'ASPNETCORE_ENVIRONMENT=Production\nLOG_LEVEL=Information'} /><span className="field__hint">One `KEY=value` per line.</span></label>
 
-        {(validationError || submitError) && <div className="form-message form-message--error">{validationError || submitError}</div>}
+        {(validationError || submitError) && <Notice tone="error">{validationError || submitError}</Notice>}
         {mode === 'edit' && <div className="form-message">Placement is managed per target below. Shared runtime changes fan out atomically to every active deployment.</div>}
 
         <div className="resource-group-form__actions">
-          <button className="button button--primary" disabled={submitStatus === 'loading' || (mode === 'create' && targetsStatus !== 'success')} type="submit">{submitStatus === 'loading' ? 'Saving…' : mode === 'create' ? 'Create service' : 'Save changes'}</button>
+          <Button variant="primary" disabled={submitStatus === 'loading' || (mode === 'create' && targetsStatus !== 'success')} type="submit">{submitStatus === 'loading' ? 'Saving…' : mode === 'create' ? 'Create service' : 'Save changes'}</Button>
           {mode === 'edit' && onCancelEdit && <button className="button" onClick={onCancelEdit} type="button">Cancel</button>}
         </div>
       </form>

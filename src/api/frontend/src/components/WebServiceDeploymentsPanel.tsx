@@ -92,7 +92,7 @@ export function WebServiceDeploymentsPanel({
   }
 
   return (
-    <section className="panel">
+    <section className="panel web-service-deployments">
       <div className="panel__header">
         <div>
           <p className="panel__eyebrow">Placement</p>
