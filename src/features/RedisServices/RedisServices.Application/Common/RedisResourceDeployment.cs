@@ -6,6 +6,8 @@ namespace Pole.Features.RedisServices.Application.Common;
 
 public static class RedisResourceDeployment
 {
+    public const string KubernetesResourceTypeLabel = "Redis";
+
     public static ResourceTypeId ResourceType { get; } =
         ResourceTypeId.Create("pole/redis");
 }

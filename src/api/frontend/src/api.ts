@@ -798,10 +798,11 @@ export async function retryWebServiceDeployment(
   input: { expectedDeploymentRevision: number; expectedOperation: 'Apply' | 'Delete' },
   token?: string,
   tenantId?: string,
+  signal?: AbortSignal,
 ) {
   return sendJson<WebServiceDeployment>(
     `${apiBaseUrl}/api/v1/web-services/${encodeURIComponent(id)}/deployments/${encodeURIComponent(deploymentId)}/retry`,
-    { method: 'POST', headers: buildHeaders(token, tenantId), body: JSON.stringify(input) },
+    { method: 'POST', headers: buildHeaders(token, tenantId), body: JSON.stringify(input), signal },
   )
 }
 
@@ -1132,10 +1133,26 @@ export async function fetchPostgresClusters(apiBaseUrl: string, token?: string, 
   return fetchJson<PaginatedResponse<PostgresCluster>>(`${apiBaseUrl}/api/v1/postgres/?${query}`, { headers: buildHeaders(token, tenantId), signal })
 }
 
-export async function retryResourceDeployment(apiBaseUrl: string, deploymentId: string, token?: string, tenantId?: string, signal?: AbortSignal) {
-  return sendJson<unknown>(`${apiBaseUrl}/api/v1/resource-deployments/${encodeURIComponent(deploymentId)}/retry`, {
-    method: 'POST', headers: buildHeaders(token, tenantId), signal,
-  })
+export async function retryResourceDeployment(apiBaseUrl: string, deploymentId: string, expectedRevision: number, expectedOperation: string, token?: string, tenantId?: string, signal?: AbortSignal) {
+  return healthRequest<unknown>(apiBaseUrl, `/${encodeURIComponent(deploymentId)}/retry?${new URLSearchParams({ expectedRevision: String(expectedRevision), expectedOperation })}`, token, tenantId, signal, 'POST')
+}
+
+async function healthRequest<T>(base: string, path: string, token?: string, tenantId?: string, signal?: AbortSignal, method = 'GET'): Promise<T> {
+  const response = await fetch(`${base}/api/v1/resource-deployments${path}`, { method, headers: buildHeaders(token, tenantId), signal })
+  if (!response.ok) throw new Error(response.status === 409 ? 'This operation changed or is no longer retryable. Refresh before choosing another attempt.'
+    : response.status === 403 ? 'Your role cannot perform this action.' : response.status === 404 ? 'This deployment is no longer available in the active tenant.'
+    : 'Resource state is unavailable. Refresh to reconnect.')
+  return response.json() as Promise<T>
+}
+
+export interface ResourceOperationsFilter { resourceGroupId?: string; resourceType?: string; resourceId?: string }
+export function fetchResourceOperations(base: string, filter: ResourceOperationsFilter, page: number, token?: string, tenantId?: string, signal?: AbortSignal) {
+  const query = new URLSearchParams({ pageNumber: String(page), pageSize: '10' })
+  for (const [key, value] of Object.entries(filter)) if (value) query.set(key, value)
+  return healthRequest<import('./types').ResourceDeploymentOperationsPage>(base, `/operations?${query}`, token, tenantId, signal)
+}
+export function fetchResourceObservation(base: string, deploymentId: string, token?: string, tenantId?: string, signal?: AbortSignal) {
+  return healthRequest<import('./types').ResourceDeploymentObservation>(base, `/${encodeURIComponent(deploymentId)}/observation`, token, tenantId, signal)
 }
 
 export async function fetchPostgresCluster(apiBaseUrl: string, id: string, token?: string, tenantId?: string, signal?: AbortSignal) {

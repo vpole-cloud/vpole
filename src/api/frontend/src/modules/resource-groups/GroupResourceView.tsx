@@ -1,3 +1,4 @@
+import { ResourceOperations } from '../../ui/ResourceOperations'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchResourceGroup } from '../../api'
 import { ResourceGroupForm } from '../../components/ResourceGroupForm'
@@ -38,13 +39,14 @@ export function GroupResourceView({ id, section, active, pageNumber, pageSize, r
       <Button aria-label="Refresh group details" disabled={details.status === 'loading'} onClick={() => void details.refresh()}>Refresh</Button></header>
     {details.error && <Notice tone="error">{details.error} Last fetched metadata is shown.</Notice>}
     <Tabs id={panelId} label={`${group.name} sections`} activeId={section} variant="section" onSelect={(value) => onSection(id, value as GroupSection)}
-      tabs={[{ id: 'resources', label: 'Resources' }, { id: 'configuration', label: 'Configuration' }]} />
+      tabs={[{ id: 'resources', label: 'Resources' }, { id: 'operations', label: 'Operations' }, { id: 'configuration', label: 'Configuration' }]} />
     <TabPanel id={panelId} tabId="resources" activeId={section}>
       <section className="panel"><div className="panel__header"><h2 className="panel__title">Group resources</h2><span className="panel__meta">{group.resourceCount} resource{group.resourceCount === 1 ? '' : 's'}</span></div>
         <p className="field__hint">{group.tags.length ? group.tags.join(', ') : 'No tags'}</p>
         {active && section === 'resources' && <GroupResources groupId={id} pageNumber={pageNumber} pageSize={pageSize} onPage={changePage} onPageSize={changePageSize} refreshVersion={refreshVersion} />}
       </section>
     </TabPanel>
+    <TabPanel id={panelId} tabId="operations" activeId={section}>{active && section === "operations" && <ResourceOperations filter={{ resourceGroupId: id }} />}</TabPanel>
     <TabPanel id={panelId} tabId="configuration" activeId={section}>
       {visitedConfiguration && (tenant.canManage ? <ResourceGroupForm key={formVersion} mode="edit" initialValue={group}
         submitStatus={manager.submitStatus} submitError={manager.submitError} onDirtyChange={setDirty} onCancelEdit={() => setDiscarding(true)}

@@ -48,7 +48,7 @@ public sealed class RedisResourceDeploymentAdapter(
                 context.Deployment.IsolationScopeId,
                 context.Deployment.RuntimeCellId,
                 context.Deployment.Placement.DeploymentTargetId,
-                "Redis",
+                RedisResourceDeployment.KubernetesResourceTypeLabel,
                 context.Deployment.ResourceId,
                 context.Deployment.Id));
         var metadata = RedisResourceDeploymentMetadata.Create(

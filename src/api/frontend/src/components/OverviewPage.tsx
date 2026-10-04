@@ -15,7 +15,7 @@ interface OverviewPageProps {
   }
 }
 
-const getPlatformHealth = (
+const getSessionStatus = (
   status: LoadStatus,
   authenticated: boolean,
 ): { value: string; helper: string; tone: 'default' | 'positive' } => {
@@ -29,8 +29,8 @@ const getPlatformHealth = (
 
   if (authenticated) {
     return {
-      value: 'Connected',
-      helper: 'Authenticated operator session is available.',
+      value: 'Authenticated',
+      helper: 'Signed in. Resource health is observed independently below.',
       tone: 'positive',
     }
   }
@@ -47,7 +47,7 @@ export function OverviewPage({
   onValidateIdentity,
   overview,
 }: OverviewPageProps) {
-  const health = getPlatformHealth(overview.status, authState.authenticated)
+  const health = getSessionStatus(overview.status, authState.authenticated)
   const totalResources = overview.data.resourceGroups.reduce(
     (total, group) => total + group.resourceCount,
     0,
@@ -101,7 +101,7 @@ export function OverviewPage({
 
       <section className="summary-grid" aria-label="Summary">
         <SummaryPanel
-          label="Platform state"
+          label="Session access"
           value={health.value}
           helper={health.helper}
           tone={health.tone}

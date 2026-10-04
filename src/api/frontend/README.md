@@ -196,3 +196,15 @@ across refresh, real artifact/reconciliation results, search/command navigation 
 Its prerequisites and cleanup are documented in
 [Aspire E2E testing](../../../docs/aspire-e2e-testing.md). Publication requires the full
 [local quality gate](../../../docs/agent-delivery.md).
+
+### Operations and observed health
+
+Tenant overview and group Operations show paginated durable deployment state with whole-scope
+reconciliation totals and independently observed targets. WebService, Redis and PostgreSQL have
+Operations sections; their overview also reports runtime readiness. Applied and Ready are separate
+signals. WebServices additionally display retained build/release operations and existing trace and
+correlation identifiers. Owner-supported retries confirm one selected operation and carry its
+expected revision/operation. Closing observations does not cancel accepted server work; reload
+fetches durable state. Read errors mark previous evidence stale, unavailable targets remain visible,
+and API/token/tenant changes abort and clear old results. Database pod readiness does not establish
+application connectivity. Full build/runtime log viewing and release recovery are subsequent slices.

@@ -50,6 +50,8 @@ public static class WebServicesFeatureRegistration
         services.AddOutcomeTransaction<
             DeploySourceBuildWebServiceOutcome>();
         services.TryAddScoped<WebServiceResourceDeploymentAdapter>();
+        services.TryAddScoped<WebServiceResourceDeploymentObserver>();
+        services.AddSingleton(ResourceDeploymentObserverDescriptor.Create<WebServiceResourceDeploymentObserver>(WebServiceResourceDeployment.ResourceType));
         services.AddSingleton(WebServiceResourceDeploymentAdapterRegistration.Descriptor);
         services.AddSingleton<ResourceIngressPolicyDefinition>(WebServiceIngressPolicyDefinitions.Public);
         services.AddSingleton<ResourceIngressPolicyDefinition>(WebServiceIngressPolicyDefinitions.Http01);

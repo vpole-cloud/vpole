@@ -15,6 +15,8 @@ internal sealed class ResourceDeploymentRetryPersistence(
         RetryAsync(
             string tenantId,
             string deploymentId,
+            long expectedRevision,
+            ResourceDeploymentOperation expectedOperation,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
     {
@@ -35,6 +37,8 @@ internal sealed class ResourceDeploymentRetryPersistence(
             return new RetryResourceDeploymentError(
                 new ResourceDeploymentNotFound(deploymentId));
         }
+        if (current.Revision != expectedRevision || current.DesiredOperation != expectedOperation)
+            return new RetryResourceDeploymentError(new ResourceDeploymentRetryConflict(deploymentId));
         if (current.State is not FailedResourceDeploymentState
             {
                 Retryable: true

@@ -8,6 +8,7 @@ using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Mediator;
 using Pole.Validation;
@@ -37,12 +38,16 @@ public delegate Task<RetryResourceDeploymentOutcome>
     RetryResourceDeployment(
         string tenantId,
         string deploymentId,
+        long expectedRevision,
+        ResourceDeploymentOperation expectedOperation,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
 public sealed record RetryResourceDeploymentRequest(
     [FromRoute] string DeploymentId,
-    [FromTenantHeader] string TenantId)
+    [FromTenantHeader] string TenantId,
+    [FromQuery] long? ExpectedRevision = null,
+    [FromQuery] string? ExpectedOperation = null)
     : IMediatorRequest<RetryResourceDeploymentOutcome>, ITenantWriteOperation;
 
 public sealed class RetryResourceDeploymentHandler(
@@ -62,6 +67,8 @@ public sealed class RetryResourceDeploymentHandler(
                 var result = await retryResourceDeployment(
                     request.TenantId,
                     request.DeploymentId,
+                    request.ExpectedRevision!.Value,
+                    Enum.Parse<ResourceDeploymentOperation>(request.ExpectedOperation!),
                     transaction.Session,
                     ct);
                 return result switch
@@ -86,6 +93,8 @@ public sealed class RetryResourceDeploymentRequestValidator
     {
         RuleFor(request => request.DeploymentId)
             .MongoObjectId("Resource deployment ID");
+        RuleFor(request => request.ExpectedRevision).NotNull().GreaterThan(0);
+        RuleFor(request => request.ExpectedOperation).Must(value => value is "Apply" or "Delete");
     }
 }
 

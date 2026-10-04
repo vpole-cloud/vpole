@@ -8,6 +8,22 @@ namespace Pole.Features.ResourceDeployments.Application.Persistence;
 
 internal static class ResourceDeploymentFilters
 {
+    public static FilterDefinition<ResourceDeployment> ForOperationState<TState>(FilterDefinition<ResourceDeployment> scope) where TState : ResourceDeploymentState =>
+        scope & Builders<ResourceDeployment>.Filter.OfType<ResourceDeploymentState, TState>(deployment => deployment.State);
+
+    public static FilterDefinition<ResourceDeployment> ForOperations(
+        string tenantId,
+        string? groupId,
+        string? resourceType,
+        string? resourceId)
+    {
+        var filter = VisibleToTenant(tenantId) & Builders<ResourceDeployment>.Filter.Not(IsDeleted());
+        if (groupId is not null) filter &= Builders<ResourceDeployment>.Filter.Eq(deployment => deployment.ResourceGroupId, groupId);
+        if (resourceType is not null) filter &= Builders<ResourceDeployment>.Filter.Eq(deployment => deployment.ResourceType, resourceType);
+        if (resourceId is not null) filter &= Builders<ResourceDeployment>.Filter.Eq(deployment => deployment.ResourceId, resourceId);
+        return filter;
+    }
+
     public static FilterDefinition<ResourceDeployment> ForResourceType(
         ResourceTypeId resourceType)
     {
