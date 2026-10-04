@@ -13,12 +13,20 @@ export function Tabs({ id, label, tabs, activeId, onSelect, variant = 'workspace
   const layout = tabs.map((tab) => `${tab.id}:${tab.label}:${Boolean(tab.dirty)}`).join('|')
   useLayoutEffect(() => {
     const element = list.current
-    const tab = element?.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')?.parentElement
-    if (!element || !tab) return
-    const listBounds = element.getBoundingClientRect()
-    const tabBounds = tab.getBoundingClientRect()
-    if (tabBounds.left < listBounds.left) element.scrollLeft -= listBounds.left - tabBounds.left
-    else if (tabBounds.right > listBounds.right) element.scrollLeft += tabBounds.right - listBounds.right
+    if (!element) return
+    const reveal = () => {
+      const tab = element.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')?.parentElement
+      if (!tab) return
+      const listBounds = element.getBoundingClientRect()
+      const tabBounds = tab.getBoundingClientRect()
+      if (tabBounds.left < listBounds.left) element.scrollLeft -= listBounds.left - tabBounds.left
+      else if (tabBounds.right > listBounds.right) element.scrollLeft += tabBounds.right - listBounds.right
+    }
+    reveal()
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(reveal)
+    observer?.observe(element)
+    window.addEventListener('resize', reveal)
+    return () => { observer?.disconnect(); window.removeEventListener('resize', reveal) }
   }, [activeId, layout])
   return <div ref={list} className={`ui-tabs ui-tabs--${variant}`} role="tablist" aria-label={label}>
     {tabs.map((tab, index) => <div className={`ui-tab${tab.id === activeId ? ' is-active' : ''}`} role="presentation" key={tab.id}>

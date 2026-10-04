@@ -29,6 +29,9 @@ The suite covers:
 - Secret browser metadata/create/full-map rotation, version-aware writes, generic resource
   binding, native projection convergence and detach cleanup. Screenshots cover desktop/mobile
   light/dark views and are captured before values are entered or after sensitive forms unmount.
+- Domain zone reservation in a separate workspace, exact target hostname ownership, protected
+  generated names, alias replacement/reload and confirmed detach. Zone details link the owning
+  resource and group; desktop/mobile light/dark screenshots exercise both domain workspaces.
 
 The GitHub stub serves deterministic `v1` and `v2` source archives and never records credentials,
 OAuth state, private keys, or bearer tokens.

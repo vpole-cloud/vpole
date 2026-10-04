@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { WebServicesPage } from '../../components/WebServicesPage'
-import { useDomainZonesManager } from '../../hooks/useDomainZonesManager'
 import { useResourceGroupsManager } from '../../hooks/useResourceGroupsManager'
 import { useWebServicesManager } from '../../hooks/useWebServicesManager'
 import { useAppServices } from '../../shell/AppContext'
@@ -32,7 +31,6 @@ export function WebServicesView() {
   const [refreshVersion, setRefreshVersion] = useState(0)
   const groups = useResourceGroupsManager(options)
   const services = useWebServicesManager({ ...options, pageNumber: route.pageNumber, pageSize: route.pageSize, search: route.search })
-  const zones = useDomainZonesManager(options)
   const current = useRef({ workspace, navigation })
   const mounted = useRef(false)
   useLayoutEffect(() => { current.current = { workspace, navigation } }, [workspace, navigation])
@@ -130,7 +128,7 @@ export function WebServicesView() {
     </TabPanel>}
     {workspace.tabs.map((tab) => <TabPanel key={tab.id} id={workspaceId} tabId={tab.id} activeId={activeId}>
       <WebServiceResourceView id={tab.id} section={tab.section} active={activeId === tab.id} refreshVersion={refreshVersion}
-        groups={groups.items} zones={zones.items} onSection={onSection} onLoaded={onLoaded} onDirtyChange={onDirtyChange} onChanged={refreshCatalog} />
+        groups={groups.items} onSection={onSection} onLoaded={onLoaded} onDirtyChange={onDirtyChange} onChanged={refreshCatalog} />
     </TabPanel>)}
     {closingId && <ConfirmationDialog title={`Discard changes to ${label(closingId)}?`} confirmLabel="Discard and close"
       onCancel={() => setClosingId(null)} onConfirm={() => close(closingId)}><p>Your unsaved changes will be lost.</p></ConfirmationDialog>}

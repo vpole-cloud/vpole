@@ -1308,6 +1308,10 @@
 .ui-view-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--color-border); font-size: .8rem; color: var(--color-text-soft); }
 .ui-page-header { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
 .ui-page-header h1 { font-size: 1.55rem; line-height: 1.25; margin: 0 0 8px; letter-spacing: -.035em; }
+#domain-zones-workspace .ui-page-header > div { min-width: 0; }
+#domain-zones-workspace .ui-page-header h1 { overflow-wrap: anywhere; }
+.web-service-domains { display: grid; gap: 16px; }
+#domain-zones-workspace .field, .web-service-domains .field { align-content: start; }
 .ui-page-header p { color: var(--color-text-soft); margin: 0; font-size: .875rem; }
 .panel, .hero-panel, .summary-panel { border-radius: 8px; }
 .panel { min-width: 0; }
