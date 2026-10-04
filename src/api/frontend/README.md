@@ -6,6 +6,13 @@ the generic shell does not import resource providers.
 
 ## Module ownership
 
+Domains uses separate zone catalog, reservation and ownership tabs. Zone details link exact
+hostname owners and resource groups and show persisted target apply state. WebService Domains
+owns per-target attach, change and confirmed detach, with generated hostname protection, public
+ingress prerequisites, scoped cancellation and safe conflict messages. Replacement uses two
+existing durable API writes; failed or unconfirmed detach preserves recovery through refreshed
+ownership. Applied ingress configuration is distinct from external DNS, TLS and reachability.
+
 WebService Dependencies separates network declarations, optional Secret authorization and explicit
 environment references into independent steps. Saved connections and bindings survive reload;
 partial target failures remain visible alongside successful targets. Provider endpoint metadata

@@ -8,6 +8,8 @@ using Pole.Dns;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
+using Pole.Features.Domains.Application.Endpoints;
+using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.Tenants.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Pole.Workloads;
@@ -19,6 +21,57 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
     : ApiIntegrationTestBase(fixture)
 {
     private const string OtherTenantId = "507f1f77bcf86cd799439099";
+
+    [Fact]
+    public async Task Binding_usage_is_paged_tenant_scoped_and_resolves_exact_owner_and_pending_target_for_viewer()
+    {
+        var zone = await CreateZoneAsync("owners");
+        var group = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("domain-owners"));
+        using var create = await Client.PostAsJsonAsync("/api/v1/web-services", TestData.CreateWebServiceRequest(group.Id).Body);
+        Assert.Equal(HttpStatusCode.Accepted, create.StatusCode);
+        var service = (await create.Content.ReadFromJsonAsync<CreateWebServiceResponse>())!;
+        var placement = Assert.Single(service.Deployments);
+        foreach (var label in new[] { "alpha", "beta" })
+        {
+            using var attach = await Client.PostAsJsonAsync($"/api/v1/web-services/{service.WebServiceId}/deployments/{placement.DeploymentId}/hostnames", new { tenantDomainZoneId = zone.Id, relativeName = label });
+            Assert.Equal(HttpStatusCode.Accepted, attach.StatusCode);
+        }
+        var foreign = HostnameBindingFactory.CreateCustom(
+            OtherTenantId, zone.Id, TestData.DefaultDeploymentTargetId, ResourceTypeId.Create("pole/web-service"),
+            ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString(), "foreign-canary", DnsName.Create(zone.Domain),
+            new HostnameBindingFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow));
+        await Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings").InsertOneAsync(foreign);
+        await SetCurrentUserRoleAsync(TenantRole.Viewer);
+
+        using var first = await Client.GetAsync($"/api/v1/domain-zones/{zone.Id}/bindings?pageNumber=1&pageSize=1");
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        var page = (await first.Content.ReadFromJsonAsync<GetDomainZoneBindingsResponse>())!;
+        Assert.Equal(2, page.TotalCount);
+        var owner = Assert.Single(page.Items);
+        Assert.Equal("alpha." + zone.Domain, owner.Binding.Hostname);
+        Assert.Equal("web-api", owner.ResourceDisplayName);
+        Assert.Equal(group.Id, owner.ResourceGroupId);
+        Assert.Equal(placement.DeploymentId, owner.Placement!.DeploymentId);
+        Assert.Equal(TestData.DefaultDeploymentTargetId, owner.Placement.DeploymentTargetId);
+        Assert.Equal("WaitingForRuntimeCell", owner.Placement.Status);
+        Assert.DoesNotContain("foreign-canary", await first.Content.ReadAsStringAsync());
+        using var second = await Client.GetAsync($"/api/v1/domain-zones/{zone.Id}/bindings?pageNumber=2&pageSize=1");
+        var next = (await second.Content.ReadFromJsonAsync<GetDomainZoneBindingsResponse>())!;
+        Assert.Equal("beta." + zone.Domain, Assert.Single(next.Items).Binding.Hostname);
+    }
+
+    [Fact]
+    public async Task Binding_usage_hides_foreign_zones_and_bounds_page_size()
+    {
+        var zone = await CreateZoneAsync("usage-bounds");
+        using var invalid = await Client.GetAsync($"/api/v1/domain-zones/{zone.Id}/bindings?pageNumber=1&pageSize=101");
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        await Fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones")
+            .UpdateOneAsync(item => item.Id == zone.Id, Builders<TenantDomainZone>.Update.Set(item => item.TenantId, OtherTenantId));
+        using var hidden = await Client.GetAsync($"/api/v1/domain-zones/{zone.Id}/bindings");
+        Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
+        Assert.DoesNotContain(zone.Domain, await hidden.Content.ReadAsStringAsync());
+    }
 
     [Fact]
     public async Task GetById_ReturnsTenantZoneThroughTypedOutcome()

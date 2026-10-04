@@ -340,6 +340,13 @@ export interface HostnameBinding {
   createdAtUtc: string
 }
 
+export interface DomainZoneBindingUsage {
+  binding: HostnameBinding
+  resourceDisplayName: string | null
+  resourceGroupId: string | null
+  placement: ResourcePlacement | null
+}
+
 export interface WebServiceReleaseDeployment {
   resourceDeploymentId: string
   deploymentTargetId: string

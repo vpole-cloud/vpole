@@ -1,0 +1,82 @@
+import { useCallback, useEffect, useState } from 'react'
+import { addWebServiceHostnameBinding, deleteWebServiceHostnameBinding, fetchAvailableDeploymentTargets, fetchDomainZones, fetchWebServiceHostnameBindings } from '../../api'
+import { useResource } from '../../hooks/useResource'
+import { useScopedMutation } from '../../hooks/useScopedMutation'
+import { useAppServices } from '../../shell/AppContext'
+import type { AvailableDeploymentTarget, HostnameBinding, TenantDomainZone, WebService, WebServiceDeployment } from '../../types'
+import { Button, ConfirmationDialog, EmptyState, Field, Notice, StatusBadge } from '../../ui/components'
+import { domainZoneHref } from '../domains/navigation'
+
+export function WebServiceDomains({ service, active, onDirtyChange, onChanged }: { service: WebService; active: boolean; onDirtyChange: (dirty: boolean) => void; onChanged: () => Promise<void> }) {
+  const { api, tenant, navigation } = useAppServices()
+  const scope = `${api.baseUrl}:${api.tenantId}:${api.token}:${service.id}`
+  const zones = useResource(scope, (signal) => fetchDomainZones(api.baseUrl, api.token, api.tenantId, signal))
+  const targets = useResource(scope, (signal) => fetchAvailableDeploymentTargets(api.baseUrl, service.isolationScopeId ?? undefined, api.token, api.tenantId, signal, false))
+  const [dirtyTargets, setDirtyTargets] = useState<Record<string, boolean>>({})
+  const setDirty = useCallback((id: string, dirty: boolean) => setDirtyTargets((current) => current[id] === dirty ? current : { ...current, [id]: dirty }), [])
+  const dirty = service.deployments.some((deployment) => dirtyTargets[deployment.deploymentId])
+  useEffect(() => { onDirtyChange(dirty); return () => onDirtyChange(false) }, [dirty, onDirtyChange])
+  const counts = service.deployments.reduce((summary, deployment) => ({ ...summary, [deployment.status]: (summary[deployment.status] ?? 0) + 1 }), {} as Record<string, number>)
+  return <div className="web-service-domains"><section className="panel"><header className="ui-page-header"><div><p className="ui-page-eyebrow">Exposure</p><h2>Domains and hostnames</h2><p>Every hostname belongs to one deployment target. Targets reconcile independently.</p></div><a className="button" href={domainZoneHref('catalog', api.tenantId)}>Browse domain zones</a></header>
+    <p>{Object.entries(counts).map(([status, count]) => `${count} ${status}`).join(' · ')}</p>
+    {service.exposure.mode === 'Private' && <Notice>This service is private. <a href={navigation.resourceHref({ resourceTypeId: 'pole/web-service', resourceId: service.id, section: 'configuration' })}>Enable public exposure in Configuration</a> before attaching a hostname.</Notice>}
+    {!tenant.canManage && <Notice>Tenant viewer access is read-only.</Notice>}
+    {[zones.error, targets.error].filter(Boolean).map((error, index) => <Notice key={index} tone="error">{error}</Notice>)}
+    <div className="row-actions"><Button onClick={() => { void zones.refresh(); void targets.refresh(); void onChanged() }}>Refresh zones and targets</Button>{tenant.canManage && <a className="button" href={domainZoneHref('create', api.tenantId)}>Reserve a zone</a>}</div>
+    <p className="field__hint">An accepted alias reserves ownership and requests ingress configuration. Applied does not establish external DNS, certificate readiness or application reachability.</p>
+  </section>
+    {service.deployments.map((deployment) => <DeploymentDomains key={`${scope}:${deployment.deploymentId}`} service={service} deployment={deployment} active={active} canManage={tenant.canManage} zones={zones.resource ?? []} zonesAvailable={zones.status === 'success'} target={targets.resource?.find((target) => target.id === deployment.deploymentTargetId)} onDirtyChange={setDirty} onChanged={onChanged} />)}
+  </div>
+}
+
+function DeploymentDomains({ service, deployment, active, canManage, zones, zonesAvailable, target, onDirtyChange, onChanged }: { service: WebService; deployment: WebServiceDeployment; active: boolean; canManage: boolean; zones: TenantDomainZone[]; zonesAvailable: boolean; target?: AvailableDeploymentTarget; onDirtyChange: (id: string, dirty: boolean) => void; onChanged: () => Promise<void> }) {
+  const { api } = useAppServices()
+  const scope = `${api.baseUrl}:${api.tenantId}:${api.token}:${service.id}:${deployment.deploymentId}`
+  const bindings = useResource(scope, (signal) => fetchWebServiceHostnameBindings(api.baseUrl, service.id, deployment.deploymentId, api.token, api.tenantId, signal), deployment.deploymentRevision)
+  const mutation = useScopedMutation(scope)
+  const [zoneId, setZoneId] = useState(''); const [relativeName, setRelativeName] = useState(''); const [editing, setEditing] = useState<HostnameBinding | null>(null)
+  const [removing, setRemoving] = useState<HostnameBinding | null>(null); const [notice, setNotice] = useState('')
+  const dirty = Boolean(zoneId || relativeName || editing)
+  useEffect(() => { onDirtyChange(deployment.deploymentId, dirty); return () => onDirtyChange(deployment.deploymentId, false) }, [deployment.deploymentId, dirty, onDirtyChange])
+  const refreshBindings = bindings.refresh
+  useEffect(() => { if (!active || !['WaitingForRuntimeCell', 'Pending', 'Reconciling'].includes(deployment.status)) return; const timer = window.setInterval(() => void refreshBindings(), 2500); return () => window.clearInterval(timer) }, [active, deployment.status, refreshBindings])
+  const eligible = zones.filter((zone) => zone.deploymentTargetId === deployment.deploymentTargetId && zone.kind === 'managed-reservation')
+  const selected = eligible.find((zone) => zone.id === zoneId)
+  const validName = relativeName.trim().toLowerCase().split('.').every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))
+  const publicReady = service.exposure.mode === 'Public' && target?.hasPublicIngress && deployment.desiredOperation === 'Apply'
+  const canAttach = canManage && publicReady && zonesAvailable && bindings.status === 'success' && selected && validName && relativeName.trim()
+  const draftMatches = bindings.resource?.find((binding) => binding.tenantDomainZoneId === zoneId && binding.relativeName === relativeName.trim().toLowerCase())
+  const clear = () => { setZoneId(''); setRelativeName(''); setEditing(null) }
+  const save = () => {
+    if (!canAttach || (draftMatches && draftMatches.id === editing?.id)) return
+    setNotice('')
+    void mutation.run(async (signal) => {
+      if (!draftMatches) await addWebServiceHostnameBinding(api.baseUrl, service.id, deployment.deploymentId, { tenantDomainZoneId: zoneId, relativeName: relativeName.trim().toLowerCase() }, api.token, api.tenantId, signal)
+      if (signal.aborted) return
+      if (editing && bindings.resource?.some((binding) => binding.id === editing.id)) {
+        try { await deleteWebServiceHostnameBinding(api.baseUrl, service.id, deployment.deploymentId, editing.id, api.token, api.tenantId, signal) }
+        catch (failure) { if (!signal.aborted) { setNotice('The replacement alias was accepted. Detach could not be confirmed. Refresh hostnames; if the original remains, detach it to finish replacement.'); await bindings.refresh(); await onChanged() }; throw failure }
+      }
+    }, async () => { clear(); setNotice('Hostname configuration accepted for this target. Inspect its apply state below.'); await bindings.refresh(); await onChanged() }).catch(() => {})
+  }
+  return <section className="panel"><div className="panel__header"><div><p className="panel__eyebrow">Deployment target</p><h3 className="panel__title">{target?.displayName ?? 'Target unavailable'}</h3></div><StatusBadge tone={deployment.failureCode ? 'danger' : 'neutral'}>{deployment.status}</StatusBadge></div>
+    <p>Generation {deployment.observedGeneration}/{deployment.desiredGeneration} · desired operation {deployment.desiredOperation}</p>
+    {deployment.failureCode && <Notice tone="error">{deployment.failureCode}. Open Deployments to inspect and retry this target.</Notice>}
+    {!target?.hasPublicIngress && <Notice>Public ingress is unavailable on this target. The platform administrator must configure its public base domain, ingress class and issuer.</Notice>}
+    {bindings.error && <Notice tone="error">{bindings.error} Previously fetched hostname ownership is shown.</Notice>}
+    {mutation.error instanceof Error && <Notice tone="error">{mutation.error.message}</Notice>}{notice && <Notice>{notice}</Notice>}
+    <div className="list">{bindings.resource?.map((binding) => <article className="list-row" key={binding.id}><div className="list-row__primary"><h4>{binding.hostname}</h4><p>{binding.kind === 'generated' ? 'Generated · maintained by this deployment' : 'Custom alias'} · reserved {new Date(binding.createdAtUtc).toLocaleString()}</p><a href={domainZoneHref(binding.tenantDomainZoneId, api.tenantId)}>Open owning zone</a></div><div className="row-actions">{binding.kind === 'custom' && canManage && <><Button disabled={mutation.busy || !publicReady} onClick={() => { setEditing(binding); setZoneId(binding.tenantDomainZoneId); setRelativeName(binding.relativeName) }}>Change alias</Button><Button variant="danger" disabled={mutation.busy} onClick={() => setRemoving(binding)}>Detach alias</Button></>}</div></article>)}</div>
+    {bindings.status === 'success' && !bindings.resource?.length && <EmptyState title="No hostname reservations for this deployment." />}
+    <Button onClick={() => { void bindings.refresh(); void onChanged() }}>Refresh hostnames</Button>
+    {canManage && publicReady && <form className="database-form" onSubmit={(event) => { event.preventDefault(); save() }}><h4>{editing ? `Replace ${editing.hostname}` : 'Attach a custom hostname'}</h4><fieldset disabled={mutation.busy}><div className="form-grid">
+      <Field label="Reserved zone"><select className="field__control" required value={zoneId} onChange={(event) => setZoneId(event.target.value)}><option value="">Select a zone on this target</option>{eligible.map((zone) => <option key={zone.id} value={zone.id}>{zone.domain}</option>)}</select></Field>
+      <Field label="Hostname label" hint="DNS labels beneath the selected zone, for example api or api.eu."><input className="field__control" required maxLength={200} value={relativeName} onChange={(event) => setRelativeName(event.target.value)} placeholder="api" /></Field>
+    </div></fieldset>
+      {selected && <p className="form-message">Requested hostname: <strong>{relativeName.trim().toLowerCase() || 'label'}.{selected.domain}</strong></p>}
+      {editing && <p className="field__hint">Replacement first reserves the new alias, then detaches the original in a separate saved step. If detach fails, both aliases remain visible for recovery.</p>}
+      {!eligible.length && <Notice>Reserve a tenant zone on this target before attaching a custom hostname.</Notice>}
+      <div className="row-actions"><Button type="submit" variant="primary" disabled={!canAttach || mutation.busy || (draftMatches && (!editing || draftMatches.id === editing.id))}>{editing ? 'Replace alias' : 'Attach alias'}</Button><Button disabled={mutation.busy} onClick={clear}>Discard hostname draft</Button></div>
+    </form>}
+    {removing && <ConfirmationDialog title={`Detach ${removing.hostname}?`} confirmLabel="Detach alias" busy={mutation.busy} onCancel={() => setRemoving(null)} onConfirm={() => { const binding = removing; void mutation.run((signal) => deleteWebServiceHostnameBinding(api.baseUrl, service.id, deployment.deploymentId, binding.id, api.token, api.tenantId, signal), async () => { setRemoving(null); if (editing?.id === binding.id) clear(); await bindings.refresh(); await onChanged() }).catch(() => setRemoving(null)) }}>This releases this custom hostname reservation and requests removal from this target’s ingress. The application, zone and other targets remain.</ConfirmationDialog>}
+  </section>
+}

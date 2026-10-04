@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
 import { OverviewPage } from '../../components/OverviewPage'
-import { DomainZonesPage } from '../../components/DomainZonesPage'
 import { IntegrationsPage } from '../../components/IntegrationsPage'
 import { StorageSettingsPage } from '../../components/StorageSettingsPage'
 import { useOverviewData } from '../../hooks/useOverviewData'
-import { useDomainZonesManager } from '../../hooks/useDomainZonesManager'
+export { DomainsView } from '../domains/DomainsView'
 import { useGitIntegrationsManager } from '../../hooks/useGitIntegrationsManager'
 import { useStorageSettingsManager } from '../../hooks/useStorageSettingsManager'
 import { readIntegrationNavigation } from '../../integrationsState'
@@ -25,13 +24,6 @@ export function OverviewView() {
         {resourceTypes.map((type) => <a key={type.id} className="button" href={navigation.resourceHref({ resourceTypeId: type.id, resourceId: 'catalog' })}>{type.label}</a>)}
       </div></section>}
     </>
-}
-
-export function DomainsView() {
-  const { tenant } = useAppServices()
-  const zones = useDomainZonesManager(useTenantApiOptions())
-  return <DomainZonesPage {...zones} onRefresh={zones.refresh} onCreate={zones.create}
-    onDelete={zones.remove} canManage={tenant.canManage} />
 }
 
 export function IntegrationsView() {

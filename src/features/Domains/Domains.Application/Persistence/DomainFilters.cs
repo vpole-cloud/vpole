@@ -123,6 +123,11 @@ internal static class DomainFilters
             binding => binding.TenantDomainZoneId,
             zoneId);
 
+    public static FilterDefinition<HostnameBinding> BindingsForTenantZone(string tenantId, string zoneId) =>
+        Builders<HostnameBinding>.Filter.And(
+            Builders<HostnameBinding>.Filter.ForTenant(tenantId),
+            BindingsForZone(zoneId));
+
     public static FilterDefinition<HostnameBinding> GeneratedBindingConflicts(
         string tenantId,
         IReadOnlyCollection<string> hostnames,

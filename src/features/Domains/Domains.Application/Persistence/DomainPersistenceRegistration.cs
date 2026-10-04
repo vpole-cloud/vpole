@@ -43,6 +43,9 @@ public static class DomainPersistenceRegistration
             });
 
         services.AddScoped<MongoLoadHostnameBindingsForDeployment>();
+        services.AddScoped<MongoLoadDomainZoneBindingPage>();
+        services.AddScoped<LoadDomainZoneBindingPage>(provider =>
+            provider.GetRequiredService<MongoLoadDomainZoneBindingPage>().InvokeAsync);
         services.AddScoped<LoadHostnameBindingsForDeployment>(provider =>
             provider.GetRequiredService<MongoLoadHostnameBindingsForDeployment>().InvokeAsync);
         services.AddScoped<MongoLoadHostnameBindingsForDeploymentInTransaction>();

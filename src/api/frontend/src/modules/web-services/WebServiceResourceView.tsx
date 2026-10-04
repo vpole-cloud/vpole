@@ -9,17 +9,18 @@ import { ResourceEndpoints } from '../../ui/ResourceEndpoints'
 import { useUnsavedChanges } from '../../shell/useUnsavedChanges'
 import { useSourceBuildsManager } from '../../hooks/useSourceBuildsManager'
 import { useWebServicesManager } from '../../hooks/useWebServicesManager'
-import type { ResourceGroup, TenantDomainZone, WebService } from '../../types'
+import type { ResourceGroup, WebService } from '../../types'
 import { useWebService } from './useWebService'
 import { serviceSections, type ServiceSection } from './workspaceState'
 import { WebServiceDependencies } from './WebServiceDependencies'
+import { WebServiceDomains } from './WebServiceDomains'
 
 const sectionLabels: Record<ServiceSection, string> = {
-  overview: 'Overview', configuration: 'Configuration', dependencies: 'Dependencies', deployments: 'Deployments', builds: 'Builds',
+  overview: 'Overview', configuration: 'Configuration', dependencies: 'Dependencies', deployments: 'Deployments', domains: 'Domains', builds: 'Builds',
 }
 
-export function WebServiceResourceView({ id, section, active, refreshVersion, groups, zones, onSection, onLoaded, onDirtyChange, onChanged }:
-  { id: string; section: ServiceSection; active: boolean; refreshVersion: number; groups: ResourceGroup[]; zones: TenantDomainZone[];
+export function WebServiceResourceView({ id, section, active, refreshVersion, groups, onSection, onLoaded, onDirtyChange, onChanged }:
+  { id: string; section: ServiceSection; active: boolean; refreshVersion: number; groups: ResourceGroup[];
     onSection: (id: string, section: ServiceSection) => void; onLoaded: (service: WebService) => void;
     onDirtyChange: (id: string, dirty: boolean) => void; onChanged: () => void }) {
   const { api, tenant, notifications } = useAppServices()
@@ -32,7 +33,8 @@ export function WebServiceResourceView({ id, section, active, refreshVersion, gr
   const [deploymentDirty, setDeploymentDirty] = useState(false)
   const [buildDirty, setBuildDirty] = useState(false)
   const [dependencyDirty, setDependencyDirty] = useState(false)
-  const dirty = configurationDirty || deploymentDirty || buildDirty || dependencyDirty
+  const [domainDirty, setDomainDirty] = useState(false)
+  const dirty = configurationDirty || deploymentDirty || buildDirty || dependencyDirty || domainDirty
   const [formVersion, setFormVersion] = useState(0)
   const [saving, setSaving] = useState(false)
   const [discarding, setDiscarding] = useState(false)
@@ -43,7 +45,7 @@ export function WebServiceResourceView({ id, section, active, refreshVersion, gr
   const refreshDetails = details.refresh
   const completedBuild = builds.jobs.filter((job) => ['succeeded', 'failed'].includes(job.state.status)).map((job) => `${job.id}:${job.state.status}`).join(',')
   useEffect(() => { if (completedBuild) void refreshDetails() }, [completedBuild, refreshDetails])
-  const reconciling = service?.deployments.some((deployment) => ['PendingApply', 'Applying'].includes(deployment.status)) ?? false
+  const reconciling = service?.deployments.some((deployment) => ['WaitingForRuntimeCell', 'Pending', 'Reconciling'].includes(deployment.status)) ?? false
   useEffect(() => {
     if (!active || !reconciling) return
     const timer = window.setInterval(() => void refreshDetails(), 2500)
@@ -123,15 +125,16 @@ export function WebServiceResourceView({ id, section, active, refreshVersion, gr
     </TabPanel>
     <TabPanel id={panelId} tabId="deployments" activeId={section}>
       {visited.includes('deployments') && <WebServiceDeploymentsPanel webService={service} availableTargets={manager.availableTargets}
-        computeProfilesByTarget={manager.computeProfilesByTarget} hostnameBindingsByDeployment={manager.hostnameBindingsByDeployment}
-        releases={manager.releasesByWebService[id]} zones={zones} canManage={tenant.canManage} onDirtyChange={setDeploymentDirty}
-        onLoadComputeProfiles={manager.loadComputeProfiles} onLoadHostnameBindings={manager.loadHostnameBindings} onLoadReleases={manager.loadReleases}
+        computeProfilesByTarget={manager.computeProfilesByTarget}
+        releases={manager.releasesByWebService[id]} canManage={tenant.canManage} onDirtyChange={setDeploymentDirty}
+        onLoadComputeProfiles={manager.loadComputeProfiles} onLoadReleases={manager.loadReleases}
         onAddDeployment={(...args) => mutate(() => manager.addDeployment(...args))}
         onUpdateDeployment={(...args) => mutate(() => manager.updateDeployment(...args))}
         onRemoveDeployment={(...args) => mutate(() => manager.removeDeployment(...args))}
-        onRetryDeployment={(...args) => mutate(() => manager.retryDeployment(...args))}
-        onAddHostname={(...args) => mutate(() => manager.addHostname(...args))}
-        onRemoveHostname={(...args) => mutate(() => manager.removeHostname(...args))} />}
+        onRetryDeployment={(...args) => mutate(() => manager.retryDeployment(...args))} />}
+    </TabPanel>
+    <TabPanel id={panelId} tabId="domains" activeId={section}>
+      {visited.includes('domains') && <WebServiceDomains key={`${api.baseUrl}:${api.tenantId}:${api.token}:${id}`} service={service} active={active && section === 'domains'} onDirtyChange={setDomainDirty} onChanged={async () => { await details.refresh(); onChanged() }} />}
     </TabPanel>
     <TabPanel id={panelId} tabId="dependencies" activeId={section}>
       {visited.includes('dependencies') && <WebServiceDependencies key={`${api.baseUrl}:${api.tenantId}:${api.token}:${id}`} service={service} canWrite={tenant.canManage} onDirtyChange={setDependencyDirty} onChanged={async () => { await details.refresh(); onChanged() }} />}

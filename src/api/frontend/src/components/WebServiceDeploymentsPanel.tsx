@@ -3,8 +3,6 @@ import { useEffect, useMemo, useState } from 'react'
 import type {
   AvailableComputeProfile,
   AvailableDeploymentTarget,
-  HostnameBinding,
-  TenantDomainZone,
   WebService,
   WebServiceDeploymentInput,
   WebServiceReleaseHistory,
@@ -14,20 +12,15 @@ interface WebServiceDeploymentsPanelProps {
   webService: WebService
   availableTargets: AvailableDeploymentTarget[]
   computeProfilesByTarget: Record<string, AvailableComputeProfile[]>
-  hostnameBindingsByDeployment: Record<string, HostnameBinding[]>
   releases?: WebServiceReleaseHistory
-  zones: TenantDomainZone[]
   canManage: boolean
   onDirtyChange?: (dirty: boolean) => void
   onLoadComputeProfiles: (targetId: string) => Promise<AvailableComputeProfile[]>
-  onLoadHostnameBindings: (webServiceId: string, deploymentId: string) => Promise<HostnameBinding[]>
   onLoadReleases: (webServiceId: string) => Promise<WebServiceReleaseHistory | undefined>
   onAddDeployment: (id: string, input: WebServiceDeploymentInput) => Promise<unknown>
   onUpdateDeployment: (id: string, deploymentId: string, input: { fixedReplicas: number; computeProfileId?: string }) => Promise<unknown>
   onRemoveDeployment: (id: string, deploymentId: string) => Promise<unknown>
   onRetryDeployment: (id: string, deploymentId: string, expectedDeploymentRevision: number, expectedOperation?: 'Apply' | 'Delete') => Promise<unknown>
-  onAddHostname: (id: string, deploymentId: string, input: { tenantDomainZoneId: string; relativeName: string }) => Promise<void>
-  onRemoveHostname: (id: string, deploymentId: string, bindingId: string) => Promise<void>
 }
 
 const statusClass = (status: string) =>
@@ -41,39 +34,29 @@ export function WebServiceDeploymentsPanel({
   webService,
   availableTargets,
   computeProfilesByTarget,
-  hostnameBindingsByDeployment,
   releases,
-  zones,
   canManage,
   onDirtyChange,
   onLoadComputeProfiles,
-  onLoadHostnameBindings,
   onLoadReleases,
   onAddDeployment,
   onUpdateDeployment,
   onRemoveDeployment,
   onRetryDeployment,
-  onAddHostname,
-  onRemoveHostname,
 }: WebServiceDeploymentsPanelProps) {
   const [addTargetId, setAddTargetId] = useState('')
   const [addReplicas, setAddReplicas] = useState('1')
   const [addComputeProfileId, setAddComputeProfileId] = useState('')
-  const [aliasDrafts, setAliasDrafts] = useState<Record<string, { zoneId: string; relativeName: string }>>({})
-  const dirty = Boolean(addTargetId || addComputeProfileId || addReplicas !== '1' || webService.deployments.some((deployment) => {
-    const draft = aliasDrafts[deployment.deploymentId]
-    return draft?.zoneId || draft?.relativeName
-  }))
+  const dirty = Boolean(addTargetId || addComputeProfileId || addReplicas !== '1')
   useEffect(() => { onDirtyChange?.(dirty) }, [dirty, onDirtyChange])
   const run = (action: Promise<unknown>) => { void action.catch(() => {}) }
 
   useEffect(() => {
     void onLoadReleases(webService.id)
     webService.deployments.forEach((deployment) => {
-      void onLoadHostnameBindings(webService.id, deployment.deploymentId)
       void onLoadComputeProfiles(deployment.deploymentTargetId)
     })
-  }, [onLoadComputeProfiles, onLoadHostnameBindings, onLoadReleases, webService.deployments, webService.id])
+  }, [onLoadComputeProfiles, onLoadReleases, webService.deployments, webService.id])
 
   const unusedTargets = useMemo(
     () => availableTargets.filter((target) => !webService.deployments.some(
@@ -83,10 +66,6 @@ export function WebServiceDeploymentsPanel({
   )
 
   const addProfiles = computeProfilesByTarget[addTargetId] ?? []
-  const targetZones = (targetId: string) => zones.filter((zone) =>
-    zone.deploymentTargetId === targetId && zone.kind === 'managed-reservation',
-  )
-
   const addTarget = async () => {
     if (!addTargetId) return
     try {
@@ -115,10 +94,7 @@ export function WebServiceDeploymentsPanel({
 
       <div className="list">
         {webService.deployments.map((deployment) => {
-          const bindings = hostnameBindingsByDeployment[deployment.deploymentId] ?? []
           const profiles = computeProfilesByTarget[deployment.deploymentTargetId] ?? []
-          const draft = aliasDrafts[deployment.deploymentId] ?? { zoneId: '', relativeName: '' }
-          const matchingZones = targetZones(deployment.deploymentTargetId)
           return (
             <article className="list-row" key={deployment.deploymentId}>
               <div className="list-row__primary">
@@ -136,12 +112,7 @@ export function WebServiceDeploymentsPanel({
                 <label className="field"><span className="field__label">Compute profile</span><select className="field__control" disabled={!canManage} defaultValue={deployment.compute.profile.computeProfileId} onChange={(event) => run(onUpdateDeployment(webService.id, deployment.deploymentId, { fixedReplicas: deployment.fixedReplicas, computeProfileId: event.target.value || undefined }))}><option value="">Target default</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.displayName}</option>)}</select></label>
               </div>
 
-              <div className="form-message">
-                <strong>Hostnames</strong>
-                {bindings.length === 0 && <p>{deployment.ingress?.hostnames.join(', ') || 'No ingress hostnames reported yet.'}</p>}
-                {bindings.map((binding) => <p key={binding.id}>{binding.hostname} {binding.kind === 'generated' ? <span className="field__hint">generated</span> : <button className="button button--danger" disabled={!canManage} type="button" onClick={() => run(onRemoveHostname(webService.id, deployment.deploymentId, binding.id))}>Remove alias</button>}</p>)}
-                {canManage && matchingZones.length > 0 && <div className="form-grid"><select className="field__control" value={draft.zoneId} onChange={(event) => setAliasDrafts((current) => ({ ...current, [deployment.deploymentId]: { ...draft, zoneId: event.target.value } }))}><option value="">Select a reserved zone</option>{matchingZones.map((zone) => <option key={zone.id} value={zone.id}>{zone.domain}</option>)}</select><input className="field__control" value={draft.relativeName} onChange={(event) => setAliasDrafts((current) => ({ ...current, [deployment.deploymentId]: { ...draft, relativeName: event.target.value } }))} placeholder="api" /><button className="button" type="button" disabled={!draft.zoneId || !draft.relativeName.trim()} onClick={() => run(onAddHostname(webService.id, deployment.deploymentId, { tenantDomainZoneId: draft.zoneId, relativeName: draft.relativeName.trim() }).then(() => setAliasDrafts((current) => ({ ...current, [deployment.deploymentId]: { zoneId: '', relativeName: '' } }))))}>Add alias</button></div>}
-              </div>
+              <p className="field__hint">Manage exact-target hostname ownership in the Domains section.</p>
 
               <div className="row-actions">
                 <button className="button" disabled={!canManage} type="button" onClick={() => run(onRetryDeployment(webService.id, deployment.deploymentId, deployment.deploymentRevision, retryOperationForStatus(deployment.status)))}>Retry</button>

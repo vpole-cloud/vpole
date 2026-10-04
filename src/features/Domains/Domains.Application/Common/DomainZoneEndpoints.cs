@@ -17,6 +17,7 @@ public static class DomainZoneEndpoints
                 .WithTags("Domain zones")
                 .MapGetDomainZonesEndpoint()
                 .MapGetDomainZoneEndpoint()
+                .MapGetDomainZoneBindingsEndpoint()
                 .MapCreateDomainZoneEndpoint()
                 .MapDeleteDomainZoneEndpoint();
             return app;
