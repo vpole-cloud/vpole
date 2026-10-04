@@ -123,7 +123,7 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
         const string missingDeploymentId = "507f1f77bcf86cd799439099";
 
         using var response = await Client.PostAsync(
-            $"/api/v1/resource-deployments/{missingDeploymentId}/retry",
+            $"/api/v1/resource-deployments/{missingDeploymentId}/retry?expectedRevision=1&expectedOperation=Apply",
             content: null);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);

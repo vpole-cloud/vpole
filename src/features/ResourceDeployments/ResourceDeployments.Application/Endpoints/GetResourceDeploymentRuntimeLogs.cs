@@ -59,7 +59,7 @@ public static class GetResourceDeploymentRuntimeLogsEndpoint
 {
     public static IEndpointRouteBuilder MapGetResourceDeploymentRuntimeLogsEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{DeploymentId}/runtime-logs", async (IMediator mediator, ResourceDeploymentDiagnostics diagnostics, [AsParameters] GetResourceDeploymentRuntimeLogsRequest request, CancellationToken ct) =>
+        app.MapGet("/{DeploymentId}/runtime-logs", async (IMediator mediator, [FromServices] ResourceDeploymentDiagnostics diagnostics, [AsParameters] GetResourceDeploymentRuntimeLogsRequest request, CancellationToken ct) =>
             (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
             {
                 PreparedRuntimeLogSession session => new RuntimeLogStreamResult(session, diagnostics),

@@ -90,7 +90,7 @@ public sealed class ResourceDeploymentBoundaryArchitectureTests
     }
 
     [Fact]
-    public void ResourceDeploymentBoundary_KeepsOnlyTheAdapterStrategyInterface()
+    public void ResourceDeploymentBoundary_ExposesOnlyRegisteredProviderStrategies()
     {
         var interfaces = typeof(IResourceDeploymentAdapter).Assembly
             .GetTypes()
@@ -101,7 +101,8 @@ public sealed class ResourceDeploymentBoundaryArchitectureTests
                     StringComparison.Ordinal) == true)
             .ToArray();
 
-        Assert.Equal([typeof(IResourceDeploymentAdapter)], interfaces);
+        Type[] providerStrategies = [typeof(IResourceDeploymentAdapter), typeof(IResourceDeploymentObserver), typeof(IResourceDeploymentDiagnosticsProvider)];
+        Assert.Equal(providerStrategies.OrderBy(type => type.FullName), interfaces.OrderBy(type => type.FullName));
     }
 
     [Fact]
