@@ -1190,6 +1190,65 @@ export function fetchResourceObservation(base: string, deploymentId: string, tok
   return healthRequest<import('./types').ResourceDeploymentObservation>(base, `/${encodeURIComponent(deploymentId)}/observation`, token, tenantId, signal)
 }
 
+export function fetchResourceDiagnostics(base: string, deploymentId: string, token?: string, tenantId?: string, signal?: AbortSignal) {
+  return healthRequest<import('./types').ResourceDeploymentDiagnostics>(base, `/${encodeURIComponent(deploymentId)}/diagnostics`, token, tenantId, signal)
+}
+const runtimeReasons = new Set(['Unsupported', 'OwnershipNotVerified', 'OwnershipChanged', 'InstanceRemoved', 'InstanceReplaced', 'ContainerUnavailable',
+  'TargetUnavailable', 'Forbidden', 'LogsUnavailable', 'CapacityBusy', 'Superseded', 'Timeout', 'LifetimeLimit', 'OutputLimit', 'EndOfWindow', 'StreamEnded'])
+export class RuntimeLogUnavailableError extends Error {
+  readonly reason: string
+  constructor(reason: string) { super('Runtime logs are unavailable. Refresh instances and start a new recent window.'); this.reason = reason }
+}
+export async function readResourceRuntimeLogs(base: string, deploymentId: string, selection: import('./types').RuntimeLogSelection,
+  onFrame: (frame: import('./types').RuntimeLogFrame) => void, token?: string, tenantId?: string, signal?: AbortSignal) {
+  const query = new URLSearchParams(Object.entries(selection).map(([key, value]) => [key, String(value)]))
+  const response = await fetch(`${base}/api/v1/resource-deployments/${encodeURIComponent(deploymentId)}/runtime-logs?${query}`, { headers: buildHeaders(token, tenantId), signal }).catch(() => {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    throw new Error('Runtime logs could not be reached. Reconnect with a new recent window.')
+  })
+  if (signal?.aborted) { await response.body?.cancel().catch(() => {}); throw new DOMException('Aborted', 'AbortError') }
+  if (!response.ok) {
+    if (response.status === 409) {
+      let reason = 'LogsUnavailable'
+      try { const body = await response.json() as { reason?: string }; if (body.reason && runtimeReasons.has(body.reason)) reason = body.reason } catch { /* Keep fixed error text. */ }
+      throw new RuntimeLogUnavailableError(reason)
+    }
+    throw new Error(response.status === 403 ? 'Your tenant role cannot read these logs.' : response.status === 404 ? 'This deployment is unavailable in the active tenant.'
+      : response.status === 400 ? 'The instance selection changed or is invalid. Refresh instances.' : 'Runtime logs could not be reached. Reconnect with a new recent window.')
+  }
+  if (!response.headers.get('Content-Type')?.startsWith('application/x-ndjson') || !response.body) throw new Error('The runtime log response is unavailable. Reconnect with a new recent window.')
+  const reader = response.body.getReader(); const decoder = new TextDecoder()
+  const aborted = () => { void reader.cancel().catch(() => {}) }
+  signal?.addEventListener('abort', aborted, { once: true })
+  let pending = ''; let opened = false; let bytes = 0; let frames = 0
+  try {
+    while (true) {
+      const chunk = await reader.read().catch(() => {
+        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+        throw new Error('The runtime log connection was interrupted. Reconnect with a new recent window.')
+      })
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+      if (chunk.value && chunk.value.byteLength > 256 * 1024) throw new Error('The runtime log response exceeded the read limit.')
+      pending += decoder.decode(chunk.value, { stream: !chunk.done })
+      if (pending.length > 128 * 1024) throw new Error('The runtime log response exceeded the frame limit.')
+      let end: number
+      while ((end = pending.indexOf('\n')) >= 0) {
+        const line = pending.slice(0, end); pending = pending.slice(end + 1)
+        if (!line.trim()) continue
+        let frame: import('./types').RuntimeLogFrame
+        try { frame = JSON.parse(line) as import('./types').RuntimeLogFrame } catch { throw new Error('The runtime log response was interrupted. Reconnect with a new recent window.') }
+        if (++frames > 65536 || !Number.isInteger(frame.outputBytes) || frame.outputBytes < bytes || frame.outputBytes > 4 * 1024 * 1024) throw new Error('The runtime log response exceeded the read limit.')
+        if (frame.kind === 'Opened' && !opened && frame.outputBytes === 0) opened = true
+        else if (frame.kind === 'Output' && opened && typeof frame.text === 'string' && frame.text.length > 0 && frame.text.length <= 16384) { /* Plain text only. */ }
+        else if (frame.kind === 'Ended' && typeof frame.reason === 'string' && runtimeReasons.has(frame.reason)) { onFrame(frame); return }
+        else throw new Error('The runtime log response changed unexpectedly. Reconnect with a new recent window.')
+        bytes = frame.outputBytes; onFrame(frame)
+      }
+      if (chunk.done) throw new Error('The runtime log connection ended without a completion marker. Reconnect with a new recent window.')
+    }
+  } finally { signal?.removeEventListener('abort', aborted); await reader.cancel().catch(() => {}); reader.releaseLock() }
+}
+
 export async function fetchPostgresCluster(apiBaseUrl: string, id: string, token?: string, tenantId?: string, signal?: AbortSignal) {
   return fetchJson<PostgresCluster>(`${apiBaseUrl}/api/v1/postgres/${encodeURIComponent(id)}`, { headers: buildHeaders(token, tenantId), signal })
 }

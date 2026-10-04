@@ -6,6 +6,7 @@ import { useAppServices } from '../shell/AppContext'
 import type { ResourceDeploymentOperation } from '../types'
 import { Button, ConfirmationDialog, EmptyState, Notice, StatusBadge } from './components'
 import { ResourceHealthTarget } from './ResourceHealth'
+import { ResourceRuntimeDiagnostics } from './ResourceRuntimeDiagnostics'
 import { useVisibleRefresh } from '../hooks/useVisibleRefresh'
 
 export function ResourceOperations({ filter = {}, active = true, onRetry }: { filter?: ResourceOperationsFilter; active?: boolean; onRetry?: (operation: ResourceDeploymentOperation, signal: AbortSignal) => Promise<unknown> }) {
@@ -49,6 +50,7 @@ function ResourceOperationsContent({ filter, active, scope, canManage, resourceH
         {placement.failureCode && <Notice tone="error">Apply outcome: {placement.failureCode}. Other targets are shown independently.</Notice>}
         {operation.retryNotBeforeUtc && <p className="field__hint">Automatic retry due after {new Date(operation.retryNotBeforeUtc).toLocaleString()}. A manual retry requests this exact failed operation.</p>}
         <ResourceHealthTarget placement={placement} active={active} refreshVersion={Date.parse(value.checkedAtUtc)} targetName={operation.targetDisplayName ?? undefined} />
+        <ResourceRuntimeDiagnostics operation={operation} active={active} />
       </article>
     })}
     {value && value.totalCount > value.pageSize && <div className="row-actions"><Button disabled={page === 1 || operations.status === 'loading'} onClick={() => setPage(page - 1)}>Previous targets</Button>

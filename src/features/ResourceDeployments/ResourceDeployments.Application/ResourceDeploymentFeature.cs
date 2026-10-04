@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Pole.ASP.Helpers;
 using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Application.Diagnostics;
 using Pole.Features.ResourceDeployments.Application.Observation;
 using Pole.Features.ResourceDeployments.Application.Persistence.Reads;
 using Pole.Features.ResourceDeployments.Application.Endpoints;
@@ -41,6 +42,11 @@ public static class ResourceDeploymentFeature
         services.TryAddScoped<ResourceDeploymentOperationsPersistence>();
         services.TryAddSingleton<ResourceDeploymentObserverCatalog>();
         services.TryAddScoped<ObserveResourceDeployment>();
+        services.AddOptions<RuntimeDiagnosticsOptions>().Bind(configuration.GetSection(RuntimeDiagnosticsOptions.SectionName))
+            .Validate(options => options.Valid, "RuntimeDiagnostics limits are outside the supported bounds.").ValidateOnStart();
+        services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<RuntimeDiagnosticsOptions>>().Value);
+        services.TryAddSingleton<RuntimeLogCapacity>();
+        services.TryAddScoped<ResourceDeploymentDiagnostics>();
         services.TryAddSingleton<ResourceIngressPolicyCatalog>();
         services.TryAddScoped<KubernetesResourceIngressPolicyManager>();
         services.TryAddScoped<ReconcileResourceIngressPolicy>(serviceProvider =>

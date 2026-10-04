@@ -146,7 +146,8 @@ public sealed class TestApiApplication : IAsyncDisposable
 
     public static async Task<TestApiApplication> StartAsync(
         MongoReplicaSetFixture fixture,
-        bool privateAccessEnabled = false)
+        bool privateAccessEnabled = false,
+        Action<IServiceCollection>? configureTestServices = null)
     {
         var encryptionKeyDirectory = Path.Combine(
             Path.GetTempPath(),
@@ -305,6 +306,7 @@ public sealed class TestApiApplication : IAsyncDisposable
                     .WithExposedHeaders(TraceHeaders.CorrelationId, TraceHeaders.TraceId));
         });
 
+        configureTestServices?.Invoke(builder.Services);
         var app = builder.Build();
         await new DeploymentTargetMigration().Up(fixture.Database);
         await new DeploymentTargetReferenceMigration().Up(fixture.Database);
@@ -379,6 +381,8 @@ public sealed class TestApiApplication : IAsyncDisposable
             deploymentTargetLookup,
             encryptionKeyDirectory);
     }
+
+    public Task StopAsync(CancellationToken cancellationToken = default) => _app.StopAsync(cancellationToken);
 
     public async ValueTask DisposeAsync()
     {

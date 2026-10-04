@@ -208,7 +208,13 @@ correlation identifiers. Owner-supported retries confirm one selected operation 
 expected revision/operation. Closing observations does not cancel accepted server work; reload
 fetches durable state. Read errors mark previous evidence stale, unavailable targets remain visible,
 and API/token/tenant changes abort and clear old results. Database pod readiness does not establish
-application connectivity. Runtime log viewing is a subsequent slice.
+application connectivity. Each deployment also offers opt-in runtime logs and Kubernetes warning
+events through the shared viewer. Discovery supplies verified instance UIDs and regular/init
+container choices; the browser never supplies a namespace or arbitrary pod name. Reads are bounded
+and cancel on close, hidden section, tenant, token, target or deployment revision/generation changes.
+Replacement requires refreshed discovery and explicit selection; reconnect opens a new recent
+window and can overlap output. No runtime output enters browser storage or a platform archive.
+See [runtime diagnostics](../../features/ResourceDeployments/README.md#runtime-logs-and-kubernetes-diagnostics).
 
 The WebService Releases section owns paginated history and explicit redeploy/rollback recovery.
 It shows actor/time, per-target apply results, source-build/CI links and safe configuration counts.
