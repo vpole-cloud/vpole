@@ -150,3 +150,11 @@ disables only its disposable fixture's target to hold a real release Pending acr
 restores the target, waits for the server retry and checks rollback specification/new revision
 and current native readiness. Cleanup restores target availability before removing owned resources.
 Screenshots cover desktop/narrow viewports and both themes under `.artifacts/frontend-releases`.
+
+The authenticated source-build browser scenario customizes a recipe with a controlled missing-file
+`COPY`. Real BuildKit remains available; useful failure output is captured on the server, opened
+from Builds, restored after reload and opened again from Operations. It compares desired revision,
+placement generations, releases and native image/release metadata before and after the failed
+build to prove that failure did not redeploy the resource. Log screenshots cover desktop/narrow
+views and both themes under `.artifacts/frontend-build-logs`. A separate API scenario still checks
+failure when only the fixture's BuildKit port-forward is stopped.

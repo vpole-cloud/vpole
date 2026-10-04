@@ -2,6 +2,8 @@ using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Execution;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Text;
+using Pole.Features.SourceBuilds.Domain;
 using Xunit;
 
 namespace Pole.Features.SourceBuilds.Tests;
@@ -9,6 +11,27 @@ namespace Pole.Features.SourceBuilds.Tests;
 public sealed class BuildKitClientTests
 {
     private const string Digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    [Fact]
+    public async Task Build_streams_only_sanitized_output_and_flushes_tail_on_timeout()
+    {
+        using var context = new TemporaryDirectory();
+        var output = new StringBuilder();
+        var runner = new RecordingProcessRunner(async spec =>
+        {
+            Assert.NotNull(spec.Output);
+            await spec.Output(SourceBuildLogStream.StandardError, "useful build failure: registry-", CancellationToken.None);
+            await spec.Output(SourceBuildLogStream.StandardError, "secret; final diagnostic\n", CancellationToken.None);
+            throw new OperationCanceledException();
+        });
+        var result = await CreateClient(runner).InvokeAsync(new(context.Path, "FROM scratch", new("harbor.test", "project", "service", "tag"), "robot$user", "registry-secret",
+            (_, text, _) => { output.Append(text); return Task.CompletedTask; }));
+        Assert.IsType<BuildKitTimedOut>(Assert.IsType<BuildContainerImageError>(result.Value).Value);
+        Assert.Contains("useful build failure", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("final diagnostic", output.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("registry-secret", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("[REDACTED]", output.ToString(), StringComparison.Ordinal);
+    }
 
     [Fact]
     public void RegistryBuildAccessStringRepresentationRedactsCredentials()

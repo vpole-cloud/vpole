@@ -99,7 +99,8 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         Assert.Equal("Dockerfile", await page.Locator(".source-build-panel .panel__meta").InnerTextAsync());
         await page.Locator(".build-recipe summary").ClickAsync();
         var dockerfile = page.GetByRole(AriaRole.Textbox, new PageGetByRoleOptions { Name = "Dockerfile", Exact = true });
-        const string editedRecipe = "FROM scratch\n# browser recipe update";
+        var missingMarker = $"pole-build-log-e2e-missing-{Guid.NewGuid():N}.txt";
+        var editedRecipe = $"FROM scratch\nCOPY {missingMarker} /app/missing.txt";
         await dockerfile.FillAsync(editedRecipe);
         await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Refresh", Exact = true }).Last.ClickAsync();
         Assert.Equal(editedRecipe, await dockerfile.InputValueAsync());
@@ -135,24 +136,78 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         }
         await page.SetViewportSizeAsync(1440, 900);
         await page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "Builds", Exact = true }).ClickAsync();
-        await fixture.StopBuildKitAccessAsync();
-        try
+        var beforeFailure = await BuildDeploymentFingerprintAsync(groupId, name, serviceId, token);
+        using (var failureBudget = CancellationTokenSource.CreateLinkedTokenSource(token))
         {
+            failureBudget.CancelAfter(TimeSpan.FromMinutes(3));
             var failedResponse = await page.RunAndWaitForResponseAsync(
                 () => page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Build and deploy", Exact = true }).ClickAsync(),
                 response => response.Request.Method == "POST" && new Uri(response.Url).AbsolutePath.TrimEnd('/').EndsWith("/builds", StringComparison.Ordinal));
             Assert.True(failedResponse.Ok, $"Build queueing returned HTTP {failedResponse.Status}.");
             var failedJob = await failedResponse.JsonAsync() ?? throw new InvalidOperationException("The queued failure-test job was empty.");
-            var failed = await WaitForBuildAsync(RequiredString(failedJob, "id"), "failed", token);
-            Assert.False(string.IsNullOrWhiteSpace(RequiredString(failed.GetProperty("state"), "failureCode")));
+            var failedId = RequiredString(failedJob, "id");
+            var failed = await WaitForBuildAsync(failedId, "failed", failureBudget.Token);
+            Assert.Equal("BuildKitBuildRejected", RequiredString(failed.GetProperty("state"), "failureCode"));
+            var savedLog = await WaitForCompletedBuildLogAsync(serviceId, failedId, missingMarker, failureBudget.Token);
             await page.GetByText("failed", new PageGetByTextOptions { Exact = true }).First.WaitForAsync();
             Assert.Contains($"resource={serviceId}", page.Url);
-            await CaptureDeliveryScreenshotsAsync(page, "failed-build");
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = $"View logs for build {failedId}", Exact = true }).ClickAsync();
+            var output = page.GetByLabel("Captured build output", new PageGetByLabelOptions { Exact = true });
+            await Assertions.Expect(output).ToContainTextAsync(missingMarker, new LocatorAssertionsToContainTextOptions { Timeout = 30_000 });
+            await Assertions.Expect(output).ToContainTextAsync("not found", new LocatorAssertionsToContainTextOptions { Timeout = 30_000 });
+            Assert.Contains("Capture Completed", await page.Locator(".build-log-viewer").InnerTextAsync(), StringComparison.Ordinal);
+            await page.ReloadAsync();
+            await Assertions.Expect(output).ToContainTextAsync(missingMarker, new LocatorAssertionsToContainTextOptions { Timeout = 30_000 });
+            var reloadedLog = await WaitForCompletedBuildLogAsync(serviceId, failedId, missingMarker, failureBudget.Token);
+            Assert.Equal(savedLog.GetProperty("lastSequence").GetInt64(), reloadedLog.GetProperty("lastSequence").GetInt64());
+            await CaptureDeliveryScreenshotsAsync(page, "build-logs");
+            Assert.Equal(beforeFailure, await BuildDeploymentFingerprintAsync(groupId, name, serviceId, token));
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Close logs", Exact = true }).ClickAsync();
+            await page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "Operations", Exact = true }).ClickAsync();
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = $"View logs for build {failedId}", Exact = true }).ClickAsync();
+            await Assertions.Expect(output).ToContainTextAsync(missingMarker, new LocatorAssertionsToContainTextOptions { Timeout = 30_000 });
+            await CaptureDeliveryScreenshotsAsync(page, "build-operation-logs");
         }
-        finally
+    }
+
+    private async Task<JsonElement> WaitForCompletedBuildLogAsync(string serviceId, string jobId, string marker, CancellationToken token)
+    {
+        while (true)
         {
-            await fixture.RestoreBuildKitAccessAsync(CancellationToken.None);
+            using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Get, $"/api/v1/source-build-jobs/{jobId}/logs?webServiceId={serviceId}", fixture.Alpha, fixture.Alpha.DefaultTenantId);
+            using var response = await fixture.Api.SendAsync(request, token);
+            Assert.True(response.IsSuccessStatusCode, $"Build log read returned HTTP {(int)response.StatusCode}.");
+            var value = await response.Content.ReadFromJsonAsync<JsonElement>(token);
+            if (RequiredString(value, "captureState") == "Completed")
+            {
+                var text = string.Concat(value.GetProperty("entries").EnumerateArray().Select(entry => RequiredString(entry, "text")));
+                Assert.True(text.Contains(marker, StringComparison.Ordinal) && text.Contains("not found", StringComparison.Ordinal), "Completed capture must contain the controlled missing-file diagnostic.");
+                Assert.True(value.GetProperty("lastSequence").GetInt64() > 0);
+                Assert.False(value.GetProperty("truncated").GetBoolean());
+                return value;
+            }
+            await Task.Delay(PollInterval, token);
         }
+    }
+
+    private async Task<string> BuildDeploymentFingerprintAsync(string groupId, string name, string serviceId, CancellationToken token)
+    {
+        using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Get, $"/api/v1/web-services/{serviceId}", fixture.Alpha, fixture.Alpha.DefaultTenantId);
+        using var response = await fixture.Api.SendAsync(request, token);
+        Assert.True(response.IsSuccessStatusCode, $"Build deployment read returned HTTP {(int)response.StatusCode}.");
+        var value = await response.Content.ReadFromJsonAsync<JsonElement>(token);
+        var native = await fixture.GetWebServiceDeploymentAsync(groupId, name, token);
+        var template = native.GetProperty("spec").GetProperty("template");
+        var releases = await GetReleasesAsync(serviceId, token);
+        return JsonSerializer.Serialize(new
+        {
+            revision = value.GetProperty("activeRevision").GetInt64(),
+            image = value.GetProperty("spec").GetProperty("image"),
+            placements = value.GetProperty("deployments").EnumerateArray().Select(placement => new { id = RequiredString(placement, "deploymentId"), generation = placement.GetProperty("desiredGeneration").GetInt64() }).OrderBy(placement => placement.id).ToArray(),
+            releases = releases.EnumerateArray().Select(release => RequiredString(release, "id")).Order().ToArray(),
+            nativeImage = RequiredString(template.GetProperty("spec").GetProperty("containers")[0], "image"),
+            nativeRelease = RequiredString(template.GetProperty("metadata").GetProperty("annotations"), "pole.server/releaseId")
+        });
     }
 
     private async Task<string> GetBrowserBuildConfigurationAsync(string serviceId, CancellationToken token)
@@ -226,11 +281,24 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
 
     private static async Task CaptureDeliveryScreenshotAsync(IPage page, string viewport, string section, string theme)
     {
-        var directory = Path.GetFullPath(Path.Combine(".artifacts", "frontend-90-6"));
+        var directory = Path.GetFullPath(Path.Combine(".artifacts", section.StartsWith("build-", StringComparison.Ordinal) ? "frontend-build-logs" : "frontend-90-6"));
         Directory.CreateDirectory(directory);
         await page.EvaluateAsync("window.scrollTo(0, 0)");
         await page.ScreenshotAsync(new PageScreenshotOptions { Path = Path.Combine(directory, $"{viewport}-{section}-{theme}.png"), FullPage = section is not ("global-search" or "commands"), Animations = ScreenshotAnimations.Disabled });
-        Assert.True(await page.EvaluateAsync<bool>("document.documentElement.scrollWidth <= window.innerWidth"), $"The {viewport}/{section}/{theme} page overflows.");
+        var overflow = await page.EvaluateAsync<string>("""
+            () => {
+                if (document.documentElement.scrollWidth <= window.innerWidth) return '';
+                const rows = [...document.querySelectorAll('body *')].filter(element => {
+                    if (element.getBoundingClientRect().right <= window.innerWidth + 1) return false;
+                    for (let parent = element.parentElement; parent; parent = parent.parentElement)
+                        if (['auto', 'scroll', 'hidden', 'clip'].includes(getComputedStyle(parent).overflowX)) return false;
+                    return true;
+                });
+                return `document ${document.documentElement.scrollWidth}, viewport ${window.innerWidth}; ` + rows.slice(0, 16)
+                    .map(element => `${element.tagName}.${element.className}: ${Math.round(element.getBoundingClientRect().right)}`).join('; ');
+            }
+            """);
+        Assert.True(string.IsNullOrEmpty(overflow), $"The {viewport}/{section}/{theme} page overflows: {overflow}.");
     }
 
     [SourceBuildFact]

@@ -4,10 +4,13 @@ import { useAppServices } from '../../shell/AppContext'
 import { ResourceOperations } from '../../ui/ResourceOperations'
 import { useVisibleRefresh } from '../../hooks/useVisibleRefresh'
 import { Button, Notice, StatusBadge } from '../../ui/components'
+import { useState } from 'react'
+import { SourceBuildLogViewer } from '../../components/SourceBuildLogViewer'
 
 export function WebServiceOperations({ id, active }: { id: string; active: boolean }) {
   const { api, navigation } = useAppServices()
   const scope = `${api.baseUrl}:${api.tenantId}:${api.token}:${id}`
+  const [logJobId, setLogJobId] = useState<string | null>(null)
   const builds = useResource(`${scope}:jobs`, (signal) => fetchSourceBuildJobs(api.baseUrl, id, api.token, api.tenantId, signal))
   const releases = useResource(`${scope}:releases`, (signal) => fetchWebServiceReleases(api.baseUrl, id, api.token, api.tenantId, signal))
   useVisibleRefresh(active, builds.refresh)
@@ -19,9 +22,10 @@ export function WebServiceOperations({ id, active }: { id: string; active: boole
       return retryWebServiceDeployment(api.baseUrl, id, operation.deployment.id, { expectedDeploymentRevision: placement.deploymentRevision!, expectedOperation: desiredOperation }, api.token, api.tenantId, signal)
     }} />
     <section className="panel"><div className="panel__header"><h2 className="panel__title">Build operations</h2><a className="button" href={navigation.resourceHref({ resourceTypeId: 'pole/web-service', resourceId: id, section: 'builds' })}>Open builds</a><Button onClick={() => void builds.refresh()}>Refresh builds</Button></div>
+      {active && logJobId && <SourceBuildLogViewer jobId={logJobId} webServiceId={id} onClose={() => setLogJobId(null)} />}
       {builds.error && <Notice tone="error">Build state is unavailable. Previous results are stale.</Notice>}
       {builds.resource?.items.map((job) => <div key={job.id} className="operation-summary"><div><strong>{job.branch} · {job.commitSha.slice(0, 8)}</strong><p className="field__hint">{new Date(job.createdAtUtc).toLocaleString()} · {job.state.failureCode ?? 'Build pipeline'}</p></div>
-        <StatusBadge tone={job.state.status === 'failed' ? 'danger' : job.state.status === 'succeeded' ? 'success' : 'info'}>{job.state.status}</StatusBadge></div>)}
+        <div className="row-actions"><StatusBadge tone={job.state.status === 'failed' ? 'danger' : job.state.status === 'succeeded' ? 'success' : 'info'}>{job.state.status}</StatusBadge><Button onClick={() => setLogJobId(job.id)} aria-label={`View logs for build ${job.id}`}>View logs</Button></div></div>)}
       {builds.resource?.items.length === 0 && <p>No persisted builds for this service.</p>}<p className="field__hint">Showing up to 20 current build records. Build success does not establish runtime readiness.</p></section>
     <section className="panel"><div className="panel__header"><h2 className="panel__title">Release operations</h2><a className="button" href={navigation.resourceHref({ resourceTypeId: 'pole/web-service', resourceId: id, section: 'releases' })}>Open releases</a><Button onClick={() => void releases.refresh()}>Refresh releases</Button></div>
       {releases.error && <Notice tone="error">Release state is unavailable. Previous results are stale.</Notice>}

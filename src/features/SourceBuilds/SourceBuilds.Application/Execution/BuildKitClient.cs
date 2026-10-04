@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
+using Pole.Features.SourceBuilds.Domain;
 
 namespace Pole.Features.SourceBuilds.Application.Execution;
 
@@ -12,7 +13,9 @@ public sealed record BuildKitBuildRequest(
     string Dockerfile,
     RegistryPushTarget Target,
     string RegistryUsername,
-    string RegistrySecret)
+    string RegistrySecret,
+    Func<SourceBuildLogStream, string, CancellationToken, Task>? Output = null,
+    Action? OutputUnavailable = null)
 {
     public override string ToString() =>
         $"BuildKitBuildRequest(context={ContextPath}, target={Target.Reference}, credentials=[REDACTED])";
@@ -70,6 +73,7 @@ public sealed class BuildKitClient(
 
         try
         {
+            await using var output = request.Output is null ? null : new RedactingBuildOutput(request.Output, request.RegistryUsername, request.RegistrySecret, request.OutputUnavailable);
             await File.WriteAllTextAsync(
                 Path.Combine(definitionPath, "Dockerfile"),
                 request.Dockerfile,
@@ -100,7 +104,8 @@ public sealed class BuildKitClient(
                 {
                     ["DOCKER_CONFIG"] = dockerConfigPath,
                     ["NO_COLOR"] = "1"
-                });
+                },
+                Output: output is null ? null : output.WriteAsync);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromMinutes(options.TimeoutMinutes));
 
@@ -118,6 +123,7 @@ public sealed class BuildKitClient(
                 return new BuildContainerImageError(new BuildKitUnavailable());
             }
 
+            if (process.OutputCaptureFailed) request.OutputUnavailable?.Invoke();
             if (process.ExitCode != 0)
             {
                 var classification = ClassifyFailure(request, process);

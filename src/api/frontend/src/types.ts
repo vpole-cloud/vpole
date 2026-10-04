@@ -382,6 +382,13 @@ export interface WebServiceRelease {
 
 export interface WebServiceRecoveryResponse { id: string; resourceRevision: number; releaseId: string; deployments: ResourcePlacement[] }
 
+export interface SourceBuildLogEntry { sequence: number; stream: 'system' | 'stdout' | 'stderr'; text: string; recordedAtUtc: string }
+export interface SourceBuildLogs {
+  buildJobId: string; webServiceId: string; captureState: 'Open' | 'Completed' | 'Interrupted' | 'Expired' | 'Unavailable';
+  entries: SourceBuildLogEntry[]; nextSequence: number; lastSequence: number; hasMore: boolean; truncated: boolean;
+  expiresAtUtc: string | null; capturedBytes: number; maximumBytes: number | null
+}
+
 export interface ResourceDeploymentOperation {
   deployment: { id: string; resourceType: string; resourceId: string; resourceGroupId: string; placement: ResourcePlacement; createdAtUtc: string; updatedAtUtc: string }
   resourceDisplayName: string | null

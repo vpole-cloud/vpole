@@ -86,7 +86,8 @@ wait for the current deployment generation to be applied. Values never enter URL
 The screenshot suite captures credential sections before any value is entered or revealed.
 
 WebService has an independent catalog, one creation tab and multiple open resource tabs. Each
-resource offers Overview, Configuration, Deployments (including hostnames/releases) and Builds.
+resource offers Overview, Configuration, Dependencies, Deployments, Domains, Builds, Releases
+and Operations.
 Visited sections remain mounted so drafts survive switching sections and resources. Closing a
 dirty resource or creation tab asks for confirmation; successful saves clear the dirty marker.
 Source configuration and placement/alias drafts participate in the same guard. Viewer access
@@ -207,7 +208,7 @@ correlation identifiers. Owner-supported retries confirm one selected operation 
 expected revision/operation. Closing observations does not cancel accepted server work; reload
 fetches durable state. Read errors mark previous evidence stale, unavailable targets remain visible,
 and API/token/tenant changes abort and clear old results. Database pod readiness does not establish
-application connectivity. Full build/runtime log viewing is a subsequent slice.
+application connectivity. Runtime log viewing is a subsequent slice.
 
 The WebService Releases section owns paginated history and explicit redeploy/rollback recovery.
 It shows actor/time, per-target apply results, source-build/CI links and safe configuration counts.
@@ -216,3 +217,11 @@ keep the recovery selection. Both mutations carry the confirmed active revision.
 offered only for succeeded prior releases, with backend authority under races. Confirmations
 explain current placement/exposure/compute preservation and the limits around Secret values,
 database contents and movable image tags. Viewer has read-only history.
+
+Builds and Operations share an authorized build-log viewer. A build fragment link opens an exact
+job even outside the recent-build page. Follow and reconnect request only later persisted sequences;
+pause/close affect browser reads alone. Fixed transport errors retain the displayed prefix and
+cursor. The viewer marks server truncation, interrupted capture, expiry and unavailability, renders
+plain text, and limits its tail to 256 KiB/512 entries with an explicit discarded-range notice.
+Changing tenant, token, service or job aborts old reads and clears the buffer. Logs stay on the
+server until their snapshotted retention deadline; output and cursor are not saved in browser storage.

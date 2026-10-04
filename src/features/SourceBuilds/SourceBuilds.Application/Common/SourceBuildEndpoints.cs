@@ -22,7 +22,8 @@ public static class SourceBuildEndpoints
         app.MapGroup("/source-build-jobs")
             .WithTags("SourceBuildJobs")
             .MapGetSourceBuildJobsEndpoint()
-            .MapGetSourceBuildJobEndpoint();
+            .MapGetSourceBuildJobEndpoint()
+            .MapGetSourceBuildLogsEndpoint();
 
         return app;
     }

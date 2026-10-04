@@ -4,6 +4,7 @@ import { ResourceLink } from '../ui/ResourceLink'
 import { GitSourcePicker } from '../modules/web-services/GitSourcePicker'
 import { useAppServices } from '../shell/AppContext'
 import { BuildRecipeForm } from './BuildRecipeForm'
+import { SourceBuildLogViewer } from './SourceBuildLogViewer'
 import type { SourceBuildsManager } from '../hooks/useSourceBuildsManager'
 import type { SourceBuildJob, SourceRepository, WebService } from '../types'
 
@@ -12,6 +13,7 @@ interface SourceBuildPanelProps {
   manager: SourceBuildsManager
   canManage: boolean
   onDirtyChange?: (dirty: boolean) => void
+  active?: boolean
 }
 
 const shortSha = (value: string) => value.slice(0, 10)
@@ -40,12 +42,26 @@ export function SourceBuildPanel({
   manager,
   canManage,
   onDirtyChange,
+  active = true,
 }: SourceBuildPanelProps) {
   const { navigation } = useAppServices()
   const deploymentResource = { resourceTypeId: 'pole/web-service', resourceId: webService.id, section: 'deployments' }
   const [selectedSource, setSelectedSource] = useState<SourceRepository | null>(null)
   const [removing, setRemoving] = useState(false)
   const [recipeDirty, setRecipeDirty] = useState(false)
+  const [logJobId, setLogJobId] = useState<string | null>(() => /^#build-([a-f0-9]{24})$/i.exec(window.location.hash)?.[1] ?? null)
+  useEffect(() => {
+    const changed = () => setLogJobId(/^#build-([a-f0-9]{24})$/i.exec(window.location.hash)?.[1] ?? null)
+    window.addEventListener('hashchange', changed)
+    return () => window.removeEventListener('hashchange', changed)
+  }, [])
+  const selectLog = (jobId: string | null) => {
+    setLogJobId(jobId)
+    const url = new URL(window.location.href)
+    if (jobId) url.hash = `build-${jobId}`
+    else if (url.hash.startsWith('#build-')) url.hash = ''
+    window.history.replaceState(window.history.state, '', url)
+  }
   const configuration = manager.configurations.find(
     (item) => item.webServiceId === webService.id,
   )
@@ -134,6 +150,7 @@ export function SourceBuildPanel({
       <div className="source-build-history">
         <p className="field__hint">Build progress and deployment reconciliation are separate. A successful build does not establish application readiness.</p>
         <ResourceLink href={navigation.resourceHref(deploymentResource)} onNavigate={() => navigation.openResource(deploymentResource)}>Inspect deployment results</ResourceLink>
+        {active && logJobId && <SourceBuildLogViewer jobId={logJobId} webServiceId={webService.id} onClose={() => selectLog(null)} />}
         <div className="source-build-history__header">
           <strong>Recent builds</strong>
           <span>{manager.jobs.length}</span>
@@ -163,6 +180,7 @@ export function SourceBuildPanel({
                   {buildDetail(job)}
                 </small>
                 {job.state.failureCode && <code>{job.state.failureCode}</code>}
+                <button className="button" type="button" aria-label={`View logs for build ${job.id}`} onClick={() => selectLog(job.id)}>View logs</button>
                 {job.state.status === 'failed' && <span className="field__hint">Check the source recipe and reported failure. Correct the cause, then use Build and deploy to retry.</span>}
               </div>
             </article>

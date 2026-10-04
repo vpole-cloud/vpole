@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using Pole.Features.SourceBuilds.Domain;
 
 namespace Pole.Features.SourceBuilds.Application.Execution;
 
@@ -8,12 +9,14 @@ public sealed record ProcessSpec(
     IReadOnlyList<string> Arguments,
     string WorkingDirectory,
     IReadOnlyDictionary<string, string> EnvironmentVariables,
-    int MaxCapturedCharacters = 64 * 1024);
+    int MaxCapturedCharacters = 64 * 1024,
+    Func<SourceBuildLogStream, string, CancellationToken, Task>? Output = null);
 
 public sealed record ProcessResult(
     int ExitCode,
     string StandardOutput,
-    string StandardError);
+    string StandardError,
+    bool OutputCaptureFailed = false);
 
 public delegate Task<ProcessResult> RunProcess(
     ProcessSpec spec,
@@ -25,6 +28,8 @@ public sealed class ProcessRunner
         ProcessSpec spec,
         CancellationToken cancellationToken = default)
     {
+        if (spec.MaxCapturedCharacters is < 0 or > 1024 * 1024)
+            throw new ArgumentOutOfRangeException(nameof(spec.MaxCapturedCharacters));
         var startInfo = new ProcessStartInfo
         {
             FileName = spec.FileName,
@@ -41,8 +46,8 @@ public sealed class ProcessRunner
 
         using var process = new Process { StartInfo = startInfo };
         process.Start();
-        var stdout = ReadBoundedAsync(process.StandardOutput, spec.MaxCapturedCharacters);
-        var stderr = ReadBoundedAsync(process.StandardError, spec.MaxCapturedCharacters);
+        var stdout = ReadBoundedAsync(process.StandardOutput, spec.MaxCapturedCharacters, SourceBuildLogStream.StandardOutput, spec.Output, cancellationToken);
+        var stderr = ReadBoundedAsync(process.StandardError, spec.MaxCapturedCharacters, SourceBuildLogStream.StandardError, spec.Output, cancellationToken);
         try
         {
             await process.WaitForExitAsync(cancellationToken);
@@ -51,23 +56,33 @@ public sealed class ProcessRunner
         {
             if (!process.HasExited)
                 process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync(CancellationToken.None);
+            await Task.WhenAll(stdout, stderr);
             throw;
         }
 
-        return new ProcessResult(process.ExitCode, await stdout, await stderr);
+        var output = await stdout;
+        var error = await stderr;
+        return new ProcessResult(process.ExitCode, output.Text, error.Text, output.Failed || error.Failed);
     }
 
-    private static async Task<string> ReadBoundedAsync(StreamReader reader, int maxCharacters)
+    private static async Task<(string Text, bool Failed)> ReadBoundedAsync(StreamReader reader, int maxCharacters, SourceBuildLogStream stream, Func<SourceBuildLogStream, string, CancellationToken, Task>? sink, CancellationToken cancellationToken)
     {
         var output = new StringBuilder(Math.Min(maxCharacters, 4096));
         var buffer = new char[4096];
+        var failed = false;
         while (await reader.ReadAsync(buffer) is var read && read > 0)
         {
             var remaining = maxCharacters - output.Length;
             if (remaining > 0)
                 output.Append(buffer, 0, Math.Min(read, remaining));
+            if (sink is not null && !failed)
+            {
+                try { await sink(stream, new string(buffer, 0, read), cancellationToken); }
+                catch (Exception) { failed = true; } // Keep draining pipes even when diagnostics storage fails.
+            }
         }
 
-        return output.ToString();
+        return (output.ToString(), failed);
     }
 }

@@ -1,6 +1,7 @@
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.SourceBuilds.Domain;
+using Pole.Features.SourceBuilds.Application.Persistence.Logs;
 
 namespace Pole.Features.SourceBuilds.Application.Persistence;
 
@@ -135,3 +136,22 @@ public sealed record SourceBuildJobListQuery(
     string? WebServiceId,
     int PageNumber,
     int PageSize);
+
+internal static class SourceBuildLogFilters
+{
+    public static FilterDefinition<SourceBuildLog> Owned(string tenantId, string webServiceId, string jobId) =>
+        Builders<SourceBuildLog>.Filter.And(Builders<SourceBuildLog>.Filter.ForTenant(tenantId),
+            Builders<SourceBuildLog>.Filter.Eq(log => log.WebServiceId, webServiceId), Builders<SourceBuildLog>.Filter.Eq(log => log.Id, jobId));
+    public static FilterDefinition<SourceBuildLog> Writer(SourceBuildLogIdentity identity) =>
+        Owned(identity.TenantId, identity.WebServiceId, identity.JobId) & Builders<SourceBuildLog>.Filter.Eq(log => log.WriterToken, identity.WriterToken);
+    public static FilterDefinition<SourceBuildLog> AtRevision(SourceBuildLog log) =>
+        Owned(log.TenantId, log.WebServiceId, log.Id) & Builders<SourceBuildLog>.Filter.Eq(value => value.Revision, log.Revision);
+    public static FilterDefinition<SourceBuildLog> WritableAtRevision(SourceBuildLog log, DateTime now) =>
+        AtRevision(log) & Builders<SourceBuildLog>.Filter.Eq(value => value.WriterToken, log.WriterToken) &
+        Builders<SourceBuildLog>.Filter.OfType<SourceBuildLogState, OpenSourceBuildLog>(value => value.State) &
+        Builders<SourceBuildLog>.Filter.Gt("State.LeaseExpiresAtUtc", now) & Builders<SourceBuildLog>.Filter.Gt(value => value.ExpiresAtUtc, now);
+    public static FilterDefinition<SourceBuildLog> Recoverable(DateTime now) =>
+        (Builders<SourceBuildLog>.Filter.Lte(log => log.ExpiresAtUtc, now) &
+            Builders<SourceBuildLog>.Filter.Not(Builders<SourceBuildLog>.Filter.OfType<SourceBuildLogState, ExpiredSourceBuildLog>(value => value.State))) |
+        (Builders<SourceBuildLog>.Filter.OfType<SourceBuildLogState, OpenSourceBuildLog>(value => value.State) & Builders<SourceBuildLog>.Filter.Lte("State.LeaseExpiresAtUtc", now));
+}
