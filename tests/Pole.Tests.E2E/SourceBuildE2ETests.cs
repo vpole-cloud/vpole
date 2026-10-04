@@ -25,7 +25,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMinutes(15));
         var token = cancellation.Token;
         await fixture.EnsureSourceBuildInfrastructureReadyAsync(token);
-        await SetStubRevisionAsync("v1", token);
+        await SetStubRevisionAsync("dependencies", token);
         await EnsureGitHubConnectionAsync(token);
         await using var resources = new TestResourceScope("browser Git source-build E2E");
         var groupCleanup = resources.CreateCleanupSequence("browser Git resource group");
@@ -59,7 +59,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         var buildPlan = page.GetByLabel("Build plan");
         var candidate = await buildPlan.Locator("option").Nth(1).GetAttributeAsync("value");
         await buildPlan.SelectOptionAsync(candidate!);
-        Assert.Contains("FROM scratch", await page.Locator(".git-recipe-preview").TextContentAsync() ?? string.Empty, StringComparison.Ordinal);
+        Assert.Contains("mcr.microsoft.com/dotnet/aspnet", await page.Locator(".git-recipe-preview").TextContentAsync() ?? string.Empty, StringComparison.Ordinal);
         await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Use this source", Exact = true }).ClickAsync();
         var sourceId = await WaitForBrowserSourceSelectionAsync(page, token);
         resources.Defer("unlink browser source", cleanup => DeleteAsync($"/api/v1/source-repositories/{sourceId}", cleanup));
@@ -70,9 +70,9 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         await page.GetByLabel("Image registry").FillAsync("docker.io");
         await page.GetByLabel("Image name").FillAsync("library/nginx");
         await page.GetByLabel("Tag", new PageGetByLabelOptions { Exact = true }).FillAsync("1.27.5-alpine");
-        await page.GetByLabel("Probe path").FillAsync("/");
-        await page.GetByLabel("Probe port").FillAsync("80");
-        await page.GetByLabel("Target port").FillAsync("80");
+        await page.GetByLabel("Probe path").FillAsync("/health");
+        await page.GetByLabel("Probe port").FillAsync("8080");
+        await page.GetByLabel("Target port").FillAsync("8080");
         await CaptureDeliveryScreenshotsAsync(page, "git-create");
         await page.SetViewportSizeAsync(1440, 900);
         var createdResponse = await page.RunAndWaitForResponseAsync(
@@ -89,16 +89,18 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         var buildId = await GetBrowserBuildIdAsync(serviceId, token);
         var completed = await WaitForBuildAsync(buildId, "succeeded", token);
         var state = completed.GetProperty("state");
-        Assert.Equal(RevisionOneCommitSha, RequiredString(completed, "commitSha"));
+        Assert.Equal("3333333333333333333333333333333333333333", RequiredString(completed, "commitSha"));
         var image = RequiredString(state, "imageReference");
         var releaseId = RequiredString(state, "releaseId");
         await AssertSourceBuildDeploymentAsync(groupId, new CreatedWebService(serviceId, name), image, releaseId, token);
+        await fixture.WaitForWebServiceReadyAsync(groupId, name, token);
         Assert.Equal(RequiredString(state, "imageDigest"), await fixture.GetHarborArtifactDigestAsync(fixture.Alpha.DefaultTenantId, serviceId, buildId, token));
         await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Refresh", Exact = true }).Last.ClickAsync();
         await page.GetByText("succeeded", new PageGetByTextOptions { Exact = true }).First.WaitForAsync();
         Assert.Equal("Dockerfile", await page.Locator(".source-build-panel .panel__meta").InnerTextAsync());
         await page.Locator(".build-recipe summary").ClickAsync();
         var dockerfile = page.GetByRole(AriaRole.Textbox, new PageGetByRoleOptions { Name = "Dockerfile", Exact = true });
+        var workingRecipe = await dockerfile.InputValueAsync();
         var missingMarker = $"pole-build-log-e2e-missing-{Guid.NewGuid():N}.txt";
         var editedRecipe = $"FROM scratch\nCOPY {missingMarker} /app/missing.txt";
         await dockerfile.FillAsync(editedRecipe);
@@ -167,6 +169,27 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = $"View logs for build {failedId}", Exact = true }).ClickAsync();
             await Assertions.Expect(output).ToContainTextAsync(missingMarker, new LocatorAssertionsToContainTextOptions { Timeout = 30_000 });
             await CaptureDeliveryScreenshotsAsync(page, "build-operation-logs");
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Close logs", Exact = true }).ClickAsync();
+            await page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "Builds", Exact = true }).ClickAsync();
+            await page.Locator(".build-recipe summary").ClickAsync();
+            await dockerfile.FillAsync(workingRecipe);
+            var repaired = await page.RunAndWaitForResponseAsync(
+                () => page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Save build recipe", Exact = true }).ClickAsync(),
+                response => response.Request.Method == "PUT" && new Uri(response.Url).AbsolutePath == $"/api/v1/source-build-configurations/{configurationId}");
+            Assert.True(repaired.Ok, $"Recipe repair returned HTTP {repaired.Status}.");
+            var recovery = await page.RunAndWaitForResponseAsync(
+                () => page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Build and deploy", Exact = true }).ClickAsync(),
+                response => response.Request.Method == "POST" && new Uri(response.Url).AbsolutePath.TrimEnd('/').EndsWith("/builds", StringComparison.Ordinal));
+            Assert.True(recovery.Ok, $"Recovery build returned HTTP {recovery.Status}.");
+            var recoveryJob = await recovery.JsonAsync() ?? throw new InvalidOperationException("Recovery job was empty.");
+            var recovered = await WaitForBuildAsync(RequiredString(recoveryJob, "id"), "succeeded", token);
+            Assert.NotEqual(releaseId, RequiredString(recovered.GetProperty("state"), "releaseId"));
+            await AssertSourceBuildDeploymentAsync(groupId, new CreatedWebService(serviceId, name), RequiredString(recovered.GetProperty("state"), "imageReference"), RequiredString(recovered.GetProperty("state"), "releaseId"), token);
+            await fixture.WaitForWebServiceReadyAsync(groupId, name, token);
+            var retainedFailure = await WaitForCompletedBuildLogAsync(serviceId, failedId, missingMarker, token);
+            Assert.Equal(savedLog.GetProperty("lastSequence").GetInt64(), retainedFailure.GetProperty("lastSequence").GetInt64());
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Refresh", Exact = true }).Last.ClickAsync();
+            await CaptureDeliveryScreenshotsAsync(page, "build-recovered");
         }
     }
 

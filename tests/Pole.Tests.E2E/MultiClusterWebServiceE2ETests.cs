@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using k8s;
 using k8s.Autorest;
+using Microsoft.Playwright;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Testing;
 using Pole.Tests.E2E.Infrastructure;
@@ -128,21 +129,40 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
         var healthyBeforeRetry = await clientA.AppsV1.ReadNamespacedDeploymentAsync(serviceName, namespaceA);
         var healthyRelease = RequiredReleaseId(healthyBeforeRetry.Spec.Template.Metadata.Annotations);
 
+        await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+        await browserContainer.StartAsync(cancellationToken);
+        using var playwright = await Playwright.CreateAsync();
+        await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
+            new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
+        await using var context = await browser.NewContextAsync(new BrowserNewContextOptions { IgnoreHTTPSErrors = true });
+        var page = await context.NewPageAsync();
+        await page.GotoAsync(fixture.FrontendBaseAddress.ToString());
+        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in", Exact = true }).ClickAsync();
+        await page.GetByLabel("Username or email").FillAsync(fixture.Alpha.Email);
+        await page.GetByRole(AriaRole.Textbox, new PageGetByRoleOptions { Name = "Password", Exact = true }).FillAsync(fixture.Alpha.Password);
+        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Sign In", Exact = true }).ClickAsync();
+        await page.GotoAsync(new Uri(fixture.FrontendBaseAddress, $"?view=web-services&resourceType=pole%2Fweb-service&resource={webServiceId}&tenant={fixture.Alpha.DefaultTenantId}&section=operations").ToString());
+        var failedTarget = page.Locator(".operation-target").Filter(new LocatorFilterOptions
+        {
+            Has = page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Retry this apply", Exact = true })
+        });
+        await Assertions.Expect(failedTarget).ToHaveCountAsync(1);
+        await Assertions.Expect(failedTarget).ToContainTextAsync("DeploymentTargetDisabled");
+        Assert.Equal(2, await page.Locator(".operation-target").CountAsync());
+
+        await failedTarget.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Retry this apply", Exact = true }).ClickAsync();
+        var confirmation = page.GetByRole(AriaRole.Dialog);
+        await Assertions.Expect(confirmation).ToContainTextAsync(RequiredString(failedB, "deploymentId"));
+        await Assertions.Expect(confirmation).ToContainTextAsync(targetB.Id);
         targetB = await UpdateTargetAsync(targetB, enabled: true, cancellationToken);
         targetBEnabled = true;
-        using (var retry = fixture.CreateAuthenticatedRequest(
-                   HttpMethod.Post,
-                   $"/api/v1/web-services/{webServiceId}/deployments/{RequiredString(failedB, "deploymentId")}/retry",
-                   fixture.Alpha,
-                   fixture.Alpha.DefaultTenantId))
-        {
-            retry.Content = JsonContent.Create(new
-            {
-                expectedDeploymentRevision = failedB.GetProperty("deploymentRevision").GetInt64(),
-                expectedOperation = "Apply"
-            });
-            await SendAsync(retry, cancellationToken);
-        }
+        var retryResponse = await page.RunAndWaitForResponseAsync(
+            () => confirmation.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Retry selected operation", Exact = true }).ClickAsync(),
+            response => response.Request.Method == "POST" && new Uri(response.Url).AbsolutePath == $"/api/v1/web-services/{webServiceId}/deployments/{RequiredString(failedB, "deploymentId")}/retry");
+        Assert.True(retryResponse.Ok, $"Selected target retry returned HTTP {retryResponse.Status}.");
+        using var retryBody = JsonDocument.Parse(retryResponse.Request.PostData!);
+        Assert.Equal(failedB.GetProperty("deploymentRevision").GetInt64(), retryBody.RootElement.GetProperty("expectedDeploymentRevision").GetInt64());
+        Assert.Equal("Apply", RequiredString(retryBody.RootElement, "expectedOperation"));
 
         var retried = await WaitForPlacementsAsync(
             webServiceId,

@@ -75,12 +75,17 @@ public sealed class SecretBrowserE2ETests(PoleE2EFixture fixture, ITestOutputHel
         await Assertions.Expect(create).ToBeEnabledAsync(new LocatorAssertionsToBeEnabledOptions { Timeout = 20_000 });
         // All screenshots are captured before values are entered, or after the sensitive form unmounts.
         await CaptureAsync(page, "create");
-        await content.GetByLabel("Value 1").FillAsync($"test-{Guid.NewGuid():N}");
+        var initialValue = $"test-{Guid.NewGuid():N}";
+        await content.GetByLabel("Value 1").FillAsync(initialValue);
         var accepted = await page.RunAndWaitForResponseAsync(() => create.ClickAsync(), response => response.Request.Method == "POST" && new Uri(response.Url).AbsolutePath.TrimEnd('/') == "/api/v1/secrets");
         Assert.Equal(201, accepted.Status);
+        var requestHeaders = await accepted.Request.AllHeadersAsync();
+        Assert.True(requestHeaders.TryGetValue("authorization", out var authorization) && authorization.StartsWith("Bearer ", StringComparison.Ordinal), "The browser write must use its real Keycloak bearer token.");
+        var browserToken = authorization!["Bearer ".Length..];
         var secret = (await accepted.JsonAsync())!.Value.GetProperty("id").GetString()!;
         resources.Defer("detach and delete browser Secret", cleanup => CleanupSecretAsync(secret, cleanup));
         await content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = name, Exact = true }).WaitForAsync();
+        await AssertCaptureExcludesCredentialsAsync(page, secret, [initialValue, browserToken], token);
         await CaptureAsync(page, "overview");
         await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Bindings", Exact = true }).ClickAsync();
         await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Add binding", Exact = true }).ClickAsync();
@@ -96,13 +101,15 @@ public sealed class SecretBrowserE2ETests(PoleE2EFixture fixture, ITestOutputHel
         await CaptureAsync(page, "projections");
         await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Rotate values", Exact = true }).ClickAsync();
         await CaptureAsync(page, "rotate");
-        await content.GetByLabel("Value 1").FillAsync($"test-{Guid.NewGuid():N}");
+        var replacementValue = $"test-{Guid.NewGuid():N}";
+        await content.GetByLabel("Value 1").FillAsync(replacementValue);
         await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Review replacement", Exact = true }).ClickAsync();
         await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Rotate Secret", Exact = true }).ClickAsync();
         await WaitForProjectionAsync(secret, 2, "Ready", token);
         await page.ReloadAsync();
         await Assertions.Expect(content.GetByLabel("Value 1")).ToHaveValueAsync("");
         await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Bindings", Exact = true }).ClickAsync();
+        await AssertCaptureExcludesCredentialsAsync(page, secret, [initialValue, replacementValue, browserToken], token);
         await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Detach binding", Exact = true }).ClickAsync();
         await page.GetByRole(AriaRole.Dialog).GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Detach binding", Exact = true }).ClickAsync();
         await WaitForProjectionAsync(secret, 2, "Deleted", token);
@@ -110,6 +117,19 @@ public sealed class SecretBrowserE2ETests(PoleE2EFixture fixture, ITestOutputHel
         await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Delete Secret", Exact = true }).ClickAsync();
         await page.GetByRole(AriaRole.Dialog).GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Delete Secret", Exact = true }).ClickAsync();
         await content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = "Secrets", Exact = true }).WaitForAsync();
+    }
+
+    private async Task AssertCaptureExcludesCredentialsAsync(IPage page, string id, string[] values, CancellationToken token)
+    {
+        var metadata = (await SendAsync(HttpMethod.Get, $"/api/v1/secrets/{id}", null, token)).GetRawText();
+        var projections = (await SendAsync(HttpMethod.Get, $"/api/v1/secrets/{id}/projections", null, token)).GetRawText();
+        var browserState = await page.EvaluateAsync<string>("JSON.stringify({ html: document.documentElement.outerHTML, inputs: Array.from(document.querySelectorAll('input,textarea')).map(x => x.value), local: {...localStorage}, session: {...sessionStorage} })");
+        foreach (var value in values.Append(fixture.Alpha.AccessToken))
+        {
+            Assert.True(!metadata.Contains(value, StringComparison.Ordinal), "Secret metadata must exclude controlled credential values.");
+            Assert.True(!projections.Contains(value, StringComparison.Ordinal), "Secret projection diagnostics must exclude controlled credential values.");
+            Assert.True(!browserState.Contains(value, StringComparison.Ordinal), "Screenshot-bound DOM and workspace storage must exclude values after the sensitive form unmounts.");
+        }
     }
 
     private static object Probe() => new { path = "/", port = "80", initialDelaySeconds = 0, periodSeconds = 1, timeoutSeconds = 1, successThreshold = 1, failureThreshold = 30 };

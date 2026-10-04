@@ -10,10 +10,16 @@ import type {
   StorageProfile,
   StorageProfileInput,
   StorageProfileTenantAccessMode,
+  PlatformDeploymentTarget,
 } from '../types'
+import { ConfirmationDialog, Field } from '../ui/components'
+import { useUnsavedChanges } from '../shell/useUnsavedChanges'
 
 interface StorageSettingsPageProps {
   profiles: StorageProfile[]
+  targets: PlatformDeploymentTarget[]
+  deploymentTargetId: string
+  onSelectTarget: (id: string) => void
   storageClasses: KubernetesStorageClass[]
   persistentVolumes: KubernetesPersistentVolume[]
   persistentVolumeClaims: KubernetesPersistentVolumeClaim[]
@@ -68,6 +74,9 @@ const profileTenantLabel = (profile: StorageProfile) =>
 
 export function StorageSettingsPage({
   profiles,
+  targets,
+  deploymentTargetId,
+  onSelectTarget,
   storageClasses,
   persistentVolumes,
   persistentVolumeClaims,
@@ -78,16 +87,27 @@ export function StorageSettingsPage({
   onRefresh,
   onCreate,
   onUpdate,
-  canManage = true,
+  canManage = false,
 }: StorageSettingsPageProps) {
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [dirty, setDirty] = useState(false)
+  const [formGeneration, setFormGeneration] = useState(0)
+  const [pending, setPending] = useState<{ run: () => void } | null>(null)
+  useUnsavedChanges(dirty, 'Storage profile')
+  const change = (run: () => void) => {
+    const transition = () => { setDirty(false); setFormGeneration((current) => current + 1); run() }
+    if (dirty) setPending({ run: transition })
+    else transition()
+  }
+  const classLabel = (profile: StorageProfile) => profile.targetMappings.map((mapping) =>
+    `${targets.find((target) => target.id === mapping.deploymentTargetId)?.displayName ?? 'Unavailable target'}: ${mapping.storageClassName}`).join(', ')
 
   const filteredProfiles = profiles.filter((profile) =>
     [
       profile.displayName,
       profile.description,
-      profile.storageClassNames.join(' '),
+      classLabel(profile),
       profile.allowedResourceTypes.join(' '),
       profileTenantLabel(profile),
     ]
@@ -121,13 +141,13 @@ export function StorageSettingsPage({
               <p className="session-card__value">Storage inventory</p>
             </div>
             <div className="session-card__actions">
-              <button className="button" onClick={() => void onRefresh()} type="button">
+              <button className="button" disabled={!canManage || submitStatus === 'loading'} onClick={() => change(() => { void onRefresh() })} type="button">
                 Refresh
               </button>
               <button
                 className="button"
-                disabled={!canManage}
-                onClick={() => setSelectedId(null)}
+                disabled={!canManage || submitStatus === 'loading'}
+                onClick={() => change(() => setSelectedId(null))}
                 type="button"
               >
                 New profile
@@ -140,6 +160,14 @@ export function StorageSettingsPage({
           </div>
         </aside>
       </section>
+
+      {canManage && <Field label="Deployment target" hint="Inventory and the edited storage class belong to this target. Other target mappings are preserved.">
+        <select className="field__control" value={deploymentTargetId} disabled={submitStatus === 'loading'}
+          onChange={(event) => { const id = event.target.value; change(() => onSelectTarget(id)) }}>
+          {targets.length === 0 && <option value="">No deployment targets</option>}
+          {targets.map((target) => <option key={target.id} value={target.id}>{target.displayName}{target.enabled ? '' : ' · Disabled'}</option>)}
+        </select>
+      </Field>}
 
       {!canManage && (
         <section className="panel">
@@ -227,7 +255,7 @@ export function StorageSettingsPage({
                 >
                   <button
                     className="list-row__button"
-                    onClick={() => setSelectedId(profile.id)}
+                    disabled={submitStatus === 'loading'} onClick={() => change(() => setSelectedId(profile.id))}
                     type="button"
                   >
                     <div className="list-row__primary">
@@ -241,13 +269,13 @@ export function StorageSettingsPage({
                         {profile.isDefault ? 'Default' : profile.isEnabled ? 'Enabled' : 'Disabled'}
                       </span>
                       <span className="list-row__meta">
-                        {profile.storageClassNames.join(', ')} · {profileResourceLabel(profile)}
+                        {classLabel(profile)} · {profileResourceLabel(profile)}
                       </span>
                     </div>
                   </button>
 
                   <div className="row-actions">
-                    <button className="button" onClick={() => setSelectedId(profile.id)} type="button">
+                    <button className="button" disabled={!canManage || submitStatus === 'loading'} onClick={() => change(() => setSelectedId(profile.id))} type="button">
                       Edit
                     </button>
                   </div>
@@ -257,9 +285,11 @@ export function StorageSettingsPage({
           )}
         </section>
 
-        {canManage ? (
+        {canManage && deploymentTargetId && status === 'success' ? (
           <StorageProfileForm
-            key={selectedProfile?.id ?? 'create'}
+            key={`${selectedProfile?.id ?? 'create'}:${selectedProfile?.revision ?? 0}:${deploymentTargetId}:${formGeneration}`}
+            deploymentTargetId={deploymentTargetId}
+            onDirtyChange={setDirty}
             mode={selectedProfile ? 'edit' : 'create'}
             initialValue={selectedProfile}
             storageClasses={storageClasses}
@@ -268,20 +298,26 @@ export function StorageSettingsPage({
             onSubmit={async (input) => {
               if (selectedProfile) {
                 await onUpdate(selectedProfile.id, input)
+                setDirty(false)
                 return
               }
 
               await onCreate(input)
+              setDirty(false)
             }}
-            onCancelEdit={selectedProfile ? () => setSelectedId(null) : undefined}
+            onCancelEdit={selectedProfile ? () => change(() => setSelectedId(null)) : undefined}
           />
         ) : (
           <section className="panel">
-            <div className="empty-state">Storage profile editing is read-only.</div>
+            <div className="empty-state">{canManage ? 'Load a deployment target to edit profiles.' : 'Storage profile editing requires platform administrator access.'}</div>
           </section>
         )}
       </div>
 
+      {pending && <ConfirmationDialog title="Discard storage changes?" confirmLabel="Discard changes"
+        onCancel={() => setPending(null)} onConfirm={() => { setDirty(false); pending.run(); setPending(null) }}>
+        The unsaved storage profile will be discarded.
+      </ConfirmationDialog>}
       <div className="storage-inventory-grid">
         <section className="panel">
           <div className="panel__header">
@@ -339,6 +375,8 @@ export function StorageSettingsPage({
 }
 
 interface StorageProfileFormProps {
+  deploymentTargetId: string
+  onDirtyChange: (dirty: boolean) => void
   mode: 'create' | 'edit'
   initialValue?: StorageProfile | null
   storageClasses: KubernetesStorageClass[]
@@ -349,6 +387,8 @@ interface StorageProfileFormProps {
 }
 
 function StorageProfileForm({
+  deploymentTargetId,
+  onDirtyChange,
   mode,
   initialValue,
   storageClasses,
@@ -371,14 +411,8 @@ function StorageProfileForm({
   )
   const [isEnabled, setIsEnabled] = useState(initialValue?.isEnabled ?? true)
   const [isDefault, setIsDefault] = useState(initialValue?.isDefault ?? false)
-  const [selectedClasses, setSelectedStorageClassNames] = useState<string[] | undefined>(
-    initialValue?.storageClassNames,
-  )
-  const selectedStorageClassNames = selectedClasses ?? (defaultStorageClassName ? [defaultStorageClassName] : [])
-  const [classNamesText, setStorageClassNamesText] = useState<string | undefined>(
-    initialValue?.storageClassNames.join(', '),
-  )
-  const storageClassNamesText = classNamesText ?? defaultStorageClassName
+  const initialClass = initialValue?.targetMappings.find((mapping) => mapping.deploymentTargetId === deploymentTargetId)?.storageClassName
+  const [storageClassName, setStorageClassName] = useState(initialClass ?? defaultStorageClassName)
   const [allowedResourceTypes, setAllowedResourceTypes] = useState<PoleResourceType[]>(
     initialValue?.allowedResourceTypes ?? ['pole/redis', 'pole/postgresql'],
   )
@@ -400,10 +434,6 @@ function StorageProfileForm({
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
-    const storageClassNames =
-      storageClasses.length > 0
-        ? selectedStorageClassNames
-        : parseList(storageClassNamesText)
     const tenantIds = parseList(tenantIdsText)
     const minSize = minSizeGb.trim() ? Number(minSizeGb) : null
     const maxSize = maxSizeGb.trim() ? Number(maxSizeGb) : null
@@ -413,8 +443,8 @@ function StorageProfileForm({
       return
     }
 
-    if (storageClassNames.length === 0) {
-      setValidationError('At least one storage class is required.')
+    if (!storageClassName.trim()) {
+      setValidationError('A storage class is required for this target.')
       return
     }
 
@@ -440,27 +470,35 @@ function StorageProfileForm({
 
     setValidationError('')
 
-    await onSubmit({
-      displayName: displayName.trim(),
-      description: description.trim(),
-      mediaType,
-      performanceTier,
-      isEnabled,
-      isDefault,
-      storageClassNames,
-      allowedResourceTypes,
-      tenantAccess: {
-        mode: tenantAccessMode,
-        tenantIds: tenantAccessMode === 'SelectedTenants' ? tenantIds : [],
-      },
-      sizeLimits:
-        minSize !== null || maxSize !== null
-          ? {
-              minSizeGb: minSize,
-              maxSizeGb: maxSize,
-            }
-          : null,
-    })
+    const mapping = { deploymentTargetId, storageClassName: storageClassName.trim() }
+    const targetMappings = (initialValue?.targetMappings ?? []).map((current) =>
+      current.deploymentTargetId === deploymentTargetId ? mapping : current)
+    if (!targetMappings.some((current) => current.deploymentTargetId === deploymentTargetId)) targetMappings.push(mapping)
+
+    try {
+      await onSubmit({
+        displayName: displayName.trim(),
+        description: description.trim(),
+        mediaType,
+        performanceTier,
+        isEnabled,
+        isDefault,
+        targetMappings,
+        ...(initialValue ? { revision: initialValue.revision } : {}),
+        allowedResourceTypes,
+        tenantAccess: {
+          mode: tenantAccessMode,
+          tenantIds: tenantAccessMode === 'SelectedTenants' ? tenantIds : [],
+        },
+        sizeLimits:
+          minSize !== null || maxSize !== null
+            ? {
+                minSizeGb: minSize,
+                maxSizeGb: maxSize,
+              }
+            : null,
+      })
+    } catch { return }
 
     if (mode === 'create') {
       setDisplayName('')
@@ -484,9 +522,8 @@ function StorageProfileForm({
         </div>
       </div>
 
-      <form className="resource-group-form" onSubmit={(event) => void handleSubmit(event)}>
-        <label className="field">
-          <span className="field__label">Display name</span>
+      <form className="resource-group-form" onChange={() => onDirtyChange(true)} onSubmit={(event) => void handleSubmit(event)}>
+        <Field label="Display name">
           <input
             className="field__control"
             value={displayName}
@@ -494,10 +531,9 @@ function StorageProfileForm({
             maxLength={80}
             placeholder="Default SSD"
           />
-        </label>
+        </Field>
 
-        <label className="field">
-          <span className="field__label">Description</span>
+        <Field label="Description">
           <textarea
             className="field__control field__control--textarea"
             value={description}
@@ -505,11 +541,10 @@ function StorageProfileForm({
             maxLength={500}
             placeholder="General-purpose profile for tenant data services."
           />
-        </label>
+        </Field>
 
         <div className="form-grid form-grid--three">
-          <label className="field">
-            <span className="field__label">Media</span>
+          <Field label="Media">
             <select
               className="field__control"
               value={mediaType}
@@ -521,9 +556,8 @@ function StorageProfileForm({
                 </option>
               ))}
             </select>
-          </label>
-          <label className="field">
-            <span className="field__label">Tier</span>
+          </Field>
+          <Field label="Tier">
             <select
               className="field__control"
               value={performanceTier}
@@ -535,9 +569,8 @@ function StorageProfileForm({
                 </option>
               ))}
             </select>
-          </label>
-          <label className="field">
-            <span className="field__label">Tenant access</span>
+          </Field>
+          <Field label="Tenant access">
             <select
               className="field__control"
               value={tenantAccessMode}
@@ -548,7 +581,7 @@ function StorageProfileForm({
               <option value="AllTenants">All tenants</option>
               <option value="SelectedTenants">Selected tenants</option>
             </select>
-          </label>
+          </Field>
         </div>
 
         <div className="toggle-grid">
@@ -570,38 +603,24 @@ function StorageProfileForm({
           </label>
         </div>
 
-        <div className="field">
-          <span className="field__label">Storage classes</span>
+        <Field label="Storage class">
           {storageClasses.length > 0 ? (
-            <div className="checkbox-grid">
+            <select className="field__control" value={storageClassName} onChange={(event) => setStorageClassName(event.target.value)}>
+              <option value="">Choose a storage class</option>
+              {storageClassName && !storageClasses.some((item) => item.name === storageClassName) && <option value={storageClassName}>{storageClassName} · Unavailable</option>}
               {storageClasses.map((item) => (
-                <label className="checkbox-card" key={item.name}>
-                  <input
-                    checked={selectedStorageClassNames.includes(item.name)}
-                    onChange={() =>
-                      setSelectedStorageClassNames((value) => {
-                        const current = value ?? selectedStorageClassNames
-                        return toggleValue(current, item.name)
-                      })
-                    }
-                    type="checkbox"
-                  />
-                  <span>
-                    <strong>{item.name}</strong>
-                    <small>{item.isDefault ? 'Default' : item.provisioner}</small>
-                  </span>
-                </label>
+                <option key={item.name} value={item.name}>{item.name}{item.isDefault ? ' · Default' : ''}</option>
               ))}
-            </div>
+            </select>
           ) : (
             <input
               className="field__control"
-              value={storageClassNamesText}
-              onChange={(event) => setStorageClassNamesText(event.target.value)}
-              placeholder="standard, fast"
+              value={storageClassName}
+              onChange={(event) => setStorageClassName(event.target.value)}
+              placeholder="standard"
             />
           )}
-        </div>
+        </Field>
 
         <div className="field">
           <span className="field__label">Allowed resource types</span>
@@ -622,21 +641,18 @@ function StorageProfileForm({
         </div>
 
         {tenantAccessMode === 'SelectedTenants' && (
-          <label className="field">
-            <span className="field__label">Tenant ids</span>
+          <Field label="Tenant ids" hint="Separate tenant ids with commas.">
             <input
               className="field__control"
               value={tenantIdsText}
               onChange={(event) => setTenantIdsText(event.target.value)}
               placeholder="tenant-a, tenant-b"
             />
-            <span className="field__hint">Separate tenant ids with commas.</span>
-          </label>
+          </Field>
         )}
 
         <div className="form-grid form-grid--three">
-          <label className="field">
-            <span className="field__label">Minimum GB</span>
+          <Field label="Minimum GB">
             <input
               className="field__control"
               min="1"
@@ -644,9 +660,8 @@ function StorageProfileForm({
               onChange={(event) => setMinSizeGb(event.target.value)}
               type="number"
             />
-          </label>
-          <label className="field">
-            <span className="field__label">Maximum GB</span>
+          </Field>
+          <Field label="Maximum GB">
             <input
               className="field__control"
               min="1"
@@ -654,7 +669,7 @@ function StorageProfileForm({
               onChange={(event) => setMaxSizeGb(event.target.value)}
               type="number"
             />
-          </label>
+          </Field>
         </div>
 
         {(validationError || submitError) && (

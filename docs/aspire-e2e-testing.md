@@ -102,9 +102,31 @@ runs and other worktrees independent. The test restores its port-forward at the 
 port in `finally`, so later tests in the fixture can build again. The fixture keeps its tenant's
 Harbor project until all source-build tests finish, then deletes it during teardown.
 
-The source image is deliberately `FROM scratch`, so the test proves build, push, release,
-provenance, image-pull-secret, and reconciliation behavior without an external base image. It does
-not wait for an HTTP-ready application workload.
+The API provenance test uses `FROM scratch` to isolate artifact/release behavior. The browser
+journey selects the stub's runnable `dependencies` revision, builds its .NET application and
+waits for `/health` on port 8080 to become ready. It saves a deliberately broken COPY recipe,
+reloads its retained failure output, verifies the running deployment is unchanged, then repairs
+the recipe through the browser and observes a new successful release and ready workload.
+
+`TenantWorkspaceBrowserE2ETests` temporarily grants the real Beta Keycloak user Viewer access to
+Alpha while retaining ownership of Beta. It proves read-only controls and an actual forbidden
+mutation, dirty-form cancellation/confirmed tenant switching, and cancellation/clearing of a
+real runtime follow stream. A narrowly intercepted, already fetched real Alpha API response is
+released after switching to Beta; it cannot populate Beta's workspace or persistence.
+`HealthBrowserE2ETests` injects a browser read failure, retains explicitly stale operation state,
+and restores it by reading the real API again. `MultiClusterWebServiceE2ETests` confirms the exact
+failed target retry through Operations and verifies its request revision and the unchanged
+healthy target's native release/generations. The existing runtime relay test covers a real target
+transport outage independently of this browser read injection.
+
+`StorageBrowserE2ETests` signs in as the fixture's real platform administrator, reads native target
+inventory, creates a target-mapped profile, and updates it with the saved revision. It captures
+both themes and desktop/mobile layouts, then disables its owned profile before fixture teardown.
+
+Secret browser acceptance uses fixed-message absence assertions for controlled initial/rotated
+values and the real browser/fixture tokens in metadata, projection diagnostics and screenshot-bound DOM/storage
+after sensitive forms unmount. Failed assertions do not echo those values. Workload output is
+still application-owned; this controlled check does not claim arbitrary runtime-secret removal.
 
 `RuntimeLogsBrowserE2ETests` creates two owned Redis workloads and adds harmless test-only log
 containers to one owned StatefulSet. It verifies container selection, response cancellation,

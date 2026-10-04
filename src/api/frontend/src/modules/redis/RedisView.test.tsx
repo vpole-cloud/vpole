@@ -7,8 +7,13 @@ import { createAppRegistry } from '../../shell/moduleRegistry'
 import type { RedisService } from '../../types'
 import { redisModule } from './RedisModule'
 import { overviewModule } from '../platform/PlatformModules'
+import { RedisView } from './RedisView'
+import { OverviewView } from '../platform/PlatformViews'
 
-const registry = createAppRegistry([redisModule, overviewModule])
+const registry = createAppRegistry([
+  { ...redisModule, views: redisModule.views.map((view) => ({ ...view, component: RedisView })) },
+  { ...overviewModule, views: overviewModule.views.map((view) => ({ ...view, component: OverviewView })) },
+])
 const initial: RedisService = { id: 'database', name: 'orders', resourceGroupId: 'group', revision: 1, lifecycle: 'Active', tags: ['cache'],
   spec: { storage: { sizeGb: 1, storageProfileId: 'disk' } },
   placement: { deploymentId: 'deployment', isolationScopeId: 'scope', runtimeCellId: 'cell', deploymentTargetId: 'target',

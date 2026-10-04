@@ -1,5 +1,6 @@
 import type { AppModule, AppCommand, AppServices } from '../../shell/contracts'
-import { WebServicesView } from './WebServicesView'
+import { lazy } from 'react'
+const WebServicesView = lazy(() => import('./WebServicesView').then(module => ({ default: module.WebServicesView })))
 
 export const webServicesModule: AppModule = {
   id: 'web-services',

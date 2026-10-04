@@ -2,6 +2,7 @@ import type {
   BeginGitHubInstallationResponse,
   AvailableComputeProfile,
   AvailableDeploymentTarget,
+  PlatformDeploymentTarget,
   GitProviderConnection,
   GitProviderPage,
   KubernetesPersistentVolume,
@@ -131,6 +132,12 @@ export async function fetchStorageProfiles(
   )
 }
 
+export async function fetchPlatformDeploymentTargets(apiBaseUrl: string, token?: string, signal?: AbortSignal) {
+  return fetchJson<PlatformDeploymentTarget[]>(`${apiBaseUrl}/api/v1/platform/deployment-targets`, {
+    headers: buildHeaders(token), signal,
+  })
+}
+
 export async function fetchAvailableStorageProfiles(
   apiBaseUrl: string,
   resourceType: PoleResourceType,
@@ -152,11 +159,12 @@ export async function fetchAvailableStorageProfiles(
 
 export async function fetchKubernetesStorageClasses(
   apiBaseUrl: string,
+  deploymentTargetId: string,
   token?: string,
   signal?: AbortSignal,
 ) {
   return fetchJson<KubernetesStorageClass[]>(
-    `${apiBaseUrl}/api/v1/platform/storage/storage-classes`,
+    `${apiBaseUrl}/api/v1/platform/storage/storage-classes?${new URLSearchParams({ deploymentTargetId })}`,
     {
       headers: buildHeaders(token),
       signal,
@@ -166,11 +174,12 @@ export async function fetchKubernetesStorageClasses(
 
 export async function fetchKubernetesPersistentVolumes(
   apiBaseUrl: string,
+  deploymentTargetId: string,
   token?: string,
   signal?: AbortSignal,
 ) {
   return fetchJson<KubernetesPersistentVolume[]>(
-    `${apiBaseUrl}/api/v1/platform/storage/persistent-volumes`,
+    `${apiBaseUrl}/api/v1/platform/storage/persistent-volumes?${new URLSearchParams({ deploymentTargetId })}`,
     {
       headers: buildHeaders(token),
       signal,
@@ -180,11 +189,12 @@ export async function fetchKubernetesPersistentVolumes(
 
 export async function fetchKubernetesPersistentVolumeClaims(
   apiBaseUrl: string,
+  deploymentTargetId: string,
   token?: string,
   signal?: AbortSignal,
 ) {
   return fetchJson<KubernetesPersistentVolumeClaim[]>(
-    `${apiBaseUrl}/api/v1/platform/storage/persistent-volume-claims`,
+    `${apiBaseUrl}/api/v1/platform/storage/persistent-volume-claims?${new URLSearchParams({ deploymentTargetId })}`,
     {
       headers: buildHeaders(token),
       signal,
@@ -605,7 +615,7 @@ export async function updateStorageProfile(
   token?: string,
 ) {
   return sendJson<StorageProfile>(
-    `${apiBaseUrl}/api/v1/platform/storage/profiles/${id}`,
+    `${apiBaseUrl}/api/v1/platform/storage/profiles/${encodeURIComponent(id)}`,
     {
       method: 'PUT',
       headers: buildHeaders(token),

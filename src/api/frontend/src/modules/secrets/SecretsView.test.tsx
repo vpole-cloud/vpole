@@ -6,8 +6,9 @@ import { AppShell } from '../../shell/AppShell'
 import { createAppRegistry } from '../../shell/moduleRegistry'
 import type { ResourcePlacement, SecretMetadata } from '../../types'
 import { secretModule } from './SecretModule'
+import { SecretsView } from './SecretsView'
 
-const registry = createAppRegistry([secretModule, { id: 'custom', views: [{ id: 'custom', label: 'Custom resource', component: () => null, access: 'tenant' }], resourceTypes: [{ id: 'test/stateful', label: 'Custom resource', viewId: 'custom' }] }])
+const registry = createAppRegistry([{ ...secretModule, views: secretModule.views.map((view) => ({ ...view, component: SecretsView })) }, { id: 'custom', views: [{ id: 'custom', label: 'Custom resource', component: () => null, access: 'tenant' }], resourceTypes: [{ id: 'test/stateful', label: 'Custom resource', viewId: 'custom' }] }])
 const initial: SecretMetadata = { id: 'secret', tenantId: 'alpha', resourceGroupId: 'group', isolationScopeId: 'scope', name: 'application-keys', purpose: 'Connection credentials', keyNames: ['password'], currentVersion: 1, revision: 1, lifecycle: 'Active', createdAtUtc: '2026-01-01T00:00:00Z', updatedAtUtc: '2026-01-01T00:00:00Z' }
 const placement = { deploymentId: 'deployment', isolationScopeId: 'scope', deploymentTargetId: 'target', status: 'Applied', desiredOperation: 'Apply' } as ResourcePlacement
 let root: Root; let container: HTMLDivElement; let secret: SecretMetadata; let conflict: boolean; let managed: boolean

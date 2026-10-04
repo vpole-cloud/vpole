@@ -4,7 +4,6 @@ import { OverviewPage } from '../../components/OverviewPage'
 import { IntegrationsPage } from '../../components/IntegrationsPage'
 import { StorageSettingsPage } from '../../components/StorageSettingsPage'
 import { useOverviewData } from '../../hooks/useOverviewData'
-export { DomainsView } from '../domains/DomainsView'
 import { useGitIntegrationsManager } from '../../hooks/useGitIntegrationsManager'
 import { useStorageSettingsManager } from '../../hooks/useStorageSettingsManager'
 import { readIntegrationNavigation } from '../../integrationsState'
@@ -45,7 +44,7 @@ export function IntegrationsView() {
 
 export function StorageView() {
   const { api, auth } = useAppServices()
-  const storage = useStorageSettingsManager({ apiBaseUrl: api.baseUrl, token: api.token, enabled: auth.authenticated })
-  return <StorageSettingsPage {...storage} onRefresh={storage.refresh} onCreate={storage.create}
-    onUpdate={storage.update} canManage={auth.isPlatformAdmin || storage.status === 'success'} />
+  const storage = useStorageSettingsManager({ apiBaseUrl: api.baseUrl, token: api.token, enabled: auth.authenticated && auth.isPlatformAdmin })
+  return <StorageSettingsPage key={auth.isPlatformAdmin ? 'admin' : 'viewer'} {...storage} onRefresh={storage.refresh} onCreate={storage.create}
+    onUpdate={storage.update} onSelectTarget={storage.selectTarget} canManage={auth.isPlatformAdmin} />
 }

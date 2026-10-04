@@ -180,6 +180,14 @@ export interface AvailableDeploymentTarget {
   publicBaseDomain?: string | null
 }
 
+export interface PlatformDeploymentTarget {
+  id: string
+  displayName: string
+  enabled: boolean
+  acceptsWorkloads: boolean
+  isDefault: boolean
+}
+
 export type ResourcePlacement = WebServiceDeployment
 
 export interface SecretMetadata {
@@ -667,8 +675,8 @@ export interface StorageProfile {
   performanceTier: StoragePerformanceTier
   isEnabled: boolean
   isDefault: boolean
-  storageClassNames: string[]
-  targetMappings?: Array<{ deploymentTargetId: string; storageClassName: string }>
+  targetMappings: Array<{ deploymentTargetId: string; storageClassName: string }>
+  revision: number
   allowedResourceTypes: PoleResourceType[]
   tenantAccess: StorageProfileTenantAccess
   sizeLimits?: StorageProfileSizeLimits | null
@@ -681,7 +689,8 @@ export interface StorageProfileInput {
   performanceTier: StoragePerformanceTier
   isEnabled: boolean
   isDefault: boolean
-  storageClassNames: string[]
+  targetMappings: Array<{ deploymentTargetId: string; storageClassName: string }>
+  revision?: number
   allowedResourceTypes: PoleResourceType[]
   tenantAccess: StorageProfileTenantAccess
   sizeLimits?: StorageProfileSizeLimits | null

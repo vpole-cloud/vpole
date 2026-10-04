@@ -1,5 +1,6 @@
 import type { AppModule } from '../../shell/contracts'
-import { PostgresView } from './PostgresView'
+import { lazy } from 'react'
+const PostgresView = lazy(() => import('./PostgresView').then(module => ({ default: module.PostgresView })))
 
 export const postgresModule: AppModule = {
   id: 'postgres',

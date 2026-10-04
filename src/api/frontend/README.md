@@ -6,6 +6,14 @@ the generic shell does not import resource providers.
 
 ## Module ownership
 
+Owner views load lazily behind the shell's scoped Suspense/error boundary. Navigation and resource
+registrations remain static; a module download resolves against the current tenant and a failed
+download leaves other views usable. Reload reconnects a failed download.
+
+Platform Storage requires platform administration for both reads and writes. A named deployment
+target selects storage-class/PV/PVC inventory. Profile edits preserve other target mappings and
+send the saved profile revision; changing target, profile or view protects unsaved drafts.
+
 Domains uses separate zone catalog, reservation and ownership tabs. Zone details link exact
 hostname owners and resource groups and show persisted target apply state. WebService Domains
 owns per-target attach, change and confirmed detach, with generated hostname protection, public
@@ -182,6 +190,10 @@ The `src/shell` directory owns AppShell, AppContext, module contracts and naviga
 Shared components in `src/ui/components.tsx` cover buttons, fields, tables, status, notices,
 empty/error states and accessible confirmation dialogs. Semantic tokens in `src/index.css` provide
 light/dark themes, with responsive layout in `src/App.css`.
+
+Use `Field` for a native control with a hint: it names the control from the label alone and links
+the hint as a description while preserving existing validation descriptions. Hand-written fields
+need the same separation; including hints in a wrapping label changes its accessible name.
 
 ## Verification
 
