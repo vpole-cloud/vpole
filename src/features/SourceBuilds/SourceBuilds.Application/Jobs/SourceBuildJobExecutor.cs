@@ -23,7 +23,8 @@ public sealed class SourceBuildJobExecutor(
     DeploySourceBuildWebService deploySourceBuildWebService,
     TryPersistSourceBuildJob tryPersistSourceBuildJob,
     TimeProvider timeProvider,
-    ILogger<SourceBuildJobExecutor> logger)
+    ILogger<SourceBuildJobExecutor> logger,
+    CreateSourceBuildLogCapture createLogCapture)
 {
     [AutomaticRetry(Attempts = 0)]
     public async Task ExecuteAsync(string buildJobId)
@@ -33,6 +34,9 @@ public sealed class SourceBuildJobExecutor(
             timeProvider.GetUtcNow().UtcDateTime);
         if (job is null)
             return;
+
+        await using var capture = await createLogCapture(job);
+        await capture.WriteAsync(SourceBuildLogStream.System, "Source build started. Repository archive preparation is in progress.\n");
 
         try
         {
@@ -97,6 +101,7 @@ public sealed class SourceBuildJobExecutor(
                 if (!await tryPersistSourceBuildJob(job, building))
                     return;
                 job = building;
+                await capture.WriteAsync(SourceBuildLogStream.System, "BuildKit build and registry push are starting.\n");
 
                 var actorUserId = (job.Trigger as ManualSourceBuildTrigger)?.UserId ?? "source-build-worker";
                 var repositoryName = $"web-services/{job.WebServiceId}";
@@ -119,13 +124,17 @@ public sealed class SourceBuildJobExecutor(
                         job.Recipe.Dockerfile,
                         registryAccess.Target,
                         registryAccess.Username,
-                        registryAccess.Secret));
+                        registryAccess.Secret,
+                        capture.WriteAsync,
+                        capture.MarkUnavailable));
                 if (imageResult is BuildContainerImageError imageError)
                 {
+                    await capture.WriteAsync(SourceBuildLogStream.System, "BuildKit did not produce an accepted image. Inspect the job's fixed failure summary.\n");
                     await FailAsync(job, SourceBuildPhase.Building, imageError);
                     return;
                 }
                 var image = (BuiltContainerImage)imageResult.Value;
+                await capture.WriteAsync(SourceBuildLogStream.System, "BuildKit output capture finished; deployment outcome is tracked separately.\n");
 
                 var pushing = job.StartPushing(
                     image.Reference,
@@ -196,9 +205,9 @@ public sealed class SourceBuildJobExecutor(
         catch (Exception exception)
         {
             logger.LogError(
-                exception,
-                "Unexpected source build failure for {BuildJobId}.",
-                buildJobId);
+                "Unexpected source build failure for {BuildJobId} ({ExceptionType}).",
+                buildJobId,
+                exception.GetType().FullName);
             await FailCurrentAsync(
                 buildJobId,
                 "UnexpectedBuildFailure",

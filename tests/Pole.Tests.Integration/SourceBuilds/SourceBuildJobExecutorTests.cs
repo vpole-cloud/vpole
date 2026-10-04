@@ -1,9 +1,12 @@
 using System.Collections.Immutable;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.SourceBuilds.Application.Execution;
+using Pole.Features.SourceBuilds.Application;
 using Pole.Features.SourceBuilds.Application.Jobs;
 using Pole.Features.SourceBuilds.Application.Persistence;
 using Pole.Features.SourceBuilds.Application.Persistence.Jobs;
@@ -20,6 +23,35 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
     : ApiIntegrationTestBase(fixture)
 {
     private const string Digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    private ServiceProvider? captureServices;
+
+    [Fact]
+    public async Task Unexpected_build_exception_does_not_emit_known_registry_inputs_in_logs_or_failure()
+    {
+        var queued = await QueueJobAsync();
+        var build = new FakeBuildKitClient { ThrowUnexpected = true };
+        var logger = new RecordingLogger();
+        await CreateExecutor(new FakeWorkspaceService(), new FakeRegistryBuildService(), build, new FakeDeploymentService(), logger).ExecuteAsync(queued.Job.Id);
+        Assert.NotNull(build.Request);
+        Assert.DoesNotContain(build.Request.RegistrySecret, string.Join("\n", logger.Messages), StringComparison.Ordinal);
+        Assert.DoesNotContain(build.Request.RegistryUsername, string.Join("\n", logger.Messages), StringComparison.Ordinal);
+        var failed = Assert.IsType<FailedSourceBuild>((await Fixture.DbContext.SourceBuildJobs.Find(x => x.Id == queued.Job.Id).SingleAsync()).State);
+        Assert.Equal("UnexpectedBuildFailure", failed.Code);
+        Assert.DoesNotContain(build.Request.RegistrySecret, failed.Message, StringComparison.Ordinal);
+    }
+
+    public override async Task DisposeAsync()
+    {
+        if (captureServices is not null) await captureServices.DisposeAsync();
+        await base.DisposeAsync();
+    }
+
+    private Task<SourceBuildLogCapture> CreateCaptureAsync(SourceBuildJob job)
+    {
+        captureServices ??= new ServiceCollection().AddLogging().AddSingleton(Fixture.Database)
+            .AddSourceBuildsFeature(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()).BuildServiceProvider();
+        return captureServices.GetRequiredService<CreateSourceBuildLogCapture>()(job);
+    }
 
     [Fact]
     public async Task Executor_ClaimsOnceBuildsExactCommitAndWaitsForDeploymentCompletion()
@@ -122,7 +154,8 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
         FakeWorkspaceService workspace,
         FakeRegistryBuildService registry,
         FakeBuildKitClient buildKit,
-        FakeDeploymentService deployment) =>
+        FakeDeploymentService deployment,
+        ILogger<SourceBuildJobExecutor>? logger = null) =>
         new(
             ClaimAsync,
             LoadConfigurationAsync,
@@ -134,7 +167,8 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
             deployment.DeployAsync,
             TryPersistAsync,
             TimeProvider.System,
-            NullLogger<SourceBuildJobExecutor>.Instance);
+            logger ?? NullLogger<SourceBuildJobExecutor>.Instance,
+            CreateCaptureAsync);
 
     private async Task<SourceBuildJob?> ClaimAsync(
         string buildJobId,
@@ -299,6 +333,7 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
 
     private sealed class FakeBuildKitClient
     {
+        public bool ThrowUnexpected { get; init; }
         public int Calls { get; private set; }
         public BuildKitBuildRequest? Request { get; private set; }
 
@@ -308,9 +343,18 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
         {
             Calls++;
             Request = request;
+            if (ThrowUnexpected) throw new InvalidOperationException($"unsafe infrastructure detail {request.RegistrySecret}");
             return Task.FromResult<BuildContainerImageOutcome>(
                 new BuiltContainerImage(request.Target.Reference, Digest));
         }
+    }
+
+    private sealed class RecordingLogger : ILogger<SourceBuildJobExecutor>
+    {
+        public List<string> Messages { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) => Messages.Add(formatter(state, exception) + exception?.ToString());
     }
 
     private sealed class FakeDeploymentService(

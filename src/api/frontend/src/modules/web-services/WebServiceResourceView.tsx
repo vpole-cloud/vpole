@@ -146,7 +146,7 @@ export function WebServiceResourceView({ id, section, active, refreshVersion, gr
       {visited.includes('dependencies') && <WebServiceDependencies key={`${api.baseUrl}:${api.tenantId}:${api.token}:${id}`} service={service} canWrite={tenant.canManage} onDirtyChange={setDependencyDirty} onChanged={async () => { await details.refresh(); onChanged() }} />}
     </TabPanel>
     <TabPanel id={panelId} tabId="builds" activeId={section}>
-      {visited.includes('builds') && <SourceBuildPanel webService={service} manager={builds} canManage={tenant.canManage} onDirtyChange={setBuildDirty} />}
+      {visited.includes('builds') && <SourceBuildPanel webService={service} manager={builds} canManage={tenant.canManage} onDirtyChange={setBuildDirty} active={active && section === 'builds'} />}
     </TabPanel>
     {discarding && <ConfirmationDialog title="Discard configuration changes?" confirmLabel="Discard changes"
       onCancel={() => setDiscarding(false)} onConfirm={() => {

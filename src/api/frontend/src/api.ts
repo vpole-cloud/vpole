@@ -872,6 +872,23 @@ export function rollbackWebService(base: string, id: string, input: { targetRevi
   return releaseRequest<import('./types').WebServiceRecoveryResponse>(base, id, '/rollback', token, tenantId, signal, 'POST', input)
 }
 
+async function buildLogRequest<T>(base: string, jobId: string, suffix: string, token?: string, tenantId?: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(`${base}/api/v1/source-build-jobs/${encodeURIComponent(jobId)}${suffix}`, { headers: buildHeaders(token, tenantId), signal })
+  if (!response.ok) throw new Error(response.status === 400 ? 'The log cursor is unavailable. Restart this log view to request its retained beginning.'
+    : response.status === 403 ? 'Your current tenant role cannot read this build.'
+    : response.status === 404 ? 'This build is unavailable for the selected service and tenant.'
+    : 'Build logs are unavailable. Reconnect to resume from the last displayed sequence.')
+  return response.json() as Promise<T>
+}
+
+export function fetchSourceBuildJob(base: string, jobId: string, token?: string, tenantId?: string, signal?: AbortSignal) {
+  return buildLogRequest<SourceBuildJob>(base, jobId, '', token, tenantId, signal)
+}
+
+export function fetchSourceBuildLogs(base: string, jobId: string, webServiceId: string, afterSequence: number, token?: string, tenantId?: string, signal?: AbortSignal) {
+  return buildLogRequest<import('./types').SourceBuildLogs>(base, jobId, `/logs?${new URLSearchParams({ webServiceId, afterSequence: String(afterSequence) })}`, token, tenantId, signal)
+}
+
 export async function deleteWebService(
   apiBaseUrl: string,
   id: string,

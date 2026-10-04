@@ -10,6 +10,7 @@ using Pole.Features.SourceBuilds.Application.Jobs;
 using Pole.Features.SourceBuilds.Application.Persistence;
 using Pole.Features.SourceBuilds.Application.Persistence.Configuration;
 using Pole.Features.SourceBuilds.Application.Persistence.Jobs;
+using Pole.Features.SourceBuilds.Application.Persistence.Logs;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Domain;
 
@@ -29,6 +30,18 @@ public static class SourceBuildApplicationRegistration
         services.TryAddSingleton(provider =>
             provider.GetRequiredService<IOptions<BuildKitOptions>>().Value);
         services.TryAddSingleton(TimeProvider.System);
+        services.AddOptions<SourceBuildLogOptions>().Bind(configuration.GetSection(SourceBuildLogOptions.SectionName))
+            .Validate(options => options.Valid, "SourceBuildLogs limits are outside the supported bounds.").ValidateOnStart();
+        services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<SourceBuildLogOptions>>().Value);
+        services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>().GetCollection<SourceBuildLog>("SourceBuildLogs"));
+        services.TryAddScoped<SourceBuildLogPersistence>();
+        services.AddCapability<MongoStartSourceBuildLog, StartSourceBuildLog>(implementation => implementation.InvokeAsync);
+        services.AddCapability<MongoAppendSourceBuildLog, AppendSourceBuildLog>(implementation => implementation.InvokeAsync);
+        services.AddCapability<MongoRenewSourceBuildLog, RenewSourceBuildLog>(implementation => implementation.InvokeAsync);
+        services.AddCapability<MongoSealSourceBuildLog, SealSourceBuildLog>(implementation => implementation.InvokeAsync);
+        services.AddCapability<MongoLoadSourceBuildLog, LoadSourceBuildLog>(implementation => implementation.InvokeAsync);
+        services.AddCapability<MongoRecoverSourceBuildLogs, RecoverSourceBuildLogs>(implementation => implementation.InvokeAsync);
+        services.AddCapability<SourceBuildLogCaptureFactory, CreateSourceBuildLogCapture>(implementation => implementation.CreateAsync);
 
         services.TryAddSingleton(provider => provider
             .GetRequiredService<IMongoDatabase>()
@@ -94,6 +107,7 @@ public static class SourceBuildApplicationRegistration
             provider.GetRequiredService<SourceBuildWorkspaceService>().InvokeAsync);
         services.TryAddScoped<SourceBuildJobExecutor>();
         services.TryAddScoped<SourceBuildQueueRecoveryJob>();
+        services.TryAddScoped<SourceBuildLogRecoveryJob>();
         return services;
     }
 
@@ -104,6 +118,7 @@ public static class SourceBuildApplicationRegistration
             "recover-source-build-queue",
             job => job.RecoverAsync(),
             Cron.Minutely);
+        RecurringJob.AddOrUpdate<SourceBuildLogRecoveryJob>("recover-source-build-logs", job => job.RecoverAsync(), Cron.Minutely);
         return services;
     }
 

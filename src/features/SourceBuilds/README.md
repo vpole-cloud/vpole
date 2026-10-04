@@ -33,6 +33,43 @@ After deployment cleanup, the existing finalizer deletes the service and writes
 configurations matching the event tenant and service ID. Duplicate delivery is harmless. Jobs are
 never deleted by this consumer, so completed build history remains queryable.
 
+## Retained build output
+
+Source Builds owns a separate `SourceBuildLogs` capture for each claimed job. Capture state is
+independent of job status and target apply: `Completed` means the capture closed, including a failed
+build, and never establishes deployment success or workload readiness. Archives, recipes, command
+arguments, environment maps, Docker config and raw infrastructure exceptions are not emitted by the
+capture. Fixed system messages and BuildKit stdout/stderr are saved while the process runs.
+
+`SourceBuildLogs` configuration defaults to `MaxBytes=1048576`, `MaxEntries=2048`,
+`MaxEntryBytes=4096` and `RetentionDays=7`. Supported ranges are 4096–4194304 bytes,
+16–4096 entries, 256–8192 bytes per entry (within the total cap), and 1–30 days. Limits are validated
+at startup and snapshotted per capture. The retained UTF-8 prefix stops growing at either size or
+entry count; `Truncated` is explicit and both process pipes continue draining.
+
+The worker renews a two-minute writer lease every thirty seconds. Single-document CAS writes fence
+tenant, WebService, job, writer, revision and lease, keep monotonically ordered sequence ranges, and
+accept identical duplicate appends without duplication. Ordering reflects serialized capture arrival,
+not an exact interleaving of two OS pipes. Recovery runs every minute in batches of at most 100,
+seals expired leases as `Interrupted`, and clears expired output while retaining cursor metadata.
+Reads enforce retention immediately, even before cleanup. Restart preserves a saved prefix; an
+interrupted capture does not automatically resume the existing build job. Storage failure leaves
+an explicit unavailable/interrupted prefix and does not change build outcome or block pipe drainage.
+
+Tenant readers use `GET /api/v1/source-build-jobs/{id}/logs?webServiceId={id}&afterSequence={n}`.
+The persisted job verifies resource ownership, so history remains readable after configuration or
+WebService deletion. A response contains at most 32 entries and 64 KiB of text, stable next/last
+sequences, capture state, retention and truncation. Ahead cursors return 400; callers never silently
+reset them. Browser cancellation affects that read alone, while Builds and Operations share one
+plain-text viewer with follow/pause, cursor reconnect and a bounded 256 KiB/512-entry tail. A build
+deep link can read an older exact job outside the recent-build page.
+
+Per-invocation redaction runs before persistence and handles known registry username/secret,
+combined credentials, common Base64, URL and JSON forms, including values split across reads.
+Sanitizer carry is bounded; oversized known inputs disable raw capture with an explicit message.
+This is not perfect sanitization of arbitrary application output or arbitrary encodings. Application
+logs can contain other sensitive data, and authorized readers should treat captured output accordingly.
+
 ## Validation
 
 `SourceBuildDeletionTests` covers active-build rejection with rollback, deletion-window admission,
