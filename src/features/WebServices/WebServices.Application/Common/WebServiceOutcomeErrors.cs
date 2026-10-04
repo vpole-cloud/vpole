@@ -19,6 +19,10 @@ public sealed record WebServiceReleaseNotFound(
     string WebServiceId,
     long ResourceRevision);
 
+public sealed record WebServiceRollbackRevisionNotEligible(
+    string WebServiceId,
+    long TargetRevision);
+
 public sealed record WebServiceResourceDeploymentNotFound(
     string WebServiceId,
     string ResourceDeploymentId);
@@ -42,6 +46,7 @@ public union RollbackWebServiceStateError(
     WebServiceNotFound,
     WebServiceUpdateUnavailable,
     WebServiceReleaseNotFound,
+    WebServiceRollbackRevisionNotEligible,
     WebServiceHasNoActiveDeployments);
 
 public union WebServiceDeploymentMutationStateError(

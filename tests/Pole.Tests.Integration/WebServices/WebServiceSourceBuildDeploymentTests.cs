@@ -49,6 +49,8 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
         Assert.Equal(WebServiceReleaseAction.SourceBuild, release.Action);
         var provenance = Assert.IsType<SourceBuildReleaseProvenance>(release.Provenance);
         Assert.Equal("build-1", provenance.BuildJobId);
+        Assert.Equal(provenance.BuildJobId, release.ToDto().Provenance!.BuildJobId);
+        Assert.Equal(provenance.SourceRepositoryId, release.ToDto().Provenance!.SourceRepositoryId);
         Assert.Equal(request.Image.Digest, provenance.ImageDigest);
         Assert.Equal(2, release.Deployments.Count);
 

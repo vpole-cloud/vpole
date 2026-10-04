@@ -63,6 +63,18 @@ public sealed record WebService(
 
     public WebService Redeploy() => AdvancePlacementDesiredState();
 
+    public WebService Rollback(WebServiceSpec spec)
+    {
+        EnsureActive();
+        ArgumentNullException.ThrowIfNull(spec);
+        return this with
+        {
+            Spec = spec,
+            ActiveRevision = checked(ActiveRevision + 1),
+            Revision = checked(Revision + 1)
+        };
+    }
+
     public WebService BeginDeletion(DateTime requestedAtUtc)
     {
         if (Lifecycle is DeletingWebServiceLifecycle)

@@ -64,7 +64,11 @@ public sealed record WebServiceReleaseProvenanceDto(
     string NewImageTag,
     string ActorType,
     string? DeploymentTokenId,
-    string? DeploymentTokenName);
+    string? DeploymentTokenName)
+{
+    public string? BuildJobId { get; init; }
+    public string? SourceRepositoryId { get; init; }
+}
 
 public sealed record WebServiceDeploymentTokenDto(
     string Id,
@@ -205,7 +209,11 @@ public static class WebServiceDtoExtensions
                 sourceBuild.NewImageReference,
                 "SourceBuild",
                 null,
-                null),
+                null)
+            {
+                BuildJobId = sourceBuild.BuildJobId,
+                SourceRepositoryId = sourceBuild.SourceRepositoryId
+            },
             _ => throw new ArgumentOutOfRangeException(nameof(provenance), provenance, null)
         };
     public static WebServiceDeploymentTokenDto ToDto(this WebServiceDeploymentToken token) => new(

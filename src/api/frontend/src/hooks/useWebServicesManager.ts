@@ -9,7 +9,6 @@ import {
   fetchAvailableComputeProfiles,
   fetchAvailableDeploymentTargets,
   fetchWebServiceHostnameBindings,
-  fetchWebServiceReleases,
   retryWebServiceDeployment,
   updateWebService,
   updateWebServiceDeployment,
@@ -22,7 +21,6 @@ import type {
   WebServiceDeploymentInput,
   WebServiceDeploymentUpdateInput,
   WebServiceInput,
-  WebServiceReleaseHistory,
 } from '../types'
 import { useWebServiceInventory } from './useWebServiceInventory'
 
@@ -63,9 +61,6 @@ export function useWebServicesManager({
   const [computeProfilesStatusByTarget, setComputeProfilesStatusByTarget] = useState<Record<string, LoadStatus>>({})
   const [hostnameBindingsByDeployment, setHostnameBindingsByDeployment] = useState<
     Record<string, HostnameBinding[]>
-  >({})
-  const [releasesByWebService, setReleasesByWebService] = useState<
-    Record<string, WebServiceReleaseHistory>
   >({})
 
   const loadAvailableTargets = useCallback(async (
@@ -143,17 +138,6 @@ export function useWebServicesManager({
     } catch (loadError) {
       setSubmitError(errorMessage(loadError, 'Unable to load hostname bindings.'))
       return []
-    }
-  }, [apiBaseUrl, tenantId, token])
-
-  const loadReleases = useCallback(async (webServiceId: string) => {
-    try {
-      const history = await fetchWebServiceReleases(apiBaseUrl, webServiceId, token, tenantId)
-      setReleasesByWebService((current) => ({ ...current, [webServiceId]: history }))
-      return history
-    } catch (loadError) {
-      setSubmitError(errorMessage(loadError, 'Unable to load release history.'))
-      return undefined
     }
   }, [apiBaseUrl, tenantId, token])
 
@@ -275,12 +259,10 @@ export function useWebServicesManager({
     computeProfilesByTarget,
     computeProfilesStatusByTarget,
     hostnameBindingsByDeployment,
-    releasesByWebService,
     refresh,
     loadAvailableTargets,
     loadComputeProfiles,
     loadHostnameBindings,
-    loadReleases,
     create,
     update,
     remove,

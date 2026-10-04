@@ -233,12 +233,12 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
         {
             case "redeploy":
                 var redeployed = (await Mediator.Send(new RedeployWebServiceRequest(
-                    created.WebServiceId, TestData.TenantId))).AssertSuccess();
+                    created.WebServiceId, TestData.TenantId, ExpectedRevision: 2))).AssertSuccess();
                 deployments = Assert.IsType<RedeployWebServiceResponse>(redeployed.Value).Deployments;
                 break;
             case "rollback":
                 deployments = (await Mediator.Send(new RollbackWebServiceRequest(
-                    created.WebServiceId, new RollbackWebServiceRequestBody(1), TestData.TenantId)))
+                    created.WebServiceId, new RollbackWebServiceRequestBody(1, 2), TestData.TenantId)))
                     .AssertSuccess().Deployments;
                 break;
             default:

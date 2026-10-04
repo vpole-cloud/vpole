@@ -207,4 +207,12 @@ correlation identifiers. Owner-supported retries confirm one selected operation 
 expected revision/operation. Closing observations does not cancel accepted server work; reload
 fetches durable state. Read errors mark previous evidence stale, unavailable targets remain visible,
 and API/token/tenant changes abort and clear old results. Database pod readiness does not establish
-application connectivity. Full build/runtime log viewing and release recovery are subsequent slices.
+application connectivity. Full build/runtime log viewing is a subsequent slice.
+
+The WebService Releases section owns paginated history and explicit redeploy/rollback recovery.
+It shows actor/time, per-target apply results, source-build/CI links and safe configuration counts.
+Pending releases refresh faster and survive reload; stale reads retain the loaded page and errors
+keep the recovery selection. Both mutations carry the confirmed active revision. Rollback is
+offered only for succeeded prior releases, with backend authority under races. Confirmations
+explain current placement/exposure/compute preservation and the limits around Secret values,
+database contents and movable image tags. Viewer has read-only history.

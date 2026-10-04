@@ -85,7 +85,7 @@ public sealed class GetWebServiceReleasesValidator : AbstractValidator<GetWebSer
     public GetWebServiceReleasesValidator()
     {
         RuleFor(x => x.Id).NotEmpty();
-        RuleFor(x => x.PageNumber).GreaterThan(0).When(x => x.PageNumber.HasValue);
+        RuleFor(x => x.PageNumber).InclusiveBetween(1, 10000).When(x => x.PageNumber.HasValue);
         RuleFor(x => x.PageSize).InclusiveBetween(1, 100).When(x => x.PageSize.HasValue);
     }
 }

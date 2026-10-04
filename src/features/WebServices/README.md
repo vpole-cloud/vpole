@@ -23,6 +23,29 @@ Rollback restores the selected succeeded release's specification while retaining
 current exposure mode. If that mode is Public, a historical specification without a numeric TCP
 target port is rejected before any deployment, quota, release, or outbox mutation.
 
+Release recovery requires the caller's expected active revision: `POST /{id}/redeploy` carries
+`expectedRevision` in the query and `POST /{id}/rollback` carries `targetRevision` and
+`expectedRevision` in its JSON body. A changed revision returns conflict before mutation;
+transactional service/placement fences still reject changes occurring during recovery. Rollback
+accepts only a tenant-owned Succeeded release before the active revision. Every accepted recovery
+creates a new revision and release, including rollback to an identical specification.
+
+Redeploy reapplies the current specification without rebuilding source. Rollback restores image
+reference, literal configuration, probes, autoscaling and logical connection/Secret references;
+current dependency authority is revalidated. Current tags, desired targets, fixed replicas,
+compute, runtime cells, exposure and hostname snapshots are retained. It restores neither database
+contents nor Secret versions/values. Image digest is recorded provenance; rendering still uses
+the image tag, which can point to different bytes later. Source-build provenance exposes job and
+repository IDs for navigation; recovery trace/correlation IDs come from its actual update event.
+
+The resource workspace's Releases section pages bounded history, distinguishes Pending/Succeeded/
+Failed/PartiallyFailed/Superseded, and shows actor/time, image and configuration/reference counts.
+It hides values and native failure messages. Retryable target failures keep a release Pending;
+Operations exposes their current exact state. Viewer can read history, while recovery requires
+a writer, explicit confirmation and a fresh revision. Polling and reconnect refresh persisted
+history; read failures retain the loaded page as stale, scope changes cancel and clear it, and
+conflict keeps the selected context until an explicit refresh and new confirmation.
+
 Shared desired-state changes advance one logical resource revision and transactionally fan out to
 the desired deployment set. Update, rollback, redeploy, image-tag and source-build releases exclude
 targets already being removed; inventory and finalization still retain those targets for cleanup.

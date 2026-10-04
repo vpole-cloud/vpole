@@ -756,7 +756,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
 
         var rollback = (await Mediator.Send(new RollbackWebServiceRequest(
             created.WebServiceId,
-            new RollbackWebServiceRequestBody(1),
+            new RollbackWebServiceRequestBody(1, 2),
             TestData.TenantId))).AssertSuccess();
 
         Assert.Equal(3, rollback.ResourceRevision);
@@ -814,7 +814,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
 
         var result = await Mediator.Send(new RollbackWebServiceRequest(
             created.WebServiceId,
-            new RollbackWebServiceRequestBody(1),
+            new RollbackWebServiceRequestBody(1, 2),
             TestData.TenantId));
 
         var incompatible = Assert.IsType<RollbackWebServicePublicSpecIncompatible>(
@@ -869,7 +869,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
 
         var rollback = (await Mediator.Send(new RollbackWebServiceRequest(
             created.WebServiceId,
-            new RollbackWebServiceRequestBody(1),
+            new RollbackWebServiceRequestBody(1, 2),
             TestData.TenantId))).AssertSuccess();
 
         var service = await Fixture.Database.WebServices()
@@ -918,7 +918,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
 
         var rollback = await Mediator.Send(new RollbackWebServiceRequest(
             created.WebServiceId,
-            new RollbackWebServiceRequestBody(7),
+            new RollbackWebServiceRequestBody(7, 1),
             TestData.TenantId));
         var rollbackError = rollback.AssertFailure();
         var rollbackState = Assert.IsType<RollbackWebServiceStateError>(rollbackError.Value);

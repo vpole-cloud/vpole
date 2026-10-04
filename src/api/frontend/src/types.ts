@@ -370,7 +370,17 @@ export interface WebServiceRelease {
   deployments: WebServiceReleaseDeployment[]
   traceId?: string | null
   correlationId?: string | null
+  actorUserId: string | null
+  actorEmail: string | null
+  spec: WebServiceSpec
+  provenance: {
+    source: string; commitSha: string | null; buildUrl: string | null; imageDigest: string | null;
+    previousImageTag: string; newImageTag: string; actorType: string; deploymentTokenId: string | null;
+    deploymentTokenName: string | null; buildJobId: string | null; sourceRepositoryId: string | null
+  } | null
 }
+
+export interface WebServiceRecoveryResponse { id: string; resourceRevision: number; releaseId: string; deployments: ResourcePlacement[] }
 
 export interface ResourceDeploymentOperation {
   deployment: { id: string; resourceType: string; resourceId: string; resourceGroupId: string; placement: ResourcePlacement; createdAtUtc: string; updatedAtUtc: string }
