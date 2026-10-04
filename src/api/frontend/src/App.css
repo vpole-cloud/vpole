@@ -1504,6 +1504,11 @@
 .operation-summary, .health-counts { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
 .operation-summary code, .health-target code { overflow-wrap: anywhere; }
 .health-target details > summary { cursor: pointer; margin: 12px 0; }
+.runtime-diagnostics { margin-top: 16px; min-width: 0; }
+.runtime-diagnostics-viewer { margin-top: 16px; min-width: 0; }
+.runtime-diagnostics-viewer .field--checkbox { display: flex; align-items: center; gap: 0.5rem; }
+.runtime-diagnostics-viewer .field--checkbox input { width: auto; margin: 0; flex: 0 0 auto; }
+.runtime-diagnostics-viewer :is(h3, p, code) { overflow-wrap: anywhere; }
 .web-service-releases { display: grid; gap: 16px; min-width: 0; }
 .web-service-releases .panel__header { flex-wrap: wrap; }
 .release-record :is(p, code, a, h3), .web-service-releases .field__hint { overflow-wrap: anywhere; }

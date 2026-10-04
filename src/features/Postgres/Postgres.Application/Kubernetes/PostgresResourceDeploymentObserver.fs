@@ -14,6 +14,39 @@ open Pole.Features.ResourceDeployments.Contracts
 open Pole.Workloads
 
 type PostgresResourceDeploymentObserver(loadCluster : LoadPostgresClusterById, clients : IKubernetesClientProvider) =
+    member private _.ResolveDiagnosticsAsync(deployment : ResourceDeploymentReconciliationSnapshot, cancellationToken : Threading.CancellationToken) =
+        task {
+            if deployment.ResourceType <> PostgresResourceDeployment.ResourceType then return null
+            else
+                let! cluster = loadCluster.Invoke(deployment.TenantId, deployment.ResourceId, cancellationToken)
+                match cluster with
+                | None -> return null
+                | Some cluster ->
+                    let identity = WorkloadIdentityLabels(deployment.TenantId, deployment.ResourceGroupId, deployment.IsolationScopeId,
+                                       deployment.RuntimeCellId, deployment.Placement.DeploymentTargetId, "Postgres", deployment.ResourceId, deployment.Id)
+                    let! client = clients.GetAsync(deployment.Placement.DeploymentTargetId, cancellationToken)
+                    let name = PostgresClusterKubernetesBuilder.buildResourceName cluster.Id
+                    let namespaceName = deployment.Placement.KubernetesNamespace
+                    match cluster.Spec.DeploymentMode with
+                    | PostgresDeploymentMode.StatefulSet ->
+                        return! KubernetesWorkloadDiagnostics.StatefulSetAsync(client, name, namespaceName, identity,
+                                    deployment.DesiredGeneration, "pole.io/deployment-generation", true, cancellationToken)
+                    | PostgresDeploymentMode.Operator ->
+                        let! native = client.CustomObjects.GetNamespacedCustomObjectAsync("postgresql.cnpg.io", "v1", namespaceName, "clusters", name, cancellationToken = cancellationToken)
+                        use document = JsonDocument.Parse(JsonSerializer.Serialize(native))
+                        let metadata = KubernetesJson.Deserialize<V1ObjectMeta>(document.RootElement.GetProperty("metadata").GetRawText())
+                        return KubernetesWorkloadDiagnostics.Controller(client, namespaceName, identity, metadata, "Cluster",
+                                   deployment.DesiredGeneration, "pole.io/deployment-generation", true)
+                    | mode -> return invalidOp $"Unsupported PostgreSQL mode '{mode}'."
+        }
+    interface IResourceDeploymentDiagnosticsProvider with
+        member this.DiscoverAsync(deployment, cancellationToken) =
+            task {
+                let! workload = this.ResolveDiagnosticsAsync(deployment, cancellationToken)
+                return! KubernetesWorkloadDiagnostics.DiscoverAsync(workload, cancellationToken)
+            }
+        member this.OpenLogsAsync(deployment, selection, cancellationToken) =
+            KubernetesWorkloadDiagnostics.OpenAsync(Func<Threading.CancellationToken, Threading.Tasks.Task<OwnedKubernetesWorkload>>(fun token -> this.ResolveDiagnosticsAsync(deployment, token)), selection, cancellationToken)
     interface IResourceDeploymentObserver with
         member _.ObserveAsync(deployment, cancellationToken) =
             task {

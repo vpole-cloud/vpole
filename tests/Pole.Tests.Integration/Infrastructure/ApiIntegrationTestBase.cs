@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using MongoDB.Driver;
+using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Domain;
 using Pole.Features.Users.Domain;
@@ -20,6 +21,8 @@ public abstract class ApiIntegrationTestBase : IAsyncLifetime
     protected MongoReplicaSetFixture Fixture { get; }
     protected HttpClient Client => _application!.Client;
     protected virtual bool PrivateAccessEnabled => false;
+    protected virtual void ConfigureTestServices(IServiceCollection services) { }
+    protected Task StopApiAsync(CancellationToken cancellationToken) => _application!.StopAsync(cancellationToken);
     protected FakeGitHubAppClient GitHubClient => _application!.GitHubClient;
     protected void RejectNewDeploymentTargetWorkloads() =>
         _application!.RejectNewDeploymentTargetWorkloads();
@@ -42,7 +45,7 @@ public abstract class ApiIntegrationTestBase : IAsyncLifetime
         await Fixture.ResetDatabaseAsync();
         await SeedDefaultTenantAsync();
         await Fixture.DbContext.StorageProfiles.InsertOneAsync(TestData.SeedStorageProfile());
-        _application = await TestApiApplication.StartAsync(Fixture, PrivateAccessEnabled);
+        _application = await TestApiApplication.StartAsync(Fixture, PrivateAccessEnabled, ConfigureTestServices);
     }
 
     public virtual async Task DisposeAsync()

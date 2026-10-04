@@ -14,8 +14,12 @@ public sealed record ResourceDeploymentObserverDescriptor(
     ResourceTypeId ResourceType,
     Type ObserverType)
 {
+    public Type? DiagnosticsType { get; init; }
     public static ResourceDeploymentObserverDescriptor Create<TObserver>(ResourceTypeId resourceType)
-        where TObserver : class, IResourceDeploymentObserver => new(resourceType, typeof(TObserver));
+        where TObserver : class, IResourceDeploymentObserver => new(resourceType, typeof(TObserver))
+        {
+            DiagnosticsType = typeof(IResourceDeploymentDiagnosticsProvider).IsAssignableFrom(typeof(TObserver)) ? typeof(TObserver) : null
+        };
 }
 
 public sealed record ResourceDeploymentOperationDto(

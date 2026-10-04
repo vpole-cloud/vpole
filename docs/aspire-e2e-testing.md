@@ -106,6 +106,15 @@ The source image is deliberately `FROM scratch`, so the test proves build, push,
 provenance, image-pull-secret, and reconciliation behavior without an external base image. It does
 not wait for an HTTP-ready application workload.
 
+`RuntimeLogsBrowserE2ETests` creates two owned Redis workloads and adds harmless test-only log
+containers to one owned StatefulSet. It verifies container selection, response cancellation,
+same-name pod replacement with an exact UID delete precondition, explicit reconnect and an
+independent healthy target during a real transport outage. A loopback TLS pass-through relay is
+used only by the dedicated test target; pausing it closes that target's connections without
+changing shared lab networking or inspecting credentials. Cleanup restores the relay before
+deleting resources and waits for both owned namespaces to disappear. Production Redis manifests
+are unchanged by this fixture.
+
 ## Parallelism and cleanup
 
 Independent worktrees may run tests against the same lab. They resolve the state and lifecycle lock

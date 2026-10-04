@@ -1,4 +1,15 @@
 export type LoadStatus = 'idle' | 'loading' | 'success' | 'error'
+export interface RuntimeDiagnosticInstance {
+  uid: string; name: string; phase: string; ready: boolean; currentGeneration: boolean; restartCount: number; reasons: string[]
+  containers: { name: string; kind: 'Application' | 'Init'; previousAvailable: boolean }[]; containersTruncated: boolean
+}
+export interface ResourceDeploymentDiagnostics {
+  deploymentId: string; resourceType: string; resourceId: string; targetId: string; deploymentRevision: number; desiredGeneration: number; checkedAtUtc: string
+  diagnostics: { kind: 'Unavailable'; reason: string } | { kind: 'Available'; instances: RuntimeDiagnosticInstance[]; instancesTruncated: boolean
+    events: { objectKind: string; objectName: string; reason: string; count: number; lastSeenAtUtc?: string | null }[]; eventsTruncated: boolean; eventsUnavailableReason?: string | null }
+}
+export interface RuntimeLogSelection { instanceUid: string; container: string; expectedRevision: number; follow: boolean; previous: boolean; tailLines: number }
+export interface RuntimeLogFrame { kind: 'Opened' | 'Output' | 'Ended'; text: string | null; reason: string | null; outputBytes: number }
 export interface AuthViewState {
   initialized: boolean
   authenticated: boolean

@@ -17,6 +17,8 @@ public static class ResourceDeploymentEndpoints
             .MapGetResourceDeploymentSetEndpoint()
             .MapGetResourceDeploymentOperationsEndpoint()
             .MapGetResourceDeploymentObservationEndpoint()
+            .MapGetResourceDeploymentDiagnosticsEndpoint()
+            .MapGetResourceDeploymentRuntimeLogsEndpoint()
             .MapRetryResourceDeploymentEndpoint();
 
         return app;

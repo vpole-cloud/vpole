@@ -66,6 +66,27 @@ public sealed class ResourceDeploymentHealthApiTests(MongoReplicaSetFixture fixt
         Assert.Equal(HttpStatusCode.BadRequest, (await Client.GetAsync($"/api/v1/resource-deployments/operations?{query}")).StatusCode);
 
     [Fact]
+    public async Task Viewer_diagnostics_are_tenant_scoped_and_unsupported_is_explicit_without_native_placement()
+    {
+        var owned = Create(TestData.TenantId); var foreign = Create(ObjectId.GenerateNewId().ToString());
+        await Fixture.DbContext.ResourceDeployments.InsertManyAsync([owned, foreign]);
+        var tenant = await Fixture.DbContext.Tenants.Find(x => x.Id == TestData.TenantId).SingleAsync();
+        await Fixture.DbContext.Tenants.ReplaceOneAsync(x => x.Id == tenant.Id, tenant with
+        {
+            Members = ImmutableList.Create(TenantFactory.CreateMember(TestData.TenantId, TestData.UserId, TestData.UserEmail, TenantRole.Viewer))
+        });
+        var uri = $"/api/v1/resource-deployments/{owned.Id.ToUpperInvariant()}/diagnostics";
+        var value = (await Client.GetFromJsonAsync<ResourceDeploymentDiagnosticsDto>(uri))!;
+        Assert.Equal(owned.Id, value.DeploymentId); Assert.Equal(owned.ResourceId, value.ResourceId);
+        Assert.Equal(owned.ResolvedPlacement.DeploymentTargetId, value.TargetId);
+        Assert.Equal("Unsupported", Assert.IsType<UnavailableWorkloadDiagnostics>(value.Diagnostics).Reason);
+        Assert.DoesNotContain("private-native-namespace", await Client.GetStringAsync(uri));
+        Assert.Equal(HttpStatusCode.NotFound, (await Client.GetAsync($"/api/v1/resource-deployments/{foreign.Id}/diagnostics")).StatusCode);
+        Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Client.GetAsync(uri)).StatusCode);
+    }
+
+    [Fact]
     public async Task Observation_discards_native_evidence_when_persisted_revision_changes_during_read()
     {
         var deployment = Create(TestData.TenantId);

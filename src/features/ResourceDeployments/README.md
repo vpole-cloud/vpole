@@ -44,3 +44,37 @@ WebServices use their owner retry endpoint to preserve release bookkeeping. Tena
 link to resources; supported precise retries appear in the owner's Operations section. Browser
 reads clear on tenant/token/API scope changes, refresh on reconnect and explicitly mark stale
 observations. The API is authoritative for Viewer versus writer access.
+
+## Runtime logs and Kubernetes diagnostics
+
+`GET /resource-deployments/{deploymentId}/diagnostics` discovers a bounded sample of owned
+instances, their eligible regular/init containers and Kubernetes warning events. Providers opt in
+through `IResourceDeploymentDiagnosticsProvider` on the same validated descriptor catalog. The
+server resolves the tenant-owned placement, native controller and UID ownership chain; callers do
+not choose a namespace, target or arbitrary pod name. Failing and earlier-generation owned pods
+remain inspectable. Ephemeral containers are excluded. Container discovery retains at most 32
+regular and 32 init containers per instance and reports truncation. Warning events retain only
+safe reason codes, object names, counts and times, separately from audit and reconciliation state.
+
+`GET /resource-deployments/{deploymentId}/runtime-logs` accepts the discovered instance UID,
+container, expected deployment revision, recent/follow mode, previous-container selection and
+1–500 tail lines. Viewer access is allowed within the active tenant. Native ownership is verified
+before opening, immediately after opening, before returning the first frame, periodically and at
+EOF. A pod replacement or superseded placement ends that read explicitly; another pod with the
+same name is never selected automatically. Kubernetes' pod-log API has no UID precondition, so
+these checks bound replacement races rather than providing an atomic lock on the native read.
+
+Output is finite, UTF-8-safe NDJSON with Opened/Output/Ended frames and fixed terminal reason
+codes. `RuntimeDiagnostics` configures `MaximumBytes` (default 1 MiB, allowed 4 KiB–4 MiB),
+`LifetimeSeconds` (120, allowed 10–300) and `OwnershipCheckSeconds` (5, allowed 1–10).
+Each periodic ownership check has a five-second budget and ends a stalled read with Timeout.
+Four readers may run concurrently per API process; a fifth receives CapacityBusy. Closing the
+response, switching browser scope or application shutdown cancels and disposes only that read's
+upstream response, preserving the cached target client. No runtime output is persisted.
+
+Every reconnect opens a new recent window and may overlap prior output; there is no durable
+cursor or archive. Target outages, credentials lacking log permissions, missing/replaced instances,
+unsupported providers, lifetime/output bounds and a follow connection ending are explicit.
+Generated diagnostics omit raw native messages and configuration, but arbitrary workload output
+can contain sensitive values and is displayed as plain text. The browser keeps at most 65,536
+characters, reports discarded output and clears it when the view closes or scope changes.
