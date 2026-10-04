@@ -244,6 +244,7 @@
 
 .hero-panel__utility {
   display: flex;
+  min-width: 0;
 }
 
 .session-card {
@@ -260,6 +261,7 @@
 
 .session-card__value {
   color: var(--color-text-strong);
+  overflow-wrap: anywhere;
 }
 
 .session-card__actions {
@@ -1488,3 +1490,10 @@
 .secret-value-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 1rem; align-items: end; }
 .secret-value-row .field > .button { justify-self: start; }
 @media (max-width: 640px) { .secret-value-row { grid-template-columns: minmax(0, 1fr); } }
+
+.resource-health, .resource-operations { display: grid; gap: 16px; min-width: 0; }
+.health-target, .operation-target { min-width: 0; }
+.operation-target, .operation-summary { border: 1px solid var(--color-border); border-radius: 12px; padding: 16px; }
+.operation-summary, .health-counts { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.operation-summary code, .health-target code { overflow-wrap: anywhere; }
+.health-target details > summary { cursor: pointer; margin: 12px 0; }

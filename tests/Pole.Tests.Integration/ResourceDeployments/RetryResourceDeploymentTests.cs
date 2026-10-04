@@ -38,7 +38,7 @@ public sealed class RetryResourceDeploymentTests(
         var result = await Mediator.Send(
             new RetryResourceDeploymentRequest(
                 DeploymentId,
-                OtherTenantId));
+                OtherTenantId, deployment.Revision, deployment.DesiredOperation.ToString()));
 
         var notFound = AssertRetryError<ResourceDeploymentNotFound>(result);
         Assert.Equal(DeploymentId, notFound.DeploymentId);
@@ -60,7 +60,7 @@ public sealed class RetryResourceDeploymentTests(
         var result = await Mediator.Send(
             new RetryResourceDeploymentRequest(
                 DeploymentId,
-                TenantId));
+                TenantId, deployment.Revision, deployment.DesiredOperation.ToString()));
 
         var notRetryable =
             AssertRetryError<ResourceDeploymentNotRetryable>(result);
@@ -83,7 +83,7 @@ public sealed class RetryResourceDeploymentTests(
         var result = await Mediator.Send(
             new RetryResourceDeploymentRequest(
                 DeploymentId,
-                TenantId));
+                TenantId, deployment.Revision, deployment.DesiredOperation.ToString()));
 
         var retried = AssertRetrySuccess(result);
         Assert.Equal(DeploymentId, retried.Id);
@@ -114,12 +114,27 @@ public sealed class RetryResourceDeploymentTests(
         using var session = await DbContext.Client.StartSessionAsync();
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            retry(TenantId, DeploymentId, session));
+            retry(TenantId, DeploymentId, 1, ResourceDeploymentOperation.Apply, session));
 
         Assert.Contains(
             "logical resource transaction",
             exception.Message,
             StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Retry_rejects_stale_revision_or_changed_operation_without_outbox(bool staleRevision)
+    {
+        var deployment = CreateFailedDeployment(retryable: true);
+        await DbContext.ResourceDeployments.InsertOneAsync(deployment);
+        var result = await Mediator.Send(new RetryResourceDeploymentRequest(DeploymentId, TenantId,
+            staleRevision ? deployment.Revision + 1 : deployment.Revision, staleRevision ? "Apply" : "Delete"));
+        AssertRetryError<ResourceDeploymentRetryConflict>(result);
+        Assert.Equal(deployment.Revision, (await LoadDeploymentAsync()).Revision);
+        Assert.IsType<FailedResourceDeploymentState>((await LoadDeploymentAsync()).State);
+        Assert.Equal(0, await DbContext.OutboxMessages.CountDocumentsAsync(FilterDefinition<Pole.Features.Outbox.Application.Model.OutboxMessage>.Empty));
     }
 
     private Task<ResourceDeployment> LoadDeploymentAsync() =>

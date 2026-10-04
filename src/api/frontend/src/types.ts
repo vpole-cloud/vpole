@@ -368,6 +368,35 @@ export interface WebServiceRelease {
   completedAtUtc?: string | null
   failureMessage?: string | null
   deployments: WebServiceReleaseDeployment[]
+  traceId?: string | null
+  correlationId?: string | null
+}
+
+export interface ResourceDeploymentOperation {
+  deployment: { id: string; resourceType: string; resourceId: string; resourceGroupId: string; placement: ResourcePlacement; createdAtUtc: string; updatedAtUtc: string }
+  resourceDisplayName: string | null
+  phase: 'Waiting' | 'Accepted' | 'Running' | 'Applied' | 'Failed' | 'Deleted'
+  attemptCount: number
+  sinceUtc: string
+  retryable: boolean
+  retryNotBeforeUtc: string | null
+  operationGeneration?: number
+  targetDisplayName?: string | null
+}
+
+export interface ResourceDeploymentOperationsPage extends PaginatedResponse<ResourceDeploymentOperation> {
+  counts: { waiting: number; accepted: number; running: number; applied: number; failed: number }
+  checkedAtUtc: string
+}
+
+export interface ObservedWorkloadPod { name: string; phase: string; ready: boolean; currentGeneration: boolean; restartCount: number; reasons: string[] }
+export type WorkloadObservation = { kind: 'Unavailable'; reason: string } | {
+  kind: 'Observed'; ready: boolean; rolloutCurrent: boolean; desiredReplicas: number; currentReplicas: number;
+  updatedReplicas: number; readyReplicas: number; availableReplicas: number; podsTruncated: boolean;
+  pods: ObservedWorkloadPod[]; events: { reason: string; count: number; lastSeenAtUtc: string | null }[]; eventsUnavailableReason: string | null
+}
+export interface ResourceDeploymentObservation {
+  deploymentId: string; deploymentRevision: number; desiredGeneration: number; checkedAtUtc: string; observation: WorkloadObservation
 }
 
 export interface WebServiceReleaseHistory {

@@ -47,6 +47,7 @@ beforeEach(() => {
       }
       return pendingDetails ?? json(redis)
     }
+    if (url.pathname.endsWith('/resource-deployments/operations')) return json({ items: [], totalCount: 0, pageNumber: 1, pageSize: 10, checkedAtUtc: new Date().toISOString(), counts: { waiting: 0, accepted: 0, running: 0, applied: 0, failed: 0 } })
     if (url.pathname.endsWith('/retry')) return json({})
     if (url.pathname.endsWith('/web-services')) return json({ items: [], totalCount: 0, pageNumber: 1, pageSize: 8 })
     if (url.pathname.endsWith('/resource-groups')) return json({ items: [{ id: 'group', name: 'Applications', tags: [], description: '', resourceCount: 1 }], totalCount: 1, pageNumber: 1, pageSize: 8 })
@@ -137,7 +138,7 @@ it('has read-only viewer controls and represents missing placement without fake 
 it('retries only failed deployment, including failed deletion, and confirms delete before sending it', async () => {
   redis.placement!.status = 'Failed'; redis.placement!.failureCode = 'TransportFailure'; redis.lifecycle = 'Deleting'
   await open(); await click('Retry deployment')
-  expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith('/resource-deployments/deployment/retry') && init?.method === 'POST')).toBe(true)
+  expect(fetchMock.mock.calls.some(([url, init]) => new URL(String(url)).pathname.endsWith('/resource-deployments/deployment/retry') && init?.method === 'POST')).toBe(true)
   expect(text()).not.toContain('Delete Redis')
   redis.lifecycle = 'Active'; redis.placement!.status = 'Applied'; await click('Refresh Redis'); await click('Delete Redis')
   expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false)

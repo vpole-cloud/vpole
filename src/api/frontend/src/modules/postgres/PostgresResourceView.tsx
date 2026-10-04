@@ -1,3 +1,5 @@
+import { ResourceHealth } from '../../ui/ResourceHealth'
+import { ResourceOperations } from '../../ui/ResourceOperations'
 import { useEffect, useState } from 'react'
 import { deletePostgresCluster, fetchAvailableComputeProfiles, fetchAvailableDeploymentTargets, fetchAvailableStorageProfiles, fetchIsolationScopes, fetchPostgresCluster, fetchResourceGroup, retryResourceDeployment, updatePostgresCluster, validationMessage } from '../../api'
 import { useResource } from '../../hooks/useResource'
@@ -53,7 +55,7 @@ export function PostgresResourceView({ id, section, active, version, onSection, 
     {details.error && <Notice tone="error">{details.error} Last fetched metadata is shown.</Notice>}
     {cluster.lifecycle === 'Deleting' && <Notice>This database is being deleted. Wait for cleanup to complete.</Notice>}
     <Tabs id={panelId} label={`${cluster.name} sections`} variant="section" activeId={section} onSelect={(section) => onSection(section as PostgresSection)}
-      tabs={[{ id: 'overview', label: 'Overview' }, { id: 'configuration', label: 'Configuration' }, ...(tenant.canManage ? [{ id: 'credentials', label: 'Credentials' }] : [])]} />
+      tabs={[{ id: 'overview', label: 'Overview' }, { id: 'operations', label: 'Operations' }, { id: 'configuration', label: 'Configuration' }, ...(tenant.canManage ? [{ id: 'credentials', label: 'Credentials' }] : [])]} />
     <TabPanel id={panelId} tabId="overview" activeId={section}><section className="panel"><div className="panel__header"><h2 className="panel__title">Database overview</h2><StatusBadge>{cluster.lifecycle}</StatusBadge></div>
       <dl className="web-service-facts"><div><dt>Resource group</dt><dd><a href={navigation.resourceHref({ resourceTypeId: 'pole/resource-group', resourceId: cluster.groupId })}>{group.resource?.name ?? cluster.groupId}</a></dd></div>
         <div><dt>Isolation scope</dt><dd>{scopes.resource?.find((scope) => scope.id === cluster.placement.isolationScopeId)?.name ?? cluster.placement.isolationScopeId}</dd></div>
@@ -62,11 +64,13 @@ export function PostgresResourceView({ id, section, active, version, onSection, 
         <div><dt>Revision</dt><dd>{cluster.revision}</dd></div><div><dt>Group tags</dt><dd>{group.resource?.tags.join(', ') || 'No tags'}</dd></div></dl>
       <p className="field__hint">This database has one deployment target. Network access and application credentials are configured separately.</p></section>
       <PlacementSummary placement={cluster.placement} targetName={targets.resource?.find((target) => target.id === cluster.placement.deploymentTargetId)?.displayName} />
+      <ResourceHealth placements={[cluster.placement]} active={active && section === 'overview'} refreshVersion={version} targetNames={Object.fromEntries((targets.resource ?? []).map((target) => [target.id, target.displayName]))} />
       {active && section === 'overview' && <ResourceEndpoints resourceType="pole/postgresql" resourceId={id} />}
       {tenant.canManage && cluster.placement.status === 'Failed' && <Button disabled={mutation.busy} onClick={() => {
-        void mutation.run((signal) => retryResourceDeployment(api.baseUrl, cluster.placement.deploymentId, api.token, api.tenantId, signal), async () => { await details.refresh(); actions.changed() }).catch(() => {})
+        void mutation.run((signal) => retryResourceDeployment(api.baseUrl, cluster.placement.deploymentId, cluster.placement.deploymentRevision ?? 1, cluster.placement.desiredOperation ?? "Apply", api.token, api.tenantId, signal), async () => { await details.refresh(); actions.changed() }).catch(() => {})
       }}>Retry deployment</Button>}
     </TabPanel>
+    <TabPanel id={panelId} tabId="operations" activeId={section}>{active && section === "operations" && <ResourceOperations filter={{ resourceType: "pole/postgresql", resourceId: id }} onRetry={(operation, signal) => retryResourceDeployment(api.baseUrl, operation.deployment.id, operation.deployment.placement.deploymentRevision!, operation.deployment.placement.desiredOperation!, api.token, api.tenantId, signal)} />}</TabPanel>
     <TabPanel id={panelId} tabId="configuration" activeId={section}>{visited && (canWrite ? <PostgresConfiguration cluster={cluster} onDirtyChange={setConfigurationDirty} onSaved={async () => { await details.refresh(); actions.changed() }} /> : <EmptyState title="Database configuration is read-only." />)}</TabPanel>
     <TabPanel id={panelId} tabId="credentials" activeId={section}>
       {active && section === 'credentials' && canWrite && <PostgresCredentials key={`${scopeKey}:${tenant.canManage}`} cluster={cluster} onDirtyChange={setCredentialsDirty} onChanged={async () => { await details.refresh(); actions.changed() }} />}

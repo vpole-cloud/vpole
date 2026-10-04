@@ -14,9 +14,11 @@ import { useWebService } from './useWebService'
 import { serviceSections, type ServiceSection } from './workspaceState'
 import { WebServiceDependencies } from './WebServiceDependencies'
 import { WebServiceDomains } from './WebServiceDomains'
+import { WebServiceOperations } from './WebServiceOperations'
+import { ResourceHealth } from '../../ui/ResourceHealth'
 
 const sectionLabels: Record<ServiceSection, string> = {
-  overview: 'Overview', configuration: 'Configuration', dependencies: 'Dependencies', deployments: 'Deployments', domains: 'Domains', builds: 'Builds',
+  overview: 'Overview', configuration: 'Configuration', dependencies: 'Dependencies', deployments: 'Deployments', domains: 'Domains', builds: 'Builds', operations: 'Operations',
 }
 
 export function WebServiceResourceView({ id, section, active, refreshVersion, groups, onSection, onLoaded, onDirtyChange, onChanged }:
@@ -104,8 +106,10 @@ export function WebServiceResourceView({ id, section, active, refreshVersion, gr
         </div>)}</div>
         <p className="field__hint">Deployment status reports reconciliation. Inspect targets, generations and hostnames in Deployments.</p>
       </section>
+      <ResourceHealth placements={service.deployments} active={active && section === 'overview'} refreshVersion={refreshVersion} />
       {active && section === 'overview' && <ResourceEndpoints resourceType="pole/web-service" resourceId={id} />}
     </TabPanel>
+    <TabPanel id={panelId} tabId="operations" activeId={section}>{active && section === "operations" && <WebServiceOperations id={id} active />}</TabPanel>
     <TabPanel id={panelId} tabId="configuration" activeId={section}>
       {visited.includes('configuration') && (tenant.canManage ? <div className="web-service-editor"><WebServiceForm key={formVersion}
         mode="edit" initialValue={service} resourceGroups={groups} availableTargets={manager.availableTargets}

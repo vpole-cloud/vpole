@@ -167,7 +167,7 @@ it('confirms deletion before issuing a tenant-scoped mutation', async () => {
 it('allows a writer to retry failed deletion without enabling configuration changes', async () => {
   cluster.lifecycle = 'Deleting'; cluster.placement.status = 'Failed'; cluster.placement.desiredOperation = 'Delete'
   await open(); await click('Retry deployment')
-  expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith('/resource-deployments/deployment/retry') && init?.method === 'POST')).toBe(true)
+  expect(fetchMock.mock.calls.some(([url, init]) => new URL(String(url)).pathname.endsWith('/resource-deployments/deployment/retry') && init?.method === 'POST')).toBe(true)
   expect(text()).not.toContain('Delete database')
   await tab('Configuration'); expect(text()).toContain('Database configuration is read-only.')
 })

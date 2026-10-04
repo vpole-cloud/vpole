@@ -114,7 +114,7 @@ public sealed class WebServiceResourceDeploymentAdapter(
                 context.Deployment.IsolationScopeId,
                 context.Deployment.RuntimeCellId,
                 context.Deployment.Placement.DeploymentTargetId,
-                "WebService",
+                WebServiceResourceDeployment.KubernetesResourceTypeLabel,
                 context.Deployment.ResourceId,
                 context.Deployment.Id)) with
         { ResolvedEnvironment = resolvedEnvironment.ToImmutable() };

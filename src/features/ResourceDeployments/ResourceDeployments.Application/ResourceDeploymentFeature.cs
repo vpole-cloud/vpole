@@ -5,6 +5,8 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Pole.ASP.Helpers;
 using Pole.Features.ResourceDeployments.Application.Common;
+using Pole.Features.ResourceDeployments.Application.Observation;
+using Pole.Features.ResourceDeployments.Application.Persistence.Reads;
 using Pole.Features.ResourceDeployments.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Application.Jobs;
 using Pole.Features.ResourceDeployments.Application.Kubernetes;
@@ -36,6 +38,9 @@ public static class ResourceDeploymentFeature
                 .Value);
 
         services.AddResourceDeploymentPersistence();
+        services.TryAddScoped<ResourceDeploymentOperationsPersistence>();
+        services.TryAddSingleton<ResourceDeploymentObserverCatalog>();
+        services.TryAddScoped<ObserveResourceDeployment>();
         services.TryAddSingleton<ResourceIngressPolicyCatalog>();
         services.TryAddScoped<KubernetesResourceIngressPolicyManager>();
         services.TryAddScoped<ReconcileResourceIngressPolicy>(serviceProvider =>
@@ -60,6 +65,7 @@ public static class ResourceDeploymentFeature
     public static void ValidateResourceDeploymentContributions(this IServiceProvider services)
     {
         _ = services.GetRequiredService<ResourceDeploymentAdapterCatalog>();
+        _ = services.GetRequiredService<ResourceDeploymentObserverCatalog>();
         _ = services.GetRequiredService<ResourceIngressPolicyCatalog>();
     }
 

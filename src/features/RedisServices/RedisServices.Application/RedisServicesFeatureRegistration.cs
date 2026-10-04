@@ -1,3 +1,4 @@
+using Pole.Features.ResourceDeployments.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pole.Database;
@@ -36,6 +37,8 @@ public static class RedisServicesFeatureRegistration
                 .GetRequiredService<MongoRunTransaction>()
                 .InvokeOutcomeAsync<FinalizeRedisDeletionOutcome>);
         services.TryAddScoped<RedisResourceDeploymentAdapter>();
+        services.TryAddScoped<RedisResourceDeploymentObserver>();
+        services.AddSingleton(ResourceDeploymentObserverDescriptor.Create<RedisResourceDeploymentObserver>(RedisResourceDeployment.ResourceType));
         services.AddSingleton(RedisResourceDeploymentAdapterRegistration.Descriptor);
         return services;
     }

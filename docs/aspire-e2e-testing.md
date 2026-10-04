@@ -139,3 +139,8 @@ and builds once, and serializes test projects on the constrained runner. Local d
 the plain `dotnet test` command. Failure diagnostics include node conditions, pods, and events for
 every target; the worktree-scoped leak audit still runs after test failure. Frontend unit tests and
 the frontend build run in a separate job.
+
+`HealthBrowserE2ETests` creates an owned private nginx workload with a deliberately failing readiness
+probe. It verifies Applied separately from Not ready, bounded owned warning context, reload after
+an accepted new generation, and convergence to Ready in resource/group/tenant views. Screenshots
+cover desktop/mobile and both themes without native messages or credential payloads.

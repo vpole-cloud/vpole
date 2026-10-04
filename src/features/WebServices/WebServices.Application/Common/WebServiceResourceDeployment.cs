@@ -7,6 +7,8 @@ namespace Pole.Features.WebServices.Application.Common;
 
 public static class WebServiceResourceDeployment
 {
+    public const string KubernetesResourceTypeLabel = "WebService";
+
     public static ResourceTypeId ResourceType { get; } =
         ResourceTypeId.Create("pole/web-service");
 }

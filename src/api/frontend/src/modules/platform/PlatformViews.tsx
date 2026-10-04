@@ -1,3 +1,4 @@
+import { ResourceOperations } from '../../ui/ResourceOperations'
 import { useEffect, useState } from 'react'
 import { OverviewPage } from '../../components/OverviewPage'
 import { IntegrationsPage } from '../../components/IntegrationsPage'
@@ -19,6 +20,7 @@ export function OverviewView() {
   const overview = useOverviewData(useTenantApiOptions())
   return <><OverviewPage authState={auth}
     onValidateIdentity={() => { void overview.runIdentityCheck() }} overview={overview} />
+    {tenant.active && <ResourceOperations />}
     {tenant.active && <section className="panel" aria-label="Resource catalogs"><h2 className="panel__title">Resource catalogs</h2>
       <p className="field__hint">Open a resource catalog in the active tenant.</p><div className="row-actions">
         {resourceTypes.map((type) => <a key={type.id} className="button" href={navigation.resourceHref({ resourceTypeId: type.id, resourceId: 'catalog' })}>{type.label}</a>)}

@@ -1,105 +1,38 @@
-import { useEffect, useState } from 'react'
-import {
-  fetchProtectedGreeting,
-  fetchResourceGroups,
-  fetchWebServices,
-} from '../api'
+import { useState } from 'react'
+import { fetchProtectedGreeting, fetchResourceGroups, fetchWebServices } from '../api'
 import type { LoadStatus, OverviewData } from '../types'
+import { useResource } from './useResource'
+import { useScopedMutation } from './useScopedMutation'
+import { useVisibleRefresh } from './useVisibleRefresh'
 
-interface UseOverviewDataOptions {
-  apiBaseUrl: string
-  token?: string
-  tenantId?: string
-  enabled: boolean
-}
+interface UseOverviewDataOptions { apiBaseUrl: string; token?: string; tenantId?: string; enabled: boolean }
+const emptyOverview: OverviewData = { resourceGroups: [], webServices: [] }
 
-const emptyOverview: OverviewData = {
-  resourceGroups: [],
-  webServices: [],
-}
-
-export function useOverviewData({
-  apiBaseUrl,
-  token,
-  tenantId,
-  enabled,
-}: UseOverviewDataOptions) {
-  const [status, setStatus] = useState<LoadStatus>('idle')
-  const [error, setError] = useState<string>('')
-  const [data, setData] = useState<OverviewData>(emptyOverview)
-  const [identityStatus, setIdentityStatus] = useState<LoadStatus>('idle')
-  const [identityMessage, setIdentityMessage] = useState<string>('')
-
-  useEffect(() => {
-    if (!enabled) {
-      return
-    }
-
-    const controller = new AbortController()
-
-    const loadOverview = async () => {
-      setStatus('loading')
-      setError('')
-
-      try {
-        const [resourceGroups, webServices] = await Promise.all([
-          fetchResourceGroups(apiBaseUrl, token, tenantId, controller.signal),
-          fetchWebServices(apiBaseUrl, token, tenantId, controller.signal),
-        ])
-
-        setData({
-          resourceGroups: resourceGroups.items,
-          webServices: webServices.items,
-        })
-        setStatus('success')
-      } catch (loadError) {
-        if (controller.signal.aborted) {
-          return
-        }
-
-        const message =
-          loadError instanceof Error
-            ? loadError.message
-            : 'Unable to load the overview.'
-
-        setError(message)
-        setData(emptyOverview)
-        setStatus('error')
-      }
-    }
-
-    void loadOverview()
-
-    return () => {
-      controller.abort()
-    }
-  }, [apiBaseUrl, enabled, tenantId, token])
-
+export function useOverviewData({ apiBaseUrl, token, tenantId, enabled }: UseOverviewDataOptions) {
+  const scope = `${apiBaseUrl}:${token}:${tenantId}:${enabled}`
+  const overview = useResource(scope, async (signal) => {
+    if (!enabled) return emptyOverview
+    const [groups, services] = await Promise.all([
+      fetchResourceGroups(apiBaseUrl, token, tenantId, signal), fetchWebServices(apiBaseUrl, token, tenantId, signal),
+    ])
+    return { resourceGroups: groups.items, webServices: services.items }
+  })
+  useVisibleRefresh(enabled, overview.refresh)
+  const mutation = useScopedMutation(scope)
+  const [identity, setIdentity] = useState({ scope, message: '', status: 'idle' as LoadStatus })
   const runIdentityCheck = async () => {
-    setIdentityStatus('loading')
-    setIdentityMessage('')
-
+    if (!enabled || !token) return
+    setIdentity({ scope, message: '', status: 'loading' })
     try {
-      const message = await fetchProtectedGreeting(apiBaseUrl, token)
-      setIdentityMessage(message)
-      setIdentityStatus('success')
-    } catch (identityError) {
-      const message =
-        identityError instanceof Error
-          ? identityError.message
-          : 'Unable to validate the current identity.'
-
-      setIdentityMessage(message)
-      setIdentityStatus('error')
-    }
+      await mutation.run((signal) => fetchProtectedGreeting(apiBaseUrl, token, signal), (message) => setIdentity({ scope, message, status: 'success' }))
+    } catch { setIdentity({ scope, message: 'Unable to validate the current identity.', status: 'error' }) }
   }
-
   return {
-    status,
-    error,
-    data,
-    identityStatus,
-    identityMessage,
+    status: enabled ? overview.status : 'idle' as LoadStatus,
+    error: enabled ? overview.error : '',
+    data: enabled ? overview.resource ?? emptyOverview : emptyOverview,
+    identityStatus: identity.scope === scope ? identity.status : 'idle' as LoadStatus,
+    identityMessage: identity.scope === scope ? identity.message : '',
     runIdentityCheck,
   }
 }
