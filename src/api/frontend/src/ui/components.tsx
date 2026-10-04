@@ -48,8 +48,8 @@ export function DataTable<T>({ label, items, columns, itemKey, selectedKey }:
   </div>
 }
 
-export function ConfirmationDialog({ title, children, confirmLabel, busy = false, onCancel, onConfirm }:
-  { title: string; children: ReactNode; confirmLabel: string; busy?: boolean; onCancel: () => void; onConfirm: () => void }) {
+export function ConfirmationDialog({ title, children, confirmLabel, busy = false, confirmDisabled = false, onCancel, onConfirm }:
+  { title: string; children: ReactNode; confirmLabel: string; busy?: boolean; confirmDisabled?: boolean; onCancel: () => void; onConfirm: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const cancel = useRef<HTMLButtonElement>(null)
   const titleId = useId()
@@ -70,7 +70,7 @@ export function ConfirmationDialog({ title, children, confirmLabel, busy = false
     <h2 id={titleId}>{title}</h2><div>{children}</div>
     <div className="ui-dialog__actions">
       <button className="button" ref={cancel} disabled={busy} onClick={onCancel} type="button">Cancel</button>
-      <Button variant="danger" disabled={busy} onClick={onConfirm}>{busy ? 'Working…' : confirmLabel}</Button>
+      <Button variant="danger" disabled={busy || confirmDisabled} onClick={onConfirm}>{busy ? 'Working…' : confirmLabel}</Button>
     </div>
   </dialog>
 }

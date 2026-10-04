@@ -108,7 +108,7 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
         await SendAsync(
             fixture.CreateAuthenticatedRequest(
                 HttpMethod.Post,
-                $"/api/v1/web-services/{webServiceId}/redeploy",
+                $"/api/v1/web-services/{webServiceId}/redeploy?expectedRevision=1",
                 fixture.Alpha,
                 fixture.Alpha.DefaultTenantId),
             cancellationToken);

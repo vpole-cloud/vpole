@@ -5,18 +5,15 @@ import type {
   AvailableDeploymentTarget,
   WebService,
   WebServiceDeploymentInput,
-  WebServiceReleaseHistory,
 } from '../types'
 
 interface WebServiceDeploymentsPanelProps {
   webService: WebService
   availableTargets: AvailableDeploymentTarget[]
   computeProfilesByTarget: Record<string, AvailableComputeProfile[]>
-  releases?: WebServiceReleaseHistory
   canManage: boolean
   onDirtyChange?: (dirty: boolean) => void
   onLoadComputeProfiles: (targetId: string) => Promise<AvailableComputeProfile[]>
-  onLoadReleases: (webServiceId: string) => Promise<WebServiceReleaseHistory | undefined>
   onAddDeployment: (id: string, input: WebServiceDeploymentInput) => Promise<unknown>
   onUpdateDeployment: (id: string, deploymentId: string, input: { fixedReplicas: number; computeProfileId?: string }) => Promise<unknown>
   onRemoveDeployment: (id: string, deploymentId: string) => Promise<unknown>
@@ -34,11 +31,9 @@ export function WebServiceDeploymentsPanel({
   webService,
   availableTargets,
   computeProfilesByTarget,
-  releases,
   canManage,
   onDirtyChange,
   onLoadComputeProfiles,
-  onLoadReleases,
   onAddDeployment,
   onUpdateDeployment,
   onRemoveDeployment,
@@ -52,11 +47,10 @@ export function WebServiceDeploymentsPanel({
   const run = (action: Promise<unknown>) => { void action.catch(() => {}) }
 
   useEffect(() => {
-    void onLoadReleases(webService.id)
     webService.deployments.forEach((deployment) => {
       void onLoadComputeProfiles(deployment.deploymentTargetId)
     })
-  }, [onLoadComputeProfiles, onLoadReleases, webService.deployments, webService.id])
+  }, [onLoadComputeProfiles, webService.deployments, webService.id])
 
   const unusedTargets = useMemo(
     () => availableTargets.filter((target) => !webService.deployments.some(
@@ -125,11 +119,6 @@ export function WebServiceDeploymentsPanel({
 
       {canManage && unusedTargets.length > 0 && <div className="form-grid"><select className="field__control" value={addTargetId} onChange={(event) => { setAddTargetId(event.target.value); setAddComputeProfileId(''); if (event.target.value) void onLoadComputeProfiles(event.target.value) }}><option value="">Add an eligible target</option>{unusedTargets.map((target) => <option key={target.id} value={target.id}>{target.displayName}</option>)}</select><input className="field__control" type="number" min="1" max="1000" value={addReplicas} onChange={(event) => setAddReplicas(event.target.value)} /><select className="field__control" value={addComputeProfileId} onChange={(event) => setAddComputeProfileId(event.target.value)}><option value="">Target default compute</option>{addProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.displayName}</option>)}</select><button className="button button--primary" type="button" disabled={!addTargetId} onClick={() => void addTarget()}>Add target</button></div>}
 
-      <div className="form-message">
-        <strong>Releases</strong>
-        {!releases && <p>Loading release history…</p>}
-        {releases?.releases.items.map((release) => <p key={release.id}>Revision {release.resourceRevision}: {release.action} · {release.outcome} ({release.deployments.length} deployment entries)</p>)}
-      </div>
     </section>
   )
 }

@@ -16,9 +16,10 @@ import { WebServiceDependencies } from './WebServiceDependencies'
 import { WebServiceDomains } from './WebServiceDomains'
 import { WebServiceOperations } from './WebServiceOperations'
 import { ResourceHealth } from '../../ui/ResourceHealth'
+import { WebServiceReleases } from './WebServiceReleases'
 
 const sectionLabels: Record<ServiceSection, string> = {
-  overview: 'Overview', configuration: 'Configuration', dependencies: 'Dependencies', deployments: 'Deployments', domains: 'Domains', builds: 'Builds', operations: 'Operations',
+  overview: 'Overview', configuration: 'Configuration', dependencies: 'Dependencies', deployments: 'Deployments', domains: 'Domains', builds: 'Builds', releases: 'Releases', operations: 'Operations',
 }
 
 export function WebServiceResourceView({ id, section, active, refreshVersion, groups, onSection, onLoaded, onDirtyChange, onChanged }:
@@ -110,6 +111,7 @@ export function WebServiceResourceView({ id, section, active, refreshVersion, gr
       {active && section === 'overview' && <ResourceEndpoints resourceType="pole/web-service" resourceId={id} />}
     </TabPanel>
     <TabPanel id={panelId} tabId="operations" activeId={section}>{active && section === "operations" && <WebServiceOperations id={id} active />}</TabPanel>
+    <TabPanel id={panelId} tabId="releases" activeId={section}>{active && section === 'releases' && <WebServiceReleases service={service} onChanged={async () => { const updated = await details.refresh(); onChanged(); return updated }} />}</TabPanel>
     <TabPanel id={panelId} tabId="configuration" activeId={section}>
       {visited.includes('configuration') && (tenant.canManage ? <div className="web-service-editor"><WebServiceForm key={formVersion}
         mode="edit" initialValue={service} resourceGroups={groups} availableTargets={manager.availableTargets}
@@ -130,8 +132,8 @@ export function WebServiceResourceView({ id, section, active, refreshVersion, gr
     <TabPanel id={panelId} tabId="deployments" activeId={section}>
       {visited.includes('deployments') && <WebServiceDeploymentsPanel webService={service} availableTargets={manager.availableTargets}
         computeProfilesByTarget={manager.computeProfilesByTarget}
-        releases={manager.releasesByWebService[id]} canManage={tenant.canManage} onDirtyChange={setDeploymentDirty}
-        onLoadComputeProfiles={manager.loadComputeProfiles} onLoadReleases={manager.loadReleases}
+        canManage={tenant.canManage} onDirtyChange={setDeploymentDirty}
+        onLoadComputeProfiles={manager.loadComputeProfiles}
         onAddDeployment={(...args) => mutate(() => manager.addDeployment(...args))}
         onUpdateDeployment={(...args) => mutate(() => manager.updateDeployment(...args))}
         onRemoveDeployment={(...args) => mutate(() => manager.removeDeployment(...args))}

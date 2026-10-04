@@ -146,7 +146,7 @@ export function SourceBuildPanel({
         )}
         <div className="source-build-list">
           {manager.jobs.map((job) => (
-            <article className="source-build-row" key={job.id}>
+            <article className="source-build-row" key={job.id} id={`build-${job.id}`}>
               <div>
                 <strong>{job.state.status}</strong>
                 <span>{formatDate(job.createdAtUtc)}</span>

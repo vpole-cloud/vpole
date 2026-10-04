@@ -55,7 +55,9 @@ public sealed record RollbackWebServiceRequest(
     [FromClaim(Claims.Email)] ClaimValue<string?> ActorEmail = default)
     : IMediatorRequest<RollbackWebServiceOutcome>, ITenantWriteOperation;
 
-public sealed record RollbackWebServiceRequestBody(long TargetRevision);
+public sealed record RollbackWebServiceRequestBody(
+    long TargetRevision,
+    long? ExpectedRevision = null);
 
 public sealed record RollbackWebServiceResponse(
     string Id,
@@ -91,6 +93,8 @@ public sealed class RollbackWebServiceHandler(
         if (webService is null)
             return Error(new RollbackWebServiceStateError(
                 new WebServiceNotFound(request.Id)));
+        if (request.Body.ExpectedRevision != webService.ActiveRevision)
+            return Error(new RollbackWebServiceError(new WebServiceUpdateConflict(webService.Id)));
         if (webService.Lifecycle is not ActiveWebServiceLifecycle)
             return Error(new RollbackWebServiceStateError(
                 new WebServiceUpdateUnavailable(webService.Id)));
@@ -105,6 +109,9 @@ public sealed class RollbackWebServiceHandler(
                 new WebServiceReleaseNotFound(
                     webService.Id,
                     request.Body.TargetRevision)));
+        if (sourceRelease.ResourceRevision >= webService.ActiveRevision)
+            return Error(new RollbackWebServiceStateError(
+                new WebServiceRollbackRevisionNotEligible(webService.Id, request.Body.TargetRevision)));
         if (webService.Exposure.Mode is WebServiceExposureMode.Public &&
             !CreateWebServiceRequestBodyValidator.HasPublicIngressTarget(
                 sourceRelease.Spec.ToDto().Config.PortMappings))
@@ -138,7 +145,7 @@ public sealed class RollbackWebServiceHandler(
             quotaError => Error(quotaError),
             async (transaction, ct) =>
             {
-                var updated = webService.UpdateDesiredState(sourceRelease.Spec, webService.Tags);
+                var updated = webService.Rollback(sourceRelease.Spec);
                 var applied = await requestResourceDeploymentSetApply(
                     new ResourceDeploymentSetApplyRequest(
                         updated.TenantId,
@@ -153,12 +160,13 @@ public sealed class RollbackWebServiceHandler(
                     return transaction.Abort(Error(
                         new RollbackWebServiceError(applyFailure)));
                 var updatedDeployments = ((MutatedResourceDeployments)applied.Value).Placements;
+                var updatedEvent = updated.ToUpdatedEvent(WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments));
 
                 var persisted = await persistUpdatedWebService(
                     transaction.Session,
                     webService,
                     updated,
-                    updated.ToUpdatedEvent(WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments)),
+                    updatedEvent,
                     ct);
                 if (persisted is WebServiceUpdateConflict persistenceError)
                     return transaction.Abort(Error(
@@ -179,8 +187,8 @@ public sealed class RollbackWebServiceHandler(
                     request.ActorEmail.Value,
                     updated.Spec,
                     WebServiceDeploymentWorkflow.ToReleaseDeployments(updatedDeployments),
-                    traceId: null,
-                    correlationId: null,
+                    traceId: updatedEvent.EventCore.TraceId,
+                    correlationId: updatedEvent.EventCore.CorrelationId,
                     new WebServiceReleaseFactory.CreateOptions(
                         ObjectId.GenerateNewId().ToString(),
                         timeProvider.GetUtcNow().UtcDateTime),
@@ -208,5 +216,6 @@ public sealed class RollbackWebServiceValidator : AbstractValidator<RollbackWebS
     {
         RuleFor(request => request.Id).NotEmpty();
         RuleFor(request => request.Body.TargetRevision).GreaterThan(0);
+        RuleFor(request => request.Body.ExpectedRevision).NotNull().GreaterThan(0);
     }
 }

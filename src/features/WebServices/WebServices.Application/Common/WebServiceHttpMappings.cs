@@ -242,6 +242,12 @@ public static class WebServiceHttpMappings
                 "Succeeded web service release was not found",
                 ("webServiceId", release.WebServiceId),
                 ("resourceRevision", release.ResourceRevision)),
+            WebServiceRollbackRevisionNotEligible revision => Problem(
+                HttpStatusCode.Conflict,
+                "web-services.rollback-revision-not-eligible",
+                "Rollback requires a succeeded release before the active revision",
+                ("webServiceId", revision.WebServiceId),
+                ("targetRevision", revision.TargetRevision)),
             WebServiceHasNoActiveDeployments empty => Problem(
                 HttpStatusCode.Conflict,
                 "web-services.no-active-deployments",

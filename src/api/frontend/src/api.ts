@@ -847,11 +847,29 @@ export async function fetchWebServiceReleases(
   token?: string,
   tenantId?: string,
   signal?: AbortSignal,
+  pagination: { pageNumber?: number; pageSize?: number } = {},
 ) {
-  return fetchJson<WebServiceReleaseHistory>(
-    `${apiBaseUrl}/api/v1/web-services/${encodeURIComponent(id)}/releases?pageNumber=1&pageSize=10`,
-    { headers: buildHeaders(token, tenantId), signal },
-  )
+  const query = new URLSearchParams({ pageNumber: String(pagination.pageNumber ?? 1), pageSize: String(pagination.pageSize ?? 10) })
+  return releaseRequest<WebServiceReleaseHistory>(apiBaseUrl, id, `/releases?${query}`, token, tenantId, signal)
+}
+
+async function releaseRequest<T>(base: string, id: string, path: string, token?: string, tenantId?: string, signal?: AbortSignal, method = 'GET', body?: unknown): Promise<T> {
+  const response = await fetch(`${base}/api/v1/web-services/${encodeURIComponent(id)}${path}`, {
+    method, headers: { ...buildHeaders(token, tenantId), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, signal, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  })
+  if (!response.ok) throw new Error(response.status === 409 ? 'Release state changed or recovery is no longer eligible. Refresh and review the selection again.'
+    : response.status === 403 ? 'Your role cannot perform release recovery.' : response.status === 404 ? 'The service or succeeded release is unavailable in this tenant.'
+    : response.status === 422 ? 'Recovery was rejected by current quota, exposure or dependency requirements. Review the current configuration.'
+    : 'Release history or recovery is unavailable. Refresh to reconnect.')
+  return response.json() as Promise<T>
+}
+
+export function redeployWebService(base: string, id: string, expectedRevision: number, token?: string, tenantId?: string, signal?: AbortSignal) {
+  return releaseRequest<import('./types').WebServiceRecoveryResponse>(base, id, `/redeploy?${new URLSearchParams({ expectedRevision: String(expectedRevision) })}`, token, tenantId, signal, 'POST')
+}
+
+export function rollbackWebService(base: string, id: string, input: { targetRevision: number; expectedRevision: number }, token?: string, tenantId?: string, signal?: AbortSignal) {
+  return releaseRequest<import('./types').WebServiceRecoveryResponse>(base, id, '/rollback', token, tenantId, signal, 'POST', input)
 }
 
 export async function deleteWebService(

@@ -144,3 +144,9 @@ the frontend build run in a separate job.
 probe. It verifies Applied separately from Not ready, bounded owned warning context, reload after
 an accepted new generation, and convergence to Ready in resource/group/tenant views. Screenshots
 cover desktop/mobile and both themes without native messages or credential payloads.
+
+`ReleaseBrowserE2ETests` verifies authenticated history, redeploy and rollback. It temporarily
+disables only its disposable fixture's target to hold a real release Pending across reload,
+restores the target, waits for the server retry and checks rollback specification/new revision
+and current native readiness. Cleanup restores target availability before removing owned resources.
+Screenshots cover desktop/narrow viewports and both themes under `.artifacts/frontend-releases`.

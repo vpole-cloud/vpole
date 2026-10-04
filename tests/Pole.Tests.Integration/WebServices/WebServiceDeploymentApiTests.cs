@@ -164,10 +164,10 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         await SetCurrentUserRoleAsync(TenantRole.Viewer);
 
         var historyResponse = await Client.GetAsync($"/api/v1/web-services/{webService.Id}/releases");
-        var redeployResponse = await Client.PostAsync($"/api/v1/web-services/{webService.Id}/redeploy", null);
+        var redeployResponse = await Client.PostAsync($"/api/v1/web-services/{webService.Id}/redeploy?expectedRevision={webService.ActiveRevision}", null);
         var rollbackResponse = await Client.PostAsJsonAsync(
             $"/api/v1/web-services/{webService.Id}/rollback",
-            new { targetRevision = 1 });
+            new { targetRevision = 1, expectedRevision = webService.ActiveRevision });
 
         Assert.Equal(HttpStatusCode.OK, historyResponse.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, redeployResponse.StatusCode);
@@ -180,7 +180,7 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         var webService = await InsertWebServiceAsync();
         await SetCurrentUserRoleAsync(TenantRole.Member);
 
-        var response = await Client.PostAsync($"/api/v1/web-services/{webService.Id}/redeploy", null);
+        var response = await Client.PostAsync($"/api/v1/web-services/{webService.Id}/redeploy?expectedRevision={webService.ActiveRevision}", null);
 
         Assert.True(
             response.StatusCode == HttpStatusCode.Accepted,
@@ -196,6 +196,93 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(WebServiceReleaseAction.Redeploy, release.Action);
         Assert.Equal(TestData.UserId, release.ActorUserId);
         Assert.Equal(TestData.UserEmail, release.ActorEmail);
+    }
+
+    [Theory]
+    [InlineData("redeploy")]
+    [InlineData("rollback")]
+    public async Task Recovery_rejects_stale_revision_without_mutation(string action)
+    {
+        var service = await InsertWebServiceAsync();
+        await InsertReleaseAsync(service, 1, WebServiceReleaseOutcome.Succeeded);
+        var before = await Fixture.DbContext.ResourceDeployments.Find(x => x.ResourceId == service.Id).SingleAsync();
+        using var response = action == "redeploy"
+            ? await Client.PostAsync($"/api/v1/web-services/{service.Id}/redeploy?expectedRevision=2", null)
+            : await Client.PostAsJsonAsync($"/api/v1/web-services/{service.Id}/rollback", new { targetRevision = 1, expectedRevision = 2 });
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var after = await Fixture.DbContext.ResourceDeployments.Find(x => x.Id == before.Id).SingleAsync();
+        Assert.Equal(before.Revision, after.Revision);
+        Assert.Equal(1, (await Fixture.Database.WebServices().Find(x => x.Id == service.Id).SingleAsync()).ActiveRevision);
+        Assert.Single(await Fixture.Database.WebServiceReleases().Find(x => x.WebServiceId == service.Id).ToListAsync());
+        Assert.Equal(0, await Fixture.DbContext.CountOutboxMessagesAsync("pole.web-services/v1/web-service-updated"));
+    }
+
+    [Theory]
+    [InlineData("redeploy")]
+    [InlineData("rollback")]
+    public async Task Recovery_requires_confirmation_revision(string action)
+    {
+        var service = await InsertWebServiceAsync();
+        using var response = action == "redeploy"
+            ? await Client.PostAsync($"/api/v1/web-services/{service.Id}/redeploy", null)
+            : await Client.PostAsJsonAsync($"/api/v1/web-services/{service.Id}/rollback", new { targetRevision = 1 });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(1, (await Fixture.Database.WebServices().Find(x => x.Id == service.Id).SingleAsync()).ActiveRevision);
+    }
+
+    [Theory]
+    [InlineData(WebServiceReleaseOutcome.Succeeded, 1, HttpStatusCode.Conflict)]
+    [InlineData(WebServiceReleaseOutcome.Succeeded, 2, HttpStatusCode.Conflict)]
+    [InlineData(WebServiceReleaseOutcome.Pending, 1, HttpStatusCode.NotFound)]
+    [InlineData(WebServiceReleaseOutcome.Failed, 1, HttpStatusCode.NotFound)]
+    public async Task Rollback_requires_a_succeeded_prior_revision(WebServiceReleaseOutcome outcome, long revision, HttpStatusCode expected)
+    {
+        var service = await InsertWebServiceAsync();
+        await InsertReleaseAsync(service, revision, outcome);
+        using var response = await Client.PostAsJsonAsync($"/api/v1/web-services/{service.Id}/rollback", new { targetRevision = revision, expectedRevision = 1 });
+        Assert.Equal(expected, response.StatusCode);
+        Assert.Equal(1, (await Fixture.Database.WebServices().Find(x => x.Id == service.Id).SingleAsync()).ActiveRevision);
+        Assert.Equal(0, await Fixture.DbContext.CountOutboxMessagesAsync("pole.web-services/v1/web-service-updated"));
+    }
+
+    [Fact]
+    public async Task Same_spec_rollback_after_redeploy_creates_a_new_release_and_generation()
+    {
+        var service = await InsertWebServiceAsync();
+        await InsertReleaseAsync(service, 1, WebServiceReleaseOutcome.Succeeded);
+        using var redeployed = await Client.PostAsync($"/api/v1/web-services/{service.Id}/redeploy?expectedRevision=1", null);
+        Assert.Equal(HttpStatusCode.Accepted, redeployed.StatusCode);
+        using var response = await Client.PostAsJsonAsync($"/api/v1/web-services/{service.Id}/rollback", new { targetRevision = 1, expectedRevision = 2 });
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var saved = await Fixture.Database.WebServices().Find(x => x.Id == service.Id).SingleAsync();
+        Assert.Equal(3, saved.ActiveRevision);
+        Assert.Equal(service.Spec.Image.Tag, saved.Spec.Image.Tag);
+        Assert.Equal(service.Exposure, saved.Exposure);
+        var release = await Fixture.Database.WebServiceReleases().Find(x => x.WebServiceId == service.Id && x.ResourceRevision == 3).SingleAsync();
+        Assert.Equal(WebServiceReleaseAction.Rollback, release.Action);
+        Assert.Equal(WebServiceReleaseOutcome.Pending, release.Outcome);
+        Assert.NotNull(release.CorrelationId);
+        Assert.NotNull(release.TraceId);
+        var placement = await Fixture.DbContext.ResourceDeployments.Find(x => x.ResourceId == service.Id).SingleAsync();
+        Assert.Equal(3, placement.ResourceRevision);
+        Assert.Equal(3, placement.DesiredGeneration);
+        // The domain operation must also advance when the snapshot is the very same object.
+        var repeated = saved.Rollback(saved.Spec);
+        Assert.Equal(4, repeated.ActiveRevision);
+        Assert.Equal(saved.Revision + 1, repeated.Revision);
+    }
+
+    [Fact]
+    public async Task History_pages_owned_releases_in_revision_order_and_rejects_unbounded_skip()
+    {
+        var service = await InsertWebServiceAsync();
+        for (var revision = 1; revision <= 3; revision++) await InsertReleaseAsync(service, revision, WebServiceReleaseOutcome.Succeeded);
+        var foreign = service with { TenantId = ObjectId.GenerateNewId().ToString() };
+        await InsertReleaseAsync(foreign, 4, WebServiceReleaseOutcome.Succeeded);
+        var history = (await Client.GetFromJsonAsync<WebServiceReleaseHistoryDto>($"/api/v1/web-services/{service.Id}/releases?pageNumber=2&pageSize=1"))!;
+        Assert.Equal(3, history.Releases.TotalCount);
+        Assert.Equal(2, Assert.Single(history.Releases.Items).ResourceRevision);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Client.GetAsync($"/api/v1/web-services/{service.Id}/releases?pageNumber=2147483647&pageSize=100")).StatusCode);
     }
 
     [Fact]
@@ -402,6 +489,19 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
             JsonOptions);
         Assert.Single(finalBindings!);
         Assert.Equal(HostnameBindingKinds.Generated, finalBindings![0].Kind);
+    }
+
+    private async Task InsertReleaseAsync(WebService service, long revision, WebServiceReleaseOutcome outcome)
+    {
+        var placement = await Fixture.DbContext.ResourceDeployments.Find(x => x.ResourceId == service.Id).SingleAsync();
+        var release = WebServiceReleaseFactory.CreatePending(service.TenantId, service.Id, revision, WebServiceReleaseAction.Update,
+            TestData.UserId, TestData.UserEmail, service.Spec,
+            [new WebServiceReleaseDeployment(placement.Id, placement.ResolvedPlacement.DeploymentTargetId, revision, placement.DesiredGeneration,
+                WebServiceReleaseDeploymentOperation.Apply, WebServiceReleaseDeploymentOutcome.Succeeded, DateTime.UtcNow, null, null)],
+            null, null, new WebServiceReleaseFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow), service.Exposure)
+            with
+        { Outcome = outcome, CompletedAtUtc = outcome == WebServiceReleaseOutcome.Pending ? null : DateTime.UtcNow };
+        await Fixture.Database.WebServiceReleases().InsertOneAsync(release);
     }
 
     private async Task<WebService> InsertWebServiceAsync()

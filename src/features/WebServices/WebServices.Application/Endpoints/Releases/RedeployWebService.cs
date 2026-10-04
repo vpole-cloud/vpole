@@ -49,7 +49,8 @@ public sealed record RedeployWebServiceRequest(
     [FromRoute] string Id,
     [FromTenantHeader] string TenantId,
     [FromClaim(Claims.UserId)] ClaimValue<string?> ActorUserId = default,
-    [FromClaim(Claims.Email)] ClaimValue<string?> ActorEmail = default)
+    [FromClaim(Claims.Email)] ClaimValue<string?> ActorEmail = default,
+    [FromQuery] long? ExpectedRevision = null)
     : IMediatorRequest<RedeployWebServiceOutcome>, ITenantWriteOperation;
 
 public sealed record RedeployWebServiceResponse(
@@ -80,6 +81,8 @@ public sealed class RedeployWebServiceHandler(
         if (webService is null)
             return Error(new WebServiceLifecycleMutationStateError(
                 new WebServiceNotFound(request.Id)));
+        if (request.ExpectedRevision != webService.ActiveRevision)
+            return Error(new RedeployWebServiceError(new WebServiceUpdateConflict(webService.Id)));
         if (webService.Lifecycle is not ActiveWebServiceLifecycle)
             return Error(new WebServiceLifecycleMutationStateError(
                 new WebServiceUpdateUnavailable(webService.Id)));
@@ -113,12 +116,13 @@ public sealed class RedeployWebServiceHandler(
                 return transaction.Abort(Error(
                     new RedeployWebServiceError(deploymentsFailure)));
             var updatedDeployments = ((MutatedResourceDeployments)deploymentsResult.Value).Placements;
+            var updatedEvent = updated.ToUpdatedEvent(WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments));
 
             var persisted = await persistUpdatedWebService(
                 transaction.Session,
                 webService,
                 updated,
-                updated.ToUpdatedEvent(WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments)),
+                updatedEvent,
                 ct);
             if (persisted is WebServiceUpdateConflict persistenceError)
                 return transaction.Abort(Error(
@@ -139,8 +143,8 @@ public sealed class RedeployWebServiceHandler(
                 request.ActorEmail.Value,
                 updated.Spec,
                 WebServiceDeploymentWorkflow.ToReleaseDeployments(updatedDeployments),
-                traceId: null,
-                correlationId: null,
+                traceId: updatedEvent.EventCore.TraceId,
+                correlationId: updatedEvent.EventCore.CorrelationId,
                 new WebServiceReleaseFactory.CreateOptions(
                     ObjectId.GenerateNewId().ToString(),
                     timeProvider.GetUtcNow().UtcDateTime),
@@ -163,5 +167,9 @@ public sealed class RedeployWebServiceHandler(
 
 public sealed class RedeployWebServiceValidator : AbstractValidator<RedeployWebServiceRequest>
 {
-    public RedeployWebServiceValidator() => RuleFor(request => request.Id).NotEmpty();
+    public RedeployWebServiceValidator()
+    {
+        RuleFor(request => request.Id).NotEmpty();
+        RuleFor(request => request.ExpectedRevision).NotNull().GreaterThan(0);
+    }
 }
