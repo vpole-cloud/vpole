@@ -74,6 +74,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
     public Uri FrontendBaseAddress { get; private set; } = null!;
     public TestUser Alpha { get; private set; } = null!;
     public TestUser Beta { get; private set; } = null!;
+    public TestUser PlatformAdminUser { get; private set; } = null!;
     public string PlatformAdminAccessToken { get; private set; } = null!;
     public KubernetesLabState LabState => _lab.State;
     public TestRunIdentity Identity => _identity;
@@ -215,6 +216,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             bootstrap.Password,
             _shutdown.Token);
         PlatformAdminAccessToken = bootstrapToken;
+        PlatformAdminUser = bootstrap with { AccessToken = bootstrapToken };
         await AllowBootstrapTargetWithoutEnforcementAsync(_shutdown.Token);
 
         Alpha = await CreatePlatformUserAsync("alpha", bootstrapToken, directGrantClient, _shutdown.Token);

@@ -5,10 +5,11 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AppShell } from '../../shell/AppShell'
 import { createAppRegistry } from '../../shell/moduleRegistry'
 import { webServicesModule } from './WebServicesModule'
+import { WebServicesView } from './WebServicesView'
 import type { IsolationScope, WebService } from '../../types'
 
 const registry = createAppRegistry([
-  webServicesModule,
+  { ...webServicesModule, views: webServicesModule.views.map((view) => ({ ...view, component: WebServicesView })) },
   { id: 'test-groups', views: [{ id: 'resource-groups', label: 'Resource groups', component: () => <p>Group provider</p>, access: 'tenant' }] },
 ])
 const group = { id: 'group', name: 'Applications', description: '', tags: [], resourceCount: 1 }

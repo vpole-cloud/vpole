@@ -5,6 +5,7 @@ import {
   fetchKubernetesPersistentVolumes,
   fetchKubernetesStorageClasses,
   fetchStorageProfiles,
+  fetchPlatformDeploymentTargets,
   updateStorageProfile,
 } from '../api'
 import type {
@@ -14,6 +15,7 @@ import type {
   LoadStatus,
   StorageProfile,
   StorageProfileInput,
+  PlatformDeploymentTarget,
 } from '../types'
 
 interface UseStorageSettingsManagerOptions {
@@ -28,6 +30,8 @@ export function useStorageSettingsManager({
   enabled,
 }: UseStorageSettingsManagerOptions) {
   const [profiles, setProfiles] = useState<StorageProfile[]>([])
+  const [targets, setTargets] = useState<PlatformDeploymentTarget[]>([])
+  const [deploymentTargetId, selectTarget] = useState('')
   const [storageClasses, setStorageClasses] = useState<KubernetesStorageClass[]>([])
   const [persistentVolumes, setPersistentVolumes] = useState<KubernetesPersistentVolume[]>([])
   const [persistentVolumeClaims, setPersistentVolumeClaims] = useState<KubernetesPersistentVolumeClaim[]>([])
@@ -37,11 +41,16 @@ export function useStorageSettingsManager({
   const [submitError, setSubmitError] = useState('')
 
   const controllerRef = useRef<AbortController | null>(null)
-  const [scope, setScope] = useState({ apiBaseUrl, token, enabled })
+  const [scope, setScope] = useState({ apiBaseUrl, token, enabled, deploymentTargetId })
 
-  if (scope.apiBaseUrl !== apiBaseUrl || scope.token !== token || scope.enabled !== enabled) {
-    setScope({ apiBaseUrl, token, enabled })
-    setProfiles([])
+  const authenticationChanged = scope.apiBaseUrl !== apiBaseUrl || scope.token !== token || scope.enabled !== enabled
+  if (authenticationChanged || scope.deploymentTargetId !== deploymentTargetId) {
+    setScope({ apiBaseUrl, token, enabled, deploymentTargetId })
+    if (authenticationChanged) {
+      setProfiles([])
+      setTargets([])
+      selectTarget('')
+    }
     setStorageClasses([])
     setPersistentVolumes([])
     setPersistentVolumeClaims([])
@@ -51,36 +60,53 @@ export function useStorageSettingsManager({
     setSubmitError('')
   }
 
+  const requestSequence = useRef(0)
   const load = useCallback((signal?: AbortSignal) => {
-    return Promise.all([
-      fetchStorageProfiles(apiBaseUrl, token, signal),
-      fetchKubernetesStorageClasses(apiBaseUrl, token, signal),
-      fetchKubernetesPersistentVolumes(apiBaseUrl, token, signal),
-      fetchKubernetesPersistentVolumeClaims(apiBaseUrl, token, signal),
-    ]).then(([loadedProfiles, loadedClasses, loadedVolumes, loadedClaims]) => {
-      if (signal?.aborted) return
-      setProfiles(loadedProfiles)
-      setStorageClasses(loadedClasses)
-      setPersistentVolumes(loadedVolumes)
-      setPersistentVolumeClaims(loadedClaims)
-      setStatus('success')
-    }, (loadError: unknown) => {
-      if (signal?.aborted) {
-        return
-      }
+    const sequence = ++requestSequence.current
+    const current = () => !signal?.aborted && sequence === requestSequence.current
+    return Promise.resolve().then(async () => {
+      try {
+        const [loadedProfiles, loadedTargets] = await Promise.all([
+          fetchStorageProfiles(apiBaseUrl, token, signal),
+          fetchPlatformDeploymentTargets(apiBaseUrl, token, signal),
+        ])
+        if (!current()) return
+        setProfiles(loadedProfiles)
+        setTargets(loadedTargets)
+        const target = loadedTargets.find((item) => item.id === deploymentTargetId)
+          ?? loadedTargets.find((item) => item.isDefault) ?? loadedTargets[0]
+        if ((target?.id ?? '') !== deploymentTargetId) {
+          selectTarget(target?.id ?? '')
+          if (target) return
+        }
+        const [loadedClasses, loadedVolumes, loadedClaims] = target ? await Promise.all([
+          fetchKubernetesStorageClasses(apiBaseUrl, target.id, token, signal),
+          fetchKubernetesPersistentVolumes(apiBaseUrl, target.id, token, signal),
+          fetchKubernetesPersistentVolumeClaims(apiBaseUrl, target.id, token, signal),
+        ]) : [[], [], []]
+        if (!current()) return
+        setStorageClasses(loadedClasses)
+        setPersistentVolumes(loadedVolumes)
+        setPersistentVolumeClaims(loadedClaims)
+        setStatus('success')
+      } catch (loadError: unknown) {
+        if (!current()) {
+          return
+        }
 
-      setProfiles([])
-      setStorageClasses([])
-      setPersistentVolumes([])
-      setPersistentVolumeClaims([])
-      setStatus('error')
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : 'Unable to load storage settings.',
-      )
+        setProfiles([])
+        setStorageClasses([])
+        setPersistentVolumes([])
+        setPersistentVolumeClaims([])
+        setStatus('error')
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : 'Unable to load storage settings.',
+        )
+      }
     })
-  }, [apiBaseUrl, token])
+  }, [apiBaseUrl, token, deploymentTargetId])
 
   useEffect(() => {
     if (!enabled) {
@@ -103,10 +129,11 @@ export function useStorageSettingsManager({
     await load(signal)
   }
 
-  const refresh = () => refreshForScope(controllerRef.current?.signal)
+  const refresh = () => enabled ? refreshForScope(controllerRef.current?.signal) : Promise.resolve()
 
   const create = async (input: StorageProfileInput) => {
     const signal = controllerRef.current?.signal
+    if (!enabled || !signal || signal.aborted) return
     setSubmitStatus('loading')
     setSubmitError('')
 
@@ -130,6 +157,7 @@ export function useStorageSettingsManager({
 
   const update = async (id: string, input: StorageProfileInput) => {
     const signal = controllerRef.current?.signal
+    if (!enabled || !signal || signal.aborted) return
     setSubmitStatus('loading')
     setSubmitError('')
 
@@ -153,6 +181,9 @@ export function useStorageSettingsManager({
 
   return {
     profiles,
+    targets,
+    deploymentTargetId,
+    selectTarget,
     storageClasses,
     persistentVolumes,
     persistentVolumeClaims,

@@ -1,5 +1,6 @@
 import type { AppModule } from '../../shell/contracts'
-import { RedisView } from './RedisView'
+import { lazy } from 'react'
+const RedisView = lazy(() => import('./RedisView').then(module => ({ default: module.RedisView })))
 
 export const redisModule: AppModule = {
   id: 'redis',

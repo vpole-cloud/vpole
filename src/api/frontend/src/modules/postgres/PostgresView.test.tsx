@@ -6,8 +6,9 @@ import { AppShell } from '../../shell/AppShell'
 import { createAppRegistry } from '../../shell/moduleRegistry'
 import type { PostgresCluster } from '../../types'
 import { postgresModule } from './PostgresModule'
+import { PostgresView } from './PostgresView'
 
-const registry = createAppRegistry([postgresModule])
+const registry = createAppRegistry([{ ...postgresModule, views: postgresModule.views.map((view) => ({ ...view, component: PostgresView })) }])
 const initial: PostgresCluster = { id: 'database', name: 'orders', groupId: 'group', revision: 1, lifecycle: 'Active',
   spec: { version: 17, instances: 1, storage: 1, storageProfileId: 'disk', deploymentMode: 'Operator' },
   placement: { deploymentId: 'deployment', isolationScopeId: 'scope', runtimeCellId: 'cell', deploymentTargetId: 'target',

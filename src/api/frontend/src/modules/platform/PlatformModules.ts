@@ -1,7 +1,11 @@
 import type { AppModule } from '../../shell/contracts'
-import { OverviewView, DomainsView, IntegrationsView, StorageView } from './PlatformViews'
-import { ResourceGroupsView } from '../resource-groups/ResourceGroupsView'
+import { lazy } from 'react'
 import { ResourceTree } from '../resource-groups/ResourceTree'
+const OverviewView = lazy(() => import('./PlatformViews').then(module => ({ default: module.OverviewView })))
+const IntegrationsView = lazy(() => import('./PlatformViews').then(module => ({ default: module.IntegrationsView })))
+const StorageView = lazy(() => import('./PlatformViews').then(module => ({ default: module.StorageView })))
+const DomainsView = lazy(() => import('../domains/DomainsView').then(module => ({ default: module.DomainsView })))
+const ResourceGroupsView = lazy(() => import('../resource-groups/ResourceGroupsView').then(module => ({ default: module.ResourceGroupsView })))
 
 export const overviewModule: AppModule = {
   id: 'overview', views: [{ id: 'overview', label: 'Overview', component: OverviewView, access: 'public' }],

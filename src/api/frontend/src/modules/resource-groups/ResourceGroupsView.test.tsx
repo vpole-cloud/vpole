@@ -6,13 +6,14 @@ import { AppShell } from '../../shell/AppShell'
 import { useAppServices } from '../../shell/AppContext'
 import { createAppRegistry } from '../../shell/moduleRegistry'
 import { resourceGroupsModule } from '../platform/PlatformModules'
+import { ResourceGroupsView } from './ResourceGroupsView'
 import type { ResourceGroup } from '../../types'
 
 function OtherProvider() {
   const { navigation } = useAppServices()
   return <p>Independent provider: {new URLSearchParams(navigation.search).get('resource')}</p>
 }
-const registry = createAppRegistry([resourceGroupsModule,
+const registry = createAppRegistry([{ ...resourceGroupsModule, views: resourceGroupsModule.views.map((view) => ({ ...view, component: ResourceGroupsView })) },
   { id: 'other', views: [{ id: 'widgets', label: 'Widgets', component: OtherProvider, access: 'tenant' }],
     resourceTypes: [{ id: 'test/widget', label: 'Widget', viewId: 'widgets' }] },
 ])

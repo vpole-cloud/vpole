@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
-import { act, useEffect, useState } from 'react'
+import { act, lazy, useEffect, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppShell } from './AppShell'
 import { useAppServices } from './AppContext'
 import { createAppRegistry } from './moduleRegistry'
-import { ConfirmationDialog } from '../ui/components'
+import { ConfirmationDialog, Field } from '../ui/components'
 import type { AppModule, AppServices } from './contracts'
 import type { Tenant } from '../types'
 import { readIntegrationNavigation } from '../integrationsState'
@@ -37,6 +37,51 @@ afterEach(async () => {
 })
 
 describe('app module composition', () => {
+  it('keeps control names separate from hints and preserves existing validation descriptions', async () => {
+    await act(async () => root.render(<><p id="validation">Choose an enabled target.</p><Field label="Target" hint="Inventory belongs to this cluster.">
+      <select aria-describedby="validation"><option>East</option></select>
+    </Field></>))
+    const control = container.querySelector('select')!
+    const name = document.getElementById(control.getAttribute('aria-labelledby')!)!.textContent
+    expect(name).toBe('Target')
+    const descriptions = control.getAttribute('aria-describedby')!.split(' ').map((id) => document.getElementById(id)?.textContent)
+    expect(descriptions).toEqual(['Choose an enabled target.', 'Inventory belongs to this cluster.'])
+  })
+  it('loads a deferred module in the current tenant after a scope change', async () => {
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => { release = resolve })
+    const observed: string[] = []
+    const Deferred = lazy(async () => {
+      await pending
+      return { default: function Loaded() {
+        const { tenant } = useAppServices()
+        observed.push(tenant.active!.id)
+        return <p>Deferred tenant: {tenant.active!.id}</p>
+      } }
+    })
+    const registry = createAppRegistry([{ id: 'deferred', views: [{ id: 'deferred', label: 'Deferred', component: Deferred, access: 'tenant' }] }])
+    const render = (id: string) => root.render(<AppShell registry={registry} auth={auth} api={{ baseUrl: '/api' }} tenants={tenants(id)} initialViewId="deferred" />)
+    await act(async () => render('alpha'))
+    expect(container.textContent).toContain('Loading view…')
+    await act(async () => render('beta'))
+    await act(async () => { release() })
+    expect(container.textContent).toContain('Deferred tenant: beta')
+    expect(observed).not.toContain('alpha')
+  })
+
+  it('contains a failed module download and permits navigation to another view', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const Broken = lazy(async () => { throw new Error('internal chunk diagnostic') })
+    const registry = createAppRegistry([{ id: 'home', views: [
+      { id: 'broken', label: 'Broken', component: Broken, access: 'public' },
+      { id: 'overview', label: 'Overview', component: () => <p>Available view</p>, access: 'public' },
+    ] }])
+    await act(async () => root.render(<AppShell registry={registry} auth={auth} api={{ baseUrl: '/api' }} tenants={tenants('alpha')} initialViewId="broken" />))
+    expect(container.textContent).toContain('This view could not be loaded.')
+    expect(container.textContent).not.toContain('internal chunk diagnostic')
+    await act(async () => button('Overview').click())
+    expect(container.textContent).toContain('Available view')
+  })
   it('resolves typed resource URLs through an independent registration even when the view hint is stale', async () => {
     window.history.replaceState({}, '', '/?view=old-view&resourceType=test%2Fwidget&resource=widget&tenant=alpha')
     function Widget() { const { navigation } = useAppServices(); return <p>Widget {new URLSearchParams(navigation.search).get('resource')}</p> }

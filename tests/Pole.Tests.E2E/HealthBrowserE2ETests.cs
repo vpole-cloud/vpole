@@ -67,6 +67,17 @@ public sealed class HealthBrowserE2ETests(PoleE2EFixture fixture)
         await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Refresh operations", Exact = true }).ClickAsync();
         await Assertions.Expect(content.Locator(".health-target .status-pill")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
         await CaptureAsync(page, "ready");
+        const string operationsRoute = "**/api/v1/resource-deployments/operations?*";
+        await page.RouteAsync(operationsRoute, route => route.AbortAsync("failed"));
+        await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Refresh operations", Exact = true }).ClickAsync();
+        await Assertions.Expect(content.GetByText("Previous operation state is stale.", new LocatorGetByTextOptions { Exact = false })).ToBeVisibleAsync();
+        await Assertions.Expect(content.Locator(".operation-target")).ToHaveCountAsync(1);
+        Assert.Equal(0, await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Retry this apply", Exact = true }).CountAsync());
+        await CaptureAsync(page, "stale-read");
+        await page.UnrouteAsync(operationsRoute);
+        await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Refresh operations", Exact = true }).ClickAsync();
+        await Assertions.Expect(content.GetByText("Previous operation state is stale.", new LocatorGetByTextOptions { Exact = false })).ToHaveCountAsync(0);
+        await Assertions.Expect(content.Locator(".health-target .status-pill")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
         await page.GotoAsync(Url("resource-groups", groupId, "operations"));
         await Assertions.Expect(page.Locator("#app-content .health-target .status-pill")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
         await CaptureAsync(page, "group");

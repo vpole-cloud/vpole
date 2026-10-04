@@ -17,6 +17,7 @@ vi.mock('../api', () => ({
   createStorageProfile: vi.fn(),
   updateStorageProfile: vi.fn(),
   fetchStorageProfiles: vi.fn(),
+  fetchPlatformDeploymentTargets: vi.fn(),
   fetchKubernetesStorageClasses: vi.fn(),
   fetchKubernetesPersistentVolumes: vi.fn(),
   fetchKubernetesPersistentVolumeClaims: vi.fn(),
@@ -38,6 +39,32 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => { root.unmount() }) })
 
 describe('loading scope changes', () => {
+  it('aborts old target inventory and rejects a late response after selecting another target', async () => {
+    const oldInventory = deferred<Awaited<ReturnType<typeof api.fetchKubernetesStorageClasses>>>()
+    vi.mocked(api.fetchStorageProfiles).mockResolvedValue([])
+    vi.mocked(api.fetchPlatformDeploymentTargets).mockResolvedValue([
+      { id: 'a', displayName: 'East', enabled: true, acceptsWorkloads: true, isDefault: true },
+      { id: 'b', displayName: 'West', enabled: true, acceptsWorkloads: true, isDefault: false },
+    ])
+    vi.mocked(api.fetchKubernetesStorageClasses).mockImplementation((_base, target) => target === 'a' ? oldInventory.promise : Promise.resolve([{ name: 'west', provisioner: 'test', isDefault: true, parameters: {}, metadata: {} }]))
+    vi.mocked(api.fetchKubernetesPersistentVolumes).mockResolvedValue([])
+    vi.mocked(api.fetchKubernetesPersistentVolumeClaims).mockResolvedValue([])
+    let state!: ReturnType<typeof useStorageSettingsManager>
+    function Probe() {
+      const value = useStorageSettingsManager({ apiBaseUrl: '/api', token: 'token', enabled: true })
+      useLayoutEffect(() => { state = value })
+      return null
+    }
+    await act(async () => root.render(<Probe />))
+    const signal = vi.mocked(api.fetchKubernetesStorageClasses).mock.calls[0][3]
+    await act(async () => state.selectTarget('b'))
+    expect(signal?.aborted).toBe(true)
+    expect(state.storageClasses.map((item) => item.name)).toEqual(['west'])
+    await act(async () => oldInventory.resolve([{ name: 'late-east', provisioner: 'test', isDefault: true, parameters: {}, metadata: {} }]))
+    expect(state.deploymentTargetId).toBe('b')
+    expect(state.storageClasses.map((item) => item.name)).toEqual(['west'])
+    expect(state.status).toBe('success')
+  })
   it('clears tenant discovery on logout and ignores an old authenticated response', async () => {
     const oldRequest = deferred<Awaited<ReturnType<typeof api.fetchTenants>>>()
     vi.mocked(api.fetchTenants).mockReturnValue(oldRequest.promise)
@@ -128,13 +155,14 @@ it('does not append a completed zone mutation to a different tenant', async () =
 it.each(['create', 'update'] as const)('does not refresh an old authentication scope after storage %s completes', async (operation) => {
   const input: StorageProfileInput = {
     displayName: 'Old', description: '', mediaType: 'SSD', performanceTier: 'Standard',
-    isEnabled: true, isDefault: false, storageClassNames: ['standard'],
+    isEnabled: true, isDefault: false, targetMappings: [{ deploymentTargetId: 'target', storageClassName: 'standard' }], revision: 1,
     allowedResourceTypes: ['pole/redis'], tenantAccess: { mode: 'AllTenants', tenantIds: [] },
   }
   const mutation = deferred<Awaited<ReturnType<typeof api.createStorageProfile>>>()
   vi.mocked(api.createStorageProfile).mockReturnValue(mutation.promise)
   vi.mocked(api.updateStorageProfile).mockReturnValue(mutation.promise)
   vi.mocked(api.fetchStorageProfiles).mockResolvedValue([])
+  vi.mocked(api.fetchPlatformDeploymentTargets).mockResolvedValue([])
   vi.mocked(api.fetchKubernetesStorageClasses).mockResolvedValue([])
   vi.mocked(api.fetchKubernetesPersistentVolumes).mockResolvedValue([])
   vi.mocked(api.fetchKubernetesPersistentVolumeClaims).mockResolvedValue([])
@@ -148,7 +176,7 @@ it.each(['create', 'update'] as const)('does not refresh an old authentication s
   let submit!: Promise<void>
   await act(async () => { submit = operation === 'create' ? state.create(input) : state.update('profile', input) })
   await act(async () => { root.render(<Probe token="new" />) })
-  await act(async () => { mutation.resolve({ ...input, id: 'profile' }); await submit })
+  await act(async () => { mutation.resolve({ ...input, id: 'profile', revision: 1 }); await submit })
   expect(api.fetchStorageProfiles).toHaveBeenCalledTimes(2)
   expect(api.fetchStorageProfiles).toHaveBeenLastCalledWith('/api', 'new', expect.any(AbortSignal))
   expect(state.profiles).toEqual([])

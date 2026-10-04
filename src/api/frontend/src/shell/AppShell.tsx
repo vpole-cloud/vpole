@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { TopBandPlaceholder } from '../components/TopBandPlaceholder'
 import type { useTenants } from '../hooks/useTenants'
 import { AppContext } from './AppContext'
 import { Button, ConfirmationDialog, EmptyState, Notice } from '../ui/components'
 import type { AppRegistry, AppServices, ResourceIdentity, Theme } from './contracts'
 import { SearchPalette } from './SearchPalette'
+import { ModuleViewBoundary } from './ModuleViewBoundary'
 
 interface AppShellProps {
   registry: AppRegistry
@@ -253,7 +254,9 @@ export function AppShell({ registry, auth, api, tenants, initialViewId }: AppShe
               ? 'This tenant is unavailable to your account. Select an available tenant.' : 'Select an available tenant.' : 'Sign in to continue.'}>
               {tenants.status === 'error' && tenants.error}
               {!auth.authenticated && <Button onClick={auth.login}>Log in</Button>}
-            </EmptyState> : View && <View key={`${scopeKey}:${viewId}`} />}
+            </EmptyState> : View && <ModuleViewBoundary key={`${scopeKey}:${viewId}`}>
+              <Suspense fallback={<div role="status"><EmptyState title="Loading view…" /></div>}><View /></Suspense>
+            </ModuleViewBoundary>}
         </main>
       </div>
       {pendingNavigation?.scopeKey === scopeKey && <ConfirmationDialog title="Discard unsaved changes?"

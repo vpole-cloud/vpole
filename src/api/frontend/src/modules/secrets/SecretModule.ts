@@ -1,5 +1,6 @@
 import type { AppModule } from '../../shell/contracts'
-import { SecretsView } from './SecretsView'
+import { lazy } from 'react'
+const SecretsView = lazy(() => import('./SecretsView').then(module => ({ default: module.SecretsView })))
 
 export const secretModule: AppModule = {
   id: 'secrets',
