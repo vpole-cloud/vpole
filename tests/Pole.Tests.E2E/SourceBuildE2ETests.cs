@@ -330,6 +330,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMinutes(15));
         var cancellationToken = cancellation.Token;
         await fixture.EnsureSourceBuildInfrastructureReadyAsync(cancellationToken);
+        await SetStubRevisionAsync("v1", cancellationToken);
         await using var resources = new TestResourceScope("source-build E2E");
 
         var resourceGroupCleanup = resources.CreateCleanupSequence("source-build resource group");

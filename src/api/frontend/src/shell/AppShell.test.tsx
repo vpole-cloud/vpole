@@ -47,6 +47,18 @@ describe('app module composition', () => {
     const descriptions = control.getAttribute('aria-describedby')!.split(' ').map((id) => document.getElementById(id)?.textContent)
     expect(descriptions).toEqual(['Choose an enabled target.', 'Inventory belongs to this cluster.'])
   })
+  it('preserves explicit accessible names while attaching field hints', async () => {
+    await act(async () => root.render(<><p id="custom-name">Group page size</p>
+      <Field label="Per page" hint="Service inventory size."><select aria-label="Services per page"><option>8</option></select></Field>
+      <Field label="Per page" hint="Group inventory size."><select aria-labelledby="custom-name"><option>8</option></select></Field>
+    </>))
+    const [services, groups] = [...container.querySelectorAll('select')]
+    expect(services.getAttribute('aria-label')).toBe('Services per page')
+    expect(services.hasAttribute('aria-labelledby')).toBe(false)
+    expect(groups.getAttribute('aria-labelledby')).toBe('custom-name')
+    expect(document.getElementById(services.getAttribute('aria-describedby')!)?.textContent).toBe('Service inventory size.')
+    expect(document.getElementById(groups.getAttribute('aria-describedby')!)?.textContent).toBe('Group inventory size.')
+  })
   it('loads a deferred module in the current tenant after a scope change', async () => {
     let release!: () => void
     const pending = new Promise<void>((resolve) => { release = resolve })

@@ -86,7 +86,7 @@ export function NewPostgresView({ actions, active }: { actions: WorkspaceActions
           <Field label="Database password"><input className="field__control" type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} required />{fieldError('Password') && <span className="field-error">{fieldError('Password')}</span>}</Field></div>
       </fieldset>
       {[groups.error, capabilities.error, scopes.error, targets.error, storage.error, compute.error].filter(Boolean).map((error, index) => <Notice key={index} tone="error">{error}</Notice>)}
-      {!allowed && <Notice>Available groups, scopes, targets and profiles are required. Ask a platform administrator to prepare any missing prerequisites.</Notice>}
+      {!allowed && <Notice>Select an available group, isolation scope, deployment target, storage profile and compute profile to continue. If choices are missing, ask a platform administrator to prepare them.</Notice>}
       {validation && <Notice tone="error">{validation}</Notice>}{mutation.error instanceof Error && <Notice tone="error">{mutation.error.message}</Notice>}
       <div className="row-actions"><Button variant="primary" type="submit" disabled={mutation.busy || !allowed}>{mutation.busy ? 'Creating…' : 'Create PostgreSQL'}</Button>
         <Button onClick={() => { void groups.refresh(); void capabilities.refresh(); void storage.refresh(); scopes.retry(); void targets.refresh(); void compute.refresh() }}>Refresh choices</Button></div>

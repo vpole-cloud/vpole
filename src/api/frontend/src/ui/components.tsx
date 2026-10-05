@@ -24,8 +24,8 @@ export function StatusBadge({ children, tone = 'neutral' }:
 export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   const labelId = useId()
   const hintId = `${labelId}-hint`
-  const control = isValidElement<{ 'aria-labelledby'?: string; 'aria-describedby'?: string }>(children) && typeof children.type === 'string' && ['input', 'select', 'textarea'].includes(children.type)
-    ? cloneElement(children, { 'aria-labelledby': labelId,
+  const control = isValidElement<{ 'aria-label'?: string; 'aria-labelledby'?: string; 'aria-describedby'?: string }>(children) && typeof children.type === 'string' && ['input', 'select', 'textarea'].includes(children.type)
+    ? cloneElement(children, { ...(!children.props['aria-label'] && !children.props['aria-labelledby'] ? { 'aria-labelledby': labelId } : {}),
       ...(hint ? { 'aria-describedby': [children.props['aria-describedby'], hintId].filter(Boolean).join(' ') } : {}) }) : children
   return <label className="field"><span className="field__label" id={labelId}>{label}</span>{control}
     {hint && <span className="field__hint" id={hintId}>{hint}</span>}

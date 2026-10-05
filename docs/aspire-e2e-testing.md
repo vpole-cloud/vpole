@@ -22,8 +22,9 @@ The suite covers:
   and reuse of the existing resource tab after opening a search result.
 - PostgreSQL browser catalog/create/details/configuration, readable single-target placement,
   native provisioning, compute update/reload and credential UI without secret screenshots.
-  The fixture selects native StatefulSet mode because the shared lab has no PostgreSQL operator;
-  operator manifests and managed password rotation are validated in the owning feature suites.
+  The fixture explicitly selects native StatefulSet mode for these browser scenarios;
+  operator-specific manifest and credential-projection tests run separately in the owning feature
+  suites against CloudNativePG in the full lab.
 - Redis browser catalog/create/details/configuration, tags update and reload, confirmed
   deletion, readable single-target placement and desktop/mobile light/dark screenshots.
 - Secret browser metadata/create/full-map rotation, version-aware writes, generic resource

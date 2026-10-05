@@ -10,4 +10,3 @@ export function useVisibleRefresh(active: boolean, refresh: () => Promise<unknow
     return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', reconnect); window.removeEventListener('online', reconnect) }
   }, [active, refresh, milliseconds])
 }
-
