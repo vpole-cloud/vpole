@@ -123,8 +123,8 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         ConfigureLabServices(api, harborAdminPassword);
         ConfigureLabDeploymentTarget(api);
         api.WithEnvironment("Outbox__ProcessingTriggerInterval", "00:00:01");
-        // The shared lab has no PostgreSQL operator. Database browser scenarios exercise native
-        // provisioning; operator manifests/rotation remain covered by the owning feature suites.
+        // Browser scenarios explicitly exercise native provisioning. Operator-specific manifests
+        // and credential projections have separate owning feature tests in the full lab.
         api.WithEnvironment("Postgres__DefaultDeploymentMode", "StatefulSet");
         var githubStub = appHost
             .AddProject(

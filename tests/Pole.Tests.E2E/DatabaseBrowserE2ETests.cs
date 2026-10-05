@@ -20,7 +20,7 @@ public sealed class DatabaseBrowserE2ETests(PoleE2EFixture fixture, ITestOutputH
         var name = $"pg-{Guid.NewGuid():N}"[..16];
         var group = await CreateGroupAsync(name, timeout.Token);
         resources.Defer("delete PostgreSQL browser group", token => DeleteGroupAsync(group, token));
-        await PrepareStorageProfileAsync("pole/postgresql", timeout.Token);
+        var placement = await PrepareStorageProfileAsync("pole/postgresql", timeout.Token);
         await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
         await browserContainer.StartAsync(timeout.Token);
         using var playwright = await Playwright.CreateAsync();
@@ -39,6 +39,8 @@ public sealed class DatabaseBrowserE2ETests(PoleE2EFixture fixture, ITestOutputH
         await CaptureAsync(page, "postgres", "catalog");
         await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "New PostgreSQL", Exact = true }).ClickAsync();
         await content.GetByLabel("Resource group").SelectOptionAsync(group);
+        await content.GetByLabel("Deployment target").SelectOptionAsync(placement.TargetId);
+        await content.GetByLabel("Storage profile").SelectOptionAsync(placement.ProfileId);
         var create = content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Create PostgreSQL", Exact = true });
         try { await Assertions.Expect(create).ToBeEnabledAsync(new LocatorAssertionsToBeEnabledOptions { Timeout = 20_000 }); }
         catch
@@ -97,7 +99,7 @@ public sealed class DatabaseBrowserE2ETests(PoleE2EFixture fixture, ITestOutputH
         var name = $"redis-{Guid.NewGuid():N}"[..18];
         var group = await CreateGroupAsync(name, timeout.Token);
         resources.Defer("delete Redis browser group", token => DeleteGroupAsync(group, token));
-        await PrepareStorageProfileAsync("pole/redis", timeout.Token);
+        var placement = await PrepareStorageProfileAsync("pole/redis", timeout.Token);
         await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
         await browserContainer.StartAsync(timeout.Token);
         using var playwright = await Playwright.CreateAsync();
@@ -116,6 +118,8 @@ public sealed class DatabaseBrowserE2ETests(PoleE2EFixture fixture, ITestOutputH
         await CaptureAsync(page, "redis", "catalog");
         await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "New Redis", Exact = true }).ClickAsync();
         await content.GetByLabel("Resource group").SelectOptionAsync(group);
+        await content.GetByLabel("Deployment target").SelectOptionAsync(placement.TargetId);
+        await content.GetByLabel("Storage profile").SelectOptionAsync(placement.ProfileId);
         await content.GetByLabel("Name").FillAsync(name);
         await content.GetByLabel("Tags").FillAsync("e2e, cache");
         var create = content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Create Redis", Exact = true });
@@ -173,7 +177,7 @@ public sealed class DatabaseBrowserE2ETests(PoleE2EFixture fixture, ITestOutputH
         return result.GetProperty("id").GetString()!;
     }
 
-    private async Task PrepareStorageProfileAsync(string resourceType, CancellationToken token)
+    private async Task<(string TargetId, string ProfileId)> PrepareStorageProfileAsync(string resourceType, CancellationToken token)
     {
         using var targetsRequest = fixture.CreatePlatformAdminRequest(HttpMethod.Get, "/api/v1/platform/deployment-targets/");
         using var targetsResponse = await fixture.Api.SendAsync(targetsRequest, token);
@@ -200,6 +204,8 @@ public sealed class DatabaseBrowserE2ETests(PoleE2EFixture fixture, ITestOutputH
         });
         using var response = await fixture.Api.SendAsync(request, token);
         response.EnsureSuccessStatusCode();
+        var profile = await response.Content.ReadFromJsonAsync<JsonElement>(token);
+        return (targetId, profile.GetProperty("id").GetString()!);
     }
 
     private async Task WaitForAppliedAsync(string route, string id, CancellationToken token)

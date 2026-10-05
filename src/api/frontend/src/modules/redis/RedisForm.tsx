@@ -69,7 +69,7 @@ export function NewRedisView({ actions }: { actions: WorkspaceActions<RedisSecti
       <Field label="Tags" hint="Separate tags with commas."><input className="field__control" value={tags} onChange={(event) => setTags(event.target.value)} /></Field>
     </div></fieldset>
     {[groups.error, scopes.error, targets.error, storage.error, compute.error].filter(Boolean).map((error, index) => <Notice key={index} tone="error">{error}</Notice>)}
-    {!allowed && <Notice>Available groups, scopes, targets and profiles are required. Ask a platform administrator to prepare any missing prerequisites.</Notice>}
+    {!allowed && <Notice>Select an available group, isolation scope, deployment target, storage profile and compute profile to continue. If choices are missing, ask a platform administrator to prepare them.</Notice>}
     {validation && <Notice tone="error">{validation}</Notice>}{mutation.error instanceof Error && <Notice tone="error">{mutation.error.message}</Notice>}
     <div className="row-actions"><Button type="submit" variant="primary" disabled={mutation.busy || !allowed}>{mutation.busy ? 'Creating…' : 'Create Redis'}</Button>
       <Button onClick={() => { void groups.refresh(); scopes.retry(); void targets.refresh(); void storage.refresh(); void compute.refresh() }}>Refresh choices</Button></div>
