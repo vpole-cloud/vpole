@@ -59,6 +59,25 @@ describe('app module composition', () => {
     expect(document.getElementById(services.getAttribute('aria-describedby')!)?.textContent).toBe('Service inventory size.')
     expect(document.getElementById(groups.getAttribute('aria-describedby')!)?.textContent).toBe('Group inventory size.')
   })
+  it('names controls with validation or action siblings independently of hint and error text', async () => {
+    await act(async () => root.render(<>
+      <Field label="Name" hint="Use lowercase letters."><input />{false}</Field>
+      <Field label="Value" hint="Values stay write-only."><input aria-describedby="value-error" />
+        <span id="value-error">A value is required.</span><button type="button">Use empty value</button></Field>
+      <Field label="Per page" hint="Service inventory size."><select aria-label="Services per page"><option>8</option></select><span>Validation</span></Field>
+    </>))
+    const [name, value] = [...container.querySelectorAll('input')]
+    expect(document.getElementById(name.getAttribute('aria-labelledby')!)?.textContent).toBe('Name')
+    expect(document.getElementById(name.getAttribute('aria-describedby')!)?.textContent).toBe('Use lowercase letters.')
+    expect(document.getElementById(value.getAttribute('aria-labelledby')!)?.textContent).toBe('Value')
+    expect(value.getAttribute('aria-describedby')!.split(' ').map((id) => document.getElementById(id)?.textContent))
+      .toEqual(['A value is required.', 'Values stay write-only.'])
+    const select = container.querySelector('select')!
+    expect(select.getAttribute('aria-label')).toBe('Services per page')
+    expect(select.hasAttribute('aria-labelledby')).toBe(false)
+    expect(document.getElementById(select.getAttribute('aria-describedby')!)?.textContent).toBe('Service inventory size.')
+    expect(container.querySelector('button')!.textContent).toBe('Use empty value')
+  })
   it('loads a deferred module in the current tenant after a scope change', async () => {
     let release!: () => void
     const pending = new Promise<void>((resolve) => { release = resolve })

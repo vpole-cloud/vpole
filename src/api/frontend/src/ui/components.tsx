@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, useEffect, useId, useRef } from 'react'
+import { Children, cloneElement, isValidElement, useEffect, useId, useRef } from 'react'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 
 export function Button({ variant = 'default', className = '', type = 'button', ...props }:
@@ -24,9 +24,9 @@ export function StatusBadge({ children, tone = 'neutral' }:
 export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   const labelId = useId()
   const hintId = `${labelId}-hint`
-  const control = isValidElement<{ 'aria-label'?: string; 'aria-labelledby'?: string; 'aria-describedby'?: string }>(children) && typeof children.type === 'string' && ['input', 'select', 'textarea'].includes(children.type)
-    ? cloneElement(children, { ...(!children.props['aria-label'] && !children.props['aria-labelledby'] ? { 'aria-labelledby': labelId } : {}),
-      ...(hint ? { 'aria-describedby': [children.props['aria-describedby'], hintId].filter(Boolean).join(' ') } : {}) }) : children
+  const control = Children.map(children, (child) => isValidElement<{ 'aria-label'?: string; 'aria-labelledby'?: string; 'aria-describedby'?: string }>(child) && typeof child.type === 'string' && ['input', 'select', 'textarea'].includes(child.type)
+    ? cloneElement(child, { ...(!child.props['aria-label'] && !child.props['aria-labelledby'] ? { 'aria-labelledby': labelId } : {}),
+      ...(hint ? { 'aria-describedby': [child.props['aria-describedby'], hintId].filter(Boolean).join(' ') } : {}) }) : child)
   return <label className="field"><span className="field__label" id={labelId}>{label}</span>{control}
     {hint && <span className="field__hint" id={hintId}>{hint}</span>}
   </label>
