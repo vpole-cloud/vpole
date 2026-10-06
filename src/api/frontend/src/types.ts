@@ -610,6 +610,7 @@ export interface ResourceGroupInput {
 }
 
 export interface WebServiceInput {
+  expectedRevision?: number
   connectionEnvironmentReferences?: Record<string, ConnectionEnvironmentReference>
   secretEnvironmentReferences?: Record<string, SecretEnvironmentReference>
   tags?: string[]

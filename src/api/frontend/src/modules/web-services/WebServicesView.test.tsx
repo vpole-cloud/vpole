@@ -78,6 +78,9 @@ beforeEach(() => {
       if (init?.method === 'PUT') {
         if (failUpdate) return Promise.resolve(new Response('Configuration changed. Refresh and retry.', { status: 409 }))
         const request = JSON.parse(init.body as string)
+        if (request.expectedRevision !== undefined && request.expectedRevision !== resource.activeRevision) {
+          return Promise.resolve(new Response('Configuration changed. Refresh and retry.', { status: 409 }))
+        }
         const updated = { ...resource, activeRevision: resource.activeRevision + 1, spec: request.spec }
         records.set(resource.id, updated)
         return json(updated)
@@ -619,6 +622,37 @@ it('refreshes a clean configuration while preserving a dirty draft across newer 
   expect(textInput('latest').value).toBe('server-three')
   expect(workspaceTab('sample').getAttribute('aria-label')).toBe('sample')
   expect(document.activeElement?.getAttribute('id')).toBe('web-service-service-tab-configuration')
+})
+
+it('protects a newer build from a stale configuration save and adopts its revision only after discarding', async () => {
+  created = true
+  records.set(service.id, { ...service, activeRevision: 2 })
+  await act(async () => { render() })
+  await click('sample')
+  await click('Configuration')
+  await fill(textInput('latest'), 'old-draft')
+  records.set(service.id, { ...service, activeRevision: 3, spec: { ...service.spec, image: { ...service.spec.image, tag: 'new-build' } } })
+  await click('Refresh service details')
+  expect(visibleText()).toContain('The service changed while this draft was open.')
+  await submit()
+  expect(records.get(service.id)?.spec.image.tag).toBe('new-build')
+  expect(records.get(service.id)?.activeRevision).toBe(3)
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain('Configuration changed.')
+  expect(textInput('latest').value).toBe('old-draft')
+  expect(workspaceTab('sample').getAttribute('aria-label')).toContain('unsaved changes')
+  const updates = () => fetchMock.mock.calls.filter(([, init]) => init?.method === 'PUT')
+  expect(JSON.parse(updates()[0][1]!.body as string).expectedRevision).toBe(2)
+
+  await click('Discard changes')
+  await click('Discard changes')
+  expect(textInput('latest').value).toBe('new-build')
+  expect(visibleText()).not.toContain('The service changed while this draft was open.')
+  await fill(textInput('latest'), 'reviewed-change')
+  await submit()
+  expect(JSON.parse(updates()[1][1]!.body as string).expectedRevision).toBe(3)
+  expect(records.get(service.id)?.activeRevision).toBe(4)
+  expect(records.get(service.id)?.spec.image.tag).toBe('reviewed-change')
+  expect(workspaceTab('sample').getAttribute('aria-label')).toBe('sample')
 })
 
 it('loads restored resource references directly and reports missing resources without opening a form', async () => {

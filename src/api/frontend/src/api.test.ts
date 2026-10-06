@@ -148,6 +148,7 @@ describe('web service placement API', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     await createWebService('https://pole.test', {
+      expectedRevision: 2,
       name: 'api',
       resourceGroupId: '507f1f77bcf86cd799439014',
       exposure: 'Private',
@@ -172,6 +173,7 @@ describe('web service placement API', () => {
       targets: [{ deploymentTargetId: '507f1f77bcf86cd799439016', fixedReplicas: 2, computeProfileId: null }],
     })
     expect(body.exposure).toBe('Private')
+    expect(body).not.toHaveProperty('expectedRevision')
     expect(body.spec).not.toHaveProperty('replicas')
     expect(body).not.toHaveProperty('domainName')
   })
