@@ -242,6 +242,7 @@ export function WebServiceForm({
     setFailure(null)
     try {
       await onSubmit({
+        expectedRevision: mode === 'edit' ? loadedRevision : undefined,
         name: name.trim(),
         exposure,
         resourceGroupId,
@@ -280,6 +281,9 @@ export function WebServiceForm({
       </div>
 
       <form className="resource-group-form" onSubmit={(event) => void handleSubmit(event)}>
+        {mode === 'edit' && dirty && initialValue?.activeRevision !== loadedRevision && (
+          <div className="form-message" role="status">The service changed while this draft was open. Your draft is kept. Discard changes to load the latest configuration.</div>
+        )}
         <fieldset className="web-service-form__fields" disabled={submitStatus === 'loading'}>
         <label className="field">
           <span className="field__label">Name</span>

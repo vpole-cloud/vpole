@@ -733,6 +733,7 @@ export async function updateWebService(
     method: 'PUT',
     headers: buildHeaders(token, tenantId),
     body: JSON.stringify({
+      expectedRevision: input.expectedRevision,
       spec: buildWebServiceSpec(input),
       exposure: input.exposure,
       tags: input.tags ?? [],
