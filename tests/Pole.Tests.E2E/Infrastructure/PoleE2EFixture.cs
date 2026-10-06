@@ -69,7 +69,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         _kubernetesNamespacePrefix = $"pole-{_identity.WorktreeId}";
     }
 
-    public HttpClient Api { get; private set; } = null!;
+    public E2eApiClient Api { get; private set; } = null!;
     public HttpClient Stub { get; private set; } = null!;
     public Uri FrontendBaseAddress { get; private set; } = null!;
     public TestUser Alpha { get; private set; } = null!;
@@ -187,7 +187,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         await WaitForRequiredResourceHealthyAsync("frontend", _shutdown.Token);
         await WaitForRequiredResourceHealthyAsync("github-stub", _shutdown.Token);
 
-        Api = _application.CreateHttpClient("pole-server", "http");
+        Api = new E2eApiClient(_application.CreateHttpClient("pole-server", "http"));
         Stub = _application.CreateHttpClient("github-stub", "http");
         Stub.DefaultRequestHeaders.Add("X-Pole-E2E-Stub-Key", _stubControlKey);
         FrontendBaseAddress = _application.CreateHttpClient("frontend", "http").BaseAddress
@@ -217,6 +217,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             _shutdown.Token);
         PlatformAdminAccessToken = bootstrapToken;
         PlatformAdminUser = bootstrap with { AccessToken = bootstrapToken };
+        RegisterApiToken(bootstrapToken, bootstrap.Email, bootstrap.Password, directGrantClient);
         await AllowBootstrapTargetWithoutEnforcementAsync(_shutdown.Token);
 
         Alpha = await CreatePlatformUserAsync("alpha", bootstrapToken, directGrantClient, _shutdown.Token);
@@ -257,6 +258,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             await DisposePortForwardAsync(_harborPortForward);
             _harborPortForward = null;
             _kubernetes.Dispose();
+            Api?.Dispose();
             _shutdown.Dispose();
 
             if (!string.IsNullOrWhiteSpace(_scratchDirectory) && Directory.Exists(_scratchDirectory))
@@ -1038,9 +1040,14 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             email,
             password,
             cancellationToken);
+        RegisterApiToken(accessToken, email, password, directGrantClient);
         var tenantId = await WaitForDefaultTenantAsync(accessToken, cancellationToken);
         return new TestUser(email, password, keycloakUserId, accessToken, tenantId);
     }
+
+    private void RegisterApiToken(string token, string email, string password, DirectGrantClient directGrantClient) =>
+        Api.RegisterToken(token, ct => _keycloak!.GetPasswordGrantTokenAsync(
+            directGrantClient.ClientId, directGrantClient.Secret, email, password, ct));
 
     private async Task<string> WaitForDefaultTenantAsync(string accessToken, CancellationToken cancellationToken)
     {

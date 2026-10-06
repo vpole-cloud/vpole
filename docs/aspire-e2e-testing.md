@@ -4,6 +4,12 @@
 RabbitMQ containers; real Pole API/frontend processes; and a local GitHub protocol stub. It uses
 the reusable Kubernetes lab for deployment targets, Harbor, and BuildKit.
 
+Fixture API requests renew registered users' bearer tokens before expiry, including after host
+suspension. Renewal uses the same Keycloak account and rejects a changed subject or stale token.
+API responses are sent through unchanged: the helper does not retry 401/403 responses, renew
+unregistered tokens, or change tenant headers. Browser sessions exercise the application's own
+authentication flow. `E2eApiClientTests` covers an overnight clock gap and concurrent renewal.
+
 The suite covers:
 
 - real Keycloak login, JWT validation, roles, and the platform-admin user policy;
