@@ -73,8 +73,10 @@ public sealed class RuntimeDiagnosticsApiTests(MongoReplicaSetFixture fixture) :
             using var reader = new StreamReader(await response.Content.ReadAsStreamAsync());
             Assert.Equal("Opened", (await FrameAsync(reader)).Kind);
             Assert.Contains("controlled-runtime-marker", (await FrameAsync(reader)).Text);
-            reader.Dispose(); response.Dispose();
             var session = provider.Sessions.Last();
+            // Receiving output does not guarantee the next upstream read has started.
+            await session.ReadBlocked.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            reader.Dispose(); response.Dispose();
             await session.ReadCanceled.Task.WaitAsync(TimeSpan.FromSeconds(5));
             await session.Disposed.Task.WaitAsync(TimeSpan.FromSeconds(5));
         }
@@ -88,9 +90,10 @@ public sealed class RuntimeDiagnosticsApiTests(MongoReplicaSetFixture fixture) :
         using var response = await Client.SendAsync(new HttpRequestMessage(HttpMethod.Get, Url(deployment)), HttpCompletionOption.ResponseHeadersRead);
         using var reader = new StreamReader(await response.Content.ReadAsStreamAsync());
         await FrameAsync(reader); await FrameAsync(reader);
+        var session = Assert.Single(provider.Sessions);
+        await session.ReadBlocked.Task.WaitAsync(TimeSpan.FromSeconds(5));
         using var shutdown = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         await StopApiAsync(shutdown.Token);
-        var session = Assert.Single(provider.Sessions);
         await session.ReadCanceled.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await session.Disposed.Task.WaitAsync(TimeSpan.FromSeconds(5));
     }
@@ -166,10 +169,12 @@ public sealed class RuntimeDiagnosticsApiTests(MongoReplicaSetFixture fixture) :
         var deployment = await SeedAsync();
         using var response = await Client.SendAsync(new HttpRequestMessage(HttpMethod.Get, Url(deployment)), HttpCompletionOption.ResponseHeadersRead);
         using var reader = new StreamReader(await response.Content.ReadAsStreamAsync());
-        await FrameAsync(reader); await FrameAsync(reader); provider.StalledVerification = true;
+        await FrameAsync(reader); await FrameAsync(reader);
+        var session = Assert.Single(provider.Sessions);
+        await session.ReadBlocked.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        provider.StalledVerification = true;
         var ended = await FrameAsync(reader);
         Assert.Equal("Ended", ended.Kind); Assert.Equal("Timeout", ended.Reason);
-        var session = Assert.Single(provider.Sessions);
         await session.ReadCanceled.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await session.Disposed.Task.WaitAsync(TimeSpan.FromSeconds(5));
     }
@@ -231,6 +236,7 @@ public sealed class RuntimeDiagnosticsApiTests(MongoReplicaSetFixture fixture) :
     }
     private sealed class TrackedStream(string output, bool block, Action? atEof) : MemoryStream(Encoding.UTF8.GetBytes(output))
     {
+        public TaskCompletionSource ReadBlocked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource ReadCanceled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Disposed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
@@ -241,7 +247,13 @@ public sealed class RuntimeDiagnosticsApiTests(MongoReplicaSetFixture fixture) :
                 if (count == 0) atEof?.Invoke();
                 return count;
             }
-            try { await Task.Delay(Timeout.Infinite, cancellationToken); return 0; }
+            try
+            {
+                var pendingRead = Task.Delay(Timeout.Infinite, cancellationToken);
+                ReadBlocked.TrySetResult();
+                await pendingRead;
+                return 0;
+            }
             catch (OperationCanceledException) { ReadCanceled.TrySetResult(); throw; }
         }
         protected override void Dispose(bool disposing) { base.Dispose(disposing); Disposed.TrySetResult(); }
