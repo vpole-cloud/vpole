@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { act, useLayoutEffect } from 'react'
-import { createRoot } from 'react-dom/client'
+import { createTestApp } from '../test/TestApp'
 import { afterEach, expect, it, vi } from 'vitest'
 import * as api from '../api'
 import { useOverviewData } from './useOverviewData'
 
 vi.mock('../api', () => ({ fetchResourceGroups: vi.fn(), fetchWebServices: vi.fn(), fetchProtectedGreeting: vi.fn() }))
-const root = createRoot(document.createElement('div'))
+const root = createTestApp().root
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 afterEach(async () => { await act(async () => root.render(null)); vi.resetAllMocks() })
 let state!: ReturnType<typeof useOverviewData>

@@ -1,10 +1,12 @@
+export type { PlatformDeploymentTarget, StorageMediaType, StoragePerformanceTier, StorageProfileTenantAccessMode, StorageProfileTenantAccess, StorageProfileSizeLimits, ResolvedStorageProfile, StorageProfile, StorageProfileInput, KubernetesStorageClass, KubernetesStorageOwner, KubernetesPersistentVolume, KubernetesPersistentVolumeClaim } from './modules/platform/storageTypes'
+export type { GitProviderKind, GitProviderAccountType, GitProviderRepositorySelection, SourceBuildPlanKind, SourceBuildPlanConfidence, GitProviderConnection, BeginGitHubInstallationResponse, ProviderRepository, ProviderBranch, GitProviderPage, SourceBuildPlan, RepositoryAnalysis, SourceRepository } from './modules/platform/gitTypes'
+export type { SearchHit, OverviewData } from './modules/platform/overviewTypes'
 export type { SecretMetadata, SecretInput, SecretBindingInput, SecretUsage, SecretProjection } from './modules/secrets/types'
 export type { TenantDomainZone, HostnameBinding, DomainZoneBindingUsage } from './modules/domains/types'
-import type { ResourceGroup } from './modules/resource-groups/types'
 export type { ResourceGroup, IsolationScope, ResourceGroupInput } from './modules/resource-groups/types'
 export type { RedisService, RedisInput, RedisUpdateInput } from './modules/redis/types'
 export type { PostgresCluster, PostgresCapabilities, PostgresInput, PostgresUpdateInput } from './modules/postgres/types'
-import type { WebService, WebServiceDeployment } from './modules/web-services/types'
+import type { WebServiceDeployment } from './modules/web-services/types'
 export type LoadStatus = 'idle' | 'loading' | 'success' | 'error'
 export interface RuntimeDiagnosticInstance {
   uid: string; name: string; phase: string; ready: boolean; currentGeneration: boolean; restartCount: number; reasons: string[]
@@ -75,14 +77,6 @@ export interface AvailableDeploymentTarget {
   publicBaseDomain?: string | null
 }
 
-export interface PlatformDeploymentTarget {
-  id: string
-  displayName: string
-  enabled: boolean
-  acceptsWorkloads: boolean
-  isDefault: boolean
-}
-
 export type ResourcePlacement = WebServiceDeployment
 
 export interface ResourceEndpointDiscovery {
@@ -150,197 +144,7 @@ export interface PaginatedResponse<T> {
   pageNumber: number
   pageSize: number
 }
-
-export interface SearchHit {
-  resourceTypeId: string
-  sourceType: string
-  sourceId: string
-  title: string
-  resourceGroupId?: string | null
-  resourceGroupName?: string | null
-  operationalStatus?: { status: string; failureCode?: string | null } | null
-}
-
-export type GitProviderKind = 'GitHub'
-export type GitProviderAccountType = 'User' | 'Organization'
-export type GitProviderRepositorySelection = 'All' | 'Selected'
-export type SourceBuildPlanKind = 'Dockerfile' | 'DotNet' | 'Node'
-export type SourceBuildPlanConfidence = 'High' | 'Medium' | 'Low'
-
-export interface GitProviderConnection {
-  id: string
-  provider: GitProviderKind
-  accountLogin: string
-  accountType: GitProviderAccountType
-  repositorySelection: GitProviderRepositorySelection
-  createdAtUtc: string
-  updatedAtUtc: string
-}
-
-export interface BeginGitHubInstallationResponse {
-  installUrl: string
-  expiresAtUtc: string
-}
-
-export interface ProviderRepository {
-  id: string
-  name: string
-  fullName: string
-  htmlUrl: string
-  isPrivate: boolean
-  defaultBranch: string
-  updatedAtUtc?: string | null
-}
-
-export interface ProviderBranch {
-  name: string
-  commitSha: string
-  isProtected: boolean
-}
-
-export interface GitProviderPage<T> {
-  items: T[]
-  page: number
-  pageSize: number
-  hasMore: boolean
-}
-
-export interface SourceBuildPlan {
-  candidateKey: string
-  kind: SourceBuildPlanKind
-  displayName: string
-  sourceRoot: string
-  manifestPath: string
-  confidence: SourceBuildPlanConfidence
-  signals: string[]
-  warnings: string[]
-  commands: string[]
-  startCommand?: string | null
-  dockerfilePreview: string
-}
-
-export interface RepositoryAnalysis {
-  repositoryId: string
-  repositoryFullName: string
-  branch: string
-  commitSha: string
-  analyzedAtUtc: string
-  detectedFiles: string[]
-  candidates: SourceBuildPlan[]
-}
-
-export interface SourceRepository {
-  id: string
-  connectionId: string
-  externalRepositoryId: string
-  repositoryFullName: string
-  repositoryUrl: string
-  isPrivate: boolean
-  branch: string
-  commitSha: string
-  analyzedAtUtc: string
-  createdAtUtc: string
-  updatedAtUtc: string
-  selectedPlan: SourceBuildPlan
-}
-
-export interface OverviewData {
-  resourceGroups: ResourceGroup[]
-  webServices: WebService[]
-}
-
-export type StorageMediaType = 'Unknown' | 'HDD' | 'SSD' | 'NVMe' | 'Network'
-export type StoragePerformanceTier = 'Standard' | 'Bulk' | 'Fast' | 'Ultra'
-export type StorageProfileTenantAccessMode = 'AllTenants' | 'SelectedTenants'
 export type PoleResourceType = string
-
-export interface StorageProfileTenantAccess {
-  mode: StorageProfileTenantAccessMode
-  tenantIds: string[]
-}
-
-export interface StorageProfileSizeLimits {
-  minSizeGb?: number | null
-  maxSizeGb?: number | null
-}
-
-export interface ResolvedStorageProfile {
-  profileId: string
-  displayName: string
-  storageClassName: string
-  mediaType: StorageMediaType
-  performanceTier: StoragePerformanceTier
-}
-
-export interface StorageProfile {
-  id: string
-  displayName: string
-  description: string
-  mediaType: StorageMediaType
-  performanceTier: StoragePerformanceTier
-  isEnabled: boolean
-  isDefault: boolean
-  targetMappings: Array<{ deploymentTargetId: string; storageClassName: string }>
-  revision: number
-  allowedResourceTypes: PoleResourceType[]
-  tenantAccess: StorageProfileTenantAccess
-  sizeLimits?: StorageProfileSizeLimits | null
-}
-
-export interface StorageProfileInput {
-  displayName: string
-  description: string
-  mediaType: StorageMediaType
-  performanceTier: StoragePerformanceTier
-  isEnabled: boolean
-  isDefault: boolean
-  targetMappings: Array<{ deploymentTargetId: string; storageClassName: string }>
-  revision?: number
-  allowedResourceTypes: PoleResourceType[]
-  tenantAccess: StorageProfileTenantAccess
-  sizeLimits?: StorageProfileSizeLimits | null
-}
-
-export interface KubernetesStorageClass {
-  name: string
-  provisioner: string
-  isDefault: boolean
-  reclaimPolicy?: string | null
-  volumeBindingMode?: string | null
-  allowVolumeExpansion?: boolean | null
-  parameters: Record<string, string>
-  metadata: Record<string, string>
-}
-
-export interface KubernetesStorageOwner {
-  tenantId?: string | null
-  resourceGroupId?: string | null
-  resourceType?: string | null
-  resourceId?: string | null
-  resourceName?: string | null
-}
-
-export interface KubernetesPersistentVolume {
-  name: string
-  capacity?: string | null
-  status?: string | null
-  storageClassName?: string | null
-  boundClaimNamespace?: string | null
-  boundClaimName?: string | null
-  reclaimPolicy?: string | null
-  owner: KubernetesStorageOwner
-}
-
-export interface KubernetesPersistentVolumeClaim {
-  name: string
-  namespace: string
-  capacity?: string | null
-  requestedCapacity?: string | null
-  status?: string | null
-  storageClassName?: string | null
-  volumeName?: string | null
-  owner: KubernetesStorageOwner
-}
 
 export type { ImageInfo, ProbeConfig, PortMapping, WebService, WebServiceExposure, WebServiceSpec, ConnectionEnvironmentReference, SecretEnvironmentReference, WebServiceDeploymentEndpoint, WebServiceDeploymentIngress, WebServiceDeployment, WebServiceReleaseDeployment, WebServiceRelease, WebServiceRecoveryResponse, WebServiceReleaseHistory, WebServiceInput, WebServiceDeploymentInput, WebServiceDeploymentUpdateInput } from './modules/web-services/types'
 export type { SourceBuildLogEntry, SourceBuildLogs, SourceBuildRecipeKind, SourceBuildPhase, SourceBuildRecipe, SourceBuildConfiguration, SourceBuildJobState, SourceBuildJob } from './modules/web-services/buildTypes'

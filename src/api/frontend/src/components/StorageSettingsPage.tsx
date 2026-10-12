@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type {
   KubernetesPersistentVolume,
   KubernetesPersistentVolumeClaim,
@@ -12,6 +12,7 @@ import type {
   StorageProfileTenantAccessMode,
   PlatformDeploymentTarget,
 } from '../types'
+import { storageProfileCommand } from '../modules/platform/storageModel'
 import { ConfirmationDialog, Field } from '../ui/components'
 import { useUnsavedChanges } from '../shell/useUnsavedChanges'
 
@@ -36,12 +37,6 @@ interface StorageSettingsPageProps {
 const mediaTypes: StorageMediaType[] = ['Unknown', 'HDD', 'SSD', 'NVMe', 'Network']
 const performanceTiers: StoragePerformanceTier[] = ['Standard', 'Bulk', 'Fast', 'Ultra']
 const resourceTypes: PoleResourceType[] = ['pole/redis', 'pole/postgresql']
-
-const parseList = (value: string) =>
-  value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
 
 const toggleValue = <T extends string>(current: T[], value: T) =>
   current.includes(value)
@@ -89,6 +84,8 @@ export function StorageSettingsPage({
   onUpdate,
   canManage = false,
 }: StorageSettingsPageProps) {
+  const mounted = useRef(false)
+  useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
@@ -120,6 +117,13 @@ export function StorageSettingsPage({
     filteredProfiles.find((profile) => profile.id === selectedId) ??
     profiles.find((profile) => profile.id === selectedId) ??
     null
+
+  const [formRevision, setFormRevision] = useState({ id: '', revision: 0 })
+  const selectedRevision = selectedProfile?.revision ?? 0
+  const selectedIdentity = selectedProfile?.id ?? ''
+  if (!dirty && (formRevision.id !== selectedIdentity || formRevision.revision !== selectedRevision)) {
+    setFormRevision({ id: selectedIdentity, revision: selectedRevision })
+  }
 
   return (
     <div className="resource-groups-page">
@@ -246,7 +250,7 @@ export function StorageSettingsPage({
             </div>
           )}
 
-          {status === 'success' && filteredProfiles.length > 0 && (
+          {filteredProfiles.length > 0 && (
             <div className="list">
               {filteredProfiles.map((profile) => (
                 <article
@@ -285,9 +289,9 @@ export function StorageSettingsPage({
           )}
         </section>
 
-        {canManage && deploymentTargetId && status === 'success' ? (
+        {canManage && deploymentTargetId ? (
           <StorageProfileForm
-            key={`${selectedProfile?.id ?? 'create'}:${selectedProfile?.revision ?? 0}:${deploymentTargetId}:${formGeneration}`}
+            key={`${selectedProfile?.id ?? 'create'}:${formRevision.revision}:${deploymentTargetId}:${formGeneration}`}
             deploymentTargetId={deploymentTargetId}
             onDirtyChange={setDirty}
             mode={selectedProfile ? 'edit' : 'create'}
@@ -298,11 +302,13 @@ export function StorageSettingsPage({
             onSubmit={async (input) => {
               if (selectedProfile) {
                 await onUpdate(selectedProfile.id, input)
+                if (!mounted.current) return
                 setDirty(false)
                 return
               }
 
               await onCreate(input)
+              if (!mounted.current) return
               setDirty(false)
             }}
             onCancelEdit={selectedProfile ? () => change(() => setSelectedId(null)) : undefined}
@@ -397,108 +403,53 @@ function StorageProfileForm({
   onSubmit,
   onCancelEdit,
 }: StorageProfileFormProps) {
+  const mounted = useRef(false)
+  useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
+  const [baseline] = useState(initialValue ?? null)
+  const conflict = Boolean(baseline && initialValue && baseline.revision !== initialValue.revision)
   const defaultStorageClassName = useMemo(
     () => storageClasses.find((item) => item.isDefault)?.name ?? storageClasses[0]?.name ?? '',
     [storageClasses],
   )
-  const [displayName, setDisplayName] = useState(initialValue?.displayName ?? '')
-  const [description, setDescription] = useState(initialValue?.description ?? '')
+  const [displayName, setDisplayName] = useState(baseline?.displayName ?? '')
+  const [description, setDescription] = useState(baseline?.description ?? '')
   const [mediaType, setMediaType] = useState<StorageMediaType>(
-    initialValue?.mediaType ?? 'SSD',
+    baseline?.mediaType ?? 'SSD',
   )
   const [performanceTier, setPerformanceTier] = useState<StoragePerformanceTier>(
-    initialValue?.performanceTier ?? 'Standard',
+    baseline?.performanceTier ?? 'Standard',
   )
-  const [isEnabled, setIsEnabled] = useState(initialValue?.isEnabled ?? true)
-  const [isDefault, setIsDefault] = useState(initialValue?.isDefault ?? false)
-  const initialClass = initialValue?.targetMappings.find((mapping) => mapping.deploymentTargetId === deploymentTargetId)?.storageClassName
+  const [isEnabled, setIsEnabled] = useState(baseline?.isEnabled ?? true)
+  const [isDefault, setIsDefault] = useState(baseline?.isDefault ?? false)
+  const initialClass = baseline?.targetMappings.find((mapping) => mapping.deploymentTargetId === deploymentTargetId)?.storageClassName
   const [storageClassName, setStorageClassName] = useState(initialClass ?? defaultStorageClassName)
   const [allowedResourceTypes, setAllowedResourceTypes] = useState<PoleResourceType[]>(
-    initialValue?.allowedResourceTypes ?? ['pole/redis', 'pole/postgresql'],
+    baseline?.allowedResourceTypes ?? ['pole/redis', 'pole/postgresql'],
   )
   const [tenantAccessMode, setTenantAccessMode] =
     useState<StorageProfileTenantAccessMode>(
-      initialValue?.tenantAccess.mode ?? 'AllTenants',
+      baseline?.tenantAccess.mode ?? 'AllTenants',
     )
   const [tenantIdsText, setTenantIdsText] = useState(
-    initialValue?.tenantAccess.tenantIds.join(', ') ?? '',
+    baseline?.tenantAccess.tenantIds.join(', ') ?? '',
   )
   const [minSizeGb, setMinSizeGb] = useState(
-    initialValue?.sizeLimits?.minSizeGb?.toString() ?? '',
+    baseline?.sizeLimits?.minSizeGb?.toString() ?? '',
   )
   const [maxSizeGb, setMaxSizeGb] = useState(
-    initialValue?.sizeLimits?.maxSizeGb?.toString() ?? '',
+    baseline?.sizeLimits?.maxSizeGb?.toString() ?? '',
   )
   const [validationError, setValidationError] = useState('')
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (submitStatus === 'loading' || conflict) return
 
-    const tenantIds = parseList(tenantIdsText)
-    const minSize = minSizeGb.trim() ? Number(minSizeGb) : null
-    const maxSize = maxSizeGb.trim() ? Number(maxSizeGb) : null
-
-    if (!displayName.trim()) {
-      setValidationError('Display name is required.')
-      return
-    }
-
-    if (!storageClassName.trim()) {
-      setValidationError('A storage class is required for this target.')
-      return
-    }
-
-    if (allowedResourceTypes.length === 0) {
-      setValidationError('At least one resource type is required.')
-      return
-    }
-
-    if (tenantAccessMode === 'SelectedTenants' && tenantIds.length === 0) {
-      setValidationError('At least one tenant id is required for selected tenants.')
-      return
-    }
-
-    if ((minSize !== null && minSize <= 0) || (maxSize !== null && maxSize <= 0)) {
-      setValidationError('Size limits must be greater than zero.')
-      return
-    }
-
-    if (minSize !== null && maxSize !== null && minSize > maxSize) {
-      setValidationError('Minimum size must be less than or equal to maximum size.')
-      return
-    }
-
+    const command = storageProfileCommand({ displayName, description, mediaType, performanceTier, isEnabled, isDefault, storageClassName, allowedResourceTypes, tenantAccessMode, tenantIdsText, minSizeGb, maxSizeGb }, baseline, deploymentTargetId)
+    if ('error' in command) { setValidationError(command.error); return }
     setValidationError('')
-
-    const mapping = { deploymentTargetId, storageClassName: storageClassName.trim() }
-    const targetMappings = (initialValue?.targetMappings ?? []).map((current) =>
-      current.deploymentTargetId === deploymentTargetId ? mapping : current)
-    if (!targetMappings.some((current) => current.deploymentTargetId === deploymentTargetId)) targetMappings.push(mapping)
-
-    try {
-      await onSubmit({
-        displayName: displayName.trim(),
-        description: description.trim(),
-        mediaType,
-        performanceTier,
-        isEnabled,
-        isDefault,
-        targetMappings,
-        ...(initialValue ? { revision: initialValue.revision } : {}),
-        allowedResourceTypes,
-        tenantAccess: {
-          mode: tenantAccessMode,
-          tenantIds: tenantAccessMode === 'SelectedTenants' ? tenantIds : [],
-        },
-        sizeLimits:
-          minSize !== null || maxSize !== null
-            ? {
-                minSizeGb: minSize,
-                maxSizeGb: maxSize,
-              }
-            : null,
-      })
-    } catch { return }
+    try { await onSubmit(command.input) } catch { return }
+    if (!mounted.current) return
 
     if (mode === 'create') {
       setDisplayName('')
@@ -522,7 +473,9 @@ function StorageProfileForm({
         </div>
       </div>
 
+      {conflict && <div className="form-message form-message--error">This profile changed on the server. Refresh and explicitly discard this draft before editing the current revision.</div>}
       <form className="resource-group-form" onChange={() => onDirtyChange(true)} onSubmit={(event) => void handleSubmit(event)}>
+        <fieldset disabled={submitStatus === 'loading'} style={{ border: 0, padding: 0, minWidth: 0 }}>
         <Field label="Display name">
           <input
             className="field__control"
@@ -681,7 +634,7 @@ function StorageProfileForm({
         <div className="resource-group-form__actions">
           <button
             className="button button--primary"
-            disabled={submitStatus === 'loading'}
+            disabled={submitStatus === 'loading' || conflict}
             type="submit"
           >
             {submitStatus === 'loading'
@@ -696,6 +649,7 @@ function StorageProfileForm({
             </button>
           )}
         </div>
+        </fieldset>
       </form>
     </section>
   )

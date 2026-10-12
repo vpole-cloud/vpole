@@ -1,55 +1,25 @@
+export { fetchStorageProfiles, fetchPlatformDeploymentTargets, fetchKubernetesStorageClasses, fetchKubernetesPersistentVolumes, fetchKubernetesPersistentVolumeClaims, createStorageProfile, updateStorageProfile } from './modules/platform/storageApi'
+export { fetchGitProviderConnections, beginGitHubInstallation, disconnectGitProviderConnection, fetchProviderRepositories, fetchProviderBranches, analyzeProviderRepository, linkProviderRepository, fetchSourceRepositories, reanalyzeSourceRepository, unlinkSourceRepository } from './modules/platform/gitApi'
+export { fetchProtectedGreeting, searchResources } from './modules/platform/discoveryApi'
 export { SecretApiError, fetchSecrets, fetchSecret, createSecret, rotateSecret, deleteSecret, fetchSecretUsage, fetchSecretProjections, bindSecret, detachSecret } from './modules/secrets/api'
 export { fetchDomainZones, DomainApiError, fetchDomainZone, fetchDomainZoneBindings, createDomainZone, deleteDomainZone, fetchWebServiceHostnameBindings, addWebServiceHostnameBinding, deleteWebServiceHostnameBinding } from './modules/domains/api'
 export { fetchIsolationScopes, fetchResourceGroups, fetchResourceGroup, fetchResourceGroupResources, createResourceGroup, updateResourceGroup, deleteResourceGroup } from './modules/resource-groups/api'
 export { fetchRedisServices, fetchRedisService, createRedisService, updateRedisService, deleteRedisService } from './modules/redis/api'
 export { fetchPostgresClusters, fetchPostgresCluster, fetchPostgresCapabilities, createPostgresCluster, updatePostgresCluster, deletePostgresCluster, fetchPostgresConnectionString, rotatePostgresPassword } from './modules/postgres/api'
 import { consumeRuntimeLogFrames, runtimeReasons } from './api/runtimeLogs'
-import { ApiError, buildHeaders, fetchJson, request, sendJson, sendWithoutResponse } from './api/transport'
+import { ApiError, buildHeaders, fetchJson, request, sendJson } from './api/transport'
 export { ApiError, validationMessage } from './api/transport'
 export { fetchTenants, normalizeTenantRole } from './api/tenants'
 import type {
-  BeginGitHubInstallationResponse,
   AvailableComputeProfile,
   AvailableDeploymentTarget,
-  PlatformDeploymentTarget,
-  GitProviderConnection,
-  GitProviderPage,
-  KubernetesPersistentVolume,
-  KubernetesPersistentVolumeClaim,
-  KubernetesStorageClass,
   PaginatedResponse,
   ResourceConnection,
   PoleResourceType,
-  StorageProfile,
-  StorageProfileInput,
-  ProviderBranch,
-  ProviderRepository,
-  RepositoryAnalysis,
-  SourceRepository,
-  SearchHit,
   ResourcePlacement,
   ResourceEndpointDiscovery,
+  StorageProfile,
 } from './types'
-
-export async function fetchStorageProfiles(
-  apiBaseUrl: string,
-  token?: string,
-  signal?: AbortSignal,
-) {
-  return fetchJson<StorageProfile[]>(
-    `${apiBaseUrl}/api/v1/platform/storage/profiles`,
-    {
-      headers: buildHeaders(token),
-      signal,
-    },
-  )
-}
-
-export async function fetchPlatformDeploymentTargets(apiBaseUrl: string, token?: string, signal?: AbortSignal) {
-  return fetchJson<PlatformDeploymentTarget[]>(`${apiBaseUrl}/api/v1/platform/deployment-targets`, {
-    headers: buildHeaders(token), signal,
-  })
-}
 
 export async function fetchAvailableStorageProfiles(
   apiBaseUrl: string,
@@ -65,51 +35,6 @@ export async function fetchAvailableStorageProfiles(
     `${apiBaseUrl}/api/v1/storage-profiles?${query.toString()}`,
     {
       headers: buildHeaders(token, tenantId),
-      signal,
-    },
-  )
-}
-
-export async function fetchKubernetesStorageClasses(
-  apiBaseUrl: string,
-  deploymentTargetId: string,
-  token?: string,
-  signal?: AbortSignal,
-) {
-  return fetchJson<KubernetesStorageClass[]>(
-    `${apiBaseUrl}/api/v1/platform/storage/storage-classes?${new URLSearchParams({ deploymentTargetId })}`,
-    {
-      headers: buildHeaders(token),
-      signal,
-    },
-  )
-}
-
-export async function fetchKubernetesPersistentVolumes(
-  apiBaseUrl: string,
-  deploymentTargetId: string,
-  token?: string,
-  signal?: AbortSignal,
-) {
-  return fetchJson<KubernetesPersistentVolume[]>(
-    `${apiBaseUrl}/api/v1/platform/storage/persistent-volumes?${new URLSearchParams({ deploymentTargetId })}`,
-    {
-      headers: buildHeaders(token),
-      signal,
-    },
-  )
-}
-
-export async function fetchKubernetesPersistentVolumeClaims(
-  apiBaseUrl: string,
-  deploymentTargetId: string,
-  token?: string,
-  signal?: AbortSignal,
-) {
-  return fetchJson<KubernetesPersistentVolumeClaim[]>(
-    `${apiBaseUrl}/api/v1/platform/storage/persistent-volume-claims?${new URLSearchParams({ deploymentTargetId })}`,
-    {
-      headers: buildHeaders(token),
       signal,
     },
   )
@@ -179,222 +104,6 @@ export async function fetchAvailableComputeProfiles(
     `${apiBaseUrl}/api/v1/compute-profiles/available?${query.toString()}`,
     { headers: buildHeaders(token, tenantId), signal },
   )
-}
-
-export async function fetchProtectedGreeting(
-  apiBaseUrl: string,
-  token?: string,
-  signal?: AbortSignal,
-) {
-  const response = await request(`${apiBaseUrl}/test-keycloak`, {
-    headers: buildHeaders(token),
-    signal,
-  })
-
-  if (!response.ok) {
-    const message = await response.text()
-    throw new Error(message || `Request failed with status ${response.status}`)
-  }
-
-  return response.text()
-}
-
-export async function createStorageProfile(
-  apiBaseUrl: string,
-  input: StorageProfileInput,
-  token?: string,
-) {
-  return sendJson<StorageProfile>(
-    `${apiBaseUrl}/api/v1/platform/storage/profiles`,
-    {
-      method: 'POST',
-      headers: buildHeaders(token),
-      body: JSON.stringify(input),
-    },
-  )
-}
-
-export async function updateStorageProfile(
-  apiBaseUrl: string,
-  id: string,
-  input: StorageProfileInput,
-  token?: string,
-) {
-  return sendJson<StorageProfile>(
-    `${apiBaseUrl}/api/v1/platform/storage/profiles/${encodeURIComponent(id)}`,
-    {
-      method: 'PUT',
-      headers: buildHeaders(token),
-      body: JSON.stringify(input),
-    },
-  )
-}
-
-export async function fetchGitProviderConnections(
-  apiBaseUrl: string,
-  token?: string,
-  tenantId?: string,
-  signal?: AbortSignal,
-) {
-  return fetchJson<GitProviderConnection[]>(
-    `${apiBaseUrl}/api/v1/git-provider-connections`,
-    {
-      headers: buildHeaders(token, tenantId),
-      signal,
-    },
-  )
-}
-
-export async function beginGitHubInstallation(
-  apiBaseUrl: string,
-  token?: string,
-  tenantId?: string,
-) {
-  return sendJson<BeginGitHubInstallationResponse>(
-    `${apiBaseUrl}/api/v1/git-provider-connections/github/install`,
-    {
-      method: 'POST',
-      headers: buildHeaders(token, tenantId),
-    },
-  )
-}
-
-export async function disconnectGitProviderConnection(
-  apiBaseUrl: string,
-  connectionId: string,
-  token?: string,
-  tenantId?: string,
-) {
-  return sendWithoutResponse(
-    `${apiBaseUrl}/api/v1/git-provider-connections/${encodeURIComponent(connectionId)}`,
-    {
-      method: 'DELETE',
-      headers: buildHeaders(token, tenantId),
-    },
-  )
-}
-
-export async function fetchProviderRepositories(
-  apiBaseUrl: string,
-  connectionId: string,
-  token?: string,
-  tenantId?: string,
-  signal?: AbortSignal,
-  page = 1,
-) {
-  return fetchJson<GitProviderPage<ProviderRepository>>(
-    `${apiBaseUrl}/api/v1/git-provider-connections/${encodeURIComponent(connectionId)}/repositories?page=${page}&pageSize=100`,
-    {
-      headers: buildHeaders(token, tenantId),
-      signal,
-    },
-  )
-}
-
-export async function fetchProviderBranches(
-  apiBaseUrl: string,
-  connectionId: string,
-  repositoryId: string,
-  token?: string,
-  tenantId?: string,
-  signal?: AbortSignal,
-  page = 1,
-) {
-  return fetchJson<GitProviderPage<ProviderBranch>>(
-    `${apiBaseUrl}/api/v1/git-provider-connections/${encodeURIComponent(connectionId)}/repositories/${encodeURIComponent(repositoryId)}/branches?page=${page}&pageSize=100`,
-    {
-      headers: buildHeaders(token, tenantId),
-      signal,
-    },
-  )
-}
-
-export async function analyzeProviderRepository(
-  apiBaseUrl: string,
-  connectionId: string,
-  repositoryId: string,
-  branch: string,
-  token?: string,
-  tenantId?: string,
-) {
-  return sendJson<RepositoryAnalysis>(
-    `${apiBaseUrl}/api/v1/git-provider-connections/${encodeURIComponent(connectionId)}/repositories/${encodeURIComponent(repositoryId)}/analysis`,
-    {
-      method: 'POST',
-      headers: buildHeaders(token, tenantId),
-      body: JSON.stringify({ branch }),
-    },
-  )
-}
-
-export async function linkProviderRepository(
-  apiBaseUrl: string,
-  connectionId: string,
-  repositoryId: string,
-  branch: string,
-  candidateKey: string,
-  token?: string,
-  tenantId?: string,
-) {
-  return sendJson<SourceRepository>(
-    `${apiBaseUrl}/api/v1/git-provider-connections/${encodeURIComponent(connectionId)}/repositories/${encodeURIComponent(repositoryId)}/links`,
-    {
-      method: 'POST',
-      headers: buildHeaders(token, tenantId),
-      body: JSON.stringify({ branch, candidateKey }),
-    },
-  )
-}
-
-export async function fetchSourceRepositories(
-  apiBaseUrl: string,
-  token?: string,
-  tenantId?: string,
-  signal?: AbortSignal,
-) {
-  return fetchJson<SourceRepository[]>(`${apiBaseUrl}/api/v1/source-repositories`, {
-    headers: buildHeaders(token, tenantId),
-    signal,
-  })
-}
-
-export async function reanalyzeSourceRepository(
-  apiBaseUrl: string,
-  sourceRepositoryId: string,
-  token?: string,
-  tenantId?: string,
-) {
-  return sendJson<SourceRepository>(
-    `${apiBaseUrl}/api/v1/source-repositories/${encodeURIComponent(sourceRepositoryId)}/reanalyze`,
-    {
-      method: 'POST',
-      headers: buildHeaders(token, tenantId),
-    },
-  )
-}
-
-export async function unlinkSourceRepository(
-  apiBaseUrl: string,
-  sourceRepositoryId: string,
-  token?: string,
-  tenantId?: string,
-) {
-  return sendWithoutResponse(
-    `${apiBaseUrl}/api/v1/source-repositories/${encodeURIComponent(sourceRepositoryId)}`,
-    {
-      method: 'DELETE',
-      headers: buildHeaders(token, tenantId),
-    },
-  )
-}
-
-export async function searchResources(
-  apiBaseUrl: string, query: string, token?: string, tenantId?: string, signal?: AbortSignal, pageNumber = 1,
-) {
-  const params = new URLSearchParams({ query: query.trim(), pageNumber: String(pageNumber), pageSize: '20' })
-  return fetchJson<PaginatedResponse<SearchHit>>(`${apiBaseUrl}/api/v1/search?${params}`, {
-    headers: buildHeaders(token, tenantId), signal,
-  })
 }
 
 export async function retryResourceDeployment(apiBaseUrl: string, deploymentId: string, expectedRevision: number, expectedOperation: string, token?: string, tenantId?: string, signal?: AbortSignal) {

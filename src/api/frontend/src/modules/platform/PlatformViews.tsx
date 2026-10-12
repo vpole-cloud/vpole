@@ -30,7 +30,7 @@ export function OverviewView() {
 export function IntegrationsView() {
   const { tenant, navigation: { search, setSearch } } = useAppServices()
   const [notice, setNotice] = useState(() => readIntegrationNavigation(window.location.search).githubNotice)
-  const manager = useGitIntegrationsManager({ ...useTenantApiOptions(),
+  const manager = useGitIntegrationsManager({ ...useTenantApiOptions(), canManage: tenant.canManage,
     preferredConnectionId: notice?.status === 'connected' ? notice.connectionId : undefined })
   useEffect(() => {
     const params = new URLSearchParams(search)
