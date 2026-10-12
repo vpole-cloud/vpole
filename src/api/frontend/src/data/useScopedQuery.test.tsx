@@ -78,3 +78,27 @@ it('rejects an old refresh callback after tenant change and after unmount', asyn
   await act(async () => { expect(await closingRefresh()).toBeNull() })
   expect(calls).toBe(before)
 })
+
+
+it('cancels a disabled in-flight read only after its last enabled observer leaves', async () => {
+  const pending = deferred<string>()
+  let signal!: AbortSignal
+  let calls = 0
+  const states: Record<string, ReturnType<typeof useScopedQuery<string>>> = {}
+  function Probe({ id, enabled }: { id: string; enabled: boolean }) {
+    const value = useScopedQuery({ scope: ['api', 'tenant'], key: ['shared'], enabled,
+      load: async (readSignal) => { calls++; signal = readSignal; return pending.promise } })
+    useLayoutEffect(() => { states[id] = value })
+    return null
+  }
+  const render = (a: boolean, b: boolean) => root.render(<><Probe id="a" enabled={a} /><Probe id="b" enabled={b} /></>)
+  await act(async () => render(true, true))
+  expect(calls).toBe(1)
+  await act(async () => render(false, true))
+  expect(signal.aborted).toBe(false)
+  await act(async () => render(false, false))
+  expect(signal.aborted).toBe(true)
+  await act(async () => pending.resolve('Late response'))
+  expect(states.a.resource).toBeNull()
+  expect(states.b.resource).toBeNull()
+})

@@ -47,6 +47,13 @@ export function useScopedQuery<T>({ scope, key, load, enabled = true, refreshVer
     await session.client.cancelQueries({ queryKey: JSON.parse(identity), exact: true })
     return refresh()
   }, [identity, refresh, session])
+  useEffect(() => {
+    if (enabled) return
+    const queryKey = JSON.parse(identity)
+    const cached = session.client.getQueryCache().find({ queryKey, exact: true })
+    // Disabling one observer must not cancel a read used by another active consumer.
+    if (cached && !cached.isActive()) void session.client.cancelQueries({ queryKey, exact: true })
+  }, [enabled, identity, session])
   const previousVersion = useRef(refreshVersion)
   useEffect(() => {
     if (previousVersion.current === refreshVersion) return
