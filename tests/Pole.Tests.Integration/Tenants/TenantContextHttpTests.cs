@@ -12,6 +12,7 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.RedisServices.Application.Endpoints;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Tenants.Application;
+using Pole.Features.Realtime.Application;
 using Pole.Features.Tenants.Application.Middleware;
 using Pole.Features.Tenants.Application.Persistence.Tenants;
 using Pole.Features.Tenants.Domain;
@@ -28,6 +29,7 @@ public sealed class TenantContextHttpTests
     public async Task ProductionEndpointGraphRequiresTenantContextByDefault()
     {
         var builder = WebApplication.CreateBuilder();
+        builder.Services.AddRealtimeFeature(builder.Configuration, development: false);
         builder.Services.AddTenantsFeature();
         builder.Services.AddPoleMediator();
         await using var app = builder.Build();

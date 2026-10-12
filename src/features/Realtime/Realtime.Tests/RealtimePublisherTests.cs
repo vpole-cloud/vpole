@@ -10,6 +10,30 @@ namespace Pole.Features.Realtime.Tests;
 public sealed class RealtimePublisherTests
 {
     [Fact]
+    public async Task RevocationDuringDeliveryFencesEverySubscriptionOnTheConnection()
+    {
+        const string tenant = "000000000000000000000001";
+        var checks = 0;
+        var registry = new RealtimeTopicRegistry([new("fake", RealtimeScope.Tenant)], new());
+        var access = new RealtimeAccess((id, user, _, _) => Task.FromResult<LoadTenantMemberOutcome>(++checks == 1
+                ? new TenantMemberSnapshot(id, user, TenantMembershipRole.Viewer) : new TenantMemberMissing(id, user)),
+            (id, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(id, "name")), registry);
+        var expiry = DateTimeOffset.UtcNow.AddMinutes(1);
+        var tickets = new MemoryTickets();
+        await tickets.StoreAsync(new AuthenticationTicket(IdentityFixture.User(), new() { ExpiresUtc = expiry }, RealtimeFeature.CookieScheme));
+        var subscriptions = new MemorySubscriptions();
+        await subscriptions.ReplaceAsync("connection", [
+            new("all", "connection", "viewer", new("fake", tenant), expiry),
+            new("resource", "connection", "viewer", new("fake", tenant, "resource"), expiry)
+        ], default);
+        var hub = new RecordingHubContext();
+        await new RealtimePublisher(subscriptions, tickets, access, registry, hub, TimeProvider.System)
+            .PublishAsync(new("fake", tenant, "resource"));
+        Assert.Empty(hub.Client.Notices);
+        Assert.Equal(1, hub.Client.Revocations);
+    }
+
+    [Fact]
     public async Task MembershipIsCheckedAtDeliveryAndExpiredOrRevokedSessionsReceiveNoData()
     {
         const string tenant = "000000000000000000000001";

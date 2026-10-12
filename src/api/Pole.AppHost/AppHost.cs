@@ -1,8 +1,10 @@
 using Pole.AppHost.MongoDb;
+using Pole.AppHost.Realtime;
 using Microsoft.Extensions.Configuration;
 
 var builder = DistributedApplication.CreateBuilder(args);
 var e2eEnabled = builder.Configuration.GetValue("E2E:Enabled", false);
+var realtimeEnabled = builder.Configuration.GetValue("Realtime:Enabled", false);
 var e2eBuildKitPort = e2eEnabled ? builder.Configuration.GetValue<int?>("E2E:BuildKitPort") : null;
 var e2eKeycloakPort = e2eEnabled ? builder.Configuration.GetValue<int?>("E2E:KeycloakPort") : null;
 var mongoEntrypointPath = Path.Combine(builder.AppHostDirectory, "MongoDb", "mongo-entrypoint.sh");
@@ -256,6 +258,37 @@ var e2eKubernetesNamespacePrefix = builder.Configuration["E2E:KubernetesNamespac
 if (e2eEnabled && !string.IsNullOrWhiteSpace(e2eKubernetesNamespacePrefix))
     api.WithEnvironment("kubernetes__NamespaceNamePrefix", e2eKubernetesNamespacePrefix);
 
+if (realtimeEnabled)
+{
+    var realtime = builder.AddRedis("realtime")
+        .WithArgs(context =>
+        {
+            // Aspire wraps redis-server in a shell command for its publish model.
+            if (context.Args.Count >= 2 && context.Args[0] is "-c")
+                context.Args[1] = $"{context.Args[1]} --appendonly yes --appendfsync everysec --maxmemory-policy noeviction";
+            else
+                foreach (var argument in new[] { "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory-policy", "noeviction" })
+                    context.Args.Add(argument);
+        });
+    if (!e2eEnabled)
+        realtime.WithDataVolume("pole-realtime-data").WithLifetime(ContainerLifetime.Persistent);
+    else
+        realtime.WithPersistence().WithLifetime(ContainerLifetime.Session);
+    var certificatePath = builder.Configuration["Realtime:KeyProtectionCertificatePath"];
+    if (string.IsNullOrWhiteSpace(certificatePath))
+    {
+        if (!builder.ExecutionContext.IsRunMode)
+            throw new InvalidOperationException("Publishing enabled realtime requires its key-protection certificate path.");
+        certificatePath = RealtimeDevelopmentCertificate.GetOrCreate(builder.AppHostDirectory);
+    }
+    api.WithReference(realtime).WaitFor(realtime)
+        .WithEnvironment("Realtime__Enabled", "true")
+        .WithEnvironment("Realtime__KeyProtectionCertificatePath", certificatePath);
+    if (!string.IsNullOrWhiteSpace(builder.Configuration["Parameters:realtime-key-protection-certificate-password"]))
+        api.WithEnvironment("Realtime__KeyProtectionCertificatePassword",
+            builder.AddParameter("realtime-key-protection-certificate-password", secret: true));
+}
+
 var blog = builder.AddProject<Projects.Blog>("blog")
     .WithReference(api)
     .WaitFor(api)
@@ -276,6 +309,8 @@ var frontend = builder.AddViteApp("frontend", "../frontend")
     .WithExternalHttpEndpoints();
 
 api.WithEnvironment("Cors__FrontendOrigin", frontend.GetEndpoint("http"));
+if (realtimeEnabled)
+    api.WithEnvironment("Realtime__AllowedOrigins__0", frontend.GetEndpoint("http"));
 api.WithEnvironment("KeycloakAdmin__BaseUrl", keycloak.GetEndpoint("http"));
 if (e2eKeycloakPort is { } keycloakPort)
 {

@@ -9,8 +9,10 @@
 
     <ItemGroup>
         <ProjectReference Include="../../src/features/PrivateAccess/PrivateAccess.Application/PrivateAccess.Application.csproj" />
+        <ProjectReference Include="../../src/features/Realtime/Realtime.Application/Realtime.Application.csproj" />
         <PackageReference Include="FSharp.Core" />
         <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+        <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" />
         <PackageReference Include="Npgsql" />
         <PackageReference Include="Testcontainers" />

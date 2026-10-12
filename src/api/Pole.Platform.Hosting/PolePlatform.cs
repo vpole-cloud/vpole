@@ -1,4 +1,6 @@
 using Pole.Features.Outbox.Application.Persistence.Delivery;
+using Pole.Features.Realtime.Application;
+using Pole.Features.Realtime.Application.Redis;
 using System.Reflection;
 using Pole.ASP.Helpers;
 using Pole.Features.Secrets.Application;
@@ -47,6 +49,7 @@ namespace Pole.Platform.Hosting;
 public static class PolePlatform
 {
     public static Assembly[] ApplicationAssemblies => [
+        typeof(RealtimeFeature).Assembly,
         typeof(SecretFeature).Assembly,
         typeof(PrivateAccessFeature).Assembly,
     typeof(QuotaEndpoints).Assembly,
@@ -75,11 +78,15 @@ public static class PolePlatform
 
     public static IServiceCollection AddPolePlatform(this IServiceCollection services, IConfiguration configuration,
         Assembly[] additionalApplicationAssemblies, Assembly[] additionalEventAssemblies,
-        Assembly[]? additionalMigrationAssemblies = null)
+        Assembly[]? additionalMigrationAssemblies = null,
+        bool development = false)
     {
-        var applications = ApplicationAssemblies.Concat(additionalApplicationAssemblies).Distinct().ToArray();
+        var applications = ApplicationAssemblies.Concat(additionalApplicationAssemblies).Distinct()
+            .Where(assembly => configuration.GetValue<bool>("Realtime:Enabled") || assembly != typeof(RealtimeFeature).Assembly).ToArray();
         var events = EventAssemblies.Concat(additionalEventAssemblies).Distinct().ToArray();
-        services.AddKubernetes(configuration).AddDatabase().AddOutboxFeature(configuration, events)
+        services.AddKubernetes(configuration).AddDatabase()
+            .AddRealtimeFeature(configuration, development).AddRealtimeRedis(configuration, development)
+            .AddOutboxFeature(configuration, events)
     .AddResourceGroupsFeature(configuration)
     .AddResourceDeploymentsFeature(configuration)
     .AddTenantsFeature()
@@ -105,6 +112,7 @@ public static class PolePlatform
     public static async Task InitializePolePlatformAsync(this IServiceProvider services, CancellationToken cancellationToken = default)
     {
         _ = services.GetRequiredService<QuotaCatalog>();
+        _ = services.GetRequiredService<RealtimeTopicRegistry>();
         _ = services.GetRequiredService<SearchSourceTypeRegistry>();
         services.ValidateResourceDeploymentContributions();
         _ = services.GetRequiredService<IEnvelopeEncryptionService>();
