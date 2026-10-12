@@ -13,6 +13,7 @@ using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Secrets.Application;
 using Pole.Features.PrivateAccess.Application;
+using Pole.Features.Realtime.Application;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.Tenants.Application.Common;
@@ -24,6 +25,7 @@ public static class MapApi
 {
     public static IEndpointRouteBuilder MapPolePlatformEndpoints(this IEndpointRouteBuilder app)
     {
+        app.MapRealtimeEndpoints();
         var group = app.MapGroup("/api/v1").RequireTenantContext()
             .RequireAuthorization();
 

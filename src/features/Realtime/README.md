@@ -24,6 +24,9 @@ The feature is opt-in through `Realtime:Enabled`. Disabled registration requires
 distributed stores. Production transport adapters and hosting compose separately;
 the capability has no process-local production ticket or subscription store.
 
+Production and multi-replica configuration is described in
+[realtime hosting](../../../docs/realtime-hosting.md).
+
 The feature-local tests exercise route/scheme separation, expiry, origin restrictions,
 tenant isolation, delivery-time membership, disabled startup and failure-safe provider
 interest cleanup. Their authentication fixture proves routing, not real Keycloak JWT

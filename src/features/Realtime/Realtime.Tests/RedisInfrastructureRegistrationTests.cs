@@ -1,0 +1,43 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Pole.Features.Realtime.Application;
+using Pole.Features.Realtime.Application.Redis;
+using Xunit;
+
+namespace Pole.Features.Realtime.Tests;
+
+public sealed class RedisInfrastructureRegistrationTests
+{
+    [Fact]
+    public void DisabledFeatureDoesNotRegisterRedisOrTicketStores()
+    {
+        var services = new ServiceCollection();
+        services.AddRealtimeRedis(new ConfigurationBuilder().Build(), development: false);
+        Assert.Empty(services);
+    }
+
+    [Fact]
+    public void EnabledFeatureRequiresDedicatedRedisConnection()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Realtime:Enabled"] = "true"
+        }).Build();
+        var error = Assert.Throws<InvalidOperationException>(() => new ServiceCollection().AddRealtimeRedis(configuration, development: false));
+        Assert.Contains("ConnectionStrings:realtime", error.Message);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void PersistentKeyringAlwaysRequiresEncryptionCertificate(bool development)
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Realtime:Enabled"] = "true",
+            ["ConnectionStrings:realtime"] = "localhost:6379"
+        }).Build();
+        var error = Assert.Throws<InvalidOperationException>(() => new ServiceCollection().AddRealtimeRedis(configuration, development));
+        Assert.Contains("certificate", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+}

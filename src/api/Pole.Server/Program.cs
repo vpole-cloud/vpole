@@ -1,4 +1,5 @@
 using Pole.Features.Secrets.Application;
+using Pole.Features.Realtime.Application;
 using System.Reflection;
 using Pole.ASP.Helpers;
 using Pole.Database;
@@ -74,7 +75,7 @@ builder.AddMongoDBClient("pole-database");
 builder.AddFunctionOrleansHosting();
 builder.AddSecurity();
 
-builder.Services.AddPolePlatform(configuration, serviceAssemblies, serviceEventAssemblies, [])
+builder.Services.AddPolePlatform(configuration, serviceAssemblies, serviceEventAssemblies, [], development: builder.Environment.IsDevelopment())
     .AddEventBus(configuration, assemblies)
     .AddFunctionAppsFeature()
     .AddFunctionRuntimeFeature(configuration)
@@ -129,6 +130,7 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 
+app.UseRealtimeOriginGuard();
 app.UseCors("frontend-dev");
 app.UsePoleTenantPipeline();
 

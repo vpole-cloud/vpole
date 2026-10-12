@@ -20,6 +20,7 @@ public sealed class RealtimePublisher(
             throw new InvalidOperationException("A realtime change must preserve its registered topic scope.");
         var recipients = await subscriptions.FindAsync(change.Topic, change.TenantId, cancellationToken);
         var authorized = new HashSet<string>(StringComparer.Ordinal);
+        var revoked = new HashSet<string>(StringComparer.Ordinal);
         foreach (var subscription in recipients)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -30,11 +31,13 @@ public sealed class RealtimePublisher(
                 ticket?.Properties.ExpiresUtc is not { } expiry || expiry <= clock.GetUtcNow() ||
                 !await access.AllowsAsync(ticket.Principal, subscription.Request, cancellationToken))
             {
+                revoked.Add(subscription.ConnectionId);
+                authorized.Remove(subscription.ConnectionId);
                 await subscriptions.RemoveAsync(subscription.ConnectionId, [subscription.Id], cancellationToken);
                 await hub.Clients.Client(subscription.ConnectionId).AccessRevoked(subscription.Request.TenantId);
                 continue;
             }
-            authorized.Add(subscription.ConnectionId);
+            if (!revoked.Contains(subscription.ConnectionId)) authorized.Add(subscription.ConnectionId);
         }
         if (authorized.Count > 0) await hub.Clients.Clients(authorized.ToArray()).Changed(change);
     }
