@@ -32,6 +32,11 @@
     <Project Path="src/shared/Workloads/Workloads.csproj" />
   </Folder>
   <Folder Name="/features/" />
+  <Folder Name="/features/Realtime/">
+    <Project Path="src/features/Realtime/Realtime.Contracts/Realtime.Contracts.csproj" />
+    <Project Path="src/features/Realtime/Realtime.Application/Realtime.Application.csproj" />
+    <Project Path="src/features/Realtime/Realtime.Tests/Realtime.Tests.csproj" />
+  </Folder>
   <Folder Name="/features/Functions/">
     <Project Path="src/features/Functions/Functions.Application/Functions.Application.csproj" />
     <Project Path="src/features/Functions/Functions.Domain/Functions.Domain.csproj" />
