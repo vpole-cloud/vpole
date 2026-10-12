@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
-import { act, useState } from 'react'
+import { useQuerySession } from '../data/querySession'
+import type { QueryClient } from '@tanstack/react-query'
+import { act, useLayoutEffect, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AppShell } from '../shell/AppShell'
@@ -9,6 +11,7 @@ import { SourceBuildLogViewer } from './SourceBuildLogViewer'
 
 let jobId: string
 let pages: SourceBuildLogs[]
+let cacheClient: QueryClient
 let root: Root
 let container: HTMLDivElement
 let readFailure: boolean
@@ -16,6 +19,8 @@ let slowRead: Promise<Response> | null
 const json = (data: unknown) => Promise.resolve(new Response(JSON.stringify(data)))
 const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
 function View() {
+  const client = useQuerySession().client
+  useLayoutEffect(() => { cacheClient = client }, [client])
   const [closed, setClosed] = useState(false)
   return closed ? <p>Log view closed.</p> : <SourceBuildLogViewer jobId={jobId} webServiceId="service" onClose={() => setClosed(true)} />
 }
@@ -43,9 +48,9 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock)
 })
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.useRealTimers(); vi.unstubAllGlobals() })
-async function render(tenantId = 'active') {
+async function render(tenantId = 'active', token = 'token') {
   const tenant = { id: tenantId, name: tenantId, role: 'Viewer' as const, isDefault: true }
-  await act(async () => root.render(<AppShell registry={registry} initialViewId="logs" api={{ baseUrl: 'http://localhost', token: 'token' }}
+  await act(async () => root.render(<AppShell registry={registry} initialViewId="logs" api={{ baseUrl: 'http://localhost', token }}
     auth={{ initialized: true, authenticated: true, userId: 'user', isPlatformAdmin: false, login: () => {}, logout: () => {} }}
     tenants={{ items: [tenant], activeTenant: tenant, activeTenantId: tenantId, selectTenant: () => {}, status: 'success', error: '' }} />))
 }
@@ -131,4 +136,20 @@ it('does not request or display output when an exact job belongs to another serv
   fetchMock.mockImplementation((input) => String(input).includes('/source-build-jobs/') ? json({ id: jobId, webServiceId: 'other-service', branch: 'foreign-branch-canary', state: { status: 'failed' } }) : json([]))
   await render(); expect(reads()).toHaveLength(0)
   expect(text()).toContain('unavailable for the selected service'); expect(text()).not.toContain('foreign-branch-canary')
+})
+
+
+it('retains the displayed cursor across token rotation and keeps output outside shared caches', async () => {
+  await render()
+  const displayed = container.querySelector('pre')!.textContent
+  await render('active', 'renewed-token')
+  expect(container.querySelector('pre')!.textContent).toBe(displayed)
+  pages = [page(2, 'next-window-canary')]
+  await click('Refresh logs')
+  const [url, init] = reads().at(-1)!
+  expect(new URL(String(url)).searchParams.get('afterSequence')).toBe('1')
+  expect(init?.headers).toEqual(expect.objectContaining({ Authorization: 'Bearer renewed-token' }))
+  expect(container.querySelector('pre')!.textContent).toContain('next-window-canary')
+  expect(JSON.stringify(cacheClient.getQueryCache().getAll().map(query => query.state.data))).not.toContain('next-window-canary')
+  expect(cacheClient.getMutationCache().getAll()).toHaveLength(0)
 })

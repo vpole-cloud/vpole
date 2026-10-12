@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchSourceBuildJob, fetchSourceBuildLogs } from '../api'
-import { useResource } from '../hooks/useResource'
+import { useScopedQuery } from '../data/useScopedQuery'
+import { useApiScope } from '../data/useApiScope'
 import { useVisibleRefresh } from '../hooks/useVisibleRefresh'
 import { useAppServices } from '../shell/AppContext'
 import type { SourceBuildJob, SourceBuildLogEntry, SourceBuildLogs } from '../types'
@@ -8,13 +9,19 @@ import { Button, EmptyState, Notice, StatusBadge } from '../ui/components'
 
 export function SourceBuildLogViewer({ jobId, webServiceId, onClose }: { jobId: string; webServiceId: string; onClose: () => void }) {
   const { api } = useAppServices()
-  const scope = `${api.baseUrl}:${api.tenantId}:${api.token}:${webServiceId}:${jobId}`
-  return <BuildLogIdentity key={scope} scope={scope} jobId={jobId} webServiceId={webServiceId} onClose={onClose} />
+  const { identity } = useApiScope(api)
+  const scope = `${identity}:${webServiceId}:${jobId}`
+  return <BuildLogIdentity key={scope} jobId={jobId} webServiceId={webServiceId} onClose={onClose} />
 }
 
-function BuildLogIdentity({ scope, jobId, webServiceId, onClose }: { scope: string; jobId: string; webServiceId: string; onClose: () => void }) {
+function BuildLogIdentity({ jobId, webServiceId, onClose }: { jobId: string; webServiceId: string; onClose: () => void }) {
   const { api } = useAppServices()
-  const job = useResource(scope, signal => fetchSourceBuildJob(api.baseUrl, jobId, api.token, api.tenantId, signal))
+  const { credential } = useApiScope(api)
+  const job = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['source-builds', 'job', webServiceId, jobId], load: async signal => {
+    const job = await fetchSourceBuildJob(api.baseUrl, jobId, credential(), api.tenantId, signal)
+    if (job.webServiceId !== webServiceId) throw new Error('This build is unavailable for the selected service and tenant.')
+    return job
+  } })
   useVisibleRefresh(!job.resource || !['failed', 'succeeded'].includes(job.resource.state.status), job.refresh, 5000)
   if (job.resource?.webServiceId === webServiceId) return <BuildLogCapture job={job.resource} onClose={onClose} />
   return <section className="panel"><div className="panel__header"><h2 className="panel__title">Build logs</h2><Button onClick={onClose}>Close logs</Button></div>
@@ -27,7 +34,8 @@ const byteLength = (entries: SourceBuildLogEntry[]) => entries.reduce((total, en
 
 function BuildLogCapture({ job, onClose }: { job: SourceBuildJob; onClose: () => void }) {
   const { api } = useAppServices()
-  const { baseUrl, token, tenantId } = api
+  const { baseUrl, tenantId } = api
+  const { credential, isCurrent } = useApiScope(api)
   const { id: jobId, webServiceId } = job
   const [state, setState] = useState<ViewState>(initial)
   const [follow, setFollow] = useState(true)
@@ -42,8 +50,8 @@ function BuildLogCapture({ job, onClose }: { job: SourceBuildJob; onClose: () =>
     const signal = AbortSignal.any([owner.signal, request.signal])
     setState(value => ({ ...value, status: 'loading', error: '' }))
     try {
-      const page = await fetchSourceBuildLogs(baseUrl, jobId, webServiceId, cursor.current, token, tenantId, signal)
-      if (signal.aborted) return
+      const page = await fetchSourceBuildLogs(baseUrl, jobId, webServiceId, cursor.current, credential(), tenantId, signal)
+      if (signal.aborted || !isCurrent()) return
       if (page.buildJobId !== jobId || page.webServiceId !== webServiceId) throw new Error('The returned build identity changed. Restart this log view.')
       let next = cursor.current
       for (const entry of page.entries) {
@@ -62,9 +70,9 @@ function BuildLogCapture({ job, onClose }: { job: SourceBuildJob; onClose: () =>
         return { entries, metadata: page, status: 'success', error: '', discardedThrough }
       })
     } catch (failure) {
-      if (!signal.aborted) setState(value => ({ ...value, status: 'error', error: failure instanceof Error ? failure.message : 'Build log read failed.' }))
+      if (!signal.aborted && isCurrent()) setState(value => ({ ...value, status: 'error', error: failure instanceof Error ? failure.message : 'Build log read failed.' }))
     } finally { if (currentRead.current === request) currentRead.current = null }
-  }, [baseUrl, jobId, webServiceId, token, tenantId])
+  }, [baseUrl, jobId, webServiceId, credential, isCurrent, tenantId])
   useEffect(() => {
     const owner = new AbortController(); lifetime.current = owner
     queueMicrotask(() => { if (!owner.signal.aborted) { heading.current?.focus(); void read() } })

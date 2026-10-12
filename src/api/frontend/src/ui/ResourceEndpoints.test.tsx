@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react'
-import { createRoot, type Root } from 'react-dom/client'
+import type { Root } from 'react-dom/client'
+import { createTestApp } from '../test/TestApp'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AppContext } from '../shell/AppContext'
 import type { AppServices } from '../shell/contracts'
@@ -11,7 +12,7 @@ let root: Root; let container: HTMLDivElement
 const data: ResourceEndpointDiscovery = { resourceType: 'example/queue', resourceId: 'queue', displayName: 'Orders', availability: 'Supported',
   endpoints: [{ id: 'consumer', displayName: 'Queue endpoint', protocol: 'amqp', transport: 'TCP', port: 5672, configuration: [{ key: 'virtualHost', displayName: 'Virtual host', value: '/app' }] }], topology: { status: 'Eligible', reasonCode: null } }
 const fetchMock = vi.fn()
-beforeEach(() => { Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); container = document.createElement('div'); document.body.append(container); root = createRoot(container); fetchMock.mockReset(); vi.stubGlobal('fetch', fetchMock) })
+beforeEach(() => { Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); ({ container, root } = createTestApp()); fetchMock.mockReset(); vi.stubGlobal('fetch', fetchMock) })
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals() })
 async function render(tenantId = 'alpha') { await act(async () => root.render(<AppContext.Provider value={{ api: { baseUrl: 'http://localhost', token: 'bearer', tenantId } } as AppServices}><ResourceEndpoints resourceType="example/queue" resourceId="queue" source={{ resourceType: 'example/app', resourceId: 'source' }} /></AppContext.Provider>)) }
 const json = (value: unknown) => new Response(JSON.stringify(value))

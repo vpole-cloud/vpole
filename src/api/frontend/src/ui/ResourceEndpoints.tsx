@@ -1,12 +1,16 @@
-import { fetchResourceEndpoints } from '../api'
-import { useResource } from '../hooks/useResource'
+import { fetchResourceEndpoints } from '../modules/operations/api'
+import { useScopedQuery } from '../data/useScopedQuery'
+import { useApiScope } from '../data/useApiScope'
+import { useVisibleRefresh } from '../hooks/useVisibleRefresh'
 import { useAppServices } from '../shell/AppContext'
 import { Button, DataTable, EmptyState, Notice, StatusBadge } from './components'
 
-export function ResourceEndpoints({ resourceType, resourceId, source }: { resourceType: string; resourceId: string; source?: { resourceType: string; resourceId: string } }) {
+export function ResourceEndpoints({ resourceType, resourceId, source, active = true }: { resourceType: string; resourceId: string; active?: boolean; source?: { resourceType: string; resourceId: string } }) {
   const { api } = useAppServices()
-  const discovery = useResource(`${api.baseUrl}:${api.tenantId}:${api.token}:${resourceType}:${resourceId}:${source?.resourceType}:${source?.resourceId}`,
-    (signal) => fetchResourceEndpoints(api.baseUrl, resourceType, resourceId, api.token, api.tenantId, signal, source))
+  const { credential } = useApiScope(api)
+  const discovery = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['endpoints', resourceType, resourceId, source?.resourceType, source?.resourceId],
+    load: (signal) => fetchResourceEndpoints(api.baseUrl, resourceType, resourceId, credential(), api.tenantId, signal, source) })
+  useVisibleRefresh(active, discovery.refresh)
   const value = discovery.resource
   const reasons: Record<string, string> = {
     SourceUnsupported: 'This resource cannot initiate connections.', DestinationUnsupported: 'This resource does not publish connection endpoints.',

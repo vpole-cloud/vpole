@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useVisibleRefresh } from '../hooks/useVisibleRefresh'
-import { fetchResourceObservation } from '../api'
-import { useResource } from '../hooks/useResource'
+import { fetchResourceObservation } from '../modules/operations/api'
+import { useScopedQuery } from '../data/useScopedQuery'
+import { useApiScope } from '../data/useApiScope'
 import { useAppServices } from '../shell/AppContext'
 import type { ResourcePlacement } from '../types'
 import { Button, DataTable, Notice, StatusBadge } from './components'
@@ -28,8 +29,9 @@ export function ResourceHealthTarget({ placement, active, refreshVersion = 0, ta
   placement: ResourcePlacement; active: boolean; refreshVersion?: number; targetName?: string
 }) {
   const { api } = useAppServices()
-  const details = useResource(`${api.baseUrl}:${api.tenantId}:${api.token}:${placement.deploymentId}:${placement.deploymentRevision}:${placement.desiredGeneration}`,
-    (signal) => fetchResourceObservation(api.baseUrl, placement.deploymentId, api.token, api.tenantId, signal), refreshVersion)
+  const { credential } = useApiScope(api)
+  const details = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['health', placement.deploymentId, placement.deploymentRevision, placement.desiredGeneration],
+    load: (signal) => fetchResourceObservation(api.baseUrl, placement.deploymentId, credential(), api.tenantId, signal), refreshVersion })
   useVisibleRefresh(active, details.refresh)
   const [now, setNow] = useState(Date.now)
   useEffect(() => { if (!active) return; const timer = window.setInterval(() => setNow(Date.now()), 10000); return () => window.clearInterval(timer) }, [active])

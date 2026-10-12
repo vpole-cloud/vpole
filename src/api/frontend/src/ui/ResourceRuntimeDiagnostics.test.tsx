@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
-import { act } from 'react'
+import { useQuerySession } from '../data/querySession'
+import type { QueryClient } from '@tanstack/react-query'
+import { act, useLayoutEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AppShell } from '../shell/AppShell'
@@ -14,11 +16,12 @@ let failure: string
 let deferred: Promise<Response> | null
 let controllers: ReadableStreamDefaultController<Uint8Array>[]
 let canceled: boolean[]
+let cacheClient: QueryClient
 let root: Root
 let container: HTMLDivElement
 const encoder = new TextEncoder()
 const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
-function View() { return <ResourceRuntimeDiagnostics operation={operation} active={active} /> }
+function View() { const client = useQuerySession().client; useLayoutEffect(() => { cacheClient = client }, [client]); return <ResourceRuntimeDiagnostics operation={operation} active={active} /> }
 const registry = createAppRegistry([{ id: 'diagnostics', views: [{ id: 'diagnostics', label: 'Diagnostics', access: 'tenant', component: View }] }])
 function stream() {
   const index = controllers.length
@@ -46,9 +49,9 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock)
 })
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals() })
-async function render(tenantId = 'active') {
+async function render(tenantId = 'active', token = 'token') {
   const tenant = { id: tenantId, name: tenantId, role: 'Viewer' as const, isDefault: true }
-  await act(async () => root.render(<AppShell registry={registry} initialViewId="diagnostics" api={{ baseUrl: 'http://localhost', token: 'token' }}
+  await act(async () => root.render(<AppShell registry={registry} initialViewId="diagnostics" api={{ baseUrl: 'http://localhost', token }}
     auth={{ initialized: true, authenticated: true, userId: 'user', isPlatformAdmin: false, login: () => {}, logout: () => {} }}
     tenants={{ items: [tenant], activeTenant: tenant, activeTenantId: tenantId, selectTenant: () => {}, status: 'success', error: '' }} />))
 }
@@ -122,4 +125,23 @@ it('handles unsupported providers and malformed or incomplete streams without in
   expect(text()).toContain('without a completion marker')
   await click('Reconnect recent logs'); await act(async () => controllers[2].error(new Error('private-transport-canary')))
   expect(text()).toContain('connection was interrupted'); expect(text()).not.toContain('private-transport-canary')
+})
+
+
+it('keeps an authorized stream across token renewal and uses the new token for explicit reconnect', async () => {
+  await open(); await click('Follow runtime logs')
+  await emit(0, { kind: 'Output', text: 'ephemeral-runtime-canary', reason: null, outputBytes: 24 })
+  await render('active', 'renewed-token')
+  expect(canceled[0]).toBe(false); expect(container.querySelector('pre')?.textContent).toContain('ephemeral-runtime-canary')
+  expect(JSON.stringify(cacheClient.getQueryCache().getAll().map(query => query.state.data))).not.toContain('ephemeral-runtime-canary')
+  expect(cacheClient.getMutationCache().getAll()).toHaveLength(0)
+  await click('Stop reading'); await click('Reconnect recent logs')
+  expect(reads().at(-1)![1]?.headers).toEqual(expect.objectContaining({ Authorization: 'Bearer renewed-token' }))
+})
+
+it('clears the active stream immediately when the deployment revision is replaced', async () => {
+  await open(); await click('Follow runtime logs'); await emit(0, { kind: 'Output', text: 'superseded-output-canary', reason: null, outputBytes: 24 })
+  operation = { ...operation, deployment: { ...operation.deployment, placement: { ...operation.deployment.placement, deploymentRevision: 8, desiredGeneration: 3 } } }
+  await render()
+  expect(canceled[0]).toBe(true); expect(text()).not.toContain('superseded-output-canary'); expect(text()).not.toContain('Runtime diagnostics · Local cluster')
 })
