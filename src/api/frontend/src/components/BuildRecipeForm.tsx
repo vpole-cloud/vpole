@@ -24,7 +24,7 @@ export function BuildRecipeForm({ configuration, canManage, busy, onSave, onDirt
   }
   useEffect(() => { onDirtyChange(dirty); return () => onDirtyChange(false) }, [dirty, onDirtyChange])
   const labels = { sourceRoot: 'Source directory', manifestPath: 'Manifest path', commands: 'Build commands', startCommand: 'Start command', dockerfile: 'Dockerfile' }
-  return <details className="build-recipe"><summary>Build recipe · {configuration.recipe.isCustomized ? 'Customized' : 'Detected'}</summary>
+  return <details data-testid={`build-recipe-${configuration.id}`} className="build-recipe"><summary>Build recipe · {configuration.recipe.isCustomized ? 'Customized' : 'Detected'}</summary>
     {conflict && <Notice tone="error">The saved recipe changed while this draft was open. Your draft is kept.<Button onClick={() => setReviewing(true)}>Review saved recipe</Button></Notice>}
     <p className="field__hint">Changes apply to future builds. Running jobs retain their recorded recipe and commit.</p>
     <p className="field__hint">Edit the Dockerfile to change build and start commands. The source directory and detected commands are read-only reference information.</p>

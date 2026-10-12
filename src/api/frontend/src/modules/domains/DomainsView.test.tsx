@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from 'react'
+import { strictFetch } from '../../test/http'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AppShell } from '../../shell/AppShell'
@@ -13,7 +14,8 @@ const generated: HostnameBinding = { id: 'generated', tenantId: 'alpha', tenantD
 const custom: HostnameBinding = { ...generated, id: 'old', tenantDomainZoneId: zone.id, relativeName: 'api', hostname: 'api.company.apps.test', kind: 'custom' }
 let service: WebService; let rows: HostnameBinding[]; let targetAvailable: boolean; let detachFails: boolean; let createFails: boolean; let attachFails: boolean
 let root: Root; let container: HTMLDivElement
-const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+const requests = strictFetch()
+const fetchMock = requests.fetch
 const json = (value: unknown) => Promise.resolve(new Response(JSON.stringify(value)))
 function DomainService() { return <WebServiceDomains service={service} active onDirtyChange={() => {}} onChanged={async () => {}} /> }
 const registry = createAppRegistry([
@@ -22,6 +24,7 @@ const registry = createAppRegistry([
   { id: 'groups', views: [{ id: 'resource-groups', label: 'Groups', component: () => null, access: 'tenant' }], resourceTypes: [{ id: 'pole/resource-group', label: 'Group', viewId: 'resource-groups' }] },
 ])
 beforeEach(() => {
+  requests.reset()
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
   Object.defineProperties(HTMLDialogElement.prototype, { showModal: { configurable: true, value: function (this: HTMLDialogElement) { this.open = true } }, close: { configurable: true, value: function (this: HTMLDialogElement) { this.open = false } } })
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { callback(0); return 1 })
@@ -31,7 +34,7 @@ beforeEach(() => {
   rows = [generated, custom]; targetAvailable = true; detachFails = false; createFails = false; attachFails = false
   fetchMock.mockReset().mockImplementation((input, init) => {
     const url = new URL(String(input), 'http://localhost'); const tenantId = new Headers(init?.headers).get('X-Pole-Tenant-ID')
-    if (tenantId === 'beta') return json([])
+    if (tenantId === 'beta' && (url.pathname.endsWith('/domain-zones') || url.pathname.endsWith('/deployment-targets/available') || url.pathname.endsWith('/hostnames'))) return json([])
     if (url.pathname.endsWith('/deployment-targets/available')) return json(targetAvailable ? [{ id: 'target', displayName: 'Local cluster', hasPublicIngress: true, publicBaseDomain: 'apps.test' }] : [])
     if (url.pathname.endsWith('/domain-zones')) {
       if (init?.method === 'POST') return createFails ? Promise.resolve(new Response(JSON.stringify({ code: 'domains.zone.already-reserved', detail: 'foreign-private-canary' }), { status: 409 })) : json(zone)
@@ -50,11 +53,11 @@ beforeEach(() => {
       if (detachFails) return Promise.resolve(new Response(JSON.stringify({ code: 'domains.hostname.delete.conflict', detail: 'foreign-private-canary' }), { status: 409 }))
       rows = rows.filter((row) => row.id !== 'old'); return json(service.deployments[0])
     }
-    return json([])
+    return requests.unhandled(input, init)
   })
   vi.stubGlobal('fetch', fetchMock)
 })
-afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals() })
+afterEach(async () => { await act(async () => root.unmount()); container.remove(); requests.verify(); vi.unstubAllGlobals() })
 async function render(role: 'Owner' | 'Viewer' = 'Owner', tenantId = 'alpha', view = 'domains', token = 'token') {
   const tenant = { id: tenantId, name: tenantId, role, isDefault: true }
   await act(async () => root.render(<AppShell registry={registry} initialViewId={view} api={{ baseUrl: 'http://localhost', token }} auth={{ initialized: true, authenticated: true, userId: 'user', isPlatformAdmin: false, login: () => {}, logout: () => {} }} tenants={{ items: [tenant], activeTenant: tenant, activeTenantId: tenantId, selectTenant: () => {}, status: 'success', error: '' }} />))

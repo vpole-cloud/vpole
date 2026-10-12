@@ -142,13 +142,10 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
         await page.GetByRole(AriaRole.Textbox, new PageGetByRoleOptions { Name = "Password", Exact = true }).FillAsync(fixture.Alpha.Password);
         await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Sign In", Exact = true }).ClickAsync();
         await page.GotoAsync(new Uri(fixture.FrontendBaseAddress, $"?view=web-services&resourceType=pole%2Fweb-service&resource={webServiceId}&tenant={fixture.Alpha.DefaultTenantId}&section=operations").ToString());
-        var failedTarget = page.Locator(".operation-target").Filter(new LocatorFilterOptions
-        {
-            Has = page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Retry this apply", Exact = true })
-        });
+        var failedTarget = page.GetByTestId($"operation-row-{RequiredString(failedB, "deploymentId")}");
         await Assertions.Expect(failedTarget).ToHaveCountAsync(1);
         await Assertions.Expect(failedTarget).ToContainTextAsync("DeploymentTargetDisabled");
-        Assert.Equal(2, await page.Locator(".operation-target").CountAsync());
+        Assert.Equal(2, await page.Locator("[data-testid^='operation-row-']:visible").CountAsync());
 
         await failedTarget.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Retry this apply", Exact = true }).ClickAsync();
         var confirmation = page.GetByRole(AriaRole.Dialog);

@@ -17,7 +17,7 @@ export function ResourceGroupsPage({ items, page, status, error, pageNumber, pag
       {status === 'loading' && <p role="status">Loading resource groups…</p>}
       {error && <EmptyState title="Unable to load resource groups." error>{error}{page && <p>Showing the last loaded results.</p>}<Button onClick={onRefresh}>Retry inventory</Button></EmptyState>}
       {status === 'success' && items.length === 0 && <EmptyState title={search ? 'No matching groups.' : 'No resource groups yet.'} />}
-      {items.length > 0 && <DataTable label="Resource group inventory" items={items} itemKey={(group) => group.id} columns={[
+      {items.length > 0 && <DataTable label="Resource group inventory" items={items} itemKey={(group) => group.id} rowTestId={(group) => `resource-row-${group.id}`} columns={[
         { id: 'name', label: 'Group', render: (group) => <><ResourceLink href={resourceHref(group.id)} onNavigate={() => onOpen(group.id)}>{group.name}</ResourceLink><small>{group.description || 'No description'}</small></> },
         { id: 'resources', label: 'Resources', render: (group) => group.resourceCount },
         { id: 'tags', label: 'Tags', render: (group) => group.tags.join(', ') || 'No tags' },

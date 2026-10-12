@@ -28,7 +28,7 @@ export function Tabs({ id, label, tabs, activeId, onSelect, variant = 'workspace
     window.addEventListener('resize', reveal)
     return () => { observer?.disconnect(); window.removeEventListener('resize', reveal) }
   }, [activeId, layout])
-  return <div ref={list} className={`ui-tabs ui-tabs--${variant}`} role="tablist" aria-label={label}>
+  return <div data-testid={`${variant}-tabs`} ref={list} className={`ui-tabs ui-tabs--${variant}`} role="tablist" aria-label={label}>
     {tabs.map((tab, index) => <div className={`ui-tab${tab.id === activeId ? ' is-active' : ''}`} role="presentation" key={tab.id}>
       <button type="button" role="tab" id={`${id}-tab-${tab.id}`} aria-controls={`${id}-panel-${tab.id}`}
         aria-selected={tab.id === activeId} tabIndex={tab.id === activeId ? 0 : -1}

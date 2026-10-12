@@ -80,7 +80,7 @@ export function SourceBuildPanel({
           <h2 className="panel__title">Source builds</h2>
         </div>
         <div className="row-actions">
-          <span className="panel__meta">
+          <span data-testid="source-build-kind" className="panel__meta">
             {configuration ? recipeKinds[configuration.recipe.kind] : 'Not configured'}
           </span>
           <button className="button" onClick={() => void manager.refresh()} type="button">
@@ -163,7 +163,7 @@ export function SourceBuildPanel({
         )}
         <div className="source-build-list">
           {manager.jobs.map((job) => (
-            <article className="source-build-row" key={job.id} id={`build-${job.id}`}>
+            <article className="source-build-row" key={job.id} data-testid={`build-row-${job.id}`} id={`build-${job.id}`}>
               <div>
                 <strong>{job.state.status}</strong>
                 <span>{formatDate(job.createdAtUtc)}</span>
@@ -173,7 +173,7 @@ export function SourceBuildPanel({
                 <span>{job.branch}</span>
               </div>
               <div className="source-build-row__result">
-                <span className={`build-status build-status--${job.state.status}`}>
+                <span data-testid="build-status" className={`build-status build-status--${job.state.status}`}>
                   {job.state.status}
                 </span>
                 <small title={job.state.failureMessage ?? job.state.imageDigest ?? undefined}>

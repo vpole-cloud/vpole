@@ -41,9 +41,9 @@ export function ResourceHealthTarget({ placement, active, refreshVersion = 0, ta
   const stale = details.status === 'error' || !fresh || Boolean(result && now - Date.parse(result.checkedAtUtc) > 45000)
   const observed = value?.kind === 'Observed' ? value : null
   const ready = !stale && observed?.ready && placement.status === 'Applied' && placement.observedGeneration === placement.desiredGeneration
-  return <article className="panel health-target" aria-label={`Runtime target ${targetName ?? placement.deploymentTargetId}`}>
+  return <article data-testid={`health-target-${placement.deploymentId}`} className="panel health-target" aria-label={`Runtime target ${targetName ?? placement.deploymentTargetId}`}>
     <div className="panel__header"><h3 className="panel__title">{targetName ?? `Target ${placement.deploymentTargetId}`}</h3>
-      <div className="row-actions"><StatusBadge tone={ready ? 'success' : stale ? 'warning' : 'info'}>
+      <div className="row-actions"><StatusBadge data-testid="readiness-status" tone={ready ? 'success' : stale ? 'warning' : 'info'}>
         {stale && result ? 'Stale observation' : ready ? 'Ready' : observed ? observed.rolloutCurrent ? 'Not ready' : 'Rollout in progress' : details.status === 'loading' ? 'Checking…' : 'Readiness unavailable'}
       </StatusBadge><Button disabled={details.status === 'loading'} onClick={() => void details.refresh()}>Refresh readiness</Button></div></div>
     <p className="field__hint">Reconciliation: {placement.status} · desired generation {placement.desiredGeneration} · apply confirmed {placement.observedGeneration}.

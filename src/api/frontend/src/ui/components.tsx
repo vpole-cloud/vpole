@@ -1,5 +1,5 @@
 import { Children, cloneElement, isValidElement, useEffect, useId, useRef } from 'react'
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react'
 
 export function Button({ variant = 'default', className = '', type = 'button', ...props }:
   ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'default' | 'primary' | 'danger' }) {
@@ -16,9 +16,9 @@ export function EmptyState({ title, children, error = false }: { title: string; 
   </div>
 }
 
-export function StatusBadge({ children, tone = 'neutral' }:
-  { children: ReactNode; tone?: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }) {
-  return <span className={`status-pill status-pill--${tone}`}>{children}</span>
+export function StatusBadge({ children, tone = 'neutral', className = '', ...props }:
+  HTMLAttributes<HTMLSpanElement> & { children: ReactNode; tone?: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }) {
+  return <span {...props} className={`status-pill status-pill--${tone} ${className}`}>{children}</span>
 }
 
 export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
@@ -38,12 +38,12 @@ export interface TableColumn<T> {
   render: (item: T) => ReactNode
 }
 
-export function DataTable<T>({ label, items, columns, itemKey, selectedKey }:
-  { label: string; items: readonly T[]; columns: readonly TableColumn<T>[]; itemKey: (item: T) => string; selectedKey?: string | null }) {
+export function DataTable<T>({ label, items, columns, itemKey, selectedKey, rowTestId }:
+  { label: string; items: readonly T[]; columns: readonly TableColumn<T>[]; itemKey: (item: T) => string; selectedKey?: string | null; rowTestId?: (item: T) => string }) {
   return <div className="ui-table-scroll" tabIndex={0} role="region" aria-label={label}>
     <table className="ui-table"><caption className="visually-hidden">{label}</caption>
       <thead><tr>{columns.map((column) => <th scope="col" key={column.id}>{column.label}</th>)}</tr></thead>
-      <tbody>{items.map((item) => <tr key={itemKey(item)} className={itemKey(item) === selectedKey ? 'is-selected' : ''}>
+      <tbody>{items.map((item) => <tr key={itemKey(item)} data-testid={rowTestId?.(item)} className={itemKey(item) === selectedKey ? 'is-selected' : ''}>
         {columns.map((column) => <td key={column.id}>{column.render(item)}</td>)}
       </tr>)}</tbody>
     </table>

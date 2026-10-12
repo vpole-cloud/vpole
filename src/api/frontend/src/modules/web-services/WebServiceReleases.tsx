@@ -71,10 +71,10 @@ function ReleaseHistory({ scope, service, onChanged }: { scope: string; service:
       const eligible = release.outcome === 'Succeeded' && release.resourceRevision < value.activeRevision
       const provenance = release.provenance
       const buildUrl = externalBuildUrl(provenance?.buildUrl)
-      return <article className="panel release-record" key={release.id} aria-label={`Release revision ${release.resourceRevision}`}>
+      return <article className="panel release-record" key={release.id} data-testid={`release-row-${release.id}`} aria-label={`Release revision ${release.resourceRevision}`}>
         <div className="panel__header"><div><h3 className="panel__title">Revision {release.resourceRevision} · {release.action}</h3>
           <p className="field__hint">{release.resourceRevision === value.activeRevision ? 'Current desired revision · ' : ''}{new Date(release.requestedAtUtc).toLocaleString()} · {release.actorEmail ?? provenance?.deploymentTokenName ?? provenance?.actorType ?? release.actorUserId ?? 'System'}</p></div>
-          <div className="row-actions"><StatusBadge tone={release.outcome.includes('Failed') ? 'danger' : release.outcome === 'Succeeded' ? 'success' : 'info'}>{release.outcome}</StatusBadge>
+          <div className="row-actions"><StatusBadge data-testid="release-status" tone={release.outcome.includes('Failed') ? 'danger' : release.outcome === 'Succeeded' ? 'success' : 'info'}>{release.outcome}</StatusBadge>
             {tenant.canManage && eligible && <Button disabled={!writable} onClick={() => choose(release)}>Rollback to revision {release.resourceRevision}</Button>}</div></div>
         <p><code>{image(release.spec)}</code></p>
         <p className="field__hint">{Object.keys(release.spec.config.environmentVariables).length} literal environment entries · {Object.keys(release.spec.config.connectionEnvironmentReferences ?? {}).length} connection references · {Object.keys(release.spec.config.secretEnvironmentReferences ?? {}).length} Secret references · {release.spec.config.portMappings.length} ports

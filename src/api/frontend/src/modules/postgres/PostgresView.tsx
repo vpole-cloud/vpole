@@ -39,7 +39,7 @@ function PostgresCatalog({ actions, version }: { actions: WorkspaceActions<Postg
         {tenant.canManage && <Button variant="primary" onClick={() => actions.open('create')}>New PostgreSQL</Button>}</div></header>
     {inventory.error && <Notice tone="error">{inventory.error} Previously fetched rows remain visible.</Notice>}
     {!inventory.items.length ? <EmptyState title={inventory.status === 'loading' ? 'Loading databases…' : inventory.status === 'error' ? 'Unable to load databases.' : 'No PostgreSQL databases yet.'} /> :
-      <DataTable label="PostgreSQL databases" items={inventory.items} itemKey={(cluster) => cluster.id} columns={[
+      <DataTable label="PostgreSQL databases" items={inventory.items} itemKey={(cluster) => cluster.id} rowTestId={(cluster) => `resource-row-${cluster.id}`} columns={[
         { id: 'name', label: 'Database', render: (cluster) => <a href={navigation.resourceHref({ resourceTypeId: 'pole/postgresql', resourceId: cluster.id })}
           onClick={(event) => { if (!event.ctrlKey && !event.metaKey && !event.shiftKey && event.button === 0) { event.preventDefault(); actions.loaded(cluster.id, cluster.name); actions.open(cluster.id) } }}>{cluster.name}</a> },
         { id: 'version', label: 'Version', render: (cluster) => `PostgreSQL ${cluster.spec.version}` },

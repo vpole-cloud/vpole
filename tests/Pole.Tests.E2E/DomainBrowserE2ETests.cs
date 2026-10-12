@@ -143,7 +143,7 @@ public sealed class DomainBrowserE2ETests(PoleE2EFixture fixture)
             {
                 if (await page.Locator("html").GetAttributeAsync("data-theme") != theme) await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = $"Switch to {theme} theme", Exact = true }).ClickAsync();
                 await Assertions.Expect(page.Locator("html")).ToHaveAttributeAsync("data-theme", theme);
-                var selectedSection = page.Locator("#app-content .ui-tabs--section [role=tab][aria-selected=true]:visible");
+                var selectedSection = page.Locator("#app-content [data-testid='section-tabs'] [role=tab][aria-selected=true]:visible");
                 if (await selectedSection.CountAsync() > 0)
                     Assert.True(await selectedSection.EvaluateAsync<bool>("tab => { const bounds = tab.getBoundingClientRect(); const list = tab.closest('[role=tablist]').getBoundingClientRect(); return bounds.left >= list.left - 1 && bounds.right <= list.right + 1; }"), "The active resource section must remain visible after viewport resizing.");
                 await page.ScreenshotAsync(new PageScreenshotOptions { Path = Path.Combine(directory, $"domains-{viewport}-{section}-{theme}.png"), FullPage = true, Animations = ScreenshotAnimations.Disabled });

@@ -313,8 +313,8 @@ public sealed class BrowserSmokeE2ETests(
             await page.GotoAsync(groupUrl.Uri.ToString());
             await content.GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = serviceName, Exact = true }).WaitForAsync();
             await CaptureWorkspaceAsync(page, name, "group-resources");
-            if (await page.Locator(".resource-tree").GetAttributeAsync("open") is null)
-                await page.Locator(".resource-tree > summary").ClickAsync();
+            if (await page.GetByTestId("resource-tree").GetAttributeAsync("open") is null)
+                await page.GetByTestId("resource-tree").GetByText("Resources", new LocatorGetByTextOptions { Exact = true }).ClickAsync();
             var tree = page.GetByRole(AriaRole.Navigation, new PageGetByRoleOptions { Name = "Resource tree", Exact = true });
             await tree.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = $"Expand {resourceGroupName}", Exact = true }).ClickAsync();
             await tree.GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = serviceName, Exact = true }).WaitForAsync();

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from 'react'
+import { strictFetch } from '../test/http'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { retryResourceDeployment } from '../api'
@@ -33,9 +34,11 @@ let nativeReady: boolean
 let failedRefresh: boolean
 let retryConflict: boolean
 let oldRequest: Promise<Response> | undefined
-const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+const requests = strictFetch()
+const fetchMock = requests.fetch
 const json = (value: unknown) => Promise.resolve(new Response(JSON.stringify(value)))
 beforeEach(() => {
+  requests.reset()
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
   localStorage.clear(); window.history.replaceState(null, '', '/?view=operations')
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
@@ -57,11 +60,11 @@ beforeEach(() => {
       data = { ...data, items: [operation('healthy'), { ...operation('failed'), phase: 'Accepted' }], counts: { ...data.counts, failed: 0, accepted: 1 } }
       return json({})
     }
-    return json([])
+    return requests.unhandled(input, init)
   })
   vi.stubGlobal('fetch', fetchMock)
 })
-afterEach(async () => { vi.useRealTimers(); await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals() })
+afterEach(async () => { vi.useRealTimers(); await act(async () => root.unmount()); container.remove(); requests.verify(); vi.unstubAllGlobals() })
 async function render(tenantId = 'active', role: 'Owner' | 'Viewer' = 'Owner', token = 'token') {
   const tenant = { id: tenantId, name: tenantId, role, isDefault: true }
   await act(async () => root.render(<AppShell registry={registry} initialViewId="operations" api={{ baseUrl: 'http://localhost', token }}

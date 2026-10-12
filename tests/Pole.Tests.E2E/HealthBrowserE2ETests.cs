@@ -51,9 +51,9 @@ public sealed class HealthBrowserE2ETests(PoleE2EFixture fixture)
         await page.GetByLabel("Tenant").SelectOptionAsync(fixture.Alpha.DefaultTenantId);
         await page.GotoAsync(Url("web-services", id, "operations"));
         var content = page.Locator("#app-content");
-        await Assertions.Expect(content.Locator(".health-target .status-pill")).ToHaveTextAsync("Not ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
-        await Assertions.Expect(content.Locator(".resource-operations .operation-target > .panel__header .status-pill:visible")).ToHaveTextAsync("Applied");
-        await content.Locator(".health-target summary").ClickAsync();
+        await Assertions.Expect(content.GetByTestId("readiness-status")).ToHaveTextAsync("Not ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
+        await Assertions.Expect(content.Locator("[data-testid='operation-status']:visible")).ToHaveTextAsync("Applied");
+        await content.Locator("[data-testid^='health-target-']:visible").GetByText("Pods and warnings").ClickAsync();
         await Assertions.Expect(content.GetByText("Unhealthy", new LocatorGetByTextOptions { Exact = false }).First).ToBeVisibleAsync();
         await CaptureAsync(page, "not-ready");
         var current = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{id}", null, ct);
@@ -65,25 +65,25 @@ public sealed class HealthBrowserE2ETests(PoleE2EFixture fixture)
         await Assertions.Expect(content.GetByText($"desired generation {generation}", new LocatorGetByTextOptions { Exact = false })).ToBeVisibleAsync();
         await WaitForObservationAsync(id, true, ct);
         await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Refresh operations", Exact = true }).ClickAsync();
-        await Assertions.Expect(content.Locator(".health-target .status-pill")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
+        await Assertions.Expect(content.GetByTestId("readiness-status")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
         await CaptureAsync(page, "ready");
         const string operationsRoute = "**/api/v1/resource-deployments/operations?*";
         await page.RouteAsync(operationsRoute, route => route.AbortAsync("failed"));
         await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Refresh operations", Exact = true }).ClickAsync();
         await Assertions.Expect(content.GetByText("Previous operation state is stale.", new LocatorGetByTextOptions { Exact = false })).ToBeVisibleAsync();
-        await Assertions.Expect(content.Locator(".operation-target")).ToHaveCountAsync(1);
+        await Assertions.Expect(content.Locator("[data-testid^='operation-row-']:visible")).ToHaveCountAsync(1);
         Assert.Equal(0, await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Retry this apply", Exact = true }).CountAsync());
         await CaptureAsync(page, "stale-read");
         await page.UnrouteAsync(operationsRoute);
         await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Refresh operations", Exact = true }).ClickAsync();
         await Assertions.Expect(content.GetByText("Previous operation state is stale.", new LocatorGetByTextOptions { Exact = false })).ToHaveCountAsync(0);
-        await Assertions.Expect(content.Locator(".health-target .status-pill")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
+        await Assertions.Expect(content.GetByTestId("readiness-status")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
         await page.GotoAsync(Url("resource-groups", groupId, "operations"));
-        await Assertions.Expect(page.Locator("#app-content .health-target .status-pill")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
+        await Assertions.Expect(page.Locator("#app-content").GetByTestId("readiness-status")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
         await CaptureAsync(page, "group");
         await page.GotoAsync(Url("overview", "catalog"));
         await Assertions.Expect(page.Locator("#app-content").GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = name, Exact = true }).First).ToBeVisibleAsync();
-        await Assertions.Expect(page.Locator("#app-content .health-target .status-pill")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
+        await Assertions.Expect(page.Locator("#app-content").GetByTestId("readiness-status")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
         await CaptureAsync(page, "tenant");
     }
 
@@ -161,7 +161,7 @@ public sealed class HealthBrowserE2ETests(PoleE2EFixture fixture)
             {
                 if (await page.Locator("html").GetAttributeAsync("data-theme") != theme) await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = $"Switch to {theme} theme", Exact = true }).ClickAsync();
                 await Assertions.Expect(page.Locator("html")).ToHaveAttributeAsync("data-theme", theme);
-                var selectedSection = page.Locator("#app-content .ui-tabs--section [role=tab][aria-selected=true]:visible");
+                var selectedSection = page.Locator("#app-content [data-testid='section-tabs'] [role=tab][aria-selected=true]:visible");
                 if (await selectedSection.CountAsync() > 0)
                     Assert.True(await selectedSection.EvaluateAsync<bool>("tab => { const bounds = tab.getBoundingClientRect(); const list = tab.closest('[role=tablist]').getBoundingClientRect(); return bounds.left >= list.left - 1 && bounds.right <= list.right + 1; }"), "The active resource section must remain visible after viewport resizing.");
                 await page.ScreenshotAsync(new PageScreenshotOptions { Path = Path.Combine(directory, $"health-{viewport}-{section}-{theme}.png"), FullPage = true, Animations = ScreenshotAnimations.Disabled });

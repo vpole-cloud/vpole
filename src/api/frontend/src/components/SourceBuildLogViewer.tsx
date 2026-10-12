@@ -84,7 +84,7 @@ function BuildLogCapture({ job, onClose }: { job: SourceBuildJob; onClose: () =>
   useVisibleRefresh(follow && awaitingCapture && state.status !== 'error', read, 2000)
   useEffect(() => { if (follow && state.status === 'success' && metadata?.hasMore) queueMicrotask(() => void read()) }, [follow, state.status, metadata?.hasMore, metadata?.nextSequence, read])
   const restart = () => { currentRead.current?.abort(); currentRead.current = null; cursor.current = 0; setState(initial()); void read() }
-  return <section className="panel build-log-viewer" aria-label={`Build logs for ${jobId}`}>
+  return <section data-testid={`build-log-viewer-${jobId}`} className="panel build-log-viewer" aria-label={`Build logs for ${jobId}`}>
     <div className="panel__header"><div><h2 className="panel__title" ref={heading} tabIndex={-1}>Build logs</h2><p className="field__hint">Build <code>{jobId}</code> · {job.branch} · commit <code>{job.commitSha.slice(0, 10)}</code></p></div>
       <div className="row-actions"><StatusBadge tone={job.state.status === 'failed' ? 'danger' : 'info'}>{job.state.status}</StatusBadge><Button onClick={onClose}>Close logs</Button></div></div>
     <p className="field__hint">Capture is independent of build and deployment status. Closing or pausing this viewer leaves the build running.</p>

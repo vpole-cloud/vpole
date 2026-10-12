@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { strictFetch } from '../test/http'
 import { useQuerySession } from '../data/querySession'
 import type { QueryClient } from '@tanstack/react-query'
 import { act, useLayoutEffect, useState } from 'react'
@@ -17,7 +18,8 @@ let container: HTMLDivElement
 let readFailure: boolean
 let slowRead: Promise<Response> | null
 const json = (data: unknown) => Promise.resolve(new Response(JSON.stringify(data)))
-const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+const requests = strictFetch()
+const fetchMock = requests.fetch
 function View() {
   const client = useQuerySession().client
   useLayoutEffect(() => { cacheClient = client }, [client])
@@ -30,6 +32,7 @@ function page(sequence: number, text: string, options: Partial<SourceBuildLogs> 
     expiresAtUtc: new Date(Date.now() + 86400000).toISOString(), capturedBytes: text.length, maximumBytes: 1024 * 1024, ...options }
 }
 beforeEach(() => {
+  requests.reset()
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
   localStorage.clear(); window.history.replaceState(null, '', '/?view=logs')
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
@@ -43,11 +46,11 @@ beforeEach(() => {
       return json(pages.find(value => value.nextSequence === after + 1) ?? pages.find(value => value.entries.length === 0 && value.nextSequence === after) ?? page(after, '', { entries: [], nextSequence: after, lastSequence: after }))
     }
     if (url.pathname.includes('/source-build-jobs/')) return json({ id: jobId, webServiceId: 'service', branch: 'main', commitSha: 'abcdef1234', state: { status: 'building' } })
-    return json([])
+    return requests.unhandled(input)
   })
   vi.stubGlobal('fetch', fetchMock)
 })
-afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.useRealTimers(); vi.unstubAllGlobals() })
+afterEach(async () => { await act(async () => root.unmount()); container.remove(); requests.verify(); vi.useRealTimers(); vi.unstubAllGlobals() })
 async function render(tenantId = 'active', token = 'token') {
   const tenant = { id: tenantId, name: tenantId, role: 'Viewer' as const, isDefault: true }
   await act(async () => root.render(<AppShell registry={registry} initialViewId="logs" api={{ baseUrl: 'http://localhost', token }}
