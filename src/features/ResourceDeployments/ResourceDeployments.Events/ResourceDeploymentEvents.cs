@@ -10,6 +10,9 @@ public sealed record ResourceDeploymentReconciliationRequestedEvent(
     long Generation,
     long ResourceRevision = 1) : IPoleEvent
 {
+    public string? ResourceType { get; init; }
+    public string? ResourceId { get; init; }
+    public string? ResourceGroupId { get; init; }
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
 
@@ -20,6 +23,9 @@ public sealed record ResourceDeploymentDeletionRequestedEvent(
     long Generation,
     long ResourceRevision = 1) : IPoleEvent
 {
+    public string? ResourceType { get; init; }
+    public string? ResourceId { get; init; }
+    public string? ResourceGroupId { get; init; }
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
 
@@ -32,6 +38,7 @@ public sealed record ResourceDeploymentAppliedEvent(
     long Generation,
     long ResourceRevision = 1) : IPoleEvent
 {
+    public string? ResourceGroupId { get; init; }
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
 
@@ -47,6 +54,7 @@ public sealed record ResourceDeploymentFailedEvent(
     bool Retryable,
     long ResourceRevision = 1) : IPoleEvent
 {
+    public string? ResourceGroupId { get; init; }
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
 
@@ -58,6 +66,21 @@ public sealed record ResourceDeploymentDeletedEvent(
     string RuntimeCellId,
     long Generation,
     long ResourceRevision = 1) : IPoleEvent
+{
+    public string? ResourceGroupId { get; init; }
+    public EventCore EventCore { get; init; } = EventCore.Create();
+}
+
+[EntityName("pole.resource-deployments/v1/resource-deployment-reconciliation-started")]
+public sealed record ResourceDeploymentReconciliationStartedEvent(
+    string ResourceDeploymentId,
+    string ResourceType,
+    string ResourceId,
+    string ResourceGroupId,
+    string RuntimeCellId,
+    long Generation,
+    string Operation,
+    long ResourceRevision) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }

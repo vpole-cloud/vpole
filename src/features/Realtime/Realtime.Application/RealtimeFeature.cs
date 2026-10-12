@@ -26,6 +26,12 @@ public static class RealtimeFeature
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<RealtimeOptions>>().Value);
         services.TryAddSingleton<TimeProvider>(TimeProvider.System);
         services.TryAddSingleton<RealtimeTopicRegistry>();
+        // Disabled bootstrap still returns a browser-readable 404 with exact-origin CORS.
+        services.AddCors(cors => cors.AddPolicy(CorsPolicy, policy =>
+        {
+            var options = configuration.GetSection(RealtimeOptions.Section).Get<RealtimeOptions>() ?? new();
+            policy.WithOrigins(options.AllowedOrigins).AllowAnyHeader().WithMethods("GET", "POST", "DELETE").AllowCredentials();
+        }));
         if (!configuration.GetValue<bool>("Realtime:Enabled"))
         {
             services.AddSingleton<PublishRealtimeChange>((_, _) => Task.CompletedTask);
@@ -45,11 +51,6 @@ public static class RealtimeFeature
             options.Events.OnRedirectToAccessDenied = context => { context.Response.StatusCode = StatusCodes.Status403Forbidden; return Task.CompletedTask; };
         });
         services.AddOptions<CookieAuthenticationOptions>(CookieScheme).Configure<IRealtimeTicketStore>((options, tickets) => options.SessionStore = tickets);
-        services.AddCors(cors => cors.AddPolicy(CorsPolicy, policy =>
-        {
-            var options = configuration.GetSection(RealtimeOptions.Section).Get<RealtimeOptions>() ?? new();
-            policy.WithOrigins(options.AllowedOrigins).AllowAnyHeader().WithMethods("GET", "POST", "DELETE").AllowCredentials();
-        }));
         services.AddScoped<RealtimeAccess>();
         services.AddScoped<RealtimePublisher>();
         services.AddScoped<PublishRealtimeChange>(provider => provider.GetRequiredService<RealtimePublisher>().PublishAsync);
@@ -61,9 +62,10 @@ public static class RealtimeFeature
 
     public static IEndpointRouteBuilder MapRealtimeEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        if (!endpoints.ServiceProvider.GetRequiredService<RealtimeOptions>().Enabled) return endpoints;
         var group = endpoints.MapGroup(Route).WithoutTenantContext().RequireCors(CorsPolicy);
-        group.MapCreateRealtimeSession().MapDeleteRealtimeSession();
+        group.MapCreateRealtimeSession();
+        if (!endpoints.ServiceProvider.GetRequiredService<RealtimeOptions>().Enabled) return endpoints;
+        group.MapDeleteRealtimeSession();
         group.MapHub<RealtimeHub>("/hub", options => options.CloseOnAuthenticationExpiration = true).WithoutTenantContext();
         return endpoints;
     }
@@ -73,7 +75,7 @@ public static class RealtimeFeature
         if (context.Request.Path.StartsWithSegments(Route))
         {
             var options = context.RequestServices.GetRequiredService<RealtimeOptions>();
-            if (!options.Enabled) { context.Response.StatusCode = StatusCodes.Status404NotFound; return; }
+            if (!options.Enabled) { await next(context); return; }
             var origin = context.Request.Headers.Origin;
             // Browser same-origin SSE/long-poll GETs can omit Origin. Negotiation and
             // cookie changes still require it; fetch metadata admits only safe GETs.

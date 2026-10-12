@@ -250,6 +250,26 @@ need the same separation; including hints in a wrapping label changes its access
 
 ## Verification
 
+The authenticated application owns a cookie-authenticated SignalR connection under `src/realtime`.
+The pilot covers source-build configuration/jobs, WebService inventory/details/releases, and
+WebService or unfiltered durable Operations queries. HTTP reads still own cached metadata; change
+messages contain identities and versions rather than DTOs or log output. Subscription replacement
+is acknowledged before active queries resync. Bursts coalesce for 250 ms, preserve ongoing reads,
+and request one trailing read when a notification arrives during a GET. Inactive cached pages are
+marked stale; hidden pages release their interests and do not poll pilot metadata.
+
+Confirmed coverage uses a 60-second safety read. Disabled, disconnected or uncovered topics retain
+their previous polling intervals. `VITE_REALTIME_ENABLED=false` disables browser realtime; the API
+also requires `Realtime:Enabled`. Cookie bootstrap sends the current bearer through shared HTTP
+transport without a tenant header. The hub uses cookies with credentials enabled, and browser
+logout deletes that session before IdP logout. Tokens never enter hub URLs or notification data.
+Credential renewal reconnects without replacing workspace tabs or drafts. Revocation cancels and
+clears affected metadata and revalidates tenant discovery; credential-free BroadcastChannel messages
+coordinate renewal and revocation among tabs for the same API/account. A cookie owned by another
+account leaves realtime offline with bearer HTTP fallback until that browser session is resolved.
+Production requires the same-site reverse proxy described by the Realtime feature; local HTTP
+development must use the same hostname for UI and API so its Lax cookie is available.
+
 Run `npm test`, `npm run build` and `npm run lint` from this directory. Tests include independent
 module composition, registration conflicts, tenant races, image mutation/errors, separate drafts,
 dirty-close/navigation/unload guards, restoration, missing resources, URL precedence/history,

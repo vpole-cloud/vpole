@@ -1,6 +1,6 @@
 namespace Pole.Features.Realtime.Application;
 
-/// <summary>Adapts the framework's void ITicketStore renewal contract to a revoked-session outcome.</summary>
+/// <summary>Signals a missing, expired or explicitly revoked realtime session at a storage boundary.</summary>
 public sealed class RealtimeSessionUnavailableException : Exception
 {
     public RealtimeSessionUnavailableException() : base("The realtime session is unavailable.") { }

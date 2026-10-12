@@ -123,7 +123,7 @@ public sealed class RedisRealtimeSubscriptions(
         var result = await EvaluateAsync(ReplaceScript, [RealtimeRedisKeys.Connection(connectionId)],
             [clock.GetUtcNow().ToUnixTimeMilliseconds(), RealtimeRedisKeys.SubscriptionPrefix,
                 JsonSerializer.Serialize(entries, JsonOptions)], cancellationToken);
-        if ((long)result != 1) throw new InvalidOperationException("The realtime session has been revoked.");
+        if ((long)result != 1) throw new RealtimeSessionUnavailableException();
     }
 
     public async Task RemoveAsync(string connectionId, IReadOnlyCollection<string>? subscriptionIds, CancellationToken cancellationToken) =>
@@ -145,6 +145,12 @@ public sealed class RedisRealtimeSubscriptions(
             [RealtimeRedisKeys.Session(sessionId), RealtimeRedisKeys.Revoked(sessionId)],
             [clock.GetUtcNow().ToUnixTimeMilliseconds(), RealtimeRedisKeys.SubscriptionPrefix], cancellationToken);
         return ((RedisResult[])result!).Select(value => (string)value!).ToArray();
+    }
+
+    public Task<bool> IsSessionRevokedAsync(string sessionId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return connection.Database.KeyExistsAsync(RealtimeRedisKeys.Revoked(sessionId)).WaitAsync(cancellationToken);
     }
 
     private Task<RedisResult> EvaluateAsync(string script, RedisKey[] keys, RedisValue[] values, CancellationToken cancellationToken)

@@ -1,8 +1,10 @@
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react'
 import { scopedQueryKey, useQuerySession } from './querySession'
+import { useRealtime } from '../realtime/context'
 
-export function useApiScope(api: { baseUrl: string; tenantId?: string; token?: string }) {
+export function useApiScope(api: { baseUrl: string; tenantId?: string; token?: string; privileged?: boolean }) {
   const session = useQuerySession()
+  const realtime = useRealtime()
   const identity = `${session.id}:${api.baseUrl}:${api.tenantId ?? ''}`
   const exits = useRef(new Set<() => void>())
   const current = useRef({ identity, active: true, token: api.token })
@@ -18,7 +20,10 @@ export function useApiScope(api: { baseUrl: string; tenantId?: string; token?: s
       callbacks.clear()
     }
   }, [identity])
-  const isCurrent = useCallback(() => session.isActive() && current.current.active && current.current.identity === identity, [identity, session])
+  const privileged = api.privileged ?? false
+  const isCurrent = useCallback(() => session.isActive() && (realtime?.allowed(api.baseUrl, api.tenantId) ?? true) &&
+    (!privileged || (realtime?.platformAllowed(api.baseUrl) ?? true)) && current.current.active && current.current.identity === identity,
+    [identity, session, realtime, api.baseUrl, api.tenantId, privileged])
   const onExit = useCallback((exit: () => void) => {
     if (!isCurrent()) { exit(); return () => {} }
     const callbacks = exits.current
@@ -30,5 +35,5 @@ export function useApiScope(api: { baseUrl: string; tenantId?: string; token?: s
     return current.current.token
   }, [isCurrent])
   const key = useCallback((parts: readonly unknown[]) => scopedQueryKey(session, [api.baseUrl, api.tenantId], parts), [api.baseUrl, api.tenantId, session])
-  return useMemo(() => ({ session, identity, credential, isCurrent, onExit, key }), [session, identity, credential, isCurrent, onExit, key])
+  return useMemo(() => ({ session, identity, credential, isCurrent, onExit, key, privileged }), [session, identity, credential, isCurrent, onExit, key, privileged])
 }

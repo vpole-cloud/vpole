@@ -8,7 +8,7 @@ export async function fetchScopedQuery<T>(origin: ReturnType<typeof useApiScope>
   const queryKey = origin.key(parts)
   const identity = JSON.stringify(queryKey)
   const client = origin.session.client
-  const query = { queryKey, queryFn: async ({ signal }: { signal: AbortSignal }): Promise<ScopedQueryData<T>> => {
+  const query = { queryKey, meta: { privileged: origin.privileged }, queryFn: async ({ signal }: { signal: AbortSignal }): Promise<ScopedQueryData<T>> => {
     if (!origin.session.isActive()) throw new DOMException('Aborted', 'AbortError')
     const value = await load(signal)
     if (signal.aborted || !origin.session.isActive()) throw new DOMException('Aborted', 'AbortError')

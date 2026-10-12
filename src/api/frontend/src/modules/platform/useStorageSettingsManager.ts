@@ -8,14 +8,14 @@ import type { LoadStatus, PlatformDeploymentTarget, StorageProfile, StorageProfi
 
 interface UseStorageSettingsManagerOptions { apiBaseUrl: string; token?: string; enabled: boolean }
 export function useStorageSettingsManager({ apiBaseUrl, token, enabled }: UseStorageSettingsManagerOptions) {
-  const origin = useApiScope({ baseUrl: apiBaseUrl, token })
+  const origin = useApiScope({ baseUrl: apiBaseUrl, token, privileged: true })
   const permission = useRef(enabled)
   useLayoutEffect(() => { permission.current = enabled }, [enabled])
   const current = () => origin.isCurrent() && permission.current === enabled
   const identity = `${origin.identity}:${enabled}`
   const [selection, setSelection] = useState({ identity, id: '' })
   const [accepted, setAccepted] = useState<string | null>(null)
-  const inventory = useScopedQuery({ scope: [apiBaseUrl, undefined], key: ['platform-storage', 'inventory'], enabled,
+  const inventory = useScopedQuery({ scope: [apiBaseUrl, undefined], key: ['platform-storage', 'inventory'], enabled, privileged: true,
     load: async (signal) => {
       const [profiles, targets] = await Promise.all([fetchStorageProfiles(apiBaseUrl, origin.credential(), signal), fetchPlatformDeploymentTargets(apiBaseUrl, origin.credential(), signal)])
       return { profiles, targets }
@@ -23,7 +23,7 @@ export function useStorageSettingsManager({ apiBaseUrl, token, enabled }: UseSto
   const targets = inventory.resource?.targets ?? []
   const requested = selection.identity === identity ? selection.id : ''
   const deploymentTargetId = targets.find((item) => item.id === requested)?.id ?? targets.find((item) => item.isDefault)?.id ?? targets[0]?.id ?? ''
-  const discovery = useScopedQuery({ scope: [apiBaseUrl, undefined], key: ['platform-storage', 'discovery', deploymentTargetId], enabled: enabled && Boolean(deploymentTargetId),
+  const discovery = useScopedQuery({ scope: [apiBaseUrl, undefined], key: ['platform-storage', 'discovery', deploymentTargetId], enabled: enabled && Boolean(deploymentTargetId), privileged: true,
     load: async (signal) => {
       const [storageClasses, persistentVolumes, persistentVolumeClaims] = await Promise.all([
         fetchKubernetesStorageClasses(apiBaseUrl, deploymentTargetId, origin.credential(), signal),

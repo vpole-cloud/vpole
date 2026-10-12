@@ -61,6 +61,8 @@ public sealed class RealtimeHubTests
             if (FailUnsubscribe) throw new InvalidOperationException("owner unavailable");
             return Task.CompletedTask;
         }
+        public Task<bool> RenewAsync(RealtimeSubscription subscription, ClaimsPrincipal principal, CancellationToken cancellationToken) =>
+            Task.FromResult(Interests.Contains(subscription.Id));
     }
 
     private sealed class CallerContext : HubCallerContext

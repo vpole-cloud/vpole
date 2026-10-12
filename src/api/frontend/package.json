@@ -12,6 +12,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@microsoft/signalr": "10.0.11",
     "@react-keycloak/web": "^3.4.0",
     "@tanstack/react-query": "^5.104.2",
     "keycloak-js": "^26.2.4",

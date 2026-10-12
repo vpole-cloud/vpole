@@ -295,7 +295,9 @@ public sealed class ResourceDeploymentTargetRoutingTests(
         var claim = new ClaimResourceDeploymentOperation(
             fixture.DbContext.ResourceDeployments,
             settings,
-            TimeProvider.System);
+            TimeProvider.System,
+            new MongoRunTransaction(fixture.Client),
+            fixture.StoreOutboxWrites);
         var success = new PersistResourceDeploymentSuccessOperation(
             completion,
             TimeProvider.System);

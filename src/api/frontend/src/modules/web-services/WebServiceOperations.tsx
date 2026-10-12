@@ -8,16 +8,19 @@ import { useVisibleRefresh } from '../../hooks/useVisibleRefresh'
 import { Button, Notice, StatusBadge } from '../../ui/components'
 import { useState } from 'react'
 import { SourceBuildLogViewer } from '../../components/SourceBuildLogViewer'
+import type { RealtimeSubscription } from '../../realtime/types'
 
 export function WebServiceOperations({ id, active }: { id: string; active: boolean }) {
   const { api, navigation } = useAppServices()
   const origin = useApiScope(api)
   const { credential } = origin
   const [logJobId, setLogJobId] = useState<string | null>(null)
-  const builds = useWebServiceQuery(['source-builds', 'jobs', id], (signal) => fetchSourceBuildJobs(api.baseUrl, id, credential(), api.tenantId, signal))
-  const releases = useWebServiceQuery(['web-services', 'releases', id, 1], (signal) => fetchWebServiceReleases(api.baseUrl, id, credential(), api.tenantId, signal))
-  useVisibleRefresh(active, builds.refresh)
-  useVisibleRefresh(active, releases.refresh)
+  const buildInterest: RealtimeSubscription[] = [{ topic: 'source-builds', tenantId: api.tenantId, resourceId: id }]
+  const releaseInterest: RealtimeSubscription[] = [...buildInterest, { topic: 'web-services', tenantId: api.tenantId, resourceId: id }, { topic: 'operations', tenantId: api.tenantId, resourceId: id }]
+  const builds = useWebServiceQuery(['source-builds', 'jobs', id], (signal) => fetchSourceBuildJobs(api.baseUrl, id, credential(), api.tenantId, signal), { active, realtime: buildInterest })
+  const releases = useWebServiceQuery(['web-services', 'releases', id, 1], (signal) => fetchWebServiceReleases(api.baseUrl, id, credential(), api.tenantId, signal), { active, realtime: releaseInterest })
+  useVisibleRefresh(active, builds.refresh, 20000, buildInterest)
+  useVisibleRefresh(active, releases.refresh, 20000, releaseInterest)
   return <div className="resource-operations"><ResourceOperations filter={{ resourceType: 'pole/web-service', resourceId: id }} active={active} onAccepted={() => invalidateWebServiceState(origin)} onRetry={(operation, signal) => {
       const placement = operation.deployment.placement
       const desiredOperation = placement.desiredOperation

@@ -19,16 +19,18 @@ export function useSourceBuildsManager({ apiBaseUrl, token, tenantId, webService
   const scope = useApiScope({ baseUrl: apiBaseUrl, token, tenantId })
   const queryScope = [apiBaseUrl, tenantId]
   const configurations = useScopedQuery({ scope: queryScope, key: ['source-builds', 'configurations'], enabled: visited,
+    active: enabled, realtime: [{ topic: 'source-builds', tenantId }],
     load: (signal) => fetchSourceBuildConfigurations(apiBaseUrl, scope.credential(), tenantId, signal) })
   const sources = useScopedQuery({ scope: queryScope, key: ['git', 'sources'], enabled: visited,
     load: (signal) => fetchSourceRepositories(apiBaseUrl, scope.credential(), tenantId, signal) })
   const jobs = useScopedQuery({ scope: queryScope, key: ['source-builds', 'jobs', webServiceId], enabled: visited && Boolean(webServiceId),
+    active: enabled, realtime: [{ topic: 'source-builds', tenantId, resourceId: webServiceId ?? undefined }],
     load: (signal) => fetchSourceBuildJobs(apiBaseUrl, webServiceId!, scope.credential(), tenantId, signal) })
   const mutation = useScopedMutation(`${scope.identity}:${webServiceId}:source-builds:${canManage}`)
   const [actionStatus, setActionStatus] = useState<LoadStatus>('idle')
   const visibleJobs = jobs.resource?.items ?? []
   const hasActiveBuild = visibleJobs.some((job) => !terminal.has(job.state.status))
-  useVisibleRefresh(enabled && hasActiveBuild, jobs.refresh, 2500)
+  useVisibleRefresh(enabled && hasActiveBuild, jobs.refresh, 2500, [{ topic: 'source-builds', tenantId, resourceId: webServiceId ?? undefined }])
 
   const setRead = async <T,>(queryKey: readonly unknown[], value: T, guard: () => void) => {
     await scope.session.client.cancelQueries({ queryKey, exact: true })

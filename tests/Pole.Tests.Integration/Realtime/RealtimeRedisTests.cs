@@ -141,6 +141,7 @@ public sealed class RealtimeRedisTests(RealtimeRedisFixture fixture) : IClassFix
         var expiry = DateTimeOffset.UtcNow.AddMinutes(1);
         var alpha = Subscription(connection, session, topic, "tenant-a", expiry);
         var beta = Subscription(connection, session, topic, "tenant-b", expiry);
+        Assert.False(await two.IsSessionRevokedAsync(session, CancellationToken.None));
         await one.ReplaceAsync(connection, [alpha, beta], CancellationToken.None);
         Assert.Equal(alpha, Assert.Single(await two.FindAsync(topic, "tenant-a", CancellationToken.None)));
         Assert.Equal(beta, Assert.Single(await two.FindAsync(topic, "tenant-b", CancellationToken.None)));
@@ -159,10 +160,11 @@ public sealed class RealtimeRedisTests(RealtimeRedisFixture fixture) : IClassFix
         var otherConnection = Guid.NewGuid().ToString("N");
         await one.ReplaceAsync(otherConnection, [Subscription(otherConnection, session, topic, "tenant-b", expiry)], CancellationToken.None);
         Assert.Equal(new[] { connection, otherConnection }.Order(), (await two.RevokeSessionAsync(session, CancellationToken.None)).Order());
+        Assert.True(await one.IsSessionRevokedAsync(session, CancellationToken.None));
         Assert.Empty(await one.FindAsync(topic, "tenant-a", CancellationToken.None));
         Assert.Empty(await one.FindAsync(topic, "tenant-b", CancellationToken.None));
         Assert.Empty(await one.FindAsync(topic, "tenant-c", CancellationToken.None));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => one.ReplaceAsync(connection, [alpha], CancellationToken.None));
+        await Assert.ThrowsAsync<RealtimeSessionUnavailableException>(() => one.ReplaceAsync(connection, [alpha], CancellationToken.None));
         for (var attempt = 0; attempt < 5; attempt++)
         {
             var racingSession = Guid.NewGuid().ToString("N");
@@ -170,7 +172,7 @@ public sealed class RealtimeRedisTests(RealtimeRedisFixture fixture) : IClassFix
             var racingSubscription = Subscription(racingConnection, racingSession, topic, "tenant-racing", expiry);
             var replace = Record.ExceptionAsync(() => one.ReplaceAsync(racingConnection, [racingSubscription], CancellationToken.None));
             await Task.WhenAll(replace, two.RevokeSessionAsync(racingSession, CancellationToken.None));
-            Assert.True(await replace is null or InvalidOperationException);
+            Assert.True(await replace is null or RealtimeSessionUnavailableException);
             Assert.Empty(await one.FindAsync(topic, "tenant-racing", CancellationToken.None));
         }
 

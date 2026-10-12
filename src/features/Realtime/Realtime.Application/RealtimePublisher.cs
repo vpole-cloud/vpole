@@ -27,9 +27,18 @@ public sealed class RealtimePublisher(
             if (subscription.Request.ResourceId is { } resourceId && change.ResourceId is { } changedId && resourceId != changedId)
                 continue;
             var ticket = await tickets.RetrieveAsync(subscription.SessionId);
-            if (subscription.ExpiresAtUtc <= clock.GetUtcNow() ||
-                ticket?.Properties.ExpiresUtc is not { } expiry || expiry <= clock.GetUtcNow() ||
-                !await access.AllowsAsync(ticket.Principal, subscription.Request, cancellationToken))
+            // Missing or expired transport state can recover through bootstrap. Only an explicit
+            // logout marker revokes the user's independently authenticated workspace.
+            if (subscription.ExpiresAtUtc <= clock.GetUtcNow() || ticket?.Properties.ExpiresUtc is not { } expiry || expiry <= clock.GetUtcNow())
+            {
+                revoked.Add(subscription.ConnectionId);
+                authorized.Remove(subscription.ConnectionId);
+                await subscriptions.RemoveAsync(subscription.ConnectionId, [subscription.Id], cancellationToken);
+                if (await subscriptions.IsSessionRevokedAsync(subscription.SessionId, cancellationToken))
+                    await hub.Clients.Client(subscription.ConnectionId).SessionRevoked();
+                continue;
+            }
+            if (!await access.AllowsAsync(ticket.Principal, subscription.Request, cancellationToken))
             {
                 revoked.Add(subscription.ConnectionId);
                 authorized.Remove(subscription.ConnectionId);

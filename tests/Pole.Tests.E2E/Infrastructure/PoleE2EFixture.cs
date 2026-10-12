@@ -33,6 +33,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
     private readonly string _githubClientSecret = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     private readonly string _keycloakAdminPassword = $"E2e-{Guid.NewGuid():N}-1!";
     private readonly TcpListener _keycloakPortReservation = ReserveTcpPort();
+    private readonly List<TcpListener> _realtimeReplicaPortReservations = [];
     private readonly string _kubernetesNamespacePrefix;
     private readonly string _mongoPassword = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     private readonly string _rabbitMqPassword = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
@@ -51,6 +52,8 @@ public sealed class PoleE2EFixture : IAsyncLifetime
     private HarborCredentials? _harborCredentials;
     private KeycloakAdminClient? _keycloak;
     private string? _scratchDirectory;
+    private bool _realtimeReplicaStarted;
+    private bool _realtimeReplicaStopped;
 
     public PoleE2EFixture()
     {
@@ -72,6 +75,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
     public E2eApiClient Api { get; private set; } = null!;
     public HttpClient Stub { get; private set; } = null!;
     public Uri FrontendBaseAddress { get; private set; } = null!;
+    public Uri ApiBaseAddress { get; private set; } = null!;
     public TestUser Alpha { get; private set; } = null!;
     public TestUser Beta { get; private set; } = null!;
     public TestUser PlatformAdminUser { get; private set; } = null!;
@@ -146,6 +150,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         githubStub
             .WithEnvironment("GitHubStub__CallbackBaseUrl", api.GetEndpoint("http"))
             .WithEnvironment("GitHubStub__ControlKey", _stubControlKey);
+        ConfigureRealtimeReplica(appHost, api);
         ConfigureOwnedContainerResources(appHost);
 
         var startupResourceNames = appHost.Resources
@@ -187,7 +192,9 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         await WaitForRequiredResourceHealthyAsync("frontend", _shutdown.Token);
         await WaitForRequiredResourceHealthyAsync("github-stub", _shutdown.Token);
 
-        Api = new E2eApiClient(_application.CreateHttpClient("pole-server", "http"));
+        var apiClient = _application.CreateHttpClient("pole-server", "http");
+        ApiBaseAddress = apiClient.BaseAddress ?? throw new InvalidOperationException("Aspire did not resolve the API endpoint.");
+        Api = new E2eApiClient(apiClient);
         Stub = _application.CreateHttpClient("github-stub", "http");
         Stub.DefaultRequestHeaders.Add("X-Pole-E2E-Stub-Key", _stubControlKey);
         FrontendBaseAddress = _application.CreateHttpClient("frontend", "http").BaseAddress
@@ -227,6 +234,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
     public async Task DisposeAsync()
     {
         _keycloakPortReservation.Stop();
+        foreach (var reservation in _realtimeReplicaPortReservations) reservation.Stop();
         using var cleanupTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
         var cancellationToken = cleanupTimeout.Token;
         foreach (var action in _cleanup.AsEnumerable().Reverse())
@@ -278,6 +286,84 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         {
             throw new InvalidOperationException("The source-build E2E Harbor project cleanup did not complete.");
         }
+    }
+
+    private void ConfigureRealtimeReplica(IDistributedApplicationBuilder appHost, IResourceBuilder<ProjectResource> primary)
+    {
+        var ports = Enumerable.Range(0, 4).Select(_ =>
+        {
+            var reservation = ReserveTcpPort();
+            _realtimeReplicaPortReservations.Add(reservation);
+            return ((IPEndPoint)reservation.LocalEndpoint).Port;
+        }).ToArray();
+        var replica = appHost.AddProject<Projects.Pole_Server>("pole-server-replica", launchProfileName: null)
+            .WithExplicitStart()
+            .WithHttpEndpoint(port: ports[0], targetPort: ports[0], name: "http", isProxied: false)
+            .WithHttpEndpoint(port: ports[1], targetPort: ports[1], name: "functions-public", isProxied: false)
+            .WithHttpEndpoint(port: ports[2], targetPort: ports[2], name: "functions-internal", isProxied: false)
+            .WithHttpHealthCheck("/health", endpointName: "http")
+            .WaitFor(primary);
+        // Reuse the complete test graph's service references and protected key files. Listener
+        // and silo addresses belong to each process and are overridden after these callbacks.
+        foreach (var environment in primary.Resource.Annotations.OfType<EnvironmentCallbackAnnotation>())
+            replica.Resource.Annotations.Add(environment);
+        replica.WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
+            .WithEnvironment("ASPNETCORE_URLS", string.Join(';', ports.Take(3).Select(port => $"http://localhost:{port}")))
+            .WithEnvironment("Functions__Gateway__ControlPort", ports[0].ToString(System.Globalization.CultureInfo.InvariantCulture))
+            .WithEnvironment("Functions__Gateway__PublicPort", ports[1].ToString(System.Globalization.CultureInfo.InvariantCulture))
+            .WithEnvironment("Functions__Gateway__InternalPort", ports[2].ToString(System.Globalization.CultureInfo.InvariantCulture))
+            .WithEnvironment("Functions__Orleans__SiloPort", ports[3].ToString(System.Globalization.CultureInfo.InvariantCulture))
+            .WithEnvironment("Functions__Orleans__GatewayPort", "0");
+    }
+
+    public async Task<Uri> StartRealtimeReplicaAsync(CancellationToken cancellationToken)
+    {
+        var application = _application ?? throw new InvalidOperationException("The E2E application is not initialized.");
+        foreach (var reservation in _realtimeReplicaPortReservations) reservation.Stop();
+        var result = await application.ResourceCommands.ExecuteCommandAsync("pole-server-replica", KnownResourceCommands.StartCommand, cancellationToken);
+        if (!result.Success) throw new InvalidOperationException("The realtime API replica could not start.");
+        await WaitForRequiredResourceHealthyAsync("pole-server-replica", cancellationToken);
+        _realtimeReplicaStarted = true;
+        _realtimeReplicaStopped = false;
+        using var client = application.CreateHttpClient("pole-server-replica", "http");
+        return client.BaseAddress ?? throw new InvalidOperationException("Aspire did not resolve the realtime API replica endpoint.");
+    }
+
+    public async Task StopRealtimeReplicaAsync(CancellationToken cancellationToken)
+    {
+        if (_application is null || _realtimeReplicaStopped) return;
+        const string name = "pole-server-replica";
+        if (!_application.ResourceNotifications.TryGetCurrentState(name, out var before))
+            throw new InvalidOperationException("The realtime API replica state is unavailable before cleanup.");
+        if (!_realtimeReplicaStarted && (before.Snapshot.State?.Text is "NotStarted" or "FailedToStart")) return;
+        if (before.Snapshot.State?.Text is not "Running")
+            throw new InvalidOperationException($"The realtime API replica exited before its owned stop. {DescribeStartupStates([name])}");
+        var intent = DateTimeOffset.UtcNow;
+        var result = await _application.ResourceCommands.ExecuteCommandAsync(before.Resource.Name, KnownResourceCommands.StopCommand, cancellationToken);
+        var retryExhausted = result.Message?.Contains("Failed to stop resource", StringComparison.Ordinal) == true;
+        using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        wait.CancelAfter(TimeSpan.FromSeconds(30));
+        try
+        {
+            // DCP's stop command has a shorter retry window than a graceful Orleans shutdown.
+            // A command result alone does not prove that the owned process actually exited.
+            await _application.ResourceNotifications.WaitForResourceAsync(name,
+                [KnownResourceStates.Finished, KnownResourceStates.Exited, "Terminated"], wait.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            throw new InvalidOperationException($"The realtime API replica did not finish its owned stop: commandSucceeded={result.Success}, canceled={result.Canceled}, budgetCanceled={cancellationToken.IsCancellationRequested}. {DescribeStartupStates([name])}");
+        }
+        if (!_application.ResourceNotifications.TryGetCurrentState(name, out var after))
+            throw new InvalidOperationException("The realtime API replica state is unavailable after cleanup.");
+        var controlledStop = after.Snapshot.StartTimeStamp == before.Snapshot.StartTimeStamp &&
+            after.Snapshot.StopTimeStamp is { } stoppedAt && stoppedAt >= intent;
+        // Aspire 13.5.4 uses -1 for an unavailable OS exit status. Accept that sentinel
+        // only after a successful stop of this same instance; actual failure codes stay failures.
+        var acceptedExit = after.Snapshot.ExitCode == 0 || result.Success && after.Snapshot.ExitCode == -1;
+        if (!controlledStop || !acceptedExit || result.Canceled || !result.Success && !retryExhausted)
+            throw new InvalidOperationException($"The realtime API replica stop was not verified: commandSucceeded={result.Success}, canceled={result.Canceled}, retryExhausted={retryExhausted}. {DescribeStartupStates([name])}");
+        _realtimeReplicaStopped = true;
     }
 
     private void ConfigureOwnedContainerResources(IDistributedApplicationBuilder appHost)
@@ -832,7 +918,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
                 {
                     "Starting" or "Running" or "FailedToStart" or "RuntimeUnhealthy" or
                     "Waiting" or "NotStarted" or "Building" or "Stopping" or "Exited" or
-                    "Finished" or "Hidden" or "ValueMissing" or "Active" => observedState,
+                    "Finished" or "Terminated" or "Hidden" or "ValueMissing" or "Active" => observedState,
                     null => "none",
                     _ => "Other"
                 };
@@ -931,6 +1017,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         var arguments = new List<string>
         {
         "E2E:Enabled=true",
+        "Realtime:Enabled=true",
         "LocalSourceBuilds:Enabled=false",
         $"E2E:KeycloakPort={keycloakPort}",
         $"E2E:KubernetesNamespacePrefix={kubernetesNamespacePrefix}",
@@ -992,6 +1079,28 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         attributes["post.logout.redirect.uris"] = "+";
         await _keycloak.UpdateClientAsync(uiClientInternalId, client, cancellationToken);
         _cleanup.Add(ct => _keycloak.UpdateClientAsync(uiClientInternalId, originalUiClient, ct));
+    }
+
+    public async Task UseInteractiveClientTokenLifespanAsync(
+        TestResourceScope resources,
+        TimeSpan lifespan,
+        CancellationToken cancellationToken)
+    {
+        var seconds = checked((int)lifespan.TotalSeconds);
+        if (seconds <= 0)
+            throw new ArgumentOutOfRangeException(nameof(lifespan), "The UI token lifespan must be positive.");
+        var keycloak = _keycloak ?? throw new InvalidOperationException("The E2E identity provider is not initialized.");
+        var client = await keycloak.GetClientAsync("pole.control-plane.ui", cancellationToken);
+        var internalId = client["id"]?.GetValue<string>()
+                         ?? throw new InvalidOperationException("Keycloak did not return the UI client id.");
+        var original = client.DeepClone().AsObject();
+        // Register restoration before updating. This is the UI client only; the realm and the
+        // separate direct-grant client used by fixture API calls retain their normal lifespans.
+        resources.Defer("restore interactive client token lifespan", token => keycloak.UpdateClientAsync(internalId, original, token));
+        var attributes = client["attributes"] as JsonObject ?? new JsonObject();
+        client["attributes"] = attributes;
+        attributes["access.token.lifespan"] = seconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        await keycloak.UpdateClientAsync(internalId, client, cancellationToken);
     }
 
     private async Task<TestUser> CreateBootstrapUserAsync(CancellationToken cancellationToken)

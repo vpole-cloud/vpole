@@ -29,6 +29,7 @@
       <ProjectReference Include="..\..\ComputeProfiles\ComputeProfiles.Contracts.HttpMapping\ComputeProfiles.Contracts.HttpMapping.csproj" />
       <ProjectReference Include="..\..\SourceBuilds\SourceBuilds.Contracts\SourceBuilds.Contracts.csproj" />
       <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj" />
+      <ProjectReference Include="..\..\Realtime\Realtime.Contracts\Realtime.Contracts.csproj" />
       <ProjectReference Include="..\..\Search\Search.Contracts\Search.Contracts.csproj" />
       <ProjectReference Include="..\WebServices.Events\WebServices.Events.csproj" />
       <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />

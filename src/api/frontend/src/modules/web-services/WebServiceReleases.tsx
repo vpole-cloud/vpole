@@ -8,6 +8,7 @@ import { useVisibleRefresh } from '../../hooks/useVisibleRefresh'
 import { useAppServices } from '../../shell/AppContext'
 import type { WebService, WebServiceRelease, WebServiceSpec } from '../../types'
 import { Button, ConfirmationDialog, EmptyState, Notice, StatusBadge } from '../../ui/components'
+import type { RealtimeSubscription } from '../../realtime/types'
 
 const image = (spec: WebServiceSpec) => `${spec.image.server}/${spec.image.name}:${spec.image.tag}`
 function externalBuildUrl(value: string | null | undefined) {
@@ -28,7 +29,10 @@ function ReleaseHistory({ scope, service, onChanged }: { scope: string; service:
   const { credential, isCurrent } = apiScope
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<Selection | null>(null)
-  const history = useWebServiceQuery(['web-services', 'releases', service.id, page], (signal) => fetchWebServiceReleases(api.baseUrl, service.id, credential(), api.tenantId, signal, { pageNumber: page }))
+  const interest: RealtimeSubscription[] = [
+    { topic: 'web-services', tenantId: api.tenantId, resourceId: service.id }, { topic: 'operations', tenantId: api.tenantId, resourceId: service.id }, { topic: 'source-builds', tenantId: api.tenantId, resourceId: service.id },
+  ]
+  const history = useWebServiceQuery(['web-services', 'releases', service.id, page], (signal) => fetchWebServiceReleases(api.baseUrl, service.id, credential(), api.tenantId, signal, { pageNumber: page }), { realtime: interest })
   const mutation = useWebServiceMutation(scope, tenant.canManage)
   const value = history.resource
   const pending = value?.releases.items.some(release => release.outcome === 'Pending') ?? false
@@ -36,7 +40,7 @@ function ReleaseHistory({ scope, service, onChanged }: { scope: string; service:
   const poll = useCallback(async () => {
     if (historyStatus !== 'loading') await refreshHistory()
   }, [historyStatus, refreshHistory])
-  useVisibleRefresh(true, poll, pending ? 2500 : 20000)
+  useVisibleRefresh(true, poll, pending ? 2500 : 20000, interest)
   if (value && history.status === 'success' && page > Math.max(1, Math.ceil(value.releases.totalCount / value.releases.pageSize))) setPage(Math.max(1, Math.ceil(value.releases.totalCount / value.releases.pageSize)))
   const current = value && history.status === 'success' && value.activeRevision === service.activeRevision
   const writable = tenant.canManage && current && !mutation.busy && service.deployments.some(placement => placement.desiredOperation !== 'Delete')

@@ -309,8 +309,7 @@ var frontend = builder.AddViteApp("frontend", "../frontend")
     .WithExternalHttpEndpoints();
 
 api.WithEnvironment("Cors__FrontendOrigin", frontend.GetEndpoint("http"));
-if (realtimeEnabled)
-    api.WithEnvironment("Realtime__AllowedOrigins__0", frontend.GetEndpoint("http"));
+api.WithEnvironment("Realtime__AllowedOrigins__0", frontend.GetEndpoint("http"));
 api.WithEnvironment("KeycloakAdmin__BaseUrl", keycloak.GetEndpoint("http"));
 if (e2eKeycloakPort is { } keycloakPort)
 {

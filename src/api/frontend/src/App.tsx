@@ -7,6 +7,8 @@ import { AppShell } from './shell/AppShell'
 import { useTenants } from './hooks/useTenants'
 import { readIntegrationNavigation } from './modules/platform/integrationsState'
 import { appRegistry } from './modules'
+import { RealtimeProvider } from './realtime/RealtimeProvider'
+import { useRealtime } from './realtime/context'
 
 type RoleClaims = {
   roles?: string[]
@@ -22,10 +24,15 @@ function App() {
   useContext(CredentialVersionContext)
   const { keycloak } = useKeycloak()
   const identity = `${import.meta.env.VITE_API_BASE_URL}:${Boolean(keycloak.authenticated)}:${keycloak.subject ?? ''}`
-  return <SessionQueries identity={identity}><AuthenticatedWorkspace /></SessionQueries>
+  return <SessionQueries identity={identity}><RealtimeProvider baseUrl={import.meta.env.VITE_API_BASE_URL as string}
+    token={keycloak.authenticated ? keycloak.token : undefined}
+    enabled={Boolean(keycloak.authenticated) && import.meta.env.VITE_REALTIME_ENABLED !== 'false'}>
+    <AuthenticatedWorkspace />
+  </RealtimeProvider></SessionQueries>
 }
 
 function AuthenticatedWorkspace() {
+  const realtime = useRealtime()
   const { keycloak, initialized } = useKeycloak()
   const authenticated = Boolean(keycloak.authenticated)
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL as string
@@ -40,7 +47,7 @@ function AuthenticatedWorkspace() {
     api={{ baseUrl: apiBaseUrl, token }} auth={{
       initialized, authenticated, userId: keycloak.subject ?? '',
       userName: keycloak.tokenParsed?.preferred_username, isPlatformAdmin: roles.includes('pole-platform-admin'),
-      login: () => { void keycloak.login() }, logout: () => { void keycloak.logout() },
+      login: () => { void keycloak.login() }, logout: () => { void (async () => { await realtime?.logout(); await keycloak.logout() })() },
     }} />
 }
 

@@ -10,6 +10,8 @@ public interface IRealtimeSubscriptions
     Task RemoveAsync(string connectionId, IReadOnlyCollection<string>? subscriptionIds, CancellationToken cancellationToken);
     Task<IReadOnlyList<RealtimeSubscription>> FindAsync(string topic, string? tenantId, CancellationToken cancellationToken);
     Task<IReadOnlyList<string>> RevokeSessionAsync(string sessionId, CancellationToken cancellationToken);
+    /// <summary>Reads an explicit revocation marker independently of ticket availability.</summary>
+    Task<bool> IsSessionRevokedAsync(string sessionId, CancellationToken cancellationToken);
 }
 
 public interface IRealtimeTicketStore : ITicketStore;

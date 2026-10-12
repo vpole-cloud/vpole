@@ -50,6 +50,7 @@ public sealed class TenantContextHttpTests
         {
             var route = endpoint.RoutePattern.RawText!;
             var independent = route.StartsWith("/api/v1/platform/", StringComparison.Ordinal) ||
+                              route.StartsWith("/api/v1/realtime/", StringComparison.Ordinal) ||
                               route.StartsWith("/api/v1/tenants", StringComparison.Ordinal) ||
                               route.StartsWith("/api/v1/users", StringComparison.Ordinal);
             Assert.Equal(independent ? ActiveTenantRequirement.None : ActiveTenantRequirement.Required,

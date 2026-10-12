@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pole.Database;
+using Pole.Features.Realtime.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Application.Endpoints.Deployments;
@@ -26,6 +27,7 @@ public static class WebServicesFeatureRegistration
     public static IServiceCollection AddWebServicesFeature(
         this IServiceCollection services)
     {
+        services.AddSingleton(new RealtimeTopic("web-services", RealtimeScope.Tenant));
         services.AddSingleton<SearchSourceType>(WebServiceSearchProjection.SourceType);
         services.AddWebServicePersistence();
         services.AddSingleton(new ResourceConnectionSourceCapability(
