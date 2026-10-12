@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import type { GitHubConnectionNotice } from '../integrationsState'
-import type { GitIntegrationsManager } from '../hooks/useGitIntegrationsManager'
+import type { GitHubConnectionNotice } from '../modules/platform/integrationsState'
+import type { GitIntegrationsManager } from '../modules/platform/useGitIntegrationsManager'
 
 interface IntegrationsPageProps {
   manager: GitIntegrationsManager

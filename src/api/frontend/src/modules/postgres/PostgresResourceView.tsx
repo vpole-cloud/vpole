@@ -1,3 +1,4 @@
+import { eligibilityKeys } from '../../data/queryKeys'
 import { ResourceHealth } from '../../ui/ResourceHealth'
 import { ResourceOperations } from '../../ui/ResourceOperations'
 import { useEffect, useState } from 'react'
@@ -19,18 +20,18 @@ import { PostgresCredentials } from './PostgresCredentials'
 import { acceptedPostgresChanges, isPostgresDirty, postgresChanges, postgresConfiguration, reapplyPostgresChanges } from './configurationModel'
 
 const resourceType = 'pole/postgresql'
-export function PostgresResourceView({ id, section, active, version, onSection, actions }:
-  { id: string; section: PostgresSection; active: boolean; version: number; onSection: (section: PostgresSection) => void; actions: WorkspaceActions<PostgresSection> }) {
+export function PostgresResourceView({ id, section, active, onSection, actions }:
+  { id: string; section: PostgresSection; active: boolean; onSection: (section: PostgresSection) => void; actions: WorkspaceActions<PostgresSection> }) {
   const { api, tenant, navigation } = useAppServices()
   const origin = useProviderInvalidation(api)
   const scopeKey = `${origin.identity}:${id}`
   const scope = [api.baseUrl, api.tenantId]
-  const details = useScopedQuery({ scope, key: ['postgres', 'detail', id], load: (signal) => fetchPostgresCluster(api.baseUrl, id, origin.credential(), api.tenantId, signal), refreshVersion: version })
+  const details = useScopedQuery({ scope, key: ['postgres', 'detail', id], load: (signal) => fetchPostgresCluster(api.baseUrl, id, origin.credential(), api.tenantId, signal) })
   const cluster = details.resource
   const group = useScopedQuery({ scope, key: ['resource-groups', 'detail', cluster?.groupId], enabled: Boolean(cluster), load: (signal) => fetchResourceGroup(api.baseUrl, cluster!.groupId, origin.credential(), api.tenantId, signal) })
-  const scopes = useScopedQuery({ scope, key: ['eligibility', 'isolation-scopes', cluster?.groupId], enabled: Boolean(cluster), load: (signal) => fetchIsolationScopes(api.baseUrl, cluster!.groupId, origin.credential(), api.tenantId, signal) })
-  const targets = useScopedQuery({ scope, key: ['eligibility', 'deployment-targets', resourceType, cluster?.placement.isolationScopeId, false], enabled: Boolean(cluster), load: (signal) => fetchAvailableDeploymentTargets(api.baseUrl, cluster!.placement.isolationScopeId ?? undefined, origin.credential(), api.tenantId, signal, false, resourceType) })
-  const storage = useScopedQuery({ scope, key: ['eligibility', 'storage-profiles', resourceType, cluster?.placement.deploymentTargetId], enabled: Boolean(cluster), load: (signal) => fetchAvailableStorageProfiles(api.baseUrl, resourceType, cluster!.placement.deploymentTargetId, origin.credential(), api.tenantId, signal) })
+  const scopes = useScopedQuery({ scope, key: eligibilityKeys.scopes(cluster?.groupId), enabled: Boolean(cluster), load: (signal) => fetchIsolationScopes(api.baseUrl, cluster!.groupId, origin.credential(), api.tenantId, signal) })
+  const targets = useScopedQuery({ scope, key: eligibilityKeys.targets(resourceType, cluster?.placement.isolationScopeId, false), enabled: Boolean(cluster), load: (signal) => fetchAvailableDeploymentTargets(api.baseUrl, cluster!.placement.isolationScopeId ?? undefined, origin.credential(), api.tenantId, signal, false, resourceType) })
+  const storage = useScopedQuery({ scope, key: eligibilityKeys.storage(resourceType, cluster?.placement.deploymentTargetId), enabled: Boolean(cluster), load: (signal) => fetchAvailableStorageProfiles(api.baseUrl, resourceType, cluster!.placement.deploymentTargetId, origin.credential(), api.tenantId, signal) })
   const mutation = useScopedMutation(scopeKey)
   const [deleting, setDeleting] = useState(false)
   const [visited, setVisited] = useState(section === 'configuration')
@@ -46,7 +47,7 @@ export function PostgresResourceView({ id, section, active, version, onSection, 
   useVisibleRefresh(active && reconciling, details.refresh, 2500)
   const afterWrite = async () => {
     await Promise.all([details.refreshAfterWrite(), origin.invalidate([['postgres', 'inventory'], ['resource-groups'], ['overview'], ['search'], ['operations'], ['health'], ['endpoints']])])
-    if (origin.isCurrent()) actions.changed()
+
   }
   if (!cluster) return <EmptyState title={details.status === 'error' ? 'Unable to open this database.' : 'Loading database…'} error={details.status === 'error'}>
     {details.error && <p>{details.error}</p>}<Button onClick={() => void details.refresh()}>Retry database</Button></EmptyState>
@@ -68,13 +69,13 @@ export function PostgresResourceView({ id, section, active, version, onSection, 
         <div><dt>Revision</dt><dd>{cluster.revision}</dd></div><div><dt>Group tags</dt><dd>{group.resource?.tags.join(', ') || 'No tags'}</dd></div></dl>
       <p className="field__hint">This database has one deployment target. Network access and application credentials are configured separately.</p></section>
       <PlacementSummary placement={cluster.placement} targetName={targets.resource?.find((target) => target.id === cluster.placement.deploymentTargetId)?.displayName} />
-      <ResourceHealth placements={[cluster.placement]} active={active && section === 'overview'} refreshVersion={version} targetNames={Object.fromEntries((targets.resource ?? []).map((target) => [target.id, target.displayName]))} />
+      <ResourceHealth placements={[cluster.placement]} active={active && section === 'overview'} targetNames={Object.fromEntries((targets.resource ?? []).map((target) => [target.id, target.displayName]))} />
       {active && section === 'overview' && <ResourceEndpoints resourceType="pole/postgresql" resourceId={id} />}
       {tenant.canManage && cluster.placement.status === 'Failed' && <Button disabled={mutation.busy} onClick={() => {
         void mutation.run((signal) => retryResourceDeployment(api.baseUrl, cluster.placement.deploymentId, cluster.placement.deploymentRevision ?? 1, cluster.placement.desiredOperation ?? "Apply", origin.credential(), api.tenantId, signal), afterWrite).catch(() => {})
       }}>Retry deployment</Button>}
     </TabPanel>
-    <TabPanel id={panelId} tabId="operations" activeId={section}>{active && section === "operations" && <ResourceOperations filter={{ resourceType: "pole/postgresql", resourceId: id }} onRetry={(operation, signal) => retryResourceDeployment(api.baseUrl, operation.deployment.id, operation.deployment.placement.deploymentRevision!, operation.deployment.placement.desiredOperation!, origin.credential(), api.tenantId, signal)} />}</TabPanel>
+    <TabPanel id={panelId} tabId="operations" activeId={section}>{active && section === "operations" && <ResourceOperations filter={{ resourceType: "pole/postgresql", resourceId: id }} onAccepted={afterWrite} onRetry={(operation, signal) => retryResourceDeployment(api.baseUrl, operation.deployment.id, operation.deployment.placement.deploymentRevision!, operation.deployment.placement.desiredOperation!, origin.credential(), api.tenantId, signal)} />}</TabPanel>
     <TabPanel id={panelId} tabId="configuration" activeId={section}>{visited && (canWrite ? <PostgresConfiguration cluster={cluster} onDirtyChange={setConfigurationDirty} onRefresh={details.refresh} onSaved={afterWrite} /> : <EmptyState title="Database configuration is read-only." />)}</TabPanel>
     <TabPanel id={panelId} tabId="credentials" activeId={section}>
       {active && section === 'credentials' && canWrite && <PostgresCredentials key={`${scopeKey}:${tenant.canManage}`} cluster={cluster} onDirtyChange={setCredentialsDirty} onChanged={afterWrite} />}
@@ -94,7 +95,7 @@ function PostgresConfiguration({ cluster, onDirtyChange, onSaved, onRefresh }: {
   const { api, notifications } = useAppServices()
   const origin = useProviderInvalidation(api)
   const scopeKey = `${origin.identity}:${cluster.id}`
-  const compute = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['eligibility', 'compute-profiles', resourceType, cluster.placement.deploymentTargetId], load: (signal) => fetchAvailableComputeProfiles(api.baseUrl, cluster.placement.deploymentTargetId, origin.credential(), api.tenantId, signal, resourceType) })
+  const compute = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: eligibilityKeys.compute(resourceType, cluster.placement.deploymentTargetId), load: (signal) => fetchAvailableComputeProfiles(api.baseUrl, cluster.placement.deploymentTargetId, origin.credential(), api.tenantId, signal, resourceType) })
   const [configuration, setConfiguration] = useState(() => postgresConfiguration(cluster))
   const { instances, storage, computeProfileId } = configuration.draft
   const dirty = isPostgresDirty(configuration)

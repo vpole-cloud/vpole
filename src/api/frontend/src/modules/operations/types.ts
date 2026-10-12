@@ -80,3 +80,6 @@ export type WorkloadObservation = { kind: 'Unavailable'; reason: string } | {
 export interface ResourceDeploymentObservation {
   deploymentId: string; deploymentRevision: number; desiredGeneration: number; checkedAtUtc: string; observation: WorkloadObservation
 }
+
+export interface RuntimeLogSelection { instanceUid: string; container: string; expectedRevision: number; follow: boolean; previous: boolean; tailLines: number }
+export interface RuntimeLogFrame { kind: 'Opened' | 'Output' | 'Ended'; text: string | null; reason: string | null; outputBytes: number }

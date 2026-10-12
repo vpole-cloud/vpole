@@ -8,7 +8,7 @@ import { createAppRegistry } from './moduleRegistry'
 import { ConfirmationDialog, Field } from '../ui/components'
 import type { AppModule, AppServices } from './contracts'
 import type { Tenant } from '../types'
-import { readIntegrationNavigation } from '../integrationsState'
+import { readIntegrationNavigation } from '../modules/platform/integrationsState'
 
 let container: HTMLDivElement
 let root: Root

@@ -1,3 +1,5 @@
+import { fetchScopedQuery } from '../../data/fetchScopedQuery'
+import { eligibilityKeys } from '../../data/queryKeys'
 import { useAppServices } from '../../shell/AppContext'
 import { useScopedMutation } from '../../hooks/useScopedMutation'
 import { invalidateWebServiceState } from './invalidate'
@@ -26,7 +28,7 @@ import type {
   WebServiceDeploymentUpdateInput,
   WebServiceInput,
 } from '../../types'
-import { useWebServiceInventory } from '../../hooks/useWebServiceInventory'
+import { useWebServiceInventory } from './useWebServiceInventory'
 
 interface UseWebServicesManagerOptions {
   apiBaseUrl: string
@@ -54,7 +56,7 @@ export function useWebServicesManager({
 }: UseWebServicesManagerOptions) {
   const { tenant } = useAppServices()
   const scope = useApiScope({ baseUrl: apiBaseUrl, token, tenantId })
-  const { session, key, credential, isCurrent } = scope
+  const { credential, isCurrent } = scope
   const mutation = useScopedMutation(`${scope.identity}:web-service-write:${tenant.canManage}`)
   const { items, page, isCurrentPage, status, error, refresh, removeItem } = useWebServiceInventory({ apiBaseUrl, token, tenantId, enabled, pageNumber, pageSize, search })
   const [submitStatus, setSubmitStatus] = useState<LoadStatus>('idle')
@@ -85,14 +87,14 @@ export function useWebServicesManager({
     setTargetsStatus('loading')
     setTargetsError('')
     try {
-      const targets = await session.client.fetchQuery({ queryKey: key(['eligibility', 'targets', isolationScopeId ?? null, requiresPublicIngress]), queryFn: ({ signal: querySignal }) => fetchAvailableDeploymentTargets(
+      const targets = await fetchScopedQuery(scope, eligibilityKeys.targets('pole/web-service', isolationScopeId, requiresPublicIngress), (querySignal) => fetchAvailableDeploymentTargets(
         apiBaseUrl,
         isolationScopeId,
         credential(),
         tenantId,
         querySignal,
         requiresPublicIngress,
-      ) })
+      ))
       if (signal?.aborted || !isCurrent()) return []
       setAvailableTargets(targets)
       setTargetsStatus('success')
@@ -104,7 +106,7 @@ export function useWebServicesManager({
       setTargetsError(errorMessage(loadError, 'Unable to load eligible deployment targets.'))
       return []
     }
-  }, [apiBaseUrl, tenantId, credential, session, key, isCurrent])
+  }, [apiBaseUrl, tenantId, credential, scope, isCurrent])
 
   const loadComputeProfiles = useCallback(async (deploymentTargetId: string) => {
     if (!tenantId || !deploymentTargetId) {
@@ -113,13 +115,13 @@ export function useWebServicesManager({
 
     setComputeProfilesStatusByTarget((items) => ({ ...items, [deploymentTargetId]: 'loading' }))
     try {
-      const profiles = await session.client.fetchQuery({ queryKey: key(['eligibility', 'compute', deploymentTargetId]), queryFn: ({ signal }) => fetchAvailableComputeProfiles(
+      const profiles = await fetchScopedQuery(scope, eligibilityKeys.compute('pole/web-service', deploymentTargetId), (signal) => fetchAvailableComputeProfiles(
         apiBaseUrl,
         deploymentTargetId,
         credential(),
         tenantId,
         signal,
-      ) })
+      ))
       if (!isCurrent()) return []
       setComputeProfilesByTarget((current) => ({
         ...current,
@@ -133,18 +135,18 @@ export function useWebServicesManager({
       setSubmitError(errorMessage(loadError, 'Unable to load compute profiles.'))
       return []
     }
-  }, [apiBaseUrl, tenantId, credential, session, key, isCurrent])
+  }, [apiBaseUrl, tenantId, credential, scope, isCurrent])
 
   const loadHostnameBindings = useCallback(async (webServiceId: string, deploymentId: string) => {
     try {
-      const bindings = await session.client.fetchQuery({ queryKey: key(['web-services', 'hostnames', webServiceId, deploymentId]), queryFn: ({ signal }) => fetchWebServiceHostnameBindings(
+      const bindings = await fetchScopedQuery(scope, ['web-services', 'hostnames', webServiceId, deploymentId], (signal) => fetchWebServiceHostnameBindings(
         apiBaseUrl,
         webServiceId,
         deploymentId,
         credential(),
         tenantId,
         signal,
-      ) })
+      ))
       if (!isCurrent()) return []
       setHostnameBindingsByDeployment((current) => ({ ...current, [deploymentId]: bindings }))
       return bindings
@@ -153,7 +155,7 @@ export function useWebServicesManager({
       setSubmitError(errorMessage(loadError, 'Unable to load hostname bindings.'))
       return []
     }
-  }, [apiBaseUrl, tenantId, credential, session, key, isCurrent])
+  }, [apiBaseUrl, tenantId, credential, scope, isCurrent])
 
   const submit = async <T,>(action: () => Promise<T>, fallback: string) => {
     if (!tenant.canManage) throw new Error('Tenant viewer access is read-only.')

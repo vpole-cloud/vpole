@@ -10,7 +10,7 @@ import type { WebServiceInput } from '../../types'
 import { creationCommand, creationReducer, type AcceptedCreation, type CreationCommand, type CreationPhase } from './creationWorkflow'
 
 export function useWebServiceCreation(onCompleted: (id: string, mode: 'image' | 'git') => void) {
-  const { api, tenant, invalidateResources } = useAppServices()
+  const { api, tenant } = useAppServices()
   const scope = useApiScope(api)
   const mutation = useScopedMutation(`${scope.identity}:${tenant.canManage}`)
   const [state, dispatch] = useReducer(creationReducer, { kind: 'editing' })
@@ -41,7 +41,6 @@ export function useWebServiceCreation(onCompleted: (id: string, mode: 'image' | 
             guard()
             accepted.serviceId = created.webServiceId
           }
-          invalidateResources()
         }
         guard()
         const serviceId = accepted.serviceId

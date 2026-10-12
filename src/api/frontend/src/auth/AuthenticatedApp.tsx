@@ -12,4 +12,3 @@ export function AuthenticatedApp() {
     <CredentialVersionContext.Provider value={version}><App /></CredentialVersionContext.Provider>
   </ReactKeycloakProvider>
 }
-

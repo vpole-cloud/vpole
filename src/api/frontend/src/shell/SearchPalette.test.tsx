@@ -25,7 +25,7 @@ function services(id = 'alpha', canManage = true, token = 'token'): AppServices 
   return { auth: { initialized: true, authenticated: true, userId: 'user', isPlatformAdmin: false, login: vi.fn(), logout: vi.fn() },
     api: { baseUrl: '/api', token, tenantId: id }, tenant: { active: { id, name: id, role: canManage ? 'Owner' : 'Viewer', isDefault: true }, canManage },
     navigation: { viewId: 'widgets', search: '', goTo: vi.fn(), setSearch: vi.fn(), openResource, resourceHref: vi.fn(), registerUnsavedChanges: () => () => {} },
-    theme: { value: 'light', set: vi.fn() }, notifications: { publish: vi.fn() }, resourceTypes: registry.resourceTypes, resourceVersion: 0, invalidateResources: vi.fn() }
+    theme: { value: 'light', set: vi.fn() }, notifications: { publish: vi.fn() }, resourceTypes: registry.resourceTypes }
 }
 function render(id = 'alpha', canManage = true, token = 'token') { root.render(<AppContext.Provider value={services(id, canManage, token)}><SearchPalette key={id} registry={registry} onClose={close} /></AppContext.Provider>) }
 async function type(value: string) {

@@ -4,7 +4,7 @@ import type { Root } from 'react-dom/client'
 import { createTestApp } from '../test/TestApp'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import * as api from '../api'
-import { useResourceGroupsManager } from './useResourceGroupsManager'
+import { useResourceGroupsManager } from '../modules/resource-groups/useResourceGroups'
 import type { ResourceGroup } from '../types'
 
 vi.mock('../api', () => ({

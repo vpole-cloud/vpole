@@ -3,8 +3,7 @@ import { act } from 'react'
 import { strictFetch } from '../../test/http'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { fetchWebService } from '../../api'
-import { useResource } from '../../hooks/useResource'
+import { useWebService } from './useWebService'
 import { useAppServices } from '../../shell/AppContext'
 import { AppShell } from '../../shell/AppShell'
 import { createAppRegistry } from '../../shell/moduleRegistry'
@@ -13,8 +12,8 @@ import { WebServiceReleases } from './WebServiceReleases'
 
 function View() {
   const { api } = useAppServices()
-  const details = useResource(`${api.tenantId}:${api.token}`, signal => fetchWebService(api.baseUrl, 'service', api.token, api.tenantId, signal))
-  return details.resource && <WebServiceReleases service={details.resource} onChanged={details.refresh} />
+  const details = useWebService('service', api)
+  return details.service && <WebServiceReleases service={details.service} onChanged={details.refresh} />
 }
 const registry = createAppRegistry([{ id: 'test', views: [{ id: 'releases', label: 'Releases', component: View, access: 'tenant' }], resourceTypes: [{ id: 'pole/web-service', label: 'Web service', viewId: 'releases' }] }])
 const probe = { path: '/', port: '80', initialDelaySeconds: 0, periodSeconds: 5, timeoutSeconds: 1, failureThreshold: 3, successThreshold: 1 }

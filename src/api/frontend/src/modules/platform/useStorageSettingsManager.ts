@@ -3,7 +3,8 @@ import { createStorageProfile, fetchKubernetesPersistentVolumeClaims, fetchKuber
 import { useApiScope } from '../../data/useApiScope'
 import { useScopedQuery } from '../../data/useScopedQuery'
 import { useScopedMutation } from '../../hooks/useScopedMutation'
-import type { LoadStatus, StorageProfileInput } from '../../types'
+import type { ScopedQueryData } from '../../data/querySession'
+import type { LoadStatus, PlatformDeploymentTarget, StorageProfile, StorageProfileInput } from '../../types'
 
 interface UseStorageSettingsManagerOptions { apiBaseUrl: string; token?: string; enabled: boolean }
 export function useStorageSettingsManager({ apiBaseUrl, token, enabled }: UseStorageSettingsManagerOptions) {
@@ -49,9 +50,18 @@ export function useStorageSettingsManager({ apiBaseUrl, token, enabled }: UseSto
     if (!enabled) return
     await Promise.all([inventory.refresh(), discovery.refresh()])
   }
-  const saved = async () => {
+  const saved = async (profile: StorageProfile) => {
+    if (!current()) return
     setAccepted(identity)
-    await inventory.refreshAfterWrite()
+    await client.cancelQueries({ queryKey: inventory.queryKey, exact: true })
+    if (!current()) return
+    // The accepted response is authoritative even if the following read fails.
+    client.setQueryData<ScopedQueryData<{ profiles: StorageProfile[]; targets: PlatformDeploymentTarget[] }>>(inventory.queryKey, (cached) => cached && ({
+      ...cached, value: { ...cached.value, profiles: cached.value.profiles.some((item) => item.id === profile.id)
+        ? cached.value.profiles.map((item) => item.id === profile.id ? profile : item)
+        : [...cached.value.profiles, profile] },
+    }))
+    await inventory.refresh()
     if (!current()) return
     await discovery.refreshAfterWrite()
     if (!current()) return
@@ -72,6 +82,7 @@ export function useStorageSettingsManager({ apiBaseUrl, token, enabled }: UseSto
   }
   return { profiles: inventory.resource?.profiles ?? [], targets, deploymentTargetId,
     selectTarget: (id: string) => setSelection({ identity, id }),
+    hasDiscovery: Boolean(discovery.resource),
     storageClasses: discovery.resource?.storageClasses ?? [], persistentVolumes: discovery.resource?.persistentVolumes ?? [], persistentVolumeClaims: discovery.resource?.persistentVolumeClaims ?? [],
     status: (!enabled ? 'idle' : inventory.status !== 'success' ? inventory.status : deploymentTargetId ? discovery.status : 'success') as LoadStatus,
     error: inventory.error || discovery.error,

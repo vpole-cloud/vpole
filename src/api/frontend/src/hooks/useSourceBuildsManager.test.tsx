@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import * as api from '../api'
 import * as buildApi from '../modules/web-services/buildApi'
-import { useSourceBuildsManager } from './useSourceBuildsManager'
+import { useSourceBuildsManager } from '../modules/web-services/useSourceBuilds'
 import type { SourceBuildJob, SourceRepository } from '../types'
 vi.mock('../api', () => ({ fetchSourceRepositories: vi.fn(), reanalyzeSourceRepository: vi.fn() }))
 vi.mock('../modules/web-services/buildApi', () => ({ createSourceBuildConfiguration: vi.fn(), deleteSourceBuildConfiguration: vi.fn(), fetchSourceBuildConfigurations: vi.fn(), fetchSourceBuildJobs: vi.fn(), startSourceBuild: vi.fn(), updateSourceBuildRecipe: vi.fn() }))

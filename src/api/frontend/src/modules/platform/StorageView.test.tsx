@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AppShell } from '../../shell/AppShell'
 import { createAppRegistry } from '../../shell/moduleRegistry'
 import { StorageView } from './PlatformViews'
+import { deferred, strictFetch } from '../../test/http'
 
 let session: QuerySession
 function StorageProbe() { const value = useQuerySession(); useLayoutEffect(() => { session = value }); return <StorageView /> }
@@ -14,7 +15,8 @@ let container: HTMLDivElement
 const profile = { id: 'disk', displayName: 'Data disk', description: '', mediaType: 'SSD', performanceTier: 'Standard', isEnabled: true, isDefault: false,
   targetMappings: [{ deploymentTargetId: 'a', storageClassName: 'fast' }, { deploymentTargetId: 'b', storageClassName: 'standard' }],
   revision: 7, allowedResourceTypes: ['pole/redis'], tenantAccess: { mode: 'AllTenants', tenantIds: [] }, sizeLimits: null }
-const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+const http = strictFetch()
+const fetchMock = http.fetch
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
   Object.defineProperties(HTMLDialogElement.prototype, {
@@ -23,8 +25,12 @@ beforeEach(() => {
   })
   localStorage.clear(); window.history.replaceState({}, '', '/')
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
-  fetchMock.mockReset().mockImplementation((input, init) => {
+  http.reset()
+  fetchMock.mockImplementation((input, init) => {
     const url = new URL(String(input), 'http://localhost')
+    const method = init?.method ?? 'GET'
+    if (!(method === 'GET' && ['/deployment-targets', '/profiles', '/storage-classes', '/persistent-volumes', '/persistent-volume-claims'].some((path) => url.pathname.endsWith(path))) &&
+      !(method === 'PUT' && url.pathname.endsWith('/profiles/disk'))) return http.unhandled(input, init)
     const value = url.pathname.endsWith('/deployment-targets')
       ? [{ id: 'a', displayName: 'East', enabled: true, acceptsWorkloads: true, isDefault: true }, { id: 'b', displayName: 'West', enabled: true, acceptsWorkloads: true, isDefault: false }]
       : url.pathname.endsWith('/profiles') ? [profile]
@@ -34,7 +40,7 @@ beforeEach(() => {
   })
   vi.stubGlobal('fetch', fetchMock)
 })
-afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals() })
+afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); http.verify() })
 async function render(admin = true, token = 'bearer') {
   const tenant = { id: 'alpha', name: 'Alpha', role: 'Owner' as const, isDefault: true }
   const registry = createAppRegistry([{ id: 'storage', views: [{ id: 'storage', label: 'Storage', component: StorageProbe, access: 'authenticated' }] }])
@@ -43,9 +49,9 @@ async function render(admin = true, token = 'bearer') {
     tenants={{ items: [tenant], activeTenant: tenant, activeTenantId: tenant.id, selectTenant: () => {}, status: 'success', error: '' }} />))
 }
 const button = (name: string) => [...container.querySelectorAll<HTMLButtonElement>('button')].find((item) => item.textContent === name)!
-const field = (name: string) => [...container.querySelectorAll('label')].find((item) => item.querySelector('.field__label')?.textContent === name)!.querySelector<HTMLInputElement | HTMLSelectElement>('input,select')!
+const field = (name: string) => [...container.querySelectorAll('label')].find((item) => item.querySelector('.field__label')?.textContent === name)!.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input,select,textarea')!
 async function fill(name: string, value: string) {
-  await act(async () => { const input = field(name); Object.getOwnPropertyDescriptor(input instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype, 'value')!.set!.call(input, value); input.dispatchEvent(new Event(input instanceof HTMLSelectElement ? 'change' : 'input', { bubbles: true })) })
+  await act(async () => { const input = field(name); const prototype = input instanceof HTMLSelectElement ? HTMLSelectElement.prototype : input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(prototype, 'value')!.set!.call(input, value); input.dispatchEvent(new Event(input instanceof HTMLSelectElement ? 'change' : 'input', { bubbles: true })) })
 }
 
 it('uses named target inventory and preserves other mappings and the expected revision on edit', async () => {
@@ -63,6 +69,56 @@ it('uses named target inventory and preserves other mappings and the expected re
   expect(JSON.parse(update[1]!.body as string).targetMappings).toEqual(profile.targetMappings)
   expect(JSON.parse(update[1]!.body as string).targetMappings).toHaveLength(2)
   expect(JSON.parse(update[1]!.body as string)).not.toHaveProperty('storageClassNames')
+})
+
+it('waits for the first target discovery before initializing the new profile default', async () => {
+  const discovery = deferred<Response>()
+  const respond = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation((input, init) => String(input).includes('/storage-classes') ? discovery.promise : respond(input, init))
+  await render()
+  expect(field('Deployment target').value).toBe('a')
+  expect(container.querySelector('form')).toBeNull()
+  await act(async () => discovery.resolve(new Response(JSON.stringify([{ name: 'fast', provisioner: 'test', isDefault: true }]))))
+  expect(field('Storage class').value).toBe('fast')
+})
+
+it('retains the mounted profile draft during a slow failed discovery refresh', async () => {
+  await render()
+  await fill('Display name', 'Unsaved disk')
+  const discovery = deferred<Response>()
+  const respond = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation((input, init) => String(input).includes('/storage-classes') ? discovery.promise : respond(input, init))
+  let refresh!: Promise<unknown>
+  await act(async () => { refresh = session.client.refetchQueries({ predicate: (query) => query.queryKey.includes('discovery') }) })
+  expect(field('Display name').value).toBe('Unsaved disk')
+  expect(field('Storage class').value).toBe('fast')
+  await act(async () => { discovery.resolve(new Response('{}', { status: 503 })); await refresh })
+  expect(field('Display name').value).toBe('Unsaved disk')
+  expect(field('Storage class').value).toBe('fast')
+})
+
+it('uses the accepted profile revision for its next edit even when follow-up inventory fails', async () => {
+  let written = false
+  const respond = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation((input, init) => {
+    if (init?.method === 'PUT') {
+      written = true
+      const command = JSON.parse(init.body as string) as { revision: number }
+      return Promise.resolve(new Response(JSON.stringify({ ...profile, ...command, revision: command.revision + 1 })))
+    }
+    if (written && String(input).endsWith('/profiles')) return Promise.resolve(new Response('{}', { status: 503 }))
+    return respond(input, init)
+  })
+  await render()
+  await act(async () => button('Edit').click())
+  await fill('Description', 'Accepted change')
+  await act(async () => field('Description').closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+  expect(field('Description').value).toBe('Accepted change')
+  await fill('Description', 'Next change')
+  await act(async () => field('Description').closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+  const updates = fetchMock.mock.calls.filter(([, init]) => init?.method === 'PUT')
+  expect(updates).toHaveLength(2)
+  expect(JSON.parse(updates[1][1]!.body as string).revision).toBe(8)
 })
 
 it('protects an unsaved profile when changing target and loads only the confirmed target', async () => {

@@ -5,7 +5,7 @@ import { analyzeProviderRepository, fetchGitProviderConnections, fetchProviderBr
 import { useApiScope } from '../../data/useApiScope'
 import { useScopedQuery } from '../../data/useScopedQuery'
 import { useScopedMutation } from '../../hooks/useScopedMutation'
-import { initialIntegrationSelection, integrationSelectionReducer } from '../../integrationsState'
+import { initialIntegrationSelection, integrationSelectionReducer } from '../platform/integrationsState'
 import type { AppServices } from '../../shell/contracts'
 import type { GitProviderPage, ProviderBranch, ProviderRepository } from '../../types'
 

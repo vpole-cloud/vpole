@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
-import { act } from 'react'
-import { strictFetch } from '../../test/http'
+import type { QueryClient } from '@tanstack/react-query'
+import { useQuerySession } from '../../data/querySession'
+import { act, useLayoutEffect } from 'react'
+import { deferred, strictFetch } from '../../test/http'
 import type { Root } from 'react-dom/client'
 import { createTestApp } from '../../test/TestApp'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -9,7 +11,8 @@ import type { AppServices } from '../../shell/contracts'
 import type { WebService } from '../../types'
 import { WebServiceDependencies } from './WebServiceDependencies'
 
-let root: Root; let container: HTMLDivElement
+let root: Root; let container: HTMLDivElement; let cacheClient: QueryClient
+function QueryProbe() { const session = useQuerySession(); useLayoutEffect(() => { cacheClient = session.client }); return null }
 const requests = strictFetch()
 const fetchMock = requests.fetch; const dirty = vi.fn(); const changed = vi.fn()
 const service = { id: 'app', name: 'Application', resourceGroupId: 'group', isolationScopeId: 'scope', activeRevision: 7, tags: ['preserved'], exposure: { mode: 'Private' },
@@ -44,7 +47,7 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); requests.verify(); vi.unstubAllGlobals() })
 async function render(value = service, canWrite = true, tenant = 'alpha') {
   await act(async () => root.render(<AppContext.Provider value={{ api: { baseUrl: 'http://localhost', token: 'bearer', tenantId: tenant }, navigation: { openResource: vi.fn(), resourceHref: () => '/owned-resource' } } as unknown as AppServices}>
-    <WebServiceDependencies key={tenant} service={value} canWrite={canWrite} onDirtyChange={dirty} onChanged={changed} />
+    <QueryProbe /><WebServiceDependencies key={tenant} service={value} canWrite={canWrite} onDirtyChange={dirty} onChanged={changed} />
   </AppContext.Provider>))
 }
 const button = (name: string) => [...container.querySelectorAll<HTMLButtonElement>('button')].find((item) => item.textContent === name)!
@@ -104,4 +107,40 @@ it('retains usable provider fields when another connection provider is unavailab
   await click('Apply dependency configuration'); await click('Apply configuration')
   const write = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')!
   expect(JSON.parse(String(write[1]?.body)).spec.config.connectionEnvironmentReferences.ORDERS_NAMESPACE).toEqual({ connectionId: 'connection', valueKind: 'Configuration', configurationKey: 'virtualHost' })
+})
+
+it('keeps the selected Secret, binding and projections through a slow failed metadata refresh', async () => {
+  await render(); await click('Application key')
+  const choice = controls('Dependency Secret')[0]
+  expect(choice.value).toBe('secret')
+  const read = deferred<Response>()
+  const baseline = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation((input, init) => new URL(String(input)).pathname === '/api/v1/secrets/' ? read.promise : baseline(input, init))
+  await click('Refresh dependencies')
+  expect(controls('Dependency Secret')[0].value).toBe('secret')
+  expect(container.textContent).toContain('saved binding for every current deployment')
+  expect(container.textContent).toContain('Projected to target')
+  expect(button('Detach application binding').disabled).toBe(true)
+  await act(async () => read.resolve(new Response('private-canary', { status: 503 })))
+  expect(controls('Dependency Secret')[0].value).toBe('secret')
+  expect(container.textContent).toContain('saved binding for every current deployment')
+  expect(container.textContent).toContain('Projected to target')
+  expect(container.textContent).not.toContain('private-canary')
+  expect(button('Detach application binding').disabled).toBe(true)
+})
+
+it('retains endpoint choices but blocks network writes while discovery refresh is pending or failed', async () => {
+  connectionItems = []
+  await render(); await input(controls('Destination resource')[0], 'registration'); await input(controls('Connection endpoint')[0], 'orders'); await input(controls('Connection name')[0], 'Orders')
+  expect(button('Create network access').disabled).toBe(false)
+  const read = deferred<Response>()
+  const baseline = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation((input, init) => new URL(String(input)).pathname === '/api/v1/resource-connections/endpoints' ? read.promise : baseline(input, init))
+  let refresh!: Promise<void>
+  await act(async () => { refresh = cacheClient.refetchQueries({ predicate: (query) => query.queryKey.includes('endpoints') }) })
+  expect(controls('Connection endpoint')[0].value).toBe('orders')
+  expect(button('Create network access').disabled).toBe(true)
+  await act(async () => { read.resolve(new Response('Discovery unavailable', { status: 503 })); await refresh })
+  expect(controls('Connection endpoint')[0].value).toBe('orders')
+  expect(button('Create network access').disabled).toBe(true)
 })

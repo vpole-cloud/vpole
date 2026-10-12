@@ -12,11 +12,11 @@ export function SecretsView() {
   return <ResourceWorkspace id="secrets" label="Secrets" newLabel="New Secret" sections={secretSections} defaultSection="overview" Catalog={SecretCatalog} Create={NewSecretView} Resource={SecretResourceView} />
 }
 
-function SecretCatalog({ actions, version }: { actions: WorkspaceActions<SecretSection>; version: number }) {
+function SecretCatalog({ actions }: { actions: WorkspaceActions<SecretSection> }) {
   const { api, tenant, navigation } = useAppServices()
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined])
   const cursor = cursors.at(-1)
-  const list = useSecretQuery(['secrets', 'inventory', cursor], (token, signal) => fetchSecrets(api.baseUrl, cursor, token, api.tenantId, signal), version)
+  const list = useSecretQuery(['secrets', 'inventory', cursor], (token, signal) => fetchSecrets(api.baseUrl, cursor, token, api.tenantId, signal))
   return <section className="panel"><header className="ui-page-header"><div><p className="ui-page-eyebrow">Security</p><h1>Secrets</h1><p>Encrypted values, resource bindings and deployment projections. Values cannot be read back.</p></div><div className="row-actions"><Button onClick={() => void list.refresh()} disabled={list.status === 'loading'}>Refresh Secrets</Button>{tenant.canManage && <Button variant="primary" onClick={() => actions.open('create')}>New Secret</Button>}</div></header>
     {list.error && <Notice tone="error">{list.error} Last fetched metadata is shown.</Notice>}
     {!list.resource?.items.length ? <EmptyState title={list.status === 'loading' ? 'Loading Secrets…' : list.status === 'error' ? 'Unable to load Secrets.' : 'No Secrets on this page.'} /> : <DataTable label="Secrets" items={list.resource.items} itemKey={(item) => item.id} rowTestId={(item) => `resource-row-${item.id}`} columns={[

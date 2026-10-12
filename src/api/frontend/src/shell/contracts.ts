@@ -28,8 +28,6 @@ export interface AppServices {
   theme: { value: Theme; set: (theme: Theme) => void }
   notifications: { publish: (message: string, tone?: 'info' | 'error') => void }
   resourceTypes: readonly ResourceTypeRegistration[]
-  resourceVersion: number
-  invalidateResources: () => void
 }
 
 export interface AppView {

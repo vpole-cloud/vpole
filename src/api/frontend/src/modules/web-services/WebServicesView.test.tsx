@@ -958,3 +958,46 @@ it('retains the creation draft after a definitive rejection and never repeats an
   expect(container.textContent).toContain('The creation result is still unknown.')
   expect(fetchMock.mock.calls.filter(([url, init]) => String(url).endsWith('/web-services') && init?.method === 'POST')).toHaveLength(2)
 })
+
+it.each([['Dependencies', 'Deployments'], ['Deployments', 'Dependencies']])('shares private target choices across %s and %s', async (first, second) => {
+  created = true
+  const baseline = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation((input, init) => {
+    const path = new URL(String(input), 'http://localhost').pathname
+    if (path.endsWith('/resource-connections/')) return json(page([]))
+    if (path.endsWith('/secrets/')) return json({ items: [], nextCursor: null })
+    if (path.endsWith('/resource-groups/group/resources')) return json(page([]))
+    return baseline(input, init)
+  })
+  await act(async () => render()); await click('sample')
+  await click(first); await click(second); await click(first)
+  expect(container.querySelector('[data-testid="deployment-row-deployment"]')).not.toBeNull()
+  expect(container.textContent).not.toContain('Unable to render this view')
+  expect(container.textContent).toContain('Application dependencies')
+})
+
+it('refreshes a mounted service and catalog after an accepted operational retry', async () => {
+  created = true
+  let retried = false
+  records.set(service.id, { ...service, deployments: [{ ...service.deployments[0], status: 'Failed', failureCode: 'TargetUnavailable' }] })
+  const baseline = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation((input, init) => {
+    const path = new URL(String(input), 'http://localhost').pathname
+    if (path.endsWith('/resource-deployments/operations')) {
+      const placement = records.get(service.id)!.deployments[0]
+      return json({ ...page([{ deployment: { id: placement.deploymentId, resourceType: 'pole/web-service', resourceId: service.id, placement }, phase: retried ? 'Accepted' : 'Failed', retryable: true, sinceUtc: '2026-01-01T00:00:00Z', attemptCount: 1 }]), checkedAtUtc: new Date().toISOString(), counts: { waiting: 0, accepted: retried ? 1 : 0, running: 0, applied: 0, failed: retried ? 0 : 1 } })
+    }
+    if (path.endsWith('/deployments/deployment/retry')) {
+      retried = true
+      records.set(service.id, { ...service, deployments: [{ ...service.deployments[0], status: 'Pending', deploymentRevision: 2 }] })
+      return json({ id: 'deployment' }, 202)
+    }
+    return baseline(input, init)
+  })
+  await act(async () => render()); await click('sample'); await click('Deployments')
+  expect(container.querySelector('[data-testid="deployment-status"]')?.textContent).toBe('Failed')
+  await click('Operations'); await click('Retry this apply'); await click('Retry selected operation'); await click('Deployments')
+  expect(container.querySelector('[data-testid="deployment-status"]')?.textContent).toBe('Pending')
+  await click('All services')
+  expect(fetchMock.mock.calls.some(([input, init]) => String(input).includes('/deployments/deployment/retry') && init?.method === 'POST')).toBe(true)
+})

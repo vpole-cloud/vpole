@@ -21,6 +21,7 @@ interface StorageSettingsPageProps {
   targets: PlatformDeploymentTarget[]
   deploymentTargetId: string
   onSelectTarget: (id: string) => void
+  hasDiscovery: boolean
   storageClasses: KubernetesStorageClass[]
   persistentVolumes: KubernetesPersistentVolume[]
   persistentVolumeClaims: KubernetesPersistentVolumeClaim[]
@@ -72,6 +73,7 @@ export function StorageSettingsPage({
   targets,
   deploymentTargetId,
   onSelectTarget,
+  hasDiscovery,
   storageClasses,
   persistentVolumes,
   persistentVolumeClaims,
@@ -290,7 +292,7 @@ export function StorageSettingsPage({
           )}
         </section>
 
-        {canManage && deploymentTargetId ? (
+        {canManage && deploymentTargetId && hasDiscovery ? (
           <StorageProfileForm
             key={`${selectedProfile?.id ?? 'create'}:${formRevision.revision}:${deploymentTargetId}:${formGeneration}`}
             deploymentTargetId={deploymentTargetId}
@@ -316,7 +318,7 @@ export function StorageSettingsPage({
           />
         ) : (
           <section className="panel">
-            <div className="empty-state">{canManage ? 'Load a deployment target to edit profiles.' : 'Storage profile editing requires platform administrator access.'}</div>
+            <div className="empty-state">{canManage ? deploymentTargetId ? 'Load storage inventory to edit profiles.' : 'Load a deployment target to edit profiles.' : 'Storage profile editing requires platform administrator access.'}</div>
           </section>
         )}
       </div>
@@ -407,7 +409,7 @@ function StorageProfileForm({
   const mounted = useRef(false)
   useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   const [baseline] = useState(initialValue ?? null)
-  const conflict = Boolean(baseline && initialValue && baseline.revision !== initialValue.revision)
+  const conflict = submitStatus !== 'loading' && Boolean(baseline && initialValue && baseline.revision !== initialValue.revision)
   const defaultStorageClassName = useMemo(
     () => storageClasses.find((item) => item.isDefault)?.name ?? storageClasses[0]?.name ?? '',
     [storageClasses],

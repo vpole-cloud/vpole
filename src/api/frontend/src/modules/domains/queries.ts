@@ -12,9 +12,9 @@ export function useDomainScope() {
   const isCurrent = useCallback(() => scopeIsCurrent() && permission.current === tenant.canManage, [scopeIsCurrent, tenant.canManage])
   return { ...scope, isCurrent, api, writeIdentity: `${scope.identity}:${tenant.canManage}` }
 }
-export function useDomainQuery<T>(key: readonly unknown[], load: (token: string | undefined, signal: AbortSignal) => Promise<T>, refreshVersion = 0, enabled = true, interval: number | false = false) {
+export function useDomainQuery<T>(key: readonly unknown[], load: (token: string | undefined, signal: AbortSignal) => Promise<T>, { enabled = true, interval = false }: { enabled?: boolean; interval?: number | false } = {}) {
   const { api } = useAppServices()
   const origin = useApiScope(api)
-  return useScopedQuery({ scope: [api.baseUrl, api.tenantId], key, enabled, refreshVersion, interval,
+  return useScopedQuery({ scope: [api.baseUrl, api.tenantId], key, enabled, interval,
     load: (signal) => load(origin.credential(), signal) })
 }

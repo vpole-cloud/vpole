@@ -14,24 +14,24 @@ const reasons: Record<string, string> = {
   Timeout: 'The observation timed out.', Superseded: 'A newer deployment revision replaced this observation. Refresh for the current state.', ResourceNotFound: 'The logical resource is no longer available.',
 }
 
-export function ResourceHealth({ placements, active, refreshVersion = 0, targetNames = {} }: {
-  placements: ResourcePlacement[]; active: boolean; refreshVersion?: number; targetNames?: Record<string, string>
+export function ResourceHealth({ placements, active, targetNames = {} }: {
+  placements: ResourcePlacement[]; active: boolean; targetNames?: Record<string, string>
 }) {
   return <section className="resource-health" aria-label="Observed resource health"><h2 className="panel__title">Runtime readiness</h2>
     <p className="field__hint">Observed pod readiness is separate from reconciliation and application connectivity. Each target is checked independently.</p>
     {placements.length === 0 && <Notice>No current deployment is known.</Notice>}
     {active && placements.map((placement) => <ResourceHealthTarget key={placement.deploymentId} placement={placement} active={active}
-      refreshVersion={refreshVersion} targetName={targetNames[placement.deploymentTargetId]} />)}
+      targetName={targetNames[placement.deploymentTargetId]} />)}
   </section>
 }
 
-export function ResourceHealthTarget({ placement, active, refreshVersion = 0, targetName }: {
-  placement: ResourcePlacement; active: boolean; refreshVersion?: number; targetName?: string
+export function ResourceHealthTarget({ placement, active, targetName }: {
+  placement: ResourcePlacement; active: boolean; targetName?: string
 }) {
   const { api } = useAppServices()
   const { credential } = useApiScope(api)
   const details = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['health', placement.deploymentId, placement.deploymentRevision, placement.desiredGeneration],
-    load: (signal) => fetchResourceObservation(api.baseUrl, placement.deploymentId, credential(), api.tenantId, signal), refreshVersion })
+    load: (signal) => fetchResourceObservation(api.baseUrl, placement.deploymentId, credential(), api.tenantId, signal) })
   useVisibleRefresh(active, details.refresh)
   const [now, setNow] = useState(Date.now)
   useEffect(() => { if (!active) return; const timer = window.setInterval(() => setNow(Date.now()), 10000); return () => window.clearInterval(timer) }, [active])

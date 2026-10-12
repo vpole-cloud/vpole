@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { fetchScopedQuery } from './fetchScopedQuery'
+import { useApiScope } from './useApiScope'
 import { act, useLayoutEffect } from 'react'
 import type { Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it } from 'vitest'
@@ -101,4 +103,79 @@ it('cancels a disabled in-flight read only after its last enabled observer leave
   await act(async () => pending.resolve('Late response'))
   expect(states.a.resource).toBeNull()
   expect(states.b.resource).toBeNull()
+})
+
+it.each(['declarative', 'imperative'])('shares one pending read and cache value when %s starts first', async (first) => {
+  const pending = deferred<string[]>()
+  let calls = 0
+  let origin!: ReturnType<typeof useApiScope>
+  let state!: ReturnType<typeof useScopedQuery<string[]>>
+  const parts = ['eligibility', 'deployment-targets', 'pole/web-service', null, false]
+  const load = async () => { calls++; return pending.promise }
+  function Probe({ observe }: { observe: boolean }) {
+    const scope = useApiScope({ baseUrl: 'api', tenantId: 'tenant' })
+    const query = useScopedQuery({ scope: ['api', 'tenant'], key: parts, enabled: observe, load })
+    useLayoutEffect(() => { origin = scope; state = query })
+    return null
+  }
+  await act(async () => root.render(<Probe observe={first === 'declarative'} />))
+  let read!: Promise<string[]>
+  await act(async () => { read = fetchScopedQuery(origin, parts, load) })
+  if (first === 'imperative') await act(async () => root.render(<Probe observe />))
+  expect(calls).toBe(1)
+  await act(async () => { pending.resolve(['target']); await read })
+  expect(await read).toEqual(['target'])
+  expect(state.resource).toEqual(['target'])
+})
+
+it('keeps a shared imperative read alive when its rendered observer disables', async () => {
+  const pending = deferred<string[]>()
+  const parts = ['eligibility', 'shared-read']
+  let origin!: ReturnType<typeof useApiScope>
+  let signal!: AbortSignal
+  let calls = 0
+  const load = async (readSignal: AbortSignal) => { signal = readSignal; calls++; return pending.promise }
+  function Probe({ enabled }: { enabled: boolean }) {
+    const scope = useApiScope({ baseUrl: 'api', tenantId: 'tenant' })
+    useScopedQuery({ scope: ['api', 'tenant'], key: parts, enabled, load })
+    useLayoutEffect(() => { origin = scope })
+    return null
+  }
+  await act(async () => root.render(<Probe enabled />))
+  let result!: Promise<string[] | null>
+  await act(async () => { result = fetchScopedQuery(origin, parts, load).catch(() => null) })
+  await act(async () => root.render(<Probe enabled={false} />))
+  expect(signal.aborted).toBe(false)
+  expect(calls).toBe(1)
+  await act(async () => { pending.resolve(['target']); await result })
+  expect(await result).toEqual(['target'])
+})
+
+it.each([false, true])('releases an exiting imperative owner while the rendered observer is enabled=%s', async (enabled) => {
+  const pending = deferred<string[]>()
+  const parts = ['eligibility', 'owner-exit']
+  let origin!: ReturnType<typeof useApiScope>
+  let signal!: AbortSignal
+  let state!: ReturnType<typeof useScopedQuery<string[]>>
+  const load = async (readSignal: AbortSignal) => { signal = readSignal; return pending.promise }
+  function Caller() {
+    const scope = useApiScope({ baseUrl: 'api', tenantId: 'tenant' })
+    useLayoutEffect(() => { origin = scope })
+    return null
+  }
+  function Observer() {
+    const query = useScopedQuery({ scope: ['api', 'tenant'], key: parts, enabled, load })
+    useLayoutEffect(() => { state = query })
+    return null
+  }
+  const render = (caller: boolean) => root.render(<>{caller && <Caller />}<Observer /></>)
+  await act(async () => render(true))
+  let result!: Promise<string[] | null>
+  await act(async () => { result = fetchScopedQuery(origin, parts, load).catch(() => null) })
+  await act(async () => render(false))
+  expect(signal.aborted).toBe(!enabled)
+  await act(async () => { pending.resolve(['target']); await result })
+  expect(await result).toBeNull()
+  expect(state.resource).toEqual(enabled ? ['target'] : null)
+  expect(origin.session.client.getQueryCache().find({ queryKey: origin.key(parts), exact: true })?.getObserversCount()).toBe(1)
 })

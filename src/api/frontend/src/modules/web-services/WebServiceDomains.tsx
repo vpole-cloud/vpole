@@ -1,3 +1,4 @@
+import { eligibilityKeys } from '../../data/queryKeys'
 import { useCallback, useEffect, useState } from 'react'
 import { addWebServiceHostnameBinding, deleteWebServiceHostnameBinding, fetchAvailableDeploymentTargets, fetchDomainZones, fetchWebServiceHostnameBindings } from '../../api'
 import { useWebServiceQuery } from './useWebServiceQuery'
@@ -15,7 +16,7 @@ export function WebServiceDomains({ service, active, onDirtyChange, onChanged }:
   const { identity, credential } = useApiScope(api)
   const scope = `${identity}:${service.id}`
   const zones = useWebServiceQuery(['domains', 'zones'], (signal) => fetchDomainZones(api.baseUrl, credential(), api.tenantId, signal))
-  const targets = useWebServiceQuery(['eligibility', 'targets', service.isolationScopeId, false], (signal) => fetchAvailableDeploymentTargets(api.baseUrl, service.isolationScopeId ?? undefined, credential(), api.tenantId, signal, false))
+  const targets = useWebServiceQuery(eligibilityKeys.targets('pole/web-service', service.isolationScopeId, false), (signal) => fetchAvailableDeploymentTargets(api.baseUrl, service.isolationScopeId ?? undefined, credential(), api.tenantId, signal, false))
   const [dirtyTargets, setDirtyTargets] = useState<Record<string, boolean>>({})
   const setDirty = useCallback((id: string, dirty: boolean) => setDirtyTargets((current) => current[id] === dirty ? current : { ...current, [id]: dirty }), [])
   const dirty = service.deployments.some((deployment) => dirtyTargets[deployment.deploymentId])
@@ -38,7 +39,7 @@ function DeploymentDomains({ service, deployment, active, canManage, zones, zone
   const apiScope = useApiScope(api)
   const { identity, credential, isCurrent } = apiScope
   const scope = `${identity}:${service.id}:${deployment.deploymentId}`
-  const bindings = useWebServiceQuery(['web-services', 'hostnames', service.id, deployment.deploymentId], (signal) => fetchWebServiceHostnameBindings(api.baseUrl, service.id, deployment.deploymentId, credential(), api.tenantId, signal), deployment.deploymentRevision)
+  const bindings = useWebServiceQuery(['web-services', 'hostnames', service.id, deployment.deploymentId, deployment.deploymentRevision, deployment.desiredGeneration], (signal) => fetchWebServiceHostnameBindings(api.baseUrl, service.id, deployment.deploymentId, credential(), api.tenantId, signal))
   const mutation = useWebServiceMutation(scope, canManage)
   const [zoneId, setZoneId] = useState(''); const [relativeName, setRelativeName] = useState(''); const [editing, setEditing] = useState<HostnameBinding | null>(null)
   const [removing, setRemoving] = useState<HostnameBinding | null>(null); const [notice, setNotice] = useState('')

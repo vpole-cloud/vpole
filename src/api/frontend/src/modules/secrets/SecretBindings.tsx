@@ -1,3 +1,4 @@
+import { eligibilityKeys } from '../../data/queryKeys'
 import { useState } from 'react'
 import { bindSecret, detachSecret, fetchAvailableDeploymentTargets, fetchResourceDeploymentSet, fetchResourceGroupResources, fetchSecretProjections, fetchSecretUsage } from '../../api'
 import { useSecretQuery, useSecretScope } from './queries'
@@ -42,7 +43,7 @@ export function SecretBindings({ secret, canWrite, onChanged }: { secret: Secret
       { id: 'actions', label: 'Actions', render: ({ binding }) => binding.id === secret.managedBy?.bindingId ? <StatusBadge>Protected owner binding</StatusBadge> : canWrite && <Button variant="danger" onClick={() => setDetaching(binding.id)}>Detach binding</Button> },
     ]} />}
     <Button onClick={() => { void usage.refresh(); void inventory.refresh() }}>Refresh bindings</Button>
-    {adding && canWrite && <BindingForm secret={secret} resources={inventory.status === 'success' ? inventory.resource ?? [] : []} existing={usage.resource?.map((item) => `${item.binding.consumerType}:${item.binding.consumerId}`) ?? []} onCancel={() => setAdding(false)} onSaved={async () => { setAdding(false); await changed() }} />}
+    {adding && canWrite && <BindingForm secret={secret} resources={inventory.resource ?? []} resourcesCurrent={inventory.status === 'success'} existing={usage.resource?.map((item) => `${item.binding.consumerType}:${item.binding.consumerId}`) ?? []} onCancel={() => setAdding(false)} onSaved={async () => { setAdding(false); await changed() }} />}
     {inventory.error && <Notice tone="error">Resource choices are unavailable. Refresh bindings to retry.</Notice>}
     {mutation.error instanceof Error && <Notice tone="error">{mutation.error.message}</Notice>}
     {detaching && canWrite && <ConfirmationDialog title="Detach this binding?" confirmLabel="Detach binding" busy={mutation.busy} onCancel={() => setDetaching(null)} onConfirm={() => {
@@ -51,7 +52,7 @@ export function SecretBindings({ secret, canWrite, onChanged }: { secret: Secret
   </section>
 }
 
-function BindingForm({ secret, resources, existing, onCancel, onSaved }: { secret: SecretMetadata; resources: ResourceRegistration[]; existing: string[]; onCancel: () => void; onSaved: () => Promise<void> }) {
+function BindingForm({ secret, resources, resourcesCurrent, existing, onCancel, onSaved }: { secret: SecretMetadata; resources: ResourceRegistration[]; resourcesCurrent: boolean; existing: string[]; onCancel: () => void; onSaved: () => Promise<void> }) {
   const { api, resourceTypes } = useAppServices()
   const origin = useSecretScope()
   const scope = `${origin.writeIdentity}:${secret.id}`
@@ -59,10 +60,10 @@ function BindingForm({ secret, resources, existing, onCancel, onSaved }: { secre
   const [mapping, setMapping] = useState(false); const [aliases, setAliases] = useState<Record<string, string>>({}); const [validation, setValidation] = useState('')
   const choices = resources.filter((item) => !existing.includes(`${item.resourceTypeId}:${item.resourceId}`))
   const consumer = choices.find((item) => item.registrationId === selected)
-  const placements = useSecretQuery(['secrets', 'binding-placements', secret.id, consumer?.resourceTypeId, consumer?.resourceId], (token, signal) => consumer ? fetchResourceDeploymentSet(api.baseUrl, consumer.resourceTypeId, consumer.resourceId, token, api.tenantId, signal) : Promise.resolve([]), 0, Boolean(consumer))
-  const targets = useSecretQuery(['eligibility', 'targets', secret.isolationScopeId, consumer?.resourceTypeId, false], (token, signal) => consumer ? fetchAvailableDeploymentTargets(api.baseUrl, secret.isolationScopeId, token, api.tenantId, signal, false, consumer.resourceTypeId) : Promise.resolve([]), 0, Boolean(consumer))
+  const placements = useSecretQuery(['secrets', 'binding-placements', secret.id, consumer?.resourceTypeId, consumer?.resourceId], (token, signal) => consumer ? fetchResourceDeploymentSet(api.baseUrl, consumer.resourceTypeId, consumer.resourceId, token, api.tenantId, signal) : Promise.resolve([]), { enabled: Boolean(consumer) })
+  const targets = useSecretQuery(eligibilityKeys.targets(consumer?.resourceTypeId, secret.isolationScopeId, false), (token, signal) => consumer ? fetchAvailableDeploymentTargets(api.baseUrl, secret.isolationScopeId, token, api.tenantId, signal, false, consumer.resourceTypeId) : Promise.resolve([]), { enabled: Boolean(consumer) })
   const { live, eligible: matchesScope } = liveBindingPlacements(placements.resource ?? [], secret.isolationScopeId)
-  const eligible = placements.status === 'success' && matchesScope
+  const eligible = resourcesCurrent && placements.status === 'success' && matchesScope
   const mutation = useScopedMutation(scope)
   return <form className="database-form panel" onSubmit={(event) => {
     event.preventDefault(); if (mutation.busy) return
@@ -87,7 +88,7 @@ function BindingForm({ secret, resources, existing, onCancel, onSaved }: { secre
 export function SecretProjections({ secret }: { secret: SecretMetadata }) {
   const { api } = useAppServices()
   const origin = useSecretScope()
-  const projections = useSecretQuery(['secrets', 'projections', secret.id, secret.currentVersion], (token, signal) => fetchSecretProjections(api.baseUrl, secret.id, token, api.tenantId, signal), 0, true, 2500)
+  const projections = useSecretQuery(['secrets', 'projections', secret.id, secret.currentVersion], (token, signal) => fetchSecretProjections(api.baseUrl, secret.id, token, api.tenantId, signal), { enabled: true, interval: 2500 })
   const usage = useSecretQuery(['secrets', 'usage', secret.id], (token, signal) => fetchSecretUsage(api.baseUrl, secret.id, token, api.tenantId, signal))
   const targets = useSecretQuery(['secrets', 'projection-targets', secret.id, secret.isolationScopeId, usage.resource?.map((item) => item.binding.consumerType)], async (_token, signal) => {
     const result: AvailableDeploymentTarget[] = []

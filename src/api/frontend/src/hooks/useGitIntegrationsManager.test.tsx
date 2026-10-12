@@ -3,7 +3,7 @@ import { act, useLayoutEffect } from 'react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createTestApp } from '../test/TestApp'
 import * as api from '../api'
-import { useGitIntegrationsManager } from './useGitIntegrationsManager'
+import { useGitIntegrationsManager } from '../modules/platform/useGitIntegrationsManager'
 import type { GitProviderConnection, ProviderRepository, RepositoryAnalysis, SourceRepository } from '../types'
 vi.mock('../api', () => ({ fetchGitProviderConnections: vi.fn(), fetchSourceRepositories: vi.fn(), fetchProviderRepositories: vi.fn(), fetchProviderBranches: vi.fn(), analyzeProviderRepository: vi.fn(), beginGitHubInstallation: vi.fn(), linkProviderRepository: vi.fn(), disconnectGitProviderConnection: vi.fn(), reanalyzeSourceRepository: vi.fn(), unlinkSourceRepository: vi.fn() }))
 let app: ReturnType<typeof createTestApp>

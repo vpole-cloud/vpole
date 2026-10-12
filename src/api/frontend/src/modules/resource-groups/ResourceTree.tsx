@@ -18,19 +18,19 @@ function readTree(key: string): TreeState {
   } catch { return { open: !window.matchMedia?.('(max-width: 760px)').matches, page: 1, pageSize: 8, expanded: [] } }
 }
 
-function TreeResources({ groupId, refreshVersion }: { groupId: string; refreshVersion: number }) {
+function TreeResources({ groupId }: { groupId: string }) {
   const [page, setPage] = useState(1)
   const [size, setSize] = useState(8)
-  return <GroupResources groupId={groupId} compact pageNumber={page} pageSize={size} refreshVersion={refreshVersion}
+  return <GroupResources groupId={groupId} compact pageNumber={page} pageSize={size}
     onPage={setPage} onPageSize={(value) => { setSize(value); setPage(1) }} />
 }
 
 export function ResourceTree() {
-  const { api, auth, navigation, resourceVersion } = useAppServices()
+  const { api, auth, navigation } = useAppServices()
   const key = `pole.resource-tree.v1.${auth.userId}.${api.tenantId}`
   const [state, setState] = useState(() => readTree(key))
   const pageSize = state.pageSize
-  const inventory = useResourceGroupInventory(api, state.page, pageSize, '', state.open, resourceVersion)
+  const inventory = useResourceGroupInventory(api, state.page, pageSize, '', state.open)
   useEffect(() => { try { localStorage.setItem(key, JSON.stringify(state)) } catch { /* Navigation works without storage. */ } }, [key, state])
   const lastPage = Math.max(1, Math.ceil((inventory.page?.totalCount ?? 0) / pageSize))
   if (inventory.status === 'success' && inventory.isCurrentPage && state.page > lastPage) setState({ ...state, page: lastPage })
@@ -52,7 +52,7 @@ export function ResourceTree() {
             onClick={() => setState((current) => ({ ...current, expanded: expanded ? current.expanded.filter((id) => id !== group.id) : [...current.expanded, group.id].slice(-50) }))}>{expanded ? '−' : '+'}</Button>
           <ResourceLink href={navigation.resourceHref(resource)} onNavigate={() => navigation.openResource(resource)}>{group.name}</ResourceLink>
           <small>{group.resourceCount}</small></div>
-          {expanded && <TreeResources groupId={group.id} refreshVersion={resourceVersion} />}
+          {expanded && <TreeResources groupId={group.id} />}
         </li>
       })}</ul>
       <Pagination label="Tree groups" compact page={inventory.page} pageNumber={state.page} pageSize={pageSize}

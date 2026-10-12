@@ -46,7 +46,7 @@ references. Providers own React views, hooks, DTOs and resource behavior. Regist
 stays in `.ts` files and components in `.tsx` files so React Fast Refresh works.
 
 The shell exposes explicit auth, active tenant, API connection, navigation, theme and notification
-services through `useAppServices`. API functions remain centralized in `src/api.ts`; tenant
+services through `useAppServices`. Feature modules own API functions and DTOs; `src/api.ts` and `src/types.ts` are thin compatibility exports. Only `src/api/transport.ts` calls fetch; tenant
 requests use bearer authentication and `X-Pole-Tenant-ID`. View access and disabled actions guide
 the user; the server remains authoritative for authorization.
 
@@ -71,6 +71,59 @@ current user's tenant discovery results before a view can issue requests. Unavai
 unregistered views have explicit states. Switching tenant clears the previous provider's URL
 selection and remounts the workspace. The active tenant preference is synchronized only after
 the URL tenant is confirmed accessible.
+
+## Query, draft and mutation lifetimes
+
+Server metadata uses TanStack Query v5 through `src/data/useScopedQuery.ts`. Each authenticated
+session owns an isolated QueryClient. Keys include API URL, session identity, tenant and every
+resource/filter parameter. Credentials are acquired from `useApiScope.credential()` immediately
+before HTTP, including each pagination request. Tokens do not belong in query or React keys.
+Logout/account changes cancel and clear the session cache. Tenant changes fence callbacks and
+subsequent writes against their captured origin; permission changes separately disable actions
+and clear privileged data.
+
+Defaults are explicit: retry false, staleTime zero, five-minute inactive retention, mount/reconnect
+refetch enabled and window-focus refetch disabled. Visible polling keeps each existing interval
+and coalesces with a running read. Ordinary `refresh()` preserves the last data on failure and
+returns null when no current successful result exists. `refreshAfterWrite()` cancels a pre-write
+read before requesting authoritative state. Render loaded content by data presence; use
+`isInitialLoading` and `isRefreshing` to distinguish initial loading from background work.
+See [TanStack defaults](https://tanstack.com/query/latest/docs/framework/react/guides/important-defaults).
+
+Imperative metadata reads use `fetchScopedQuery` to share the same cache envelope and pending
+request as rendered queries. A temporary observer owns the read until completion or scope exit;
+exiting its last active owner cancels it without interrupting other active consumers.
+
+Feature hooks own queries and mutations, `useWorkspaceController` owns tabs/history/persistence,
+and form models own baseline/draft/revision. Background reads do not replace dirty fields.
+WebService configuration and PostgreSQL updates send the draft's expected revision. PostgreSQL
+sends only changed fields and requires explicit discard or review/reapply against a newer revision.
+An accepted write whose refresh fails is not a failed write: retain the accepted state and retry
+its read before permitting another save.
+
+Writes use uncached `useScopedMutation` with an immutable submitted command and origin guards
+before each continuation. Git creation uses `creationWorkflow.ts`; accepted service/config/job
+IDs survive recoverable failures. An unknown initial create is inspect-only because the API has
+no authoritative idempotency/correlation contract; it cannot safely repeat or adopt a matching
+resource automatically. Recipe updates explicitly review an observed baseline; deployment and
+recipe APIs do not currently expose browser expectedRevision fencing.
+
+Query invalidation replaces global refresh counters. A provider owns its dependent namespaces
+(inventory/detail, group resources, Overview/Search, operations/readiness/endpoints, and related
+metadata). `useProviderInvalidation` cancels reads that began before accepted writes. Complete
+eligibility keys are centralized in `src/data/queryKeys.ts`. Group choices load all server pages;
+resource catalogs retain their page-number or cursor contract.
+
+Passwords, Secret values, Git credentials, connection strings and log output never enter query
+or mutation caches, URLs or browser storage. Write-only values and bounded log buffers stay in
+local state and clear on their ownership/visibility/permission boundaries. Runtime NDJSON parsing
+limits individual frames, unfinished tails and aggregate data independently of network chunks.
+
+E2E uses `resource-row-<id>`, `deployment-row-<id>`, `operation-row-<id>`, `health-target-<id>`,
+`build-row-<id>` and `release-row-<id>` containers. Scope repeated status IDs to their container or
+visible panel. Buttons/fields/dialogs use role or label locators. Lint rejects incomplete union
+switches, floating promises, concrete module imports in shared data adapters, and raw fetch outside
+transport. Test fixtures use `strictFetch` and verify unexpected requests after rendering.
 
 ## Resource workspaces
 
@@ -219,11 +272,11 @@ signals. WebServices additionally display retained build/release operations and 
 correlation identifiers. Owner-supported retries confirm one selected operation and carry its
 expected revision/operation. Closing observations does not cancel accepted server work; reload
 fetches durable state. Read errors mark previous evidence stale, unavailable targets remain visible,
-and API/token/tenant changes abort and clear old results. Database pod readiness does not establish
+and API/session/tenant changes cancel old reads. Token renewal retains ordinary data and drafts and supplies the latest credential to the next request. Database pod readiness does not establish
 application connectivity. Each deployment also offers opt-in runtime logs and Kubernetes warning
 events through the shared viewer. Discovery supplies verified instance UIDs and regular/init
 container choices; the browser never supplies a namespace or arbitrary pod name. Reads are bounded
-and cancel on close, hidden section, tenant, token, target or deployment revision/generation changes.
+and cancel on close, hidden section, tenant, target or deployment revision/generation changes. Token renewal keeps the current bounded buffer; subsequent requests obtain current credentials.
 Replacement requires refreshed discovery and explicit selection; reconnect opens a new recent
 window and can overlap output. No runtime output enters browser storage or a platform archive.
 See [runtime diagnostics](../../features/ResourceDeployments/README.md#runtime-logs-and-kubernetes-diagnostics).
@@ -241,5 +294,5 @@ job even outside the recent-build page. Follow and reconnect request only later 
 pause/close affect browser reads alone. Fixed transport errors retain the displayed prefix and
 cursor. The viewer marks server truncation, interrupted capture, expiry and unavailability, renders
 plain text, and limits its tail to 256 KiB/512 entries with an explicit discarded-range notice.
-Changing tenant, token, service or job aborts old reads and clears the buffer. Logs stay on the
+Changing session, tenant, service or job aborts old reads and clears the buffer. Token renewal preserves the in-memory buffer and cursor. Logs stay on the
 server until their snapshotted retention deadline; output and cursor are not saved in browser storage.

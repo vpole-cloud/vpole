@@ -16,11 +16,11 @@ export function PostgresView() {
     Catalog={PostgresCatalog} Create={NewPostgresView} Resource={PostgresResourceView} />
 }
 
-function PostgresCatalog({ actions, version }: { actions: WorkspaceActions<PostgresSection>; version: number }) {
+function PostgresCatalog({ actions }: { actions: WorkspaceActions<PostgresSection> }) {
   const { api, tenant, navigation } = useAppServices()
   const origin = useApiScope(api)
   const route = readResourceRoute(navigation.search, postgresSections, 'overview')
-  const query = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['postgres', 'inventory', route.pageNumber, route.pageSize], enabled: Boolean(tenant.active), keepPrevious: true, refreshVersion: version,
+  const query = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['postgres', 'inventory', route.pageNumber, route.pageSize], enabled: Boolean(tenant.active), keepPrevious: true,
     load: (signal) => fetchPostgresClusters(api.baseUrl, origin.credential(), api.tenantId, signal, route.pageNumber, route.pageSize) })
   const inventory = { ...query, page: query.resource, items: query.resource?.items ?? [], isCurrentPage: query.isCurrent }
   const lastPage = Math.max(1, Math.ceil((inventory.page?.totalCount ?? 0) / route.pageSize))

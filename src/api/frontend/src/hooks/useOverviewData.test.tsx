@@ -3,7 +3,7 @@ import { act, useLayoutEffect } from 'react'
 import { createTestApp } from '../test/TestApp'
 import { afterEach, expect, it, vi } from 'vitest'
 import * as api from '../api'
-import { useOverviewData } from './useOverviewData'
+import { useOverviewData } from '../modules/platform/useOverviewData'
 
 vi.mock('../api', () => ({ fetchResourceGroups: vi.fn(), fetchWebServices: vi.fn(), fetchProtectedGreeting: vi.fn() }))
 const root = createTestApp().root
