@@ -1,3 +1,6 @@
+import { ApiError, buildHeaders, fetchJson, request, responseError, sendJson, sendWithoutResponse } from './api/transport'
+export { ApiError, validationMessage } from './api/transport'
+export { fetchTenants, normalizeTenantRole } from './api/tenants'
 import type {
   BeginGitHubInstallationResponse,
   AvailableComputeProfile,
@@ -27,8 +30,6 @@ import type {
   SourceBuildRecipe,
   WebServiceInput,
   WebService,
-  Tenant,
-  TenantRole,
   TenantDomainZone,
   DomainZoneBindingUsage,
   HostnameBinding,
@@ -53,42 +54,6 @@ import type {
   ResourceEndpointDiscovery,
 } from './types'
 
-type TenantResponse = Omit<Tenant, 'role'> & {
-  role: TenantRole | number
-}
-
-const tenantRoles: Record<number, TenantRole> = {
-  0: 'Viewer',
-  1: 'Member',
-  2: 'Admin',
-  3: 'Owner',
-}
-
-export function normalizeTenantRole(role: TenantRole | number): TenantRole {
-  if (typeof role === 'string') return role
-
-  const normalized = tenantRoles[role]
-  if (normalized) return normalized
-
-  throw new Error(`Unknown tenant role value: ${role}`)
-}
-
-const buildHeaders = (token?: string, tenantId?: string) => {
-  const headers: Record<string, string> = {
-    Accept: 'application/json',
-  }
-
-  if (token) {
-    headers.Authorization = `Bearer ${token}`
-  }
-
-  if (tenantId) {
-    headers['X-Pole-Tenant-ID'] = tenantId
-  }
-
-  return headers
-}
-
 export async function fetchIsolationScopes(
   apiBaseUrl: string,
   resourceGroupId: string,
@@ -100,22 +65,6 @@ export async function fetchIsolationScopes(
     headers: buildHeaders(token, tenantId),
     signal,
   })
-}
-
-export async function fetchTenants(
-  apiBaseUrl: string,
-  token?: string,
-  signal?: AbortSignal,
-) {
-  const tenants = await fetchJson<TenantResponse[]>(`${apiBaseUrl}/api/v1/tenants`, {
-    headers: buildHeaders(token),
-    signal,
-  })
-
-  return tenants.map((tenant) => ({
-    ...tenant,
-    role: normalizeTenantRole(tenant.role),
-  }))
 }
 
 export async function fetchStorageProfiles(
@@ -202,17 +151,6 @@ export async function fetchKubernetesPersistentVolumeClaims(
   )
 }
 
-export class ApiError extends Error {
-  status: number
-  fieldErrors: Record<string, string[]>
-  constructor(message: string, status: number, fieldErrors: Record<string, string[]> = {}) {
-    super(message)
-    this.name = 'ApiError'
-    this.status = status
-    this.fieldErrors = fieldErrors
-  }
-}
-
 const secretProblems: Record<string, string> = {
   'secrets.managed-by-provider': 'Change this managed credential through its owning resource.',
   'secrets.not-found': 'Secret not found in this tenant.',
@@ -241,7 +179,7 @@ export class SecretApiError extends ApiError {
 async function secretRequest<T>(base: string, path: string, token?: string, tenantId?: string, signal?: AbortSignal, method = 'GET', body?: unknown): Promise<T> {
   let response: Response
   try {
-    response = await fetch(`${base}/api/v1/secrets${path}`, { method, headers: { ...buildHeaders(token, tenantId), ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    response = await request(`${base}/api/v1/secrets${path}`, { method, headers: { ...buildHeaders(token, tenantId), ...(body ? { 'Content-Type': 'application/json' } : {}) },
       cache: 'no-store', signal, ...(body ? { body: JSON.stringify(body) } : {}) })
   } catch {
     if (signal?.aborted) throw new DOMException('Request cancelled', 'AbortError')
@@ -298,59 +236,6 @@ export function updateWebServiceDependencies(base: string, service: WebService, 
   return sendJson<{ id: string; resourceRevision: number }>(`${base}/api/v1/web-services/${encodeURIComponent(service.id)}`, {
     method: 'PUT', headers: buildHeaders(token, tenantId), signal,
     body: JSON.stringify({ spec: { ...service.spec, config }, exposure: service.exposure.mode, tags: service.tags ?? [], expectedRevision: service.activeRevision }),
-  })
-}
-
-export function validationMessage(error: unknown, field: string): string {
-  if (!(error instanceof ApiError)) return ''
-  return Object.entries(error.fieldErrors).filter(([path]) => {
-    const normalized = path.replace(/^body\./i, '').replace(/\[\d+\]/g, '').toLowerCase()
-    return normalized === field.toLowerCase() || normalized.startsWith(`${field.toLowerCase()}.`)
-  }).flatMap(([, messages]) => messages).join(' ')
-}
-
-async function responseError(response: Response): Promise<ApiError> {
-  const text = await response.text()
-  const fallback = text || `Request failed with status ${response.status}`
-  try {
-    const problem: unknown = JSON.parse(text)
-    if (!problem || typeof problem !== 'object') return new ApiError(fallback, response.status)
-    const value = problem as { detail?: unknown; title?: unknown; errors?: unknown }
-    const fields: Record<string, string[]> = {}
-    if (value.errors && typeof value.errors === 'object') {
-      for (const [key, messages] of Object.entries(value.errors)) {
-        if (Array.isArray(messages)) fields[key] = messages.filter((message): message is string => typeof message === 'string')
-      }
-    }
-    const description = typeof value.detail === 'string' ? value.detail : typeof value.title === 'string' ? value.title : ''
-    const messages = Object.values(fields).flat().join(' ')
-    return new ApiError([description, messages].filter(Boolean).join(' ') || fallback, response.status, fields)
-  } catch { return new ApiError(fallback, response.status) }
-}
-
-async function fetchJson<T>(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<T> {
-  const response = await fetch(input, init)
-
-  if (!response.ok) {
-    throw await responseError(response)
-  }
-
-  return (await response.json()) as T
-}
-
-async function sendJson<T>(
-  input: RequestInfo | URL,
-  init: RequestInit,
-): Promise<T> {
-  return fetchJson<T>(input, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init.headers ?? {}),
-    },
   })
 }
 
@@ -514,7 +399,7 @@ export class DomainApiError extends ApiError {
 
 async function domainRequest<T>(base: string, path: string, token?: string, tenantId?: string, signal?: AbortSignal, method = 'GET', body?: unknown): Promise<T> {
   let response: Response
-  try { response = await fetch(`${base}/api/v1${path}`, { method, headers: { ...buildHeaders(token, tenantId), ...(body ? { 'Content-Type': 'application/json' } : {}) }, signal, cache: 'no-store', ...(body ? { body: JSON.stringify(body) } : {}) }) }
+  try { response = await request(`${base}/api/v1${path}`, { method, headers: { ...buildHeaders(token, tenantId), ...(body ? { 'Content-Type': 'application/json' } : {}) }, signal, cache: 'no-store', ...(body ? { body: JSON.stringify(body) } : {}) }) }
   catch { if (signal?.aborted) throw new DOMException('Request cancelled', 'AbortError'); throw new DomainApiError(0) }
   if (!response.ok) {
     let code = ''
@@ -553,7 +438,7 @@ export async function fetchProtectedGreeting(
   token?: string,
   signal?: AbortSignal,
 ) {
-  const response = await fetch(`${apiBaseUrl}/test-keycloak`, {
+  const response = await request(`${apiBaseUrl}/test-keycloak`, {
     headers: buildHeaders(token),
     signal,
   })
@@ -630,7 +515,7 @@ export async function deleteResourceGroup(
   token?: string,
   tenantId?: string,
 ) {
-  const response = await fetch(`${apiBaseUrl}/api/v1/resource-groups/${encodeURIComponent(id)}`, {
+  const response = await request(`${apiBaseUrl}/api/v1/resource-groups/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: buildHeaders(token, tenantId),
   })
@@ -865,7 +750,7 @@ export async function fetchWebServiceReleases(
 }
 
 async function releaseRequest<T>(base: string, id: string, path: string, token?: string, tenantId?: string, signal?: AbortSignal, method = 'GET', body?: unknown): Promise<T> {
-  const response = await fetch(`${base}/api/v1/web-services/${encodeURIComponent(id)}${path}`, {
+  const response = await request(`${base}/api/v1/web-services/${encodeURIComponent(id)}${path}`, {
     method, headers: { ...buildHeaders(token, tenantId), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, signal, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
   if (!response.ok) throw new Error(response.status === 409 ? 'Release state changed or recovery is no longer eligible. Refresh and review the selection again.'
@@ -884,7 +769,7 @@ export function rollbackWebService(base: string, id: string, input: { targetRevi
 }
 
 async function buildLogRequest<T>(base: string, jobId: string, suffix: string, token?: string, tenantId?: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`${base}/api/v1/source-build-jobs/${encodeURIComponent(jobId)}${suffix}`, { headers: buildHeaders(token, tenantId), signal })
+  const response = await request(`${base}/api/v1/source-build-jobs/${encodeURIComponent(jobId)}${suffix}`, { headers: buildHeaders(token, tenantId), signal })
   if (!response.ok) throw new Error(response.status === 400 ? 'The log cursor is unavailable. Restart this log view to request its retained beginning.'
     : response.status === 403 ? 'Your current tenant role cannot read this build.'
     : response.status === 404 ? 'This build is unavailable for the selected service and tenant.'
@@ -906,7 +791,7 @@ export async function deleteWebService(
   token?: string,
   tenantId?: string,
 ) {
-  const response = await fetch(`${apiBaseUrl}/api/v1/web-services/${id}`, {
+  const response = await request(`${apiBaseUrl}/api/v1/web-services/${id}`, {
     method: 'DELETE',
     headers: buildHeaders(token, tenantId),
   })
@@ -1184,7 +1069,7 @@ export async function retryResourceDeployment(apiBaseUrl: string, deploymentId: 
 }
 
 async function healthRequest<T>(base: string, path: string, token?: string, tenantId?: string, signal?: AbortSignal, method = 'GET'): Promise<T> {
-  const response = await fetch(`${base}/api/v1/resource-deployments${path}`, { method, headers: buildHeaders(token, tenantId), signal })
+  const response = await request(`${base}/api/v1/resource-deployments${path}`, { method, headers: buildHeaders(token, tenantId), signal })
   if (!response.ok) throw new Error(response.status === 409 ? 'This operation changed or is no longer retryable. Refresh before choosing another attempt.'
     : response.status === 403 ? 'Your role cannot perform this action.' : response.status === 404 ? 'This deployment is no longer available in the active tenant.'
     : 'Resource state is unavailable. Refresh to reconnect.')
@@ -1213,7 +1098,7 @@ export class RuntimeLogUnavailableError extends Error {
 export async function readResourceRuntimeLogs(base: string, deploymentId: string, selection: import('./types').RuntimeLogSelection,
   onFrame: (frame: import('./types').RuntimeLogFrame) => void, token?: string, tenantId?: string, signal?: AbortSignal) {
   const query = new URLSearchParams(Object.entries(selection).map(([key, value]) => [key, String(value)]))
-  const response = await fetch(`${base}/api/v1/resource-deployments/${encodeURIComponent(deploymentId)}/runtime-logs?${query}`, { headers: buildHeaders(token, tenantId), signal }).catch(() => {
+  const response = await request(`${base}/api/v1/resource-deployments/${encodeURIComponent(deploymentId)}/runtime-logs?${query}`, { headers: buildHeaders(token, tenantId), signal }).catch(() => {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
     throw new Error('Runtime logs could not be reached. Reconnect with a new recent window.')
   })
@@ -1320,11 +1205,4 @@ export async function updateRedisService(apiBaseUrl: string, id: string, input: 
 
 export async function deleteRedisService(apiBaseUrl: string, id: string, token?: string, tenantId?: string, signal?: AbortSignal) {
   return sendWithoutResponse(`${apiBaseUrl}/api/v1/redis-services/${encodeURIComponent(id)}`, { method: 'DELETE', headers: buildHeaders(token, tenantId), signal })
-}
-
-async function sendWithoutResponse(input: RequestInfo | URL, init: RequestInit) {
-  const response = await fetch(input, init)
-  if (!response.ok) {
-    throw await responseError(response)
-  }
 }

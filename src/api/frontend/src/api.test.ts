@@ -67,10 +67,11 @@ describe('shared inventory API', () => {
     expect(fetchMock.mock.calls[1][0]).toBe('https://pole.test/api/v1/resource-groups/group%2Fidentity')
   })
   it('parses problem details and associates nested validation messages with their fields', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ title: 'Validation failed', errors: { 'Body.Name': ['Name already exists.'], 'Body.Spec.Image.Name': ['Choose an image.'], 'Body.Tags[0]': ['Tag too long.'] } }), { status: 400 })))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ title: 'Validation failed', code: 'validation.failed', errors: { 'Body.Name': ['Name already exists.'], 'Body.Spec.Image.Name': ['Choose an image.'], 'Body.Tags[0]': ['Tag too long.'] } }), { status: 400 })))
     const failure = await fetchResourceGroup('https://pole.test', 'group').catch((error: unknown) => error)
     expect(failure).toBeInstanceOf(ApiError)
     expect((failure as ApiError).status).toBe(400)
+    expect((failure as ApiError).code).toBe('validation.failed')
     expect(validationMessage(failure, 'name')).toBe('Name already exists.')
     expect(validationMessage(failure, 'spec.image')).toBe('Choose an image.')
     expect(validationMessage(failure, 'tags')).toBe('Tag too long.')
