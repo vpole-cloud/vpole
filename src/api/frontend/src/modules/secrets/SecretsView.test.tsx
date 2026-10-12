@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { act } from 'react'
+import { act, useLayoutEffect } from 'react'
+import { useQuerySession, type QuerySession } from '../../data/querySession'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AppShell } from '../../shell/AppShell'
@@ -8,7 +9,9 @@ import type { ResourcePlacement, SecretMetadata } from '../../types'
 import { secretModule } from './SecretModule'
 import { SecretsView } from './SecretsView'
 
-const registry = createAppRegistry([{ ...secretModule, views: secretModule.views.map((view) => ({ ...view, component: SecretsView })) }, { id: 'custom', views: [{ id: 'custom', label: 'Custom resource', component: () => null, access: 'tenant' }], resourceTypes: [{ id: 'test/stateful', label: 'Custom resource', viewId: 'custom' }] }])
+let querySession: QuerySession
+function SecretTestView() { const session = useQuerySession(); useLayoutEffect(() => { querySession = session }); return <SecretsView /> }
+const registry = createAppRegistry([{ ...secretModule, views: secretModule.views.map((view) => ({ ...view, component: SecretTestView })) }, { id: 'custom', views: [{ id: 'custom', label: 'Custom resource', component: () => null, access: 'tenant' }], resourceTypes: [{ id: 'test/stateful', label: 'Custom resource', viewId: 'custom' }] }])
 const initial: SecretMetadata = { id: 'secret', tenantId: 'alpha', resourceGroupId: 'group', isolationScopeId: 'scope', name: 'application-keys', purpose: 'Connection credentials', keyNames: ['password'], currentVersion: 1, revision: 1, lifecycle: 'Active', createdAtUtc: '2026-01-01T00:00:00Z', updatedAtUtc: '2026-01-01T00:00:00Z' }
 const placement = { deploymentId: 'deployment', isolationScopeId: 'scope', deploymentTargetId: 'target', status: 'Applied', desiredOperation: 'Apply' } as ResourcePlacement
 let root: Root; let container: HTMLDivElement; let secret: SecretMetadata; let conflict: boolean; let managed: boolean
@@ -47,9 +50,9 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock)
 })
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals() })
-async function render(role: 'Owner' | 'Viewer' = 'Owner', tenantId = 'alpha') {
+async function render(role: 'Owner' | 'Viewer' = 'Owner', tenantId = 'alpha', token = 'token') {
   const tenant = { id: tenantId, name: tenantId, role, isDefault: true }
-  await act(async () => root.render(<AppShell registry={registry} initialViewId="secrets" api={{ baseUrl: 'http://localhost', token: 'token' }} auth={{ initialized: true, authenticated: true, userId: 'user', isPlatformAdmin: false, login: () => {}, logout: () => {} }} tenants={{ items: [tenant], activeTenant: tenant, activeTenantId: tenantId, selectTenant: () => {}, status: 'success', error: '' }} />))
+  await act(async () => root.render(<AppShell registry={registry} initialViewId="secrets" api={{ baseUrl: 'http://localhost', token }} auth={{ initialized: true, authenticated: true, userId: 'user', isPlatformAdmin: false, login: () => {}, logout: () => {} }} tenants={{ items: [tenant], activeTenant: tenant, activeTenantId: tenantId, selectTenant: () => {}, status: 'success', error: '' }} />))
 }
 const visible = (element: Element) => !element.closest('[hidden]')
 const text = () => [...container.querySelectorAll('#app-content *')].filter(visible).map((item) => item.textContent).join(' ')
@@ -130,4 +133,31 @@ it('drops a write-only draft after tenant or role changes', async () => {
   await open('Rotate values'); await fill('Value 1', 'private-canary'); await render('Viewer'); expect(container.querySelector('input[type=password]')).toBeNull()
   await render('Owner', 'beta'); expect(container.querySelector<HTMLInputElement>('input[type=password]')?.value ?? '').toBe('')
   expect(JSON.stringify(localStorage)).not.toContain('private-canary')
+})
+
+it('keeps token rotation outside metadata identity and never caches submitted values', async () => {
+  await open('Rotate values'); await fill('Value 1', 'private-canary')
+  const initialKeys = querySession.client.getQueryCache().getAll().map((query) => query.queryKey)
+  await render('Owner', 'alpha', 'refreshed-token')
+  expect(field('Value 1').value).toBe('private-canary')
+  expect(querySession.client.getQueryCache().getAll().map((query) => query.queryKey)).toEqual(initialKeys)
+  await submit(); await click('Rotate Secret')
+  const post = fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST').at(-1)!
+  expect(new Headers(post[1]?.headers).get('Authorization')).toBe('Bearer refreshed-token')
+  expect(JSON.stringify(querySession.client.getQueryCache().getAll().map((query) => query.state))).not.toContain('private-canary')
+  expect(querySession.client.getMutationCache().getAll()).toHaveLength(0)
+})
+
+it('does not resume a completed rotation after leaving its permission scope', async () => {
+  await open('Rotate values'); await fill('Value 1', 'private-canary'); await submit()
+  let complete!: (value: Response) => void
+  const response = new Promise<Response>((resolve) => { complete = resolve })
+  const original = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation((input, init) => String(input).endsWith('/versions') ? response : original(input, init))
+  await click('Rotate Secret'); await render('Viewer')
+  const count = fetchMock.mock.calls.length
+  await act(async () => { complete(new Response(JSON.stringify({ ...secret, currentVersion: 2 }))) })
+  expect(fetchMock.mock.calls).toHaveLength(count)
+  expect(container.querySelector('input[type=password]')).toBeNull()
+  expect(text()).not.toContain('Secret rotation accepted')
 })
