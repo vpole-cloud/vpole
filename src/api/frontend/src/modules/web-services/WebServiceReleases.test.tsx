@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from 'react'
+import { strictFetch } from '../../test/http'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { fetchWebService } from '../../api'
@@ -24,7 +25,8 @@ let container: HTMLDivElement
 let failRead: boolean
 let conflict: boolean
 let oldRead: Promise<Response> | undefined
-const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+const requests = strictFetch()
+const fetchMock = requests.fetch
 const json = (value: unknown) => Promise.resolve(new Response(JSON.stringify(value)))
 function release(revision: number): WebServiceRelease {
   return { id: `release-${revision}`, resourceRevision: revision, action: revision === 11 ? 'SourceBuild' : 'Update', outcome: revision === 13 ? 'Pending' : revision === 12 ? 'Failed' : 'Succeeded',
@@ -34,6 +36,7 @@ function release(revision: number): WebServiceRelease {
     deployments: [{ resourceDeploymentId: 'deployment', deploymentTargetId: 'target', resourceRevision: revision, deploymentGeneration: revision, operation: 'Apply', outcome: revision === 12 ? 'Failed' : 'Succeeded', failureCode: revision === 12 ? 'KubernetesApplyFailed' : null, failureMessage: 'raw-target-canary' }] }
 }
 beforeEach(() => {
+  requests.reset()
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
   localStorage.clear(); window.history.replaceState(null, '', '/?view=releases')
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
@@ -60,11 +63,11 @@ beforeEach(() => {
       return json({ id: service.id, resourceRevision: revision, releaseId: entry.id, deployments: service.deployments })
     }
     if (url.pathname.endsWith('/service')) return json(service)
-    return json([])
+    return requests.unhandled(input, init)
   })
   vi.stubGlobal('fetch', fetchMock)
 })
-afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.useRealTimers(); vi.unstubAllGlobals() })
+afterEach(async () => { await act(async () => root.unmount()); container.remove(); requests.verify(); vi.useRealTimers(); vi.unstubAllGlobals() })
 async function render(tenantId = 'active', role: 'Owner' | 'Viewer' = 'Owner') {
   const tenant = { id: tenantId, name: tenantId, role, isDefault: true }
   await act(async () => root.render(<AppShell registry={registry} initialViewId="releases" api={{ baseUrl: 'http://localhost', token: 'token' }}

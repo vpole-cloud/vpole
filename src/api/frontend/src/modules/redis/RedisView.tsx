@@ -37,7 +37,7 @@ function RedisCatalog({ actions, version }: { actions: WorkspaceActions<RedisSec
     }} />
     {inventory.error && <Notice tone="error">{inventory.error} Previously fetched rows remain visible.</Notice>}
     {!inventory.items.length ? <EmptyState title={inventory.status === 'loading' ? 'Loading Redis services…' : inventory.status === 'error' ? 'Unable to load Redis services.' : search ? 'No Redis services match this search.' : 'No Redis services yet.'} /> :
-      <DataTable label="Redis services" items={inventory.items} itemKey={(redis) => redis.id} columns={[
+      <DataTable label="Redis services" items={inventory.items} itemKey={(redis) => redis.id} rowTestId={(redis) => `resource-row-${redis.id}`} columns={[
         { id: 'name', label: 'Service', render: (redis) => <a href={navigation.resourceHref({ resourceTypeId: 'pole/redis', resourceId: redis.id })} onClick={(event) => {
           if (!event.ctrlKey && !event.metaKey && !event.shiftKey && event.button === 0) { event.preventDefault(); actions.loaded(redis.id, redis.name); actions.open(redis.id) }
         }}>{redis.name}</a> },

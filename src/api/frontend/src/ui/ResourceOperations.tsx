@@ -47,9 +47,9 @@ function ResourceOperationsContent({ filter, active, scope, canManage, resourceH
       const deployment = operation.deployment
       const placement = deployment.placement
       const href = resourceHref({ resourceTypeId: deployment.resourceType, resourceId: deployment.resourceId })
-      return <article key={deployment.id} className="operation-target"><header className="panel__header"><div><h3 className="panel__title">{href ? <a href={href}>{operation.resourceDisplayName ?? 'Resource'}</a> : operation.resourceDisplayName ?? 'Unavailable resource metadata'}</h3>
+      return <article key={deployment.id} data-testid={`operation-row-${deployment.id}`} className="operation-target"><header className="panel__header"><div><h3 className="panel__title">{href ? <a href={href}>{operation.resourceDisplayName ?? 'Resource'}</a> : operation.resourceDisplayName ?? 'Unavailable resource metadata'}</h3>
         <p className="field__hint">{placement.desiredOperation} · operation generation {operation.operationGeneration ?? placement.desiredGeneration} · desired {placement.desiredGeneration} · attempt {operation.attemptCount} · {new Date(operation.sinceUtc).toLocaleString()}</p></div>
-        <div className="row-actions"><StatusBadge tone={operation.phase === 'Failed' ? 'danger' : operation.phase === 'Applied' ? 'success' : 'info'}>{operation.phase}</StatusBadge>
+        <div className="row-actions"><StatusBadge data-testid="operation-status" tone={operation.phase === 'Failed' ? 'danger' : operation.phase === 'Applied' ? 'success' : 'info'}>{operation.phase}</StatusBadge>
           {canManage && onRetry && operation.retryable && operation.phase === 'Failed' && <Button disabled={operations.status !== 'success' || mutation.busy} onClick={() => setSelected(operation)}>Retry this {placement.desiredOperation?.toLowerCase() ?? 'operation'}</Button>}</div></header>
         {placement.failureCode && <Notice tone="error">Apply outcome: {placement.failureCode}. Other targets are shown independently.</Notice>}
         {operation.retryNotBeforeUtc && <p className="field__hint">Automatic retry due after {new Date(operation.retryNotBeforeUtc).toLocaleString()}. A manual retry requests this exact failed operation.</p>}

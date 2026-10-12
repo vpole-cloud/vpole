@@ -12,7 +12,7 @@ export function GitSourcePicker({ source, onSelect, disabled = false }: {
   const [chooseNew, setChooseNew] = useState(false)
   const plan = manager.selection.analysis?.candidates.find((item) => item.candidateKey === manager.selection.candidateKey)
   const readOnly = disabled || !tenant.canManage
-  return <section className="panel git-source-picker">
+  return <section data-testid="git-source-picker" className="panel git-source-picker">
     <div className="panel__header"><div><p className="panel__eyebrow">Git source</p><h2 className="panel__title">Repository and build plan</h2></div>
       <Button disabled={manager.busy} onClick={manager.refresh}>Refresh sources</Button></div>
     {manager.error && <Notice tone="error">{manager.error}</Notice>}
@@ -57,7 +57,7 @@ export function GitSourcePicker({ source, onSelect, disabled = false }: {
               {manager.selection.analysis.candidates.map((item) => <option key={item.candidateKey} value={item.candidateKey}>{item.displayName} · {item.manifestPath}</option>)}</select></label>}
           {plan && <><div className="git-source-summary"><span>{plan.kind} · {plan.confidence} confidence</span>
             {plan.warnings.map((warning, index) => <Notice key={index}>{warning}</Notice>)}
-            <details><summary>Build recipe preview</summary><pre className="git-recipe-preview">{plan.dockerfilePreview}</pre></details></div>
+            <details><summary>Build recipe preview</summary><pre data-testid="git-recipe-preview" className="git-recipe-preview">{plan.dockerfilePreview}</pre></details></div>
             <Button variant="primary" onClick={() => void manager.link().then((linked) => { if (linked) { onSelect(linked); setChooseNew(false) } })}>Use this source</Button></>}
         </>}
       </>}

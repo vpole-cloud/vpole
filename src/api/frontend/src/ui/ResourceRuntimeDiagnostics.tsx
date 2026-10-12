@@ -74,7 +74,7 @@ function DiagnosticsContent({ operation }: { operation: ResourceDeploymentOperat
       setLogs(old => ({ ...old, status: 'error', reason: failure instanceof RuntimeLogUnavailableError ? reasons[failure.reason] ?? failure.message : failure instanceof Error ? failure.message : 'Runtime log read failed.' }))
     }).finally(() => { if (current.current === owner) current.current = null })
   }
-  return <section className="panel runtime-diagnostics-viewer" aria-label="Runtime logs and Kubernetes events">
+  return <section data-testid={`runtime-log-viewer-${deployment.id}`} className="panel runtime-diagnostics-viewer" aria-label="Runtime logs and Kubernetes events">
     <h3 ref={heading} tabIndex={-1} className="panel__title">Runtime diagnostics · {operation.targetDisplayName ?? 'Selected target'}</h3>
     <p className="field__hint">Instance output and Kubernetes warning events are separate from reconciliation, readiness and audit history.</p>
     <Button disabled={details.status === 'loading'} onClick={() => { reset(); setUid(''); setContainer(''); setPrevious(false); void details.refresh() }}>Refresh instances and events</Button>

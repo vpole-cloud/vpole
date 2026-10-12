@@ -254,6 +254,7 @@ export function StorageSettingsPage({
             <div className="list">
               {filteredProfiles.map((profile) => (
                 <article
+                  data-testid={`storage-profile-row-${profile.id}`}
                   className={`list-row list-row--interactive${selectedId === profile.id ? ' is-selected' : ''}`}
                   key={profile.id}
                 >

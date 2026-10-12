@@ -131,7 +131,7 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
             await using var context = await browser.NewContextAsync(new BrowserNewContextOptions { ViewportSize = new ViewportSize { Width = 1440, Height = 900 }, IgnoreHTTPSErrors = true });
             var page = await context.NewPageAsync(); await LoginAsync(page);
             await page.GotoAsync(ResourceUrl(Text(first, "redisId")));
-            await SelectAsync(page, uid, "log-a");
+            await SelectAsync(page, Text(firstPlacement, "deploymentId"), uid, "log-a");
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Read recent logs", Exact = true }).ClickAsync();
             await Assertions.Expect(page.GetByLabel("Runtime log output")).ToContainTextAsync(markerA);
             Assert.DoesNotContain(markerB, await page.GetByLabel("Runtime log output").InnerTextAsync());
@@ -144,14 +144,14 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
             page.RequestFailed += (_, request) => { if (request.Url.Contains("/runtime-logs?", StringComparison.Ordinal)) canceled.TrySetResult(); };
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Close runtime diagnostics", Exact = true }).ClickAsync();
             await canceled.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
-            await SelectAsync(page, uid, "log-a"); await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Follow runtime logs", Exact = true }).ClickAsync();
+            await SelectAsync(page, Text(firstPlacement, "deploymentId"), uid, "log-a"); await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Follow runtime logs", Exact = true }).ClickAsync();
             await Assertions.Expect(page.GetByLabel("Runtime log output")).ToContainTextAsync(markerA);
             var selectedPod = await native.CoreV1.ReadNamespacedPodAsync(podName, ns, cancellationToken: ct);
             Assert.Equal(uid, selectedPod.Metadata.Uid);
             Assert.True(KubernetesWorkloadObservation.Owns(selectedPod.Metadata, identity));
             Assert.Contains(selectedPod.Metadata.OwnerReferences, owner => owner.Controller == true && owner.Uid == workload.Metadata.Uid);
             await native.CoreV1.DeleteNamespacedPodAsync(podName, ns, body: new V1DeleteOptions { Preconditions = new V1Preconditions { Uid = uid }, GracePeriodSeconds = 0 }, cancellationToken: ct);
-            await Assertions.Expect(page.Locator(".runtime-diagnostics-viewer")).ToContainTextAsync("selected instance", new LocatorAssertionsToContainTextOptions { Timeout = 20_000 });
+            await Assertions.Expect(page.GetByTestId($"runtime-log-viewer-{Text(firstPlacement, "deploymentId")}")).ToContainTextAsync("selected instance", new LocatorAssertionsToContainTextOptions { Timeout = 20_000 });
             var replaced = await WaitForInstancesAsync(Text(firstPlacement, "deploymentId"), uid, ct);
             var replacement = replaced.GetProperty("diagnostics").GetProperty("instances").EnumerateArray().Single(item => Text(item, "name") == podName);
             Assert.NotEqual(uid, Text(replacement, "uid"));
@@ -161,7 +161,7 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Follow runtime logs", Exact = true }).ClickAsync();
             await Assertions.Expect(page.GetByLabel("Runtime log output")).ToContainTextAsync(markerA);
             relay.Pause();
-            await Assertions.Expect(page.Locator(".runtime-diagnostics-viewer")).ToContainTextAsync("could not be reached", new LocatorAssertionsToContainTextOptions { Timeout = 40_000 });
+            await Assertions.Expect(page.GetByTestId($"runtime-log-viewer-{Text(firstPlacement, "deploymentId")}")).ToContainTextAsync("could not be reached", new LocatorAssertionsToContainTextOptions { Timeout = 40_000 });
             var outage = await SendAsync(HttpMethod.Get, $"/api/v1/resource-deployments/{Text(firstPlacement, "deploymentId")}/diagnostics", null, ct);
             Assert.Equal("Unavailable", Text(outage.GetProperty("diagnostics"), "kind"));
             var independent = await SendAsync(HttpMethod.Get, $"/api/v1/resource-deployments/{Text(healthyPlacement, "deploymentId")}/diagnostics", null, ct);
@@ -240,14 +240,14 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
         await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Sign In", Exact = true }).ClickAsync();
         await page.GetByLabel("Tenant").SelectOptionAsync(fixture.Alpha.DefaultTenantId);
     }
-    private static async Task SelectAsync(IPage page, string uid, string container)
+    private static async Task SelectAsync(IPage page, string deploymentId, string uid, string container)
     {
         await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Runtime logs and events", Exact = true }).ClickAsync();
         try { await page.GetByLabel("Instance", new PageGetByLabelOptions { Exact = true }).SelectOptionAsync(uid); }
         catch (TimeoutException exception)
         {
             await CaptureAsync(page, "discovery-failure");
-            throw new InvalidOperationException($"Runtime viewer discovery: {await page.Locator(".runtime-diagnostics-viewer").InnerTextAsync()}", exception);
+            throw new InvalidOperationException($"Runtime viewer discovery: {await page.GetByTestId($"runtime-log-viewer-{deploymentId}").InnerTextAsync()}", exception);
         }
         await page.GetByLabel("Container", new PageGetByLabelOptions { Exact = true }).SelectOptionAsync(container);
     }

@@ -24,7 +24,7 @@ export function WebServicesPage({ items, resourceGroups, status, error, page, pa
         {page && <p>Showing the last loaded results.</p>}<Button onClick={onRefresh}>Retry inventory</Button></EmptyState>}
       {status === 'success' && items.length === 0 && <EmptyState title={search ? 'No matching services.' : 'No web services yet.'}>
         {!search && 'Create your first service using a container image.'}</EmptyState>}
-      {items.length > 0 && <DataTable label="Web service inventory" items={items} itemKey={(item) => item.id} columns={[
+      {items.length > 0 && <DataTable label="Web service inventory" items={items} itemKey={(item) => item.id} rowTestId={(item) => `resource-row-${item.id}`} columns={[
         { id: 'name', label: 'Service', render: (item) => <><ResourceLink href={resourceHref(item.id)} onNavigate={() => onOpen(item.id)}>{item.name}</ResourceLink>
           <small>{resourceGroups.find((group) => group.id === item.resourceGroupId)?.name ?? 'Unknown group'}</small></> },
         { id: 'image', label: 'Image', render: (item) => <code>{item.spec.image.server}/{item.spec.image.name}:{item.spec.image.tag}</code> },

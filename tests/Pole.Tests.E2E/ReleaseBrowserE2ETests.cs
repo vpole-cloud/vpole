@@ -66,14 +66,14 @@ public sealed class ReleaseBrowserE2ETests(PoleE2EFixture fixture)
         await WaitForPlacementFailureAsync(id, ct);
         await page.ReloadAsync();
         var redeploy = content.Locator("[aria-label='Release revision 3']");
-        await Assertions.Expect(redeploy.Locator(".status-pill")).ToHaveTextAsync("Pending", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
+        await Assertions.Expect(redeploy.GetByTestId("release-status")).ToHaveTextAsync("Pending", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
         await Assertions.Expect(redeploy.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = "Revision 3 · Redeploy", Exact = true })).ToBeVisibleAsync();
         await CaptureAsync(page, "pending");
         await SetTargetEnabledAsync(targetId, true, ct);
         targetDisabled = false;
         await WaitForReleaseAsync(id, 3, "Succeeded", ct);
         await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Refresh releases", Exact = true }).ClickAsync();
-        await Assertions.Expect(redeploy.Locator(".status-pill")).ToHaveTextAsync("Succeeded", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
+        await Assertions.Expect(redeploy.GetByTestId("release-status")).ToHaveTextAsync("Succeeded", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
         await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Rollback to revision 1", Exact = true }).ClickAsync();
         dialog = page.GetByRole(AriaRole.Dialog);
         await Assertions.Expect(dialog.GetByText("Database contents and Secret values are not restored.", new LocatorGetByTextOptions { Exact = false })).ToBeVisibleAsync();
@@ -89,7 +89,7 @@ public sealed class ReleaseBrowserE2ETests(PoleE2EFixture fixture)
         await WaitForReleaseAsync(id, 4, "Succeeded", ct);
         await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Refresh releases", Exact = true }).ClickAsync();
         var rollback = content.Locator("[aria-label='Release revision 4']");
-        await Assertions.Expect(rollback.Locator(".status-pill")).ToHaveTextAsync("Succeeded", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
+        await Assertions.Expect(rollback.GetByTestId("release-status")).ToHaveTextAsync("Succeeded", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
         await CaptureAsync(page, "rollback");
         var restored = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{id}", null, ct);
         Assert.Equal(4, restored.GetProperty("activeRevision").GetInt64());
@@ -100,7 +100,7 @@ public sealed class ReleaseBrowserE2ETests(PoleE2EFixture fixture)
         Assert.Equal(1, placement.GetProperty("fixedReplicas").GetInt32());
         await WaitForReadyAsync(id, ct);
         await page.GotoAsync(Url(id, "operations"));
-        await Assertions.Expect(content.Locator(".health-target .status-pill")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
+        await Assertions.Expect(content.GetByTestId("readiness-status")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
         await CaptureAsync(page, "ready");
     }
 
@@ -218,7 +218,7 @@ public sealed class ReleaseBrowserE2ETests(PoleE2EFixture fixture)
             {
                 if (await page.Locator("html").GetAttributeAsync("data-theme") != theme) await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = $"Switch to {theme} theme", Exact = true }).ClickAsync();
                 await Assertions.Expect(page.Locator("html")).ToHaveAttributeAsync("data-theme", theme);
-                var selectedSection = page.Locator("#app-content .ui-tabs--section [role=tab][aria-selected=true]:visible");
+                var selectedSection = page.Locator("#app-content [data-testid='section-tabs'] [role=tab][aria-selected=true]:visible");
                 if (await selectedSection.CountAsync() > 0)
                     Assert.True(await selectedSection.EvaluateAsync<bool>("tab => { const bounds = tab.getBoundingClientRect(); const list = tab.closest('[role=tablist]').getBoundingClientRect(); return bounds.left >= list.left - 1 && bounds.right <= list.right + 1; }"), "The active resource section must remain visible after viewport resizing.");
                 await page.ScreenshotAsync(new PageScreenshotOptions { Path = Path.Combine(directory, $"releases-{viewport}-{section}-{theme}.png"), FullPage = true, Animations = ScreenshotAnimations.Disabled });

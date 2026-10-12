@@ -20,4 +20,21 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    languageOptions: { parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname } },
+    rules: {
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/switch-exhaustiveness-check': 'error',
+    },
+  },
+  {
+    files: ['src/data/**/*.{ts,tsx}'],
+    rules: { 'no-restricted-imports': ['error', { patterns: [{ group: ['**/modules/**'], message: 'Shared data adapters accept loaders; concrete modules own their queries.' }] }] },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/api/transport.ts'],
+    rules: { 'no-restricted-globals': ['error', { name: 'fetch', message: 'Route HTTP through api/transport; feature clients own endpoints.' }] },
+  },
 ])

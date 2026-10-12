@@ -90,14 +90,14 @@ export function WebServiceDeploymentsPanel({
         {webService.deployments.map((deployment) => {
           const profiles = computeProfilesByTarget[deployment.deploymentTargetId] ?? []
           return (
-            <article className="list-row" key={deployment.deploymentId}>
+            <article className="list-row" key={deployment.deploymentId} data-testid={`deployment-row-${deployment.deploymentId}`}>
               <div className="list-row__primary">
                 <h3>{availableTargets.find((target) => target.id === deployment.deploymentTargetId)?.displayName ?? deployment.deploymentTargetId}</h3>
                 <p>Generation {deployment.observedGeneration}/{deployment.desiredGeneration} · {deployment.fixedReplicas} fixed replicas</p>
                 {deployment.failureCode && <p className="form-message form-message--error">{deployment.failureCode}</p>}
               </div>
               <div className="list-row__secondary">
-                <span className={`status-pill ${statusClass(deployment.status)}`}>{deployment.status}</span>
+                <span data-testid="deployment-status" className={`status-pill ${statusClass(deployment.status)}`}>{deployment.status}</span>
                 <span className="list-row__meta">{deployment.compute.displayName}</span>
               </div>
 

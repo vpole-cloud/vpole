@@ -34,7 +34,7 @@ export function ResourceTree() {
   useEffect(() => { try { localStorage.setItem(key, JSON.stringify(state)) } catch { /* Navigation works without storage. */ } }, [key, state])
   const lastPage = Math.max(1, Math.ceil((inventory.page?.totalCount ?? 0) / pageSize))
   if (inventory.status === 'success' && inventory.isCurrentPage && state.page > lastPage) setState({ ...state, page: lastPage })
-  return <details className="resource-tree" open={state.open} onToggle={(event) => {
+  return <details data-testid="resource-tree" className="resource-tree" open={state.open} onToggle={(event) => {
     const open = event.currentTarget.open
     setState((current) => current.open === open ? current : { ...current, open })
   }}>

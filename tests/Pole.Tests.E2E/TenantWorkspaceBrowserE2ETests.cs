@@ -83,7 +83,7 @@ public sealed class TenantWorkspaceBrowserE2ETests(PoleE2EFixture fixture)
         await Assertions.Expect(content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = $"Delete {alphaName}", Exact = true })).ToBeDisabledAsync();
         await content.GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = alphaName, Exact = true }).ClickAsync();
         await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Operations", Exact = true }).ClickAsync();
-        await Assertions.Expect(content.Locator(".health-target .status-pill")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
+        await Assertions.Expect(content.GetByTestId("readiness-status")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
         Assert.Equal(0, await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Delete service", Exact = true }).CountAsync());
         await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Runtime logs and events", Exact = true }).ClickAsync();
         var instance = page.GetByLabel("Instance", new PageGetByLabelOptions { Exact = true });

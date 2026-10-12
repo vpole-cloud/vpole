@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { strictFetch } from '../../test/http'
 import { act, useLayoutEffect } from 'react'
 import { useQuerySession, type QuerySession } from '../../data/querySession'
 import { createRoot, type Root } from 'react-dom/client'
@@ -16,9 +17,11 @@ const initial: SecretMetadata = { id: 'secret', tenantId: 'alpha', resourceGroup
 const placement = { deploymentId: 'deployment', isolationScopeId: 'scope', deploymentTargetId: 'target', status: 'Applied', desiredOperation: 'Apply' } as ResourcePlacement
 let root: Root; let container: HTMLDivElement; let secret: SecretMetadata; let conflict: boolean; let managed: boolean
 let placements: ResourcePlacement[]
-const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+const requests = strictFetch()
+const fetchMock = requests.fetch
 const json = (value: unknown) => Promise.resolve(new Response(JSON.stringify(value)))
 beforeEach(() => {
+  requests.reset()
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
   Object.defineProperties(HTMLDialogElement.prototype, { showModal: { configurable: true, value: function (this: HTMLDialogElement) { this.open = true } }, close: { configurable: true, value: function (this: HTMLDialogElement) { this.open = false } } })
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { callback(0); return 1 })
@@ -45,11 +48,11 @@ beforeEach(() => {
     if (url.pathname.endsWith('/isolation-scopes')) return json([{ id: 'scope', resourceGroupId: 'group', name: 'Production', isDefault: true, lifecycle: 'active' }])
     if (url.pathname.endsWith('/deployment-targets/available')) return json([{ id: 'target', displayName: 'Local cluster' }])
     if (url.pathname.endsWith('/bindings')) return json(secret)
-    return json([])
+    return requests.unhandled(input, init)
   })
   vi.stubGlobal('fetch', fetchMock)
 })
-afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals() })
+afterEach(async () => { await act(async () => root.unmount()); container.remove(); requests.verify(); vi.unstubAllGlobals() })
 async function render(role: 'Owner' | 'Viewer' = 'Owner', tenantId = 'alpha', token = 'token') {
   const tenant = { id: tenantId, name: tenantId, role, isDefault: true }
   await act(async () => root.render(<AppShell registry={registry} initialViewId="secrets" api={{ baseUrl: 'http://localhost', token }} auth={{ initialized: true, authenticated: true, userId: 'user', isPlatformAdmin: false, login: () => {}, logout: () => {} }} tenants={{ items: [tenant], activeTenant: tenant, activeTenantId: tenantId, selectTenant: () => {}, status: 'success', error: '' }} />))

@@ -46,7 +46,7 @@ public sealed class StorageBrowserE2ETests(PoleE2EFixture fixture)
         var mapping = Assert.Single(profile.GetProperty("targetMappings").EnumerateArray());
         Assert.Equal(targetId, Text(mapping, "deploymentTargetId"));
         Assert.Equal(storageClass, Text(mapping, "storageClassName"));
-        var row = page.Locator(".list-row").Filter(new LocatorFilterOptions { HasText = name });
+        var row = page.GetByTestId($"storage-profile-row-{id}");
         await row.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Edit", Exact = true }).ClickAsync();
         await page.GetByLabel("Description", new PageGetByLabelOptions { Exact = true }).FillAsync("Verified against target inventory");
         var updated = await page.RunAndWaitForResponseAsync(

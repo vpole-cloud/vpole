@@ -59,7 +59,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         var buildPlan = page.GetByLabel("Build plan");
         var candidate = await buildPlan.Locator("option").Nth(1).GetAttributeAsync("value");
         await buildPlan.SelectOptionAsync(candidate!);
-        Assert.Contains("mcr.microsoft.com/dotnet/aspnet", await page.Locator(".git-recipe-preview").TextContentAsync() ?? string.Empty, StringComparison.Ordinal);
+        Assert.Contains("mcr.microsoft.com/dotnet/aspnet", await page.GetByTestId("git-recipe-preview").TextContentAsync() ?? string.Empty, StringComparison.Ordinal);
         await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Use this source", Exact = true }).ClickAsync();
         var sourceId = await WaitForBrowserSourceSelectionAsync(page, token);
         resources.Defer("unlink browser source", cleanup => DeleteAsync($"/api/v1/source-repositories/{sourceId}", cleanup));
@@ -97,8 +97,8 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         Assert.Equal(RequiredString(state, "imageDigest"), await fixture.GetHarborArtifactDigestAsync(fixture.Alpha.DefaultTenantId, serviceId, buildId, token));
         await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Refresh", Exact = true }).Last.ClickAsync();
         await page.GetByText("succeeded", new PageGetByTextOptions { Exact = true }).First.WaitForAsync();
-        Assert.Equal("Dockerfile", await page.Locator(".source-build-panel .panel__meta").InnerTextAsync());
-        await page.Locator(".build-recipe summary").ClickAsync();
+        Assert.Equal("Dockerfile", await page.GetByTestId("source-build-kind").InnerTextAsync());
+        await page.Locator("[data-testid^='build-recipe-']:visible").GetByText("Build recipe ·").ClickAsync();
         var dockerfile = page.GetByRole(AriaRole.Textbox, new PageGetByRoleOptions { Name = "Dockerfile", Exact = true });
         var workingRecipe = await dockerfile.InputValueAsync();
         var missingMarker = $"pole-build-log-e2e-missing-{Guid.NewGuid():N}.txt";
@@ -157,7 +157,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
             var output = page.GetByLabel("Captured build output", new PageGetByLabelOptions { Exact = true });
             await Assertions.Expect(output).ToContainTextAsync(missingMarker, new LocatorAssertionsToContainTextOptions { Timeout = 30_000 });
             await Assertions.Expect(output).ToContainTextAsync("not found", new LocatorAssertionsToContainTextOptions { Timeout = 30_000 });
-            Assert.Contains("Capture Completed", await page.Locator(".build-log-viewer").InnerTextAsync(), StringComparison.Ordinal);
+            Assert.Contains("Capture Completed", await page.GetByTestId($"build-log-viewer-{failedId}").InnerTextAsync(), StringComparison.Ordinal);
             await page.ReloadAsync();
             await Assertions.Expect(output).ToContainTextAsync(missingMarker, new LocatorAssertionsToContainTextOptions { Timeout = 30_000 });
             var reloadedLog = await WaitForCompletedBuildLogAsync(serviceId, failedId, missingMarker, failureBudget.Token);
@@ -171,7 +171,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
             await CaptureDeliveryScreenshotsAsync(page, "build-operation-logs");
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Close logs", Exact = true }).ClickAsync();
             await page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "Builds", Exact = true }).ClickAsync();
-            await page.Locator(".build-recipe summary").ClickAsync();
+            await page.Locator("[data-testid^='build-recipe-']:visible").GetByText("Build recipe ·").ClickAsync();
             await dockerfile.FillAsync(workingRecipe);
             var repaired = await page.RunAndWaitForResponseAsync(
                 () => page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Save build recipe", Exact = true }).ClickAsync(),
@@ -249,13 +249,13 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         {
             var selected = await page.GetByLabel("Linked source").InputValueAsync();
             if (!string.IsNullOrWhiteSpace(selected)) return selected;
-            var errors = page.Locator(".git-source-picker [role=alert]");
+            var errors = page.GetByTestId("git-source-picker").GetByRole(AriaRole.Alert);
             if (await errors.CountAsync() > 0)
                 throw new InvalidOperationException($"Browser source setup failed: {await errors.First.InnerTextAsync()}");
             await Task.Delay(PollInterval, token);
         }
         await CaptureDeliveryScreenshotAsync(page, "desktop", "source-diagnostic", "current");
-        var source = await page.Locator(".git-source-picker").InnerTextAsync();
+        var source = await page.GetByTestId("git-source-picker").InnerTextAsync();
         throw new InvalidOperationException($"Browser linked-source selection did not complete. Fixture source UI: {source}");
     }
 
