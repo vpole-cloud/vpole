@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http.Connections;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -81,6 +82,61 @@ public sealed class RealtimeRedisFixture : IAsyncLifetime
 
 public sealed class RealtimeRedisTests(RealtimeRedisFixture fixture) : IClassFixture<RealtimeRedisFixture>
 {
+    [Fact]
+    public async Task MixedTopicsAcknowledgeAvailabilityWithoutRegisteringUnavailableInterests()
+    {
+        var topic = "available-" + Guid.NewGuid().ToString("N");
+        var disabled = "disabled-" + Guid.NewGuid().ToString("N");
+        var unknown = "unknown-" + Guid.NewGuid().ToString("N");
+        await using var server = await StartServerAsync(topic, disabled);
+        var cookies = new CookieContainer();
+        using var bootstrap = new HttpClient(new HttpClientHandler { CookieContainer = cookies });
+        bootstrap.DefaultRequestHeaders.Add("Origin", "https://frontend.test");
+        bootstrap.DefaultRequestHeaders.Authorization = new("Bearer", "realtime-test-credential");
+        using var response = await bootstrap.PostAsync(Address(server) + RealtimeFeature.Route + "/session", null);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await using var client = Client(Address(server), cookies);
+        var changes = new TaskCompletionSource<RealtimeChange>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sessionRevoked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var revocations = 0;
+        var sessionRevocations = 0;
+        client.On<RealtimeChange>("Changed", change => changes.TrySetResult(change));
+        client.On<string?>("AccessRevoked", _ => Interlocked.Increment(ref revocations));
+        client.On("SessionRevoked", () => { Interlocked.Increment(ref sessionRevocations); sessionRevoked.TrySetResult(); });
+        await client.StartAsync();
+        var initial = await client.InvokeCoreAsync<RealtimeSubscriptionAcknowledgement[]>("Subscribe",
+            [new RealtimeSubscriptionRequest[] { new(topic), new(disabled), new(unknown, "unsupported-scope") }]);
+        Assert.Equal([true, false, false], initial.Select(value => value.Covered));
+        var renewed = await client.InvokeCoreAsync<RealtimeSubscriptionAcknowledgement[]>("Heartbeat", []);
+        Assert.Equal(initial, renewed);
+        var registry = server.Services.GetRequiredService<IRealtimeSubscriptions>();
+        var active = Assert.Single(await registry.FindAsync(topic, null, default));
+        Assert.Empty(await registry.FindAsync(disabled, null, default));
+        Assert.Empty(await registry.FindAsync(unknown, "unsupported-scope", default));
+        using var scope = server.Services.CreateScope();
+        var publish = scope.ServiceProvider.GetRequiredService<PublishRealtimeChange>();
+        await publish(new(disabled, Revision: 99));
+        await publish(new(unknown, "unsupported-scope", Revision: 99));
+        await publish(new(topic, Revision: 1));
+        Assert.Equal(1, (await changes.Task.WaitAsync(TimeSpan.FromSeconds(15))).Revision);
+        Assert.Equal(0, Volatile.Read(ref revocations));
+        await client.InvokeCoreAsync("Unsubscribe", []);
+        Assert.Empty(await registry.FindAsync(topic, null, default));
+        Assert.Empty(await client.InvokeCoreAsync<RealtimeSubscriptionAcknowledgement[]>("Heartbeat", []));
+        var unavailable = await client.InvokeCoreAsync<RealtimeSubscriptionAcknowledgement[]>("Subscribe",
+            [new RealtimeSubscriptionRequest[] { new(disabled), new(unknown) }]);
+        Assert.All(unavailable, value => Assert.False(value.Covered));
+        await server.Services.GetRequiredService<IRealtimeTicketStore>().RemoveAsync(active.SessionId);
+        await Assert.ThrowsAsync<HubException>(() => client.InvokeCoreAsync<RealtimeSubscriptionAcknowledgement[]>("Heartbeat", []));
+        Assert.Equal(HubConnectionState.Connected, client.State);
+        Assert.Equal(0, Volatile.Read(ref sessionRevocations));
+        Assert.Equal(0, Volatile.Read(ref revocations));
+        await registry.RevokeSessionAsync(active.SessionId, default);
+        Assert.Empty(await client.InvokeCoreAsync<RealtimeSubscriptionAcknowledgement[]>("Heartbeat", []));
+        await sessionRevoked.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        Assert.Equal(1, Volatile.Read(ref sessionRevocations));
+    }
+
     [Fact]
     public async Task ProtectedTicketsAreSharedAllowlistedExpiringAndCannotBeResurrected()
     {
@@ -257,7 +313,7 @@ public sealed class RealtimeRedisTests(RealtimeRedisFixture fixture) : IClassFix
             (await browser.PostAsync(Address(restarted) + RealtimeFeature.Route + "/hub/negotiate?negotiateVersion=1", null)).StatusCode);
     }
 
-    private async Task<WebApplication> StartServerAsync(string topic)
+    private async Task<WebApplication> StartServerAsync(string topic, string? disabledTopic = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseKestrel().UseUrls("http://127.0.0.1:0");
@@ -269,6 +325,7 @@ public sealed class RealtimeRedisTests(RealtimeRedisFixture fixture) : IClassFix
         builder.Services.AddRealtimeFeature(builder.Configuration, development: true);
         builder.Services.AddRealtimeRedis(builder.Configuration, development: true);
         builder.Services.AddRealtimeTopic(topic, RealtimeScope.Platform);
+        if (disabledTopic is not null) builder.Services.AddRealtimeTopic(disabledTopic, RealtimeScope.Platform);
         builder.Services.AddScoped<LoadTenantMember>(_ => (tenant, user, _, _) => Task.FromResult<LoadTenantMemberOutcome>(new TenantMemberMissing(tenant, user)));
         builder.Services.AddScoped<LoadTenantIdentity>(_ => (tenant, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentityNotFound(tenant)));
         builder.Services.AddScoped<IMediator, Pole.Mediator.Mediator>();

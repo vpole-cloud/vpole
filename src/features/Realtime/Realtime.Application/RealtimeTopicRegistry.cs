@@ -15,7 +15,7 @@ public sealed class RealtimeTopicRegistry
             throw new InvalidOperationException("Realtime topics require unique nonempty identities.");
         _topics = registered.ToDictionary(topic => topic.Name, StringComparer.Ordinal);
         _enabled = options.EnabledTopics.ToHashSet(StringComparer.Ordinal);
-        if (_enabled.Any(topic => !_topics.ContainsKey(topic)))
+        if (options.Enabled && _enabled.Any(topic => !_topics.ContainsKey(topic)))
             throw new InvalidOperationException("Realtime:EnabledTopics contains an unregistered topic.");
     }
 
