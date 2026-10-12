@@ -92,6 +92,21 @@ public sealed class PostgresFeatureHostTests(MongoReplicaSetFixture fixture)
         var group = await store.InsertResourceGroupAsync(PostgresTestData.SeedResourceGroup());
         using var created = await client.PostAsJsonAsync(route, PostgresTestData.CreatePostgresClusterRequest(group.Id).Body);
         Assert.True(created.StatusCode == HttpStatusCode.Accepted, await created.Content.ReadAsStringAsync());
+        using var createdBody = System.Text.Json.JsonDocument.Parse(await created.Content.ReadAsStringAsync());
+        var clusterId = createdBody.RootElement.GetProperty("id").GetString()!;
+        foreach (var invalidUpdate in new object[] { new { storage = 25 }, new { expectedRevision = 0, storage = 25 }, new { expectedRevision = -1, storage = 25 } })
+        {
+            using var invalidRevision = await client.PutAsJsonAsync(route + clusterId, invalidUpdate);
+            Assert.Equal(HttpStatusCode.BadRequest, invalidRevision.StatusCode);
+            using var revisionProblem = System.Text.Json.JsonDocument.Parse(await invalidRevision.Content.ReadAsStringAsync());
+            Assert.True(revisionProblem.RootElement.GetProperty("errors").TryGetProperty("Body.ExpectedRevision", out _));
+        }
+        using var acceptedUpdate = await client.PutAsJsonAsync(route + clusterId, new { expectedRevision = 1, storage = 25 });
+        Assert.True(acceptedUpdate.StatusCode == HttpStatusCode.Accepted, await acceptedUpdate.Content.ReadAsStringAsync());
+        using var staleUpdate = await client.PutAsJsonAsync(route + clusterId, new { expectedRevision = 1, storage = 30 });
+        Assert.Equal(HttpStatusCode.Conflict, staleUpdate.StatusCode);
+        using var staleProblem = System.Text.Json.JsonDocument.Parse(await staleUpdate.Content.ReadAsStringAsync());
+        Assert.Equal("postgres.update.concurrent-change", staleProblem.RootElement.GetProperty("code").GetString());
         const string eventName = "pole.postgres/v1/postgres-cluster-created";
         var outbox = await fixture.Database.GetCollection<BsonDocument>("OutboxMessages")
             .Find(new BsonDocument("EventType", eventName)).ToListAsync();

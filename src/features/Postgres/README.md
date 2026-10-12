@@ -31,6 +31,12 @@ deployment stores the resulting CPU, memory, extended-resource, and scheduling s
 without a profile ID preserves that snapshot; an explicit ID adopts the latest eligible profile
 revision. Delete and password rotation fence their mutations against the current snapshot.
 
+Configuration updates require a positive `expectedRevision` matching the logical database
+revision. A stale draft receives `409 postgres.update.concurrent-change` before quota admission
+or mutations; persistence also retains its transaction revision fence. Omitted `instances`,
+`storage`, and `computeProfileId` preserve the current server values. The browser submits only
+changed fields and requires explicit review before reapplying a draft to a newer revision.
+
 Quota admission measures the resolved per-instance CPU and memory requests across the requested
 instance count. Native StatefulSet deployments support the complete scheduling snapshot.
 CloudNativePG supports resources, node selection, affinity, and tolerations; because its Cluster

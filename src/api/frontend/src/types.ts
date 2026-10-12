@@ -213,8 +213,9 @@ export interface PostgresInput {
 }
 
 export interface PostgresUpdateInput {
-  instances: number
-  storage: number
+  expectedRevision: number
+  instances?: number
+  storage?: number
   computeProfileId?: string
 }
 

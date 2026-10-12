@@ -15,6 +15,8 @@ using Pole.Features.Postgres.Application.Persistence.Mutations;
 using Pole.Features.Postgres.Application.Persistence.Reads;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.Quotas.Domain;
+using Pole.Features.Quotas.Contracts;
 using Pole.ResultType;
 using Pole.Features.Secrets.Domain;
 using Pole.Features.Secrets.Contracts;
@@ -200,6 +202,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         var updateRequest = new UpdatePostgresClusterRequest(
             cluster.Id,
             new UpdatePostgresClusterRequestBody(
+                cluster.Revision,
                 FSharpOption<int>.Some(3),
                 FSharpOption<int>.Some(25),
                 FSharpOption<string>.None),
@@ -227,6 +230,75 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
             updatedDeployment.ResolvedPlacement.Compute);
     }
 
+    [Fact]
+    public async Task Update_StaleRevisionDoesNotChangeCapacityQuotaDeploymentOrOutbox()
+    {
+        var (cluster, deployment) = await CreateClusterAsync();
+        var request = new UpdatePostgresClusterRequest(cluster.Id,
+            new UpdatePostgresClusterRequestBody(cluster.Revision, FSharpOption<int>.Some(3),
+                FSharpOption<int>.Some(25), FSharpOption<string>.None), PostgresTestData.TenantId);
+        _ = (await Mediator.Send(request)).AssertUpdated();
+        var messagesBefore = await DbContext.OutboxMessages.CountDocumentsAsync(_ => true);
+        var usageCollection = DbContext.Database.GetCollection<TenantQuotaUsage>("TenantQuotaUsages");
+        var usageBefore = await usageCollection.Find(item => item.TenantId == cluster.TenantId).SingleAsync();
+
+        var rejected = Assert.IsType<UpdatePostgresClusterOutcome.UpdatePostgresClusterRejected>(
+            (await Mediator.Send(new UpdatePostgresClusterRequest(cluster.Id,
+                new UpdatePostgresClusterRequestBody(cluster.Revision, FSharpOption<int>.Some(8),
+                    FSharpOption<int>.Some(50), FSharpOption<string>.None), cluster.TenantId))).AssertSuccess());
+        Assert.IsType<UpdatePostgresClusterError.UpdateConflict>(rejected.Item);
+        var saved = await DbContext.Postgres.Find(item => item.Id == cluster.Id).SingleAsync();
+        var savedDeployment = await DbContext.ResourceDeployments.Find(item => item.Id == deployment.Id).SingleAsync();
+        Assert.Equal(2, saved.Revision);
+        Assert.Equal(3, saved.Spec.Instances);
+        Assert.Equal(25, saved.Spec.Storage);
+        Assert.Equal(2, savedDeployment.DesiredGeneration);
+        Assert.Equal(messagesBefore, await DbContext.OutboxMessages.CountDocumentsAsync(_ => true));
+        var usageAfter = await usageCollection.Find(item => item.TenantId == cluster.TenantId).SingleAsync();
+        Assert.Equal(usageBefore.Values, usageAfter.Values);
+    }
+
+    [Fact]
+    public async Task Update_ConcurrentSameRevisionCommitsOneMutationAndOutbox()
+    {
+        var (cluster, deployment) = await CreateClusterAsync();
+        var outcomes = await Task.WhenAll(new[] { 25, 30 }.Select(storage => Mediator.Send(
+            new UpdatePostgresClusterRequest(cluster.Id, new UpdatePostgresClusterRequestBody(
+                cluster.Revision, FSharpOption<int>.None, FSharpOption<int>.Some(storage),
+                FSharpOption<string>.None), cluster.TenantId))));
+        var results = outcomes.Select(result => result.AssertSuccess()).ToArray();
+        Assert.Single(results.OfType<UpdatePostgresClusterOutcome.PostgresClusterUpdated>());
+        var rejected = Assert.Single(results.OfType<UpdatePostgresClusterOutcome.UpdatePostgresClusterRejected>());
+        Assert.IsType<UpdatePostgresClusterError.UpdateConflict>(rejected.Item);
+        var saved = await DbContext.Postgres.Find(item => item.Id == cluster.Id).SingleAsync();
+        Assert.Equal(2, saved.Revision);
+        Assert.Equal(cluster.Spec.Instances, saved.Spec.Instances);
+        Assert.Contains(saved.Spec.Storage, new[] { 25, 30 });
+        Assert.Equal(2, (await DbContext.ResourceDeployments.Find(item => item.Id == deployment.Id).SingleAsync()).DesiredGeneration);
+        Assert.Equal(1, await DbContext.OutboxMessages.CountDocumentsAsync(item => item.EventType == "pole.postgres/v1/postgres-cluster-updated"));
+        var usage = await DbContext.Database.GetCollection<TenantQuotaUsage>("TenantQuotaUsages")
+            .Find(item => item.TenantId == cluster.TenantId).SingleAsync();
+        Assert.Equal(1, QuotaValues.GetValue(usage.Values, WorkloadInstancesQuota.QuotaKey));
+    }
+
+    [Fact]
+    public async Task Update_ComputeOnlyPreservesTheLatestCapacity()
+    {
+        var (cluster, _) = await CreateClusterAsync();
+        _ = (await Mediator.Send(new UpdatePostgresClusterRequest(cluster.Id,
+            new UpdatePostgresClusterRequestBody(cluster.Revision, FSharpOption<int>.Some(3),
+                FSharpOption<int>.Some(25), FSharpOption<string>.None), cluster.TenantId))).AssertUpdated();
+        var profile = CreateComputeProfile(requestedCpuMillis: 600, requestedMemoryMi: 700);
+        await DbContext.Database.GetCollection<ComputeProfile>("ComputeProfiles").InsertOneAsync(profile);
+        _ = (await Mediator.Send(new UpdatePostgresClusterRequest(cluster.Id,
+            new UpdatePostgresClusterRequestBody(cluster.Revision + 1, FSharpOption<int>.None,
+                FSharpOption<int>.None, FSharpOption<string>.Some(profile.Id)), cluster.TenantId))).AssertUpdated();
+        var saved = await DbContext.Postgres.Find(item => item.Id == cluster.Id).SingleAsync();
+        Assert.Equal(3, saved.Spec.Instances);
+        Assert.Equal(25, saved.Spec.Storage);
+        Assert.Equal(3, saved.Revision);
+    }
+
     [Theory]
     [InlineData(2, 20, true)]
     [InlineData(1, 21, false)]
@@ -248,6 +320,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         var result = await Mediator.Send(new UpdatePostgresClusterRequest(
             cluster.Id,
             new UpdatePostgresClusterRequestBody(
+                cluster.Revision,
                 FSharpOption<int>.Some(instances),
                 FSharpOption<int>.Some(storage),
                 FSharpOption<string>.None),
@@ -281,6 +354,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
             new UpdatePostgresClusterRequest(
                 cluster.Id,
                 new UpdatePostgresClusterRequestBody(
+                    cluster.Revision,
                     FSharpOption<int>.Some(2),
                     FSharpOption<int>.None,
                     FSharpOption<string>.Some(profile.Id)),
@@ -325,6 +399,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
             new UpdatePostgresClusterRequest(
                 cluster.Id,
                 new UpdatePostgresClusterRequestBody(
+                    cluster.Revision,
                     FSharpOption<int>.None,
                     FSharpOption<int>.None,
                     FSharpOption<string>.Some(currentProfile.Id)),
@@ -386,6 +461,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
             new UpdatePostgresClusterRequest(
                 cluster.Id,
                 new UpdatePostgresClusterRequestBody(
+                    cluster.Revision,
                     FSharpOption<int>.Some(2),
                     FSharpOption<int>.None,
                     FSharpOption<string>.Some(profile.Id)),

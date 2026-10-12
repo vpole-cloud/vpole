@@ -20,6 +20,7 @@ let container: HTMLDivElement
 let cluster: PostgresCluster
 let mode: 'Operator' | 'StatefulSet'
 let failUpdate: boolean
+let conflictUpdate: boolean
 let pendingReveal: Promise<Response> | undefined
 const fetchMock = vi.fn<(url: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
 const json = (value: unknown) => Promise.resolve(new Response(JSON.stringify(value)))
@@ -33,7 +34,7 @@ beforeEach(() => {
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { callback(0); return 1 })
   localStorage.clear(); window.history.replaceState({}, '', '/?view=postgres&resource=catalog')
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
-  cluster = structuredClone(initial); mode = 'Operator'; failUpdate = false; pendingReveal = undefined
+  cluster = structuredClone(initial); mode = 'Operator'; failUpdate = false; conflictUpdate = false; pendingReveal = undefined
   fetchMock.mockReset().mockImplementation((input, init) => {
     const url = new URL(String(input), 'http://localhost')
     if (url.pathname.endsWith('/supported-versions')) return json({ from: 16, to: 17, defaultDeploymentMode: mode })
@@ -42,6 +43,10 @@ beforeEach(() => {
     if (url.pathname.endsWith('/postgres/')) return init?.method === 'POST' ? json(cluster) : json(paged([cluster]))
     if (url.pathname.endsWith('/postgres/database')) {
       if (init?.method === 'PUT') {
+        if (conflictUpdate) {
+          cluster = { ...cluster, revision: 2, spec: { ...cluster.spec, instances: 3 } }
+          return Promise.resolve(new Response(JSON.stringify({ code: 'postgres.update.concurrent-change', title: 'Configuration changed' }), { status: 409 }))
+        }
         if (failUpdate) return Promise.resolve(new Response(JSON.stringify({ title: 'Validation failed', errors: { 'Body.Storage': ['Cannot shrink storage.'] } }), { status: 400 }))
         cluster = { ...cluster, revision: cluster.revision + 1, spec: { ...cluster.spec, ...JSON.parse(init.body as string) } }
       }
@@ -51,7 +56,7 @@ beforeEach(() => {
     if (url.pathname.endsWith('/resource-groups/group')) return json({ id: 'group', name: 'Applications', tags: [], description: '', resourceCount: 1 })
     if (url.pathname.endsWith('/isolation-scopes')) return json([{ id: 'scope', resourceGroupId: 'group', name: 'Production', isDefault: true, lifecycle: 'active' }])
     if (url.pathname.endsWith('/deployment-targets/available')) return json([{ id: 'target', displayName: 'Local cluster' }])
-    if (url.pathname.endsWith('/compute-profiles/available')) return json([{ id: 'small', displayName: 'Small', isDefault: true }])
+    if (url.pathname.endsWith('/compute-profiles/available')) return json([{ id: 'small', displayName: 'Small', isDefault: true }, { id: 'large', displayName: 'Large', isDefault: false }])
     if (url.pathname.endsWith('/storage-profiles')) return json([{ id: 'disk', displayName: 'Standard disk', isDefault: true }])
     return json([])
   })
@@ -116,7 +121,7 @@ it('preserves configuration drafts through sections and refresh, confirms dirty 
   expect(text()).toContain('Cannot shrink storage.'); expect(field('Storage per instance (GiB)').value).toBe('2')
   failUpdate = false; await act(async () => field('Instances').closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
   const put = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')!
-  expect(JSON.parse(put[1]!.body as string)).toEqual({ instances: 1, storage: 2 })
+  expect(JSON.parse(put[1]!.body as string)).toEqual({ expectedRevision: 1, storage: 2 })
 })
 
 it('clears revealed values on section change, role downgrade and tenant change', async () => {
@@ -180,3 +185,40 @@ it('confirms closing an unsaved password rotation and clears it after switching 
   expect(field('New database password').value).toBe('')
   expect(JSON.stringify(localStorage)).not.toContain('unsubmitted-value')
 })
+
+ it('requires explicit reapplication of changed fields after a concurrent scale', async () => {
+  await open(); await tab('Configuration'); await fill('Compute profile', 'large')
+  cluster = { ...cluster, revision: 2, spec: { ...cluster.spec, instances: 3, storage: 10 } }
+  await click('Refresh database')
+  expect(field('Instances').value).toBe('1')
+  expect(text()).toContain('The server configuration changed since revision 1')
+  await act(async () => field('Instances').closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+  expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(false)
+  await click('Review and reapply draft'); await click('Reapply changes')
+  expect(field('Instances').value).toBe('3'); expect(field('Storage per instance (GiB)').value).toBe('10')
+  expect(field('Compute profile').value).toBe('large')
+  await act(async () => field('Instances').closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+  const put = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')!
+  expect(JSON.parse(put[1]!.body as string)).toEqual({ expectedRevision: 2, computeProfileId: 'large' })
+ })
+
+ it('discards a conflicting draft in favor of the current server revision', async () => {
+  await open(); await tab('Configuration'); await fill('Storage per instance (GiB)', '2')
+  cluster = { ...cluster, revision: 2, spec: { ...cluster.spec, instances: 3, storage: 10 } }
+  await click('Refresh database'); await click('Discard changes'); await click('Discard changes')
+  expect(field('Instances').value).toBe('3'); expect(field('Storage per instance (GiB)').value).toBe('10')
+  expect(text()).not.toContain('The server configuration changed since revision')
+ })
+
+ it('refreshes a stale write conflict and keeps its draft until explicit review', async () => {
+  await open(); await tab('Configuration'); await fill('Storage per instance (GiB)', '2')
+  conflictUpdate = true
+  await act(async () => field('Instances').closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+  expect(text()).toContain('The server configuration changed since revision 1')
+  expect(field('Storage per instance (GiB)').value).toBe('2')
+  conflictUpdate = false; await click('Review and reapply draft'); await click('Reapply changes')
+  expect(field('Instances').value).toBe('3')
+  await act(async () => field('Instances').closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+  const puts = fetchMock.mock.calls.filter(([, init]) => init?.method === 'PUT')
+  expect(JSON.parse(puts[1]![1]!.body as string)).toEqual({ expectedRevision: 2, storage: 2 })
+ })
