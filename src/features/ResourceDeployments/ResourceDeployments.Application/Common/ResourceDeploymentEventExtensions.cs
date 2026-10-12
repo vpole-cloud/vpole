@@ -20,6 +20,9 @@ internal static class ResourceDeploymentEventExtensions
                     deployment.DesiredGeneration,
                     deployment.ResourceRevision)
                 {
+                    ResourceType = deployment.ResourceType,
+                    ResourceId = deployment.ResourceId,
+                    ResourceGroupId = deployment.ResourceGroupId,
                     EventCore = core
                 },
                 ResourceDeploymentPendingKey.Apply(
@@ -32,6 +35,9 @@ internal static class ResourceDeploymentEventExtensions
                     deployment.DesiredGeneration,
                     deployment.ResourceRevision)
                 {
+                    ResourceType = deployment.ResourceType,
+                    ResourceId = deployment.ResourceId,
+                    ResourceGroupId = deployment.ResourceGroupId,
                     EventCore = core
                 },
                 ResourceDeploymentPendingKey.Delete(
@@ -53,6 +59,7 @@ internal static class ResourceDeploymentEventExtensions
             generation,
             deployment.ResourceRevision)
         {
+            ResourceGroupId = deployment.ResourceGroupId,
             EventCore = EventCore.Create(deployment.TenantId)
         };
 
@@ -70,6 +77,7 @@ internal static class ResourceDeploymentEventExtensions
             failed.Retryable,
             deployment.ResourceRevision)
         {
+            ResourceGroupId = deployment.ResourceGroupId,
             EventCore = EventCore.Create(deployment.TenantId)
         };
 
@@ -83,6 +91,14 @@ internal static class ResourceDeploymentEventExtensions
             deployment.RuntimeCellId,
             generation,
             deployment.ResourceRevision)
+        {
+            ResourceGroupId = deployment.ResourceGroupId,
+            EventCore = EventCore.Create(deployment.TenantId)
+        };
+
+    public static ResourceDeploymentReconciliationStartedEvent ToStartedEvent(this ResourceDeployment deployment) =>
+        new(deployment.Id, deployment.ResourceType, deployment.ResourceId, deployment.ResourceGroupId,
+            deployment.RuntimeCellId, deployment.DesiredGeneration, deployment.DesiredOperation.ToString(), deployment.ResourceRevision)
         {
             EventCore = EventCore.Create(deployment.TenantId)
         };

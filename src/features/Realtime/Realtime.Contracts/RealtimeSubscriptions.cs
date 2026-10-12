@@ -26,5 +26,7 @@ public interface IRealtimeTopicLifecycle
 {
     string Topic { get; }
     Task<bool> SubscribeAsync(RealtimeSubscription subscription, ClaimsPrincipal principal, CancellationToken cancellationToken);
+    /// <summary>Refreshes an interest without replacing its identity or extending its expiry.</summary>
+    Task<bool> RenewAsync(RealtimeSubscription subscription, ClaimsPrincipal principal, CancellationToken cancellationToken);
     Task UnsubscribeAsync(RealtimeSubscription subscription, CancellationToken cancellationToken);
 }

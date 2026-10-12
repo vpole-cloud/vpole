@@ -21,8 +21,9 @@ function BuildLogIdentity({ jobId, webServiceId, onClose }: { jobId: string; web
     const job = await fetchSourceBuildJob(api.baseUrl, jobId, credential(), api.tenantId, signal)
     if (job.webServiceId !== webServiceId) throw new Error('This build is unavailable for the selected service and tenant.')
     return job
-  } })
-  useVisibleRefresh(!job.resource || !['failed', 'succeeded'].includes(job.resource.state.status), job.refresh, 5000)
+  }, realtime: [{ topic: 'source-builds', tenantId: api.tenantId, resourceId: webServiceId }] })
+  useVisibleRefresh(!job.resource || !['failed', 'succeeded'].includes(job.resource.state.status), job.refresh, 5000,
+    [{ topic: 'source-builds', tenantId: api.tenantId, resourceId: webServiceId }])
   if (job.resource?.webServiceId === webServiceId) return <BuildLogCapture job={job.resource} onClose={onClose} />
   return <section className="panel"><div className="panel__header"><h2 className="panel__title">Build logs</h2><Button onClick={onClose}>Close logs</Button></div>
     {job.error || job.resource ? <Notice tone="error">This build is unavailable for the selected service and tenant.<Button onClick={() => void job.refresh()}>Retry build read</Button></Notice> : <EmptyState title="Loading build identity…" />}</section>

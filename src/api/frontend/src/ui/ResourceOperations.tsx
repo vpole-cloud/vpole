@@ -9,6 +9,7 @@ import { Button, ConfirmationDialog, EmptyState, Notice, StatusBadge } from './c
 import { ResourceHealthTarget } from './ResourceHealth'
 import { ResourceRuntimeDiagnostics } from './ResourceRuntimeDiagnostics'
 import { useVisibleRefresh } from '../hooks/useVisibleRefresh'
+import type { RealtimeSubscription } from '../realtime/types'
 
 export function ResourceOperations({ filter = {}, active = true, onRetry, onAccepted }: { filter?: ResourceOperationsFilter; active?: boolean; onRetry?: (operation: ResourceDeploymentOperation, signal: AbortSignal) => Promise<unknown>; onAccepted?: () => Promise<unknown> }) {
   const { api, tenant, navigation } = useAppServices()
@@ -27,10 +28,13 @@ function ResourceOperationsContent({ filter, active, scope, canManage, resourceH
   const apiScope = useApiScope(api)
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<ResourceDeploymentOperation | null>(null)
+  const interest: RealtimeSubscription[] | undefined = !filter.resourceType || filter.resourceType === 'pole/web-service'
+    ? [{ topic: 'operations', tenantId: api.tenantId, resourceId: filter.resourceId }] : undefined
   const operations = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['operations', filter.resourceGroupId ?? null, filter.resourceType ?? null, filter.resourceId ?? null, page],
+    active, realtime: interest,
     load: (signal) => fetchResourceOperations(api.baseUrl, filter, page, apiScope.credential(), api.tenantId, signal) })
   const mutation = useScopedMutation(`${scope}:${canManage}`)
-  useVisibleRefresh(active, operations.refresh)
+  useVisibleRefresh(active, operations.refresh, 20000, interest)
   const value = operations.resource
   const counts = value?.counts
   if (value && operations.status === 'success' && page > Math.max(1, Math.ceil(value.totalCount / value.pageSize))) {

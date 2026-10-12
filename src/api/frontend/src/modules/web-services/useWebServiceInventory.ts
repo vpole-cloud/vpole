@@ -1,6 +1,7 @@
 import { fetchWebServices } from '../../api'
 import { useScopedQuery } from '../../data/useScopedQuery'
 import { useQuerySession } from '../../data/querySession'
+import { useApiScope } from '../../data/useApiScope'
 
 export interface WebServiceInventoryOptions {
   apiBaseUrl: string
@@ -14,12 +15,14 @@ export interface WebServiceInventoryOptions {
 
 export function useWebServiceInventory({ apiBaseUrl, token, tenantId, enabled, pageNumber = 1, pageSize = 8, search = '' }: WebServiceInventoryOptions) {
   const session = useQuerySession()
+  const { credential } = useApiScope({ baseUrl: apiBaseUrl, token, tenantId })
   const query = useScopedQuery({
     scope: [apiBaseUrl, tenantId],
     key: ['web-services', 'inventory', pageNumber, pageSize, search],
     keepPrevious: true,
     enabled: enabled && Boolean(tenantId),
-    load: (signal) => fetchWebServices(apiBaseUrl, token, tenantId, signal, { pageNumber, pageSize, search }),
+    realtime: [{ topic: 'web-services', tenantId }],
+    load: (signal) => fetchWebServices(apiBaseUrl, credential(), tenantId, signal, { pageNumber, pageSize, search }),
   })
   return { items: query.resource?.items ?? [], page: query.resource, status: query.status, error: query.error,
     refresh: query.refresh, isCurrentPage: query.isCurrent,

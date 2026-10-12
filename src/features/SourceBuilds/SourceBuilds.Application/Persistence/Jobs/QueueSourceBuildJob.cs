@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.SourceBuilds.Events;
@@ -50,7 +51,8 @@ internal sealed class MongoQueueSourceBuildJob(
                 await jobs.InsertOneAsync(transaction.Session, job, cancellationToken: ct);
                 await storeOutboxWrites(
                     transaction.Session,
-                    [OutboxWrite.Create(requestedEvent)],
+                    [OutboxWrite.Create(requestedEvent),
+                     OutboxWrite.Create(job.ToStateChangedEvent() with { EventCore = requestedEvent.EventCore })],
                     ct);
                 QueueSourceBuildJobOutcome accepted = job;
                 return transaction.Commit(accepted);

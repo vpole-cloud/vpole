@@ -9,6 +9,49 @@ namespace Pole.Features.Realtime.Tests;
 
 public sealed class RealtimePublisherTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LostTicketRevokesWorkspaceOnlyWithAnExplicitLogoutMarker(bool loggedOut)
+    {
+        const string tenant = "000000000000000000000001";
+        var registry = new RealtimeTopicRegistry([new("fake", RealtimeScope.Tenant)], new());
+        var access = new RealtimeAccess((id, user, _, _) => Task.FromResult<LoadTenantMemberOutcome>(
+                new TenantMemberSnapshot(id, user, TenantMembershipRole.Viewer)),
+            (id, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(id, "name")), registry);
+        var subscriptions = new MemorySubscriptions();
+        await subscriptions.ReplaceAsync("connection", [new("s", "connection", "viewer", new("fake", tenant), DateTimeOffset.UtcNow.AddMinutes(1))], default);
+        // Reproduce a publisher that already acquired its recipient snapshot when logout commits.
+        if (loggedOut) subscriptions.Revoked.Add("viewer");
+        var hub = new RecordingHubContext();
+        await new RealtimePublisher(subscriptions, new MemoryTickets(), access, registry, hub, TimeProvider.System)
+            .PublishAsync(new("fake", tenant, "resource"));
+        Assert.Empty(hub.Client.Notices);
+        Assert.Equal(loggedOut ? 1 : 0, hub.Client.Revocations);
+        Assert.Empty(subscriptions.Connections["connection"]);
+    }
+
+    [Fact]
+    public async Task NaturalTicketExpiryDropsDeliveryWithoutRevokingWorkspacePermissions()
+    {
+        const string tenant = "000000000000000000000001";
+        var registry = new RealtimeTopicRegistry([new("fake", RealtimeScope.Tenant)], new());
+        var access = new RealtimeAccess((id, user, _, _) => Task.FromResult<LoadTenantMemberOutcome>(
+                new TenantMemberSnapshot(id, user, TenantMembershipRole.Viewer)),
+            (id, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(id, "name")), registry);
+        var tickets = new MemoryTickets();
+        await tickets.StoreAsync(new AuthenticationTicket(IdentityFixture.User(),
+            new() { ExpiresUtc = DateTimeOffset.UtcNow.AddSeconds(-1) }, RealtimeFeature.CookieScheme));
+        var subscriptions = new MemorySubscriptions();
+        await subscriptions.ReplaceAsync("connection", [new("s", "connection", "viewer", new("fake", tenant), DateTimeOffset.UtcNow.AddMinutes(1))], default);
+        var hub = new RecordingHubContext();
+        await new RealtimePublisher(subscriptions, tickets, access, registry, hub, TimeProvider.System)
+            .PublishAsync(new("fake", tenant, "resource"));
+        Assert.Empty(hub.Client.Notices);
+        Assert.Equal(0, hub.Client.Revocations);
+        Assert.Empty(subscriptions.Connections["connection"]);
+    }
+
     [Fact]
     public async Task RevocationDuringDeliveryFencesEverySubscriptionOnTheConnection()
     {

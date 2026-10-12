@@ -88,7 +88,8 @@ public sealed class RealtimeSessionHttpTests
         builder.WebHost.UseTestServer();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["Realtime:Enabled"] = "true", ["Realtime:AllowedOrigins:0"] = "https://frontend.test"
+            ["Realtime:Enabled"] = "true",
+            ["Realtime:AllowedOrigins:0"] = "https://frontend.test"
         });
         builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddScheme<AuthenticationSchemeOptions, TestBearer>(JwtBearerDefaults.AuthenticationScheme, _ => { });
@@ -134,14 +135,20 @@ public sealed class RealtimeSessionHttpTests
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
         builder.Host.UseDefaultServiceProvider(options => { options.ValidateOnBuild = true; options.ValidateScopes = true; });
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Realtime:AllowedOrigins:0"] = "https://frontend.test" });
         builder.Services.AddRealtimeFeature(builder.Configuration, development: true);
         await using var app = builder.Build();
         app.UseRealtimeOriginGuard();
+        app.UseCors();
         app.MapRealtimeEndpoints();
         await app.StartAsync();
         await app.Services.GetRequiredService<PublishRealtimeChange>()(new("not-enabled"));
         using var client = app.GetTestClient();
-        Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsync(RealtimeFeature.Route + "/session", null)).StatusCode);
+        client.DefaultRequestHeaders.Add("Origin", "https://frontend.test");
+        var response = await client.PostAsync(RealtimeFeature.Route + "/session", null);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal("https://frontend.test", Assert.Single(response.Headers.GetValues("Access-Control-Allow-Origin")));
+        Assert.Equal("true", Assert.Single(response.Headers.GetValues("Access-Control-Allow-Credentials")));
     }
 
     private sealed class TestBearer(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)

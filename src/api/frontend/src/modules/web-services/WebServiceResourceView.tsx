@@ -30,7 +30,7 @@ export function WebServiceResourceView({ id, section, active, groups, onSection,
     onDirtyChange: (id: string, dirty: boolean) => void; onChanged: () => void }) {
   const { api, tenant, notifications } = useAppServices()
   const { isCurrent } = useApiScope(api)
-  const details = useWebService(id, api)
+  const details = useWebService(id, api, active)
   const manager = useWebServicesManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId,
     enabled: false, refreshAfterMutation: false })
   const builds = useSourceBuildsManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId,
@@ -56,7 +56,11 @@ export function WebServiceResourceView({ id, section, active, groups, onSection,
   const completedBuild = builds.jobs.filter((job) => ['succeeded', 'failed'].includes(job.state.status)).map((job) => `${job.id}:${job.state.status}`).join(',')
   useEffect(() => { if (completedBuild) void refreshDetails() }, [completedBuild, refreshDetails])
   const reconciling = service?.deployments.some((deployment) => ['WaitingForRuntimeCell', 'Pending', 'Reconciling'].includes(deployment.status)) ?? false
-  useVisibleRefresh(active && reconciling, refreshDetails, 2500)
+  useVisibleRefresh(active && reconciling, refreshDetails, 2500, [
+    { topic: 'web-services', tenantId: api.tenantId, resourceId: id },
+    { topic: 'operations', tenantId: api.tenantId, resourceId: id },
+    { topic: 'source-builds', tenantId: api.tenantId, resourceId: id },
+  ])
   useUnsavedChanges(dirty, service?.name ?? 'Web service')
   useEffect(() => {
     onDirtyChange(id, dirty)

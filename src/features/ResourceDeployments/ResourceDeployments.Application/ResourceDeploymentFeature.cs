@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Pole.ASP.Helpers;
+using Pole.Features.Realtime.Contracts;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Diagnostics;
 using Pole.Features.ResourceDeployments.Application.Observation;
@@ -24,6 +25,7 @@ public static class ResourceDeploymentFeature
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        services.AddSingleton(new RealtimeTopic("operations", RealtimeScope.Tenant));
         services.AddHttpProblemMappings(ResourceDeploymentContractHttpMappings.All);
 
         services.TryAddEnumerable(

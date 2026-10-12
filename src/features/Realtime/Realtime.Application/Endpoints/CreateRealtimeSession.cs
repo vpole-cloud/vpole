@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
 using Pole.ASP.Helpers;
 using Pole.Mediator;
 
@@ -67,8 +68,11 @@ public static class CreateRealtimeSessionEndpoint
 {
     public static IEndpointRouteBuilder MapCreateRealtimeSession(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapPost("/session", async (IMediator mediator) =>
+        var enabled = endpoints.ServiceProvider.GetRequiredService<RealtimeOptions>().Enabled;
+        var endpoint = endpoints.MapPost("/session", async (HttpContext context) =>
         {
+            if (!enabled) return Results.NotFound();
+            var mediator = context.RequestServices.GetRequiredService<IMediator>();
             var result = await mediator.Send(new CreateRealtimeSessionRequest());
             return result.ToHttpResult(outcome => outcome switch
             {
@@ -76,7 +80,9 @@ public static class CreateRealtimeSessionEndpoint
                 RealtimeSessionIdentityUnavailable => Results.Unauthorized(),
                 RealtimeSessionAccountMismatch => Results.Conflict(new { code = "realtime.session.account-mismatch" })
             });
-        }).WithoutTenantContext().RequireAuthorization(policy => policy.AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme).RequireAuthenticatedUser());
+        }).WithoutTenantContext();
+        if (enabled) endpoint.RequireAuthorization(policy => policy.AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme).RequireAuthenticatedUser());
+        else endpoint.AllowAnonymous();
         return endpoints;
     }
 }

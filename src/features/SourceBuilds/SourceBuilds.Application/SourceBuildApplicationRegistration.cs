@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
+using Pole.Features.Realtime.Contracts;
 using Pole.Features.SourceBuilds.Application.Execution;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Jobs;
@@ -22,6 +23,7 @@ public static class SourceBuildApplicationRegistration
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        services.AddSingleton(new RealtimeTopic("source-builds", RealtimeScope.Tenant));
         services.Configure<SourceBuildExecutionOptions>(
             configuration.GetSection(SourceBuildExecutionOptions.SectionName));
         services.TryAddSingleton(provider =>
