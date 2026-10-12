@@ -1,4 +1,5 @@
 export type RealtimeTopic = 'source-builds' | 'operations' | 'web-services' | 'tenant-access' | 'resource-groups' | 'workspace-inventory' | 'postgres' | 'redis'
+  | 'compute-profiles' | 'storage-profiles' | 'deployment-targets' | 'compute-eligibility' | 'storage-eligibility' | 'deployment-target-eligibility' | 'secrets' | 'git' | 'search' | 'domains' | 'resource-connections'
 export interface RealtimeSubscription { topic: RealtimeTopic; tenantId?: string; resourceId?: string }
 export interface RealtimeCoverage extends RealtimeSubscription { subscriptionId: string; covered: boolean }
 export type RealtimeWireCoverage = Omit<RealtimeCoverage, 'tenantId' | 'resourceId'> & { tenantId?: string | null; resourceId?: string | null }

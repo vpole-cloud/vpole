@@ -1,4 +1,7 @@
 using MongoDB.Driver;
+using Pole.Database;
+using Pole.Features.Outbox.Contracts;
+using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
 
 namespace Pole.Features.GitProviders.Application.Persistence.Setup;
@@ -7,7 +10,7 @@ namespace Pole.Features.GitProviders.Application.Persistence.Setup;
 /// Mongo protocol for one-time GitHub setup attempts. Its operations share the
 /// setup-state transition protocol and are intentionally kept together.
 /// </summary>
-internal sealed class GitHubSetupPersistence(IMongoDatabase database)
+internal sealed class GitHubSetupPersistence(IMongoDatabase database, MongoRunTransaction transactions, StoreOutboxWrites outbox)
 {
     private readonly IMongoCollection<GitHubSetupAttempt> _attempts =
         database.GetCollection<GitHubSetupAttempt>("GitHubSetupAttempts");
@@ -57,54 +60,78 @@ internal sealed class GitHubSetupPersistence(IMongoDatabase database)
         DateTime now,
         CancellationToken cancellationToken)
     {
-        var globalFilter = GitProviderFilters.ConnectionByInstallation(
-            installation.ExternalInstallationId);
-        var existing = await _connections
-            .Find(globalFilter)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (existing is not null)
-        {
-            if (!string.Equals(existing.TenantId, attempt.TenantId, StringComparison.Ordinal))
-                return null;
-
-            await _connections.UpdateOneAsync(
-                GitProviderFilters.ConnectionById(existing.Id),
-                Builders<GitProviderConnection>.Update
-                    .Set(item => item.AccountId, installation.AccountId)
-                    .Set(item => item.AccountLogin, installation.AccountLogin)
-                    .Set(item => item.AccountType, installation.AccountType)
-                    .Set(item => item.RepositorySelection, installation.RepositorySelection)
-                    .Set(item => item.UpdatedAtUtc, now),
-                cancellationToken: cancellationToken);
-            return existing.Id;
-        }
-
-        var connection = GitProviderConnectionFactory.Create(
-            attempt.TenantId,
-            GitProviderKind.GitHub,
-            installation.ExternalInstallationId,
-            installation.AccountId,
-            installation.AccountLogin,
-            installation.AccountType,
-            installation.RepositorySelection,
-            attempt.InitiatedByUserId,
-            GitProviderConnectionFactory.DefaultOptions with
-            {
-                CreatedAtUtc = now,
-                UpdatedAtUtc = now
-            });
         try
         {
-            await _connections.InsertOneAsync(connection, cancellationToken: cancellationToken);
-            return connection.Id;
+            return await UpsertAsync(attempt, installation, now, cancellationToken);
         }
-        catch (MongoWriteException exception) when (
-            exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
+        catch (ConnectionDiscoveryRace)
         {
-            var raced = await _connections
-                .Find(globalFilter)
-                .FirstOrDefaultAsync(cancellationToken);
-            return raced?.TenantId == attempt.TenantId ? raced.Id : null;
+            return await UpsertAsync(attempt, installation, now, cancellationToken);
         }
     }
+
+    private async Task<string?> UpsertAsync(GitHubSetupAttempt attempt, GitHubInstallationMetadata installation, DateTime now, CancellationToken cancellationToken)
+    {
+        var outcome = await transactions.InvokeOutcomeAsync<UpsertGitProviderConnectionOutcome>(async (tx, ct) =>
+        {
+            var globalFilter = GitProviderFilters.ConnectionByInstallation(
+                installation.ExternalInstallationId);
+            var existing = await _connections
+                .Find(tx.Session, globalFilter)
+                .FirstOrDefaultAsync(ct);
+            if (existing is not null)
+            {
+                if (!string.Equals(existing.TenantId, attempt.TenantId, StringComparison.Ordinal))
+                    return tx.Abort(new GitProviderConnectionOwnershipRejected());
+
+                var changed = await _connections.UpdateOneAsync(tx.Session,
+                    GitProviderFilters.ConnectionById(existing.Id),
+                    Builders<GitProviderConnection>.Update
+                        .Set(item => item.AccountId, installation.AccountId)
+                        .Set(item => item.AccountLogin, installation.AccountLogin)
+                        .Set(item => item.AccountType, installation.AccountType)
+                        .Set(item => item.RepositorySelection, installation.RepositorySelection)
+                        .Set(item => item.UpdatedAtUtc, now),
+                    cancellationToken: ct);
+                if (changed.ModifiedCount == 1)
+                    await outbox(tx.Session, [OutboxWrite.Create(existing.ToChangedEvent())], ct);
+                return tx.Commit(new LinkedGitProviderConnection(existing.Id));
+            }
+
+            var connection = GitProviderConnectionFactory.Create(
+                attempt.TenantId,
+                GitProviderKind.GitHub,
+                installation.ExternalInstallationId,
+                installation.AccountId,
+                installation.AccountLogin,
+                installation.AccountType,
+                installation.RepositorySelection,
+                attempt.InitiatedByUserId,
+                GitProviderConnectionFactory.DefaultOptions with
+                {
+                    CreatedAtUtc = now,
+                    UpdatedAtUtc = now
+                });
+            try
+            {
+                await _connections.InsertOneAsync(tx.Session, connection, cancellationToken: ct);
+            }
+            catch (MongoWriteException exception) when (
+                exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
+            {
+                throw new ConnectionDiscoveryRace(exception);
+            }
+            await outbox(tx.Session, [OutboxWrite.Create(connection.ToChangedEvent())], ct);
+            return tx.Commit(new LinkedGitProviderConnection(connection.Id));
+        }, cancellationToken);
+        return outcome.Value is LinkedGitProviderConnection linked ? linked.Id : null;
+    }
+
+    private sealed class ConnectionDiscoveryRace(MongoWriteException inner) : Exception("A Git connection was discovered concurrently.", inner);
 }
+
+internal sealed record LinkedGitProviderConnection(string Id);
+internal sealed record GitProviderConnectionOwnershipRejected;
+internal union UpsertGitProviderConnectionOutcome(
+    LinkedGitProviderConnection,
+    GitProviderConnectionOwnershipRejected);

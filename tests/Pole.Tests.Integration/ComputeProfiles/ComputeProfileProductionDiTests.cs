@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Outbox.Application.Persistence;
 using Pole.Features.ComputeProfiles.Application;
 using Pole.Features.ComputeProfiles.Application.Bootstrap;
 using Pole.Features.ComputeProfiles.Application.Persistence;
@@ -42,6 +43,7 @@ public sealed class ComputeProfileProductionDiTests(MongoReplicaSetFixture fixtu
         services.AddSingleton<EnsureComputeProfileUnreferenced>(
             (_, _, _) => Task.FromResult<EnsureComputeProfileUnreferencedOutcome>(
                 new ComputeProfileUnreferenced()));
+        services.AddOutboxPersistence();
         services.AddComputeProfilesFeature();
 
         Assert.DoesNotContain(services, descriptor =>

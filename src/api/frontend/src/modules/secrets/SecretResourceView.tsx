@@ -18,10 +18,10 @@ export function SecretResourceView({ id, section, active, onSection, actions }: 
   const { api, tenant, navigation, resourceTypes } = useAppServices()
   const origin = useSecretScope()
   const scope = `${origin.writeIdentity}:${id}`
-  const details = useSecretQuery(['secrets', 'detail', id], (token, signal) => fetchSecret(api.baseUrl, id, token, api.tenantId, signal), { enabled: true, interval: active && section === 'projections' ? 5000 : false })
+  const details = useSecretQuery(['secrets', 'detail', id], (token, signal) => fetchSecret(api.baseUrl, id, token, api.tenantId, signal), { active, interval: section === 'projections' ? 5000 : false })
   const secret = details.resource
-  const group = useSecretQuery(['resource-groups', 'detail', secret?.resourceGroupId], (token, signal) => secret ? fetchResourceGroup(api.baseUrl, secret.resourceGroupId, token, api.tenantId, signal) : Promise.resolve(null), { enabled: Boolean(secret) })
-  const scopes = useSecretQuery(eligibilityKeys.scopes(secret?.resourceGroupId), (token, signal) => secret ? fetchIsolationScopes(api.baseUrl, secret.resourceGroupId, token, api.tenantId, signal) : Promise.resolve([]), { enabled: Boolean(secret) })
+  const group = useSecretQuery(['resource-groups', 'detail', secret?.resourceGroupId], (token, signal) => secret ? fetchResourceGroup(api.baseUrl, secret.resourceGroupId, token, api.tenantId, signal) : Promise.resolve(null), { enabled: Boolean(secret), active })
+  const scopes = useSecretQuery(eligibilityKeys.scopes(secret?.resourceGroupId), (token, signal) => secret ? fetchIsolationScopes(api.baseUrl, secret.resourceGroupId, token, api.tenantId, signal) : Promise.resolve([]), { enabled: Boolean(secret), active })
   const mutation = useScopedMutation(scope)
   const [deleting, setDeleting] = useState(false)
   const onLoaded = actions.loaded

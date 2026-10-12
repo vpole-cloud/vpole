@@ -1,4 +1,6 @@
 using MongoDB.Driver;
+using Pole.Database;
+using Pole.Features.Outbox.Contracts;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
 
@@ -15,20 +17,24 @@ public delegate Task<PersistDeletedSourceRepositoryOutcome> DeleteSourceReposito
     string sourceRepositoryId,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoDeleteSourceRepository(IMongoDatabase database)
+internal sealed class MongoDeleteSourceRepository(IMongoDatabase database, MongoRunTransaction transactions, StoreOutboxWrites outbox)
 {
     public async Task<PersistDeletedSourceRepositoryOutcome> InvokeAsync(
         string tenantId,
         string sourceRepositoryId,
         CancellationToken cancellationToken = default)
     {
-        var deleted = await database
-            .GetCollection<SourceRepository>("SourceRepositories")
-            .DeleteOneAsync(
-                GitProviderFilters.SourceRepositoryByTenantAndId(tenantId, sourceRepositoryId),
-                cancellationToken);
-        return deleted.DeletedCount == 0
-            ? new SourceRepositoryNotFound(sourceRepositoryId)
-            : new SourceRepositoryDeleted();
+        return await transactions.InvokeOutcomeAsync<PersistDeletedSourceRepositoryOutcome>(async (tx, ct) =>
+        {
+            var deleted = await database
+                .GetCollection<SourceRepository>("SourceRepositories")
+                .FindOneAndDeleteAsync(tx.Session,
+                    GitProviderFilters.SourceRepositoryByTenantAndId(tenantId, sourceRepositoryId),
+                    cancellationToken: ct);
+            if (deleted is null)
+                return tx.Abort(new SourceRepositoryNotFound(sourceRepositoryId));
+            await outbox(tx.Session, [OutboxWrite.Create(deleted.ToChangedEvent())], ct);
+            return tx.Commit(new SourceRepositoryDeleted());
+        }, cancellationToken);
     }
 }

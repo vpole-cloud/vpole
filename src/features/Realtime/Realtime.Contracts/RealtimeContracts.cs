@@ -29,3 +29,8 @@ public sealed record RealtimeChange(
 public delegate Task PublishRealtimeChange(
     RealtimeChange change,
     CancellationToken cancellationToken = default);
+
+/// <summary>Invalidates public eligibility for subscribed tenants, without sharing platform IDs or data.</summary>
+public delegate Task InvalidateRealtimeTenants(
+    string topic,
+    CancellationToken cancellationToken = default);

@@ -1,5 +1,7 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Outbox.Contracts;
+using Pole.Features.DeploymentTargets.Events;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Persistence.References;
 using Pole.Features.DeploymentTargets.Contracts;
@@ -8,6 +10,10 @@ using Pole.Features.DeploymentTargets.Domain;
 namespace Pole.Features.DeploymentTargets.Application.Persistence.Mutations;
 
 public sealed record DeploymentTargetDeleted(string DeploymentTargetId);
+
+internal union PersistDeploymentTargetDeletionFenceOutcome(
+    DeploymentTarget,
+    DeploymentTargetRevisionConflict);
 
 public union DeleteDeploymentTargetError(
     DeploymentTargetNotFound,
@@ -28,7 +34,9 @@ internal sealed class MongoDeleteDeploymentTarget(
     IMongoCollection<DeploymentTargetSettings> settings,
     EnsureNoDeploymentTargetReferences ensureNoDeploymentTargetReferences,
     RunMongoOutcomeTransaction<DeleteDeploymentTargetPersistenceOutcome> runMongoTransaction,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    RunMongoOutcomeTransaction<PersistDeploymentTargetDeletionFenceOutcome> runFenceTransaction,
+    StoreOutboxWrites storeOutboxWrites)
 {
     public async Task<DeleteDeploymentTargetPersistenceOutcome> InvokeAsync(
         string deploymentTargetId,
@@ -52,29 +60,26 @@ internal sealed class MongoDeleteDeploymentTarget(
         {
             var deletionRequested = target.RequestDeletion(
                 DeploymentTargetClock.UtcNowAfter(timeProvider, target.UpdatedAtUtc));
-            var persistedFence = await deploymentTargets.FindOneAndUpdateAsync(
-                DeploymentTargetFilters.AtReferenceFenceBeforeDeletion(target),
-                Builders<DeploymentTarget>.Update.Combine(
-                    Builders<DeploymentTarget>.Update.Set(
-                        item => item.AcceptsWorkloads,
-                        deletionRequested.AcceptsWorkloads),
-                    Builders<DeploymentTarget>.Update.Set(
-                        item => item.DeletionRequestedAtUtc,
-                        deletionRequested.DeletionRequestedAtUtc),
-                    Builders<DeploymentTarget>.Update.Set(
-                        item => item.Revision,
-                        deletionRequested.Revision),
-                    Builders<DeploymentTarget>.Update.Set(
-                        item => item.UpdatedAtUtc,
-                        deletionRequested.UpdatedAtUtc)),
-                new FindOneAndUpdateOptions<DeploymentTarget>
-                {
-                    ReturnDocument = ReturnDocument.After
-                },
-                cancellationToken);
-            if (persistedFence is null)
-                return Error(new DeploymentTargetRevisionConflict(target.Id));
-            fencedTarget = persistedFence;
+            var fenceOutcome = await runFenceTransaction(async (transaction, ct) =>
+            {
+                var persistedFence = await deploymentTargets.FindOneAndUpdateAsync(
+                    transaction.Session,
+                    DeploymentTargetFilters.AtReferenceFenceBeforeDeletion(target),
+                    Builders<DeploymentTarget>.Update.Combine(
+                        Builders<DeploymentTarget>.Update.Set(item => item.AcceptsWorkloads, deletionRequested.AcceptsWorkloads),
+                        Builders<DeploymentTarget>.Update.Set(item => item.DeletionRequestedAtUtc, deletionRequested.DeletionRequestedAtUtc),
+                        Builders<DeploymentTarget>.Update.Set(item => item.Revision, deletionRequested.Revision),
+                        Builders<DeploymentTarget>.Update.Set(item => item.UpdatedAtUtc, deletionRequested.UpdatedAtUtc)),
+                    new FindOneAndUpdateOptions<DeploymentTarget> { ReturnDocument = ReturnDocument.After }, ct);
+                if (persistedFence is null)
+                    return transaction.Abort(new DeploymentTargetRevisionConflict(target.Id));
+                await storeOutboxWrites(transaction.Session,
+                    [OutboxWrite.Create(new DeploymentTargetCatalogChangedEvent(persistedFence.Id, persistedFence.Revision))], ct);
+                return transaction.Commit(persistedFence);
+            }, cancellationToken);
+            if (fenceOutcome is DeploymentTargetRevisionConflict conflict)
+                return Error(conflict);
+            fencedTarget = (DeploymentTarget)fenceOutcome.Value;
         }
 
         var references = await ensureNoDeploymentTargetReferences(
@@ -105,9 +110,11 @@ internal sealed class MongoDeleteDeploymentTarget(
                 transaction.Session,
                 DeploymentTargetFilters.AtDeletionFence(current),
                 cancellationToken: ct);
-            return deletion.DeletedCount == 1
-                ? transaction.Commit(new DeploymentTargetDeleted(current.Id))
-                : transaction.Abort(Error(new DeploymentTargetRevisionConflict(current.Id)));
+            if (deletion.DeletedCount != 1)
+                return transaction.Abort(Error(new DeploymentTargetRevisionConflict(current.Id)));
+            await storeOutboxWrites(transaction.Session,
+                [OutboxWrite.Create(new DeploymentTargetCatalogChangedEvent(current.Id, current.Revision))], ct);
+            return transaction.Commit(new DeploymentTargetDeleted(current.Id));
         }, cancellationToken);
     }
 

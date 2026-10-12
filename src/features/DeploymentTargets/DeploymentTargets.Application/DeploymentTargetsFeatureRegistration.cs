@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Pole.ASP.Helpers;
+using Pole.Features.Realtime.Contracts;
 using Pole.Features.DeploymentTargets.Application.Bootstrap;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
@@ -22,6 +23,8 @@ public static class DeploymentTargetsFeatureRegistration
         services.AddHttpProblemMappings(DeploymentTargetContractHttpMappings.All);
         services.TryAddSingleton(TimeProvider.System);
         services.AddDeploymentTargetPersistence();
+        services.AddSingleton(new RealtimeTopic("deployment-targets", RealtimeScope.Platform));
+        services.AddSingleton(new RealtimeTopic("deployment-target-eligibility", RealtimeScope.Tenant));
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<
                 IValidateOptions<DeploymentTargetOptions>,

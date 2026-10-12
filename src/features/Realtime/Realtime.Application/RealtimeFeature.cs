@@ -35,6 +35,7 @@ public static class RealtimeFeature
         if (!configuration.GetValue<bool>("Realtime:Enabled"))
         {
             services.AddSingleton<PublishRealtimeChange>((_, _) => Task.CompletedTask);
+            services.AddSingleton<InvalidateRealtimeTenants>((_, _) => Task.CompletedTask);
             return services;
         }
         services.AddHttpContextAccessor();
@@ -54,6 +55,7 @@ public static class RealtimeFeature
         services.AddScoped<RealtimeAccess>();
         services.AddScoped<RealtimePublisher>();
         services.AddScoped<PublishRealtimeChange>(provider => provider.GetRequiredService<RealtimePublisher>().PublishAsync);
+        services.AddScoped<InvalidateRealtimeTenants>(provider => provider.GetRequiredService<RealtimePublisher>().InvalidateTenantsAsync);
         return services;
     }
 

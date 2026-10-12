@@ -1,5 +1,7 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Outbox.Contracts;
+using Pole.Features.DeploymentTargets.Events;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Persistence.References;
 using Pole.Features.DeploymentTargets.Domain;
@@ -22,7 +24,8 @@ public delegate Task<PersistCreatedDeploymentTargetOutcome>
 internal sealed class MongoPersistCreatedDeploymentTarget(
     IMongoCollection<DeploymentTarget> deploymentTargets,
     EnsureNoOverlappingDeploymentTargetPublicBaseDomain ensureNoOverlappingPublicBaseDomain,
-    RunMongoOutcomeTransaction<PersistCreatedDeploymentTargetOutcome> runMongoTransaction)
+    RunMongoOutcomeTransaction<PersistCreatedDeploymentTargetOutcome> runMongoTransaction,
+    StoreOutboxWrites storeOutboxWrites)
 {
     public async Task<PersistCreatedDeploymentTargetOutcome> InvokeAsync(
         DeploymentTarget deploymentTarget,
@@ -49,8 +52,9 @@ internal sealed class MongoPersistCreatedDeploymentTarget(
                     transaction.Session,
                     deploymentTarget,
                     cancellationToken: ct);
-                return transaction.Commit(
-                    deploymentTarget);
+                await storeOutboxWrites(transaction.Session,
+                    [OutboxWrite.Create(new DeploymentTargetCatalogChangedEvent(deploymentTarget.Id, deploymentTarget.Revision))], ct);
+                return transaction.Commit(deploymentTarget);
             }, cancellationToken);
         }
         catch (MongoWriteException exception) when (

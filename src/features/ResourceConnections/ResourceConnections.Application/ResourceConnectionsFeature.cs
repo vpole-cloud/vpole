@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Realtime.Contracts;
 using Pole.Features.ResourceConnections.Application.Endpoints;
 using Pole.Features.ResourceConnections.Application.Jobs;
 using Pole.Features.ResourceConnections.Application.Kubernetes;
@@ -22,6 +23,7 @@ public static class ResourceConnectionsFeature
     public static IServiceCollection AddResourceConnectionsFeature(
         this IServiceCollection services)
     {
+        services.AddSingleton(new RealtimeTopic("resource-connections", RealtimeScope.Tenant));
         services.TryAddSingleton(provider => provider
             .GetRequiredService<IMongoDatabase>()
             .GetCollection<ResourceConnection>("ResourceConnections"));

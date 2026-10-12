@@ -15,6 +15,10 @@ type RoleClaims = {
   realm_access?: { roles?: string[] }
   resource_access?: Record<string, { roles?: string[] }>
 }
+const hasPlatformAdminClaim = (claims?: RoleClaims) => [
+  ...(claims?.roles ?? []), ...(claims?.realm_access?.roles ?? []),
+  ...Object.values(claims?.resource_access ?? {}).flatMap(resource => resource.roles ?? []),
+].includes('pole-platform-admin')
 
 const initialViewId = readIntegrationNavigation(
   window.location.search, appRegistry.views.map((view) => view.id),
@@ -27,6 +31,7 @@ function App() {
   return <SessionQueries identity={identity}><RealtimeProvider baseUrl={import.meta.env.VITE_API_BASE_URL as string}
     token={keycloak.authenticated ? keycloak.token : undefined}
     userId={keycloak.subject}
+    platformAdminClaim={hasPlatformAdminClaim(keycloak.tokenParsed as RoleClaims | undefined)}
     enabled={Boolean(keycloak.authenticated) && import.meta.env.VITE_REALTIME_ENABLED !== 'false'}>
     <AuthenticatedWorkspace />
   </RealtimeProvider></SessionQueries>
@@ -40,14 +45,10 @@ function AuthenticatedWorkspace() {
   const token = authenticated ? keycloak.token : undefined
   const tenants = useTenants(apiBaseUrl, token, initialized && authenticated, keycloak.subject ?? '')
   const claims = keycloak.tokenParsed as RoleClaims | undefined
-  const roles = [
-    ...(claims?.roles ?? []), ...(claims?.realm_access?.roles ?? []),
-    ...Object.values(claims?.resource_access ?? {}).flatMap((resource) => resource.roles ?? []),
-  ]
   return <AppShell registry={appRegistry} initialViewId={initialViewId} tenants={tenants}
     api={{ baseUrl: apiBaseUrl, token }} auth={{
       initialized, authenticated, userId: keycloak.subject ?? '',
-      userName: keycloak.tokenParsed?.preferred_username, isPlatformAdmin: roles.includes('pole-platform-admin'),
+      userName: keycloak.tokenParsed?.preferred_username, isPlatformAdmin: hasPlatformAdminClaim(claims) && (realtime?.platformAllowed(apiBaseUrl) ?? true),
       login: () => { void keycloak.login() }, logout: () => { void (async () => { await realtime?.logout(); await keycloak.logout() })() },
     }} />
 }

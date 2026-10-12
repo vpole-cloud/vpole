@@ -1,6 +1,7 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Outbox.Application.Persistence.Writes;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
@@ -293,7 +294,9 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
                 ensureNoDeploymentTargetReferences,
                 new MongoRunTransaction(fixture.Client)
                     .InvokeOutcomeAsync<DeleteDeploymentTargetPersistenceOutcome>,
-                timeProvider ?? TimeProvider.System).InvokeAsync,
+                timeProvider ?? TimeProvider.System,
+                new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<PersistDeploymentTargetDeletionFenceOutcome>,
+                new MongoStoreOutboxWrites(fixture.Database).InvokeAsync).InvokeAsync,
             new NoOpClientCache().Invalidate);
 
     private ApplyDeploymentTargetReferenceChanges CreateAdmission() =>

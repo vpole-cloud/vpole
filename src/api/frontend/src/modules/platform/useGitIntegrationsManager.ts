@@ -5,6 +5,7 @@ import { useApiScope } from '../../data/useApiScope'
 import { useScopedQuery } from '../../data/useScopedQuery'
 import { useScopedMutation } from '../../hooks/useScopedMutation'
 import type { LoadStatus } from '../../types'
+import { gitInterests, staleGitAnalysis } from './gitRealtime'
 
 interface UseGitIntegrationsManagerOptions { apiBaseUrl: string; token?: string; tenantId?: string; enabled: boolean; canManage?: boolean; preferredConnectionId?: string }
 export function useGitIntegrationsManager({ apiBaseUrl, token, tenantId, enabled, canManage = true, preferredConnectionId }: UseGitIntegrationsManagerOptions) {
@@ -23,12 +24,16 @@ export function useGitIntegrationsManager({ apiBaseUrl, token, tenantId, enabled
   const repositoryPage = pages.identity === identity && pages.connection === selection.connectionId ? pages.repositories : 1
   const branchPage = pages.identity === identity && pages.connection === selection.connectionId && pages.repository === selection.repositoryId ? pages.branches : 1
   const connections = useScopedQuery({ scope: [apiBaseUrl, tenantId], key: ['git', 'connections'], enabled,
+    realtime: gitInterests(tenantId, ['git', 'connections']),
     load: (signal) => fetchGitProviderConnections(apiBaseUrl, origin.credential(), tenantId, signal) })
   const sources = useScopedQuery({ scope: [apiBaseUrl, tenantId], key: ['git', 'sources'], enabled,
+    realtime: gitInterests(tenantId, ['git', 'sources']),
     load: (signal) => fetchSourceRepositories(apiBaseUrl, origin.credential(), tenantId, signal) })
   const repositoryQuery = useScopedQuery({ scope: [apiBaseUrl, tenantId], key: ['git', 'repositories', selection.connectionId, repositoryPage], enabled: enabled && Boolean(selection.connectionId),
+    realtime: [], interval: 60000,
     load: (signal) => fetchProviderRepositories(apiBaseUrl, selection.connectionId!, origin.credential(), tenantId, signal, repositoryPage) })
   const branchQuery = useScopedQuery({ scope: [apiBaseUrl, tenantId], key: ['git', 'branches', selection.connectionId, selection.repositoryId, branchPage], enabled: enabled && Boolean(selection.connectionId && selection.repositoryId),
+    realtime: [], interval: 60000,
     load: (signal) => fetchProviderBranches(apiBaseUrl, selection.connectionId!, selection.repositoryId!, origin.credential(), tenantId, signal, branchPage) })
   const loadedIds = JSON.stringify(connections.resource?.map((connection) => connection.id) ?? [])
   useEffect(() => {
@@ -44,6 +49,9 @@ export function useGitIntegrationsManager({ apiBaseUrl, token, tenantId, enabled
   const mutation = useScopedMutation(identity)
   const analysisIdentity = `${identity}:${selection.connectionId}:${selection.repositoryId}:${selection.branch}`
   const analysisMutation = useScopedMutation(analysisIdentity)
+  const [analysisEvidence, setAnalysisEvidence] = useState<{ analysis: typeof selection.analysis; snapshot: unknown } | null>(null)
+  const analysisStale = staleGitAnalysis(selection.analysis, branchQuery.resource?.items ?? [], branchPage === 1 && branchQuery.resource?.hasMore === false,
+    selection.analysis === analysisEvidence?.analysis && branchQuery.resource !== analysisEvidence?.snapshot)
   const invalidate = async () => {
     await origin.session.client.invalidateQueries({ queryKey: origin.key(['git']), refetchType: 'active' })
     if (!current()) return
@@ -69,12 +77,12 @@ export function useGitIntegrationsManager({ apiBaseUrl, token, tenantId, enabled
     const command = { connection: selection.connectionId, repository: selection.repositoryId, branch: selection.branch }
     try {
       await analysisMutation.run((signal) => analyzeProviderRepository(apiBaseUrl, command.connection, command.repository, command.branch, origin.credential(), tenantId, signal), (analysis) => {
-        if (current()) dispatch({ type: 'analysisLoaded', analysis })
+        if (current()) { setAnalysisEvidence({ analysis, snapshot: branchQuery.resource }); dispatch({ type: 'analysisLoaded', analysis }) }
       })
     } catch { /* Scoped error is displayed. */ }
   }
   const link = async () => {
-    if (!selection.connectionId || !selection.repositoryId || !selection.branch || !selection.candidateKey) return
+    if (analysisStale || !selection.connectionId || !selection.repositoryId || !selection.branch || !selection.candidateKey) return
     const command = { ...selection }
     await write((signal) => linkProviderRepository(apiBaseUrl, command.connectionId!, command.repositoryId!, command.branch, command.candidateKey!, origin.credential(), tenantId, signal))
   }
@@ -95,7 +103,7 @@ export function useGitIntegrationsManager({ apiBaseUrl, token, tenantId, enabled
     status: (connections.status !== 'success' ? connections.status : sources.status) as LoadStatus,
     repositoryStatus: repositoryQuery.status, branchStatus: branchQuery.status,
     actionStatus: (mutation.busy || analysisMutation.busy ? 'loading' : actionError ? 'error' : accepted === identity || selection.analysis ? 'success' : 'idle') as LoadStatus,
-    error, actionError: actionError instanceof Error ? actionError.message : '', busySourceRepositoryId: busySource?.identity === identity ? busySource.id : null,
+    error, analysisStale, actionError: actionError instanceof Error ? actionError.message : '', busySourceRepositoryId: busySource?.identity === identity ? busySource.id : null,
     repositoryPage, branchPage, hasMoreRepositories: repositoryQuery.resource?.hasMore ?? false, hasMoreBranches: branchQuery.resource?.hasMore ?? false,
     selectRepositoryPage, selectBranchPage, refresh, connectGitHub, selectConnection, selectRepository,
     selectBranch: (branch: string) => dispatch({ type: 'selectBranch', branch }), selectCandidate: (candidateKey: string) => dispatch({ type: 'selectCandidate', candidateKey }), analyze, link,

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Outbox.Application.Persistence;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.StorageProfiles.Application;
 using Pole.Features.StorageProfiles.Application.Discovery;
@@ -28,6 +29,7 @@ public sealed class StorageProfileProductionDiTests(MongoReplicaSetFixture fixtu
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IKubernetesClientProvider>(
             new FixedKubernetesClientProvider(null!));
+        services.AddOutboxPersistence();
         services.AddStorageProfilesFeature();
 
         Assert.DoesNotContain(services, descriptor =>

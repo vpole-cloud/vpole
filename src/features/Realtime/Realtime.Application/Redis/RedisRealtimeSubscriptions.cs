@@ -17,10 +17,11 @@ public sealed class RedisRealtimeSubscriptions(
         string ConnectionKey,
         string SessionKey,
         string RevokedKey,
-        long ExpiresAt);
+        long ExpiresAt,
+        string? AllTopicKey = null);
 
     // Every index expires with its last member. Removing/replacing a connection adjusts
-    // all three indices in the same Lua execution, including members whose data expired.
+    // all indices in the same Lua execution, including members whose data expired.
     private const string Helpers = """
         local now = tonumber(ARGV[1])
         local dataPrefix = ARGV[2]
@@ -37,6 +38,10 @@ public sealed class RedisRealtimeSubscriptions(
                 for _, key in ipairs({entry.topicKey, entry.connectionKey, entry.sessionKey}) do
                     redis.call('ZREM', key, id)
                     trim(key)
+                end
+                if entry.allTopicKey and entry.allTopicKey ~= cjson.null then
+                    redis.call('ZREM', entry.allTopicKey, id)
+                    trim(entry.allTopicKey)
                 end
                 redis.call('DEL', dataPrefix .. id)
             end
@@ -60,6 +65,8 @@ public sealed class RedisRealtimeSubscriptions(
                     redis.call('ZADD', key, entry.expiresAt, id)
                     trim(key)
                 end
+                redis.call('ZADD', entry.allTopicKey, entry.expiresAt, id)
+                trim(entry.allTopicKey)
             end
         end
         return 1
@@ -119,7 +126,8 @@ public sealed class RedisRealtimeSubscriptions(
         var entries = subscriptions.Select(subscription => new Entry(subscription,
             RealtimeRedisKeys.Topic(subscription.Request.Topic, subscription.Request.TenantId),
             RealtimeRedisKeys.Connection(connectionId), RealtimeRedisKeys.Session(subscription.SessionId),
-            RealtimeRedisKeys.Revoked(subscription.SessionId), subscription.ExpiresAtUtc.ToUnixTimeMilliseconds()));
+            RealtimeRedisKeys.Revoked(subscription.SessionId), subscription.ExpiresAtUtc.ToUnixTimeMilliseconds(),
+            RealtimeRedisKeys.AllTopic(subscription.Request.Topic)));
         var result = await EvaluateAsync(ReplaceScript, [RealtimeRedisKeys.Connection(connectionId)],
             [clock.GetUtcNow().ToUnixTimeMilliseconds(), RealtimeRedisKeys.SubscriptionPrefix,
                 JsonSerializer.Serialize(entries, JsonOptions)], cancellationToken);
@@ -132,8 +140,14 @@ public sealed class RedisRealtimeSubscriptions(
                 subscriptionIds is null ? "" : JsonSerializer.Serialize(subscriptionIds, JsonOptions)], cancellationToken);
 
     public async Task<IReadOnlyList<RealtimeSubscription>> FindAsync(string topic, string? tenantId, CancellationToken cancellationToken)
+        => await FindByIndexAsync(RealtimeRedisKeys.Topic(topic, tenantId), cancellationToken);
+
+    public async Task<IReadOnlyList<RealtimeSubscription>> FindAllAsync(string topic, CancellationToken cancellationToken)
+        => await FindByIndexAsync(RealtimeRedisKeys.AllTopic(topic), cancellationToken);
+
+    private async Task<IReadOnlyList<RealtimeSubscription>> FindByIndexAsync(RedisKey key, CancellationToken cancellationToken)
     {
-        var result = await EvaluateAsync(FindScript, [RealtimeRedisKeys.Topic(topic, tenantId)],
+        var result = await EvaluateAsync(FindScript, [key],
             [clock.GetUtcNow().ToUnixTimeMilliseconds(), RealtimeRedisKeys.SubscriptionPrefix], cancellationToken);
         return ((RedisResult[])result!).Select(value =>
             JsonSerializer.Deserialize<Entry>((string)value!, JsonOptions)!.Subscription).ToArray();

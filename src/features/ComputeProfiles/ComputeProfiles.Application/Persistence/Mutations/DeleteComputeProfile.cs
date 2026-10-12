@@ -1,5 +1,7 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Outbox.Contracts;
+using Pole.Features.ComputeProfiles.Events;
 using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Endpoints;
 using Pole.Features.ComputeProfiles.Application.Persistence.References;
@@ -24,7 +26,8 @@ internal sealed class MongoDeleteComputeProfile(
     IMongoCollection<ComputeProfile> computeProfiles,
     ApplyDeploymentTargetReferenceChanges applyTargetReferenceChanges,
     EnsureComputeProfileUnreferenced ensureResourceDeploymentUnreferenced,
-    RunMongoOutcomeTransaction<DeleteComputeProfileOutcome> runMongoTransaction)
+    RunMongoOutcomeTransaction<DeleteComputeProfileOutcome> runMongoTransaction,
+    StoreOutboxWrites storeOutboxWrites)
 {
     public Task<DeleteComputeProfileOutcome> InvokeAsync(
         string computeProfileId,
@@ -77,11 +80,11 @@ internal sealed class MongoDeleteComputeProfile(
                 profile.TargetMappings.Select(mapping => mapping.DeploymentTargetId),
                 transaction.Session,
                 ct);
-            return references switch
-            {
-                DeploymentTargetReferencesChanged => transaction.Commit(new ComputeProfileDeleted(computeProfileId)),
-                DeploymentTargetReferenceChangeRejected error => transaction.Abort(error)
-            };
+            if (references is DeploymentTargetReferenceChangeRejected error)
+                return transaction.Abort(error);
+            await storeOutboxWrites(transaction.Session,
+                [OutboxWrite.Create(new ComputeProfileCatalogChangedEvent(profile.Id, profile.Revision))], ct);
+            return transaction.Commit(new ComputeProfileDeleted(computeProfileId));
         }, cancellationToken);
 
 }

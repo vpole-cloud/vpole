@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.ASP.Helpers;
+using Pole.Features.Realtime.Contracts;
 using Pole.Features.Secrets.Application.Endpoints;
 using Pole.Features.Secrets.Application.Persistence;
 using Pole.Features.Secrets.Application.Managed;
@@ -16,6 +17,7 @@ public static class SecretFeature
 {
     public static IServiceCollection AddSecretsFeature(this IServiceCollection services)
     {
+        services.AddSingleton(new RealtimeTopic("secrets", RealtimeScope.Tenant));
         services.AddSecretPersistence();
         services.AddScoped<ConsumerSecretReferenceAdmission>();
         services.AddScoped<AdmitConsumerSecretReferences>(sp => sp.GetRequiredService<ConsumerSecretReferenceAdmission>().InvokeAsync);

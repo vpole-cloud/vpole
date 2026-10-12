@@ -1,4 +1,6 @@
 using MongoDB.Driver;
+using Pole.Database;
+using Pole.Features.Outbox.Contracts;
 using Pole.Features.Secrets.Domain;
 
 namespace Pole.Features.Secrets.Application.Persistence;
@@ -9,7 +11,10 @@ public delegate Task<SecretProjection?> ClaimSecretProjection(
     DateTime now,
     CancellationToken ct);
 
-internal sealed class MongoClaimSecretProjection(IMongoCollection<SecretProjection> projections)
+internal sealed class MongoClaimSecretProjection(
+    IMongoCollection<SecretProjection> projections,
+    MongoRunTransaction transactions,
+    StoreOutboxWrites outbox)
 {
     public async Task<SecretProjection?> InvokeAsync(
         SecretProjection desired,
@@ -17,28 +22,55 @@ internal sealed class MongoClaimSecretProjection(IMongoCollection<SecretProjecti
         DateTime now,
         CancellationToken ct)
     {
-        var identity = SecretProjectionFilters.Identity(desired.TenantId, desired.Id);
         try
         {
-            await projections.InsertOneAsync(desired, cancellationToken: ct);
+            return await ClaimAsync(desired, claimId, now, ct);
         }
-        catch (MongoWriteException exception) when (exception.WriteError.Category == ServerErrorCategory.DuplicateKey)
+        catch (ProjectionDiscoveryRace)
         {
-            // Another worker already discovered this projection.
+            // Retry discovery outside the aborted transaction; never continue its snapshot.
+            return await ClaimAsync(desired, claimId, now, ct);
         }
-        var current = await projections.Find(identity).FirstOrDefaultAsync(ct);
-        if (current.DesiredRevision > desired.DesiredRevision ||
-            current.Lease is ClaimedSecretProjection lease && lease.ExpiresAtUtc > now)
-            return null;
-        var claimed = (desired with
-        {
-            AppliedVersion = current.AppliedVersion,
-            StorageRevision = current.StorageRevision
-        }).Claim(claimId, now);
-        return await projections.FindOneAndReplaceAsync(
-            identity & SecretProjectionFilters.Revision(current.StorageRevision),
-            claimed,
-            new FindOneAndReplaceOptions<SecretProjection> { ReturnDocument = ReturnDocument.After },
-            ct);
     }
+
+    private async Task<SecretProjection?> ClaimAsync(SecretProjection desired, string claimId, DateTime now, CancellationToken ct)
+    {
+        var identity = SecretProjectionFilters.Identity(desired.TenantId, desired.Id);
+        var outcome = await transactions.InvokeOutcomeAsync<SecretProjectionMutationOutcome>(async (tx, token) =>
+        {
+            var current = await projections.Find(tx.Session, identity).FirstOrDefaultAsync(token);
+            if (current is not null && (current.DesiredRevision > desired.DesiredRevision ||
+                current.Lease is ClaimedSecretProjection lease && lease.ExpiresAtUtc > now))
+                return tx.Commit(new SecretProjectionMutationSkipped());
+            var claimed = (desired with
+            {
+                AppliedVersion = current?.AppliedVersion,
+                StorageRevision = current?.StorageRevision ?? desired.StorageRevision
+            }).Claim(claimId, now);
+            if (current is null)
+            {
+                try
+                {
+                    await projections.InsertOneAsync(tx.Session, claimed, cancellationToken: token);
+                }
+                catch (MongoWriteException exception) when (exception.WriteError.Category == ServerErrorCategory.DuplicateKey)
+                {
+                    throw new ProjectionDiscoveryRace(exception);
+                }
+            }
+            else
+            {
+                var updated = await projections.ReplaceOneAsync(tx.Session,
+                    identity & SecretProjectionFilters.Revision(current.StorageRevision), claimed, cancellationToken: token);
+                if (updated.ModifiedCount != 1)
+                    return tx.Abort(new SecretProjectionMutationSkipped());
+            }
+            await outbox(tx.Session, [OutboxWrite.Create(claimed.ToChangedEvent())], token);
+            return tx.Commit(new SecretProjectionMutationRecorded(claimed));
+        }, ct);
+        return outcome.Value is SecretProjectionMutationRecorded recorded ? recorded.Projection : null;
+    }
+
+    private sealed class ProjectionDiscoveryRace(MongoWriteException inner)
+        : Exception("A projection was discovered concurrently.", inner);
 }

@@ -10,13 +10,14 @@ import { useAppServices } from '../../shell/AppContext'
 import type { AvailableDeploymentTarget, HostnameBinding, TenantDomainZone, WebService, WebServiceDeployment } from '../../types'
 import { Button, ConfirmationDialog, EmptyState, Field, Notice, StatusBadge } from '../../ui/components'
 import { domainZoneHref } from '../domains/navigation'
+import { domainInterests } from '../domains/realtime'
 
 export function WebServiceDomains({ service, active, onDirtyChange, onChanged }: { service: WebService; active: boolean; onDirtyChange: (dirty: boolean) => void; onChanged: () => Promise<void> }) {
   const { api, tenant, navigation } = useAppServices()
   const { identity, credential } = useApiScope(api)
   const scope = `${identity}:${service.id}`
-  const zones = useWebServiceQuery(['domains', 'zones'], (signal) => fetchDomainZones(api.baseUrl, credential(), api.tenantId, signal))
-  const targets = useWebServiceQuery(eligibilityKeys.targets('pole/web-service', service.isolationScopeId, false), (signal) => fetchAvailableDeploymentTargets(api.baseUrl, service.isolationScopeId ?? undefined, credential(), api.tenantId, signal, false))
+  const zones = useWebServiceQuery(['domains', 'zones'], (signal) => fetchDomainZones(api.baseUrl, credential(), api.tenantId, signal), { active, realtime: domainInterests(api.tenantId) })
+  const targets = useWebServiceQuery(eligibilityKeys.targets('pole/web-service', service.isolationScopeId, false), (signal) => fetchAvailableDeploymentTargets(api.baseUrl, service.isolationScopeId ?? undefined, credential(), api.tenantId, signal, false), { active, realtime: [{ topic: 'deployment-target-eligibility', tenantId: api.tenantId }] })
   const [dirtyTargets, setDirtyTargets] = useState<Record<string, boolean>>({})
   const setDirty = useCallback((id: string, dirty: boolean) => setDirtyTargets((current) => current[id] === dirty ? current : { ...current, [id]: dirty }), [])
   const dirty = service.deployments.some((deployment) => dirtyTargets[deployment.deploymentId])
@@ -39,14 +40,14 @@ function DeploymentDomains({ service, deployment, active, canManage, zones, zone
   const apiScope = useApiScope(api)
   const { identity, credential, isCurrent } = apiScope
   const scope = `${identity}:${service.id}:${deployment.deploymentId}`
-  const bindings = useWebServiceQuery(['web-services', 'hostnames', service.id, deployment.deploymentId, deployment.deploymentRevision, deployment.desiredGeneration], (signal) => fetchWebServiceHostnameBindings(api.baseUrl, service.id, deployment.deploymentId, credential(), api.tenantId, signal))
+  const bindings = useWebServiceQuery(['web-services', 'hostnames', service.id, deployment.deploymentId, deployment.deploymentRevision, deployment.desiredGeneration], (signal) => fetchWebServiceHostnameBindings(api.baseUrl, service.id, deployment.deploymentId, credential(), api.tenantId, signal), { active, realtime: domainInterests(api.tenantId) })
   const mutation = useWebServiceMutation(scope, canManage)
   const [zoneId, setZoneId] = useState(''); const [relativeName, setRelativeName] = useState(''); const [editing, setEditing] = useState<HostnameBinding | null>(null)
   const [removing, setRemoving] = useState<HostnameBinding | null>(null); const [notice, setNotice] = useState('')
   const dirty = Boolean(zoneId || relativeName || editing)
   useEffect(() => { onDirtyChange(deployment.deploymentId, dirty); return () => onDirtyChange(deployment.deploymentId, false) }, [deployment.deploymentId, dirty, onDirtyChange])
   const refreshBindings = bindings.refresh
-  useVisibleRefresh(active && ['WaitingForRuntimeCell', 'Pending', 'Reconciling'].includes(deployment.status), refreshBindings, 2500)
+  useVisibleRefresh(active && ['WaitingForRuntimeCell', 'Pending', 'Reconciling'].includes(deployment.status), refreshBindings, 2500, domainInterests(api.tenantId))
   const eligible = zones.filter((zone) => zone.deploymentTargetId === deployment.deploymentTargetId && zone.kind === 'managed-reservation')
   const selected = eligible.find((zone) => zone.id === zoneId)
   const validName = relativeName.trim().toLowerCase().split('.').every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))

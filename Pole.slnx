@@ -52,6 +52,7 @@
     <Project Path="src/features/Quotas/Quotas.Primitives/Quotas.Primitives.csproj" />
   </Folder>
   <Folder Name="/features/GitProviders/">
+    <Project Path="src/features/GitProviders/GitProviders.Events/GitProviders.Events.csproj" />
     <Project Path="src/features/GitProviders/GitProviders.Application/GitProviders.Application.csproj" />
     <Project Path="src/features/GitProviders/GitProviders.Contracts/GitProviders.Contracts.csproj" />
     <Project Path="src/features/GitProviders/GitProviders.Contracts.HttpMapping/GitProviders.Contracts.HttpMapping.csproj" />
@@ -64,12 +65,14 @@
     <Project Path="src/features/ContainerRegistries/ContainerRegistries.Domain/ContainerRegistries.Domain.csproj" />
   </Folder>
   <Folder Name="/features/DeploymentTargets/">
+    <Project Path="src/features/DeploymentTargets/DeploymentTargets.Events/DeploymentTargets.Events.csproj" />
     <Project Path="src/features/DeploymentTargets/DeploymentTargets.Application/DeploymentTargets.Application.csproj" />
     <Project Path="src/features/DeploymentTargets/DeploymentTargets.Contracts/DeploymentTargets.Contracts.csproj" />
     <Project Path="src/features/DeploymentTargets/DeploymentTargets.Contracts.HttpMapping/DeploymentTargets.Contracts.HttpMapping.csproj" />
     <Project Path="src/features/DeploymentTargets/DeploymentTargets.Domain/DeploymentTargets.Domain.csproj" />
   </Folder>
   <Folder Name="/features/ComputeProfiles/">
+    <Project Path="src/features/ComputeProfiles/ComputeProfiles.Events/ComputeProfiles.Events.csproj" />
     <Project Path="src/features/ComputeProfiles/ComputeProfiles.Application/ComputeProfiles.Application.csproj" />
     <Project Path="src/features/ComputeProfiles/ComputeProfiles.Contracts/ComputeProfiles.Contracts.csproj" />
     <Project Path="src/features/ComputeProfiles/ComputeProfiles.Contracts.HttpMapping/ComputeProfiles.Contracts.HttpMapping.csproj" />
@@ -83,6 +86,7 @@
     <Project Path="src/features/SourceBuilds/SourceBuilds.Tests/SourceBuilds.Tests.csproj" />
   </Folder>
   <Folder Name="/features/Domains/">
+    <Project Path="src/features/Domains/Domains.Events/Domains.Events.csproj" />
     <Project Path="src/features/Domains/Domains.Application/Domains.Application.csproj" />
     <Project Path="src/features/Domains/Domains.Contracts/Domains.Contracts.csproj" />
     <Project Path="src/features/Domains/Domains.Contracts.HttpMapping/Domains.Contracts.HttpMapping.csproj" />
@@ -145,11 +149,13 @@
     <Project Path="src/features/Users/Users.Application/Users.Application.csproj" />
   </Folder>
   <Folder Name="/features/Search/">
+    <Project Path="src/features/Search/Search.Events/Search.Events.csproj" />
     <Project Path="src/features/Search/Search.Application/Search.Application.fsproj" />
     <Project Path="src/features/Search/Search.Contracts/Search.Contracts.csproj" />
     <Project Path="src/features/Search/Search.Domain/Search.Domain.fsproj" />
   </Folder>
   <Folder Name="/features/StorageProfiles/">
+    <Project Path="src/features/StorageProfiles/StorageProfiles.Events/StorageProfiles.Events.csproj" />
     <Project Path="src/features/StorageProfiles/StorageProfiles.Contracts/StorageProfiles.Contracts.csproj" />
     <Project Path="src/features/StorageProfiles/StorageProfiles.Contracts.HttpMapping/StorageProfiles.Contracts.HttpMapping.csproj" />
     <Project Path="src/features/StorageProfiles/StorageProfiles.Domain/StorageProfiles.Domain.csproj" />

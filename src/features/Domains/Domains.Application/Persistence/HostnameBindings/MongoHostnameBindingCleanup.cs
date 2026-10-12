@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Outbox.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
@@ -13,7 +14,8 @@ namespace Pole.Features.Domains.Application.Persistence.HostnameBindings;
 internal sealed class MongoHostnameBindingCleanup(
     IMongoDatabase database,
     ApplyDeploymentTargetReferenceChanges applyDeploymentTargetReferenceChanges,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    StoreOutboxWrites outbox)
 {
     private readonly IMongoCollection<TenantDomainZone> zones =
         database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
@@ -61,10 +63,14 @@ internal sealed class MongoHostnameBindingCleanup(
                     new HostnameBindingCleanupBindingsChanged());
         }
 
-        return await ReleaseGeneratedZonesWithoutBindingsAsync(
+        var result = await ReleaseGeneratedZonesWithoutBindingsAsync(
             persistedZones.Select(WithAdvancedRevision).ToArray(),
             session,
             cancellationToken);
+        if (result is HostnameBindingsCleanedUp)
+            await outbox(session, persistedBindings.Select(binding => OutboxWrite.Create(WithAdvancedRevision(
+                persistedZones.Single(zone => zone.Id == binding.TenantDomainZoneId)).ToChangedEvent(binding.Id))).ToArray(), cancellationToken);
+        return result;
     }
 
     internal async Task<bool> TryAdvanceZoneRevisionsAsync(
@@ -150,6 +156,7 @@ internal sealed class MongoHostnameBindingCleanup(
                             zone.DeploymentTargetId));
             }
         }
+        await outbox(session, releasable.Select(zone => OutboxWrite.Create(zone.ToChangedEvent())).ToArray(), cancellationToken);
 
         return new HostnameBindingsCleanedUp();
     }

@@ -57,6 +57,9 @@ internal sealed class MemorySubscriptions : IRealtimeSubscriptions
     public Task<IReadOnlyList<RealtimeSubscription>> FindAsync(string topic, string? tenantId, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<RealtimeSubscription>>(Connections.Values.SelectMany(value => value)
             .Where(subscription => subscription.Request.Topic == topic && subscription.Request.TenantId == tenantId).ToArray());
+    public Task<IReadOnlyList<RealtimeSubscription>> FindAllAsync(string topic, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<RealtimeSubscription>>(Connections.Values.SelectMany(value => value)
+            .Where(subscription => subscription.Request.Topic == topic).ToArray());
     public Task<IReadOnlyList<string>> RevokeSessionAsync(string sessionId, CancellationToken cancellationToken)
     {
         Revoked.Add(sessionId);

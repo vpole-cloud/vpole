@@ -18,6 +18,7 @@
     <ProjectReference Include="../../ResourceGroups/ResourceGroups.Contracts/ResourceGroups.Contracts.csproj" />
     <ProjectReference Include="../../ResourceDeployments/ResourceDeployments.Contracts/ResourceDeployments.Contracts.csproj" />
     <ProjectReference Include="../../Outbox/Outbox.Contracts/Outbox.Contracts.csproj" />
+    <ProjectReference Include="../../Realtime/Realtime.Contracts/Realtime.Contracts.csproj" />
     <ProjectReference Include="../../../shared/Database/Database.csproj" />
     <ProjectReference Include="../../../shared/Events/Events.csproj" />
     <ProjectReference Include="../../../shared/Multitenancy/Multitenancy.csproj" />

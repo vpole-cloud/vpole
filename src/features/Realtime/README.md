@@ -23,6 +23,14 @@ uses this scope to refresh the caller's membership discovery after its own commi
 It carries no roles, other users or tenant lists. Platform access revocation retains user and
 tenant subscriptions; malformed scopes cannot revoke unrelated permissions.
 
+Platform catalog owners use `InvalidateRealtimeTenants` for public eligibility changes.
+It discovers active tenants through an expiring topic index, then rechecks each recipient's
+session and current tenant permission through normal delivery. These hints contain the tenant
+only; platform IDs, mappings and credentials remain in the separately authorized HTTP APIs.
+Topic indices are changed atomically with replacement, removal and revocation. During a rolling
+upgrade, older subscriptions acquire the additive index on their next replacement; the metadata
+safety refresh continues to cover that bounded transition.
+
 Sessions are bounded by both the JWT expiry and five minutes. Tickets retain only
 issuer, subject, optional identity-provider session ID, role claims and an opaque
 session ID. JWTs, refresh tokens, credentials, resource DTOs and log output are not

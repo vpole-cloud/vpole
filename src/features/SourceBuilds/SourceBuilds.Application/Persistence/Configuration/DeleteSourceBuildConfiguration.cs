@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Outbox.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Domain;
 
@@ -21,7 +22,8 @@ public delegate Task<PersistDeletedSourceBuildConfigurationOutcome>
 internal sealed class MongoDeleteSourceBuildConfiguration(
     IMongoCollection<SourceBuildConfiguration> configurations,
     IMongoCollection<SourceBuildJob> jobs,
-    MongoRunTransaction transactions)
+    MongoRunTransaction transactions,
+    StoreOutboxWrites outbox)
 {
     public Task<PersistDeletedSourceBuildConfigurationOutcome> InvokeAsync(
         string tenantId,
@@ -40,14 +42,16 @@ internal sealed class MongoDeleteSourceBuildConfiguration(
                 return transaction.Abort(rejected);
             }
 
-            var deleted = await configurations.DeleteOneAsync(
+            var deleted = await configurations.FindOneAndDeleteAsync(
                 transaction.Session,
                 SourceBuildConfigurationFilters.ById(tenantId, configurationId),
                 cancellationToken: ct);
-            PersistDeletedSourceBuildConfigurationOutcome outcome = deleted.DeletedCount == 1
+            if (deleted is not null)
+                await outbox(transaction.Session, [OutboxWrite.Create(deleted.ToChangedEvent())], ct);
+            PersistDeletedSourceBuildConfigurationOutcome outcome = deleted is not null
                 ? new SourceBuildConfigurationRemovalRecorded()
                 : new SourceBuildConfigurationNotFound(configurationId);
-            return deleted.DeletedCount == 1
+            return deleted is not null
                 ? transaction.Commit(outcome)
                 : transaction.Abort(outcome);
         }, cancellationToken);

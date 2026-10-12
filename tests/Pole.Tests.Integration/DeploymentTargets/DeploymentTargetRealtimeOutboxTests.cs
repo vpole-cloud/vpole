@@ -1,0 +1,287 @@
+using System.Text.Json;
+using MongoDB.Bson;
+using MongoDB.Driver;
+using Pole.Database;
+using Pole.Features.DeploymentTargets.Application.Common;
+using Pole.Features.DeploymentTargets.Application.Persistence.Bootstrap;
+using Pole.Features.DeploymentTargets.Application.Persistence.Credentials;
+using Pole.Features.DeploymentTargets.Application.Persistence.Mutations;
+using Pole.Features.DeploymentTargets.Application.Persistence.References;
+using Pole.Features.DeploymentTargets.Application.Realtime;
+using Pole.Features.DeploymentTargets.Domain;
+using Pole.Features.DeploymentTargets.Events;
+using Pole.Features.Events.Abstractions;
+using Pole.Features.Outbox.Application.Persistence.Writes;
+using Pole.Features.Outbox.Contracts;
+using Pole.Features.Realtime.Contracts;
+using Pole.Tests.Integration.Infrastructure;
+using Xunit;
+
+namespace Pole.Tests.Integration.DeploymentTargets;
+
+[Collection(IntegrationTestCollection.Name)]
+public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+{
+    private const string EventType = "pole.deployment-targets/v1/deployment-target-catalog-changed";
+    private static readonly DateTime Now = new(2026, 8, 8, 12, 0, 0, DateTimeKind.Utc);
+    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CreateAndBothMetadataUpdateBranchesPersistOnlyIdentityAndRevision(bool changingPublicDomain)
+    {
+        var target = CreateTarget();
+        Assert.IsType<DeploymentTarget>((await CreatePersistence().InvokeAsync(target)).Value);
+        var replacement = MetadataReplacement(target, changingPublicDomain);
+        Assert.IsType<DeploymentTarget>((await UpdatePersistence().InvokeAsync(target, replacement)).Value);
+        var messages = await fixture.DbContext.OutboxMessages.Find(message => message.EventType == EventType).ToListAsync();
+        Assert.Equal(2, messages.Count);
+        foreach (var message in messages)
+        {
+            Assert.Null(message.TenantId);
+            var payload = JsonSerializer.Deserialize<DeploymentTargetCatalogChangedEvent>(message.PayloadJson, EventExtensions.SerializerOptions)!;
+            Assert.Equal(target.Id, payload.DeploymentTargetId);
+            Assert.Equal("", payload.EventCore.TenantId);
+            using var json = JsonDocument.Parse(message.PayloadJson);
+            Assert.Equal(new[] { "deploymentTargetId", "eventCore", "revision" },
+                json.RootElement.EnumerateObject().Select(property => property.Name).Order().ToArray());
+            Assert.DoesNotContain(target.DisplayName, message.PayloadJson);
+            Assert.DoesNotContain(target.ClusterIdentity, message.PayloadJson);
+            Assert.DoesNotContain("private.example.test", message.PayloadJson);
+        }
+    }
+
+    [Theory]
+    [InlineData("create")]
+    [InlineData("update")]
+    [InlineData("public-update")]
+    [InlineData("rotate")]
+    [InlineData("validate")]
+    [InlineData("fence")]
+    [InlineData("delete")]
+    [InlineData("bootstrap-create")]
+    [InlineData("bootstrap-bind")]
+    public async Task OutboxFailureRollsBackEachAcceptedTargetWrite(string operation)
+    {
+        var target = CreateTarget();
+        var creating = operation is "create" or "bootstrap-create";
+        if (operation == "delete") target = target.RequestDeletion(Now.AddSeconds(1));
+        if (!creating) await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        var before = creating ? null : await ReadAsync(target.Id);
+        var realStore = new MongoStoreOutboxWrites(fixture.Database);
+        StoreOutboxWrites failingStore = async (session, writes, ct) =>
+        {
+            await realStore.InvokeAsync(session, writes, ct);
+            throw new InvalidOperationException("controlled target outbox failure");
+        };
+        switch (operation)
+        {
+            case "create":
+                await Assert.ThrowsAsync<InvalidOperationException>(() => CreatePersistence(failingStore).InvokeAsync(target));
+                break;
+            case "update":
+            case "public-update":
+                await Assert.ThrowsAsync<InvalidOperationException>(() => UpdatePersistence(failingStore).InvokeAsync(target,
+                    MetadataReplacement(target, operation == "public-update")));
+                break;
+            case "rotate":
+                await Assert.ThrowsAsync<InvalidOperationException>(() => RotatePersistence(failingStore).InvokeAsync(target, Rotated(target)));
+                break;
+            case "validate":
+                await Assert.ThrowsAsync<InvalidOperationException>(() => ValidationPersistence(failingStore).InvokeAsync(target, Observed(target, 1)));
+                break;
+            case "fence":
+            case "delete":
+                await Assert.ThrowsAsync<InvalidOperationException>(() => DeletePersistence(failingStore).InvokeAsync(target.Id));
+                break;
+            case "bootstrap-create":
+                await Assert.ThrowsAsync<InvalidOperationException>(() => BootstrapPersistence(failingStore).InvokeAsync(new CreateFirstDeploymentTargetAsDefault(target)));
+                break;
+            case "bootstrap-bind":
+                await Assert.ThrowsAsync<InvalidOperationException>(() => BootstrapPersistence(failingStore).InvokeAsync(new BindExistingDeploymentTargetAsDefault(target.Id)));
+                break;
+        }
+        var after = await fixture.DbContext.DeploymentTargets.Find(candidate => candidate.Id == target.Id).SingleOrDefaultAsync();
+        if (before is null) Assert.Null(after);
+        else
+        {
+            Assert.NotNull(after);
+            Assert.Equal(before.Revision, after.Revision);
+            Assert.Equal(before.DisplayName, after.DisplayName);
+            Assert.Equal(before.AcceptsWorkloads, after.AcceptsWorkloads);
+            Assert.Equal(before.DeletionRequestedAtUtc, after.DeletionRequestedAtUtc);
+            Assert.Equal(before.ReferenceFence, after.ReferenceFence);
+            Assert.Equal(before.Connection.Version, after.Connection.Version);
+            Assert.Equal(before.Health, after.Health);
+            Assert.Equal(before.Capabilities, after.Capabilities);
+            Assert.Equal(before.WorkloadConfiguration.ToBsonDocument(), after.WorkloadConfiguration.ToBsonDocument());
+        }
+        Assert.Equal(0, await fixture.DbContext.DeploymentTargetSettings.CountDocumentsAsync(_ => true));
+        Assert.Equal(0, await CountEventsAsync());
+        Assert.Equal(0, await fixture.Database.GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
+            DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName).CountDocumentsAsync(_ => true));
+    }
+
+    [Fact]
+    public async Task ConcurrentAndRepeatedValidationEmitOneMeaningfulTransitionAndKeepFreshCheckTime()
+    {
+        var target = CreateTarget();
+        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        var validation = ValidationPersistence();
+        var results = await Task.WhenAll(validation.InvokeAsync(target, Observed(target, 1)),
+            validation.InvokeAsync(target, Observed(target, 2)));
+        Assert.All(results, result => Assert.IsType<DeploymentTarget>(result.Value));
+        Assert.Equal(1, await CountEventsAsync());
+        // Even this caller's original Unknown snapshot must compare against the current
+        // transaction observation rather than publish another false Healthy transition.
+        Assert.IsType<DeploymentTarget>((await validation.InvokeAsync(target, Observed(target, 3))).Value);
+        var persisted = await ReadAsync(target.Id);
+        Assert.Equal(Now.AddSeconds(3), persisted.Health.LastCheckedAtUtc);
+        Assert.Equal(Now.AddSeconds(3), persisted.Capabilities.ObservedAtUtc);
+        Assert.Equal(target.Revision, persisted.Revision);
+        Assert.Equal(1, await CountEventsAsync());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ValidationAndRotationRejectStaleConfigurationWithoutEvents(bool rotating)
+    {
+        var target = CreateTarget();
+        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target.UpdateMetadata("Changed before result", Now.AddSeconds(1)));
+        if (rotating)
+            Assert.IsType<DeploymentTargetRevisionConflict>((await RotatePersistence().InvokeAsync(target, Rotated(target))).Value);
+        else
+            Assert.IsType<DeploymentTargetRevisionConflict>((await ValidationPersistence().InvokeAsync(target, Observed(target, 2))).Value);
+        Assert.Equal("Changed before result", (await ReadAsync(target.Id)).DisplayName);
+        Assert.Equal(0, await CountEventsAsync());
+    }
+
+    [Fact]
+    public async Task RotationPreservesConcurrentReferenceFenceAndAppendsItsCommittedHint()
+    {
+        var target = CreateTarget();
+        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        await fixture.DbContext.DeploymentTargets.UpdateOneAsync(candidate => candidate.Id == target.Id,
+            Builders<DeploymentTarget>.Update.Set(candidate => candidate.ReferenceFence, 99));
+        var persisted = Assert.IsType<DeploymentTarget>((await RotatePersistence().InvokeAsync(target, Rotated(target))).Value);
+        Assert.Equal(99, persisted.ReferenceFence);
+        Assert.Equal(2, persisted.Connection.Version);
+        Assert.Equal(2, persisted.Revision);
+        Assert.Equal(1, await CountEventsAsync());
+    }
+
+    [Fact]
+    public async Task DeleteCommitsAdmissionFenceOnceAndThenFinalDeletionAfterReferencesClear()
+    {
+        var target = CreateTarget();
+        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        EnsureNoDeploymentTargetReferences blocked = (id, _) => Task.FromResult<EnsureDeploymentTargetUnreferencedOutcome>(
+            new DeploymentTargetHasDurableReferences(id));
+        var deleting = DeletePersistence(references: blocked);
+        Assert.IsType<DeploymentTargetHasDurableReferences>(Assert.IsType<DeleteDeploymentTargetError>((await deleting.InvokeAsync(target.Id)).Value).Value);
+        var fenced = await ReadAsync(target.Id);
+        Assert.False(fenced.AcceptsWorkloads);
+        Assert.NotNull(fenced.DeletionRequestedAtUtc);
+        Assert.Equal(1, await CountEventsAsync());
+        Assert.IsType<DeleteDeploymentTargetError>((await deleting.InvokeAsync(target.Id)).Value);
+        Assert.Equal(1, await CountEventsAsync());
+        Assert.IsType<DeploymentTargetDeleted>((await DeletePersistence().InvokeAsync(target.Id)).Value);
+        Assert.False(await fixture.DbContext.DeploymentTargets.Find(candidate => candidate.Id == target.Id).AnyAsync());
+        Assert.Equal(2, await CountEventsAsync());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BootstrapCreationOrExistingBindingPublishesOnceAndRepeatedBindingIsQuiet(bool bindingExisting)
+    {
+        var target = CreateTarget();
+        if (bindingExisting) await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        EnsureBootstrapDefaultDeploymentTargetRequest request = bindingExisting
+            ? new BindExistingDeploymentTargetAsDefault(target.Id)
+            : new CreateFirstDeploymentTargetAsDefault(target);
+        var bootstrap = BootstrapPersistence();
+        Assert.IsType<BootstrapDefaultDeploymentTargetEnsured>((await bootstrap.InvokeAsync(request)).Value);
+        Assert.IsType<BootstrapDefaultDeploymentTargetEnsured>((await bootstrap.InvokeAsync(request)).Value);
+        Assert.Equal(1, await CountEventsAsync());
+        Assert.Equal(target.Id, (await fixture.DbContext.DeploymentTargetSettings.Find(_ => true).SingleAsync()).DefaultDeploymentTargetId);
+    }
+
+    [Fact]
+    public async Task IdenticalPersistIsQuietButActualMetadataChangeWithUnchangedRevisionStillNotifies()
+    {
+        var target = CreateTarget();
+        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        Assert.IsType<DeploymentTarget>((await UpdatePersistence().InvokeAsync(target, target)).Value);
+        Assert.Equal(0, await CountEventsAsync());
+        var changed = target with { DisplayName = "Legacy caller changed metadata" };
+        Assert.IsType<DeploymentTarget>((await UpdatePersistence().InvokeAsync(target, changed)).Value);
+        Assert.Equal(1, await CountEventsAsync());
+        Assert.IsType<DeploymentTarget>((await RotatePersistence().InvokeAsync(changed, changed)).Value);
+        Assert.Equal(1, await CountEventsAsync());
+    }
+
+    [Fact]
+    public async Task ConsumerSeparatesPrivateTargetIdentityAndAllDependentPublicChoiceLists()
+    {
+        var hints = new List<RealtimeChange>();
+        var topics = new List<string>();
+        var consumer = new NotifyDeploymentTargetCatalogChangedConsumer((hint, _) => { hints.Add(hint); return Task.CompletedTask; },
+            (topic, _) => { topics.Add(topic); return Task.CompletedTask; });
+        await consumer.HandleAsync(new DeploymentTargetCatalogChangedEvent("private-target", 8));
+        var hint = Assert.Single(hints);
+        Assert.Equal("deployment-targets", hint.Topic);
+        Assert.Null(hint.TenantId);
+        Assert.Equal("private-target", hint.ResourceId);
+        Assert.Equal(8, hint.Revision);
+        Assert.Equal(new[] { "deployment-target-eligibility", "compute-eligibility", "storage-eligibility" }, topics);
+    }
+
+    private MongoPersistCreatedDeploymentTarget CreatePersistence(StoreOutboxWrites? store = null) => new(fixture.DbContext.DeploymentTargets,
+        NoOverlap(), Run().InvokeOutcomeAsync<PersistCreatedDeploymentTargetOutcome>, store ?? Store());
+    private MongoPersistUpdatedDeploymentTarget UpdatePersistence(StoreOutboxWrites? store = null) => new(fixture.DbContext.DeploymentTargets,
+        new MongoEnsureNoDeploymentTargetPublicBaseDomainReferences(fixture.DbContext.DeploymentTargetReferences).InvokeAsync,
+        NoOverlap(), Run().InvokeOutcomeAsync<PersistUpdatedDeploymentTargetOutcome>, store ?? Store());
+    private MongoPersistRotatedDeploymentTargetConnection RotatePersistence(StoreOutboxWrites? store = null) => new(fixture.DbContext.DeploymentTargets,
+        Run().InvokeOutcomeAsync<PersistRotatedDeploymentTargetConnectionOutcome>, store ?? Store());
+    private MongoPersistDeploymentTargetValidation ValidationPersistence(StoreOutboxWrites? store = null) => new(fixture.DbContext.DeploymentTargets,
+        Run().InvokeOutcomeAsync<PersistDeploymentTargetValidationOutcome>, store ?? Store());
+    private MongoDeleteDeploymentTarget DeletePersistence(StoreOutboxWrites? store = null, EnsureNoDeploymentTargetReferences? references = null) =>
+        new(fixture.DbContext.DeploymentTargets, fixture.DbContext.DeploymentTargetSettings,
+            references ?? new MongoEnsureNoDeploymentTargetReferences(fixture.DbContext.DeploymentTargetReferences).InvokeAsync,
+            Run().InvokeOutcomeAsync<DeleteDeploymentTargetPersistenceOutcome>, TimeProvider.System,
+            Run().InvokeOutcomeAsync<PersistDeploymentTargetDeletionFenceOutcome>, store ?? Store());
+    private MongoEnsureBootstrapDefaultDeploymentTarget BootstrapPersistence(StoreOutboxWrites? store = null) => new(fixture.DbContext.DeploymentTargets,
+        fixture.DbContext.DeploymentTargetSettings, NoOverlap(), Run().InvokeOutcomeAsync<EnsureBootstrapDefaultDeploymentTargetOutcome>,
+        TimeProvider.System, store ?? Store());
+    private EnsureNoOverlappingDeploymentTargetPublicBaseDomain NoOverlap() => new MongoEnsureNoOverlappingDeploymentTargetPublicBaseDomain(
+        fixture.DbContext.DeploymentTargets, fixture.Database.GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
+            DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName)).InvokeAsync;
+    private MongoRunTransaction Run() => new(fixture.Client);
+    private StoreOutboxWrites Store() => new MongoStoreOutboxWrites(fixture.Database).InvokeAsync;
+    private Task<long> CountEventsAsync() => fixture.DbContext.CountOutboxMessagesAsync(EventType);
+    private Task<DeploymentTarget> ReadAsync(string id) => fixture.DbContext.DeploymentTargets.Find(target => target.Id == id).SingleAsync();
+
+    private static DeploymentTarget CreateTarget()
+    {
+        var id = ObjectId.GenerateNewId().ToString();
+        return DeploymentTargetFactory.Create("Private target name", $"private-cluster:{id}",
+            DeploymentTargetConnectionFactory.CreateInCluster(1), DeploymentTargetHealth.Unknown(1),
+            DeploymentTargetCapabilities.Unknown(1), DeploymentTargetTestData.CreateWorkloadConfiguration(),
+            enabled: true, acceptsWorkloads: true, new DeploymentTargetFactory.CreateOptions(id, Now));
+    }
+    private static DeploymentTarget MetadataReplacement(DeploymentTarget target, bool publicDomain) => target.Reconfigure(
+        "Updated private target", target.Enabled, target.AcceptsWorkloads,
+        publicDomain ? DeploymentTargetIngressConfiguration.Create("traefik", "letsencrypt-prod", "private.example.test") : target.WorkloadConfiguration.Ingress,
+        target.WorkloadConfiguration.NetworkSources, Now.AddSeconds(1));
+    private static DeploymentTarget Rotated(DeploymentTarget target) => target.ReplaceConnectionCredential(target.ClusterIdentity,
+        DeploymentTargetConnectionFactory.CreateInCluster(2), Now.AddSeconds(1));
+    private static DeploymentTarget Observed(DeploymentTarget target, int seconds) => target.ApplyValidationObservation(target.Revision, target.Connection.Version,
+        DeploymentTargetHealth.Healthy(target.Connection.Version, Now.AddSeconds(seconds)),
+        DeploymentTargetCapabilities.Observed(target.Connection.Version, Now.AddSeconds(seconds), "v1.35.0",
+            new DeploymentTargetNamespaceCapabilities(true, true, true, true, true),
+            new DeploymentTargetNetworkPolicyCapabilities(true, true, true, true, true)));
+}

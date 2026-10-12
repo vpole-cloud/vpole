@@ -1,5 +1,6 @@
 import type { Query } from '@tanstack/react-query'
 import { ApiError } from '../api/transport'
+import { credentialExpiresAt, fingerprintCredential } from '../auth/credentialIdentity'
 import type { QuerySession } from '../data/querySession'
 import type { RealtimeConnection } from './connection'
 import { InvalidationScheduler } from './invalidationScheduler'
@@ -24,7 +25,17 @@ export class RealtimeController {
   private revoked = false
   private cookieMismatch = false
   private platformRevoked = false
+  private credentialEpoch = 0
+  private platformDenialEpoch = 0
+  private deniedCredentialEpoch = -1
+  private credentialFingerprint: Promise<string | undefined> = Promise.resolve(undefined)
+  private credentialExpiry?: number
+  private deniedFingerprints = new Map<string, number>()
+  private pendingDenials = new Set<Promise<void>>()
+  private restoreBarrierUntil = 0
+  private platformAdminClaim = false
   private membershipEpoch = 0
+  private searchEpochs = new Map<string, number>()
   private knownMemberships?: Set<string>
   private epoch = 0
   private revision = 0
@@ -49,7 +60,18 @@ export class RealtimeController {
   }
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }
   getSnapshot = () => this.snapshot
-  updateCredential(credential?: string) { this.credential = credential }
+  updateCredential(credential?: string, platformAdminClaim = false) {
+    // A claim loss can unmount every privileged interest before Subscribe has a
+    // chance to report denial. Fence locally, recording the old admin identity.
+    if (this.platformAdminClaim && !platformAdminClaim) this.revokePlatformAccess()
+    if (credential !== this.credential) {
+      this.credentialEpoch++
+      this.credentialFingerprint = credential ? fingerprintCredential(credential) : Promise.resolve(undefined)
+      this.credentialExpiry = credential ? credentialExpiresAt(credential) : undefined
+      this.pruneDeniedFingerprints()
+    }
+    this.credential = credential; this.platformAdminClaim = platformAdminClaim
+  }
   setBroadcast(broadcast?: Dependencies['broadcast']) { this.dependencies.broadcast = broadcast }
   private publish() { this.snapshot++; for (const listener of this.listeners) listener() }
   ownsApi(baseUrl: unknown) { return baseUrl === this.baseUrl }
@@ -57,6 +79,10 @@ export class RealtimeController {
     return baseUrl !== this.baseUrl || !this.revoked && (!tenantId || !this.blockedTenants.has(String(tenantId)))
   }
   platformAllowed(baseUrl: unknown) { return baseUrl !== this.baseUrl || !this.revoked && !this.platformRevoked }
+  searchEpoch(baseUrl: string, tenantId?: string) { return this.ownsApi(baseUrl) && tenantId ? this.searchEpochs.get(tenantId) ?? 0 : 0 }
+  private advanceSearchEpoch(tenantId?: string) {
+    if (tenantId) this.searchEpochs.set(tenantId, (this.searchEpochs.get(tenantId) ?? 0) + 1)
+  }
   beginMembershipRead(baseUrl: string, userId: string) {
     if (!this.ownsApi(baseUrl) || !userId || userId !== this.dependencies.userId || this.revoked || !this.session.isActive()) throw new DOMException('Aborted', 'AbortError')
     return this.membershipEpoch
@@ -110,8 +136,24 @@ export class RealtimeController {
       await stopped
       if (!valid()) return
       if (bootstrap) {
-        const session = await this.dependencies.bootstrap(abort.signal, this.credential)
+        const credential = this.credential; const credentialEpoch = this.credentialEpoch
+        const denialEpoch = this.platformDenialEpoch; const adminClaim = this.platformAdminClaim
+        const identity = this.credentialFingerprint; const expiresAt = this.credentialExpiry
+        const session = await this.dependencies.bootstrap(abort.signal, credential)
         if (!valid()) return
+        // Only this browser's fresh, current bearer bootstrap can restore denied authority.
+        // Cookie reconnects, unchanged credentials and a response overtaken by denial cannot.
+        if (this.platformRevoked && credential && adminClaim) {
+          const [fingerprint] = await Promise.all([identity, Promise.all([...this.pendingDenials])])
+          if (!valid()) return
+          this.pruneDeniedFingerprints()
+          if (fingerprint && this.platformAdminClaim && credentialEpoch === this.credentialEpoch &&
+            denialEpoch === this.platformDenialEpoch && credentialEpoch > this.deniedCredentialEpoch &&
+            (expiresAt === undefined || expiresAt > Date.now()) && Date.now() >= this.restoreBarrierUntil && !this.deniedFingerprints.has(fingerprint)) {
+            this.platformRevoked = false
+            this.changedInterests()
+          }
+        }
         const remaining = Date.parse(session.expiresAtUtc) - Date.now()
         // A cookie capped by the unchanged JWT cannot gain lifetime through another early
         // bootstrap. Wait for its actual expiry or a credential update in that final margin.
@@ -131,7 +173,10 @@ export class RealtimeController {
         }
         if (this.status !== 'connected') return
         const accepted = [...this.interests.values()].some(({ request }) => this.covered(request) && acceptsChange(request, change))
-        if (accepted) this.scheduler.invalidate((key, meta) => this.matchesChange(key, change, meta))
+        if (accepted) {
+          if (change.topic === 'search') { this.advanceSearchEpoch(change.tenantId); this.publish() }
+          this.scheduler.invalidate((key, meta) => this.matchesChange(key, change, meta))
+        }
       })
       connection.onSessionRevoked(() => { if (valid()) this.revokeAccess() })
       connection.onAccessRevoked(tenantId => {
@@ -184,7 +229,9 @@ export class RealtimeController {
     const resync = requests.filter(request => next.has(subscriptionKey(request)) && (resyncAll || !this.coverage.has(subscriptionKey(request))))
     const changed = next.size !== this.coverage.size || [...next].some(key => !this.coverage.has(key))
     this.coverage = next
-    if (changed) this.publish()
+    const searchResync = resync.filter(request => request.topic === 'search')
+    for (const tenantId of new Set(searchResync.map(request => request.tenantId))) this.advanceSearchEpoch(tenantId)
+    if (changed || searchResync.length) this.publish()
     if (resync.length) this.scheduler.invalidate((key, meta) => resync.some(request => this.matchesChange(key, { version: 1, ...request }, meta)))
   }
   private scheduleHeartbeat() {
@@ -241,7 +288,7 @@ export class RealtimeController {
     else this.revoked = true
     this.scheduler.cancel(); this.coverage.clear(); this.publish()
     if (broadcast) this.dependencies.broadcast?.({ type: tenantId ? 'access-revoked' : 'session-revoked', tenantId })
-    if (tenantId) { this.clearTenant(tenantId); this.resetDiscovery(); this.changedInterests() }
+    if (tenantId) { this.clearTenant(tenantId); this.refreshDiscovery(); this.changedInterests() }
     else {
       const predicate = (query: Query) => query.queryKey[3] === this.baseUrl
       void this.session.client.cancelQueries({ predicate }); this.session.client.removeQueries({ predicate })
@@ -250,19 +297,44 @@ export class RealtimeController {
   }
   private revokePlatformAccess(broadcast = true) {
     this.membershipEpoch++
+    this.platformDenialEpoch++; this.deniedCredentialEpoch = this.credentialEpoch
+    if (this.credential) {
+      const expiresAt = this.credentialExpiry ?? Infinity
+      const pending = this.credentialFingerprint.then(fingerprint => {
+        if (!fingerprint) return
+        this.pruneDeniedFingerprints()
+        if (expiresAt <= Date.now()) return
+        this.deniedFingerprints.set(fingerprint, expiresAt)
+        // Bound unknown/long-lived token histories too. An evicted unexpired identity creates
+        // a recovery barrier until its horizon, so an ABA replay cannot exploit eviction.
+        if (this.deniedFingerprints.size > 64) {
+          const [oldest, horizon] = this.deniedFingerprints.entries().next().value!
+          this.deniedFingerprints.delete(oldest)
+          this.restoreBarrierUntil = Math.max(this.restoreBarrierUntil, horizon)
+        }
+      }).finally(() => this.pendingDenials.delete(pending))
+      this.pendingDenials.add(pending)
+    }
     this.platformRevoked = true
     this.changedInterests()
     if (broadcast) this.dependencies.broadcast?.({ type: 'access-revoked' })
     const privileged = (query: Query) =>
       query.queryKey[3] === this.baseUrl && query.queryKey[4] == null && query.meta?.privileged === true
     void this.session.client.cancelQueries({ predicate: privileged }); this.session.client.removeQueries({ predicate: privileged })
-    this.resetDiscovery()
+    this.refreshDiscovery()
   }
-  private resetDiscovery() {
+  private pruneDeniedFingerprints() {
+    for (const [fingerprint, expiresAt] of this.deniedFingerprints) if (expiresAt <= Date.now()) this.deniedFingerprints.delete(fingerprint)
+  }
+  private refreshDiscovery() {
     const epoch = this.membershipEpoch
     const predicate = (query: Query) => query.queryKey[3] === this.baseUrl && query.queryKey[5] === 'tenants'
     void this.session.client.cancelQueries({ predicate }).then(() => {
-      if (epoch === this.membershipEpoch && !this.revoked && this.session.isActive()) void this.session.client.resetQueries({ predicate })
+      // Keep the last authoritative list while revalidating. Clearing it would unmount
+      // ordinary tenant workspaces on platform-only denial; affected tenant origins are
+      // already synchronously blocked and cleared by a tenant-specific denial.
+      if (epoch === this.membershipEpoch && !this.revoked && this.session.isActive())
+        void this.session.client.invalidateQueries({ predicate, refetchType: 'active' }, { cancelRefetch: false })
     })
   }
   private clearTenant(tenantId: string) {

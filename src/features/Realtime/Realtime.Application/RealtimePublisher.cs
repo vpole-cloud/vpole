@@ -11,6 +11,20 @@ public sealed class RealtimePublisher(
     IHubContext<RealtimeHub, IRealtimeClient> hub,
     TimeProvider clock)
 {
+    public async Task InvalidateTenantsAsync(string topic, CancellationToken cancellationToken = default)
+    {
+        if (topics.Find(topic)?.Scope != RealtimeScope.Tenant)
+            throw new InvalidOperationException("Public eligibility invalidation requires a registered tenant topic.");
+        if (!topics.IsEnabled(topic)) return;
+        var recipients = await subscriptions.FindAllAsync(topic, cancellationToken);
+        var tenants = recipients.Where(subscription => subscription.ExpiresAtUtc > clock.GetUtcNow())
+            .Select(subscription => subscription.Request.TenantId).OfType<string>().Distinct(StringComparer.Ordinal);
+        // Publish rechecks every recipient's current ticket and tenant permission. The
+        // platform mutation cannot choose recipients or copy privileged identifiers.
+        foreach (var tenantId in tenants)
+            await PublishAsync(new(topic, tenantId), cancellationToken);
+    }
+
     public async Task PublishAsync(RealtimeChange change, CancellationToken cancellationToken = default)
     {
         var topic = topics.Find(change.Topic);

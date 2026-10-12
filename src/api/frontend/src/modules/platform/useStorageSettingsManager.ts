@@ -16,6 +16,7 @@ export function useStorageSettingsManager({ apiBaseUrl, token, enabled }: UseSto
   const [selection, setSelection] = useState({ identity, id: '' })
   const [accepted, setAccepted] = useState<string | null>(null)
   const inventory = useScopedQuery({ scope: [apiBaseUrl, undefined], key: ['platform-storage', 'inventory'], enabled, privileged: true,
+    realtime: [{ topic: 'storage-profiles' }, { topic: 'deployment-targets' }],
     load: async (signal) => {
       const [profiles, targets] = await Promise.all([fetchStorageProfiles(apiBaseUrl, origin.credential(), signal), fetchPlatformDeploymentTargets(apiBaseUrl, origin.credential(), signal)])
       return { profiles, targets }
@@ -24,6 +25,8 @@ export function useStorageSettingsManager({ apiBaseUrl, token, enabled }: UseSto
   const requested = selection.identity === identity ? selection.id : ''
   const deploymentTargetId = targets.find((item) => item.id === requested)?.id ?? targets.find((item) => item.isDefault)?.id ?? targets[0]?.id ?? ''
   const discovery = useScopedQuery({ scope: [apiBaseUrl, undefined], key: ['platform-storage', 'discovery', deploymentTargetId], enabled: enabled && Boolean(deploymentTargetId), privileged: true,
+    // Visibility ownership only: Kubernetes storage observation remains a separate lane.
+    realtime: [],
     load: async (signal) => {
       const [storageClasses, persistentVolumes, persistentVolumeClaims] = await Promise.all([
         fetchKubernetesStorageClasses(apiBaseUrl, deploymentTargetId, origin.credential(), signal),

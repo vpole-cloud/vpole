@@ -7,19 +7,28 @@ open System.Threading.Tasks
 open MongoDB.Bson
 open MongoDB.Bson.Serialization
 open MongoDB.Driver
+open Pole.Features.Events.Abstractions
+open Pole.Features.Outbox.Contracts
 open Pole.Features.Request
 open Pole.Features.Search.Application.Common
 open Pole.Features.Search.Application.Projection
 open Pole.Features.Search.Contracts
 open Pole.Features.Search.Domain
+open Pole.Features.Search.Events
 
-type internal SearchProjectionStore(database : IMongoDatabase) =
+type internal SearchProjectionStore(database : IMongoDatabase, outbox : StoreOutboxWrites) =
     let documents = database.GetCollection<SearchDocument>("SearchDocuments")
     let sources = database.GetCollection<SearchSourceDocument>("SearchSourceDocuments")
     let versions = database.GetCollection<SearchProjectionVersionDocument>("SearchProjectionVersions")
 
     let bsonDocument (elements : BsonElement list) = BsonDocument(elements)
     let bsonArray (values : BsonValue list) = BsonArray(values)
+
+    let storeChanged session (identity : SearchProjectionIdentity) revision generation ct =
+        let message =
+            SearchProjectionChangedEvent(identity.SourceId, identity.ResourceTypeId.Value, revision, generation,
+                EventCore = EventCore.Create(identity.TenantId))
+        outbox.Invoke(session, [| OutboxWrite.Create(message) |], ct)
 
     let toSearchHit (document : SearchSourceDocument) =
         let operationalStatus =
@@ -83,6 +92,11 @@ type internal SearchProjectionStore(database : IMongoDatabase) =
                             session,
                             pendingSource,
                             cancellationToken = cancellationToken)
+                    return true
+                else
+                    return false
+            else
+                return updated.ModifiedCount = 1L
         }
 
     member _.PersistDocumentSetAsync(documentSet : SearchDocumentSet, cancellationToken : CancellationToken) =
@@ -167,6 +181,7 @@ type internal SearchProjectionStore(database : IMongoDatabase) =
                                         update,
                                         UpdateOptions(IsUpsert = true),
                                         transactionCancellationToken)
+                                do! storeChanged transaction identity resourceRevision (Nullable()) transactionCancellationToken
                                 return true
                         }),
                     cancellationToken = cancellationToken)
@@ -227,6 +242,7 @@ type internal SearchProjectionStore(database : IMongoDatabase) =
                                         SearchProjectionFilters.sourceByIdentity identity,
                                         cancellationToken = transactionCancellationToken)
                                     :> Task
+                                do! storeChanged transaction identity resourceRevision (Nullable()) transactionCancellationToken
                                 return true
                         }),
                     cancellationToken = cancellationToken)
@@ -260,14 +276,16 @@ type internal SearchProjectionStore(database : IMongoDatabase) =
                             if deletedAtSameOrNewerRevision then
                                 return false
                             else
-                                do!
+                                let! changed =
                                     persistOperationalStatus
                                         transaction
                                         sourceType
                                         identity
                                         status
                                         transactionCancellationToken
-                                return true
+                                if changed then
+                                    do! storeChanged transaction identity status.ResourceRevision (Nullable status.ObservedGeneration) transactionCancellationToken
+                                return changed
                         }),
                     cancellationToken = cancellationToken)
             return ()

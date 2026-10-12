@@ -209,6 +209,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
     [Fact]
     public async Task Update_NoOpPreservesRevision()
     {
+        var outboxBefore = await DbContext.OutboxMessages.CountDocumentsAsync(_ => true);
         var existing = await DbContext.StorageProfiles
             .Find(profile => profile.Id == TestData.DefaultStorageProfileId)
             .SingleAsync();
@@ -244,6 +245,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
             .Find(profile => profile.Id == existing.Id)
             .SingleAsync();
         Assert.Equal(existing.UpdatedAtUtc, persisted.UpdatedAtUtc);
+        Assert.Equal(outboxBefore, await DbContext.OutboxMessages.CountDocumentsAsync(_ => true));
     }
 
     [Fact]

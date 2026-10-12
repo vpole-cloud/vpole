@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Outbox.Application.Persistence.Writes;
 using Pole.Encryption;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
@@ -149,7 +150,8 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
                 fixture.DbContext.DeploymentTargets,
                 CreateNoPublicBaseDomainReferences(),
                 CreateNoOverlappingPublicBaseDomain(),
-                new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<PersistUpdatedDeploymentTargetOutcome>).InvokeAsync,
+                new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<PersistUpdatedDeploymentTargetOutcome>,
+                new MongoStoreOutboxWrites(fixture.Database).InvokeAsync).InvokeAsync,
             new NoOpClientCache().Invalidate,
             timeProvider);
 

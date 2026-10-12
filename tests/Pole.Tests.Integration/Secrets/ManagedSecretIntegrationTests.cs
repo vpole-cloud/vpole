@@ -5,6 +5,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Encryption;
+using Pole.Features.Outbox.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Secrets.Application.Projections;
 using Pole.Features.Secrets.Application.Migrations;
@@ -150,6 +151,9 @@ public sealed class ManagedSecretIntegrationTests(MongoReplicaSetFixture fixture
         await Fixture.Database.GetCollection<SecretProjection>("SecretProjections").InsertOneAsync(other);
         var collection = new ServiceCollection().AddSecretsFeature();
         collection.AddSingleton<IMongoDatabase>(Fixture.Database);
+        collection.AddSingleton<IMongoClient>(Fixture.Client);
+        collection.AddSingleton<MongoRunTransaction>();
+        collection.AddSingleton<StoreOutboxWrites>(Fixture.StoreOutboxWrites);
         collection.AddSingleton(TimeProvider.System);
         collection.AddSingleton(Services.GetRequiredService<IEnvelopeEncryptionService>());
         collection.AddSingleton<LoadResourceDeploymentSet>((_, _, _, _) => Task.FromResult<IReadOnlyList<PlacementSummaryDto>>([]));
@@ -173,6 +177,9 @@ public sealed class ManagedSecretIntegrationTests(MongoReplicaSetFixture fixture
         var loads = 0;
         var collection = new ServiceCollection().AddSecretsFeature();
         collection.AddSingleton<IMongoDatabase>(Fixture.Database);
+        collection.AddSingleton<IMongoClient>(Fixture.Client);
+        collection.AddSingleton<MongoRunTransaction>();
+        collection.AddSingleton<StoreOutboxWrites>(Fixture.StoreOutboxWrites);
         collection.AddSingleton(TimeProvider.System);
         collection.AddSingleton(Services.GetRequiredService<IEnvelopeEncryptionService>());
         collection.AddSingleton<LoadManagedSecret>((_, _, _) => Task.FromResult<Secret?>(++loads == 1 ? original : recreated));

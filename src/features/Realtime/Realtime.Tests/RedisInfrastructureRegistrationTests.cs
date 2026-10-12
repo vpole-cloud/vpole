@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Realtime.Application;
 using Pole.Features.Realtime.Application.Redis;
+using Pole.Features.Realtime.Contracts;
 using Xunit;
 
 namespace Pole.Features.Realtime.Tests;
@@ -9,7 +10,7 @@ namespace Pole.Features.Realtime.Tests;
 public sealed class RedisInfrastructureRegistrationTests
 {
     [Fact]
-    public void DisabledFeatureResolvesItsRegistryWithoutRemovedProvidersOrDistributedStores()
+    public async Task DisabledFeatureResolvesItsRegistryWithoutRemovedProvidersOrDistributedStores()
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -24,6 +25,7 @@ public sealed class RedisInfrastructureRegistrationTests
         Assert.Null(provider.GetRequiredService<RealtimeTopicRegistry>().Find("removed-provider"));
         Assert.Null(provider.GetService<IRealtimeTicketStore>());
         Assert.Null(provider.GetService<IRealtimeSubscriptions>());
+        await provider.GetRequiredService<InvalidateRealtimeTenants>()("unregistered");
     }
 
     [Fact]

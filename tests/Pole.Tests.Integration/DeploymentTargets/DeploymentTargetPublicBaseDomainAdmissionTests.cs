@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Outbox.Application.Persistence.Writes;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
@@ -33,7 +34,8 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         var persistence = new MongoPersistCreatedDeploymentTarget(
             fixture.DbContext.DeploymentTargets,
             CreateNoOverlappingPublicBaseDomain(),
-            new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<PersistCreatedDeploymentTargetOutcome>);
+            new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<PersistCreatedDeploymentTargetOutcome>,
+            new MongoStoreOutboxWrites(fixture.Database).InvokeAsync);
 
         var results = await Task.WhenAll(
             persistence.InvokeAsync(CreateTarget("example.test")),
@@ -53,7 +55,8 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         var persistence = new MongoPersistCreatedDeploymentTarget(
             fixture.DbContext.DeploymentTargets,
             CreateNoOverlappingPublicBaseDomain(),
-            new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<PersistCreatedDeploymentTargetOutcome>);
+            new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<PersistCreatedDeploymentTargetOutcome>,
+            new MongoStoreOutboxWrites(fixture.Database).InvokeAsync);
         var first = await persistence.InvokeAsync(CreateTarget("example.test"));
         Assert.IsType<DeploymentTarget>(first.Value);
 
@@ -68,7 +71,8 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         var persistence = new MongoPersistCreatedDeploymentTarget(
             fixture.DbContext.DeploymentTargets,
             CreateNoOverlappingPublicBaseDomain(),
-            new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<PersistCreatedDeploymentTargetOutcome>);
+            new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<PersistCreatedDeploymentTargetOutcome>,
+            new MongoStoreOutboxWrites(fixture.Database).InvokeAsync);
         var target = CreateTarget("apps.example.test");
         Assert.IsType<DeploymentTarget>((await persistence.InvokeAsync(target)).Value);
         var pending = target.RequestDeletion(target.UpdatedAtUtc.AddSeconds(1));
@@ -328,7 +332,8 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
                 fixture.DbContext.DeploymentTargets,
                 CreateNoPublicBaseDomainReferences(),
                 CreateNoOverlappingPublicBaseDomain(),
-                new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<PersistUpdatedDeploymentTargetOutcome>).InvokeAsync,
+                new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<PersistUpdatedDeploymentTargetOutcome>,
+                new MongoStoreOutboxWrites(fixture.Database).InvokeAsync).InvokeAsync,
             new NoOpClientCache().Invalidate,
             TimeProvider.System);
 

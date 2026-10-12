@@ -2,6 +2,7 @@ namespace Pole.Features.Search.Application
 
 open System
 open Microsoft.Extensions.DependencyInjection
+open Pole.Features.Realtime.Contracts
 open Pole.Features.Search.Application.Common
 open Pole.Features.Search.Application.Persistence
 open Pole.Features.Search.Contracts
@@ -10,6 +11,7 @@ open Pole.Features.Search.Contracts
 type SearchFeatureRegistration =
     [<System.Runtime.CompilerServices.Extension>]
     static member AddSearchFeature(services : IServiceCollection) =
+        services.AddSingleton(RealtimeTopic("search", RealtimeScope.Tenant)) |> ignore
         services.AddSingleton<SearchSourceTypeRegistry>() |> ignore
         services.AddSingleton<ResolveSearchSourceType>(
             Func<IServiceProvider, ResolveSearchSourceType>(fun serviceProvider ->

@@ -8,6 +8,7 @@ import type { GitProviderConnection, ProviderRepository, RepositoryAnalysis, Sou
 vi.mock('../api', () => ({ fetchGitProviderConnections: vi.fn(), fetchSourceRepositories: vi.fn(), fetchProviderRepositories: vi.fn(), fetchProviderBranches: vi.fn(), analyzeProviderRepository: vi.fn(), beginGitHubInstallation: vi.fn(), linkProviderRepository: vi.fn(), disconnectGitProviderConnection: vi.fn(), reanalyzeSourceRepository: vi.fn(), unlinkSourceRepository: vi.fn() }))
 let app: ReturnType<typeof createTestApp>
 let state: ReturnType<typeof useGitIntegrationsManager>
+let hidden = false
 const connection = { id: 'connection', accountLogin: 'account' } as GitProviderConnection
 const repository = (id: string): ProviderRepository => ({ id, name: id, fullName: id, defaultBranch: 'main', htmlUrl: 'https://example.test', isPrivate: true })
 const analysis = { branch: 'main', candidates: [{ candidateKey: 'plan' }] } as RepositoryAnalysis
@@ -20,6 +21,7 @@ function Probe({ token = 'token', tenant = 'alpha', canManage = true }: { token?
 }
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); vi.resetAllMocks(); app = createTestApp()
+  hidden = false; Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden }); window.dispatchEvent(new Event('pageshow'))
   vi.mocked(api.fetchGitProviderConnections).mockResolvedValue([connection])
   vi.mocked(api.fetchSourceRepositories).mockResolvedValue([])
   vi.mocked(api.fetchProviderRepositories).mockResolvedValue({ items: [repository('one'), repository('two')], page: 1, pageSize: 100, hasMore: true })
@@ -27,7 +29,7 @@ beforeEach(() => {
   vi.mocked(api.analyzeProviderRepository).mockResolvedValue(analysis)
   vi.mocked(api.linkProviderRepository).mockResolvedValue(source)
 })
-afterEach(async () => { await act(async () => app.root.unmount()); app.container.remove() })
+afterEach(async () => { await act(async () => app.root.unmount()); app.container.remove(); vi.restoreAllMocks(); vi.useRealTimers() })
 async function select() { await act(async () => app.root.render(<Probe />)); await act(async () => state.selectRepository('one')) }
 
 it('preserves selection across token refresh and uses the latest credential for each mutation', async () => {
@@ -75,4 +77,30 @@ it('fences role loss and preserves explicit provider page numbers', async () => 
   await act(async () => app.root.render(<Probe canManage={false} />))
   expect(state.selection.analysis).toBeNull()
   await act(async () => state.link()); expect(api.linkProviderRepository).not.toHaveBeenCalled()
+})
+
+it('refreshes external Git discovery at 60 seconds and pauses it while hidden', async () => {
+  vi.useFakeTimers(); await select()
+  const repositories = vi.mocked(api.fetchProviderRepositories).mock.calls.length
+  const branches = vi.mocked(api.fetchProviderBranches).mock.calls.length
+  await act(async () => vi.advanceTimersByTimeAsync(59000)); expect(api.fetchProviderRepositories).toHaveBeenCalledTimes(repositories)
+  await act(async () => vi.advanceTimersByTimeAsync(1000)); expect(api.fetchProviderRepositories).toHaveBeenCalledTimes(repositories + 1)
+  expect(api.fetchProviderBranches).toHaveBeenCalledTimes(branches + 1)
+  await act(async () => { hidden = true; document.dispatchEvent(new Event('visibilitychange')) })
+  vi.mocked(api.fetchProviderRepositories).mockClear(); vi.mocked(api.fetchProviderBranches).mockClear()
+  await act(async () => vi.advanceTimersByTimeAsync(120000)); await act(async () => state.refresh())
+  expect(api.fetchProviderRepositories).not.toHaveBeenCalled(); expect(api.fetchProviderBranches).not.toHaveBeenCalled()
+})
+
+it('preserves analysis for review and blocks linking after branch discovery finds a new commit', async () => {
+  vi.mocked(api.analyzeProviderRepository).mockResolvedValue({ ...analysis, commitSha: 'sha' })
+  await select(); await act(async () => state.analyze())
+  expect(state.analysisStale).toBe(false)
+  vi.mocked(api.fetchProviderBranches).mockResolvedValue({ items: [{ name: 'main', commitSha: 'new-sha', isProtected: false }], page: 1, pageSize: 100, hasMore: false })
+  await act(async () => state.refresh())
+  expect(state.selection.analysis?.commitSha).toBe('sha'); expect(state.selection.candidateKey).toBe('plan')
+  expect(state.analysisStale).toBe(true)
+  await act(async () => state.link()); expect(api.linkProviderRepository).not.toHaveBeenCalled()
+  vi.mocked(api.analyzeProviderRepository).mockResolvedValue({ ...analysis, commitSha: 'new-sha' })
+  await act(async () => state.analyze()); expect(state.analysisStale).toBe(false)
 })

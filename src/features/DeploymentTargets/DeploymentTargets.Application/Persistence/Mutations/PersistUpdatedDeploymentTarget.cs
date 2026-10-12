@@ -1,5 +1,8 @@
 using MongoDB.Driver;
+using MongoDB.Bson;
 using Pole.Database;
+using Pole.Features.Outbox.Contracts;
+using Pole.Features.DeploymentTargets.Events;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Persistence.References;
 using Pole.Features.DeploymentTargets.Domain;
@@ -25,7 +28,8 @@ internal sealed class MongoPersistUpdatedDeploymentTarget(
     IMongoCollection<DeploymentTarget> deploymentTargets,
     EnsureNoDeploymentTargetPublicBaseDomainReferences ensureNoPublicBaseDomainReferences,
     EnsureNoOverlappingDeploymentTargetPublicBaseDomain ensureNoOverlappingPublicBaseDomain,
-    RunMongoOutcomeTransaction<PersistUpdatedDeploymentTargetOutcome> runMongoTransaction)
+    RunMongoOutcomeTransaction<PersistUpdatedDeploymentTargetOutcome> runMongoTransaction,
+    StoreOutboxWrites storeOutboxWrites)
 {
     public async Task<PersistUpdatedDeploymentTargetOutcome> InvokeAsync(
         DeploymentTarget current,
@@ -45,61 +49,46 @@ internal sealed class MongoPersistUpdatedDeploymentTarget(
             current.WorkloadConfiguration.Ingress?.PublicBaseDomain,
             replacement.WorkloadConfiguration.Ingress?.PublicBaseDomain,
             StringComparison.Ordinal);
-        if (!publicBaseDomainChanged)
-        {
-            var persisted = await deploymentTargets.FindOneAndUpdateAsync(
-                DeploymentTargetFilters.AtRevision(current),
-                ReplacementUpdate(replacement),
-                new FindOneAndUpdateOptions<DeploymentTarget>
-                {
-                    ReturnDocument = ReturnDocument.After
-                },
-                cancellationToken);
-            return persisted is null
-                ? new PersistUpdatedDeploymentTargetError(
-                        new DeploymentTargetRevisionConflict(current.Id))
-                : persisted;
-        }
-
         return await runMongoTransaction(async (transaction, ct) =>
         {
-            var references = await ensureNoPublicBaseDomainReferences(
-                current.Id,
-                transaction.Session,
-                ct);
-            if (references is DeploymentTargetPublicBaseDomainReferenced referenceError)
+            if (publicBaseDomainChanged)
             {
-                return transaction.Abort(
-                    new PersistUpdatedDeploymentTargetError(referenceError));
+                var references = await ensureNoPublicBaseDomainReferences(
+                    current.Id, transaction.Session, ct);
+                if (references is DeploymentTargetPublicBaseDomainReferenced referenceError)
+                    return transaction.Abort(new PersistUpdatedDeploymentTargetError(referenceError));
+                var overlap = await ensureNoOverlappingPublicBaseDomain(
+                    current.Id, replacement.WorkloadConfiguration.Ingress?.PublicBaseDomain,
+                    transaction.Session, ct);
+                if (overlap is DeploymentTargetPublicBaseDomainConflict overlapError)
+                    return transaction.Abort(new PersistUpdatedDeploymentTargetError(overlapError));
             }
 
-            var overlap = await ensureNoOverlappingPublicBaseDomain(
-                current.Id,
-                replacement.WorkloadConfiguration.Ingress?.PublicBaseDomain,
-                transaction.Session,
-                ct);
-            if (overlap is DeploymentTargetPublicBaseDomainConflict overlapError)
-            {
-                return transaction.Abort(
-                    new PersistUpdatedDeploymentTargetError(overlapError));
-            }
-
+            var filter = publicBaseDomainChanged
+                ? DeploymentTargetFilters.AtRevisionAndReferenceFence(current)
+                : DeploymentTargetFilters.AtRevision(current);
+            var before = await deploymentTargets.Find(transaction.Session, filter).FirstOrDefaultAsync(ct);
+            if (before is null)
+                return transaction.Abort(new PersistUpdatedDeploymentTargetError(new DeploymentTargetRevisionConflict(current.Id)));
             var persisted = await deploymentTargets.FindOneAndUpdateAsync(
                 transaction.Session,
-                DeploymentTargetFilters.AtRevisionAndReferenceFence(current),
+                filter,
                 ReplacementUpdate(replacement),
-                new FindOneAndUpdateOptions<DeploymentTarget>
-                {
-                    ReturnDocument = ReturnDocument.After
-                },
-                ct);
-            return persisted is null
-                ? transaction.Abort(
-                    new PersistUpdatedDeploymentTargetError(
-                        new DeploymentTargetRevisionConflict(current.Id)))
-                : transaction.Commit(persisted);
+                new FindOneAndUpdateOptions<DeploymentTarget> { ReturnDocument = ReturnDocument.After }, ct);
+            if (persisted is null)
+                return transaction.Abort(new PersistUpdatedDeploymentTargetError(new DeploymentTargetRevisionConflict(current.Id)));
+            if (MetadataChanged(before, persisted))
+                await storeOutboxWrites(transaction.Session,
+                    [OutboxWrite.Create(new DeploymentTargetCatalogChangedEvent(persisted.Id, persisted.Revision))], ct);
+            return transaction.Commit(persisted);
         }, cancellationToken);
     }
+
+    private static bool MetadataChanged(DeploymentTarget before, DeploymentTarget after) =>
+        before.DisplayName != after.DisplayName || before.Enabled != after.Enabled ||
+        before.AcceptsWorkloads != after.AcceptsWorkloads || before.Revision != after.Revision ||
+        before.UpdatedAtUtc != after.UpdatedAtUtc ||
+        !before.WorkloadConfiguration.ToBsonDocument().Equals(after.WorkloadConfiguration.ToBsonDocument());
 
     private static UpdateDefinition<DeploymentTarget> ReplacementUpdate(
         DeploymentTarget replacement) => Builders<DeploymentTarget>.Update.Combine(

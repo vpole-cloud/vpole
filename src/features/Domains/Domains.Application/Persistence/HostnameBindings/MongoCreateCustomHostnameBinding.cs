@@ -2,6 +2,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Dns;
+using Pole.Features.Outbox.Contracts;
 using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
@@ -11,7 +12,8 @@ namespace Pole.Features.Domains.Application.Persistence.HostnameBindings;
 internal sealed class MongoCreateCustomHostnameBinding(
     IMongoDatabase database,
     MongoHostnameBindingCleanup cleanup,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    StoreOutboxWrites outbox)
 {
     private readonly IMongoCollection<TenantDomainZone> zones =
         database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
@@ -68,7 +70,6 @@ internal sealed class MongoCreateCustomHostnameBinding(
         try
         {
             await bindings.InsertOneAsync(session, binding, cancellationToken: cancellationToken);
-            return binding.ToSnapshot();
         }
         catch (MongoWriteException exception) when (
             exception.WriteError.Category == ServerErrorCategory.DuplicateKey)
@@ -76,6 +77,8 @@ internal sealed class MongoCreateCustomHostnameBinding(
             return new CustomHostnameBindingError(
                     new CustomHostnameBindingConflict(binding.Hostname));
         }
+        await outbox(session, [OutboxWrite.Create(cleanup.WithAdvancedRevision(zone).ToChangedEvent(binding.Id))], cancellationToken);
+        return binding.ToSnapshot();
     }
 
     private static void EnsureRequest(CreateCustomHostnameBindingRequest request)

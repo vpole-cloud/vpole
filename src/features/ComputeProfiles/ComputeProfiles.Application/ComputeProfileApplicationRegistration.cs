@@ -1,4 +1,5 @@
 using Pole.ASP.Helpers;
+using Pole.Features.Realtime.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pole.Features.ComputeProfiles.Application.Bootstrap;
@@ -15,6 +16,8 @@ public static class ComputeProfileApplicationRegistration
     {
         services.AddHttpProblemMappings(ComputeProfileContractHttpMappings.All);
         services.AddComputeProfilePersistence();
+        services.AddSingleton(new RealtimeTopic("compute-profiles", RealtimeScope.Platform));
+        services.AddSingleton(new RealtimeTopic("compute-eligibility", RealtimeScope.Tenant));
 
         services.AddScoped<KubernetesComputeProfileTargetMappingValidator>();
         services.AddScoped<ValidateComputeProfileTargetMappings>(serviceProvider =>

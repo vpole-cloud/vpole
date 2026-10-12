@@ -1,6 +1,7 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Dns;
+using Pole.Features.Outbox.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Contracts;
@@ -37,7 +38,8 @@ internal sealed class MongoCreateManagedDomainZoneReservation(
     IMongoDatabase database,
     ApplyDeploymentTargetReferenceChanges applyDeploymentTargetReferenceChanges,
     FenceDeploymentTargetWorkloadConfigurations fenceDeploymentTargetWorkloadConfigurations,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    StoreOutboxWrites outbox)
 {
     private readonly IMongoCollection<TenantDomainZone> zones =
         database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
@@ -91,8 +93,9 @@ internal sealed class MongoCreateManagedDomainZoneReservation(
             [],
             session,
             cancellationToken);
-        return registered is DeploymentTargetReferencesChanged
-            ? zone.ToSnapshot()
-            : new ManagedDomainZoneReferenceRejected(deploymentTargetId);
+        if (registered is not DeploymentTargetReferencesChanged)
+            return new ManagedDomainZoneReferenceRejected(deploymentTargetId);
+        await outbox(session, [OutboxWrite.Create(zone.ToChangedEvent())], cancellationToken);
+        return zone.ToSnapshot();
     }
 }
