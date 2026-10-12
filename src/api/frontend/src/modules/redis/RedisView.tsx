@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { fetchRedisServices } from '../../api'
-import { usePagedInventory } from '../../hooks/usePagedInventory'
+import { useScopedQuery } from '../../data/useScopedQuery'
+import { useApiScope } from '../../data/useApiScope'
 import { useAppServices } from '../../shell/AppContext'
 import { readResourceRoute } from '../../shell/workspaceState'
 import { Button, DataTable, EmptyState, Notice, StatusBadge } from '../../ui/components'
@@ -17,11 +18,12 @@ export function RedisView() {
 
 function RedisCatalog({ actions, version }: { actions: WorkspaceActions<RedisSection>; version: number }) {
   const { api, tenant, navigation } = useAppServices()
+  const origin = useApiScope(api)
   const route = readResourceRoute(navigation.search, redisSections, 'overview')
   const search = route.search
-  const inventory = usePagedInventory({ scopeKey: `${api.baseUrl}:${api.tenantId}:${api.token}`, enabled: Boolean(tenant.active),
-    queryKey: JSON.stringify([route.pageNumber, route.pageSize, search, version]),
-    load: (signal) => fetchRedisServices(api.baseUrl, api.token, api.tenantId, signal, route.pageNumber, route.pageSize, search), getId: (redis) => redis.id })
+  const query = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['redis', 'inventory', route.pageNumber, route.pageSize, search], enabled: Boolean(tenant.active), keepPrevious: true, refreshVersion: version,
+    load: (signal) => fetchRedisServices(api.baseUrl, origin.credential(), api.tenantId, signal, route.pageNumber, route.pageSize, search) })
+  const inventory = { ...query, page: query.resource, items: query.resource?.items ?? [], isCurrentPage: query.isCurrent }
   const lastPage = Math.max(1, Math.ceil((inventory.page?.totalCount ?? 0) / route.pageSize))
   useEffect(() => { if (inventory.status === 'success' && inventory.isCurrentPage && route.pageNumber > lastPage) {
     const params = new URLSearchParams(navigation.search); params.set('page', String(lastPage)); navigation.setSearch(params, { replace: true })

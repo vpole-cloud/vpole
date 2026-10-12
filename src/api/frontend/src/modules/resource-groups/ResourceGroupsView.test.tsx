@@ -2,6 +2,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { strictFetch } from '../../test/http'
 import { AppShell } from '../../shell/AppShell'
 import { useAppServices } from '../../shell/AppContext'
 import { createAppRegistry } from '../../shell/moduleRegistry'
@@ -29,7 +30,8 @@ let root: Root
 let records: ResourceGroup[]
 let failList: boolean
 let failSave: boolean
-const fetchMock = vi.fn<(url: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+const requests = strictFetch()
+const fetchMock = requests.fetch
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }))
 const paged = (items: unknown[], params: URLSearchParams) => {
   const pageNumber = Number(params.get('pageNumber') ?? 1), pageSize = Number(params.get('pageSize') ?? 8)
@@ -46,7 +48,8 @@ beforeEach(() => {
   localStorage.clear(); window.history.replaceState({}, '', '/')
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
   records = [group, second, outside]; failList = false; failSave = false
-  fetchMock.mockReset().mockImplementation((input, init) => {
+  requests.reset()
+  fetchMock.mockImplementation((input, init) => {
     const url = new URL(String(input), 'http://localhost')
     if (url.pathname.endsWith('/resource-groups')) {
       if (init?.method === 'POST') {
@@ -69,14 +72,15 @@ beforeEach(() => {
       if (init?.method === 'DELETE') { records = records.filter((item) => item.id !== id); return json({}) }
       return json(found)
     }
-    return json([])
+    if (url.pathname.endsWith('/resource-deployments/operations')) return json({ items: [], totalCount: 0, pageNumber: 1, pageSize: 10, checkedAtUtc: new Date().toISOString(), counts: { waiting: 0, accepted: 0, running: 0, applied: 0, failed: 0 } })
+    return requests.unhandled(input, init)
   })
   vi.stubGlobal('fetch', fetchMock)
 })
-afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
-function render(active = 'alpha', userId = 'user', authenticated = true, role = 'Owner' as 'Owner' | 'Viewer') {
+afterEach(async () => { await act(async () => root.unmount()); container.remove(); requests.verify(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
+function render(active = 'alpha', userId = 'user', authenticated = true, role = 'Owner' as 'Owner' | 'Viewer', token = 'token') {
   const tenant = { id: active, name: active, role, isDefault: true }
-  root.render(<AppShell registry={registry} initialViewId="resource-groups" api={{ baseUrl: 'http://localhost', token: 'token' }}
+  root.render(<AppShell registry={registry} initialViewId="resource-groups" api={{ baseUrl: 'http://localhost', token }}
     auth={{ initialized: true, authenticated, userId, isPlatformAdmin: false, login: () => {}, logout: () => {} }}
     tenants={{ items: ['alpha', 'beta'].map((id) => ({ ...tenant, id, name: id })), activeTenant: tenant, activeTenantId: active, status: 'success', error: '', selectTenant: vi.fn() }} />)
 }
@@ -253,3 +257,15 @@ it('blocks unknown tenant links before group or tree requests and keeps viewer a
   expect(main().textContent).toContain('Tenant viewer access is read-only.')
   expect(main().querySelector('textarea')).toBeNull()
 })
+
+ it('preserves a group metadata draft across token renewal', async () => {
+  window.history.replaceState({}, '', '/?view=resource-groups&resource=group&section=configuration&tenant=alpha')
+  await act(async () => render())
+  await fill(field('Boundary for production workloads and shared services.'), 'Private draft')
+  await act(async () => render('alpha', 'user', true, 'Owner', 'renewed-token'))
+  expect(field('Boundary for production workloads and shared services.').value).toBe('Private draft')
+  await click('Refresh group details')
+  const reads = fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/resource-groups/group'))
+  expect(reads.at(-1)![1]?.headers).toEqual(expect.objectContaining({ Authorization: 'Bearer renewed-token' }))
+  expect(field('Boundary for production workloads and shared services.').value).toBe('Private draft')
+ })

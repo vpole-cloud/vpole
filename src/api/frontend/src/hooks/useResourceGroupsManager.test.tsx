@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, useLayoutEffect } from 'react'
-import { createRoot, type Root } from 'react-dom/client'
+import type { Root } from 'react-dom/client'
+import { createTestApp } from '../test/TestApp'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import * as api from '../api'
 import { useResourceGroupsManager } from './useResourceGroupsManager'
@@ -27,17 +28,17 @@ function Probe({ tenantId = 'tenant' }: { tenantId?: string }) {
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
   vi.resetAllMocks()
-  root = createRoot(document.createElement('div'))
+  root = createTestApp().root
 })
 afterEach(async () => { await act(async () => { root.unmount() }) })
 it('shows the created group and ignores an older list response arriving after creation', async () => {
   const oldList = deferred<Awaited<ReturnType<typeof api.fetchResourceGroups>>>()
-  vi.mocked(api.fetchResourceGroups).mockReturnValue(oldList.promise)
+  const existing = { ...created, id: 'existing', name: 'Existing' }
+  vi.mocked(api.fetchResourceGroups).mockReturnValueOnce(oldList.promise).mockResolvedValue({ ...emptyPage, items: [created, existing] })
   vi.mocked(api.createResourceGroup).mockResolvedValue(created)
   await act(async () => { root.render(<Probe />) })
   await act(async () => { await state.create(created) })
   expect(state.status).toBe('success')
-  const existing = { ...created, id: 'existing', name: 'Existing' }
   await act(async () => { oldList.resolve({ ...emptyPage, items: [existing] }) })
   expect(state.items).toEqual([created, existing])
 })
@@ -68,8 +69,8 @@ it.each(['update', 'remove'] as const)('does not undo %s when a stale refresh fi
   vi.mocked(api.deleteResourceGroup).mockResolvedValue(undefined)
   await act(async () => { root.render(<Probe />) })
   const oldList = deferred<Awaited<ReturnType<typeof api.fetchResourceGroups>>>()
-  vi.mocked(api.fetchResourceGroups).mockReturnValueOnce(oldList.promise)
-  let refresh!: Promise<void>
+  vi.mocked(api.fetchResourceGroups).mockReturnValueOnce(oldList.promise).mockResolvedValue({ ...emptyPage, items: operation === 'update' ? [{ ...created, description: 'updated' }] : [] })
+  let refresh!: Promise<unknown>
   await act(async () => { refresh = state.refresh() })
   await act(async () => {
     if (operation === 'update') await state.update(created.id, created)

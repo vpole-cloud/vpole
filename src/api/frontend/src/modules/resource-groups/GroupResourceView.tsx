@@ -3,7 +3,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchResourceGroup } from '../../api'
 import { ResourceGroupForm } from '../../components/ResourceGroupForm'
 import { useResourceGroupsManager } from '../../hooks/useResourceGroupsManager'
-import { useResource } from '../../hooks/useResource'
+import { useScopedQuery } from '../../data/useScopedQuery'
+import { useApiScope } from '../../data/useApiScope'
 import { useAppServices } from '../../shell/AppContext'
 import { useUnsavedChanges } from '../../shell/useUnsavedChanges'
 import { Button, ConfirmationDialog, EmptyState, Notice } from '../../ui/components'
@@ -17,8 +18,9 @@ export function GroupResourceView({ id, section, active, pageNumber, pageSize, r
     onSection: (id: string, section: GroupSection) => void; onPage: (id: string, page: number, size: number, replace?: boolean) => void;
     onLoaded: (group: ResourceGroup) => void; onDirtyChange: (id: string, dirty: boolean) => void; onChanged: () => void }) {
   const { api, tenant, notifications } = useAppServices()
-  const details = useResource(`${api.baseUrl}:${api.tenantId}:${api.token}:${id}`,
-    (signal) => fetchResourceGroup(api.baseUrl, id, api.token, api.tenantId, signal), refreshVersion)
+  const origin = useApiScope(api)
+  const details = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['resource-groups', 'detail', id],
+    load: (signal) => fetchResourceGroup(api.baseUrl, id, origin.credential(), api.tenantId, signal), refreshVersion })
   const manager = useResourceGroupsManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId, enabled: true, loadInventory: false })
   const [dirty, setDirty] = useState(false)
   const [visitedConfiguration, setVisitedConfiguration] = useState(section === 'configuration')
@@ -50,7 +52,7 @@ export function GroupResourceView({ id, section, active, pageNumber, pageSize, r
     <TabPanel id={panelId} tabId="configuration" activeId={section}>
       {visitedConfiguration && (tenant.canManage ? <ResourceGroupForm key={formVersion} mode="edit" initialValue={group}
         submitStatus={manager.submitStatus} submitError={manager.submitError} onDirtyChange={setDirty} onCancelEdit={() => setDiscarding(true)}
-        onSubmit={async (input) => { await manager.update(id, input); await details.refresh(); onChanged(); notifications.publish(`Metadata saved for ${group.name}.`) }} />
+        onSubmit={async (input) => { const updated = await manager.update(id, input); if (!updated || !origin.isCurrent()) return; await details.refreshAfterWrite(); if (!origin.isCurrent()) return; onChanged(); notifications.publish(`Metadata saved for ${group.name}.`) }} />
         : <EmptyState title="Tenant viewer access is read-only." />)}
     </TabPanel>
     {discarding && <ConfirmationDialog title="Discard group changes?" confirmLabel="Discard changes" onCancel={() => setDiscarding(false)}
@@ -61,6 +63,7 @@ export function GroupResourceView({ id, section, active, pageNumber, pageSize, r
 export function NewGroupView({ onDirtyChange, onCreated }:
   { onDirtyChange: (id: string, dirty: boolean) => void; onCreated: (group: ResourceGroup, open: boolean) => void }) {
   const { api } = useAppServices()
+  const origin = useApiScope(api)
   const manager = useResourceGroupsManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId, enabled: true, loadInventory: false })
   const [dirty, setDirty] = useState(false)
   const mounted = useRef(false)
@@ -68,5 +71,5 @@ export function NewGroupView({ onDirtyChange, onCreated }:
   useUnsavedChanges(dirty, 'New resource group')
   useEffect(() => { onDirtyChange('create', dirty); return () => onDirtyChange('create', false) }, [dirty, onDirtyChange])
   return <ResourceGroupForm mode="create" submitStatus={manager.submitStatus} submitError={manager.submitError} onDirtyChange={setDirty}
-    onSubmit={async (input) => { const group = await manager.create(input); if (group) onCreated(group, mounted.current) }} />
+    onSubmit={async (input) => { const group = await manager.create(input); if (group && origin.isCurrent()) onCreated(group, mounted.current) }} />
 }

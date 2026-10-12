@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fetchPostgresConnectionString, rotatePostgresPassword, validationMessage } from '../../api'
 import { useScopedMutation } from '../../hooks/useScopedMutation'
+import { useApiScope } from '../../data/useApiScope'
 import { useAppServices } from '../../shell/AppContext'
 import { useUnsavedChanges } from '../../shell/useUnsavedChanges'
 import type { PostgresCluster } from '../../types'
@@ -9,7 +10,8 @@ import { Button, ConfirmationDialog, Field, Notice } from '../../ui/components'
 // Mounted only in the active credential section with write access. Values never leave memory.
 export function PostgresCredentials({ cluster, onDirtyChange, onChanged }: { cluster: PostgresCluster; onDirtyChange: (dirty: boolean) => void; onChanged: () => Promise<void> }) {
   const { api, notifications } = useAppServices()
-  const scopeKey = `${api.baseUrl}:${api.tenantId}:${api.token}:${cluster.id}`
+  const origin = useApiScope(api)
+  const scopeKey = `${origin.identity}:${cluster.id}`
   const reveal = useScopedMutation(scopeKey)
   const rotate = useScopedMutation(scopeKey)
   const [connection, setConnection] = useState('')
@@ -30,11 +32,11 @@ export function PostgresCredentials({ cluster, onDirtyChange, onChanged }: { clu
     <p className="field__hint">Revealed credentials clear when you leave this section, switch tenant or leave the browser. Copying places the value on your clipboard.</p>
     {!applied && <Notice>Connection details become available after the current deployment generation is applied.</Notice>}
     <div className="row-actions"><Button disabled={!applied || reveal.busy || rotate.busy} onClick={() => {
-      setCopyError(''); void reveal.run((signal) => fetchPostgresConnectionString(api.baseUrl, cluster.id, api.token, api.tenantId, signal), (value) => setConnection(value.connectionString)).catch(() => {})
+      setCopyError(''); void reveal.run((signal) => fetchPostgresConnectionString(api.baseUrl, cluster.id, origin.credential(), api.tenantId, signal), (value) => { if (origin.isCurrent()) setConnection(value.connectionString) }).catch(() => {})
     }}>{reveal.busy ? 'Loading…' : 'Reveal connection string'}</Button>
       {connection && <><Button onClick={() => {
         if (!navigator.clipboard) { setCopyError('Clipboard access is unavailable.'); return }
-        void navigator.clipboard.writeText(connection).then(() => notifications.publish('Connection string copied.')).catch(() => setCopyError('Unable to copy connection string.'))
+        void navigator.clipboard.writeText(connection).then(() => { if (origin.isCurrent()) notifications.publish('Connection string copied.') }).catch(() => { if (origin.isCurrent()) setCopyError('Unable to copy connection string.') })
       }}>Copy connection string</Button><Button onClick={() => setConnection('')}>Hide connection string</Button></>}</div>
     {connection && <Field label="Connection string"><textarea className="field__control" readOnly autoComplete="off" value={connection} spellCheck={false} /></Field>}
     {copyError && <Notice tone="error">{copyError}</Notice>}{reveal.error instanceof Error && <Notice tone="error">{reveal.error.message}</Notice>}
@@ -48,8 +50,8 @@ export function PostgresCredentials({ cluster, onDirtyChange, onChanged }: { clu
     {confirming && <ConfirmationDialog title={`Rotate password for ${cluster.name}?`} confirmLabel="Rotate password" busy={rotate.busy} onCancel={() => setConfirming(false)} onConfirm={() => {
       if (!password) return
       setConnection('')
-      void rotate.run((signal) => rotatePostgresPassword(api.baseUrl, cluster.id, password, api.token, api.tenantId, signal), async () => {
-        setPassword(''); setConfirming(false); await onChanged(); notifications.publish('Password rotation accepted. Wait for the new deployment generation to apply.')
+      void rotate.run((signal) => rotatePostgresPassword(api.baseUrl, cluster.id, password, origin.credential(), api.tenantId, signal), async () => {
+        setPassword(''); setConfirming(false); await onChanged(); if (!origin.isCurrent()) return; notifications.publish('Password rotation accepted. Wait for the new deployment generation to apply.')
       }).catch(() => {})
     }}>Connected applications may need the new credentials before they can reconnect.</ConfirmationDialog>}
   </section>

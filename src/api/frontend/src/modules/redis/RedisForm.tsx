@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
-import { createRedisService, fetchAvailableComputeProfiles, fetchAvailableDeploymentTargets, fetchAvailableStorageProfiles, fetchIsolationScopes, validationMessage } from '../../api'
-import { useResource } from '../../hooks/useResource'
-import { useResourceGroupsManager } from '../../hooks/useResourceGroupsManager'
-import { useIsolationScopes } from '../../hooks/useIsolationScopes'
+import { useEffect, useState } from 'react'
+import { createRedisService, validationMessage } from '../../api'
+import { useProviderInvalidation } from '../../data/useProviderInvalidation'
+import { useResourceChoices } from '../../data/useResourceChoices'
 import { useScopedMutation } from '../../hooks/useScopedMutation'
 import { useAppServices } from '../../shell/AppContext'
 import { useUnsavedChanges } from '../../shell/useUnsavedChanges'
@@ -12,26 +11,17 @@ import { parseRedisTags, redisType, type RedisSection } from './workspaceState'
 
 export function NewRedisView({ actions }: { actions: WorkspaceActions<RedisSection>; active: boolean }) {
   const { api } = useAppServices()
-  const scopeKey = `${api.baseUrl}:${api.tenantId}:${api.token}`
-  const groups = useResourceGroupsManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId, enabled: true })
+  const origin = useProviderInvalidation(api)
+  const scopeKey = `${origin.identity}:create-redis`
   const [name, setName] = useState('')
   const [tags, setTags] = useState('')
   const [groupId, setGroupId] = useState('')
-  const group = groupId || groups.items[0]?.id || ''
   const [scopeId, setScopeId] = useState('')
-  const loadScopes = useCallback((id: string, signal?: AbortSignal) => fetchIsolationScopes(api.baseUrl, id, api.token, api.tenantId, signal), [api.baseUrl, api.token, api.tenantId])
-  const scopes = useIsolationScopes(group, loadScopes)
-  const isolation = scopeId || scopes.items.find((scope) => scope.isDefault)?.id || ''
-  const targets = useResource(`${scopeKey}:${group}:${isolation}`, (signal) => fetchAvailableDeploymentTargets(api.baseUrl, isolation || undefined, api.token, api.tenantId, signal, false, redisType))
   const [targetId, setTargetId] = useState('')
-  const target = targetId || (targets.resource?.length === 1 ? targets.resource[0].id : '')
-  const storage = useResource(`${scopeKey}:${target}:storage`, (signal) => target ? fetchAvailableStorageProfiles(api.baseUrl, redisType, target, api.token, api.tenantId, signal) : Promise.resolve([]))
-  const compute = useResource(`${scopeKey}:${target}:compute`, (signal) => target ? fetchAvailableComputeProfiles(api.baseUrl, target, api.token, api.tenantId, signal, redisType) : Promise.resolve([]))
   const [computeId, setComputeId] = useState('')
-  const computeProfile = computeId || compute.resource?.find((profile) => profile.isDefault)?.id || (compute.resource?.length === 1 ? compute.resource[0].id : '')
   const [storageId, setStorageId] = useState('')
-  const profiles = storage.resource?.filter((profile) => !profile.targetMappings || profile.targetMappings.some((mapping) => mapping.deploymentTargetId === target)) ?? []
-  const storageProfile = storageId || profiles.find((profile) => profile.isDefault)?.id || (profiles.length === 1 ? profiles[0].id : '')
+  const { groups, scopes, targets, storage, compute, group, isolation, target, computeProfile, storageProfile, profiles, allowed } = useResourceChoices(api, redisType,
+    { groupId, isolationScopeId: scopeId, deploymentTargetId: targetId, computeProfileId: computeId, storageProfileId: storageId })
   const [size, setSize] = useState(1)
   const [submitted, setSubmitted] = useState(false)
   const [validation, setValidation] = useState('')
@@ -41,18 +31,16 @@ export function NewRedisView({ actions }: { actions: WorkspaceActions<RedisSecti
   useUnsavedChanges(dirty, 'New Redis service')
   useEffect(() => { onDirty('create', dirty); return () => onDirty('create', false) }, [dirty, onDirty])
   const resetTarget = () => { setTargetId(''); setComputeId(''); setStorageId('') }
-  const allowed = groups.status === 'success' && scopes.status === 'success' && targets.status === 'success' && storage.status === 'success' && compute.status === 'success' &&
-    groups.items.some((item) => item.id === group) && scopes.items.some((item) => item.id === isolation && item.lifecycle === 'active') && targets.resource?.some((item) => item.id === target) &&
-    compute.resource?.some((item) => item.id === computeProfile) && profiles.some((item) => item.id === storageProfile)
   const error = (field: string) => validationMessage(mutation.error, field)
   return <section className="panel"><header className="ui-page-header"><div><p className="ui-page-eyebrow">Redis</p><h1>Create Redis service</h1><p>One persistent Redis instance on one deployment target.</p></div></header>
     <form className="database-form" onSubmit={(event) => {
       event.preventDefault(); if (mutation.busy) return
       if (!allowed || !/^[a-z0-9-]{1,30}$/.test(name.trim()) || !Number.isInteger(size) || size < 1 || size > 1000) { setValidation('Use a name of up to 30 lowercase letters, digits or hyphens and 1–1000 GiB of storage. Select available placement and profiles.'); return }
       setValidation('')
-      void mutation.run((signal) => createRedisService(api.baseUrl, { name: name.trim(), resourceGroupId: group, tags: parseRedisTags(tags),
+      void mutation.run(async (signal) => { const created = await createRedisService(api.baseUrl, { name: name.trim(), resourceGroupId: group, tags: parseRedisTags(tags),
         spec: { storage: { sizeGb: size, storageProfileId: storageProfile } }, computeProfileId: computeProfile,
-        placement: { isolationScopeId: isolation, deploymentTargetId: target } }, api.token, api.tenantId, signal), (created) => {
+        placement: { isolationScopeId: isolation, deploymentTargetId: target } }, origin.credential(), api.tenantId, signal); await origin.invalidate([['redis'], ['resource-groups'], ['overview'], ['search']]); return created }, (created) => {
+        if (!origin.isCurrent()) return
         setSubmitted(true); actions.created(created.redisId, name.trim())
       }).catch(() => {})
     }}><fieldset disabled={mutation.busy}><div className="form-grid">

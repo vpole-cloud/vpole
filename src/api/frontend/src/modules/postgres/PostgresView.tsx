@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { fetchPostgresClusters } from '../../api'
-import { usePagedInventory } from '../../hooks/usePagedInventory'
+import { useScopedQuery } from '../../data/useScopedQuery'
+import { useApiScope } from '../../data/useApiScope'
 import { useAppServices } from '../../shell/AppContext'
 import { readResourceRoute } from '../../shell/workspaceState'
 import { Button, DataTable, EmptyState, Notice, StatusBadge } from '../../ui/components'
@@ -17,10 +18,11 @@ export function PostgresView() {
 
 function PostgresCatalog({ actions, version }: { actions: WorkspaceActions<PostgresSection>; version: number }) {
   const { api, tenant, navigation } = useAppServices()
+  const origin = useApiScope(api)
   const route = readResourceRoute(navigation.search, postgresSections, 'overview')
-  const inventory = usePagedInventory({ scopeKey: `${api.baseUrl}:${api.tenantId}:${api.token}`, enabled: Boolean(tenant.active),
-    queryKey: JSON.stringify([route.pageNumber, route.pageSize, version]),
-    load: (signal) => fetchPostgresClusters(api.baseUrl, api.token, api.tenantId, signal, route.pageNumber, route.pageSize), getId: (cluster) => cluster.id })
+  const query = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['postgres', 'inventory', route.pageNumber, route.pageSize], enabled: Boolean(tenant.active), keepPrevious: true, refreshVersion: version,
+    load: (signal) => fetchPostgresClusters(api.baseUrl, origin.credential(), api.tenantId, signal, route.pageNumber, route.pageSize) })
+  const inventory = { ...query, page: query.resource, items: query.resource?.items ?? [], isCurrentPage: query.isCurrent }
   const lastPage = Math.max(1, Math.ceil((inventory.page?.totalCount ?? 0) / route.pageSize))
   useEffect(() => {
     if (inventory.status === 'success' && inventory.isCurrentPage && route.pageNumber > lastPage) {

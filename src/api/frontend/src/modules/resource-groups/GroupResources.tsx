@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { fetchResourceGroupResources } from '../../api'
-import { usePagedInventory } from '../../hooks/usePagedInventory'
+import { useScopedQuery } from '../../data/useScopedQuery'
+import { useApiScope } from '../../data/useApiScope'
 import { useAppServices } from '../../shell/AppContext'
 import { Button, EmptyState } from '../../ui/components'
 import { Pagination } from '../../ui/InventoryControls'
@@ -9,11 +10,11 @@ import { ResourceLink } from '../../ui/ResourceLink'
 export function GroupResources({ groupId, pageNumber, pageSize, onPage, onPageSize, compact = false, refreshVersion = 0 }:
   { groupId: string; pageNumber: number; pageSize: number; onPage: (page: number, replace?: boolean) => void; onPageSize: (size: number) => void; compact?: boolean; refreshVersion?: number }) {
   const { api, resourceTypes, navigation } = useAppServices()
-  const inventory = usePagedInventory({ scopeKey: `${api.baseUrl}:${api.token}:${api.tenantId}:${groupId}`,
-    queryKey: JSON.stringify([pageNumber, pageSize, refreshVersion]), enabled: Boolean(api.tenantId),
-    load: (signal) => fetchResourceGroupResources(api.baseUrl, groupId, pageNumber, pageSize, api.token, api.tenantId, signal),
-    getId: (item) => item.registrationId,
-  })
+  const origin = useApiScope(api)
+  const query = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['resource-groups', 'resources', groupId, pageNumber, pageSize],
+    enabled: Boolean(api.tenantId), keepPrevious: true, refreshVersion,
+    load: (signal) => fetchResourceGroupResources(api.baseUrl, groupId, pageNumber, pageSize, origin.credential(), api.tenantId, signal) })
+  const inventory = { ...query, page: query.resource, items: query.resource?.items ?? [], isCurrentPage: query.isCurrent }
   const lastPage = Math.max(1, Math.ceil((inventory.page?.totalCount ?? 0) / pageSize))
   useEffect(() => {
     if (inventory.status === 'success' && inventory.isCurrentPage && pageNumber > lastPage) onPage(lastPage, true)

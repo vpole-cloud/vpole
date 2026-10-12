@@ -9,6 +9,7 @@ export function useResourceGroupChoices(api: { apiBaseUrl: string; token?: strin
       const first = await fetchResourceGroups(api.apiBaseUrl, credential(), api.tenantId, signal, { pageSize: 200 })
       const items = [...first.items]
       for (let pageNumber = 2; items.length < first.totalCount; pageNumber++) {
+        if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
         const next = await fetchResourceGroups(api.apiBaseUrl, credential(), api.tenantId, signal, { pageNumber, pageSize: 200 })
         items.push(...next.items)
         if (!next.items.length) break

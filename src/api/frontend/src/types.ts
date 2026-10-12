@@ -1,3 +1,7 @@
+import type { ResourceGroup } from './modules/resource-groups/types'
+export type { ResourceGroup, IsolationScope, ResourceGroupInput } from './modules/resource-groups/types'
+export type { RedisService, RedisInput, RedisUpdateInput } from './modules/redis/types'
+export type { PostgresCluster, PostgresCapabilities, PostgresInput, PostgresUpdateInput } from './modules/postgres/types'
 import type { WebService, WebServiceDeployment } from './modules/web-services/types'
 export type LoadStatus = 'idle' | 'loading' | 'success' | 'error'
 export interface RuntimeDiagnosticInstance {
@@ -24,25 +28,6 @@ export interface Tenant {
   name: string
   role: TenantRole
   isDefault: boolean
-}
-
-export interface ResourceGroup {
-  id: string
-  name: string
-  description: string
-  resourceCount: number
-  tags: string[]
-}
-
-export interface IsolationScope {
-  id: string
-  resourceGroupId: string
-  name: string
-  isDefault: boolean
-  lifecycle: 'active' | 'deleting'
-  revision: number
-  createdAtUtc: string
-  updatedAtUtc: string
 }
 
 export interface ResourceRegistration {
@@ -153,70 +138,6 @@ export interface ResourceEndpointDiscovery {
   availability: 'Supported' | 'Unsupported'
   endpoints: { id: string; displayName: string; protocol: string; transport: string; port: number; configuration: { key: string; displayName: string; value: string }[] }[]
   topology: { status: 'NotEvaluated' | 'Eligible' | 'Ineligible'; reasonCode: string | null }
-}
-
-export interface RedisService {
-  id: string
-  name: string
-  resourceGroupId: string
-  spec: { storage: { sizeGb: number; storageProfileId: string } }
-  tags: string[]
-  revision: number
-  lifecycle: 'Active' | 'Deleting'
-  placement: ResourcePlacement | null
-}
-
-export interface RedisInput {
-  name: string
-  resourceGroupId: string
-  spec: RedisService['spec']
-  tags: string[]
-  computeProfileId?: string
-  placement: { isolationScopeId?: string; deploymentTargetId: string }
-}
-
-export type RedisUpdateInput = Pick<RedisInput, 'spec' | 'tags' | 'computeProfileId'>
-
-export interface PostgresCluster {
-  id: string
-  name: string
-  groupId: string
-  revision: number
-  lifecycle: 'Active' | 'Deleting'
-  spec: {
-    instances: number
-    storage: number
-    storageProfileId: string
-    version: number
-    deploymentMode: 'Operator' | 'StatefulSet'
-  }
-  placement: ResourcePlacement
-}
-
-export interface PostgresCapabilities {
-  from: number
-  to: number
-  defaultDeploymentMode: 'Operator' | 'StatefulSet'
-}
-
-export interface PostgresInput {
-  name: string
-  groupId: string
-  version: number
-  instances: number
-  storage: number
-  storageProfileId: string
-  computeProfileId?: string
-  username: string
-  password: string
-  placement: { isolationScopeId?: string; deploymentTargetId: string }
-}
-
-export interface PostgresUpdateInput {
-  expectedRevision: number
-  instances?: number
-  storage?: number
-  computeProfileId?: string
 }
 
 export interface AvailableComputeProfile {
@@ -405,12 +326,6 @@ export interface SourceRepository {
 export interface OverviewData {
   resourceGroups: ResourceGroup[]
   webServices: WebService[]
-}
-
-export interface ResourceGroupInput {
-  name: string
-  description: string
-  tags: string[]
 }
 
 export type StorageMediaType = 'Unknown' | 'HDD' | 'SSD' | 'NVMe' | 'Network'

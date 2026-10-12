@@ -1,5 +1,8 @@
+export { fetchIsolationScopes, fetchResourceGroups, fetchResourceGroup, fetchResourceGroupResources, createResourceGroup, updateResourceGroup, deleteResourceGroup } from './modules/resource-groups/api'
+export { fetchRedisServices, fetchRedisService, createRedisService, updateRedisService, deleteRedisService } from './modules/redis/api'
+export { fetchPostgresClusters, fetchPostgresCluster, fetchPostgresCapabilities, createPostgresCluster, updatePostgresCluster, deletePostgresCluster, fetchPostgresConnectionString, rotatePostgresPassword } from './modules/postgres/api'
 import { consumeRuntimeLogFrames, runtimeReasons } from './api/runtimeLogs'
-import { ApiError, buildHeaders, fetchJson, request, responseError, sendJson, sendWithoutResponse } from './api/transport'
+import { ApiError, buildHeaders, fetchJson, request, sendJson, sendWithoutResponse } from './api/transport'
 export { ApiError, validationMessage } from './api/transport'
 export { fetchTenants, normalizeTenantRole } from './api/tenants'
 import type {
@@ -13,11 +16,7 @@ import type {
   KubernetesPersistentVolumeClaim,
   KubernetesStorageClass,
   PaginatedResponse,
-  ResourceGroup,
-  IsolationScope,
-  ResourceRegistration,
   ResourceConnection,
-  ResourceGroupInput,
   PoleResourceType,
   StorageProfile,
   StorageProfileInput,
@@ -30,13 +29,6 @@ import type {
   HostnameBinding,
   WebServiceDeployment,
   SearchHit,
-  PostgresCluster,
-  PostgresCapabilities,
-  PostgresInput,
-  PostgresUpdateInput,
-  RedisService,
-  RedisInput,
-  RedisUpdateInput,
   ResourcePlacement,
   SecretMetadata,
   SecretInput,
@@ -45,19 +37,6 @@ import type {
   SecretProjection,
   ResourceEndpointDiscovery,
 } from './types'
-
-export async function fetchIsolationScopes(
-  apiBaseUrl: string,
-  resourceGroupId: string,
-  token?: string,
-  tenantId?: string,
-  signal?: AbortSignal,
-) {
-  return fetchJson<IsolationScope[]>(`${apiBaseUrl}/api/v1/resource-groups/${encodeURIComponent(resourceGroupId)}/isolation-scopes`, {
-    headers: buildHeaders(token, tenantId),
-    signal,
-  })
-}
 
 export async function fetchStorageProfiles(
   apiBaseUrl: string,
@@ -225,53 +204,6 @@ export function deleteResourceConnection(base: string, id: string, token?: strin
   return sendJson<{ id: string; generation: number; status: string }>(`${base}/api/v1/resource-connections/${encodeURIComponent(id)}`, { method: 'DELETE', headers: buildHeaders(token, tenantId), signal })
 }
 
-export async function fetchResourceGroups(
-  apiBaseUrl: string,
-  token?: string,
-  tenantId?: string,
-  signal?: AbortSignal,
-  inventory: { pageNumber?: number; pageSize?: number; search?: string } = {},
-) {
-  const query = new URLSearchParams({ pageNumber: String(inventory.pageNumber ?? 1), pageSize: String(inventory.pageSize ?? 6) })
-  if (inventory.search?.trim()) query.set('search', inventory.search.trim())
-  return fetchJson<PaginatedResponse<ResourceGroup>>(
-    `${apiBaseUrl}/api/v1/resource-groups?${query}`,
-    {
-      headers: buildHeaders(token, tenantId),
-      signal,
-    },
-  )
-}
-
-export async function fetchResourceGroup(apiBaseUrl: string, id: string, token?: string, tenantId?: string, signal?: AbortSignal) {
-  return fetchJson<ResourceGroup>(`${apiBaseUrl}/api/v1/resource-groups/${encodeURIComponent(id)}`, {
-    headers: buildHeaders(token, tenantId), signal,
-  })
-}
-
-export async function fetchResourceGroupResources(
-  apiBaseUrl: string,
-  resourceGroupId: string,
-  pageNumber = 1,
-  pageSize = 20,
-  token?: string,
-  tenantId?: string,
-  signal?: AbortSignal,
-) {
-  const query = new URLSearchParams({
-    pageNumber: pageNumber.toString(),
-    pageSize: pageSize.toString(),
-  })
-
-  return fetchJson<PaginatedResponse<ResourceRegistration>>(
-    `${apiBaseUrl}/api/v1/resource-groups/${encodeURIComponent(resourceGroupId)}/resources?${query.toString()}`,
-    {
-      headers: buildHeaders(token, tenantId),
-      signal,
-    },
-  )
-}
-
 const webServiceResourceType = 'pole/web-service'
 
 export async function fetchAvailableDeploymentTargets(
@@ -406,33 +338,6 @@ export async function fetchProtectedGreeting(
   return response.text()
 }
 
-export async function createResourceGroup(
-  apiBaseUrl: string,
-  input: ResourceGroupInput,
-  token?: string,
-  tenantId?: string,
-) {
-  return sendJson<ResourceGroup>(`${apiBaseUrl}/api/v1/resource-groups`, {
-    method: 'POST',
-    headers: buildHeaders(token, tenantId),
-    body: JSON.stringify(input),
-  })
-}
-
-export async function updateResourceGroup(
-  apiBaseUrl: string,
-  id: string,
-  input: ResourceGroupInput,
-  token?: string,
-  tenantId?: string,
-) {
-  return sendJson<ResourceGroup>(`${apiBaseUrl}/api/v1/resource-groups/${encodeURIComponent(id)}`, {
-    method: 'PUT',
-    headers: buildHeaders(token, tenantId),
-    body: JSON.stringify(input),
-  })
-}
-
 export async function createStorageProfile(
   apiBaseUrl: string,
   input: StorageProfileInput,
@@ -462,22 +367,6 @@ export async function updateStorageProfile(
       body: JSON.stringify(input),
     },
   )
-}
-
-export async function deleteResourceGroup(
-  apiBaseUrl: string,
-  id: string,
-  token?: string,
-  tenantId?: string,
-) {
-  const response = await request(`${apiBaseUrl}/api/v1/resource-groups/${encodeURIComponent(id)}`, {
-    method: 'DELETE',
-    headers: buildHeaders(token, tenantId),
-  })
-
-  if (!response.ok) {
-    throw await responseError(response)
-  }
 }
 
 export async function fetchWebServiceHostnameBindings(
@@ -682,11 +571,6 @@ export async function searchResources(
   })
 }
 
-export async function fetchPostgresClusters(apiBaseUrl: string, token?: string, tenantId?: string, signal?: AbortSignal, pageNumber = 1, pageSize = 8) {
-  const query = new URLSearchParams({ pageNumber: String(pageNumber), pageSize: String(pageSize) })
-  return fetchJson<PaginatedResponse<PostgresCluster>>(`${apiBaseUrl}/api/v1/postgres/?${query}`, { headers: buildHeaders(token, tenantId), signal })
-}
-
 export async function retryResourceDeployment(apiBaseUrl: string, deploymentId: string, expectedRevision: number, expectedOperation: string, token?: string, tenantId?: string, signal?: AbortSignal) {
   return healthRequest<unknown>(apiBaseUrl, `/${encodeURIComponent(deploymentId)}/retry?${new URLSearchParams({ expectedRevision: String(expectedRevision), expectedOperation })}`, token, tenantId, signal, 'POST')
 }
@@ -735,68 +619,6 @@ export async function readResourceRuntimeLogs(base: string, deploymentId: string
   }
   if (!response.headers.get('Content-Type')?.startsWith('application/x-ndjson') || !response.body) throw new Error('The runtime log response is unavailable. Reconnect with a new recent window.')
   return consumeRuntimeLogFrames(response.body, onFrame, signal)
-}
-
-export async function fetchPostgresCluster(apiBaseUrl: string, id: string, token?: string, tenantId?: string, signal?: AbortSignal) {
-  return fetchJson<PostgresCluster>(`${apiBaseUrl}/api/v1/postgres/${encodeURIComponent(id)}`, { headers: buildHeaders(token, tenantId), signal })
-}
-
-export async function fetchPostgresCapabilities(apiBaseUrl: string, token?: string, tenantId?: string, signal?: AbortSignal) {
-  return fetchJson<PostgresCapabilities>(`${apiBaseUrl}/api/v1/postgres/supported-versions`, { headers: buildHeaders(token, tenantId), signal })
-}
-
-export async function createPostgresCluster(apiBaseUrl: string, input: PostgresInput, token?: string, tenantId?: string, signal?: AbortSignal) {
-  return sendJson<PostgresCluster>(`${apiBaseUrl}/api/v1/postgres/`, {
-    method: 'POST', headers: buildHeaders(token, tenantId), body: JSON.stringify(input), signal,
-  })
-}
-
-export async function updatePostgresCluster(apiBaseUrl: string, id: string, input: PostgresUpdateInput, token?: string, tenantId?: string, signal?: AbortSignal) {
-  return sendJson<Pick<PostgresCluster, 'id' | 'placement'>>(`${apiBaseUrl}/api/v1/postgres/${encodeURIComponent(id)}`, {
-    method: 'PUT', headers: buildHeaders(token, tenantId), body: JSON.stringify(input), signal,
-  })
-}
-
-export async function deletePostgresCluster(apiBaseUrl: string, id: string, token?: string, tenantId?: string, signal?: AbortSignal) {
-  return sendWithoutResponse(`${apiBaseUrl}/api/v1/postgres/${encodeURIComponent(id)}`, { method: 'DELETE', headers: buildHeaders(token, tenantId), signal })
-}
-
-export async function fetchPostgresConnectionString(apiBaseUrl: string, id: string, token?: string, tenantId?: string, signal?: AbortSignal) {
-  return fetchJson<{ connectionString: string }>(`${apiBaseUrl}/api/v1/postgres/${encodeURIComponent(id)}/connection-string`, {
-    headers: buildHeaders(token, tenantId), signal, cache: 'no-store',
-  })
-}
-
-export async function rotatePostgresPassword(apiBaseUrl: string, id: string, password: string, token?: string, tenantId?: string, signal?: AbortSignal) {
-  return sendJson<Pick<PostgresCluster, 'id' | 'placement'>>(`${apiBaseUrl}/api/v1/postgres/${encodeURIComponent(id)}/password`, {
-    method: 'PATCH', headers: buildHeaders(token, tenantId), body: JSON.stringify({ password }), signal,
-  })
-}
-
-export async function fetchRedisServices(apiBaseUrl: string, token?: string, tenantId?: string, signal?: AbortSignal, pageNumber = 1, pageSize = 8, search = '') {
-  const query = new URLSearchParams({ pageNumber: String(pageNumber), pageSize: String(pageSize) })
-  if (search.trim()) query.set('search', search.trim())
-  return fetchJson<PaginatedResponse<RedisService>>(`${apiBaseUrl}/api/v1/redis-services/?${query}`, { headers: buildHeaders(token, tenantId), signal })
-}
-
-export async function fetchRedisService(apiBaseUrl: string, id: string, token?: string, tenantId?: string, signal?: AbortSignal) {
-  return fetchJson<RedisService>(`${apiBaseUrl}/api/v1/redis-services/${encodeURIComponent(id)}`, { headers: buildHeaders(token, tenantId), signal })
-}
-
-export async function createRedisService(apiBaseUrl: string, input: RedisInput, token?: string, tenantId?: string, signal?: AbortSignal) {
-  return sendJson<{ redisId: string; placement: ResourcePlacement }>(`${apiBaseUrl}/api/v1/redis-services/`, {
-    method: 'POST', headers: buildHeaders(token, tenantId), body: JSON.stringify(input), signal,
-  })
-}
-
-export async function updateRedisService(apiBaseUrl: string, id: string, input: RedisUpdateInput, token?: string, tenantId?: string, signal?: AbortSignal) {
-  return sendJson<Pick<RedisService, 'id' | 'placement'>>(`${apiBaseUrl}/api/v1/redis-services/${encodeURIComponent(id)}`, {
-    method: 'PUT', headers: buildHeaders(token, tenantId), body: JSON.stringify(input), signal,
-  })
-}
-
-export async function deleteRedisService(apiBaseUrl: string, id: string, token?: string, tenantId?: string, signal?: AbortSignal) {
-  return sendWithoutResponse(`${apiBaseUrl}/api/v1/redis-services/${encodeURIComponent(id)}`, { method: 'DELETE', headers: buildHeaders(token, tenantId), signal })
 }
 
 export { updateWebServiceDependencies, fetchWebServices, fetchWebService, createWebService, updateWebService, fetchWebServiceDeployments, addWebServiceDeployment, updateWebServiceDeployment, deleteWebServiceDeployment, retryWebServiceDeployment, fetchWebServiceReleases, redeployWebService, rollbackWebService, deleteWebService } from './modules/web-services/api'
