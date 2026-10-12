@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { fetchSecrets } from '../../api'
-import { useResource } from '../../hooks/useResource'
+import { useSecretQuery } from './queries'
 import { useAppServices } from '../../shell/AppContext'
 import { Button, DataTable, EmptyState, Notice, StatusBadge } from '../../ui/components'
 import { ResourceWorkspace, type WorkspaceActions } from '../../ui/ResourceWorkspace'
@@ -16,7 +16,7 @@ function SecretCatalog({ actions, version }: { actions: WorkspaceActions<SecretS
   const { api, tenant, navigation } = useAppServices()
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined])
   const cursor = cursors.at(-1)
-  const list = useResource(`${api.baseUrl}:${api.tenantId}:${api.token}:${cursor ?? ''}`, (signal) => fetchSecrets(api.baseUrl, cursor, api.token, api.tenantId, signal), version)
+  const list = useSecretQuery(['secrets', 'inventory', cursor], (token, signal) => fetchSecrets(api.baseUrl, cursor, token, api.tenantId, signal), version)
   return <section className="panel"><header className="ui-page-header"><div><p className="ui-page-eyebrow">Security</p><h1>Secrets</h1><p>Encrypted values, resource bindings and deployment projections. Values cannot be read back.</p></div><div className="row-actions"><Button onClick={() => void list.refresh()} disabled={list.status === 'loading'}>Refresh Secrets</Button>{tenant.canManage && <Button variant="primary" onClick={() => actions.open('create')}>New Secret</Button>}</div></header>
     {list.error && <Notice tone="error">{list.error} Last fetched metadata is shown.</Notice>}
     {!list.resource?.items.length ? <EmptyState title={list.status === 'loading' ? 'Loading Secrets…' : list.status === 'error' ? 'Unable to load Secrets.' : 'No Secrets on this page.'} /> : <DataTable label="Secrets" items={list.resource.items} itemKey={(item) => item.id} columns={[

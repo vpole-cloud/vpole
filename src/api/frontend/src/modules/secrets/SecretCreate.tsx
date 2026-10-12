@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createSecret, fetchIsolationScopes } from '../../api'
-import { useIsolationScopes } from '../../hooks/useIsolationScopes'
-import { useResourceGroupsManager } from '../../hooks/useResourceGroupsManager'
+import { fetchResourceGroups } from '../../api'
+import { useSecretQuery, useSecretScope } from './queries'
 import { useScopedMutation } from '../../hooks/useScopedMutation'
 import { useAppServices } from '../../shell/AppContext'
 import { useUnsavedChanges } from '../../shell/useUnsavedChanges'
@@ -17,14 +17,16 @@ export function NewSecretView({ active, actions }: { active: boolean; actions: W
 
 function SecretCreateForm({ actions }: { actions: WorkspaceActions<SecretSection> }) {
   const { api } = useAppServices()
-  const groups = useResourceGroupsManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId, enabled: true })
+  const origin = useSecretScope()
+  const groupsQuery = useSecretQuery(['resource-groups', 'inventory', 1, 6, ''], (token, signal) => fetchResourceGroups(api.baseUrl, token, api.tenantId, signal))
+  const groups = { ...groupsQuery, items: groupsQuery.resource?.items ?? [] }
   const [name, setName] = useState(''); const [purpose, setPurpose] = useState(''); const [groupId, setGroupId] = useState(''); const [scopeId, setScopeId] = useState('')
   const group = groupId || groups.items[0]?.id || ''
-  const loadScopes = useCallback((id: string, signal?: AbortSignal) => fetchIsolationScopes(api.baseUrl, id, api.token, api.tenantId, signal), [api.baseUrl, api.token, api.tenantId])
-  const scopes = useIsolationScopes(group, loadScopes)
+  const scopeQuery = useSecretQuery(['resource-groups', 'scopes', group], (token, signal) => fetchIsolationScopes(api.baseUrl, group, token, api.tenantId, signal), 0, Boolean(group))
+  const scopes = { ...scopeQuery, items: scopeQuery.resource ?? [] }
   const isolation = scopeId || scopes.items.find((item) => item.isDefault)?.id || ''
   const values = useWriteOnlyValues()
-  const mutation = useScopedMutation(`${api.baseUrl}:${api.tenantId}:${api.token}`)
+  const mutation = useScopedMutation(origin.writeIdentity)
   useClearOnLeave(values.clear, mutation.cancel)
   const [validation, setValidation] = useState(''); const [submitted, setSubmitted] = useState(false)
   const dirty = !submitted && Boolean(name || purpose || values.rows.some((row) => row.key || row.value))
@@ -38,8 +40,11 @@ function SecretCreateForm({ actions }: { actions: WorkspaceActions<SecretSection
       const error = validateValues(values.rows); if (!allowed || !name.trim() || error) { setValidation(error || 'Choose an available group and scope and enter a name.'); return }
       setValidation('')
       void mutation.run((signal) => createSecret(api.baseUrl, { name: name.trim(), purpose: purpose.trim(), resourceGroupId: group, isolationScopeId: isolation,
-        values: Object.fromEntries(values.rows.map((row) => [row.key, row.value])) }, api.token, api.tenantId, signal), (created) => {
-        values.clear(); setSubmitted(true); actions.created(created.id, created.name)
+        values: Object.fromEntries(values.rows.map((row) => [row.key, row.value])) }, origin.credential(), api.tenantId, signal), async (created) => {
+        values.clear(); setSubmitted(true);
+        await origin.session.client.invalidateQueries({ queryKey: origin.key(['secrets']), refetchType: 'active' })
+        if (!origin.isCurrent()) return
+        actions.created(created.id, created.name)
       }).catch(() => {})
     }}><fieldset disabled={mutation.busy}><div className="form-grid">
       <Field label="Name"><input className="field__control" required maxLength={200} value={name} onChange={(event) => setName(event.target.value)} /></Field>
@@ -48,6 +53,6 @@ function SecretCreateForm({ actions }: { actions: WorkspaceActions<SecretSection
       <Field label="Isolation scope"><select className="field__control" required value={isolation} onChange={(event) => setScopeId(event.target.value)}><option value="">Select a scope</option>{scopes.items.filter((item) => item.lifecycle === 'active').map((item) => <option key={item.id} value={item.id}>{item.name}{item.isDefault ? ' (default)' : ''}</option>)}</select></Field>
     </div><SecretValues rows={values.rows} onChange={values.setRows} cleared={values.cleared} /></fieldset>
       {[groups.error, scopes.error, validation, mutation.error instanceof Error ? mutation.error.message : ''].filter(Boolean).map((error, index) => <Notice key={index} tone="error">{error}</Notice>)}
-      <div className="row-actions"><Button type="submit" variant="primary" disabled={mutation.busy || !allowed}>{mutation.busy ? 'Creating…' : 'Create Secret'}</Button><Button onClick={() => { void groups.refresh(); scopes.retry() }}>Refresh choices</Button></div>
+      <div className="row-actions"><Button type="submit" variant="primary" disabled={mutation.busy || !allowed}>{mutation.busy ? 'Creating…' : 'Create Secret'}</Button><Button onClick={() => { void groups.refresh(); void scopes.refresh() }}>Refresh choices</Button></div>
     </form></section>
 }

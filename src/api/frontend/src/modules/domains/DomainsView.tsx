@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { createDomainZone, deleteDomainZone, fetchAvailableDeploymentTargets, fetchDomainZone, fetchDomainZoneBindings, fetchDomainZones, fetchResourceGroup } from '../../api'
-import { useResource } from '../../hooks/useResource'
+import { useDomainQuery, useDomainScope } from './queries'
 import { useScopedMutation } from '../../hooks/useScopedMutation'
 import { useAppServices } from '../../shell/AppContext'
 import { useUnsavedChanges } from '../../shell/useUnsavedChanges'
@@ -14,15 +14,13 @@ type Actions = WorkspaceActions<'overview'>
 const date = (value: string) => new Date(value).toLocaleString()
 
 export function DomainsView() {
-  const { api } = useAppServices()
-  return <ResourceWorkspace key={`${api.baseUrl}:${api.tenantId}:${api.token}`} id="domain-zones" label="zones" newLabel="Reserve zone" sections={sections} defaultSection="overview" Catalog={ZoneCatalog} Create={ZoneCreate} Resource={ZoneDetails} />
+  return <ResourceWorkspace id="domain-zones" label="zones" newLabel="Reserve zone" sections={sections} defaultSection="overview" Catalog={ZoneCatalog} Create={ZoneCreate} Resource={ZoneDetails} />
 }
 
 function ZoneCatalog({ actions, version }: { actions: Actions; version: number }) {
   const { api, tenant } = useAppServices()
-  const scope = `${api.baseUrl}:${api.tenantId}:${api.token}`
-  const list = useResource(scope, (signal) => fetchDomainZones(api.baseUrl, api.token, api.tenantId, signal), version)
-  const targets = useResource(scope, (signal) => fetchAvailableDeploymentTargets(api.baseUrl, undefined, api.token, api.tenantId, signal))
+  const list = useDomainQuery(['domains', 'zones'], (token, signal) => fetchDomainZones(api.baseUrl, token, api.tenantId, signal), version)
+  const targets = useDomainQuery(['eligibility', 'targets', undefined, 'pole/web-service', true], (token, signal) => fetchAvailableDeploymentTargets(api.baseUrl, undefined, token, api.tenantId, signal))
   const [search, setSearch] = useState('')
   const items = list.resource?.filter((zone) => zone.domain.includes(search.trim().toLowerCase())) ?? []
   return <section className="panel"><header className="ui-page-header"><div><p className="ui-page-eyebrow">Networking</p><h1>Domain zones</h1><p>Tenant-owned reservations and the hostnames assigned to exact deployment targets.</p></div><div className="row-actions"><Button onClick={() => { void list.refresh(); void targets.refresh() }}>Refresh zones</Button>{tenant.canManage && <Button variant="primary" onClick={() => actions.open('create')}>Reserve zone</Button>}</div></header>
@@ -41,8 +39,9 @@ function ZoneCatalog({ actions, version }: { actions: Actions; version: number }
 
 function ZoneCreate({ actions }: { actions: Actions; active: boolean }) {
   const { api, tenant } = useAppServices()
-  const scope = `${api.baseUrl}:${api.tenantId}:${api.token}`
-  const targets = useResource(scope, (signal) => fetchAvailableDeploymentTargets(api.baseUrl, undefined, api.token, api.tenantId, signal))
+  const origin = useDomainScope()
+  const scope = origin.writeIdentity
+  const targets = useDomainQuery(['eligibility', 'targets', undefined, 'pole/web-service', true], (token, signal) => fetchAvailableDeploymentTargets(api.baseUrl, undefined, token, api.tenantId, signal))
   const [targetId, setTargetId] = useState(''); const [label, setLabel] = useState(''); const [submitted, setSubmitted] = useState(false)
   const mutation = useScopedMutation(scope)
   const dirty = !submitted && Boolean(targetId || label)
@@ -52,7 +51,11 @@ function ZoneCreate({ actions }: { actions: Actions; active: boolean }) {
   const target = targets.resource?.find((item) => item.id === targetId && item.hasPublicIngress && item.publicBaseDomain)
   const validLabel = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label.trim().toLowerCase())
   return <section className="panel"><header className="ui-page-header"><div><p className="ui-page-eyebrow">Domains</p><h1>Reserve a domain zone</h1><p>Choose a target with configured public ingress. A reservation belongs to this tenant.</p></div></header>
-    <form className="database-form" onSubmit={(event) => { event.preventDefault(); if (!target || !validLabel || !tenant.canManage) return; void mutation.run((signal) => createDomainZone(api.baseUrl, { deploymentTargetId: targetId, label: label.trim().toLowerCase() }, api.token, api.tenantId, signal), (zone) => { setSubmitted(true); actions.created(zone.id, zone.domain) }).catch(() => {}) }}><fieldset disabled={mutation.busy}><div className="form-grid">
+    <form className="database-form" onSubmit={(event) => { event.preventDefault(); if (!target || !validLabel || !tenant.canManage) return; void mutation.run((signal) => createDomainZone(api.baseUrl, { deploymentTargetId: targetId, label: label.trim().toLowerCase() }, origin.credential(), api.tenantId, signal), async (zone) => {
+      setSubmitted(true)
+      await origin.session.client.invalidateQueries({ queryKey: origin.key(['domains']), refetchType: 'active' })
+      if (origin.isCurrent()) actions.created(zone.id, zone.domain)
+    }).catch(() => {}) }}><fieldset disabled={mutation.busy}><div className="form-grid">
       <Field label="Deployment target"><select className="field__control" required value={targetId} onChange={(event) => setTargetId(event.target.value)}><option value="">Select a target</option>{targets.resource?.filter((target) => target.hasPublicIngress && target.publicBaseDomain).map((target) => <option key={target.id} value={target.id}>{target.displayName} · {target.publicBaseDomain}</option>)}</select></Field>
       <Field label="Zone label" hint="One DNS label: letters, numbers and internal hyphens."><input className="field__control" required maxLength={63} value={label} onChange={(event) => setLabel(event.target.value)} placeholder="company" /></Field>
     </div></fieldset>
@@ -65,17 +68,15 @@ function ZoneCreate({ actions }: { actions: Actions; active: boolean }) {
 
 function ZoneDetails({ id, version, active, actions }: { id: string; version: number; active: boolean; section: 'overview'; onSection: (section: 'overview') => void; actions: Actions }) {
   const { api, tenant } = useAppServices()
-  const scope = `${api.baseUrl}:${api.tenantId}:${api.token}:${id}`
-  const zone = useResource(scope, (signal) => fetchDomainZone(api.baseUrl, id, api.token, api.tenantId, signal), version)
+  const origin = useDomainScope()
+  const scope = `${origin.writeIdentity}:${id}`
+  const zone = useDomainQuery(['domains', 'zone', id], (token, signal) => fetchDomainZone(api.baseUrl, id, token, api.tenantId, signal), version)
   const [page, setPage] = useState(1)
-  const usage = useResource(`${scope}:${page}`, (signal) => fetchDomainZoneBindings(api.baseUrl, id, page, api.token, api.tenantId, signal), version)
-  const targets = useResource(scope, (signal) => fetchAvailableDeploymentTargets(api.baseUrl, undefined, api.token, api.tenantId, signal))
+  const usage = useDomainQuery(['domains', 'owners', id, page], (token, signal) => fetchDomainZoneBindings(api.baseUrl, id, page, token, api.tenantId, signal), version, true, active ? 2500 : false)
+  const targets = useDomainQuery(['eligibility', 'targets', undefined, 'pole/web-service', true], (token, signal) => fetchAvailableDeploymentTargets(api.baseUrl, undefined, token, api.tenantId, signal))
   const mutation = useScopedMutation(scope); const [removing, setRemoving] = useState(false)
   const loaded = actions.loaded; const domain = zone.resource?.domain
   useEffect(() => { if (domain) loaded(id, domain) }, [domain, id, loaded])
-  const pending = usage.resource?.items.some((item) => item.placement && ['WaitingForRuntimeCell', 'Pending', 'Reconciling'].includes(item.placement.status))
-  const refreshUsage = usage.refresh
-  useEffect(() => { if (!active || !pending) return; const timer = window.setInterval(() => void refreshUsage(), 2500); return () => window.clearInterval(timer) }, [active, pending, refreshUsage])
   if (!zone.resource) return <EmptyState title={zone.status === 'error' ? 'Zone unavailable in this tenant.' : 'Loading zone…'} error={zone.status === 'error'}><Button onClick={() => void zone.refresh()}>Retry zone</Button></EmptyState>
   const current = zone.resource
   return <section className="panel"><header className="ui-page-header"><div><p className="ui-page-eyebrow">Tenant domain zone</p><h1>{current.domain}</h1></div><div className="row-actions"><Button onClick={() => { void zone.refresh(); void usage.refresh(); void targets.refresh() }}>Refresh ownership</Button>{tenant.canManage && current.kind === 'managed-reservation' && <Button variant="danger" disabled={mutation.busy || usage.status !== 'success' || (usage.resource?.totalCount ?? 1) > 0} onClick={() => setRemoving(true)}>Remove reservation</Button>}</div></header>
@@ -86,13 +87,16 @@ function ZoneDetails({ id, version, active, actions }: { id: string; version: nu
     {!usage.resource?.items.length ? <EmptyState title={usage.status === 'loading' ? 'Loading hostname owners…' : usage.status === 'error' ? 'Ownership could not be loaded.' : 'No hostname bindings on this page.'}><Button onClick={() => void usage.refresh()}>Refresh hostname owners</Button></EmptyState> : <div className="list">{usage.resource.items.map((item) => <HostnameOwner key={item.binding.id} item={item} />)}</div>}
     <div className="row-actions"><Button disabled={page === 1 || usage.status === 'loading'} onClick={() => setPage(page - 1)}>Previous owners</Button><span>Page {page}</span><Button disabled={!usage.resource || page * 25 >= usage.resource.totalCount || usage.status !== 'success'} onClick={() => setPage(page + 1)}>Next owners</Button></div>
     <p className="field__hint">Applied reports ingress configuration reconciliation. DNS, certificate readiness and application reachability require separate checks.</p>
-    {removing && <ConfirmationDialog title={`Remove ${current.domain}?`} confirmLabel="Remove reservation" busy={mutation.busy} onCancel={() => setRemoving(false)} onConfirm={() => { void mutation.run((signal) => deleteDomainZone(api.baseUrl, id, api.token, api.tenantId, signal), () => { actions.changed(); actions.closed(id) }).catch(() => setRemoving(false)) }}>This releases this tenant’s zone reservation on its target.</ConfirmationDialog>}
+    {removing && <ConfirmationDialog title={`Remove ${current.domain}?`} confirmLabel="Remove reservation" busy={mutation.busy} onCancel={() => setRemoving(false)} onConfirm={() => { void mutation.run((signal) => deleteDomainZone(api.baseUrl, id, origin.credential(), api.tenantId, signal), async () => {
+      await origin.session.client.invalidateQueries({ queryKey: origin.key(['domains']), refetchType: 'active' })
+      if (origin.isCurrent()) { actions.changed(); actions.closed(id) }
+    }).catch(() => { if (origin.isCurrent()) setRemoving(false) }) }}>This releases this tenant’s zone reservation on its target.</ConfirmationDialog>}
   </section>
 }
 
 function HostnameOwner({ item }: { item: DomainZoneBindingUsage }) {
   const { api, navigation, resourceTypes } = useAppServices()
-  const group = useResource(`${api.baseUrl}:${api.tenantId}:${api.token}:${item.resourceGroupId}`, (signal) => item.resourceGroupId ? fetchResourceGroup(api.baseUrl, item.resourceGroupId, api.token, api.tenantId, signal) : Promise.resolve(null))
+  const group = useDomainQuery(['resource-groups', 'detail', item.resourceGroupId], (token, signal) => item.resourceGroupId ? fetchResourceGroup(api.baseUrl, item.resourceGroupId, token, api.tenantId, signal) : Promise.resolve(null), 0, Boolean(item.resourceGroupId))
   const known = resourceTypes.some((type) => type.id === item.binding.resourceType)
   return <article className="list-row"><div className="list-row__primary"><h3>{item.binding.hostname}</h3><p>{item.binding.kind === 'generated' ? 'Generated hostname' : 'Custom alias'} · reserved {date(item.binding.createdAtUtc)}</p>
     <p>Resource: {item.resourceDisplayName && known ? <a href={navigation.resourceHref({ resourceTypeId: item.binding.resourceType, resourceId: item.binding.resourceId, section: item.binding.resourceType === 'pole/web-service' ? 'domains' : undefined })}>{item.resourceDisplayName}</a> : item.resourceDisplayName ?? 'Owner unavailable'}</p>

@@ -55,9 +55,9 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock)
 })
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals() })
-async function render(role: 'Owner' | 'Viewer' = 'Owner', tenantId = 'alpha', view = 'domains') {
+async function render(role: 'Owner' | 'Viewer' = 'Owner', tenantId = 'alpha', view = 'domains', token = 'token') {
   const tenant = { id: tenantId, name: tenantId, role, isDefault: true }
-  await act(async () => root.render(<AppShell registry={registry} initialViewId={view} api={{ baseUrl: 'http://localhost', token: 'token' }} auth={{ initialized: true, authenticated: true, userId: 'user', isPlatformAdmin: false, login: () => {}, logout: () => {} }} tenants={{ items: [tenant], activeTenant: tenant, activeTenantId: tenantId, selectTenant: () => {}, status: 'success', error: '' }} />))
+  await act(async () => root.render(<AppShell registry={registry} initialViewId={view} api={{ baseUrl: 'http://localhost', token }} auth={{ initialized: true, authenticated: true, userId: 'user', isPlatformAdmin: false, login: () => {}, logout: () => {} }} tenants={{ items: [tenant], activeTenant: tenant, activeTenantId: tenantId, selectTenant: () => {}, status: 'success', error: '' }} />))
 }
 const visible = (element: Element) => !element.closest('[hidden]')
 const text = () => [...container.querySelectorAll('#app-content *')].filter(visible).map((item) => item.textContent).join(' ')
@@ -119,4 +119,13 @@ it('blocks missing ingress and viewer mutations and clears drafts on tenant swit
   await render('Viewer', 'alpha', 'web-services'); expect(text()).not.toContain('Attach alias'); expect(text()).not.toContain('Detach alias')
   await render('Owner', 'beta', 'web-services'); expect(container.querySelector<HTMLInputElement>('input')?.value ?? '').toBe('')
   targetAvailable = false; await render('Owner', 'alpha', 'web-services'); expect(text()).toContain('Public ingress is unavailable'); expect(text()).not.toContain('Attach alias')
+})
+
+it('preserves a reservation draft when credentials refresh and sends the new credential', async () => {
+  await render(); await click('Reserve zone'); await fill('Deployment target', 'target'); await fill('Zone label', 'draft')
+  await render('Owner', 'alpha', 'domains', 'fresh')
+  expect(field('Zone label').value).toBe('draft')
+  await act(async () => container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+  const post = fetchMock.mock.calls.find(([url, init]) => String(url).endsWith('/domain-zones') && init?.method === 'POST')!
+  expect(new Headers(post[1]?.headers).get('Authorization')).toBe('Bearer fresh')
 })

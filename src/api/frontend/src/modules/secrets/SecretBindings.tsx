@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { bindSecret, detachSecret, fetchAvailableDeploymentTargets, fetchResourceDeploymentSet, fetchResourceGroupResources, fetchSecretProjections, fetchSecretUsage } from '../../api'
-import { useResource } from '../../hooks/useResource'
+import { useSecretQuery, useSecretScope } from './queries'
+import { bindingKeyMappings, liveBindingPlacements } from './model'
 import { useScopedMutation } from '../../hooks/useScopedMutation'
 import { useAppServices } from '../../shell/AppContext'
 import type { AvailableDeploymentTarget, ResourceRegistration, SecretMetadata } from '../../types'
@@ -8,11 +9,12 @@ import { Button, ConfirmationDialog, DataTable, EmptyState, Field, Notice, Statu
 
 function useGroupInventory(secret: SecretMetadata) {
   const { api } = useAppServices()
-  return useResource(`${api.baseUrl}:${api.tenantId}:${api.token}:${secret.resourceGroupId}`, async (signal) => {
-    const first = await fetchResourceGroupResources(api.baseUrl, secret.resourceGroupId, 1, 200, api.token, api.tenantId, signal)
+  const origin = useSecretScope()
+  return useSecretQuery(['resource-groups', 'complete-inventory', secret.resourceGroupId], async (_token, signal) => {
+    const first = await fetchResourceGroupResources(api.baseUrl, secret.resourceGroupId, 1, 200, origin.credential(), api.tenantId, signal)
     const items = [...first.items]
     for (let page = 2; items.length < first.totalCount; page++) {
-      const next = await fetchResourceGroupResources(api.baseUrl, secret.resourceGroupId, page, 200, api.token, api.tenantId, signal)
+      const next = await fetchResourceGroupResources(api.baseUrl, secret.resourceGroupId, page, 200, origin.credential(), api.tenantId, signal)
       if (!next.items.length) break
       items.push(...next.items)
     }
@@ -22,14 +24,15 @@ function useGroupInventory(secret: SecretMetadata) {
 
 export function SecretBindings({ secret, canWrite, onChanged }: { secret: SecretMetadata; canWrite: boolean; onChanged: () => Promise<void> }) {
   const { api, navigation, resourceTypes } = useAppServices()
-  const scope = `${api.baseUrl}:${api.tenantId}:${api.token}:${secret.id}`
-  const usage = useResource(scope, (signal) => fetchSecretUsage(api.baseUrl, secret.id, api.token, api.tenantId, signal))
+  const origin = useSecretScope()
+  const scope = `${origin.writeIdentity}:${secret.id}`
+  const usage = useSecretQuery(['secrets', 'usage', secret.id], (token, signal) => fetchSecretUsage(api.baseUrl, secret.id, token, api.tenantId, signal))
   const inventory = useGroupInventory(secret)
   const mutation = useScopedMutation(scope)
   const [detaching, setDetaching] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const resourceName = (type: string, id: string) => inventory.resource?.find((item) => item.resourceTypeId === type && item.resourceId === id)?.displayName ?? 'Unavailable resource'
-  const changed = async () => { await usage.refresh(); await onChanged() }
+  const changed = async () => { await usage.refreshAfterWrite(); if (origin.isCurrent()) await onChanged() }
   return <section className="panel"><header className="ui-page-header"><div><h2>Resource bindings</h2><p>Authorize projection to a resource’s deployments in this isolation scope. Workload environment configuration and network access are separate.</p></div>{canWrite && <Button variant="primary" onClick={() => setAdding(true)}>Add binding</Button>}</header>
     {usage.error && <Notice tone="error">{usage.error} Last fetched usage is shown.</Notice>}
     {!usage.resource?.length ? <EmptyState title={usage.status === 'loading' ? 'Loading bindings…' : usage.status === 'error' ? 'Bindings unavailable.' : 'No resource bindings.'} /> : <DataTable label="Secret bindings" items={usage.resource} itemKey={(item) => item.binding.id} columns={[
@@ -43,30 +46,31 @@ export function SecretBindings({ secret, canWrite, onChanged }: { secret: Secret
     {inventory.error && <Notice tone="error">Resource choices are unavailable. Refresh bindings to retry.</Notice>}
     {mutation.error instanceof Error && <Notice tone="error">{mutation.error.message}</Notice>}
     {detaching && canWrite && <ConfirmationDialog title="Detach this binding?" confirmLabel="Detach binding" busy={mutation.busy} onCancel={() => setDetaching(null)} onConfirm={() => {
-      void mutation.run((signal) => detachSecret(api.baseUrl, secret.id, detaching, api.token, api.tenantId, signal), async () => { setDetaching(null); await changed() }).catch(() => {})
+      void mutation.run((signal) => detachSecret(api.baseUrl, secret.id, detaching, origin.credential(), api.tenantId, signal), async () => { setDetaching(null); await changed() }).catch(() => {})
     }}>The native projection will be removed from the affected deployments. This does not delete the logical Secret or the consuming resource.</ConfirmationDialog>}
   </section>
 }
 
 function BindingForm({ secret, resources, existing, onCancel, onSaved }: { secret: SecretMetadata; resources: ResourceRegistration[]; existing: string[]; onCancel: () => void; onSaved: () => Promise<void> }) {
   const { api, resourceTypes } = useAppServices()
-  const scope = `${api.baseUrl}:${api.tenantId}:${api.token}:${secret.id}`
+  const origin = useSecretScope()
+  const scope = `${origin.writeIdentity}:${secret.id}`
   const [selected, setSelected] = useState(''); const [all, setAll] = useState(true); const [deploymentIds, setDeploymentIds] = useState<string[]>([])
   const [mapping, setMapping] = useState(false); const [aliases, setAliases] = useState<Record<string, string>>({}); const [validation, setValidation] = useState('')
   const choices = resources.filter((item) => !existing.includes(`${item.resourceTypeId}:${item.resourceId}`))
   const consumer = choices.find((item) => item.registrationId === selected)
-  const placements = useResource(`${scope}:${selected}`, (signal) => consumer ? fetchResourceDeploymentSet(api.baseUrl, consumer.resourceTypeId, consumer.resourceId, api.token, api.tenantId, signal) : Promise.resolve([]))
-  const targets = useResource(`${scope}:${consumer?.resourceTypeId}:targets`, (signal) => consumer ? fetchAvailableDeploymentTargets(api.baseUrl, secret.isolationScopeId, api.token, api.tenantId, signal, false, consumer.resourceTypeId) : Promise.resolve([]))
-  const live = placements.resource?.filter((item) => item.desiredOperation !== 'Delete' && item.status !== 'Deleted') ?? []
-  const eligible = placements.status === 'success' && live.length > 0 && live.every((item) => item.isolationScopeId === secret.isolationScopeId)
+  const placements = useSecretQuery(['secrets', 'binding-placements', secret.id, consumer?.resourceTypeId, consumer?.resourceId], (token, signal) => consumer ? fetchResourceDeploymentSet(api.baseUrl, consumer.resourceTypeId, consumer.resourceId, token, api.tenantId, signal) : Promise.resolve([]), 0, Boolean(consumer))
+  const targets = useSecretQuery(['eligibility', 'targets', secret.isolationScopeId, consumer?.resourceTypeId, false], (token, signal) => consumer ? fetchAvailableDeploymentTargets(api.baseUrl, secret.isolationScopeId, token, api.tenantId, signal, false, consumer.resourceTypeId) : Promise.resolve([]), 0, Boolean(consumer))
+  const { live, eligible: matchesScope } = liveBindingPlacements(placements.resource ?? [], secret.isolationScopeId)
+  const eligible = placements.status === 'success' && matchesScope
   const mutation = useScopedMutation(scope)
   return <form className="database-form panel" onSubmit={(event) => {
     event.preventDefault(); if (mutation.busy) return
-    const keyMappings = mapping ? Object.fromEntries(Object.entries(aliases).filter(([, alias]) => alias)) : {}
+    const keyMappings = bindingKeyMappings(aliases, mapping)
     if (!consumer || !eligible || !all && (!deploymentIds.length || deploymentIds.some((id) => !live.some((item) => item.deploymentId === id)))) { setValidation('Choose a resource with live deployments in this scope and select the required deployments.'); return }
     if (mapping && (!Object.keys(keyMappings).length || Object.values(keyMappings).some((alias) => !/^[A-Za-z0-9_.-]{1,128}$/.test(alias)) || new Set(Object.values(keyMappings)).size !== Object.keys(keyMappings).length)) { setValidation('Choose at least one source key and unique destination key names using letters, digits, underscores, periods or hyphens.'); return }
     setValidation('')
-    void mutation.run((signal) => bindSecret(api.baseUrl, secret.id, { consumerType: consumer.resourceTypeId, consumerId: consumer.resourceId, allDeployments: all, deploymentIds: all ? [] : deploymentIds, keyMappings }, api.token, api.tenantId, signal), onSaved).catch(() => {})
+    void mutation.run((signal) => bindSecret(api.baseUrl, secret.id, { consumerType: consumer.resourceTypeId, consumerId: consumer.resourceId, allDeployments: all, deploymentIds: all ? [] : deploymentIds, keyMappings }, origin.credential(), api.tenantId, signal), onSaved).catch(() => {})
   }}><h3>Add resource binding</h3><fieldset disabled={mutation.busy}>
     <Field label="Consuming resource"><select className="field__control" required value={selected} onChange={(event) => { setSelected(event.target.value); setDeploymentIds([]) }}><option value="">Select a resource</option>{choices.map((item) => <option key={item.registrationId} value={item.registrationId}>{item.displayName} · {resourceTypes.find((type) => type.id === item.resourceTypeId)?.label ?? item.resourceTypeId}</option>)}</select></Field>
     {consumer && !eligible && <Notice>{placements.status === 'loading' ? 'Checking live deployments…' : 'This resource has no eligible deployments, or its deployments cross this Secret’s isolation scope.'}</Notice>}
@@ -82,17 +86,15 @@ function BindingForm({ secret, resources, existing, onCancel, onSaved }: { secre
 
 export function SecretProjections({ secret }: { secret: SecretMetadata }) {
   const { api } = useAppServices()
-  const scope = `${api.baseUrl}:${api.tenantId}:${api.token}:${secret.id}`
-  const projections = useResource(scope, (signal) => fetchSecretProjections(api.baseUrl, secret.id, api.token, api.tenantId, signal))
-  const usage = useResource(`${scope}:usage`, (signal) => fetchSecretUsage(api.baseUrl, secret.id, api.token, api.tenantId, signal))
-  const targets = useResource(`${scope}:${usage.resource?.map((item) => item.binding.consumerType).join(',')}`, async (signal) => {
+  const origin = useSecretScope()
+  const projections = useSecretQuery(['secrets', 'projections', secret.id, secret.currentVersion], (token, signal) => fetchSecretProjections(api.baseUrl, secret.id, token, api.tenantId, signal), 0, true, 2500)
+  const usage = useSecretQuery(['secrets', 'usage', secret.id], (token, signal) => fetchSecretUsage(api.baseUrl, secret.id, token, api.tenantId, signal))
+  const targets = useSecretQuery(['secrets', 'projection-targets', secret.id, secret.isolationScopeId, usage.resource?.map((item) => item.binding.consumerType)], async (_token, signal) => {
     const result: AvailableDeploymentTarget[] = []
-    for (const type of new Set(usage.resource?.map((item) => item.binding.consumerType) ?? [])) result.push(...await fetchAvailableDeploymentTargets(api.baseUrl, secret.isolationScopeId, api.token, api.tenantId, signal, false, type))
+    for (const type of new Set(usage.resource?.map((item) => item.binding.consumerType) ?? [])) result.push(...await fetchAvailableDeploymentTargets(api.baseUrl, secret.isolationScopeId, origin.credential(), api.tenantId, signal, false, type))
     return result
   })
-  const refresh = projections.refresh
   const pending = Boolean(usage.resource?.length && !projections.resource?.length) || projections.resource?.some((item) => item.health === 'Pending' || item.health === 'Failed' || item.health === 'Ready' && (item.desiredVersion !== secret.currentVersion || item.appliedVersion !== secret.currentVersion))
-  useEffect(() => { if (!pending) return; const timer = window.setInterval(() => void refresh(), 2500); return () => window.clearInterval(timer) }, [pending, refresh])
   return <section className="panel"><header className="ui-page-header"><div><h2>Deployment projections</h2><p>Projected means Kubernetes accepted the Secret on that target. Application consumption and restart are managed separately.</p></div><Button onClick={() => { void projections.refresh(); void usage.refresh(); void targets.refresh() }}>Refresh projections</Button></header>
     {projections.error && <Notice tone="error">{projections.error} Last fetched projection results are shown.</Notice>}
     {!projections.resource?.length ? <EmptyState title={projections.status === 'loading' ? 'Loading projections…' : projections.status === 'error' ? 'Projection state unavailable.' : 'No deployment projections yet.'} /> : <DataTable label="Secret projections" items={projections.resource} itemKey={(item) => `${item.bindingId}:${item.resourceDeploymentId}`} columns={[

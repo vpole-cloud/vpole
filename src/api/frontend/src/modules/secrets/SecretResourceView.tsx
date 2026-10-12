@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { deleteSecret, fetchIsolationScopes, fetchResourceGroup, fetchSecret, rotateSecret, SecretApiError } from '../../api'
-import { useResource } from '../../hooks/useResource'
+import { useSecretQuery, useSecretScope } from './queries'
 import { useScopedMutation } from '../../hooks/useScopedMutation'
 import { useAppServices } from '../../shell/AppContext'
 import { useUnsavedChanges } from '../../shell/useUnsavedChanges'
@@ -15,21 +15,25 @@ import type { SecretSection } from './workspaceState'
 
 export function SecretResourceView({ id, section, active, version, onSection, actions }: { id: string; section: SecretSection; active: boolean; version: number; onSection: (section: SecretSection) => void; actions: WorkspaceActions<SecretSection> }) {
   const { api, tenant, navigation, resourceTypes } = useAppServices()
-  const scope = `${api.baseUrl}:${api.tenantId}:${api.token}:${id}`
-  const details = useResource(scope, (signal) => fetchSecret(api.baseUrl, id, api.token, api.tenantId, signal), version)
+  const origin = useSecretScope()
+  const scope = `${origin.writeIdentity}:${id}`
+  const details = useSecretQuery(['secrets', 'detail', id], (token, signal) => fetchSecret(api.baseUrl, id, token, api.tenantId, signal), version, true, active && section === 'projections' ? 5000 : false)
   const secret = details.resource
-  const group = useResource(`${scope}:${secret?.resourceGroupId}`, (signal) => secret ? fetchResourceGroup(api.baseUrl, secret.resourceGroupId, api.token, api.tenantId, signal) : Promise.resolve(null))
-  const scopes = useResource(`${scope}:${secret?.resourceGroupId}:scopes`, (signal) => secret ? fetchIsolationScopes(api.baseUrl, secret.resourceGroupId, api.token, api.tenantId, signal) : Promise.resolve([]))
+  const group = useSecretQuery(['resource-groups', 'detail', secret?.resourceGroupId], (token, signal) => secret ? fetchResourceGroup(api.baseUrl, secret.resourceGroupId, token, api.tenantId, signal) : Promise.resolve(null), 0, Boolean(secret))
+  const scopes = useSecretQuery(['resource-groups', 'scopes', secret?.resourceGroupId], (token, signal) => secret ? fetchIsolationScopes(api.baseUrl, secret.resourceGroupId, token, api.tenantId, signal) : Promise.resolve([]), 0, Boolean(secret))
   const mutation = useScopedMutation(scope)
   const [deleting, setDeleting] = useState(false)
   const onLoaded = actions.loaded
   useEffect(() => { if (secret) onLoaded(id, secret.name) }, [secret, id, onLoaded])
-  const refresh = details.refresh
-  useEffect(() => { if (!active || section !== 'projections') return; const timer = window.setInterval(() => void refresh(), 5000); return () => window.clearInterval(timer) }, [active, section, refresh])
   if (!secret) return <EmptyState title={details.status === 'error' ? 'Unable to open this Secret.' : 'Loading Secret…'} error={details.status === 'error'}>{details.error && <p>{details.error}</p>}<Button onClick={() => void details.refresh()}>Retry Secret</Button></EmptyState>
   const canWrite = tenant.canManage && secret.lifecycle === 'Active'
   const panel = `secret-${id}`
-  const changed = async () => { await details.refresh(); actions.changed() }
+  const changed = async () => {
+    await details.refreshAfterWrite()
+    if (!origin.isCurrent()) return
+    await origin.session.client.invalidateQueries({ queryKey: origin.key(['secrets']), refetchType: 'active' })
+    if (origin.isCurrent()) actions.changed()
+  }
   return <div><header className="ui-page-header"><div><p className="ui-page-eyebrow">Secret · {group.resource?.name ?? 'Resource group'}</p><h1>{secret.name}</h1><p>{secret.purpose || 'Encrypted, write-only values'}</p></div><div className="row-actions"><Button onClick={() => void details.refresh()}>Refresh metadata</Button>{canWrite && !secret.managedBy && <Button variant="danger" onClick={() => setDeleting(true)}>Delete Secret</Button>}</div></header>
     {details.error && <Notice tone="error">{details.error} Last fetched metadata is shown.</Notice>}
     <Tabs id={panel} label={`${secret.name} sections`} variant="section" activeId={section} onSelect={(value) => onSection(value as SecretSection)} tabs={[{ id: 'overview', label: 'Overview' }, { id: 'rotate', label: 'Rotate values' }, { id: 'bindings', label: 'Bindings' }, { id: 'projections', label: 'Projections' }]} />
@@ -45,17 +49,22 @@ export function SecretResourceView({ id, section, active, version, onSection, ac
     <TabPanel id={panel} tabId="projections" activeId={section}>{active && section === 'projections' && <SecretProjections secret={secret} />}</TabPanel>
     {mutation.error instanceof Error && <Notice tone="error">{mutation.error.message}</Notice>}
     {deleting && canWrite && !secret.managedBy && <ConfirmationDialog title={`Delete ${secret.name}?`} confirmLabel="Delete Secret" busy={mutation.busy} onCancel={() => setDeleting(false)} onConfirm={() => {
-      void mutation.run((signal) => deleteSecret(api.baseUrl, id, api.token, api.tenantId, signal), () => { setDeleting(false); actions.changed(); actions.closed(id) }).catch(() => {})
+      void mutation.run((signal) => deleteSecret(api.baseUrl, id, origin.credential(), api.tenantId, signal), async () => {
+        await origin.session.client.invalidateQueries({ queryKey: origin.key(['secrets']), refetchType: 'active' })
+        if (!origin.isCurrent()) return
+        setDeleting(false); actions.changed(); actions.closed(id)
+      }).catch(() => {})
     }}>Delete this encrypted Secret permanently. Every binding must be detached first.</ConfirmationDialog>}
   </div>
 }
 
 function SecretRotation({ secret, onDirty, onSaved, onRefresh }: { secret: SecretMetadata; onDirty: WorkspaceActions<SecretSection>['dirty']; onSaved: () => Promise<void>; onRefresh: () => Promise<SecretMetadata | null> }) {
   const { api, notifications } = useAppServices()
+  const origin = useSecretScope()
   const values = useWriteOnlyValues(secret.keyNames)
   const [expectedVersion, setExpectedVersion] = useState(secret.currentVersion)
   const [validation, setValidation] = useState(''); const [confirming, setConfirming] = useState(false)
-  const mutation = useScopedMutation(`${api.baseUrl}:${api.tenantId}:${api.token}:${secret.id}`)
+  const mutation = useScopedMutation(`${origin.writeIdentity}:${secret.id}`)
   const clear = () => { values.clear(); setConfirming(false) }
   useClearOnLeave(clear, mutation.cancel)
   const dirty = values.rows.some((row) => row.confirmed) || JSON.stringify(values.rows.map((row) => row.key)) !== JSON.stringify(secret.keyNames)
@@ -63,16 +72,16 @@ function SecretRotation({ secret, onDirty, onSaved, onRefresh }: { secret: Secre
   useEffect(() => { onDirty(secret.id, dirty); return () => onDirty(secret.id, false) }, [onDirty, secret.id, dirty])
   const conflict = expectedVersion !== secret.currentVersion || mutation.error instanceof SecretApiError && mutation.error.code === 'secrets.version-conflict'
   return <section className="panel"><h2 className="panel__title">Rotate Secret values</h2><p>Replace the entire key/value map at version {expectedVersion}. Keys omitted from this map are removed. Existing values cannot be prefilled.</p>
-    {conflict && <Notice tone="error">The current version must be reviewed before resubmitting.<Button onClick={() => { void onRefresh().then((latest) => { if (latest) { setExpectedVersion(latest.currentVersion); mutation.clearError(); setValidation('Review every replacement key and value against the refreshed metadata before submitting.') } }) }}>Refresh and review current version</Button></Notice>}
+    {conflict && <Notice tone="error">The current version must be reviewed before resubmitting.<Button onClick={() => { void onRefresh().then((latest) => { if (latest && origin.isCurrent()) { setExpectedVersion(latest.currentVersion); mutation.clearError(); setValidation('Review every replacement key and value against the refreshed metadata before submitting.') } }) }}>Refresh and review current version</Button></Notice>}
     <form className="database-form" onSubmit={(event) => { event.preventDefault(); const error = validateValues(values.rows); if (error) { setValidation(error); return } if (!mutation.busy && !conflict) { setValidation(''); setConfirming(true) } }}>
       <fieldset disabled={mutation.busy}><SecretValues rows={values.rows} onChange={values.setRows} cleared={values.cleared} /></fieldset>
       {validation && <Notice>{validation}</Notice>}{mutation.error instanceof Error && <Notice tone="error">{mutation.error.message}</Notice>}
       <Button type="submit" variant="primary" disabled={mutation.busy || conflict}>Review replacement</Button>
     </form>
     {confirming && <ConfirmationDialog title={`Replace all values in ${secret.name}?`} confirmLabel="Rotate Secret" busy={mutation.busy} onCancel={() => setConfirming(false)} onConfirm={() => {
-      void mutation.run((signal) => rotateSecret(api.baseUrl, secret.id, expectedVersion, Object.fromEntries(values.rows.map((row) => [row.key, row.value])), api.token, api.tenantId, signal), async (updated) => {
-        clear(); setExpectedVersion(updated.currentVersion); values.setRows(updated.keyNames.map((key) => ({ key, value: '' }))); await onSaved(); notifications.publish('Secret rotation accepted. Check each deployment projection for convergence.')
-      }).catch(() => { setConfirming(false) })
+      void mutation.run((signal) => rotateSecret(api.baseUrl, secret.id, expectedVersion, Object.fromEntries(values.rows.map((row) => [row.key, row.value])), origin.credential(), api.tenantId, signal), async (updated) => {
+        clear(); setExpectedVersion(updated.currentVersion); values.setRows(updated.keyNames.map((key) => ({ key, value: '' }))); await onSaved(); if (!origin.isCurrent()) return; notifications.publish('Secret rotation accepted. Check each deployment projection for convergence.')
+      }).catch(() => { if (origin.isCurrent()) setConfirming(false) })
     }}>The complete replacement contains {values.rows.length} keys. Existing bindings remain. Applications may need their own restart or configuration update.</ConfirmationDialog>}
   </section>
 }
