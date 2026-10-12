@@ -1,6 +1,7 @@
 import { useReducer } from 'react'
 import { createSourceBuildConfiguration, createWebService, fetchSourceBuildConfigurations,
   fetchSourceBuildJobs, fetchWebServices, startSourceBuild } from '../../api'
+import { invalidateWebServiceState } from './invalidate'
 import { ApiError } from '../../api/transport'
 import { useApiScope } from '../../data/useApiScope'
 import { useScopedMutation } from '../../hooks/useScopedMutation'
@@ -71,7 +72,7 @@ export function useWebServiceCreation(onCompleted: (id: string, mode: 'image' | 
             accepted.jobId = job.id
           }
         }
-        guard()
+        await invalidateWebServiceState(scope, [['git', 'sources']]); guard()
         dispatch({ type: 'completed', command, accepted: { ...accepted, serviceId } })
         onCompleted(serviceId, command.mode)
       } catch (error) {

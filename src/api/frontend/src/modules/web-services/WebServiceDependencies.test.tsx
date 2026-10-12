@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react'
-import { createRoot, type Root } from 'react-dom/client'
+import type { Root } from 'react-dom/client'
+import { createTestApp } from '../../test/TestApp'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AppContext } from '../../shell/AppContext'
 import type { AppServices } from '../../shell/contracts'
@@ -20,7 +21,7 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 beforeEach(() => {
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', '') }
   HTMLDialogElement.prototype.close = function () { this.removeAttribute('open') }
-  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); container = document.createElement('div'); document.body.append(container); root = createRoot(container)
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); ({ container, root } = createTestApp())
   dirty.mockReset(); changed.mockReset(); fetchMock.mockReset(); connectionItems = [connection]; writesFail = false
   fetchMock.mockImplementation(async (input: string, init?: RequestInit) => {
     const url = new URL(input); const path = url.pathname

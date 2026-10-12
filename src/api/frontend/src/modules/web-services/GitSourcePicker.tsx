@@ -8,7 +8,7 @@ export function GitSourcePicker({ source, onSelect, disabled = false }: {
   source: SourceRepository | null; onSelect: (source: SourceRepository | null) => void; disabled?: boolean
 }) {
   const { api, tenant, navigation } = useAppServices()
-  const manager = useGitSourceSelection(api)
+  const manager = useGitSourceSelection(api, !disabled && tenant.canManage)
   const [chooseNew, setChooseNew] = useState(false)
   const plan = manager.selection.analysis?.candidates.find((item) => item.candidateKey === manager.selection.candidateKey)
   const readOnly = disabled || !tenant.canManage

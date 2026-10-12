@@ -1,7 +1,9 @@
 import { useCallback, useState } from 'react'
 import { fetchWebServiceReleases, redeployWebService, rollbackWebService } from '../../api'
-import { useResource } from '../../hooks/useResource'
-import { useScopedMutation } from '../../hooks/useScopedMutation'
+import { useWebServiceQuery } from './useWebServiceQuery'
+import { useApiScope } from '../../data/useApiScope'
+import { invalidateWebServiceState } from './invalidate'
+import { useWebServiceMutation } from './useWebServiceMutation'
 import { useVisibleRefresh } from '../../hooks/useVisibleRefresh'
 import { useAppServices } from '../../shell/AppContext'
 import type { WebService, WebServiceRelease, WebServiceSpec } from '../../types'
@@ -15,16 +17,19 @@ type Selection = { action: 'redeploy' | 'rollback'; expectedRevision: number; im
 
 export function WebServiceReleases({ service, onChanged }: { service: WebService; onChanged: () => Promise<WebService | null> }) {
   const { api } = useAppServices()
-  const scope = `${api.baseUrl}:${api.tenantId}:${api.token}:${service.id}`
+  const { identity } = useApiScope(api)
+  const scope = `${identity}:${service.id}`
   return <ReleaseHistory key={scope} scope={scope} service={service} onChanged={onChanged} />
 }
 
 function ReleaseHistory({ scope, service, onChanged }: { scope: string; service: WebService; onChanged: () => Promise<WebService | null> }) {
   const { api, tenant, navigation, notifications } = useAppServices()
+  const apiScope = useApiScope(api)
+  const { credential, isCurrent } = apiScope
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<Selection | null>(null)
-  const history = useResource(scope, (signal) => fetchWebServiceReleases(api.baseUrl, service.id, api.token, api.tenantId, signal, { pageNumber: page }), page)
-  const mutation = useScopedMutation(scope)
+  const history = useWebServiceQuery(['web-services', 'releases', service.id, page], (signal) => fetchWebServiceReleases(api.baseUrl, service.id, credential(), api.tenantId, signal, { pageNumber: page }))
+  const mutation = useWebServiceMutation(scope, tenant.canManage)
   const value = history.resource
   const pending = value?.releases.items.some(release => release.outcome === 'Pending') ?? false
   const { status: historyStatus, refresh: refreshHistory } = history
@@ -44,7 +49,7 @@ function ReleaseHistory({ scope, service, onChanged }: { scope: string; service:
   }
   const refreshSelection = async () => {
     const [updatedHistory, updatedService] = await Promise.all([history.refresh(), onChanged()])
-    if (!selected || !updatedHistory || !updatedService || updatedHistory.activeRevision !== updatedService.activeRevision) return
+    if (!isCurrent() || !selected || !updatedHistory || !updatedService || updatedHistory.activeRevision !== updatedService.activeRevision) return
     setSelected({ ...selected, expectedRevision: updatedHistory.activeRevision, image: image(selected.target?.spec ?? updatedService.spec) })
     mutation.clearError()
   }
@@ -76,7 +81,7 @@ function ReleaseHistory({ scope, service, onChanged }: { scope: string; service:
           {release.spec.autoscaling && ` · autoscaling ${release.spec.autoscaling.minReplicas}–${release.spec.autoscaling.maxReplicas}`}. Values are hidden.</p>
         {provenance && <div className="release-provenance"><p className="field__hint">Source: {provenance.source}{provenance.commitSha && <> · commit <code>{provenance.commitSha}</code></>}</p>
           {provenance.imageDigest && <p className="field__hint">Recorded digest <code>{provenance.imageDigest}</code>. Deployment uses the image tag.</p>}
-          <div className="row-actions">{provenance.buildJobId && <a href={`${navigation.resourceHref({ ...resource, section: 'builds' })}#build-${encodeURIComponent(provenance.buildJobId)}`}>Build {provenance.buildJobId}</a>}{buildUrl && <a href={buildUrl} target="_blank" rel="noreferrer">Open CI run</a>}</div></div>}
+          <div className="row-actions">{provenance.buildJobId && <a href={navigation.resourceHref({ ...resource, section: 'builds', fragment: `build-${encodeURIComponent(provenance.buildJobId)}` })}>Build {provenance.buildJobId}</a>}{buildUrl && <a href={buildUrl} target="_blank" rel="noreferrer">Open CI run</a>}</div></div>}
         <details><summary>Target apply outcomes · {release.deployments.length}</summary>
           {release.deployments.map(deployment => <p className="field__hint" key={`${deployment.resourceDeploymentId}:${deployment.operation}`}>Target <code>{deployment.deploymentTargetId}</code> · {deployment.operation} · generation {deployment.deploymentGeneration} · {deployment.outcome}{deployment.failureCode && ` · ${deployment.failureCode}`}</p>)}
           {release.deployments.some(deployment => deployment.failureCode) && <a href={navigation.resourceHref({ ...resource, section: 'operations' })}>Inspect current targets and supported retry</a>}
@@ -93,12 +98,13 @@ function ReleaseHistory({ scope, service, onChanged }: { scope: string; service:
       confirmLabel={selected.target ? 'Confirm rollback' : 'Confirm redeploy'} busy={mutation.busy} confirmDisabled={!eligibleSelection || Boolean(error)} onCancel={() => setSelected(null)} onConfirm={() => {
         if (!eligibleSelection || error) return
         void mutation.run(signal => selected.target
-          ? rollbackWebService(api.baseUrl, service.id, { targetRevision: selected.target.resourceRevision, expectedRevision: selected.expectedRevision }, api.token, api.tenantId, signal)
-          : redeployWebService(api.baseUrl, service.id, selected.expectedRevision, api.token, api.tenantId, signal), async accepted => {
+          ? rollbackWebService(api.baseUrl, service.id, { targetRevision: selected.target.resourceRevision, expectedRevision: selected.expectedRevision }, credential(), api.tenantId, signal)
+          : redeployWebService(api.baseUrl, service.id, selected.expectedRevision, credential(), api.tenantId, signal), async (accepted, guard) => {
           setSelected(null); setPage(1)
           notifications.publish(`Recovery accepted as revision ${accepted.resourceRevision} for ${service.name}.`)
-          await onChanged()
-          await history.refresh()
+          await onChanged(); guard()
+          await history.refreshAfterWrite(); guard()
+          await invalidateWebServiceState(apiScope)
         }).catch(() => {})
       }}>
       <p>{selected.target ? `Restore the specification saved in revision ${selected.target.resourceRevision}` : `Apply the current specification from revision ${selected.expectedRevision}`} using <code>{selected.image}</code> across the current desired targets. This creates a new release.</p>
