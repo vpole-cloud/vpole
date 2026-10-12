@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { QueryObserver } from '@tanstack/react-query'
 import { afterEach, expect, it, vi } from 'vitest'
+const { webcrypto } = await vi.importActual<{ webcrypto: Crypto }>('node:crypto')
 import { ApiError } from '../api/transport'
 import { createQueryClient, scopedQueryKey, type QuerySession } from '../data/querySession'
 import { deferred } from '../test/http'
@@ -9,7 +10,7 @@ import { FakeConnection } from '../test/fakeRealtimeConnection'
 import { acceptsChange, normalizeChange, type RealtimeCoverage, type RealtimeSubscription } from './types'
 
 const owners: { controller: RealtimeController; session: QuerySession }[] = []
-afterEach(() => { owners.forEach(({ controller, session }) => { controller.dispose(); session.client.clear() }); owners.length = 0; vi.useRealTimers() })
+afterEach(() => { owners.forEach(({ controller, session }) => { controller.dispose(); session.client.clear() }); owners.length = 0; vi.useRealTimers(); vi.unstubAllGlobals() })
 const settle = async () => { for (let index = 0; index < 12; index++) await Promise.resolve() }
 function setup(configure?: (connection: FakeConnection) => void) {
   const session: QuerySession = { identity: 'account', id: 'session', client: createQueryClient(), isActive: () => true }
@@ -367,4 +368,120 @@ it('reserves acknowledged own-user discovery before the 64-interest limit and le
   expect(controller.covered(resources[62])).toBe(true)
   expect(controller.covered(resources[63])).toBe(false)
   expect(controller.covered(resources[69])).toBe(false)
+})
+
+it('restores platform authority only after a newer current admin bearer bootstrap while retaining user and tenant ownership', async () => {
+  vi.stubGlobal('crypto', webcrypto)
+  vi.useFakeTimers()
+  const { controller, connections } = setup()
+  const own: RealtimeSubscription = { topic: 'tenant-access', resourceId: 'user' }
+  const platform: RealtimeSubscription = { topic: 'storage-profiles' }
+  controller.register(own); controller.register(interest); controller.register(platform)
+  controller.updateCredential('first', true); await controller.renew()
+  connections[0].accessRevoked(); await settle()
+  expect(controller.platformAllowed('api')).toBe(false)
+  expect(controller.covered(own)).toBe(true); expect(controller.covered(interest)).toBe(true)
+  connections[0].heartbeat.mockResolvedValue([own, interest, platform].map((request, index) => ({ ...request, subscriptionId: String(index), covered: true })))
+  await vi.advanceTimersByTimeAsync(10000)
+  expect(controller.platformAllowed('api')).toBe(false); expect(controller.covered(platform)).toBe(false)
+  await controller.renew()
+  controller.receive({ type: 'renewed' }); await settle()
+  expect(controller.platformAllowed('api')).toBe(false)
+  controller.updateCredential('non-admin', false); await controller.renew()
+  expect(controller.platformAllowed('api')).toBe(false)
+  controller.updateCredential('fresh-admin', true); await controller.renew()
+  expect(controller.platformAllowed('api')).toBe(true)
+  expect(controller.covered(platform)).toBe(true)
+  expect(controller.covered(own)).toBe(true); expect(controller.allowed('api', 'alpha')).toBe(true)
+  // Replaying a credential that previously received denial cannot become a fresh grant.
+  connections.at(-1)!.accessRevoked(); await settle()
+  controller.updateCredential('first', true); await controller.renew()
+  expect(controller.platformAllowed('api')).toBe(false)
+})
+
+it('synchronously fences claim loss before replacing the old admin fingerprint and rejects its later ABA replay', async () => {
+  vi.stubGlobal('crypto', webcrypto)
+  const { session, controller, broadcast } = setup()
+  const own: RealtimeSubscription = { topic: 'tenant-access', resourceId: 'user' }
+  const platform: RealtimeSubscription = { topic: 'storage-profiles' }
+  const privateKey = scopedQueryKey(session, ['api', undefined], ['platform-storage', 'inventory'])
+  const tenantKey = scopedQueryKey(session, ['api', 'alpha'], ['web-services', 'detail', 'service'])
+  const discoveryKey = scopedQueryKey(session, ['api', 'user'], ['tenants'])
+  session.client.setQueryData(tenantKey, 'tenant metadata'); session.client.setQueryData(discoveryKey, ['alpha'])
+  const held = deferred<string>(); let signal!: AbortSignal
+  const observer = new QueryObserver(session.client, { queryKey: privateKey, meta: { privileged: true }, initialData: 'old private metadata', staleTime: Infinity,
+    queryFn: ({ signal: current }) => { signal = current; return held.promise } })
+  const release = observer.subscribe(() => {})
+  controller.register(own); controller.register(interest); controller.register(platform)
+  controller.updateCredential('old-admin', true); await controller.renew()
+  const read = observer.refetch({ cancelRefetch: false })
+  // No server event: the incoming credential's role claim is sufficient to revoke.
+  controller.updateCredential('new-readonly', false)
+  expect(controller.platformAllowed('api')).toBe(false); expect(signal.aborted).toBe(true)
+  expect(session.client.getQueryData(privateKey)).toBeUndefined()
+  expect(session.client.getQueryData(tenantKey)).toBe('tenant metadata')
+  expect(session.client.getQueryData(discoveryKey)).toEqual(['alpha'])
+  expect(controller.allowed('api', 'alpha')).toBe(true)
+  expect(broadcast).toHaveBeenLastCalledWith({ type: 'access-revoked' })
+  await controller.renew()
+  expect(controller.covered(own)).toBe(true); expect(controller.covered(interest)).toBe(true); expect(controller.covered(platform)).toBe(false)
+  held.resolve('late private metadata'); await read
+  expect(session.client.getQueryData(privateKey)).toBeUndefined()
+  controller.updateCredential('old-admin', true); await controller.renew()
+  expect(controller.platformAllowed('api')).toBe(false)
+  controller.updateCredential('genuinely-new-admin', true); await controller.renew()
+  expect(controller.platformAllowed('api')).toBe(true)
+  expect(controller.covered(own)).toBe(true); expect(controller.covered(interest)).toBe(true)
+  release()
+})
+
+it('fences an admin bootstrap overtaken by a later denial or credential update', async () => {
+  vi.stubGlobal('crypto', webcrypto)
+  const { controller, bootstrap } = setup()
+  controller.updateCredential('first', true); await controller.renew()
+  controller.receive({ type: 'access-revoked' })
+  const denied = deferred<{ expiresAtUtc: string }>()
+  bootstrap.mockReturnValueOnce(denied.promise)
+  controller.updateCredential('second', true)
+  const deniedRenewal = controller.renew(); await settle()
+  controller.receive({ type: 'access-revoked' })
+  denied.resolve({ expiresAtUtc: new Date(Date.now() + 300000).toISOString() }); await deniedRenewal
+  expect(controller.platformAllowed('api')).toBe(false)
+  const old = deferred<{ expiresAtUtc: string }>()
+  bootstrap.mockReturnValueOnce(old.promise)
+  controller.updateCredential('third', true)
+  const oldRenewal = controller.renew(); await settle()
+  controller.updateCredential('fourth', true)
+  old.resolve({ expiresAtUtc: new Date(Date.now() + 300000).toISOString() }); await oldRenewal
+  expect(controller.platformAllowed('api')).toBe(false)
+  await controller.renew()
+  expect(controller.platformAllowed('api')).toBe(true)
+})
+
+it('bounds denied fingerprint history and waits out an evicted unexpired identity before recovery', async () => {
+  vi.stubGlobal('crypto', webcrypto); vi.useFakeTimers()
+  const { controller } = setup()
+  const horizon = Date.now() + 1000
+  const token = (id: string, expiresAt: number) => `header.${btoa(JSON.stringify({ jti: id, exp: expiresAt / 1000 }))}.signature`
+  for (let index = 0; index < 65; index++) {
+    controller.updateCredential(token(String(index), horizon), true)
+    controller.receive({ type: 'access-revoked' })
+  }
+  await controller.renew()
+  controller.updateCredential(token('fresh', Date.now() + 300000), true)
+  await controller.renew()
+  expect(controller.platformAllowed('api')).toBe(false)
+  await vi.advanceTimersByTimeAsync(1001)
+  await controller.renew()
+  expect(controller.platformAllowed('api')).toBe(true)
+})
+
+it('keeps platform recovery denied without native fingerprint support while retaining tenant access', async () => {
+  vi.stubGlobal('crypto', { subtle: undefined })
+  const { controller } = setup()
+  controller.updateCredential('first', true); await controller.renew()
+  controller.receive({ type: 'access-revoked' })
+  controller.updateCredential('second', true); await controller.renew()
+  expect(controller.platformAllowed('api')).toBe(false)
+  expect(controller.allowed('api', 'alpha')).toBe(true)
 })

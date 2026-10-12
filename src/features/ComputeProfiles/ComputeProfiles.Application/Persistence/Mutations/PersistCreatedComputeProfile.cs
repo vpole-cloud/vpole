@@ -1,5 +1,7 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Outbox.Contracts;
+using Pole.Features.ComputeProfiles.Events;
 using Pole.Features.ComputeProfiles.Application.Persistence.Defaults;
 using Pole.Features.ComputeProfiles.Application.Persistence.References;
 using Pole.Features.ComputeProfiles.Domain;
@@ -20,7 +22,8 @@ public delegate Task<PersistCreatedComputeProfileOutcome>
 internal sealed class MongoPersistCreatedComputeProfile(
     IMongoCollection<ComputeProfile> computeProfiles,
     ApplyDeploymentTargetReferenceChanges applyTargetReferenceChanges,
-    RunMongoOutcomeTransaction<PersistCreatedComputeProfileOutcome> runMongoTransaction)
+    RunMongoOutcomeTransaction<PersistCreatedComputeProfileOutcome> runMongoTransaction,
+    StoreOutboxWrites storeOutboxWrites)
 {
     public Task<PersistCreatedComputeProfileOutcome> InvokeAsync(
         ComputeProfile profile,
@@ -55,6 +58,8 @@ internal sealed class MongoPersistCreatedComputeProfile(
                 transaction.Session,
                 profile,
                 cancellationToken: ct);
+            await storeOutboxWrites(transaction.Session,
+                [OutboxWrite.Create(new ComputeProfileCatalogChangedEvent(profile.Id, profile.Revision))], ct);
             return transaction.Commit(profile);
         }, cancellationToken);
     }

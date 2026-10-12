@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Outbox.Application.Persistence.Writes;
 using Pole.Encryption;
 using Pole.Features.DeploymentTargets.Application.Bootstrap;
 using Pole.Features.DeploymentTargets.Application.Common;
@@ -305,7 +306,9 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
                     .InvokeAsync,
                 new MongoRunTransaction(fixture.Client)
                     .InvokeOutcomeAsync<DeleteDeploymentTargetPersistenceOutcome>,
-                deleteClock).InvokeAsync,
+                deleteClock,
+                new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<PersistDeploymentTargetDeletionFenceOutcome>,
+                new MongoStoreOutboxWrites(fixture.Database).InvokeAsync).InvokeAsync,
             new NoOpClientCache().Invalidate);
 
         var deletion = Task.Run(
@@ -355,7 +358,8 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
                 ensureNoOverlappingPublicBaseDomain,
                 new MongoRunTransaction(fixture.Client)
                     .InvokeOutcomeAsync<EnsureBootstrapDefaultDeploymentTargetOutcome>,
-                timeProvider).InvokeAsync,
+                timeProvider,
+                new MongoStoreOutboxWrites(fixture.Database).InvokeAsync).InvokeAsync,
             preparer.InvokeAsync,
             (probe ?? new SuccessfulProbe()).InvokeAsync,
             options ?? CreateOptions(new DeploymentTargetBootstrapOptions()),

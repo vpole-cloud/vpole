@@ -412,12 +412,13 @@ export function IntegrationsPage({
                     </span>
                     <button
                       className="button button--primary"
-                      disabled={!canManage || isLinked || manager.actionStatus === 'loading'}
+                      disabled={!canManage || isLinked || manager.analysisStale || manager.actionStatus === 'loading'}
                       onClick={() => void manager.link()}
                       type="button"
                     >
                       {isLinked ? 'Linked' : 'Link repository'}
                     </button>
+                    {manager.analysisStale && <p role="status">The branch changed after analysis. Analyze it again before linking this plan.</p>}
                   </div>
                 </>
               ) : (

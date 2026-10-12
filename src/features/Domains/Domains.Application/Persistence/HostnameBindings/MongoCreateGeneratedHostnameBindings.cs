@@ -2,6 +2,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Dns;
+using Pole.Features.Outbox.Contracts;
 using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
@@ -11,7 +12,8 @@ namespace Pole.Features.Domains.Application.Persistence.HostnameBindings;
 internal sealed class MongoCreateGeneratedHostnameBindings(
     IMongoDatabase database,
     MongoHostnameBindingCleanup cleanup,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    StoreOutboxWrites outbox)
 {
     private readonly IMongoCollection<TenantDomainZone> zones =
         database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
@@ -128,6 +130,8 @@ internal sealed class MongoCreateGeneratedHostnameBindings(
             return new GeneratedHostnameBindingError(new GeneratedHostnameBindingConflict(hostnames));
         }
 
+        await outbox(session, candidates.Select(binding => OutboxWrite.Create(
+            cleanup.WithAdvancedRevision(zonesById[CanonicalObjectId(binding.TenantDomainZoneId)]).ToChangedEvent(binding.Id))).ToArray(), cancellationToken);
         return candidates.Select(DomainContractMappings.ToSnapshot).ToArray();
     }
 

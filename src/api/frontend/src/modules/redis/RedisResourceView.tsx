@@ -32,8 +32,8 @@ export function RedisResourceView({ id, section, active, onSection, actions }: {
   const interest = { active, realtime: groupInterests(api.tenantId, redis?.resourceGroupId), resourceGroupId: redis?.resourceGroupId }
   const group = useScopedQuery({ scope, key: ['resource-groups', 'detail', redis?.resourceGroupId], enabled: Boolean(redis), ...interest, load: (signal) => fetchResourceGroup(api.baseUrl, redis!.resourceGroupId, origin.credential(), api.tenantId, signal) })
   const scopes = useScopedQuery({ scope, key: eligibilityKeys.scopes(redis?.resourceGroupId), enabled: Boolean(redis), ...interest, load: (signal) => fetchIsolationScopes(api.baseUrl, redis!.resourceGroupId, origin.credential(), api.tenantId, signal) })
-  const targets = useScopedQuery({ scope, key: eligibilityKeys.targets(redisType, placement?.isolationScopeId, false), enabled: Boolean(placement), ...interest, load: (signal) => fetchAvailableDeploymentTargets(api.baseUrl, placement!.isolationScopeId ?? undefined, origin.credential(), api.tenantId, signal, false, redisType) })
-  const storage = useScopedQuery({ scope, key: eligibilityKeys.storage(redisType, placement?.deploymentTargetId), enabled: Boolean(placement), ...interest, load: (signal) => fetchAvailableStorageProfiles(api.baseUrl, redisType, placement!.deploymentTargetId, origin.credential(), api.tenantId, signal) })
+  const targets = useScopedQuery({ scope, key: eligibilityKeys.targets(redisType, placement?.isolationScopeId, false), enabled: Boolean(placement), ...interest, realtime: [...interest.realtime, { topic: 'deployment-target-eligibility', tenantId: api.tenantId }], load: (signal) => fetchAvailableDeploymentTargets(api.baseUrl, placement!.isolationScopeId ?? undefined, origin.credential(), api.tenantId, signal, false, redisType) })
+  const storage = useScopedQuery({ scope, key: eligibilityKeys.storage(redisType, placement?.deploymentTargetId), enabled: Boolean(placement), ...interest, realtime: [...interest.realtime, { topic: 'storage-eligibility', tenantId: api.tenantId }], load: (signal) => fetchAvailableStorageProfiles(api.baseUrl, redisType, placement!.deploymentTargetId, origin.credential(), api.tenantId, signal) })
   const mutation = useScopedMutation(scopeKey)
   const [deleting, setDeleting] = useState(false)
   const [visited, setVisited] = useState(section === 'configuration')
@@ -83,7 +83,7 @@ function RedisConfiguration({ redis, active, onDirtyChange, onSaved }: { redis: 
   const scopeKey = `${origin.identity}:${redis.id}`
   const targetId = redis.placement!.deploymentTargetId
   const compute = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: eligibilityKeys.compute(redisType, targetId), active,
-    realtime: groupInterests(api.tenantId, redis.resourceGroupId), resourceGroupId: redis.resourceGroupId,
+    realtime: [...groupInterests(api.tenantId, redis.resourceGroupId), { topic: 'compute-eligibility', tenantId: api.tenantId }], resourceGroupId: redis.resourceGroupId,
     load: (signal) => fetchAvailableComputeProfiles(api.baseUrl, targetId, origin.credential(), api.tenantId, signal, redisType) })
   const [configuration, setConfiguration] = useState(() => redisConfiguration(redis))
   const { tags, computeProfileId: computeId } = configuration.draft

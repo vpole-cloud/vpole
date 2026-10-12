@@ -1,5 +1,7 @@
 import { eligibilityKeys } from '../../data/queryKeys'
 import { groupInterests } from '../../realtime/resourceInterests'
+import { secretInterests } from '../secrets/realtime'
+import { connectionInterests } from './connectionRealtime'
 import { rowsFor, type ReferenceRow } from './dependencyDraft'
 import { useEffect, useState } from 'react'
 import { bindSecret, createResourceConnection, deleteResourceConnection, detachSecret, fetchAvailableDeploymentTargets, fetchResourceConnections, fetchResourceEndpoints, fetchResourceGroupResources, fetchResourceGroups, fetchSecrets, fetchSecretUsage, fetchSecretProjections, updateWebServiceDependencies } from '../../api'
@@ -24,7 +26,7 @@ export function WebServiceDependencies({ service, canWrite, onDirtyChange, onCha
   const { credential, isCurrent } = apiScope
   const scope = `${apiScope.identity}:${service.id}`
   const targets = useWebServiceQuery(eligibilityKeys.targets('pole/web-service', service.isolationScopeId, false), (signal) => fetchAvailableDeploymentTargets(api.baseUrl, service.isolationScopeId ?? undefined, credential(), api.tenantId, signal, false),
-    { active, realtime: groupInterests(api.tenantId, service.resourceGroupId), resourceGroupId: service.resourceGroupId })
+    { active, realtime: [...groupInterests(api.tenantId, service.resourceGroupId), { topic: 'deployment-target-eligibility', tenantId: api.tenantId }], resourceGroupId: service.resourceGroupId })
   const targetName = (id: string) => targets.resource?.find((target) => target.id === id)?.displayName ?? 'Unavailable target'
   const groups = useWebServiceQuery(['resource-groups', 'choices'], async (signal) => {
     const first = await fetchResourceGroups(api.baseUrl, credential(), api.tenantId, signal, { pageSize: 100 })
@@ -45,7 +47,7 @@ export function WebServiceDependencies({ service, canWrite, onDirtyChange, onCha
       items.push(...next.items)
     }
     return items
-  })
+  }, { active, realtime: connectionInterests(api.tenantId) })
   const secrets = useWebServiceQuery(['secrets', 'choices'], async (signal) => {
     const items: SecretMetadata[] = []; let after: string | undefined; const visited = new Set<string>()
     do {
@@ -55,7 +57,7 @@ export function WebServiceDependencies({ service, canWrite, onDirtyChange, onCha
       if (after) visited.add(after)
     } while (after)
     return items
-  })
+  }, { active, realtime: secretInterests(api.tenantId, ['secrets', 'choices']) })
   const [groupId, setGroupId] = useState(service.resourceGroupId)
   const inventory = useWebServiceQuery(['resource-groups', 'inventory', groupId, 'all'], async (signal) => {
     const first = await fetchResourceGroupResources(api.baseUrl, groupId, 1, 200, credential(), api.tenantId, signal)
@@ -70,12 +72,12 @@ export function WebServiceDependencies({ service, canWrite, onDirtyChange, onCha
   const [destinationId, setDestinationId] = useState(''); const [endpointId, setEndpointId] = useState(''); const [name, setName] = useState('')
   const destination = inventory.resource?.find((item) => item.registrationId === destinationId)
   const discovery = useWebServiceQuery(['endpoints', destination?.resourceTypeId, destination?.resourceId, sourceType, service.id], (signal) => destination ? fetchResourceEndpoints(api.baseUrl, destination.resourceTypeId, destination.resourceId,
-    credential(), api.tenantId, signal, { resourceType: sourceType, resourceId: service.id }) : Promise.resolve(null))
+    credential(), api.tenantId, signal, { resourceType: sourceType, resourceId: service.id }) : Promise.resolve(null), { active, enabled: Boolean(destination), realtime: connectionInterests(api.tenantId) })
   const network = useWebServiceMutation(scope, canWrite)
   const [disconnecting, setDisconnecting] = useState<ResourceConnection | null>(null)
   const refreshConnections = connections.refresh
   const pending = connections.resource?.some((connection) => connection.status === 'Deleting' || connection.targets.some((target) => !['Applied', 'Completed'].includes(target.status))) ?? false
-  useVisibleRefresh(active && pending, refreshConnections, 2500)
+  useVisibleRefresh(active && pending, refreshConnections, 2500, connectionInterests(api.tenantId))
   const networkDirty = Boolean(destinationId || endpointId || name); const [configurationDirty, setConfigurationDirty] = useState(false)
   useEffect(() => { onDirtyChange(networkDirty || configurationDirty); return () => onDirtyChange(false) }, [networkDirty, configurationDirty, onDirtyChange])
   const duplicate = connections.resource?.some((connection) => connection.destinationResourceType === destination?.resourceTypeId && connection.destinationResourceId === destination?.resourceId && connection.endpointId === endpointId)
@@ -118,7 +120,7 @@ export function WebServiceDependencies({ service, canWrite, onDirtyChange, onCha
       </form>}
     </section>
     <DependencySecretAccess active={active} service={service} secrets={secrets.resource ?? []} choicesCurrent={secrets.status === 'success'} unavailable={Boolean(secrets.error)} canWrite={canWrite} targetName={targetName} />
-    <DependencyConfiguration key={service.id} service={service} connections={connections.resource ?? []} secrets={secrets.resource ?? []} canWrite={canWrite} onDirtyChange={setConfigurationDirty} onChanged={onChanged} />
+    <DependencyConfiguration key={service.id} active={active} service={service} connections={connections.resource ?? []} secrets={secrets.resource ?? []} canWrite={canWrite} onDirtyChange={setConfigurationDirty} onChanged={onChanged} />
     {disconnecting && <ConfirmationDialog title="Disconnect network access?" confirmLabel="Disconnect network" busy={network.busy} onCancel={() => setDisconnecting(null)} onConfirm={() => {
       void network.run((signal) => deleteResourceConnection(api.baseUrl, disconnecting.id, credential(), api.tenantId, signal), async (_value, guard) => { setDisconnecting(null); await connections.refreshAfterWrite(); guard(); await invalidateWebServiceState(apiScope, [['connections']]) }).catch(() => { if (isCurrent()) setDisconnecting(null) })
     }}>This deletes the connection declaration and requests policy cleanup on its targets. The database, Secret bindings and saved application configuration remain. Connection references become unavailable; update application configuration separately.</ConfirmationDialog>}
@@ -135,9 +137,9 @@ function DependencySecretAccess({ active, service, secrets, choicesCurrent, unav
       return usage.some((entry) => entry.binding.consumerType === sourceType && entry.binding.consumerId === service.id) ? item : null
     }))
     return found.filter((item): item is SecretMetadata => item !== null)
-  }, { enabled: Boolean(secrets.length || choicesCurrent) })
-  const usage = useWebServiceQuery(['secrets', 'usage', selected], (signal) => fetchSecretUsage(api.baseUrl, secret!.id, credential(), api.tenantId, signal), { enabled: Boolean(secret) })
-  const projections = useWebServiceQuery(['secrets', 'projections', selected], (signal) => fetchSecretProjections(api.baseUrl, secret!.id, credential(), api.tenantId, signal), { enabled: Boolean(secret) })
+  }, { enabled: Boolean(secrets.length || choicesCurrent), active, realtime: secretInterests(api.tenantId, ['secrets', 'consumer-bindings']) })
+  const usage = useWebServiceQuery(['secrets', 'usage', selected], (signal) => fetchSecretUsage(api.baseUrl, secret!.id, credential(), api.tenantId, signal), { enabled: Boolean(secret), active, realtime: secretInterests(api.tenantId, ['secrets', 'usage', selected]) })
+  const projections = useWebServiceQuery(['secrets', 'projections', selected], (signal) => fetchSecretProjections(api.baseUrl, secret!.id, credential(), api.tenantId, signal), { enabled: Boolean(secret), active, realtime: secretInterests(api.tenantId, ['secrets', 'projections', selected]) })
   const binding = usage.resource?.find((item) => item.binding.consumerType === sourceType && item.binding.consumerId === service.id)
   const live = service.deployments.filter((item) => item.desiredOperation !== 'Delete' && item.status !== 'Deleted')
   const eligible = Boolean(secret && secret.resourceGroupId === service.resourceGroupId && secret.isolationScopeId === service.isolationScopeId && live.length && live.every((item) => item.isolationScopeId === secret.isolationScopeId))
@@ -146,7 +148,7 @@ function DependencySecretAccess({ active, service, secrets, choicesCurrent, unav
   const selectedProjections = projections.resource?.filter((item) => item.bindingId === binding?.binding.id) ?? []
   const pending = Boolean(binding && (!selectedProjections.length || selectedProjections.some((item) => item.health !== 'Ready' || item.appliedVersion !== secret?.currentVersion)))
   const refresh = projections.refresh
-  useVisibleRefresh(active && pending, refresh, 2500)
+  useVisibleRefresh(active && pending, refresh, 2500, secretInterests(api.tenantId, ['secrets', 'projections', selected]))
   return <section className="panel"><h2>2. Secret access</h2><p>Choose an existing Secret if the application needs credentials. Redis currently requires no authentication Secret. A binding authorizes projection; it does not set environment variables.</p>
     {!!savedBindings.resource?.length && <div className="row-actions"><span>Saved application bindings:</span>{savedBindings.resource.map((item) => <Button key={item.id} onClick={() => setSelected(item.id)}>{item.name}</Button>)}</div>}
     {savedBindings.error && <Notice tone="error">Saved Secret bindings could not be reconstructed.<Button onClick={() => void savedBindings.refresh()}>Retry saved bindings</Button></Notice>}
@@ -172,7 +174,7 @@ function DependencySecretAccess({ active, service, secrets, choicesCurrent, unav
   </section>
 }
 
-function DependencyConfiguration({ service, connections, secrets, canWrite, onDirtyChange, onChanged }: { service: WebService; connections: ResourceConnection[]; secrets: SecretMetadata[]; canWrite: boolean; onDirtyChange: (dirty: boolean) => void; onChanged: () => Promise<void> }) {
+function DependencyConfiguration({ active, service, connections, secrets, canWrite, onDirtyChange, onChanged }: { active: boolean; service: WebService; connections: ResourceConnection[]; secrets: SecretMetadata[]; canWrite: boolean; onDirtyChange: (dirty: boolean) => void; onChanged: () => Promise<void> }) {
   const { api } = useAppServices(); const apiScope = useApiScope(api); const { credential, isCurrent } = apiScope; const scope = `${apiScope.identity}:${service.id}`
   const [rows, setRows] = useState(() => rowsFor(service)); const [saved, setSaved] = useState(() => JSON.stringify(rowsFor(service)))
   const [validation, setValidation] = useState(''); const [confirming, setConfirming] = useState(false); const [accepted, setAccepted] = useState(false); const [reviewing, setReviewing] = useState(false)
@@ -195,7 +197,7 @@ function DependencyConfiguration({ service, connections, secrets, canWrite, onDi
       else unavailable++
     }
     return { endpoints: result, unavailable }
-  })
+  }, { active, realtime: connectionInterests(api.tenantId) })
   const patch = (id: number, next: Partial<ReferenceRow>) => { setAccepted(false); setRows((current) => current.map((row) => row.id === id ? { ...row, ...next } : row)) }
   const add = (kind: ReferenceRow['kind']) => { setAccepted(false); setRows((current) => [...current, { id: Math.max(-1, ...current.map((row) => row.id)) + 1, kind, name: '', connectionId: '', valueKind: 'Host', configurationKey: '', secretId: '', key: '' }]) }
   const save = () => {

@@ -1,4 +1,8 @@
 import type { RealtimeChange } from './types'
+import { matchesSecretQuery } from '../modules/secrets/realtime'
+import { matchesDomainQuery } from '../modules/domains/realtime'
+import { matchesConnectionQuery } from '../modules/web-services/connectionRealtime'
+import { matchesGitQuery } from '../modules/platform/gitRealtime'
 // Query parameters are provider owned; events invalidate metadata rather than inserting DTOs.
 const sameResource = (id: unknown, event: RealtimeChange) => !event.resourceId || id === event.resourceId
 const sameGroup = (id: unknown, groupId?: string) => !groupId || !id || id === groupId
@@ -14,9 +18,20 @@ function matchesGroup(key: readonly unknown[], groupId?: string) {
 }
 export function matchesPilotQuery(key: readonly unknown[], event: RealtimeChange, meta?: Record<string, unknown>) {
   const [namespace, kind, resourceId] = key
+  if (event.topic === 'search') return namespace === 'search'
+  if (event.topic === 'git') return matchesGitQuery(key, event)
+  if (event.topic === 'domains') return matchesDomainQuery(key, event)
+  if (event.topic === 'resource-connections') return matchesConnectionQuery(key, event)
+  if (event.topic === 'compute-eligibility') return namespace === 'eligibility' && kind === 'compute-profiles'
+  if (event.topic === 'secrets') return matchesSecretQuery(key, event)
+  if (event.topic === 'deployment-target-eligibility') return namespace === 'eligibility' && kind === 'deployment-targets' || namespace === 'secrets' && kind === 'projection-targets'
+  if (event.topic === 'storage-eligibility') return namespace === 'eligibility' && kind === 'storage-profiles'
+  if (event.topic === 'storage-profiles' || event.topic === 'deployment-targets') return meta?.privileged === true && namespace === 'platform-storage' &&
+    (kind === 'inventory' || event.topic === 'deployment-targets' && kind === 'discovery' && sameResource(resourceId, event))
   if (event.topic === 'resource-groups' || event.topic === 'workspace-inventory') {
     const groupId = event.resourceGroupId ?? (event.topic === 'resource-groups' ? event.resourceId : undefined)
     if (namespace === 'overview' || matchesGroup(key, groupId)) return true
+    if (namespace === 'secrets' && kind === 'projection-targets') return sameGroup(meta?.resourceGroupId, groupId)
     if (namespace === 'eligibility') {
       // Target eligibility belongs to an isolation scope. Compute/storage profiles can be shared
       // by several groups on the same target; a single observer's group cannot narrow that cache.
@@ -31,7 +46,7 @@ export function matchesPilotQuery(key: readonly unknown[], event: RealtimeChange
     return namespace === event.topic && (kind === 'inventory' || kind === 'detail' && sameResource(resourceId, event))
   }
   if (event.topic === 'source-builds') {
-    if (namespace === 'source-builds') return kind !== 'jobs' && kind !== 'job' || !event.resourceId || resourceId === event.resourceId
+    if (namespace === 'source-builds') return kind === 'configurations' || ['jobs', 'job'].includes(String(kind)) && (!event.resourceId || resourceId === event.resourceId)
     return namespace === 'web-services' && ['detail', 'releases'].includes(String(kind)) && (!event.resourceId || resourceId === event.resourceId)
   }
   if (event.topic === 'operations') {

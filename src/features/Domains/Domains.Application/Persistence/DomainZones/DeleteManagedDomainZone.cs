@@ -1,4 +1,5 @@
 using MongoDB.Driver;
+using Pole.Features.Outbox.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Domains.Domain;
 using Pole.ResultType;
@@ -36,7 +37,8 @@ public delegate Task<DeleteManagedDomainZoneOutcome>
 
 internal sealed class MongoDeleteManagedDomainZone(
     IMongoDatabase database,
-    ApplyDeploymentTargetReferenceChanges applyDeploymentTargetReferenceChanges)
+    ApplyDeploymentTargetReferenceChanges applyDeploymentTargetReferenceChanges,
+    StoreOutboxWrites outbox)
 {
     private readonly IMongoCollection<TenantDomainZone> zones =
         database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
@@ -88,10 +90,9 @@ internal sealed class MongoDeleteManagedDomainZone(
             [zone.DeploymentTargetId],
             session,
             cancellationToken);
-        return unregistered is DeploymentTargetReferencesChanged
-            ? new ManagedDomainZoneDeleted(zone.Id)
-            : new ManagedDomainZoneReferenceRemovalRejected(
-                    zone.Id,
-                    zone.DeploymentTargetId);
+        if (unregistered is not DeploymentTargetReferencesChanged)
+            return new ManagedDomainZoneReferenceRemovalRejected(zone.Id, zone.DeploymentTargetId);
+        await outbox(session, [OutboxWrite.Create((zone with { Revision = checked(zone.Revision + 1) }).ToChangedEvent())], cancellationToken);
+        return new ManagedDomainZoneDeleted(zone.Id);
     }
 }

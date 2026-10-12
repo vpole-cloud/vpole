@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using Pole.Database;
+using Pole.Features.Outbox.Application.Persistence;
+using Pole.Features.Outbox.Contracts;
 using Pole.Features.ComputeProfiles.Application.Endpoints;
 using Pole.Features.ComputeProfiles.Application.Persistence;
 using Pole.Features.ComputeProfiles.Contracts;
@@ -99,7 +101,8 @@ internal sealed class ComputeProfilePersistenceTestHost : IDisposable
 
     public ComputeProfilePersistenceTestHost(
         MongoReplicaSetFixture fixture,
-        ApplyDeploymentTargetReferenceChanges? applyTargetReferenceChanges = null)
+        ApplyDeploymentTargetReferenceChanges? applyTargetReferenceChanges = null,
+        StoreOutboxWrites? storeOutboxWrites = null)
     {
         var services = new ServiceCollection();
         services.AddSingleton(fixture.Client);
@@ -129,6 +132,8 @@ internal sealed class ComputeProfilePersistenceTestHost : IDisposable
         {
             services.AddSingleton(applyTargetReferenceChanges);
         }
+        services.AddOutboxPersistence();
+        if (storeOutboxWrites is not null) services.AddSingleton(storeOutboxWrites);
         services.AddComputeProfilePersistence();
         _provider = services.BuildServiceProvider(validateScopes: true);
         _scope = _provider.CreateScope();

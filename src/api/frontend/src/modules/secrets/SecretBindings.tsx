@@ -61,7 +61,7 @@ function BindingForm({ secret, resources, resourcesCurrent, existing, onCancel, 
   const choices = resources.filter((item) => !existing.includes(`${item.resourceTypeId}:${item.resourceId}`))
   const consumer = choices.find((item) => item.registrationId === selected)
   const placements = useSecretQuery(['secrets', 'binding-placements', secret.id, consumer?.resourceTypeId, consumer?.resourceId], (token, signal) => consumer ? fetchResourceDeploymentSet(api.baseUrl, consumer.resourceTypeId, consumer.resourceId, token, api.tenantId, signal) : Promise.resolve([]), { enabled: Boolean(consumer) })
-  const targets = useSecretQuery(eligibilityKeys.targets(consumer?.resourceTypeId, secret.isolationScopeId, false), (token, signal) => consumer ? fetchAvailableDeploymentTargets(api.baseUrl, secret.isolationScopeId, token, api.tenantId, signal, false, consumer.resourceTypeId) : Promise.resolve([]), { enabled: Boolean(consumer) })
+  const targets = useSecretQuery(eligibilityKeys.targets(consumer?.resourceTypeId, secret.isolationScopeId, false), (token, signal) => consumer ? fetchAvailableDeploymentTargets(api.baseUrl, secret.isolationScopeId, token, api.tenantId, signal, false, consumer.resourceTypeId) : Promise.resolve([]), { enabled: Boolean(consumer), resourceGroupId: secret.resourceGroupId })
   const { live, eligible: matchesScope } = liveBindingPlacements(placements.resource ?? [], secret.isolationScopeId)
   const eligible = resourcesCurrent && placements.status === 'success' && matchesScope
   const mutation = useScopedMutation(scope)
@@ -94,7 +94,7 @@ export function SecretProjections({ secret }: { secret: SecretMetadata }) {
     const result: AvailableDeploymentTarget[] = []
     for (const type of new Set(usage.resource?.map((item) => item.binding.consumerType) ?? [])) result.push(...await fetchAvailableDeploymentTargets(api.baseUrl, secret.isolationScopeId, origin.credential(), api.tenantId, signal, false, type))
     return result
-  })
+  }, { resourceGroupId: secret.resourceGroupId })
   const pending = Boolean(usage.resource?.length && !projections.resource?.length) || projections.resource?.some((item) => item.health === 'Pending' || item.health === 'Failed' || item.health === 'Ready' && (item.desiredVersion !== secret.currentVersion || item.appliedVersion !== secret.currentVersion))
   return <section className="panel"><header className="ui-page-header"><div><h2>Deployment projections</h2><p>Projected means Kubernetes accepted the Secret on that target. Application consumption and restart are managed separately.</p></div><Button onClick={() => { void projections.refresh(); void usage.refresh(); void targets.refresh() }}>Refresh projections</Button></header>
     {projections.error && <Notice tone="error">{projections.error} Last fetched projection results are shown.</Notice>}

@@ -10,6 +10,40 @@ namespace Pole.Features.Realtime.Tests;
 public sealed class RealtimePublisherTests
 {
     [Fact]
+    public async Task PublicEligibilityFanoutDeduplicatesTenantsAndRechecksMembershipWithoutPlatformIdentifiers()
+    {
+        const string alpha = "000000000000000000000001";
+        const string beta = "000000000000000000000002";
+        const string expired = "000000000000000000000003";
+        var checkedTenants = new List<string>();
+        var registry = new RealtimeTopicRegistry([new("eligibility", RealtimeScope.Tenant), new("private", RealtimeScope.Platform)], new());
+        var access = new RealtimeAccess((id, user, _, _) =>
+            {
+                checkedTenants.Add(id);
+                return Task.FromResult<LoadTenantMemberOutcome>(id == alpha
+                    ? new TenantMemberSnapshot(id, user, TenantMembershipRole.Viewer) : new TenantMemberMissing(id, user));
+            }, (id, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(id, "name")), registry);
+        var expiry = DateTimeOffset.UtcNow.AddMinutes(1);
+        var tickets = new MemoryTickets();
+        await tickets.StoreAsync(new AuthenticationTicket(IdentityFixture.User(), new() { ExpiresUtc = expiry }, RealtimeFeature.CookieScheme));
+        var subscriptions = new MemorySubscriptions();
+        await subscriptions.ReplaceAsync("connection", [
+            new("a", "connection", "viewer", new("eligibility", alpha), expiry),
+            new("a-detail", "connection", "viewer", new("eligibility", alpha, "private-profile-id"), expiry),
+            new("b", "connection", "viewer", new("eligibility", beta), expiry),
+            new("old", "connection", "viewer", new("eligibility", expired), DateTimeOffset.UtcNow.AddSeconds(-1))
+        ], default);
+        var hub = new RecordingHubContext();
+        var publisher = new RealtimePublisher(subscriptions, tickets, access, registry, hub, TimeProvider.System);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => publisher.InvalidateTenantsAsync("private"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => publisher.InvalidateTenantsAsync("unregistered"));
+        await publisher.InvalidateTenantsAsync("eligibility");
+        Assert.Equal(new RealtimeChange("eligibility", alpha), Assert.Single(hub.Client.Notices));
+        Assert.Equal(new[] { alpha, alpha, beta }, checkedTenants);
+        Assert.Equal(1, hub.Client.Revocations);
+    }
+
+    [Fact]
     public async Task UserHintsCannotBroadcastMissingSubjectsOrRevealAnotherSubjectsDiscovery()
     {
         var registry = new RealtimeTopicRegistry([new("user-discovery", RealtimeScope.User)], new());

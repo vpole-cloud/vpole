@@ -1,14 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAppServices } from '../../shell/AppContext'
 import type { SourceRepository } from '../../types'
 import { Button, EmptyState, Notice } from '../../ui/components'
 import { useGitSourceSelection } from './useGitSourceSelection'
+import { sourceSelectionCurrent } from '../platform/gitRealtime'
 
-export function GitSourcePicker({ source, onSelect, disabled = false }: {
-  source: SourceRepository | null; onSelect: (source: SourceRepository | null) => void; disabled?: boolean
+export function GitSourcePicker({ source, onSelect, disabled = false, active = true, onSourceCurrent }: {
+  source: SourceRepository | null; onSelect: (source: SourceRepository | null) => void; disabled?: boolean; active?: boolean; onSourceCurrent?: (id: string, current: boolean) => void
 }) {
   const { api, tenant, navigation } = useAppServices()
-  const manager = useGitSourceSelection(api, !disabled && tenant.canManage)
+  const manager = useGitSourceSelection(api, !disabled && tenant.canManage, active)
+  const selectedCurrent = !source || !manager.sourcesCurrent || sourceSelectionCurrent(source, manager.sources)
+  useEffect(() => { if (source && active && manager.sourcesCurrent) onSourceCurrent?.(source.id, selectedCurrent) }, [source, active, manager.sourcesCurrent, selectedCurrent, onSourceCurrent])
   const [chooseNew, setChooseNew] = useState(false)
   const plan = manager.selection.analysis?.candidates.find((item) => item.candidateKey === manager.selection.candidateKey)
   const readOnly = disabled || !tenant.canManage
@@ -16,6 +19,8 @@ export function GitSourcePicker({ source, onSelect, disabled = false }: {
     <div className="panel__header"><div><p className="panel__eyebrow">Git source</p><h2 className="panel__title">Repository and build plan</h2></div>
       <Button disabled={manager.busy} onClick={manager.refresh}>Refresh sources</Button></div>
     {manager.error && <Notice tone="error">{manager.error}</Notice>}
+    {!selectedCurrent && <Notice>The linked source changed or was removed. Refresh sources and select it again before creating the service.</Notice>}
+    {manager.analysisStale && <Notice>The branch changed after analysis. Analyze it again before using this build plan.</Notice>}
     {manager.status === 'loading' && <p role="status">Loading GitHub accounts and sources…</p>}
     {manager.status === 'error' && <Button onClick={manager.refresh}>Retry sources</Button>}
     <label className="field"><span className="field__label">Linked source</span><select className="field__control"
@@ -58,7 +63,7 @@ export function GitSourcePicker({ source, onSelect, disabled = false }: {
           {plan && <><div className="git-source-summary"><span>{plan.kind} · {plan.confidence} confidence</span>
             {plan.warnings.map((warning, index) => <Notice key={index}>{warning}</Notice>)}
             <details><summary>Build recipe preview</summary><pre data-testid="git-recipe-preview" className="git-recipe-preview">{plan.dockerfilePreview}</pre></details></div>
-            <Button variant="primary" onClick={() => void manager.link().then((linked) => { if (linked) { onSelect(linked); setChooseNew(false) } })}>Use this source</Button></>}
+            <Button variant="primary" disabled={manager.analysisStale} onClick={() => void manager.link().then((linked) => { if (linked) { onSelect(linked); setChooseNew(false) } })}>Use this source</Button></>}
         </>}
       </>}
     </fieldset>}

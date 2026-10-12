@@ -1,5 +1,7 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Outbox.Contracts;
+using Pole.Features.DeploymentTargets.Events;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Persistence.References;
 using Pole.Features.DeploymentTargets.Domain;
@@ -32,7 +34,8 @@ internal sealed class MongoEnsureBootstrapDefaultDeploymentTarget(
     IMongoCollection<DeploymentTargetSettings> settings,
     EnsureNoOverlappingDeploymentTargetPublicBaseDomain ensureNoOverlappingPublicBaseDomain,
     RunMongoOutcomeTransaction<EnsureBootstrapDefaultDeploymentTargetOutcome> runMongoTransaction,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    StoreOutboxWrites storeOutboxWrites)
 {
     public async Task<EnsureBootstrapDefaultDeploymentTargetOutcome> InvokeAsync(
         EnsureBootstrapDefaultDeploymentTargetRequest request,
@@ -102,6 +105,8 @@ internal sealed class MongoEnsureBootstrapDefaultDeploymentTarget(
                 deploymentTarget.Id,
                 deploymentTarget.CreatedAtUtc),
             cancellationToken: cancellationToken);
+        await storeOutboxWrites(transaction.Session,
+            [OutboxWrite.Create(new DeploymentTargetCatalogChangedEvent(deploymentTarget.Id, deploymentTarget.Revision))], cancellationToken);
         return transaction.Commit(new BootstrapDefaultDeploymentTargetEnsured());
     }
 
@@ -139,6 +144,8 @@ internal sealed class MongoEnsureBootstrapDefaultDeploymentTarget(
             transaction.Session,
             DeploymentTargetSettings.Create(target.Id, updatedAtUtc),
             cancellationToken: cancellationToken);
+        await storeOutboxWrites(transaction.Session,
+            [OutboxWrite.Create(new DeploymentTargetCatalogChangedEvent(target.Id, checked(target.Revision + 1)))], cancellationToken);
         return transaction.Commit(new BootstrapDefaultDeploymentTargetEnsured());
     }
 }

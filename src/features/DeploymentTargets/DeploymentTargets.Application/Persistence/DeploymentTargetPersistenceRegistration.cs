@@ -140,6 +140,15 @@ public static class DeploymentTargetPersistenceRegistration
             serviceProvider => serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
                 .InvokeOutcomeAsync<DeleteDeploymentTargetPersistenceOutcome>);
+        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistDeploymentTargetDeletionFenceOutcome>>(serviceProvider => serviceProvider
+                .GetRequiredService<MongoRunTransaction>()
+                .InvokeOutcomeAsync<PersistDeploymentTargetDeletionFenceOutcome>);
+        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistRotatedDeploymentTargetConnectionOutcome>>(serviceProvider => serviceProvider
+                .GetRequiredService<MongoRunTransaction>()
+                .InvokeOutcomeAsync<PersistRotatedDeploymentTargetConnectionOutcome>);
+        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistDeploymentTargetValidationOutcome>>(serviceProvider => serviceProvider
+                .GetRequiredService<MongoRunTransaction>()
+                .InvokeOutcomeAsync<PersistDeploymentTargetValidationOutcome>);
         services.TryAddSingleton<RunMongoOutcomeTransaction<EnsureBootstrapDefaultDeploymentTargetOutcome>>(
             serviceProvider => serviceProvider
                 .GetRequiredService<MongoRunTransaction>()

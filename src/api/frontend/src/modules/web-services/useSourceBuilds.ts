@@ -9,6 +9,7 @@ import { createSourceBuildConfiguration, deleteSourceBuildConfiguration, fetchSo
   fetchSourceBuildJobs, startSourceBuild, updateSourceBuildRecipe } from './buildApi'
 import type { SourceBuildConfiguration, SourceBuildJob, SourceBuildRecipe } from './buildTypes'
 import { invalidateWebServiceState } from './invalidate'
+import { gitInterests } from '../platform/gitRealtime'
 
 interface Options { apiBaseUrl: string; token?: string; tenantId?: string; webServiceId?: string | null; enabled: boolean; canManage?: boolean }
 const terminal = new Set(['succeeded', 'failed'])
@@ -22,6 +23,7 @@ export function useSourceBuildsManager({ apiBaseUrl, token, tenantId, webService
     active: enabled, realtime: [{ topic: 'source-builds', tenantId }],
     load: (signal) => fetchSourceBuildConfigurations(apiBaseUrl, scope.credential(), tenantId, signal) })
   const sources = useScopedQuery({ scope: queryScope, key: ['git', 'sources'], enabled: visited,
+    active: enabled, realtime: gitInterests(tenantId, ['git', 'sources']),
     load: (signal) => fetchSourceRepositories(apiBaseUrl, scope.credential(), tenantId, signal) })
   const jobs = useScopedQuery({ scope: queryScope, key: ['source-builds', 'jobs', webServiceId], enabled: visited && Boolean(webServiceId),
     active: enabled, realtime: [{ topic: 'source-builds', tenantId, resourceId: webServiceId ?? undefined }],

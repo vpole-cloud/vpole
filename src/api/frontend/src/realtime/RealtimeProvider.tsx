@@ -6,15 +6,15 @@ import { RealtimeContext } from './context'
 import { createRealtimeSession, revokeRealtimeSession } from './sessionApi'
 import { isPageVisible } from './usePageVisible'
 
-export function RealtimeProvider({ baseUrl, token, enabled, children, userId }: {
-  baseUrl: string; token?: string; enabled: boolean; children: ReactNode; userId?: string
+export function RealtimeProvider({ baseUrl, token, enabled, children, userId, platformAdminClaim = false }: {
+  baseUrl: string; token?: string; enabled: boolean; children: ReactNode; userId?: string; platformAdminClaim?: boolean
 }) {
   const session = useQuerySession()
-  return <OwnedRealtimeProvider key={`${session.id}:${baseUrl}:${userId ?? ''}`} baseUrl={baseUrl} token={token} enabled={enabled} userId={userId}>{children}</OwnedRealtimeProvider>
+  return <OwnedRealtimeProvider key={`${session.id}:${baseUrl}:${userId ?? ''}`} baseUrl={baseUrl} token={token} enabled={enabled} userId={userId} platformAdminClaim={platformAdminClaim}>{children}</OwnedRealtimeProvider>
 }
 
-function OwnedRealtimeProvider({ baseUrl, token, enabled, children, userId }: {
-  baseUrl: string; token?: string; enabled: boolean; children: ReactNode; userId?: string
+function OwnedRealtimeProvider({ baseUrl, token, enabled, children, userId, platformAdminClaim }: {
+  baseUrl: string; token?: string; enabled: boolean; children: ReactNode; userId?: string; platformAdminClaim: boolean
 }) {
   const session = useQuerySession()
   const [controller] = useState(() => new RealtimeController(session, baseUrl, {
@@ -23,7 +23,7 @@ function OwnedRealtimeProvider({ baseUrl, token, enabled, children, userId }: {
     revoke: () => revokeRealtimeSession(baseUrl),
     userId,
   }))
-  useLayoutEffect(() => { controller.updateCredential(token) }, [controller, token])
+  useLayoutEffect(() => { controller.updateCredential(token, platformAdminClaim) }, [controller, token, platformAdminClaim])
   useEffect(() => {
     if (!enabled || typeof BroadcastChannel === 'undefined') return
     const value = new BroadcastChannel(`pole.realtime:${baseUrl}:${session.identity}`)

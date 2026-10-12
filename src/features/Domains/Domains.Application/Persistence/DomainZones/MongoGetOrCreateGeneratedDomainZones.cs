@@ -2,6 +2,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Dns;
+using Pole.Features.Outbox.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Contracts;
@@ -16,7 +17,8 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
     ApplyDeploymentTargetReferenceChanges applyDeploymentTargetReferenceChanges,
     FenceDeploymentTargetWorkloadConfigurations fenceDeploymentTargetWorkloadConfigurations,
     LoadTenantIdentity loadTenantIdentity,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    StoreOutboxWrites outbox)
 {
     private readonly IMongoCollection<TenantDomainZone> zones =
         database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
@@ -133,6 +135,7 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
 
                 existingByTarget.Add(CanonicalObjectId(candidate.DeploymentTargetId), candidate);
             }
+            await outbox(session, missing.Select(zone => OutboxWrite.Create(zone.ToChangedEvent())).ToArray(), cancellationToken);
         }
 
         return requests

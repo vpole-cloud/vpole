@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <InternalsVisibleTo Include="Pole.Tests.Integration" />
   </ItemGroup>
 
   <ItemGroup>
@@ -20,6 +21,9 @@
   <ItemGroup>
     <ProjectReference Include="..\GitProviders.Contracts\GitProviders.Contracts.csproj" />
     <ProjectReference Include="..\GitProviders.Domain\GitProviders.Domain.csproj" />
+    <ProjectReference Include="..\GitProviders.Events\GitProviders.Events.csproj" />
+    <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj" />
+    <ProjectReference Include="..\..\Realtime\Realtime.Contracts\Realtime.Contracts.csproj" />
     <ProjectReference Include="..\..\SourceBuilds\SourceBuilds.Contracts\SourceBuilds.Contracts.csproj" />
     <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
     <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />

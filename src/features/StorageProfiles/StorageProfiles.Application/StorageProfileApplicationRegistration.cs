@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pole.ASP.Helpers;
+using Pole.Features.Realtime.Contracts;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Application.Persistence;
@@ -16,6 +17,8 @@ public static class StorageProfileApplicationRegistration
     {
         services.AddHttpProblemMappings(StorageProfileHttpMappings.All);
         services.AddStorageProfilePersistence();
+        services.AddSingleton(new RealtimeTopic("storage-profiles", RealtimeScope.Platform));
+        services.AddSingleton(new RealtimeTopic("storage-eligibility", RealtimeScope.Tenant));
 
         services.AddCapability<KubernetesDiscoverStorageClasses,
             DiscoverKubernetesStorageClasses>(implementation => implementation.InvokeAsync);

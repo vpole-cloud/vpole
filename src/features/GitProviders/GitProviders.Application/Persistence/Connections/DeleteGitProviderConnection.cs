@@ -1,4 +1,6 @@
 using MongoDB.Driver;
+using Pole.Database;
+using Pole.Features.Outbox.Contracts;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
 
@@ -16,7 +18,7 @@ public delegate Task<PersistDeletedGitProviderConnectionOutcome> DeleteGitProvid
     string connectionId,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoDeleteGitProviderConnection(IMongoDatabase database)
+internal sealed class MongoDeleteGitProviderConnection(IMongoDatabase database, MongoRunTransaction transactions, StoreOutboxWrites outbox)
 {
     public async Task<PersistDeletedGitProviderConnectionOutcome> InvokeAsync(
         string tenantId,
@@ -25,22 +27,24 @@ internal sealed class MongoDeleteGitProviderConnection(IMongoDatabase database)
     {
         var connections = database.GetCollection<GitProviderConnection>("GitProviderConnections");
         var connectionFilter = GitProviderFilters.ConnectionByTenantAndId(tenantId, connectionId);
-        if (!await connections.Find(connectionFilter).AnyAsync(cancellationToken))
+        return await transactions.InvokeOutcomeAsync<PersistDeletedGitProviderConnectionOutcome>(async (tx, ct) =>
         {
-            return new GitProviderConnectionNotFound(connectionId);
-        }
+            if (!await connections.Find(tx.Session, connectionFilter).AnyAsync(ct))
+                return tx.Abort(new GitProviderConnectionNotFound(connectionId));
 
-        var repositories = database.GetCollection<SourceRepository>("SourceRepositories");
-        if (await repositories
-                .Find(GitProviderFilters.SourceRepositoriesByTenantAndConnection(tenantId, connectionId))
-                .AnyAsync(cancellationToken))
-        {
-            return new GitProviderConnectionHasSourceRepositories(connectionId);
-        }
+            var repositories = database.GetCollection<SourceRepository>("SourceRepositories");
+            if (await repositories
+                    .Find(tx.Session, GitProviderFilters.SourceRepositoriesByTenantAndConnection(tenantId, connectionId))
+                    .AnyAsync(ct))
+            {
+                return tx.Abort(new GitProviderConnectionHasSourceRepositories(connectionId));
+            }
 
-        var deleted = await connections.DeleteOneAsync(connectionFilter, cancellationToken);
-        return deleted.DeletedCount == 0
-            ? new GitProviderConnectionNotFound(connectionId)
-            : new GitProviderConnectionDeleted();
+            var deleted = await connections.FindOneAndDeleteAsync(tx.Session, connectionFilter, cancellationToken: ct);
+            if (deleted is null)
+                return tx.Abort(new GitProviderConnectionNotFound(connectionId));
+            await outbox(tx.Session, [OutboxWrite.Create(deleted.ToChangedEvent())], ct);
+            return tx.Commit(new GitProviderConnectionDeleted());
+        }, cancellationToken);
     }
 }

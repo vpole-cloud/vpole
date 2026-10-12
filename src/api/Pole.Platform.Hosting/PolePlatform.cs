@@ -68,6 +68,12 @@ public static class PolePlatform
     typeof(UserEndpoints).Assembly,
 ];
     public static Assembly[] EventAssemblies => [
+        typeof(Pole.Features.Domains.Events.DomainMetadataChangedEvent).Assembly,
+        typeof(Pole.Features.GitProviders.Events.GitProviderConnectionChangedEvent).Assembly,
+        typeof(Pole.Features.ComputeProfiles.Events.ComputeProfileCatalogChangedEvent).Assembly,
+        typeof(Pole.Features.DeploymentTargets.Events.DeploymentTargetCatalogChangedEvent).Assembly,
+        typeof(Pole.Features.Search.Events.SearchProjectionChangedEvent).Assembly,
+        typeof(Pole.Features.StorageProfiles.Events.StorageProfileCatalogChangedEvent).Assembly,
         typeof(Pole.Features.Tenants.Events.TenantMembershipChangedEvent).Assembly,
         typeof(Pole.Features.Secrets.Events.SecretChangedEvent).Assembly,
         typeof(Pole.Features.PrivateAccess.Events.PrivateAccessGrantCreatedEvent).Assembly,

@@ -1,6 +1,7 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Outbox.Contracts;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
 
@@ -8,7 +9,8 @@ namespace Pole.Features.Domains.Application.Persistence.HostnameBindings;
 
 internal sealed class MongoDeleteCustomHostnameBinding(
     IMongoDatabase database,
-    MongoHostnameBindingCleanup cleanup)
+    MongoHostnameBindingCleanup cleanup,
+    StoreOutboxWrites outbox)
 {
     private readonly IMongoCollection<TenantDomainZone> zones =
         database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
@@ -63,6 +65,8 @@ internal sealed class MongoDeleteCustomHostnameBinding(
             [cleanup.WithAdvancedRevision(zone)],
             session,
             cancellationToken);
+        if (released is HostnameBindingsCleanedUp)
+            await outbox(session, [OutboxWrite.Create(cleanup.WithAdvancedRevision(zone).ToChangedEvent(binding.Id))], cancellationToken);
         return released switch
         {
             HostnameBindingsCleanedUp => new CustomHostnameBindingDeleted(),

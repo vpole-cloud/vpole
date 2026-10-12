@@ -34,8 +34,8 @@ export function PostgresResourceView({ id, section, active, onSection, actions }
   const interest = { active, realtime: groupInterests(api.tenantId, cluster?.groupId), resourceGroupId: cluster?.groupId }
   const group = useScopedQuery({ scope, key: ['resource-groups', 'detail', cluster?.groupId], enabled: Boolean(cluster), ...interest, load: (signal) => fetchResourceGroup(api.baseUrl, cluster!.groupId, origin.credential(), api.tenantId, signal) })
   const scopes = useScopedQuery({ scope, key: eligibilityKeys.scopes(cluster?.groupId), enabled: Boolean(cluster), ...interest, load: (signal) => fetchIsolationScopes(api.baseUrl, cluster!.groupId, origin.credential(), api.tenantId, signal) })
-  const targets = useScopedQuery({ scope, key: eligibilityKeys.targets(resourceType, cluster?.placement.isolationScopeId, false), enabled: Boolean(cluster), ...interest, load: (signal) => fetchAvailableDeploymentTargets(api.baseUrl, cluster!.placement.isolationScopeId ?? undefined, origin.credential(), api.tenantId, signal, false, resourceType) })
-  const storage = useScopedQuery({ scope, key: eligibilityKeys.storage(resourceType, cluster?.placement.deploymentTargetId), enabled: Boolean(cluster), ...interest, load: (signal) => fetchAvailableStorageProfiles(api.baseUrl, resourceType, cluster!.placement.deploymentTargetId, origin.credential(), api.tenantId, signal) })
+  const targets = useScopedQuery({ scope, key: eligibilityKeys.targets(resourceType, cluster?.placement.isolationScopeId, false), enabled: Boolean(cluster), ...interest, realtime: [...interest.realtime, { topic: 'deployment-target-eligibility', tenantId: api.tenantId }], load: (signal) => fetchAvailableDeploymentTargets(api.baseUrl, cluster!.placement.isolationScopeId ?? undefined, origin.credential(), api.tenantId, signal, false, resourceType) })
+  const storage = useScopedQuery({ scope, key: eligibilityKeys.storage(resourceType, cluster?.placement.deploymentTargetId), enabled: Boolean(cluster), ...interest, realtime: [...interest.realtime, { topic: 'storage-eligibility', tenantId: api.tenantId }], load: (signal) => fetchAvailableStorageProfiles(api.baseUrl, resourceType, cluster!.placement.deploymentTargetId, origin.credential(), api.tenantId, signal) })
   const mutation = useScopedMutation(scopeKey)
   const [deleting, setDeleting] = useState(false)
   const [visited, setVisited] = useState(section === 'configuration')
@@ -100,7 +100,7 @@ function PostgresConfiguration({ cluster, active, onDirtyChange, onSaved, onRefr
   const origin = useProviderInvalidation(api)
   const scopeKey = `${origin.identity}:${cluster.id}`
   const compute = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: eligibilityKeys.compute(resourceType, cluster.placement.deploymentTargetId), active,
-    realtime: groupInterests(api.tenantId, cluster.groupId), resourceGroupId: cluster.groupId,
+    realtime: [...groupInterests(api.tenantId, cluster.groupId), { topic: 'compute-eligibility', tenantId: api.tenantId }], resourceGroupId: cluster.groupId,
     load: (signal) => fetchAvailableComputeProfiles(api.baseUrl, cluster.placement.deploymentTargetId, origin.credential(), api.tenantId, signal, resourceType) })
   const [configuration, setConfiguration] = useState(() => postgresConfiguration(cluster))
   const { instances, storage, computeProfileId } = configuration.draft

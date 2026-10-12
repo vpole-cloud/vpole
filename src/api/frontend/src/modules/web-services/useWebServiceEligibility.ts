@@ -25,11 +25,11 @@ export function useWebServiceEligibility(api: { baseUrl: string; tenantId?: stri
   const currentSelection = selection?.identity === identity ? selection : undefined
   const targets = useScopedQuery({ scope: [api.baseUrl, api.tenantId],
     key: eligibilityKeys.targets('pole/web-service', currentSelection?.scopeId, currentSelection?.publicIngress ?? true),
-    enabled: Boolean(currentSelection && api.tenantId), active, realtime: interests, resourceGroupId,
+    enabled: Boolean(currentSelection && api.tenantId), active, realtime: [...interests, { topic: 'deployment-target-eligibility', tenantId: api.tenantId }], resourceGroupId,
     load: (signal) => fetchAvailableDeploymentTargets(api.baseUrl, currentSelection?.scopeId, credential(), api.tenantId, signal, currentSelection?.publicIngress ?? true) })
   const ids = requested.identity === identity ? requested.ids : []
   const realtime = useRealtime()
-  const covered = useRealtimeInterest(realtime && !realtime.ownsApi(api.baseUrl) ? undefined : interests, enabled && ids.length > 0)
+  const covered = useRealtimeInterest(realtime && !realtime.ownsApi(api.baseUrl) ? undefined : [...interests, { topic: 'compute-eligibility', tenantId: api.tenantId }], enabled && ids.length > 0)
   const profiles = useQueries({ queries: ids.map(targetId => {
     const queryKey = origin.key(eligibilityKeys.compute('pole/web-service', targetId))
     const queryIdentity = JSON.stringify(queryKey)

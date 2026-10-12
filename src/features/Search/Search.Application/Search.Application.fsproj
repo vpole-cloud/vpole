@@ -22,6 +22,7 @@
         <Compile Include="Persistence\RemoveSearchDocumentSet.fs" />
         <Compile Include="Persistence\PersistSearchOperationalStatus.fs" />
         <Compile Include="Persistence\SearchIndexedDocuments.fs" />
+        <Compile Include="Realtime\SearchRealtimeConsumer.fs" />
         <Compile Include="DependencyInjection.fs" />
         <Compile Include="Endpoints\GetSearchResults.fs" />
         <Compile Include="Endpoints\AllSearchEndpoints.fs" />
@@ -43,6 +44,9 @@
       <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
       <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
       <ProjectReference Include="..\Search.Contracts\Search.Contracts.csproj" />
+      <ProjectReference Include="..\Search.Events\Search.Events.csproj" />
+      <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj" />
+      <ProjectReference Include="..\..\Realtime\Realtime.Contracts\Realtime.Contracts.csproj" />
       <ProjectReference Include="..\Search.Domain\Search.Domain.fsproj" />
     </ItemGroup>
 </Project>

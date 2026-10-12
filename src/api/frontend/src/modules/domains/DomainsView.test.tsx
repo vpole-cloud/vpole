@@ -8,12 +8,20 @@ import { createAppRegistry } from '../../shell/moduleRegistry'
 import type { HostnameBinding, TenantDomainZone, WebService } from '../../types'
 import { WebServiceDomains } from '../web-services/WebServiceDomains'
 import { DomainsView } from './DomainsView'
+import { SessionQueries } from '../../data/SessionQueries'
+import { RealtimeProvider } from '../../realtime/RealtimeProvider'
+import { createRealtimeConnection } from '../../realtime/connection'
+import { createRealtimeSession } from '../../realtime/sessionApi'
+import { FakeConnection } from '../../test/fakeRealtimeConnection'
+
+vi.mock('../../realtime/connection', () => ({ createRealtimeConnection: vi.fn() }))
+vi.mock('../../realtime/sessionApi', () => ({ createRealtimeSession: vi.fn(), revokeRealtimeSession: vi.fn(async () => {}) }))
 
 const zone: TenantDomainZone = { id: 'zone', tenantId: 'alpha', deploymentTargetId: 'target', label: 'company', domain: 'company.apps.test', kind: 'managed-reservation', revision: 1, createdAtUtc: '2026-01-01T00:00:00Z', updatedAtUtc: '2026-01-02T00:00:00Z' }
 const generated: HostnameBinding = { id: 'generated', tenantId: 'alpha', tenantDomainZoneId: 'generated-zone', deploymentTargetId: 'target', resourceType: 'pole/web-service', resourceId: 'app', resourceDeploymentId: 'dep', relativeName: 'app', hostname: 'app.generated.apps.test', kind: 'generated', createdAtUtc: zone.createdAtUtc }
 const custom: HostnameBinding = { ...generated, id: 'old', tenantDomainZoneId: zone.id, relativeName: 'api', hostname: 'api.company.apps.test', kind: 'custom' }
 let service: WebService; let rows: HostnameBinding[]; let targetAvailable: boolean; let detachFails: boolean; let createFails: boolean; let attachFails: boolean
-let root: Root; let container: HTMLDivElement
+let root: Root; let container: HTMLDivElement; let liveConnection: FakeConnection
 const requests = strictFetch()
 const fetchMock = requests.fetch
 const json = (value: unknown) => Promise.resolve(new Response(JSON.stringify(value)))
@@ -32,6 +40,8 @@ beforeEach(() => {
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
   service = { id: 'app', name: 'Application', isolationScopeId: 'scope', exposure: { mode: 'Public' }, deployments: [{ deploymentId: 'dep', deploymentTargetId: 'target', status: 'Applied', desiredOperation: 'Apply', desiredGeneration: 2, observedGeneration: 2, deploymentRevision: 2 }, { deploymentId: 'failed', deploymentTargetId: 'other', status: 'Failed', failureCode: 'IngressApplyFailed', desiredOperation: 'Apply', desiredGeneration: 2, observedGeneration: 1, deploymentRevision: 2 }] } as WebService
   rows = [generated, custom]; targetAvailable = true; detachFails = false; createFails = false; attachFails = false
+  vi.mocked(createRealtimeConnection).mockImplementation(() => { liveConnection = new FakeConnection(); return liveConnection })
+  vi.mocked(createRealtimeSession).mockImplementation(async () => ({ expiresAtUtc: new Date(Date.now() + 300000).toISOString() }))
   fetchMock.mockReset().mockImplementation((input, init) => {
     const url = new URL(String(input), 'http://localhost'); const tenantId = new Headers(init?.headers).get('X-Pole-Tenant-ID')
     if (tenantId === 'beta' && (url.pathname.endsWith('/domain-zones') || url.pathname.endsWith('/deployment-targets/available') || url.pathname.endsWith('/hostnames'))) return json([])
@@ -57,10 +67,11 @@ beforeEach(() => {
   })
   vi.stubGlobal('fetch', fetchMock)
 })
-afterEach(async () => { await act(async () => root.unmount()); container.remove(); requests.verify(); vi.unstubAllGlobals() })
-async function render(role: 'Owner' | 'Viewer' = 'Owner', tenantId = 'alpha', view = 'domains', token = 'token') {
+afterEach(async () => { await act(async () => root.unmount()); container.remove(); requests.verify(); vi.unstubAllGlobals(); vi.useRealTimers() })
+async function render(role: 'Owner' | 'Viewer' = 'Owner', tenantId = 'alpha', view = 'domains', token = 'token', live = false) {
   const tenant = { id: tenantId, name: tenantId, role, isDefault: true }
-  await act(async () => root.render(<AppShell registry={registry} initialViewId={view} api={{ baseUrl: 'http://localhost', token }} auth={{ initialized: true, authenticated: true, userId: 'user', isPlatformAdmin: false, login: () => {}, logout: () => {} }} tenants={{ items: [tenant], activeTenant: tenant, activeTenantId: tenantId, selectTenant: () => {}, status: 'success', error: '' }} />))
+  const content = <AppShell registry={registry} initialViewId={view} api={{ baseUrl: 'http://localhost', token }} auth={{ initialized: true, authenticated: true, userId: 'user', isPlatformAdmin: false, login: () => {}, logout: () => {} }} tenants={{ items: [tenant], activeTenant: tenant, activeTenantId: tenantId, selectTenant: () => {}, status: 'success', error: '' }} />
+  await act(async () => root.render(live ? <SessionQueries identity="http://localhost:true:user"><RealtimeProvider baseUrl="http://localhost" token={token} enabled userId="user">{content}</RealtimeProvider></SessionQueries> : content))
 }
 const visible = (element: Element) => !element.closest('[hidden]')
 const text = () => [...container.querySelectorAll('#app-content *')].filter(visible).map((item) => item.textContent).join(' ')
@@ -131,4 +142,21 @@ it('preserves a reservation draft when credentials refresh and sends the new cre
   await act(async () => container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
   const post = fetchMock.mock.calls.find(([url, init]) => String(url).endsWith('/domain-zones') && init?.method === 'POST')!
   expect(new Headers(post[1]?.headers).get('Authorization')).toBe('Bearer fresh')
+})
+
+it('observes conservative binding hints without replacing an alias draft and respects public eligibility denial', async () => {
+  vi.useFakeTimers()
+  window.history.replaceState({}, '', '/?view=web-services')
+  await render('Owner', 'alpha', 'web-services', 'token', true)
+  await act(async () => vi.advanceTimersByTimeAsync(500))
+  await fill('Reserved zone', 'zone'); await fill('Hostname label', 'unsaved-alias')
+  rows = [...rows, { ...custom, id: 'other-binding', relativeName: 'committed', hostname: 'committed.company.apps.test' }]
+  await act(async () => liveConnection.changed({ version: 1, topic: 'domains', tenantId: 'alpha', resourceId: 'other-binding' }))
+  await act(async () => vi.advanceTimersByTimeAsync(250))
+  expect(text()).toContain('committed.company.apps.test'); expect(field('Hostname label').value).toBe('unsaved-alias')
+  targetAvailable = false
+  await act(async () => liveConnection.changed({ version: 1, topic: 'deployment-target-eligibility', tenantId: 'alpha' }))
+  await act(async () => vi.advanceTimersByTimeAsync(250))
+  expect(text()).toContain('Public ingress is unavailable'); expect(text()).not.toContain('Attach alias')
+  expect(fetchMock.mock.calls.some(([, init]) => init?.method && init.method !== 'GET')).toBe(false)
 })

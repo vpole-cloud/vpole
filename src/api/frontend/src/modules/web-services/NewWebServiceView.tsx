@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { fetchIsolationScopes } from '../../api'
 import { eligibilityKeys } from '../../data/queryKeys'
 import { groupInterests } from '../../realtime/resourceInterests'
@@ -32,6 +32,9 @@ export function NewWebServiceView({ groups, groupsStatus = 'success', groupsErro
   const [mode, setMode] = useState<'image' | 'git'>('image')
   const [gitVisited, setGitVisited] = useState(false)
   const [source, setSource] = useState<SourceRepository | null>(null)
+  const [sourceValidity, setSourceValidity] = useState({ id: '', current: true })
+  const updateSourceValidity = useCallback((id: string, current: boolean) => setSourceValidity(previous =>
+    previous.id === id && previous.current === current ? previous : { id, current }), [])
   const creation = useWebServiceCreation((id, mode) => {
     setDirty(false)
     notifications.publish(mode === 'git' ? 'Git build queued. Inspect Builds for progress and Deployments for reconciliation results.' :
@@ -51,7 +54,8 @@ export function NewWebServiceView({ groups, groupsStatus = 'success', groupsErro
       <div className="row-actions"><Button aria-pressed={mode === 'image'} disabled={creation.locked || creation.busy} onClick={() => setMode('image')}>Container image</Button>
         <Button aria-pressed={mode === 'git'} disabled={creation.locked || creation.busy} onClick={() => { setMode('git'); setGitVisited(true) }}>Git repository</Button></div>
       <p className="field__hint">{mode === 'image' ? 'Deploy an existing container image.' : 'Choose a source, configure the service, then build and deploy from Git.'}</p></section>
-    {gitVisited && <div hidden={mode !== 'git'}><GitSourcePicker source={source} onSelect={setSource} disabled={creation.locked || creation.busy} /></div>}
+    {gitVisited && <div hidden={mode !== 'git'}><GitSourcePicker source={source} onSelect={setSource} active={active && mode === 'git'} disabled={creation.locked || creation.busy}
+      onSourceCurrent={updateSourceValidity} /></div>}
     {groupsError && <Notice tone="error">{groupsError} {onRefreshGroups && <Button onClick={() => void onRefreshGroups()}>Retry groups</Button>}</Notice>}
     {creation.locked ? <section className="panel"><h2 className="panel__title">{createdId ? 'Service created' : 'Service creation'}</h2>
       <p>{createdId ? 'The initial image configuration was accepted. Source setup and build queueing are separate steps.' : 'Waiting to confirm the service creation result. The submitted source and configuration are retained.'}</p>
@@ -67,7 +71,7 @@ export function NewWebServiceView({ groups, groupsStatus = 'success', groupsErro
     availableTargets={manager.availableTargets} targetsStatus={manager.targetsStatus} targetsError={manager.targetsError}
     computeProfilesByTarget={manager.computeProfilesByTarget} computeProfilesStatusByTarget={manager.computeProfilesStatusByTarget} onLoadTargets={manager.loadAvailableTargets}
     onLoadComputeProfiles={manager.loadComputeProfiles} submitStatus={creation.busy ? 'loading' : creation.error ? 'error' : 'idle'} submitError={deliveryError}
-    submitLabel={mode === 'git' ? 'Create service and build' : undefined} submitDisabled={mode === 'git' && !source}
+    submitLabel={mode === 'git' ? 'Create service and build' : undefined} submitDisabled={mode === 'git' && (!source || sourceValidity.id === source.id && !sourceValidity.current)}
     imageHint={mode === 'git' ? 'Initial image: this runs until the first Git build is applied. The build replaces it. Use a suitable starter image and configure ports for your application.' : undefined}
     onDirtyChange={setDirty} onSubmit={(input) => creation.submit(input, mode, source?.id)} />}</div></div>
 }

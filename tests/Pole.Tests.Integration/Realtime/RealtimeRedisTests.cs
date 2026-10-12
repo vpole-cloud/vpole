@@ -246,10 +246,13 @@ public sealed class RealtimeRedisTests(RealtimeRedisFixture fixture) : IClassFix
         await one.ReplaceAsync(connection, [alpha, beta], CancellationToken.None);
         Assert.Equal(alpha, Assert.Single(await two.FindAsync(topic, "tenant-a", CancellationToken.None)));
         Assert.Equal(beta, Assert.Single(await two.FindAsync(topic, "tenant-b", CancellationToken.None)));
+        Assert.Equal(new[] { alpha.Id, beta.Id }.Order(),
+            (await two.FindAllAsync(topic, CancellationToken.None)).Select(subscription => subscription.Id).Order());
         Assert.Empty(await two.FindAsync(topic, null, CancellationToken.None));
         await two.RemoveAsync(connection, [alpha.Id], CancellationToken.None);
         Assert.Empty(await one.FindAsync(topic, "tenant-a", CancellationToken.None));
         Assert.Single(await one.FindAsync(topic, "tenant-b", CancellationToken.None));
+        Assert.Equal(beta, Assert.Single(await one.FindAllAsync(topic, CancellationToken.None)));
 
         var replacement = Subscription(connection, session, topic, "tenant-c", expiry);
         await Task.WhenAll(one.ReplaceAsync(connection, [alpha], CancellationToken.None),
@@ -258,6 +261,7 @@ public sealed class RealtimeRedisTests(RealtimeRedisFixture fixture) : IClassFix
             .Concat(await one.FindAsync(topic, "tenant-b", CancellationToken.None))
             .Concat(await one.FindAsync(topic, "tenant-c", CancellationToken.None)).ToArray();
         Assert.Single(remaining);
+        Assert.Equal(remaining, await two.FindAllAsync(topic, CancellationToken.None));
         var otherConnection = Guid.NewGuid().ToString("N");
         await one.ReplaceAsync(otherConnection, [Subscription(otherConnection, session, topic, "tenant-b", expiry)], CancellationToken.None);
         Assert.Equal(new[] { connection, otherConnection }.Order(), (await two.RevokeSessionAsync(session, CancellationToken.None)).Order());
@@ -265,6 +269,7 @@ public sealed class RealtimeRedisTests(RealtimeRedisFixture fixture) : IClassFix
         Assert.Empty(await one.FindAsync(topic, "tenant-a", CancellationToken.None));
         Assert.Empty(await one.FindAsync(topic, "tenant-b", CancellationToken.None));
         Assert.Empty(await one.FindAsync(topic, "tenant-c", CancellationToken.None));
+        Assert.Empty(await one.FindAllAsync(topic, CancellationToken.None));
         await Assert.ThrowsAsync<RealtimeSessionUnavailableException>(() => one.ReplaceAsync(connection, [alpha], CancellationToken.None));
         for (var attempt = 0; attempt < 5; attempt++)
         {
@@ -286,6 +291,7 @@ public sealed class RealtimeRedisTests(RealtimeRedisFixture fixture) : IClassFix
         Assert.NotNull(await database.KeyTimeToLiveAsync("{pole:realtime}:session:" + expiringSession));
         await Task.Delay(500);
         Assert.Empty(await two.FindAsync(topic, "tenant-expiring", CancellationToken.None));
+        Assert.Empty(await two.FindAllAsync(topic, CancellationToken.None));
         Assert.False(await database.KeyExistsAsync("{pole:realtime}:connection:" + expiringConnection));
         Assert.False(await database.KeyExistsAsync("{pole:realtime}:session:" + expiringSession));
     }

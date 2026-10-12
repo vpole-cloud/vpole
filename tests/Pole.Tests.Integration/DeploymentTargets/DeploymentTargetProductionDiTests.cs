@@ -6,6 +6,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Outbox.Application.Persistence;
 using Pole.Encryption;
 using Pole.Features.DeploymentTargets.Application;
 using Pole.Features.DeploymentTargets.Application.Common;
@@ -206,6 +207,7 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
         services.AddSingleton<IHostEnvironment>(new FakeHostEnvironment());
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<MongoRunTransaction>();
+        services.AddOutboxPersistence();
         services.AddKubernetes(configuration)
             .AddDeploymentTargetsFeature(configuration);
         services.AddResourceGroupsFeature(configuration);

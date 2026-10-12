@@ -3,6 +3,7 @@ using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Outbox.Contracts;
 using Pole.Features.ResourceConnections.Domain;
 
 namespace Pole.Features.ResourceConnections.Application.Persistence;
@@ -52,7 +53,8 @@ internal sealed class MongoResourceConnectionTombstonePersistence(
     IMongoCollection<ResourceConnection> connections,
     IMongoCollection<ResourceConnectionCleanupTombstone> tombstones,
     RunMongoOutcomeTransaction<bool> transactions,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    StoreOutboxWrites outbox)
 {
     public async Task<ResourceConnectionCleanupTombstone?> LoadAsync(
         string tenantId,
@@ -105,8 +107,9 @@ internal sealed class MongoResourceConnectionTombstonePersistence(
                     current.Id,
                     current.Revision),
                 cancellationToken: ct);
-            return removed.DeletedCount == 1
-                ? transaction.Commit(true)
-                : transaction.Abort(false);
+            if (removed.DeletedCount != 1)
+                return transaction.Abort(false);
+            await outbox(transaction.Session, [OutboxWrite.Create((current with { Revision = checked(current.Revision + 1) }).ToChangedEvent())], ct);
+            return transaction.Commit(true);
         }, cancellationToken);
 }

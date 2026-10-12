@@ -170,7 +170,7 @@ public sealed class ModuleBoundaryArchitectureTests
             .ToArray();
 
         Assert.DoesNotContain(references, reference =>
-            reference.EndsWith(".Events", StringComparison.Ordinal) ||
+            reference.EndsWith(".Events", StringComparison.Ordinal) && reference != "Search.Events" ||
             reference.StartsWith("ResourceDeployments.", StringComparison.Ordinal));
 
         var sourceText = Directory

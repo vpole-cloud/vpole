@@ -19,14 +19,14 @@ export function useResourceChoices(api: { baseUrl: string; tenantId?: string; to
   const scopes = { ...scopesQuery, items: (scopesQuery.resource ?? []).filter((item) => item.resourceGroupId === group && item.lifecycle === 'active'), retry: () => { void scopesQuery.refresh() } }
   const isolation = selection.isolationScopeId || scopes.items.find((item) => item.isDefault)?.id || ''
   const targets = useScopedQuery({ scope, key: eligibilityKeys.targets(resourceType, isolation, false), enabled: Boolean(group && isolation),
-    ...interest,
+    ...interest, realtime: [...interest.realtime, { topic: 'deployment-target-eligibility', tenantId: api.tenantId }],
     load: (signal) => fetchAvailableDeploymentTargets(api.baseUrl, isolation, origin.credential(), api.tenantId, signal, false, resourceType) })
   const target = selection.deploymentTargetId || (targets.resource?.length === 1 ? targets.resource[0].id : '')
   const compute = useScopedQuery({ scope, key: eligibilityKeys.compute(resourceType, target), enabled: Boolean(target),
-    ...interest,
+    ...interest, realtime: [...interest.realtime, { topic: 'compute-eligibility', tenantId: api.tenantId }],
     load: (signal) => fetchAvailableComputeProfiles(api.baseUrl, target, origin.credential(), api.tenantId, signal, resourceType) })
   const storage = useScopedQuery({ scope, key: eligibilityKeys.storage(resourceType, target), enabled: Boolean(target),
-    ...interest,
+    ...interest, realtime: [...interest.realtime, { topic: 'storage-eligibility', tenantId: api.tenantId }],
     load: (signal) => fetchAvailableStorageProfiles(api.baseUrl, resourceType, target, origin.credential(), api.tenantId, signal) })
   const computeProfile = selection.computeProfileId || compute.resource?.find((item) => item.isDefault)?.id || (compute.resource?.length === 1 ? compute.resource[0].id : '')
   const profiles = storage.resource?.filter((item) => !item.targetMappings || item.targetMappings.some((mapping) => mapping.deploymentTargetId === target)) ?? []

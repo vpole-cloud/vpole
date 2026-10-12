@@ -1,5 +1,7 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Outbox.Contracts;
+using Pole.Features.StorageProfiles.Events;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Persistence.Defaults;
 using Pole.Features.StorageProfiles.Domain;
@@ -19,7 +21,8 @@ public delegate Task<PersistUpdatedStorageProfileOutcome>
 internal sealed class MongoPersistUpdatedStorageProfile(
     IMongoCollection<StorageProfile> storageProfiles,
     RunMongoOutcomeTransaction<PersistUpdatedStorageProfileOutcome>
-        runMongoTransaction)
+        runMongoTransaction,
+    StoreOutboxWrites storeOutboxWrites)
 {
     public Task<PersistUpdatedStorageProfileOutcome> InvokeAsync(
         StorageProfile current,
@@ -44,9 +47,11 @@ internal sealed class MongoPersistUpdatedStorageProfile(
                 StorageProfileFilters.AtSnapshot(current),
                 replacement,
                 cancellationToken: ct);
-            return replacementWrite.ModifiedCount == 1
-                ? transaction.Commit(replacement)
-                : transaction.Abort(new StorageProfileRevisionConflict(current.Id));
+            if (replacementWrite.ModifiedCount != 1)
+                return transaction.Abort(new StorageProfileRevisionConflict(current.Id));
+            await storeOutboxWrites(transaction.Session,
+                [OutboxWrite.Create(new StorageProfileCatalogChangedEvent(replacement.Id, replacement.Revision))], ct);
+            return transaction.Commit(replacement);
         }, cancellationToken);
     }
 

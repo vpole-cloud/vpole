@@ -12,6 +12,7 @@ using Pole.Features.GitProviders.Application.Persistence.Repositories;
 using Pole.Features.GitProviders.Application.Persistence.Setup;
 using Pole.Features.GitProviders.Application.ProviderOperations;
 using Pole.Features.GitProviders.Contracts;
+using Pole.Features.Realtime.Contracts;
 
 namespace Pole.Features.GitProviders.Application;
 
@@ -21,6 +22,7 @@ public static class GitProviderApplicationRegistration
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        services.AddSingleton(new RealtimeTopic("git", RealtimeScope.Tenant));
         services.Configure<GitHubAppOptions>(
             configuration.GetSection(GitHubAppOptions.SectionName));
         services.TryAddSingleton(serviceProvider =>

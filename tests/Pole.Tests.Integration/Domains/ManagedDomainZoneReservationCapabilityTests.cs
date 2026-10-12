@@ -40,6 +40,7 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
                 .GetCollection<TenantDomainZone>("TenantDomainZones")
                 .CountDocumentsAsync(Builders<TenantDomainZone>.Filter.Empty));
         Assert.Equal(1, coordinator.RegistrationCalls);
+        Assert.Equal(1, await fixture.DbContext.CountOutboxMessagesAsync("pole.domains/v1/domain-metadata-changed"));
     }
 
     [Fact]
@@ -54,6 +55,7 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
         var duplicate = await CreateReservationAsync(coordinator, tenantId, targetId);
 
         var conflict = Assert.IsType<ManagedDomainZoneAlreadyReserved>(duplicate.Value);
+        Assert.Equal(1, await fixture.DbContext.CountOutboxMessagesAsync("pole.domains/v1/domain-metadata-changed"));
         Assert.Equal("api.apps.example.test", conflict.Domain);
         Assert.Equal(
             1L,
@@ -70,6 +72,7 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
         var result = await CreateReservationAsync(coordinator);
 
         Assert.IsType<ManagedDomainZoneReferenceRejected>(result.Value);
+        Assert.Equal(0, await fixture.DbContext.CountOutboxMessagesAsync("pole.domains/v1/domain-metadata-changed"));
         Assert.Equal(
             0L,
             await fixture.Database
@@ -86,6 +89,7 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
         var result = await CreateReservationAsync(coordinator);
 
         Assert.IsType<ManagedDomainZoneDeploymentTargetChanged>(result.Value);
+        Assert.Equal(0, await fixture.DbContext.CountOutboxMessagesAsync("pole.domains/v1/domain-metadata-changed"));
         Assert.Equal(
             0L,
             await fixture.Database
@@ -113,7 +117,8 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
             fixture.Database,
             coordinator.ApplyChangesOutcomeAsync,
             coordinator.FenceManyOutcomeAsync,
-            TimeProvider.System);
+            TimeProvider.System,
+            fixture.StoreOutboxWrites);
         var transaction = new MongoRunTransaction(fixture.Client);
         tenantId ??= ObjectId.GenerateNewId().ToString();
         targetId ??= ObjectId.GenerateNewId().ToString();
