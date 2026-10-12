@@ -137,6 +137,7 @@
     <Project Path="src/features/Tenants/Tenants.Application/Tenants.Application.csproj" />
     <Project Path="src/features/Tenants/Tenants.Contracts/Tenants.Contracts.csproj" />
     <Project Path="src/features/Tenants/Tenants.Domain/Tenants.Domain.csproj" />
+    <Project Path="src/features/Tenants/Tenants.Events/Tenants.Events.csproj" />
   </Folder>
   <Folder Name="/features/Users/">
     <Project Path="src/features/Users/Users.Domain/Users.Domain.csproj" />

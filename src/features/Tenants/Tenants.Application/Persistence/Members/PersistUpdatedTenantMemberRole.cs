@@ -1,4 +1,7 @@
 using MongoDB.Driver;
+using Pole.Database;
+using Pole.Features.Outbox.Contracts;
+using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Domain;
 
@@ -20,37 +23,43 @@ public delegate Task<PersistUpdatedTenantMemberRoleOutcome>
         UpdateTenantMemberRole request,
         CancellationToken cancellationToken = default);
 
-internal sealed class MongoPersistUpdatedTenantMemberRole(IMongoDatabase database)
+internal sealed class MongoPersistUpdatedTenantMemberRole(
+    IMongoDatabase database,
+    StoreOutboxWrites storeOutboxWrites,
+    RunMongoOutcomeTransaction<PersistUpdatedTenantMemberRoleOutcome> runTransaction)
 {
     private readonly IMongoCollection<Tenant> _tenants = database.GetCollection<Tenant>("Tenants");
 
-    public async Task<PersistUpdatedTenantMemberRoleOutcome> InvokeAsync(
+    public Task<PersistUpdatedTenantMemberRoleOutcome> InvokeAsync(
         UpdateTenantMemberRole request,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) => runTransaction(async (transaction, ct) =>
     {
         var tenant = await _tenants
-            .Find(TenantFilters.ById(request.TenantId))
-            .FirstOrDefaultAsync(cancellationToken);
+            .Find(transaction.Session, TenantFilters.ById(request.TenantId))
+            .FirstOrDefaultAsync(ct);
         if (tenant is null)
         {
-            return new TenantNotFound(request.TenantId);
+            return transaction.Abort(new TenantNotFound(request.TenantId));
         }
 
         var existingMember = tenant.Members.FirstOrDefault(member => member.Id == request.MemberId);
         if (existingMember is null)
         {
-            return new TenantMemberNotFound(request.TenantId, request.MemberId);
+            return transaction.Abort(new TenantMemberNotFound(request.TenantId, request.MemberId));
         }
+        if (existingMember.Role == request.Role)
+            return transaction.Abort(existingMember);
 
         var removesOwner = request.Role != TenantRole.Owner;
         if (existingMember.Role == TenantRole.Owner &&
             removesOwner &&
             tenant.Members.Count(member => member.Role == TenantRole.Owner) == 1)
         {
-            return new TenantLastOwner(request.TenantId, request.MemberId);
+            return transaction.Abort(new TenantLastOwner(request.TenantId, request.MemberId));
         }
 
         var updatedTenant = await _tenants.FindOneAndUpdateAsync(
+            transaction.Session,
             removesOwner
                 ? TenantFilters.ByIdWithMemberAndOwnerCanBeRemoved(
                     request.TenantId,
@@ -58,21 +67,26 @@ internal sealed class MongoPersistUpdatedTenantMemberRole(IMongoDatabase databas
                 : TenantFilters.ByIdWithMember(request.TenantId, request.MemberId),
             TenantUpdates.SetMemberRole(request.Role),
             new FindOneAndUpdateOptions<Tenant> { ReturnDocument = ReturnDocument.After },
-            cancellationToken);
+            ct);
         var updatedMember = updatedTenant?.Members.FirstOrDefault(member => member.Id == request.MemberId);
         if (updatedMember is not null)
-            return updatedMember;
+        {
+            await storeOutboxWrites(transaction.Session, [TenantAccessEventExtensions.MembershipChanged(request.TenantId, updatedMember.UserId)], ct);
+            return transaction.Commit(updatedMember);
+        }
 
         var failure = await TenantMemberMutationFailures.ResolveAsync(
             _tenants,
+            transaction.Session,
             request.TenantId,
             request.MemberId,
-            cancellationToken);
-        return failure switch
+            ct);
+        PersistUpdatedTenantMemberRoleOutcome outcome = failure switch
         {
             TenantNotFound error => error,
             TenantMemberNotFound error => error,
             TenantLastOwner error => error
         };
-    }
+        return transaction.Abort(outcome);
+    }, cancellationToken);
 }

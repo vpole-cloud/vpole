@@ -8,9 +8,9 @@ export class InvalidationScheduler {
   private visible: () => boolean
   constructor(session: QuerySession, visible: () => boolean = () => !document.hidden) { this.session = session; this.visible = visible }
   cancel() { this.epoch++; for (const value of this.pending.values()) clearTimeout(value.timer); this.pending.clear() }
-  invalidate(predicate: (queryKey: readonly unknown[]) => boolean) {
+  invalidate(predicate: (queryKey: readonly unknown[], meta: Query['meta']) => boolean) {
     if (!this.session.isActive()) return
-    for (const query of this.session.client.getQueryCache().getAll().filter((query) => predicate(query.queryKey))) {
+    for (const query of this.session.client.getQueryCache().getAll().filter((query) => predicate(query.queryKey, query.meta))) {
       // Mark every matching cache entry stale, including inactive pages, without triggering a read.
       void this.session.client.invalidateQueries({ queryKey: query.queryKey, exact: true, refetchType: 'none' })
       if (!query.isActive() || !this.visible()) continue

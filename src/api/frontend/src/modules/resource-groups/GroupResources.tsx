@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { fetchResourceGroupResources } from '../../api'
 import { useScopedQuery } from '../../data/useScopedQuery'
+import { groupInterests } from '../../realtime/resourceInterests'
 import { useApiScope } from '../../data/useApiScope'
 import { useAppServices } from '../../shell/AppContext'
 import { Button, EmptyState } from '../../ui/components'
@@ -13,6 +14,7 @@ export function GroupResources({ groupId, pageNumber, pageSize, onPage, onPageSi
   const origin = useApiScope(api)
   const query = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['resource-groups', 'resources', groupId, pageNumber, pageSize],
     enabled: Boolean(api.tenantId), keepPrevious: true,
+    realtime: groupInterests(api.tenantId, groupId), resourceGroupId: groupId,
     load: (signal) => fetchResourceGroupResources(api.baseUrl, groupId, pageNumber, pageSize, origin.credential(), api.tenantId, signal) })
   const inventory = { ...query, page: query.resource, items: query.resource?.items ?? [], isCurrentPage: query.isCurrent }
   const lastPage = Math.max(1, Math.ceil((inventory.page?.totalCount ?? 0) / pageSize))

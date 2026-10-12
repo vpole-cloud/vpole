@@ -10,6 +10,21 @@ public sealed class RealtimeAccessTests
     private const string Alpha = "000000000000000000000001";
     private const string Beta = "000000000000000000000002";
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UserTopicsRequireExactlyTheAuthenticatedSubjectEvenForPlatformAdmins(bool admin)
+    {
+        var registry = new RealtimeTopicRegistry([new("user-discovery", RealtimeScope.User)], new());
+        var access = new RealtimeAccess((_, _, _, _) => throw new InvalidOperationException("User discovery must not require tenant membership."),
+            (_, _) => throw new InvalidOperationException("User discovery must not load a tenant."), registry);
+        var principal = IdentityFixture.User(admin: admin);
+        Assert.True(await access.AllowsAsync(principal, new("user-discovery", ResourceId: "viewer"), default));
+        Assert.False(await access.AllowsAsync(principal, new("user-discovery", ResourceId: "other"), default));
+        Assert.False(await access.AllowsAsync(principal, new("user-discovery"), default));
+        Assert.False(await access.AllowsAsync(principal, new("user-discovery", Alpha, "viewer"), default));
+    }
+
     [Fact]
     public async Task FakeProviderExtendsTopicsAndPreservesTenantIsolation()
     {

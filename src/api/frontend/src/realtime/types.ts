@@ -1,4 +1,4 @@
-export type RealtimeTopic = 'source-builds' | 'operations' | 'web-services'
+export type RealtimeTopic = 'source-builds' | 'operations' | 'web-services' | 'tenant-access' | 'resource-groups' | 'workspace-inventory' | 'postgres' | 'redis'
 export interface RealtimeSubscription { topic: RealtimeTopic; tenantId?: string; resourceId?: string }
 export interface RealtimeCoverage extends RealtimeSubscription { subscriptionId: string; covered: boolean }
 export type RealtimeWireCoverage = Omit<RealtimeCoverage, 'tenantId' | 'resourceId'> & { tenantId?: string | null; resourceId?: string | null }
@@ -21,4 +21,6 @@ export type RealtimeStatus = 'offline' | 'connecting' | 'connected'
 export const subscriptionKey = (value: RealtimeSubscription) => JSON.stringify([value.topic, value.tenantId ?? null, value.resourceId ?? null])
 export const acceptsChange = (subscription: RealtimeSubscription, event: RealtimeChange) =>
   event.version === 1 && subscription.topic === event.topic && subscription.tenantId === (event.tenantId ?? undefined) &&
-  (!subscription.resourceId || !event.resourceId || subscription.resourceId === event.resourceId)
+  (subscription.topic === 'tenant-access'
+    ? subscription.tenantId === undefined && Boolean(subscription.resourceId) && subscription.resourceId === event.resourceId
+    : !subscription.resourceId || !event.resourceId || subscription.resourceId === event.resourceId)

@@ -72,7 +72,7 @@ export function WebServicesView() {
         }} onOpen={open} onDelete={async (id) => { await services.remove(id); if (origin.isCurrent()) close(id); }} />
     </TabPanel>
     {creating && <TabPanel id={workspaceId} tabId={createId} activeId={activeId}>
-      {tenant.canManage ? <NewWebServiceView groups={groups.items} groupsStatus={groups.status} groupsError={groups.error} onRefreshGroups={groups.refresh}
+      {tenant.canManage ? <NewWebServiceView active={activeId === createId} groups={groups.items} groupsStatus={groups.status} groupsError={groups.error} onRefreshGroups={groups.refresh}
         onDirtyChange={onDirtyChange} onCreated={(id, shouldOpen, section) => {
         refreshCatalog()
         if (shouldOpen) { setCreating(false); open(id, false, section) }

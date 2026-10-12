@@ -20,8 +20,8 @@ const created: ResourceGroup = { id: 'new', name: 'mobile-new', description: '',
 const emptyPage = { items: [], totalCount: 0, pageNumber: 1, pageSize: 6 }
 let root: Root
 let state: ReturnType<typeof useResourceGroupsManager>
-function Probe({ tenantId = 'tenant' }: { tenantId?: string }) {
-  const value = useResourceGroupsManager({ apiBaseUrl: '/api', token: 'token', tenantId, enabled: true })
+function Probe({ tenantId = 'tenant', enabled = true }: { tenantId?: string; enabled?: boolean }) {
+  const value = useResourceGroupsManager({ apiBaseUrl: '/api', token: 'token', tenantId, enabled })
   useLayoutEffect(() => { state = value })
   return null
 }
@@ -92,4 +92,23 @@ it('loads every page for group choices and preserves them if a later refresh fai
   vi.mocked(api.fetchResourceGroups).mockRejectedValue(new Error('Refresh failed'))
   await act(async () => { await state.refresh() })
   expect(state.status).toBe('error'); expect(state.items).toEqual([...firstPage, later])
+})
+
+it('fences a late resource-group write and retained write callbacks after management access changes in the same tenant', async () => {
+  const pending = deferred<ResourceGroup>()
+  vi.mocked(api.fetchResourceGroups).mockResolvedValue(emptyPage)
+  vi.mocked(api.updateResourceGroup).mockReturnValueOnce(pending.promise)
+  await act(async () => root.render(<Probe />))
+  const oldUpdate = state.update
+  let writing!: ReturnType<typeof state.update>
+  await act(async () => { writing = state.update(created.id, created) })
+  const signal = vi.mocked(api.updateResourceGroup).mock.calls[0][5]!
+  await act(async () => root.render(<Probe enabled={false} />))
+  expect(signal.aborted).toBe(true)
+  const reads = vi.mocked(api.fetchResourceGroups).mock.calls.length
+  await act(async () => { pending.resolve(created); expect(await writing).toBeUndefined() })
+  expect(state.submitStatus).toBe('idle')
+  expect(api.fetchResourceGroups).toHaveBeenCalledTimes(reads)
+  await act(async () => { expect(await oldUpdate(created.id, created)).toBeUndefined() })
+  expect(api.updateResourceGroup).toHaveBeenCalledTimes(1)
 })

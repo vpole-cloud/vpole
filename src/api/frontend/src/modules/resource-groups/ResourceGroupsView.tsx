@@ -25,7 +25,7 @@ export function ResourceGroupsView() {
       } : tab) }
     } })
   const origin = useProviderInvalidation(api)
-  const inventory = useResourceGroupInventory(api, route.pageNumber, route.pageSize, route.search, Boolean(tenant.active))
+  const inventory = useResourceGroupInventory(api, route.pageNumber, route.pageSize, route.search, Boolean(tenant.active), route.valid && workspace.activeId === catalogId)
   const manager = useResourceGroupsManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId, enabled: tenant.canManage, loadInventory: false })
   const onLoaded = useCallback((group: ResourceGroup) => loaded(group.id, group.name), [loaded])
   const onResourcePage = useCallback((id: string, resourcePage: number, resourcePageSize: number, replace = false) => {

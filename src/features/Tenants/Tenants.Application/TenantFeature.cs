@@ -1,6 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pole.ASP.Helpers;
+using Pole.Database;
+using Pole.Features.Realtime.Contracts;
+using Pole.ResultType;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants;
 using Pole.Features.Tenants.Application.Common;
@@ -18,6 +21,11 @@ public static class TenantFeature
     public static IServiceCollection AddTenantsFeature(this IServiceCollection services)
     {
         services.AddHttpContextAccessor();
+        services.AddSingleton(new RealtimeTopic("tenant-access", RealtimeScope.User));
+        services.AddOutcomeTransaction<PersistAddedTenantMemberOutcome>();
+        services.AddOutcomeTransaction<PersistRemovedTenantMemberOutcome>();
+        services.AddOutcomeTransaction<PersistUpdatedTenantMemberRoleOutcome>();
+        services.AddOutcomeTransaction<Unit>();
         services.TryAddScoped<ITenantContextAccessor, TenantContextAccessor>();
         services.AddHttpProblemMappings(TenantMemberAuthorizationHttpProblemMappings.All);
 
@@ -64,6 +72,10 @@ public static class TenantFeature
 
         return services;
     }
+
+    private static void AddOutcomeTransaction<TOutcome>(this IServiceCollection services) where TOutcome : notnull =>
+        services.TryAddScoped<RunMongoOutcomeTransaction<TOutcome>>(provider =>
+            provider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync<TOutcome>);
 
     /// <summary>
     /// Adds the tenant-member authorization stage after the common mediator stages.

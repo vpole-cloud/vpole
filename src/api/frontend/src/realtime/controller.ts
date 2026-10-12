@@ -4,7 +4,7 @@ import type { QuerySession } from '../data/querySession'
 import type { RealtimeConnection } from './connection'
 import { InvalidationScheduler } from './invalidationScheduler'
 import { matchesPilotQuery } from './pilotQueries'
-import { acceptsChange, subscriptionKey, type RealtimeCoverage, type RealtimeSubscription, type RealtimeStatus } from './types'
+import { acceptsChange, subscriptionKey, type RealtimeChange, type RealtimeCoverage, type RealtimeSubscription, type RealtimeStatus } from './types'
 
 export type CoordinationMessage = { type: 'renewed' | 'session-revoked' | 'access-revoked'; tenantId?: string }
 interface Dependencies {
@@ -12,6 +12,7 @@ interface Dependencies {
   connection: () => RealtimeConnection
   revoke: () => Promise<void>
   broadcast?: (message: CoordinationMessage) => void
+  userId?: string
 }
 
 // Own one account connection independently of the workspace and its drafts.
@@ -23,6 +24,8 @@ export class RealtimeController {
   private revoked = false
   private cookieMismatch = false
   private platformRevoked = false
+  private membershipEpoch = 0
+  private knownMemberships?: Set<string>
   private epoch = 0
   private revision = 0
   private subscriptionEpoch = 0
@@ -49,10 +52,32 @@ export class RealtimeController {
   updateCredential(credential?: string) { this.credential = credential }
   setBroadcast(broadcast?: Dependencies['broadcast']) { this.dependencies.broadcast = broadcast }
   private publish() { this.snapshot++; for (const listener of this.listeners) listener() }
+  ownsApi(baseUrl: unknown) { return baseUrl === this.baseUrl }
   allowed(baseUrl: unknown, tenantId?: unknown) {
     return baseUrl !== this.baseUrl || !this.revoked && (!tenantId || !this.blockedTenants.has(String(tenantId)))
   }
   platformAllowed(baseUrl: unknown) { return baseUrl !== this.baseUrl || !this.revoked && !this.platformRevoked }
+  beginMembershipRead(baseUrl: string, userId: string) {
+    if (!this.ownsApi(baseUrl) || !userId || userId !== this.dependencies.userId || this.revoked || !this.session.isActive()) throw new DOMException('Aborted', 'AbortError')
+    return this.membershipEpoch
+  }
+  acceptMembershipSnapshot(baseUrl: string, userId: string, epoch: number, tenantIds: readonly string[], signal: AbortSignal) {
+    if (!this.ownsApi(baseUrl) || signal.aborted || epoch !== this.membershipEpoch || this.revoked || !this.session.isActive() || userId !== this.dependencies.userId) return false
+    const next = new Set(tenantIds)
+    // Include inactive tenant cache owners, so a first authoritative read also removes old
+    // membership evidence. User discovery and platform data have independent scopes.
+    const previous = this.knownMemberships ?? new Set(this.session.client.getQueryCache().getAll()
+      .filter(query => this.matchesScope(query.queryKey, query.queryKey[4] as string | undefined) &&
+        typeof query.queryKey[4] === 'string' && query.meta?.authorizationScope !== 'user' && query.queryKey[5] !== 'tenants')
+      .map(query => String(query.queryKey[4])))
+    const removed = [...previous].filter(id => !next.has(id))
+    const restored = [...this.blockedTenants].filter(id => next.has(id))
+    this.knownMemberships = next
+    for (const id of removed) { this.blockedTenants.add(id); this.clearTenant(id) }
+    for (const id of restored) this.blockedTenants.delete(id)
+    if (removed.length || restored.length) this.changedInterests()
+    return true
+  }
   covered(request: RealtimeSubscription) { return this.status === 'connected' && this.coverage.has(subscriptionKey(request)) }
   register(request: RealtimeSubscription) {
     const key = subscriptionKey(request)
@@ -95,9 +120,18 @@ export class RealtimeController {
       }
       const connection = this.dependencies.connection(); this.connection = connection
       connection.onChanged(change => {
-        if (!valid() || this.status !== 'connected') return
+        if (!valid()) return
+        // A user hint can precede Subscribe's acknowledgement. Fence the older HTTP read
+        // immediately; the scheduled resync and acknowledgement still use authoritative GETs.
+        if (change.topic === 'tenant-access' && change.resourceId === this.dependencies.userId &&
+          [...this.interests.values()].some(({ request }) => acceptsChange(request, change))) {
+          this.membershipEpoch++
+          this.scheduler.invalidate((key, meta) => this.matchesChange(key, change, meta))
+          return
+        }
+        if (this.status !== 'connected') return
         const accepted = [...this.interests.values()].some(({ request }) => this.covered(request) && acceptsChange(request, change))
-        if (accepted) this.scheduler.invalidate(key => this.matchesScope(key, change.tenantId) && matchesPilotQuery(key.slice(5), change))
+        if (accepted) this.scheduler.invalidate((key, meta) => this.matchesChange(key, change, meta))
       })
       connection.onSessionRevoked(() => { if (valid()) this.revokeAccess() })
       connection.onAccessRevoked(tenantId => {
@@ -133,7 +167,16 @@ export class RealtimeController {
   }
   private requests() {
     return [...this.interests.values()].map(value => value.request)
-      .filter(request => this.allowed(this.baseUrl, request.tenantId) && (request.tenantId !== undefined || this.platformAllowed(this.baseUrl))).slice(0, 64)
+      .filter(request => this.allowed(this.baseUrl, request.tenantId) && (request.topic === 'tenant-access'
+        ? request.tenantId === undefined && Boolean(request.resourceId) && request.resourceId === this.dependencies.userId
+        : request.tenantId !== undefined || this.platformAllowed(this.baseUrl)))
+      // Membership discovery must not be crowded out by a tree or retained resource tabs.
+      .sort((left, right) => Number(right.topic === 'tenant-access') - Number(left.topic === 'tenant-access')).slice(0, 64)
+  }
+  private matchesChange(key: readonly unknown[], change: RealtimeChange, meta?: Record<string, unknown>) {
+    if (change.topic === 'tenant-access') return Boolean(change.resourceId) && change.resourceId === this.dependencies.userId &&
+      this.matchesScope(key, change.resourceId) && key[5] === 'tenants'
+    return this.matchesScope(key, change.tenantId) && matchesPilotQuery(key.slice(5), change, meta)
   }
   private acknowledge(requests: RealtimeSubscription[], acknowledgements: RealtimeCoverage[], resyncAll: boolean) {
     const requested = new Set(requests.map(subscriptionKey))
@@ -142,8 +185,7 @@ export class RealtimeController {
     const changed = next.size !== this.coverage.size || [...next].some(key => !this.coverage.has(key))
     this.coverage = next
     if (changed) this.publish()
-    if (resync.length) this.scheduler.invalidate(key => this.matchesScope(key, key[4] as string | undefined) && resync.some(request =>
-      request.tenantId === key[4] && matchesPilotQuery(key.slice(5), { version: 1, ...request })))
+    if (resync.length) this.scheduler.invalidate((key, meta) => resync.some(request => this.matchesChange(key, { version: 1, ...request }, meta)))
   }
   private scheduleHeartbeat() {
     clearTimeout(this.heartbeatTimer)
@@ -194,29 +236,39 @@ export class RealtimeController {
     return promise
   }
   revokeAccess(tenantId?: string, broadcast = true) {
+    this.membershipEpoch++
     if (tenantId) this.blockedTenants.add(tenantId)
     else this.revoked = true
     this.scheduler.cancel(); this.coverage.clear(); this.publish()
     if (broadcast) this.dependencies.broadcast?.({ type: tenantId ? 'access-revoked' : 'session-revoked', tenantId })
-    const affected = (key: readonly unknown[]) => key[3] === this.baseUrl && (!tenantId || key[4] === tenantId || key[5] === 'tenants')
-    void this.session.client.cancelQueries({ predicate: query => affected(query.queryKey) }).then(() => {
-      this.session.client.removeQueries({ predicate: query => affected(query.queryKey) && (!tenantId || query.queryKey[5] !== 'tenants') })
-      if (tenantId) void this.session.client.resetQueries({ predicate: query => query.queryKey[3] === this.baseUrl && query.queryKey[5] === 'tenants' })
-    })
-    if (tenantId) this.changedInterests()
-    else void this.disconnect()
+    if (tenantId) { this.clearTenant(tenantId); this.resetDiscovery(); this.changedInterests() }
+    else {
+      const predicate = (query: Query) => query.queryKey[3] === this.baseUrl
+      void this.session.client.cancelQueries({ predicate }); this.session.client.removeQueries({ predicate })
+      void this.disconnect()
+    }
   }
   private revokePlatformAccess(broadcast = true) {
+    this.membershipEpoch++
     this.platformRevoked = true
     this.changedInterests()
     if (broadcast) this.dependencies.broadcast?.({ type: 'access-revoked' })
-    const discovery = (key: readonly unknown[]) => key[3] === this.baseUrl && key[5] === 'tenants'
     const privileged = (query: Query) =>
       query.queryKey[3] === this.baseUrl && query.queryKey[4] == null && query.meta?.privileged === true
-    void this.session.client.cancelQueries({ predicate: query => privileged(query) || discovery(query.queryKey) }).then(() => {
-      this.session.client.removeQueries({ predicate: privileged })
-      void this.session.client.resetQueries({ predicate: query => discovery(query.queryKey) })
+    void this.session.client.cancelQueries({ predicate: privileged }); this.session.client.removeQueries({ predicate: privileged })
+    this.resetDiscovery()
+  }
+  private resetDiscovery() {
+    const epoch = this.membershipEpoch
+    const predicate = (query: Query) => query.queryKey[3] === this.baseUrl && query.queryKey[5] === 'tenants'
+    void this.session.client.cancelQueries({ predicate }).then(() => {
+      if (epoch === this.membershipEpoch && !this.revoked && this.session.isActive()) void this.session.client.resetQueries({ predicate })
     })
+  }
+  private clearTenant(tenantId: string) {
+    const predicate = (query: Query) => this.matchesScope(query.queryKey, tenantId) && query.meta?.authorizationScope !== 'user' && query.queryKey[5] !== 'tenants'
+    void this.session.client.cancelQueries({ predicate })
+    this.session.client.removeQueries({ predicate })
   }
   receive(message: CoordinationMessage) {
     if (message.type === 'renewed') { void this.renew(false); return }

@@ -1,4 +1,5 @@
 import { eligibilityKeys } from '../../data/queryKeys'
+import { groupInterests } from '../../realtime/resourceInterests'
 import { rowsFor, type ReferenceRow } from './dependencyDraft'
 import { useEffect, useState } from 'react'
 import { bindSecret, createResourceConnection, deleteResourceConnection, detachSecret, fetchAvailableDeploymentTargets, fetchResourceConnections, fetchResourceEndpoints, fetchResourceGroupResources, fetchResourceGroups, fetchSecrets, fetchSecretUsage, fetchSecretProjections, updateWebServiceDependencies } from '../../api'
@@ -22,7 +23,8 @@ export function WebServiceDependencies({ service, canWrite, onDirtyChange, onCha
   const apiScope = useApiScope(api)
   const { credential, isCurrent } = apiScope
   const scope = `${apiScope.identity}:${service.id}`
-  const targets = useWebServiceQuery(eligibilityKeys.targets('pole/web-service', service.isolationScopeId, false), (signal) => fetchAvailableDeploymentTargets(api.baseUrl, service.isolationScopeId ?? undefined, credential(), api.tenantId, signal, false))
+  const targets = useWebServiceQuery(eligibilityKeys.targets('pole/web-service', service.isolationScopeId, false), (signal) => fetchAvailableDeploymentTargets(api.baseUrl, service.isolationScopeId ?? undefined, credential(), api.tenantId, signal, false),
+    { active, realtime: groupInterests(api.tenantId, service.resourceGroupId), resourceGroupId: service.resourceGroupId })
   const targetName = (id: string) => targets.resource?.find((target) => target.id === id)?.displayName ?? 'Unavailable target'
   const groups = useWebServiceQuery(['resource-groups', 'choices'], async (signal) => {
     const first = await fetchResourceGroups(api.baseUrl, credential(), api.tenantId, signal, { pageSize: 100 })
@@ -33,7 +35,7 @@ export function WebServiceDependencies({ service, canWrite, onDirtyChange, onCha
       items.push(...next.items)
     }
     return items
-  })
+  }, { active, realtime: groupInterests(api.tenantId) })
   const connections = useWebServiceQuery(['connections', 'source', service.id], async (signal) => {
     const first = await fetchResourceConnections(api.baseUrl, service.id, 1, credential(), api.tenantId, signal)
     const items = [...first.items]
@@ -64,7 +66,7 @@ export function WebServiceDependencies({ service, canWrite, onDirtyChange, onCha
       items.push(...next.items)
     }
     return items
-  })
+  }, { active, realtime: groupInterests(api.tenantId, groupId), resourceGroupId: groupId })
   const [destinationId, setDestinationId] = useState(''); const [endpointId, setEndpointId] = useState(''); const [name, setName] = useState('')
   const destination = inventory.resource?.find((item) => item.registrationId === destinationId)
   const discovery = useWebServiceQuery(['endpoints', destination?.resourceTypeId, destination?.resourceId, sourceType, service.id], (signal) => destination ? fetchResourceEndpoints(api.baseUrl, destination.resourceTypeId, destination.resourceId,

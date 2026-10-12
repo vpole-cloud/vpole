@@ -64,13 +64,17 @@ internal sealed class MongoResourceRegistrationMutations(
                 session,
                 candidate,
                 cancellationToken: cancellationToken);
-            return ToContract(candidate);
         }
         catch (MongoWriteException exception) when (
             exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
         {
             return Conflict(resource);
         }
+        await storeOutboxWrites(session,
+            [OutboxWrite.Create(new ResourceRegisteredEvent(candidate.ResourceGroupId,
+                candidate.ResourceTypeId, candidate.ResourceId) { EventCore = EventCore.Create(candidate.TenantId) })],
+            cancellationToken);
+        return ToContract(candidate);
     }
 
     public async Task<ResourceRegistrationOutcome> UpdateAsync(
@@ -128,9 +132,12 @@ internal sealed class MongoResourceRegistrationMutations(
                 resource.ResourceId),
             replacement,
             cancellationToken: cancellationToken);
-        return write.ModifiedCount == 1
-            ? ToContract(replacement)
-            : Conflict(resource);
+        if (write.ModifiedCount != 1) return Conflict(resource);
+        await storeOutboxWrites(session,
+            [OutboxWrite.Create(new ResourceRegistrationUpdatedEvent(replacement.ResourceGroupId,
+                replacement.ResourceTypeId, replacement.ResourceId) { EventCore = EventCore.Create(replacement.TenantId) })],
+            cancellationToken);
+        return ToContract(replacement);
     }
 
     public async Task<ResourceUnregistrationOutcome> UnregisterAsync(

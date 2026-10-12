@@ -1,4 +1,7 @@
 using MongoDB.Driver;
+using Pole.Database;
+using Pole.Features.Outbox.Contracts;
+using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Domain;
 
@@ -20,53 +23,62 @@ public delegate Task<PersistRemovedTenantMemberOutcome> PersistRemovedTenantMemb
     RemoveTenantMember request,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoPersistRemovedTenantMember(IMongoDatabase database)
+internal sealed class MongoPersistRemovedTenantMember(
+    IMongoDatabase database,
+    StoreOutboxWrites storeOutboxWrites,
+    RunMongoOutcomeTransaction<PersistRemovedTenantMemberOutcome> runTransaction)
 {
     private readonly IMongoCollection<Tenant> _tenants = database.GetCollection<Tenant>("Tenants");
 
-    public async Task<PersistRemovedTenantMemberOutcome> InvokeAsync(
+    public Task<PersistRemovedTenantMemberOutcome> InvokeAsync(
         RemoveTenantMember request,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) => runTransaction(async (transaction, ct) =>
     {
         var tenant = await _tenants
-            .Find(TenantFilters.ById(request.TenantId))
-            .FirstOrDefaultAsync(cancellationToken);
+            .Find(transaction.Session, TenantFilters.ById(request.TenantId))
+            .FirstOrDefaultAsync(ct);
         if (tenant is null)
         {
-            return new TenantNotFound(request.TenantId);
+            return transaction.Abort(new TenantNotFound(request.TenantId));
         }
 
         var existingMember = tenant.Members.FirstOrDefault(member => member.Id == request.MemberId);
         if (existingMember is null)
         {
-            return new TenantMemberNotFound(request.TenantId, request.MemberId);
+            return transaction.Abort(new TenantMemberNotFound(request.TenantId, request.MemberId));
         }
 
         if (existingMember.Role == TenantRole.Owner &&
             tenant.Members.Count(member => member.Role == TenantRole.Owner) == 1)
         {
-            return new TenantLastOwner(request.TenantId, request.MemberId);
+            return transaction.Abort(new TenantLastOwner(request.TenantId, request.MemberId));
         }
 
         var result = await _tenants.UpdateOneAsync(
+            transaction.Session,
             TenantFilters.ByIdWithMemberAndOwnerCanBeRemoved(
                 request.TenantId,
                 request.MemberId),
             TenantUpdates.RemoveMember(request.MemberId),
-            cancellationToken: cancellationToken);
+            cancellationToken: ct);
         if (result.ModifiedCount != 0)
-            return new TenantMemberRemoved(request.MemberId);
+        {
+            await storeOutboxWrites(transaction.Session, [TenantAccessEventExtensions.MembershipChanged(request.TenantId, existingMember.UserId)], ct);
+            return transaction.Commit(new TenantMemberRemoved(request.MemberId));
+        }
 
         var failure = await TenantMemberMutationFailures.ResolveAsync(
             _tenants,
+            transaction.Session,
             request.TenantId,
             request.MemberId,
-            cancellationToken);
-        return failure switch
+            ct);
+        PersistRemovedTenantMemberOutcome outcome = failure switch
         {
             TenantNotFound error => error,
             TenantMemberNotFound error => error,
             TenantLastOwner error => error
         };
-    }
+        return transaction.Abort(outcome);
+    }, cancellationToken);
 }

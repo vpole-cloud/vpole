@@ -83,6 +83,51 @@ public sealed class RealtimeRedisFixture : IAsyncLifetime
 public sealed class RealtimeRedisTests(RealtimeRedisFixture fixture) : IClassFixture<RealtimeRedisFixture>
 {
     [Fact]
+    public async Task UserDiscoveryIsolatedAcrossCookieSessionsAndNeverUsesWildcardDelivery()
+    {
+        var topic = "user-discovery-" + Guid.NewGuid().ToString("N");
+        await using var server = await StartServerAsync(topic, scope: RealtimeScope.User);
+        var firstCookies = new CookieContainer();
+        var secondCookies = new CookieContainer();
+        foreach (var (cookies, credential) in new[] { (firstCookies, "realtime-test-credential"), (secondCookies, "realtime-other-credential") })
+        {
+            using var bootstrap = new HttpClient(new HttpClientHandler { CookieContainer = cookies });
+            bootstrap.DefaultRequestHeaders.Add("Origin", "https://frontend.test");
+            bootstrap.DefaultRequestHeaders.Authorization = new("Bearer", credential);
+            using var response = await bootstrap.PostAsync(Address(server) + RealtimeFeature.Route + "/session", null);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+        await using var first = Client(Address(server), firstCookies);
+        await using var second = Client(Address(server), secondCookies);
+        var firstChanges = new System.Collections.Concurrent.ConcurrentQueue<RealtimeChange>();
+        var secondChanges = new System.Collections.Concurrent.ConcurrentQueue<RealtimeChange>();
+        var firstRevocations = 0;
+        first.On<RealtimeChange>("Changed", change => firstChanges.Enqueue(change));
+        second.On<RealtimeChange>("Changed", change => secondChanges.Enqueue(change));
+        first.On<string?>("AccessRevoked", _ => Interlocked.Increment(ref firstRevocations));
+        await first.StartAsync();
+        await second.StartAsync();
+        await first.InvokeCoreAsync<RealtimeSubscriptionAcknowledgement[]>("Subscribe", [new RealtimeSubscriptionRequest[] { new(topic, ResourceId: "replica-user") }]);
+        await second.InvokeCoreAsync<RealtimeSubscriptionAcknowledgement[]>("Subscribe", [new RealtimeSubscriptionRequest[] { new(topic, ResourceId: "other-user") }]);
+        await Assert.ThrowsAsync<HubException>(() => first.InvokeCoreAsync<RealtimeSubscriptionAcknowledgement[]>("Subscribe",
+            [new RealtimeSubscriptionRequest[] { new(topic, ResourceId: "other-user") }]));
+        Assert.Equal(0, Volatile.Read(ref firstRevocations));
+        // A rejected foreign-subject replacement may remove its user interests but cannot
+        // revoke platform/tenant access. A valid own-subject subscription recovers normally.
+        await first.InvokeCoreAsync<RealtimeSubscriptionAcknowledgement[]>("Subscribe", [new RealtimeSubscriptionRequest[] { new(topic, ResourceId: "replica-user") }]);
+        using var provider = server.Services.CreateScope();
+        var publish = provider.ServiceProvider.GetRequiredService<PublishRealtimeChange>();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => publish(new(topic)));
+        await publish(new(topic, ResourceId: "replica-user", Revision: 1));
+        await publish(new(topic, ResourceId: "other-user", Revision: 2));
+        // Hub replies share each connection's ordered transport queue with notifications.
+        await first.InvokeCoreAsync<RealtimeSubscriptionAcknowledgement[]>("Heartbeat", []);
+        await second.InvokeCoreAsync<RealtimeSubscriptionAcknowledgement[]>("Heartbeat", []);
+        Assert.Equal("replica-user", Assert.Single(firstChanges).ResourceId);
+        Assert.Equal("other-user", Assert.Single(secondChanges).ResourceId);
+    }
+
+    [Fact]
     public async Task MixedTopicsAcknowledgeAvailabilityWithoutRegisteringUnavailableInterests()
     {
         var topic = "available-" + Guid.NewGuid().ToString("N");
@@ -313,7 +358,7 @@ public sealed class RealtimeRedisTests(RealtimeRedisFixture fixture) : IClassFix
             (await browser.PostAsync(Address(restarted) + RealtimeFeature.Route + "/hub/negotiate?negotiateVersion=1", null)).StatusCode);
     }
 
-    private async Task<WebApplication> StartServerAsync(string topic, string? disabledTopic = null)
+    private async Task<WebApplication> StartServerAsync(string topic, string? disabledTopic = null, RealtimeScope scope = RealtimeScope.Platform)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseKestrel().UseUrls("http://127.0.0.1:0");
@@ -324,7 +369,7 @@ public sealed class RealtimeRedisTests(RealtimeRedisFixture fixture) : IClassFix
         builder.Services.AddAuthorization();
         builder.Services.AddRealtimeFeature(builder.Configuration, development: true);
         builder.Services.AddRealtimeRedis(builder.Configuration, development: true);
-        builder.Services.AddRealtimeTopic(topic, RealtimeScope.Platform);
+        builder.Services.AddRealtimeTopic(topic, scope);
         if (disabledTopic is not null) builder.Services.AddRealtimeTopic(disabledTopic, RealtimeScope.Platform);
         builder.Services.AddScoped<LoadTenantMember>(_ => (tenant, user, _, _) => Task.FromResult<LoadTenantMemberOutcome>(new TenantMemberMissing(tenant, user)));
         builder.Services.AddScoped<LoadTenantIdentity>(_ => (tenant, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentityNotFound(tenant)));
@@ -384,10 +429,16 @@ public sealed class RealtimeRedisTests(RealtimeRedisFixture fixture) : IClassFix
     {
         protected override Task<AuthenticateResult> HandleAuthenticateAsync()
         {
-            if (Request.Headers.Authorization != "Bearer realtime-test-credential") return Task.FromResult(AuthenticateResult.NoResult());
+            var subject = Request.Headers.Authorization.ToString() switch
+            {
+                "Bearer realtime-test-credential" => "replica-user",
+                "Bearer realtime-other-credential" => "other-user",
+                _ => null
+            };
+            if (subject is null) return Task.FromResult(AuthenticateResult.NoResult());
             var principal = new ClaimsPrincipal(new ClaimsIdentity(new[]
             {
-                new Claim("sub", "replica-user"), new Claim("iss", "https://issuer.test"),
+                new Claim("sub", subject), new Claim("iss", "https://issuer.test"),
                 new Claim("roles", "pole-platform-admin"),
                 new Claim("exp", DateTimeOffset.UtcNow.AddMinutes(10).ToUnixTimeSeconds().ToString())
             }, Scheme.Name));

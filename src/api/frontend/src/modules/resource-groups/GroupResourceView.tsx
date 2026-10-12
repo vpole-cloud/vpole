@@ -11,6 +11,7 @@ import { Button, ConfirmationDialog, EmptyState, Notice } from '../../ui/compone
 import { TabPanel, Tabs } from '../../ui/Tabs'
 import type { ResourceGroup } from '../../types'
 import { GroupResources } from './GroupResources'
+import { groupInterests } from '../../realtime/resourceInterests'
 import type { GroupSection } from './workspaceState'
 
 export function GroupResourceView({ id, section, active, pageNumber, pageSize, onSection, onPage, onLoaded, onDirtyChange, onChanged }:
@@ -20,8 +21,9 @@ export function GroupResourceView({ id, section, active, pageNumber, pageSize, o
   const { api, tenant, notifications } = useAppServices()
   const origin = useApiScope(api)
   const details = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['resource-groups', 'detail', id],
+    active, realtime: groupInterests(api.tenantId, id), resourceGroupId: id,
     load: (signal) => fetchResourceGroup(api.baseUrl, id, origin.credential(), api.tenantId, signal) })
-  const manager = useResourceGroupsManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId, enabled: true, loadInventory: false })
+  const manager = useResourceGroupsManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId, enabled: tenant.canManage, loadInventory: false })
   const [dirty, setDirty] = useState(false)
   const [visitedConfiguration, setVisitedConfiguration] = useState(section === 'configuration')
   if (section === 'configuration' && !visitedConfiguration) setVisitedConfiguration(true)
@@ -62,9 +64,9 @@ export function GroupResourceView({ id, section, active, pageNumber, pageSize, o
 
 export function NewGroupView({ onDirtyChange, onCreated }:
   { onDirtyChange: (id: string, dirty: boolean) => void; onCreated: (group: ResourceGroup, open: boolean) => void }) {
-  const { api } = useAppServices()
+  const { api, tenant } = useAppServices()
   const origin = useApiScope(api)
-  const manager = useResourceGroupsManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId, enabled: true, loadInventory: false })
+  const manager = useResourceGroupsManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId, enabled: tenant.canManage, loadInventory: false })
   const [dirty, setDirty] = useState(false)
   const mounted = useRef(false)
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])

@@ -9,6 +9,29 @@ namespace Pole.Features.Realtime.Tests;
 
 public sealed class RealtimePublisherTests
 {
+    [Fact]
+    public async Task UserHintsCannotBroadcastMissingSubjectsOrRevealAnotherSubjectsDiscovery()
+    {
+        var registry = new RealtimeTopicRegistry([new("user-discovery", RealtimeScope.User)], new());
+        var access = new RealtimeAccess((_, _, _, _) => throw new InvalidOperationException("Not a tenant scope."),
+            (_, _) => throw new InvalidOperationException("Not a tenant scope."), registry);
+        var tickets = new MemoryTickets();
+        var expiry = DateTimeOffset.UtcNow.AddMinutes(1);
+        await tickets.StoreAsync(new AuthenticationTicket(IdentityFixture.User(), new() { ExpiresUtc = expiry }, RealtimeFeature.CookieScheme));
+        var subscriptions = new MemorySubscriptions();
+        await subscriptions.ReplaceAsync("connection", [new("own", "connection", "viewer", new("user-discovery", ResourceId: "viewer"), expiry),
+            new("corrupt-wildcard", "connection", "viewer", new("user-discovery"), expiry)], default);
+        var hub = new RecordingHubContext();
+        var publisher = new RealtimePublisher(subscriptions, tickets, access, registry, hub, TimeProvider.System);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => publisher.PublishAsync(new("user-discovery")));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => publisher.PublishAsync(new("user-discovery", "000000000000000000000001", "viewer")));
+        await publisher.PublishAsync(new("user-discovery", ResourceId: "other"));
+        Assert.Empty(hub.Client.Notices);
+        await publisher.PublishAsync(new("user-discovery", ResourceId: "viewer"));
+        Assert.Equal("viewer", Assert.Single(hub.Client.Notices).ResourceId);
+        Assert.Equal(0, hub.Client.Revocations);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

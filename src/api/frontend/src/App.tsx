@@ -26,6 +26,7 @@ function App() {
   const identity = `${import.meta.env.VITE_API_BASE_URL}:${Boolean(keycloak.authenticated)}:${keycloak.subject ?? ''}`
   return <SessionQueries identity={identity}><RealtimeProvider baseUrl={import.meta.env.VITE_API_BASE_URL as string}
     token={keycloak.authenticated ? keycloak.token : undefined}
+    userId={keycloak.subject}
     enabled={Boolean(keycloak.authenticated) && import.meta.env.VITE_REALTIME_ENABLED !== 'false'}>
     <AuthenticatedWorkspace />
   </RealtimeProvider></SessionQueries>

@@ -7,6 +7,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
+using Pole.Database;
+using Pole.Features.Outbox.Contracts;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants;
@@ -35,6 +37,9 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         await fixture.ResetDatabaseAsync();
         var services = new ServiceCollection();
         services.AddSingleton(fixture.Database);
+        services.AddSingleton<IMongoClient>(fixture.Client);
+        services.AddSingleton<MongoRunTransaction>();
+        services.AddSingleton<StoreOutboxWrites>(fixture.StoreOutboxWrites);
         services.AddTenantsFeature();
         _services = services.BuildServiceProvider(validateScopes: true);
     }

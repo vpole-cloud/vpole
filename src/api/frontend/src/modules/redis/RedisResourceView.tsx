@@ -4,6 +4,7 @@ import { ResourceOperations } from '../../ui/ResourceOperations'
 import { useEffect, useState } from 'react'
 import { deleteRedisService, fetchAvailableComputeProfiles, fetchAvailableDeploymentTargets, fetchAvailableStorageProfiles, fetchIsolationScopes, fetchRedisService, fetchResourceGroup, retryResourceDeployment, updateRedisService, validationMessage } from '../../api'
 import { useScopedQuery } from '../../data/useScopedQuery'
+import { groupInterests, resourceInterests } from '../../realtime/resourceInterests'
 import { useVisibleRefresh } from '../../hooks/useVisibleRefresh'
 import { useProviderInvalidation } from '../../data/useProviderInvalidation'
 import { useScopedMutation } from '../../hooks/useScopedMutation'
@@ -21,15 +22,18 @@ import { acceptedRedisChanges, isRedisDirty, reapplyRedisChanges, redisConfigura
 export function RedisResourceView({ id, section, active, onSection, actions }: { id: string; section: RedisSection; active: boolean; onSection: (section: RedisSection) => void; actions: WorkspaceActions<RedisSection> }) {
   const { api, tenant, navigation } = useAppServices()
   const origin = useProviderInvalidation(api)
-  const scopeKey = `${origin.identity}:${id}`
+  const scopeKey = `${origin.identity}:${id}:${tenant.canManage}`
   const scope = [api.baseUrl, api.tenantId]
-  const details = useScopedQuery({ scope, key: ['redis', 'detail', id], load: (signal) => fetchRedisService(api.baseUrl, id, origin.credential(), api.tenantId, signal) })
+  const realtime = resourceInterests('redis', api.tenantId, id)
+  const details = useScopedQuery<RedisService>({ scope, key: ['redis', 'detail', id], active, realtime, resourceGroupId: (value) => value.resourceGroupId,
+    load: (signal) => fetchRedisService(api.baseUrl, id, origin.credential(), api.tenantId, signal) })
   const redis = details.resource
   const placement = redis?.placement
-  const group = useScopedQuery({ scope, key: ['resource-groups', 'detail', redis?.resourceGroupId], enabled: Boolean(redis), load: (signal) => fetchResourceGroup(api.baseUrl, redis!.resourceGroupId, origin.credential(), api.tenantId, signal) })
-  const scopes = useScopedQuery({ scope, key: eligibilityKeys.scopes(redis?.resourceGroupId), enabled: Boolean(redis), load: (signal) => fetchIsolationScopes(api.baseUrl, redis!.resourceGroupId, origin.credential(), api.tenantId, signal) })
-  const targets = useScopedQuery({ scope, key: eligibilityKeys.targets(redisType, placement?.isolationScopeId, false), enabled: Boolean(placement), load: (signal) => fetchAvailableDeploymentTargets(api.baseUrl, placement!.isolationScopeId ?? undefined, origin.credential(), api.tenantId, signal, false, redisType) })
-  const storage = useScopedQuery({ scope, key: eligibilityKeys.storage(redisType, placement?.deploymentTargetId), enabled: Boolean(placement), load: (signal) => fetchAvailableStorageProfiles(api.baseUrl, redisType, placement!.deploymentTargetId, origin.credential(), api.tenantId, signal) })
+  const interest = { active, realtime: groupInterests(api.tenantId, redis?.resourceGroupId), resourceGroupId: redis?.resourceGroupId }
+  const group = useScopedQuery({ scope, key: ['resource-groups', 'detail', redis?.resourceGroupId], enabled: Boolean(redis), ...interest, load: (signal) => fetchResourceGroup(api.baseUrl, redis!.resourceGroupId, origin.credential(), api.tenantId, signal) })
+  const scopes = useScopedQuery({ scope, key: eligibilityKeys.scopes(redis?.resourceGroupId), enabled: Boolean(redis), ...interest, load: (signal) => fetchIsolationScopes(api.baseUrl, redis!.resourceGroupId, origin.credential(), api.tenantId, signal) })
+  const targets = useScopedQuery({ scope, key: eligibilityKeys.targets(redisType, placement?.isolationScopeId, false), enabled: Boolean(placement), ...interest, load: (signal) => fetchAvailableDeploymentTargets(api.baseUrl, placement!.isolationScopeId ?? undefined, origin.credential(), api.tenantId, signal, false, redisType) })
+  const storage = useScopedQuery({ scope, key: eligibilityKeys.storage(redisType, placement?.deploymentTargetId), enabled: Boolean(placement), ...interest, load: (signal) => fetchAvailableStorageProfiles(api.baseUrl, redisType, placement!.deploymentTargetId, origin.credential(), api.tenantId, signal) })
   const mutation = useScopedMutation(scopeKey)
   const [deleting, setDeleting] = useState(false)
   const [visited, setVisited] = useState(section === 'configuration')
@@ -40,7 +44,7 @@ export function RedisResourceView({ id, section, active, onSection, actions }: {
   useEffect(() => { if (redis) onLoaded(redis.id, redis.name) }, [redis, onLoaded])
   useEffect(() => { onDirty(id, dirty); return () => onDirty(id, false) }, [id, dirty, onDirty])
   const pending = Boolean(redis && (redis.lifecycle === 'Deleting' || placement && ['WaitingForRuntimeCell', 'Pending', 'Reconciling', 'Deleting', 'Failed'].includes(placement.status)))
-  useVisibleRefresh(active && pending, details.refresh, 2500)
+  useVisibleRefresh(active && pending, details.refresh, 2500, realtime)
   const afterWrite = async () => {
     await Promise.all([details.refreshAfterWrite(), origin.invalidate([['redis', 'inventory'], ['resource-groups'], ['overview'], ['search'], ['operations'], ['health'], ['endpoints']])])
 
@@ -65,7 +69,7 @@ export function RedisResourceView({ id, section, active, onSection, actions }: {
       }}>Retry deployment</Button>}
     </TabPanel>
     <TabPanel id={panelId} tabId="operations" activeId={section}>{active && section === "operations" && <ResourceOperations filter={{ resourceType: redisType, resourceId: id }} onAccepted={afterWrite} onRetry={(operation, signal) => retryResourceDeployment(api.baseUrl, operation.deployment.id, operation.deployment.placement.deploymentRevision!, operation.deployment.placement.desiredOperation!, origin.credential(), api.tenantId, signal)} />}</TabPanel>
-    <TabPanel id={panelId} tabId="configuration" activeId={section}>{visited && (canWrite && placement ? <RedisConfiguration redis={redis} onDirtyChange={setDirty} onSaved={afterWrite} /> : <EmptyState title="Redis configuration is read-only." />)}</TabPanel>
+    <TabPanel id={panelId} tabId="configuration" activeId={section}>{visited && (canWrite && placement ? <RedisConfiguration redis={redis} active={active && section === 'configuration'} onDirtyChange={setDirty} onSaved={afterWrite} /> : <EmptyState title="Redis configuration is read-only." />)}</TabPanel>
     {mutation.error instanceof Error && <Notice tone="error">{mutation.error.message}</Notice>}
     {deleting && canWrite && <ConfirmationDialog title={`Delete ${redis.name}?`} confirmLabel="Delete Redis" busy={mutation.busy} onCancel={() => setDeleting(false)} onConfirm={() => {
       void mutation.run((signal) => deleteRedisService(api.baseUrl, id, origin.credential(), api.tenantId, signal), async () => { setDeleting(false); await afterWrite() }).catch(() => {})
@@ -73,12 +77,14 @@ export function RedisResourceView({ id, section, active, onSection, actions }: {
   </div>
 }
 
-function RedisConfiguration({ redis, onDirtyChange, onSaved }: { redis: RedisService; onDirtyChange: (dirty: boolean) => void; onSaved: () => Promise<void> }) {
+function RedisConfiguration({ redis, active, onDirtyChange, onSaved }: { redis: RedisService; active: boolean; onDirtyChange: (dirty: boolean) => void; onSaved: () => Promise<void> }) {
   const { api, notifications } = useAppServices()
   const origin = useProviderInvalidation(api)
   const scopeKey = `${origin.identity}:${redis.id}`
   const targetId = redis.placement!.deploymentTargetId
-  const compute = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: eligibilityKeys.compute(redisType, targetId), load: (signal) => fetchAvailableComputeProfiles(api.baseUrl, targetId, origin.credential(), api.tenantId, signal, redisType) })
+  const compute = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: eligibilityKeys.compute(redisType, targetId), active,
+    realtime: groupInterests(api.tenantId, redis.resourceGroupId), resourceGroupId: redis.resourceGroupId,
+    load: (signal) => fetchAvailableComputeProfiles(api.baseUrl, targetId, origin.credential(), api.tenantId, signal, redisType) })
   const [configuration, setConfiguration] = useState(() => redisConfiguration(redis))
   const { tags, computeProfileId: computeId } = configuration.draft
   const dirty = isRedisDirty(configuration)

@@ -18,6 +18,7 @@ open Pole.Features.Quotas.Contracts
 open Pole.Features.ResourceConnections.Contracts
 open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.Search.Contracts
+open Pole.Features.Realtime.Contracts
 
 [<AbstractClass; Sealed>]
 type PostgresFeatureRegistration =
@@ -25,6 +26,7 @@ type PostgresFeatureRegistration =
     static member AddPostgresFeature(
         services : IServiceCollection,
         configuration : IConfiguration) =
+        services.AddSingleton(RealtimeTopic("postgres", RealtimeScope.Tenant)) |> ignore
         services.AddSingleton<SearchSourceType>(PostgresSearchProjection.SourceType)
         |> ignore
         services.AddSingleton<IMigration>(FeatureScopedMigration("pole.postgres", PostgresNameIndexesMigration()))

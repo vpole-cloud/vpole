@@ -6,21 +6,22 @@ import { RealtimeContext } from './context'
 import { createRealtimeSession, revokeRealtimeSession } from './sessionApi'
 import { isPageVisible } from './usePageVisible'
 
-export function RealtimeProvider({ baseUrl, token, enabled, children }: {
-  baseUrl: string; token?: string; enabled: boolean; children: ReactNode
+export function RealtimeProvider({ baseUrl, token, enabled, children, userId }: {
+  baseUrl: string; token?: string; enabled: boolean; children: ReactNode; userId?: string
 }) {
   const session = useQuerySession()
-  return <OwnedRealtimeProvider key={`${session.id}:${baseUrl}`} baseUrl={baseUrl} token={token} enabled={enabled}>{children}</OwnedRealtimeProvider>
+  return <OwnedRealtimeProvider key={`${session.id}:${baseUrl}:${userId ?? ''}`} baseUrl={baseUrl} token={token} enabled={enabled} userId={userId}>{children}</OwnedRealtimeProvider>
 }
 
-function OwnedRealtimeProvider({ baseUrl, token, enabled, children }: {
-  baseUrl: string; token?: string; enabled: boolean; children: ReactNode
+function OwnedRealtimeProvider({ baseUrl, token, enabled, children, userId }: {
+  baseUrl: string; token?: string; enabled: boolean; children: ReactNode; userId?: string
 }) {
   const session = useQuerySession()
   const [controller] = useState(() => new RealtimeController(session, baseUrl, {
     bootstrap: (signal, credential) => createRealtimeSession(baseUrl, credential ?? '', signal),
     connection: () => createRealtimeConnection(baseUrl),
     revoke: () => revokeRealtimeSession(baseUrl),
+    userId,
   }))
   useLayoutEffect(() => { controller.updateCredential(token) }, [controller, token])
   useEffect(() => {

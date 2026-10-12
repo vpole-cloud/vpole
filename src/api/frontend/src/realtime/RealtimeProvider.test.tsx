@@ -14,6 +14,7 @@ import { createRealtimeSession, revokeRealtimeSession } from './sessionApi'
 import { RealtimeProvider } from './RealtimeProvider'
 import { useRealtime } from './context'
 import type { RealtimeController } from './controller'
+import { resourceInterests } from './resourceInterests'
 
 vi.mock('./connection', () => ({ createRealtimeConnection: vi.fn() }))
 vi.mock('./sessionApi', () => ({ createRealtimeSession: vi.fn(), revokeRealtimeSession: vi.fn(async () => {}) }))
@@ -221,4 +222,27 @@ it('blocks privileged query and mutation credentials after platform revocation w
   expect(connections[0].subscribe).toHaveBeenLastCalledWith(interest)
   await act(async () => { pending.resolve('late privileged'); expect(await refreshing).toBeNull() })
   expect(privilegedOrigin.session.client.getQueryData(platform.queryKey)).toBeUndefined()
+})
+
+it.each(['postgres', 'redis'] as const)('restores %s reconciliation polling when any required metadata topic loses heartbeat coverage', async (topic) => {
+  const interests = resourceInterests(topic, 'tenant', 'resource')
+  const load = vi.fn(async () => ({ resourceGroupId: 'group' }))
+  function Probe() {
+    const query = useScopedQuery({ scope: ['api', 'tenant'], key: [topic, 'detail', 'resource'], realtime: interests, load })
+    useVisibleRefresh(true, query.refresh, 2500, interests)
+    return null
+  }
+  await act(async () => root.render(<RealtimeProvider baseUrl="api" token="current" enabled><Probe /></RealtimeProvider>))
+  await act(async () => vi.advanceTimersByTimeAsync(250))
+  load.mockClear()
+  await act(async () => vi.advanceTimersByTimeAsync(9000))
+  expect(load).not.toHaveBeenCalled()
+  connections[0].heartbeat.mockResolvedValue(interests.map((request, index) => ({ ...request, subscriptionId: String(index), covered: request.topic !== 'workspace-inventory' })))
+  await act(async () => vi.advanceTimersByTimeAsync(750))
+  await act(async () => vi.advanceTimersByTimeAsync(2500))
+  expect(load).toHaveBeenCalledTimes(1)
+  await act(async () => { hidden = true; document.dispatchEvent(new Event('visibilitychange')) })
+  load.mockClear()
+  await act(async () => vi.advanceTimersByTimeAsync(10000))
+  expect(load).not.toHaveBeenCalled()
 })

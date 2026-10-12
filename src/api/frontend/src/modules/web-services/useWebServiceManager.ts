@@ -1,5 +1,5 @@
 import { fetchScopedQuery } from '../../data/fetchScopedQuery'
-import { eligibilityKeys } from '../../data/queryKeys'
+import { useWebServiceEligibility } from './useWebServiceEligibility'
 import { useAppServices } from '../../shell/AppContext'
 import { useScopedMutation } from '../../hooks/useScopedMutation'
 import { invalidateWebServiceState } from './invalidate'
@@ -12,16 +12,12 @@ import {
   deleteWebService,
   deleteWebServiceDeployment,
   deleteWebServiceHostnameBinding,
-  fetchAvailableComputeProfiles,
-  fetchAvailableDeploymentTargets,
   fetchWebServiceHostnameBindings,
   retryWebServiceDeployment,
   updateWebService,
   updateWebServiceDeployment,
 } from '../../api'
 import type {
-  AvailableComputeProfile,
-  AvailableDeploymentTarget,
   HostnameBinding,
   LoadStatus,
   WebServiceDeploymentInput,
@@ -39,6 +35,8 @@ interface UseWebServicesManagerOptions {
   pageNumber?: number
   pageSize?: number
   search?: string
+  active?: boolean
+  resourceGroupId?: string
 }
 
 const errorMessage = (error: unknown, fallback: string) =>
@@ -53,6 +51,8 @@ export function useWebServicesManager({
   pageNumber,
   pageSize,
   search,
+  active = true,
+  resourceGroupId,
 }: UseWebServicesManagerOptions) {
   const { tenant } = useAppServices()
   const scope = useApiScope({ baseUrl: apiBaseUrl, token, tenantId })
@@ -62,80 +62,10 @@ export function useWebServicesManager({
   const [submitStatus, setSubmitStatus] = useState<LoadStatus>('idle')
   const [submitError, setSubmitError] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [availableTargets, setAvailableTargets] = useState<AvailableDeploymentTarget[]>([])
-  const [targetsStatus, setTargetsStatus] = useState<LoadStatus>('idle')
-  const [targetsError, setTargetsError] = useState('')
-  const [computeProfilesByTarget, setComputeProfilesByTarget] = useState<
-    Record<string, AvailableComputeProfile[]>
-  >({})
-  const [computeProfilesStatusByTarget, setComputeProfilesStatusByTarget] = useState<Record<string, LoadStatus>>({})
+  const eligibility = useWebServiceEligibility({ baseUrl: apiBaseUrl, token, tenantId }, active && tenant.canManage, resourceGroupId)
   const [hostnameBindingsByDeployment, setHostnameBindingsByDeployment] = useState<
     Record<string, HostnameBinding[]>
   >({})
-
-  const loadAvailableTargets = useCallback(async (
-    isolationScopeId?: string,
-    requiresPublicIngress = true,
-    signal?: AbortSignal,
-  ) => {
-    if (!tenantId) {
-      setAvailableTargets([])
-      setTargetsStatus('idle')
-      return []
-    }
-
-    setTargetsStatus('loading')
-    setTargetsError('')
-    try {
-      const targets = await fetchScopedQuery(scope, eligibilityKeys.targets('pole/web-service', isolationScopeId, requiresPublicIngress), (querySignal) => fetchAvailableDeploymentTargets(
-        apiBaseUrl,
-        isolationScopeId,
-        credential(),
-        tenantId,
-        querySignal,
-        requiresPublicIngress,
-      ))
-      if (signal?.aborted || !isCurrent()) return []
-      setAvailableTargets(targets)
-      setTargetsStatus('success')
-      return targets
-    } catch (loadError) {
-      if (signal?.aborted || !isCurrent()) return []
-      setAvailableTargets([])
-      setTargetsStatus('error')
-      setTargetsError(errorMessage(loadError, 'Unable to load eligible deployment targets.'))
-      return []
-    }
-  }, [apiBaseUrl, tenantId, credential, scope, isCurrent])
-
-  const loadComputeProfiles = useCallback(async (deploymentTargetId: string) => {
-    if (!tenantId || !deploymentTargetId) {
-      return []
-    }
-
-    setComputeProfilesStatusByTarget((items) => ({ ...items, [deploymentTargetId]: 'loading' }))
-    try {
-      const profiles = await fetchScopedQuery(scope, eligibilityKeys.compute('pole/web-service', deploymentTargetId), (signal) => fetchAvailableComputeProfiles(
-        apiBaseUrl,
-        deploymentTargetId,
-        credential(),
-        tenantId,
-        signal,
-      ))
-      if (!isCurrent()) return []
-      setComputeProfilesByTarget((current) => ({
-        ...current,
-        [deploymentTargetId]: profiles,
-      }))
-      setComputeProfilesStatusByTarget((items) => ({ ...items, [deploymentTargetId]: 'success' }))
-      return profiles
-    } catch (loadError) {
-      if (!isCurrent()) return []
-      setComputeProfilesStatusByTarget((items) => ({ ...items, [deploymentTargetId]: 'error' }))
-      setSubmitError(errorMessage(loadError, 'Unable to load compute profiles.'))
-      return []
-    }
-  }, [apiBaseUrl, tenantId, credential, scope, isCurrent])
 
   const loadHostnameBindings = useCallback(async (webServiceId: string, deploymentId: string) => {
     try {
@@ -278,15 +208,9 @@ export function useWebServicesManager({
     submitStatus: mutation.busy ? 'loading' as const : submitStatus === 'loading' ? 'idle' as const : submitStatus,
     submitError,
     deletingId,
-    availableTargets,
-    targetsStatus,
-    targetsError,
-    computeProfilesByTarget,
-    computeProfilesStatusByTarget,
+    ...eligibility,
     hostnameBindingsByDeployment,
     refresh,
-    loadAvailableTargets,
-    loadComputeProfiles,
     loadHostnameBindings,
     create,
     update,

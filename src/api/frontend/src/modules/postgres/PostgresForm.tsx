@@ -24,7 +24,7 @@ export function NewPostgresView({ actions, active }: { actions: WorkspaceActions
   const [computeId, setComputeId] = useState('')
   const [storageId, setStorageId] = useState('')
   const { groups, scopes, targets, storage, compute, group, isolation, target, computeProfile, storageProfile, profiles: storageProfiles, allowed: choicesReady } = useResourceChoices(api, resourceType,
-    { groupId, isolationScopeId, deploymentTargetId: targetId, computeProfileId: computeId, storageProfileId: storageId })
+    { groupId, isolationScopeId, deploymentTargetId: targetId, computeProfileId: computeId, storageProfileId: storageId }, active)
   const [version, setVersion] = useState<number | null>(null)
   const selectedVersion = version ?? capabilities.resource?.to ?? 0
   const [instances, setInstances] = useState(1)

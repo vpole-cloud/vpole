@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { fetchTenants } from '../api'
 import { useScopedQuery } from '../data/useScopedQuery'
 import { useQuerySession } from '../data/querySession'
+import { useRealtime } from '../realtime/context'
 
 const storageKey = 'pole.activeTenantId'
 const storedTenant = () => { try { return localStorage.getItem(storageKey) ?? '' } catch { return '' } }
@@ -9,9 +10,18 @@ const storeTenant = (id: string) => { try { if (id) localStorage.setItem(storage
 
 export function useTenants(apiBaseUrl: string, token?: string, enabled = false, userId = '') {
   const session = useQuerySession()
+  const realtime = useRealtime()
+  const membership = realtime?.ownsApi(apiBaseUrl) ? realtime : null
   const [preferredTenantId, setActiveTenantId] = useState(storedTenant)
-  const query = useScopedQuery({ scope: [apiBaseUrl, userId], key: ['tenants'], enabled,
-    load: (signal) => fetchTenants(apiBaseUrl, token, signal) })
+  const query = useScopedQuery({ scope: [apiBaseUrl, userId], key: ['tenants'], enabled: enabled && (!membership || Boolean(userId)), authorizationScope: 'user',
+    interval: 60000, realtime: userId ? [{ topic: 'tenant-access', resourceId: userId }] : undefined,
+    load: async (signal) => {
+      const epoch = membership?.beginMembershipRead(apiBaseUrl, userId)
+      const tenants = await fetchTenants(apiBaseUrl, token, signal)
+      if (signal.aborted || !session.isActive() || membership && !membership.acceptMembershipSnapshot(apiBaseUrl, userId, epoch!, tenants.map(tenant => tenant.id), signal))
+        throw new DOMException('Aborted', 'AbortError')
+      return tenants
+    } })
   const previousCredential = useRef(token)
   const queryIdentity = JSON.stringify(query.queryKey)
   const refresh = query.refresh
