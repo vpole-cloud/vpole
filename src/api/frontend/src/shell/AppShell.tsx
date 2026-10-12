@@ -91,9 +91,10 @@ function AppShellContent({ registry, auth, api, tenants, initialViewId }: AppShe
   useLayoutEffect(() => {
     window.history.replaceState({ ...window.history.state, poleNavigationIndex: historyEntry.current.index }, '', window.location.href)
   }, [])
-  const writeLocation = useCallback((params: URLSearchParams, nextViewId: string, replace = false) => {
+  const writeLocation = useCallback((params: URLSearchParams, nextViewId: string, replace = false, fragment?: string) => {
     const url = new URL(window.location.href)
     url.search = params.toString()
+    if (fragment !== undefined) url.hash = fragment
     if (url.href === historyEntry.current.url) return
     const index = historyEntry.current.index + (replace ? 0 : 1)
     window.history[replace ? 'replaceState' : 'pushState']({ ...window.history.state, poleNavigationIndex: index }, '', url)
@@ -130,12 +131,13 @@ function AppShellContent({ registry, auth, api, tenants, initialViewId }: AppShe
   const resourceHref = (resource: ResourceIdentity) => {
     const url = new URL(window.location.href)
     url.search = resourceParams(resource).toString()
+    url.hash = resource.fragment ?? ''
     return `${url.pathname}${url.search}${url.hash}`
   }
   const openResource = (resource: ResourceIdentity) => {
     const params = resourceParams(resource)
     const nextId = params.get('view')!
-    const run = () => { setNotification(null); writeLocation(params, nextId) }
+    const run = () => { setNotification(null); writeLocation(params, nextId, false, resource.fragment ?? '') }
     if (nextId === viewId) run()
     else runGuarded(run)
   }

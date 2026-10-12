@@ -273,3 +273,26 @@ it('opens global commands by Ctrl+K and closes with Escape while restoring heade
   await act(async () => container.querySelector('dialog')!.dispatchEvent(new Event('cancel', { bubbles: true, cancelable: true })))
   expect(container.querySelector('dialog')).toBeNull(); expect(document.activeElement).toBe(opener)
 })
+
+
+it('constructs resource links with only the destination fragment and clears it on ordinary navigation', async () => {
+  function Links() {
+    const { navigation } = useAppServices()
+    const resource = { resourceTypeId: 'test/resource', resourceId: 'next' }
+    return <>
+      <a href={navigation.resourceHref(resource)}>Plain resource</a>
+      <a href={navigation.resourceHref({ ...resource, section: 'builds', fragment: 'build-new' })}>Selected build</a>
+      <button onClick={() => navigation.openResource(resource)}>Open plain resource</button>
+    </>
+  }
+  const registry = createAppRegistry([{ id: 'links', views: [{ id: 'links', label: 'Links', component: Links, access: 'tenant' }],
+    resourceTypes: [{ id: 'test/resource', label: 'Resource', viewId: 'links' }] }])
+  window.history.replaceState({}, '', '/?view=links#build-old')
+  await act(async () => root.render(<AppShell registry={registry} auth={auth} api={{ baseUrl: '/api' }} tenants={tenants('alpha')} initialViewId="links" />))
+  const links = [...container.querySelectorAll<HTMLAnchorElement>('a')]
+  expect(new URL(links.find((link) => link.textContent === 'Plain resource')!.href).hash).toBe('')
+  expect(new URL(links.find((link) => link.textContent === 'Selected build')!.href).hash).toBe('#build-new')
+  await act(async () => button('Open plain resource').click())
+  expect(window.location.hash).toBe('')
+  expect(new URLSearchParams(window.location.search).get('resource')).toBe('next')
+})

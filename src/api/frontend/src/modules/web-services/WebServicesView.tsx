@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useWorkspaceController } from '../../shell/useWorkspaceController'
+import { useCallback, useEffect, useState } from 'react'
 import { WebServicesPage } from '../../components/WebServicesPage'
 import { useResourceGroupChoices } from '../../hooks/useResourceGroupChoices'
 import { useWebServicesManager } from '../../hooks/useWebServicesManager'
@@ -8,53 +9,20 @@ import { TabPanel, Tabs } from '../../ui/Tabs'
 import type { WebService } from '../../types'
 import { NewWebServiceView } from './NewWebServiceView'
 import { WebServiceResourceView } from './WebServiceResourceView'
-import { catalogId, createId, readServiceRoute, readWorkspace, saveWorkspace, serviceRouteParams, workspaceAtRoute, type ServiceSection, type WebServiceWorkspace } from './workspaceState'
+import { catalogId, createId, serviceSections, type ServiceSection } from './workspaceState'
 
 const workspaceId = 'web-services-workspace'
 
 export function WebServicesView() {
-  const { api, auth, tenant, navigation, invalidateResources } = useAppServices()
-  const route = readServiceRoute(navigation.search)
+  const { api, tenant, navigation, invalidateResources } = useAppServices()
+  const { route, workspace, creating, setCreating, closingId, setClosingId, names, dirtyTabs,
+    navigateWorkspace, loaded, dirty: onDirtyChange, open: openTab, section: onSection, close, requestClose } =
+    useWorkspaceController({ id: 'web-services', sections: serviceSections, defaultSection: 'overview' })
   const options = { apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId, enabled: Boolean(tenant.active) }
-  const storageKey = `pole.web-services.workspace.v1.${auth.userId}.${api.tenantId}`
-  const [workspace, setWorkspace] = useState(() => workspaceAtRoute(readWorkspace(storageKey), route))
-  const [creating, setCreating] = useState(route.resourceId === createId)
-  const [routeSearch, setRouteSearch] = useState(navigation.search)
-  if (routeSearch !== navigation.search) {
-    setRouteSearch(navigation.search)
-    setWorkspace((current) => workspaceAtRoute(current, route))
-    if (route.resourceId === createId) setCreating(true)
-  }
-  const [closingId, setClosingId] = useState<string | null>(null)
-  const [dirtyTabs, setDirtyTabs] = useState<Record<string, boolean>>({})
-  const [names, setNames] = useState<Record<string, string>>({})
   const [refreshVersion, setRefreshVersion] = useState(0)
   const groups = useResourceGroupChoices(options)
   const services = useWebServicesManager({ ...options, pageNumber: route.pageNumber, pageSize: route.pageSize, search: route.search })
-  const current = useRef({ workspace, navigation })
-  const mounted = useRef(false)
-  useLayoutEffect(() => { current.current = { workspace, navigation } }, [workspace, navigation])
-  useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
-  const onDirtyChange = useCallback((id: string, dirty: boolean) => {
-    setDirtyTabs((current) => current[id] === dirty ? current : { ...current, [id]: dirty })
-  }, [])
-  const onLoaded = useCallback((service: WebService) => {
-    setNames((current) => current[service.id] === service.name ? current : { ...current, [service.id]: service.name })
-  }, [])
-  const navigateWorkspace = (next: WebServiceWorkspace, replace = false) => {
-    if (!mounted.current) return
-    setWorkspace(next)
-    const navigation = current.current.navigation
-    current.current = { workspace: next, navigation }
-    navigation.setSearch(serviceRouteParams(navigation.search, next), { replace })
-  }
-  const onSection = (id: string, section: ServiceSection) => navigateWorkspace({ ...workspace,
-    tabs: workspace.tabs.map((tab) => tab.id === id ? { ...tab, section } : tab),
-  })
-  useEffect(() => { saveWorkspace(storageKey, workspace) }, [storageKey, workspace])
-  useEffect(() => {
-    if (route.resourceId === null) navigation.setSearch(serviceRouteParams(navigation.search, workspace), { replace: true })
-  }, [navigation, route.resourceId, workspace])
+  const onLoaded = useCallback((service: WebService) => loaded(service.id, service.name), [loaded])
   const setInventory = (values: { pageNumber?: number; pageSize?: number; search?: string }, replace = false) => {
     const params = new URLSearchParams(navigation.search)
     params.set('resource', catalogId)
@@ -75,24 +43,7 @@ export function WebServicesView() {
       navigation.setSearch(params, { replace: true })
     }
   }, [navigation, route.pageNumber, lastPage, services.status, services.isCurrentPage])
-  const open = (id: string, edit = false, section?: ServiceSection) => {
-    const workspace = current.current.workspace
-    navigateWorkspace({ activeId: id,
-      tabs: workspace.tabs.some((tab) => tab.id === id) ? workspace.tabs.map((tab) =>
-        tab.id === id && (edit || section) ? { ...tab, section: section ?? 'configuration' } : tab) : [...workspace.tabs, { id, section: section ?? (edit ? 'configuration' : 'overview') }],
-    })
-  }
-  const close = (id: string) => {
-    if (!mounted.current) return
-    const workspace = current.current.workspace
-    if (id === createId) setCreating(false)
-    navigateWorkspace({ tabs: workspace.tabs.filter((tab) => tab.id !== id), activeId: workspace.activeId === id ? catalogId : workspace.activeId })
-    setClosingId(null)
-    requestAnimationFrame(() => {
-      document.querySelector<HTMLButtonElement>(`#${workspaceId} [role="tab"][aria-selected="true"]`)?.focus()
-    })
-  }
-  const requestClose = (id: string) => dirtyTabs[id] ? setClosingId(id) : close(id)
+  const open = (id: string, edit = false, section?: ServiceSection) => openTab(id, section ?? (edit ? 'configuration' : undefined))
   const label = (id: string) => id === createId ? 'New service' : names[id] ?? services.items.find((item) => item.id === id)?.name ?? `Service ${id.slice(0, 8)}`
   const refreshCatalog = () => { void services.refresh(); invalidateResources() }
 

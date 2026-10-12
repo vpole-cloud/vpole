@@ -2,7 +2,7 @@ import type { ComponentType } from 'react'
 import type { Tenant } from '../types'
 
 export type Theme = 'light' | 'dark'
-export interface ResourceIdentity { resourceTypeId: string; resourceId: string; section?: string }
+export interface ResourceIdentity { resourceTypeId: string; resourceId: string; section?: string; fragment?: string }
 
 export interface AppServices {
   auth: {
