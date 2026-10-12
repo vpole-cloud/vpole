@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentType } from 'react'
+import { useWorkspaceController } from '../shell/useWorkspaceController'
+import { useState, type ComponentType } from 'react'
 import { useAppServices } from '../shell/AppContext'
-import { catalogId, createId, readResourceRoute, readWorkspace, resourceRouteParams, saveWorkspace, workspaceAtRoute, type ResourceWorkspace as Workspace } from '../shell/workspaceState'
+import { catalogId, createId } from '../shell/workspaceState'
 import { Button, ConfirmationDialog, EmptyState } from './components'
 import { Tabs, TabPanel } from './Tabs'
 
@@ -19,55 +20,14 @@ export function ResourceWorkspace<S extends string>({ id, label, newLabel, secti
     Catalog: ComponentType<{ actions: WorkspaceActions<S>; version: number }>;
     Create: ComponentType<{ actions: WorkspaceActions<S>; active: boolean }>;
     Resource: ComponentType<{ id: string; section: S; active: boolean; version: number; onSection: (section: S) => void; actions: WorkspaceActions<S> }> }) {
-  const { auth, api, tenant, navigation, invalidateResources } = useAppServices()
-  const storageKey = `pole.${id}.workspace.v1.${auth.userId}.${api.tenantId}`
-  const route = readResourceRoute(navigation.search, sections, defaultSection)
-  const [workspace, setWorkspace] = useState(() => workspaceAtRoute(readWorkspace(storageKey, sections, defaultSection), route))
-  const [routeSearch, setRouteSearch] = useState(navigation.search)
-  const [creating, setCreating] = useState(route.resourceId === createId)
-  if (routeSearch !== navigation.search) {
-    setRouteSearch(navigation.search)
-    setWorkspace((current) => workspaceAtRoute(current, route))
-    if (route.resourceId === createId) setCreating(true)
-  }
-  const [names, setNames] = useState<Record<string, string>>({})
-  const [dirtyTabs, setDirtyTabs] = useState<Record<string, boolean>>({})
-  const [closing, setClosing] = useState<string | null>(null)
+  const { tenant, invalidateResources } = useAppServices()
+  const { route, workspace, creating, setCreating, closingId: closing, setClosingId: setClosing, names, dirtyTabs,
+    isMounted, navigateWorkspace: navigate, loaded, dirty, open, close: closed } = useWorkspaceController({ id, sections, defaultSection })
   const [version, setVersion] = useState(0)
-  const current = useRef({ workspace, navigation })
-  const mounted = useRef(false)
-  useLayoutEffect(() => { current.current = { workspace, navigation } }, [workspace, navigation])
-  useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
-  const navigate = useCallback((next: Workspace<S>, replace = false) => {
-    if (!mounted.current) return
-    const navigation = current.current.navigation
-    current.current = { workspace: next, navigation }
-    setWorkspace(next)
-    navigation.setSearch(resourceRouteParams(navigation.search, next), { replace })
-  }, [])
-  const loaded = useCallback((id: string, name: string) => setNames((current) => current[id] === name ? current : { ...current, [id]: name }), [])
-  const dirty = useCallback((id: string, value: boolean) => setDirtyTabs((current) => current[id] === value ? current : { ...current, [id]: value }), [])
-  const open = useCallback((id: string, section?: S) => {
-    const workspace = current.current.workspace
-    if (id === createId || id === catalogId) { navigate({ ...workspace, activeId: id }); return }
-    navigate({ activeId: id, tabs: workspace.tabs.some((tab) => tab.id === id)
-      ? workspace.tabs.map((tab) => tab.id === id && section ? { ...tab, section } : tab)
-      : [...workspace.tabs, { id, section: section ?? defaultSection }] })
-  }, [defaultSection, navigate])
-  const closed = (id: string) => {
-    if (!mounted.current) return
-    if (id === createId) setCreating(false)
-    const workspace = current.current.workspace
-    navigate({ tabs: workspace.tabs.filter((tab) => tab.id !== id), activeId: workspace.activeId === id ? catalogId : workspace.activeId })
-    setClosing(null)
-    requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(`#${workspaceId} [role="tab"][aria-selected="true"]`)?.focus())
-  }
   const workspaceId = `${id}-workspace`
-  const changed = () => { if (mounted.current) { setVersion((version) => version + 1); invalidateResources() } }
+  const changed = () => { if (isMounted()) { setVersion((version) => version + 1); invalidateResources() } }
   const actions: WorkspaceActions<S> = { open, loaded, dirty, closed, changed,
-    created: (resourceId, name) => { if (mounted.current) { setCreating(false); loaded(resourceId, name); changed(); open(resourceId) } } }
-  useEffect(() => { saveWorkspace(storageKey, workspace) }, [storageKey, workspace])
-  useEffect(() => { if (route.resourceId === null) navigation.setSearch(resourceRouteParams(navigation.search, workspace), { replace: true }) }, [navigation, route.resourceId, workspace])
+    created: (resourceId, name) => { if (isMounted()) { setCreating(false); loaded(resourceId, name); changed(); open(resourceId) } } }
   const activeId = route.valid ? workspace.activeId : 'invalid'
   const name = (id: string) => id === createId ? newLabel : names[id] ?? `Resource ${id.slice(0, 8)}`
   return <div id={workspaceId}>
