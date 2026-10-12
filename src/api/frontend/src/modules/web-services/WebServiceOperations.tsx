@@ -1,4 +1,5 @@
 import { fetchSourceBuildJobs, fetchWebServiceReleases, retryWebServiceDeployment } from '../../api'
+import { invalidateWebServiceState } from './invalidate'
 import { useWebServiceQuery } from './useWebServiceQuery'
 import { useApiScope } from '../../data/useApiScope'
 import { useAppServices } from '../../shell/AppContext'
@@ -10,13 +11,14 @@ import { SourceBuildLogViewer } from '../../components/SourceBuildLogViewer'
 
 export function WebServiceOperations({ id, active }: { id: string; active: boolean }) {
   const { api, navigation } = useAppServices()
-  const { credential } = useApiScope(api)
+  const origin = useApiScope(api)
+  const { credential } = origin
   const [logJobId, setLogJobId] = useState<string | null>(null)
   const builds = useWebServiceQuery(['source-builds', 'jobs', id], (signal) => fetchSourceBuildJobs(api.baseUrl, id, credential(), api.tenantId, signal))
   const releases = useWebServiceQuery(['web-services', 'releases', id, 1], (signal) => fetchWebServiceReleases(api.baseUrl, id, credential(), api.tenantId, signal))
   useVisibleRefresh(active, builds.refresh)
   useVisibleRefresh(active, releases.refresh)
-  return <div className="resource-operations"><ResourceOperations filter={{ resourceType: 'pole/web-service', resourceId: id }} active={active} onRetry={(operation, signal) => {
+  return <div className="resource-operations"><ResourceOperations filter={{ resourceType: 'pole/web-service', resourceId: id }} active={active} onAccepted={() => invalidateWebServiceState(origin)} onRetry={(operation, signal) => {
       const placement = operation.deployment.placement
       const desiredOperation = placement.desiredOperation
       if (desiredOperation !== 'Apply' && desiredOperation !== 'Delete') return Promise.reject(new Error('Refresh this operation before retrying.'))

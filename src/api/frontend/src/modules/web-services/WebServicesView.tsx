@@ -1,8 +1,9 @@
+import { useProviderInvalidation } from '../../data/useProviderInvalidation'
 import { useWorkspaceController } from '../../shell/useWorkspaceController'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect } from 'react'
 import { WebServicesPage } from '../../components/WebServicesPage'
 import { useResourceGroupChoices } from '../../hooks/useResourceGroupChoices'
-import { useWebServicesManager } from '../../hooks/useWebServicesManager'
+import { useWebServicesManager } from './useWebServiceManager'
 import { useAppServices } from '../../shell/AppContext'
 import { Button, ConfirmationDialog, EmptyState } from '../../ui/components'
 import { TabPanel, Tabs } from '../../ui/Tabs'
@@ -14,12 +15,12 @@ import { catalogId, createId, serviceSections, type ServiceSection } from './wor
 const workspaceId = 'web-services-workspace'
 
 export function WebServicesView() {
-  const { api, tenant, navigation, invalidateResources } = useAppServices()
+  const { api, tenant, navigation } = useAppServices()
   const { route, workspace, creating, setCreating, closingId, setClosingId, names, dirtyTabs,
     navigateWorkspace, loaded, dirty: onDirtyChange, open: openTab, section: onSection, close, requestClose } =
     useWorkspaceController({ id: 'web-services', sections: serviceSections, defaultSection: 'overview' })
+  const origin = useProviderInvalidation(api)
   const options = { apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId, enabled: Boolean(tenant.active) }
-  const [refreshVersion, setRefreshVersion] = useState(0)
   const groups = useResourceGroupChoices(options)
   const services = useWebServicesManager({ ...options, pageNumber: route.pageNumber, pageSize: route.pageSize, search: route.search })
   const onLoaded = useCallback((service: WebService) => loaded(service.id, service.name), [loaded])
@@ -45,7 +46,7 @@ export function WebServicesView() {
   }, [navigation, route.pageNumber, lastPage, services.status, services.isCurrentPage])
   const open = (id: string, edit = false, section?: ServiceSection) => openTab(id, section ?? (edit ? 'configuration' : undefined))
   const label = (id: string) => id === createId ? 'New service' : names[id] ?? services.items.find((item) => item.id === id)?.name ?? `Service ${id.slice(0, 8)}`
-  const refreshCatalog = () => { void services.refresh(); invalidateResources() }
+  const refreshCatalog = () => { void services.refresh(); }
 
   const activeId = route.valid ? workspace.activeId : 'invalid-link'
   return <div className="web-service-workspace" id={workspaceId}>
@@ -65,10 +66,10 @@ export function WebServicesView() {
         onPage={(pageNumber) => setInventory({ pageNumber })} onPageSize={(pageSize) => setInventory({ pageSize, pageNumber: 1 })}
         onSearch={(search) => setInventory({ search, pageNumber: 1 })}
         deletingId={services.deletingId} deleteError={services.submitError} canManage={tenant.canManage}
-        onRefresh={() => { refreshCatalog(); setRefreshVersion((current) => current + 1) }} onCreate={() => {
+        onRefresh={() => { void origin.invalidate([['web-services']]) }} onCreate={() => {
           setCreating(true)
           navigateWorkspace({ ...workspace, activeId: createId })
-        }} onOpen={open} onDelete={async (id) => { await services.remove(id); close(id); invalidateResources() }} />
+        }} onOpen={open} onDelete={async (id) => { await services.remove(id); if (origin.isCurrent()) close(id); }} />
     </TabPanel>
     {creating && <TabPanel id={workspaceId} tabId={createId} activeId={activeId}>
       {tenant.canManage ? <NewWebServiceView groups={groups.items} groupsStatus={groups.status} groupsError={groups.error} onRefreshGroups={groups.refresh}
@@ -78,7 +79,7 @@ export function WebServicesView() {
       }} /> : <EmptyState title="Tenant viewer access is read-only." />}
     </TabPanel>}
     {workspace.tabs.map((tab) => <TabPanel key={tab.id} id={workspaceId} tabId={tab.id} activeId={activeId}>
-      <WebServiceResourceView id={tab.id} section={tab.section} active={activeId === tab.id} refreshVersion={refreshVersion}
+      <WebServiceResourceView id={tab.id} section={tab.section} active={activeId === tab.id}
         groups={groups.items} onSection={onSection} onLoaded={onLoaded} onDirtyChange={onDirtyChange} onChanged={refreshCatalog} />
     </TabPanel>)}
     {closingId && <ConfirmationDialog title={`Discard changes to ${label(closingId)}?`} confirmLabel="Discard and close"

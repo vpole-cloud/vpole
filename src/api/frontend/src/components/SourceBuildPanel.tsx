@@ -5,7 +5,7 @@ import { GitSourcePicker } from '../modules/web-services/GitSourcePicker'
 import { useAppServices } from '../shell/AppContext'
 import { BuildRecipeForm } from './BuildRecipeForm'
 import { SourceBuildLogViewer } from './SourceBuildLogViewer'
-import type { SourceBuildsManager } from '../hooks/useSourceBuildsManager'
+import type { SourceBuildsManager } from '../modules/web-services/useSourceBuilds'
 import type { SourceBuildJob, SourceRepository, WebService } from '../types'
 
 interface SourceBuildPanelProps {

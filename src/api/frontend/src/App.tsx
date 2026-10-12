@@ -5,7 +5,7 @@ import { SessionQueries } from './data/SessionQueries'
 import { useKeycloak } from '@react-keycloak/web'
 import { AppShell } from './shell/AppShell'
 import { useTenants } from './hooks/useTenants'
-import { readIntegrationNavigation } from './integrationsState'
+import { readIntegrationNavigation } from './modules/platform/integrationsState'
 import { appRegistry } from './modules'
 
 type RoleClaims = {

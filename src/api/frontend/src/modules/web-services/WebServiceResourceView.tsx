@@ -9,8 +9,8 @@ import { Button, ConfirmationDialog, EmptyState, Notice, StatusBadge } from '../
 import { TabPanel, Tabs } from '../../ui/Tabs'
 import { ResourceEndpoints } from '../../ui/ResourceEndpoints'
 import { useUnsavedChanges } from '../../shell/useUnsavedChanges'
-import { useSourceBuildsManager } from '../../hooks/useSourceBuildsManager'
-import { useWebServicesManager } from '../../hooks/useWebServicesManager'
+import { useSourceBuildsManager } from './useSourceBuilds'
+import { useWebServicesManager } from './useWebServiceManager'
 import type { ResourceGroup, WebService } from '../../types'
 import { useWebService } from './useWebService'
 import { serviceSections, type ServiceSection } from './workspaceState'
@@ -24,13 +24,13 @@ const sectionLabels: Record<ServiceSection, string> = {
   overview: 'Overview', configuration: 'Configuration', dependencies: 'Dependencies', deployments: 'Deployments', domains: 'Domains', builds: 'Builds', releases: 'Releases', operations: 'Operations',
 }
 
-export function WebServiceResourceView({ id, section, active, refreshVersion, groups, onSection, onLoaded, onDirtyChange, onChanged }:
-  { id: string; section: ServiceSection; active: boolean; refreshVersion: number; groups: ResourceGroup[];
+export function WebServiceResourceView({ id, section, active, groups, onSection, onLoaded, onDirtyChange, onChanged }:
+  { id: string; section: ServiceSection; active: boolean; groups: ResourceGroup[];
     onSection: (id: string, section: ServiceSection) => void; onLoaded: (service: WebService) => void;
     onDirtyChange: (id: string, dirty: boolean) => void; onChanged: () => void }) {
   const { api, tenant, notifications } = useAppServices()
   const { isCurrent } = useApiScope(api)
-  const details = useWebService(id, api, refreshVersion)
+  const details = useWebService(id, api)
   const manager = useWebServicesManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId,
     enabled: false, refreshAfterMutation: false })
   const builds = useSourceBuildsManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId,
@@ -111,7 +111,7 @@ export function WebServiceResourceView({ id, section, active, refreshVersion, gr
         </div>)}</div>
         <p className="field__hint">Deployment status reports reconciliation. Inspect targets, generations and hostnames in Deployments.</p>
       </section>
-      <ResourceHealth placements={service.deployments} active={active && section === 'overview'} refreshVersion={refreshVersion} />
+      <ResourceHealth placements={service.deployments} active={active && section === 'overview'} />
       {active && section === 'overview' && <ResourceEndpoints resourceType="pole/web-service" resourceId={id} />}
     </TabPanel>
     <TabPanel id={panelId} tabId="operations" activeId={section}>{active && section === "operations" && <WebServiceOperations id={id} active />}</TabPanel>

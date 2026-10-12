@@ -1,6 +1,7 @@
+import { eligibilityKeys } from '../../data/queryKeys'
 import { useEffect, useState } from 'react'
 import { createSecret, fetchIsolationScopes } from '../../api'
-import { fetchResourceGroups } from '../../api'
+import { useResourceGroupChoices } from '../../hooks/useResourceGroupChoices'
 import { useSecretQuery, useSecretScope } from './queries'
 import { useScopedMutation } from '../../hooks/useScopedMutation'
 import { useAppServices } from '../../shell/AppContext'
@@ -18,11 +19,10 @@ export function NewSecretView({ active, actions }: { active: boolean; actions: W
 function SecretCreateForm({ actions }: { actions: WorkspaceActions<SecretSection> }) {
   const { api } = useAppServices()
   const origin = useSecretScope()
-  const groupsQuery = useSecretQuery(['resource-groups', 'inventory', 1, 6, ''], (token, signal) => fetchResourceGroups(api.baseUrl, token, api.tenantId, signal))
-  const groups = { ...groupsQuery, items: groupsQuery.resource?.items ?? [] }
+  const groups = useResourceGroupChoices({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId, enabled: Boolean(api.tenantId) })
   const [name, setName] = useState(''); const [purpose, setPurpose] = useState(''); const [groupId, setGroupId] = useState(''); const [scopeId, setScopeId] = useState('')
   const group = groupId || groups.items[0]?.id || ''
-  const scopeQuery = useSecretQuery(['resource-groups', 'scopes', group], (token, signal) => fetchIsolationScopes(api.baseUrl, group, token, api.tenantId, signal), 0, Boolean(group))
+  const scopeQuery = useSecretQuery(eligibilityKeys.scopes(group), (token, signal) => fetchIsolationScopes(api.baseUrl, group, token, api.tenantId, signal), { enabled: Boolean(group) })
   const scopes = { ...scopeQuery, items: scopeQuery.resource ?? [] }
   const isolation = scopeId || scopes.items.find((item) => item.isDefault)?.id || ''
   const values = useWriteOnlyValues()
@@ -42,7 +42,7 @@ function SecretCreateForm({ actions }: { actions: WorkspaceActions<SecretSection
       void mutation.run((signal) => createSecret(api.baseUrl, { name: name.trim(), purpose: purpose.trim(), resourceGroupId: group, isolationScopeId: isolation,
         values: Object.fromEntries(values.rows.map((row) => [row.key, row.value])) }, origin.credential(), api.tenantId, signal), async (created) => {
         values.clear(); setSubmitted(true);
-        await origin.session.client.invalidateQueries({ queryKey: origin.key(['secrets']), refetchType: 'active' })
+        await origin.invalidate([['secrets'], ['resource-groups'], ['overview'], ['search']])
         if (!origin.isCurrent()) return
         actions.created(created.id, created.name)
       }).catch(() => {})

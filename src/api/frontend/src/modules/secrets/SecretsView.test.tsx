@@ -164,3 +164,19 @@ it('does not resume a completed rotation after leaving its permission scope', as
   expect(container.querySelector('input[type=password]')).toBeNull()
   expect(text()).not.toContain('Secret rotation accepted')
 })
+
+it('offers groups from later choice pages and submits their selected isolation scope', async () => {
+  const baseline = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation((input, init) => {
+    const url = new URL(String(input), 'http://localhost')
+    if (url.pathname.endsWith('/resource-groups')) return json({ items: [{ id: url.searchParams.get('pageNumber') === '2' ? 'group2' : 'group', name: url.searchParams.get('pageNumber') === '2' ? 'Secondary' : 'Applications', tags: [], resourceCount: 0 }], totalCount: 2, pageNumber: Number(url.searchParams.get('pageNumber') ?? 1), pageSize: 1 })
+    if (url.pathname.endsWith('/resource-groups/group2/isolation-scopes')) return json([{ id: 'scope2', resourceGroupId: 'group2', name: 'Secondary default', isDefault: true, lifecycle: 'active' }])
+    return baseline(input, init)
+  })
+  await render(); await click('New Secret')
+  expect(field('Resource group').textContent).toContain('Secondary')
+  await fill('Resource group', 'group2'); await fill('Name', 'secondary-key'); await fill('Key 1', 'password'); await fill('Value 1', 'private-canary')
+  await submit()
+  const write = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')!
+  expect(JSON.parse(String(write[1]?.body))).toMatchObject({ resourceGroupId: 'group2', isolationScopeId: 'scope2' })
+})

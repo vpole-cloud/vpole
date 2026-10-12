@@ -1,3 +1,4 @@
+import { eligibilityKeys } from './queryKeys'
 import { fetchAvailableComputeProfiles, fetchAvailableDeploymentTargets, fetchAvailableStorageProfiles, fetchIsolationScopes } from '../api'
 import { useApiScope } from './useApiScope'
 import { useScopedQuery } from './useScopedQuery'
@@ -10,16 +11,16 @@ export function useResourceChoices(api: { baseUrl: string; tenantId?: string; to
   const scope = [api.baseUrl, api.tenantId]
   const groups = useResourceGroupChoices({ apiBaseUrl: api.baseUrl, tenantId: api.tenantId, token: api.token, enabled: Boolean(api.tenantId) })
   const group = selection.groupId || groups.items[0]?.id || ''
-  const scopesQuery = useScopedQuery({ scope, key: ['eligibility', 'isolation-scopes', group], enabled: Boolean(group),
+  const scopesQuery = useScopedQuery({ scope, key: eligibilityKeys.scopes(group), enabled: Boolean(group),
     load: (signal) => fetchIsolationScopes(api.baseUrl, group, origin.credential(), api.tenantId, signal) })
   const scopes = { ...scopesQuery, items: (scopesQuery.resource ?? []).filter((item) => item.resourceGroupId === group && item.lifecycle === 'active'), retry: () => { void scopesQuery.refresh() } }
   const isolation = selection.isolationScopeId || scopes.items.find((item) => item.isDefault)?.id || ''
-  const targets = useScopedQuery({ scope, key: ['eligibility', 'deployment-targets', resourceType, isolation, false], enabled: Boolean(group && isolation),
+  const targets = useScopedQuery({ scope, key: eligibilityKeys.targets(resourceType, isolation, false), enabled: Boolean(group && isolation),
     load: (signal) => fetchAvailableDeploymentTargets(api.baseUrl, isolation, origin.credential(), api.tenantId, signal, false, resourceType) })
   const target = selection.deploymentTargetId || (targets.resource?.length === 1 ? targets.resource[0].id : '')
-  const compute = useScopedQuery({ scope, key: ['eligibility', 'compute-profiles', resourceType, target], enabled: Boolean(target),
+  const compute = useScopedQuery({ scope, key: eligibilityKeys.compute(resourceType, target), enabled: Boolean(target),
     load: (signal) => fetchAvailableComputeProfiles(api.baseUrl, target, origin.credential(), api.tenantId, signal, resourceType) })
-  const storage = useScopedQuery({ scope, key: ['eligibility', 'storage-profiles', resourceType, target], enabled: Boolean(target),
+  const storage = useScopedQuery({ scope, key: eligibilityKeys.storage(resourceType, target), enabled: Boolean(target),
     load: (signal) => fetchAvailableStorageProfiles(api.baseUrl, resourceType, target, origin.credential(), api.tenantId, signal) })
   const computeProfile = selection.computeProfileId || compute.resource?.find((item) => item.isDefault)?.id || (compute.resource?.length === 1 ? compute.resource[0].id : '')
   const profiles = storage.resource?.filter((item) => !item.targetMappings || item.targetMappings.some((mapping) => mapping.deploymentTargetId === target)) ?? []

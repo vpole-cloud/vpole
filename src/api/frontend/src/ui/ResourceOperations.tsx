@@ -10,15 +10,16 @@ import { ResourceHealthTarget } from './ResourceHealth'
 import { ResourceRuntimeDiagnostics } from './ResourceRuntimeDiagnostics'
 import { useVisibleRefresh } from '../hooks/useVisibleRefresh'
 
-export function ResourceOperations({ filter = {}, active = true, onRetry }: { filter?: ResourceOperationsFilter; active?: boolean; onRetry?: (operation: ResourceDeploymentOperation, signal: AbortSignal) => Promise<unknown> }) {
+export function ResourceOperations({ filter = {}, active = true, onRetry, onAccepted }: { filter?: ResourceOperationsFilter; active?: boolean; onRetry?: (operation: ResourceDeploymentOperation, signal: AbortSignal) => Promise<unknown>; onAccepted?: () => Promise<unknown> }) {
   const { api, tenant, navigation } = useAppServices()
   const { identity } = useApiScope(api)
   const scope = `${identity}:${filter.resourceGroupId}:${filter.resourceType}:${filter.resourceId}`
-  return <ResourceOperationsContent key={scope} filter={filter} active={active} scope={scope} canManage={tenant.canManage} resourceHref={navigation.resourceHref} onRetry={onRetry} />
+  return <ResourceOperationsContent key={scope} filter={filter} active={active} scope={scope} canManage={tenant.canManage} resourceHref={navigation.resourceHref} onRetry={onRetry} onAccepted={onAccepted} />
 }
 
-function ResourceOperationsContent({ filter, active, scope, canManage, resourceHref, onRetry }: {
+function ResourceOperationsContent({ filter, active, scope, canManage, resourceHref, onRetry, onAccepted }: {
   filter: ResourceOperationsFilter; active: boolean; scope: string; canManage: boolean;
+  onAccepted?: () => Promise<unknown>;
   onRetry?: (operation: ResourceDeploymentOperation, signal: AbortSignal) => Promise<unknown>;
   resourceHref: (identity: { resourceTypeId: string; resourceId: string; section?: string }) => string | null
 }) {
@@ -53,7 +54,7 @@ function ResourceOperationsContent({ filter, active, scope, canManage, resourceH
           {canManage && onRetry && operation.retryable && operation.phase === 'Failed' && <Button disabled={operations.status !== 'success' || mutation.busy} onClick={() => setSelected(operation)}>Retry this {placement.desiredOperation?.toLowerCase() ?? 'operation'}</Button>}</div></header>
         {placement.failureCode && <Notice tone="error">Apply outcome: {placement.failureCode}. Other targets are shown independently.</Notice>}
         {operation.retryNotBeforeUtc && <p className="field__hint">Automatic retry due after {new Date(operation.retryNotBeforeUtc).toLocaleString()}. A manual retry requests this exact failed operation.</p>}
-        <ResourceHealthTarget placement={placement} active={active} refreshVersion={Date.parse(value.checkedAtUtc)} targetName={operation.targetDisplayName ?? undefined} />
+        <ResourceHealthTarget placement={placement} active={active} targetName={operation.targetDisplayName ?? undefined} />
         <ResourceRuntimeDiagnostics operation={operation} active={active} />
       </article>
     })}
@@ -66,7 +67,7 @@ function ResourceOperationsContent({ filter, active, scope, canManage, resourceH
         guard = () => { if (signal.aborted || !apiScope.isCurrent()) throw new DOMException('Aborted', 'AbortError') }
         guard(); const value = await onRetry(selected, signal); guard(); return { value }
       }, async () => {
-        setSelected(null); await operations.refreshAfterWrite(); guard()
+        setSelected(null); await onAccepted?.(); guard(); await operations.refreshAfterWrite(); guard()
         await Promise.all(['operations', 'health', 'runtime-discovery', 'endpoints'].map(async (prefix) => {
           const queryKey = apiScope.key([prefix])
           await apiScope.session.client.cancelQueries({ queryKey }); guard()

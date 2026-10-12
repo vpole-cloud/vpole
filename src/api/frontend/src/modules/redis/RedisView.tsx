@@ -16,12 +16,12 @@ export function RedisView() {
     Catalog={RedisCatalog} Create={NewRedisView} Resource={RedisResourceView} />
 }
 
-function RedisCatalog({ actions, version }: { actions: WorkspaceActions<RedisSection>; version: number }) {
+function RedisCatalog({ actions }: { actions: WorkspaceActions<RedisSection> }) {
   const { api, tenant, navigation } = useAppServices()
   const origin = useApiScope(api)
   const route = readResourceRoute(navigation.search, redisSections, 'overview')
   const search = route.search
-  const query = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['redis', 'inventory', route.pageNumber, route.pageSize, search], enabled: Boolean(tenant.active), keepPrevious: true, refreshVersion: version,
+  const query = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['redis', 'inventory', route.pageNumber, route.pageSize, search], enabled: Boolean(tenant.active), keepPrevious: true,
     load: (signal) => fetchRedisServices(api.baseUrl, origin.credential(), api.tenantId, signal, route.pageNumber, route.pageSize, search) })
   const inventory = { ...query, page: query.resource, items: query.resource?.items ?? [], isCurrentPage: query.isCurrent }
   const lastPage = Math.max(1, Math.ceil((inventory.page?.totalCount ?? 0) / route.pageSize))

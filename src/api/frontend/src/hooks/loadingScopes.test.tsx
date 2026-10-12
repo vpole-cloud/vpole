@@ -5,8 +5,10 @@ import { createTestApp } from '../test/TestApp'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as api from '../api'
 import { useTenants } from './useTenants'
-import { useDomainZonesManager } from './useDomainZonesManager'
-import { useStorageSettingsManager } from './useStorageSettingsManager'
+import { useApiScope } from '../data/useApiScope'
+import { useScopedQuery } from '../data/useScopedQuery'
+import { useScopedMutation } from './useScopedMutation'
+import { useStorageSettingsManager } from '../modules/platform/useStorageSettingsManager'
 import type { StorageProfileInput } from '../types'
 
 vi.mock('../api', () => ({
@@ -23,6 +25,20 @@ vi.mock('../api', () => ({
   fetchKubernetesPersistentVolumes: vi.fn(),
   fetchKubernetesPersistentVolumeClaims: vi.fn(),
 }))
+
+// Exercise the same origin/cancellation primitives used by the domain views.
+function useDomainProbe(tenantId: string) {
+  const origin = useApiScope({ baseUrl: '/api', token: 'token', tenantId })
+  const query = useScopedQuery({ scope: ['/api', tenantId], key: ['domains', 'zones'],
+    load: (signal) => api.fetchDomainZones('/api', origin.credential(), tenantId, signal) })
+  const mutation = useScopedMutation(origin.identity)
+  return { items: query.resource ?? [], status: query.status, submitStatus: mutation.busy ? 'loading' : 'idle',
+    refresh: async () => { await query.refresh() },
+    create: async (input: { deploymentTargetId: string; label: string }) => {
+      await mutation.run((signal) => api.createDomainZone('/api', input, origin.credential(), tenantId, signal), async () => { await query.refreshAfterWrite() })
+    },
+  }
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -108,9 +124,9 @@ describe('loading scope changes', () => {
     const oldRequest = deferred<Awaited<ReturnType<typeof api.fetchDomainZones>>>()
     vi.mocked(api.fetchDomainZones).mockResolvedValue([])
     vi.mocked(api.fetchAvailableDeploymentTargets).mockResolvedValue([])
-    let state!: ReturnType<typeof useDomainZonesManager>
+    let state!: ReturnType<typeof useDomainProbe>
     function Probe({ tenantId }: { tenantId: string }) {
-      const value = useDomainZonesManager({ apiBaseUrl: '/api', token: 'token', tenantId, enabled: true })
+      const value = useDomainProbe(tenantId)
       useLayoutEffect(() => { state = value })
       return null
     }
@@ -135,9 +151,9 @@ it('does not append a completed zone mutation to a different tenant', async () =
   vi.mocked(api.createDomainZone).mockReturnValue(mutation.promise)
   vi.mocked(api.fetchDomainZones).mockResolvedValue([])
   vi.mocked(api.fetchAvailableDeploymentTargets).mockResolvedValue([])
-  let state!: ReturnType<typeof useDomainZonesManager>
+  let state!: ReturnType<typeof useDomainProbe>
   function Probe({ tenantId }: { tenantId: string }) {
-    const value = useDomainZonesManager({ apiBaseUrl: '/api', token: 'token', tenantId, enabled: true })
+    const value = useDomainProbe(tenantId)
     useLayoutEffect(() => { state = value })
     return null
   }

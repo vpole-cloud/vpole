@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { fetchIsolationScopes } from '../../api'
+import { eligibilityKeys } from '../../data/queryKeys'
+import { useScopedQuery } from '../../data/useScopedQuery'
 import { useApiScope } from '../../data/useApiScope'
 import { useWebServiceCreation } from './useWebServiceCreation'
 import { WebServiceForm } from '../../components/WebServiceForm'
 import { useAppServices } from '../../shell/AppContext'
 import { useUnsavedChanges } from '../../shell/useUnsavedChanges'
-import { useWebServicesManager } from '../../hooks/useWebServicesManager'
+import { useWebServicesManager } from './useWebServiceManager'
 import type { LoadStatus, ResourceGroup, SourceRepository } from '../../types'
 import { Button, EmptyState, Notice } from '../../ui/components'
 import { GitSourcePicker } from './GitSourcePicker'
@@ -17,8 +19,11 @@ export function NewWebServiceView({ groups, groupsStatus = 'success', groupsErro
     onCreated: (id: string, open: boolean, section?: ServiceSection) => void; onDirtyChange: (id: string, dirty: boolean) => void }) {
   const { api, notifications, navigation } = useAppServices()
   const { credential } = useApiScope(api)
-  const loadIsolationScopes = useCallback((groupId: string, signal?: AbortSignal) =>
-    fetchIsolationScopes(api.baseUrl, groupId, credential(), api.tenantId, signal), [api.baseUrl, credential, api.tenantId])
+  const [selectedGroup, setSelectedGroup] = useState('')
+  const groupId = selectedGroup || groups[0]?.id || ''
+  const scopesQuery = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: eligibilityKeys.scopes(groupId), enabled: Boolean(groupId),
+    load: (signal) => fetchIsolationScopes(api.baseUrl, groupId, credential(), api.tenantId, signal) })
+  const scopeChoices = { ...scopesQuery, items: (scopesQuery.resource ?? []).filter((scope) => scope.resourceGroupId === groupId && scope.lifecycle === 'active'), retry: () => { void scopesQuery.refresh() } }
   const manager = useWebServicesManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId,
     enabled: false, refreshAfterMutation: false })
   const [dirty, setDirty] = useState(false)
@@ -56,7 +61,7 @@ export function NewWebServiceView({ groups, groupsStatus = 'success', groupsErro
     <div hidden={creation.locked}>{groups.length === 0 && groupsStatus !== 'success' ? <EmptyState title={groupsStatus === 'error' ? 'Unable to load resource groups.' : 'Loading resource groups…'} error={groupsStatus === 'error'} /> : groups.length === 0 ? <EmptyState title="Create a resource group first.">
       <p>A group provides the isolation and placement defaults for this service.</p><Button onClick={() => navigation.openResource({ resourceTypeId: 'pole/resource-group', resourceId: 'create' })}>Create resource group</Button>
     </EmptyState> : <WebServiceForm mode="create" resourceGroups={groups}
-    onLoadIsolationScopes={loadIsolationScopes}
+    scopeChoices={scopeChoices} onGroupChange={setSelectedGroup}
     availableTargets={manager.availableTargets} targetsStatus={manager.targetsStatus} targetsError={manager.targetsError}
     computeProfilesByTarget={manager.computeProfilesByTarget} computeProfilesStatusByTarget={manager.computeProfilesStatusByTarget} onLoadTargets={manager.loadAvailableTargets}
     onLoadComputeProfiles={manager.loadComputeProfiles} submitStatus={creation.busy ? 'loading' : creation.error ? 'error' : 'idle'} submitError={deliveryError}

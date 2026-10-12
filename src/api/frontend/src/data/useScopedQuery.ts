@@ -8,11 +8,10 @@ interface Options<T> {
   key: readonly unknown[]
   load: (signal: AbortSignal) => Promise<T>
   enabled?: boolean
-  refreshVersion?: number
   interval?: number | false
   keepPrevious?: boolean
 }
-export function useScopedQuery<T>({ scope, key, load, enabled = true, refreshVersion = 0, interval = false, keepPrevious = false }: Options<T>) {
+export function useScopedQuery<T>({ scope, key, load, enabled = true, interval = false, keepPrevious = false }: Options<T>) {
   const session = useQuerySession()
   const queryKey = scopedQueryKey(session, scope, key)
   const identity = JSON.stringify(queryKey)
@@ -54,12 +53,6 @@ export function useScopedQuery<T>({ scope, key, load, enabled = true, refreshVer
     // Disabling one observer must not cancel a read used by another active consumer.
     if (cached && !cached.isActive()) void session.client.cancelQueries({ queryKey, exact: true })
   }, [enabled, identity, session])
-  const previousVersion = useRef(refreshVersion)
-  useEffect(() => {
-    if (previousVersion.current === refreshVersion) return
-    previousVersion.current = refreshVersion
-    void refresh()
-  }, [refreshVersion, refresh])
   const status: LoadStatus = !enabled ? 'idle' : query.isFetching || query.isPending ? 'loading' : query.isError ? 'error' : 'success'
   return { resource: enabled ? query.data?.value ?? null : null, status,
     error: query.error instanceof Error ? query.error.message : '', refresh, refreshAfterWrite,

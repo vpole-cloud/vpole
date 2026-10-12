@@ -2,11 +2,12 @@ import { deploymentConfiguration, fieldsFor, parseEnvironmentVariables, type Sel
 import { useEffect, useId, useState } from 'react'
 import { validationMessage } from '../api'
 import { Button, Notice } from '../ui/components'
-import { useIsolationScopes, type LoadIsolationScopes } from '../hooks/useIsolationScopes'
 import type {
   AvailableComputeProfile,
   AvailableDeploymentTarget,
   ResourceGroup,
+  IsolationScope,
+  LoadStatus,
   WebService,
   WebServiceDeploymentInput,
   WebServiceInput,
@@ -25,7 +26,8 @@ interface WebServiceFormProps {
   submitError?: string
   onLoadTargets: (isolationScopeId?: string, requiresPublicIngress?: boolean, signal?: AbortSignal) => Promise<AvailableDeploymentTarget[]>
   onLoadComputeProfiles: (deploymentTargetId: string) => Promise<AvailableComputeProfile[]>
-  onLoadIsolationScopes?: LoadIsolationScopes
+  scopeChoices?: { items: IsolationScope[]; status: LoadStatus; error: string; retry: () => void }
+  onGroupChange?: (groupId: string) => void
   onSubmit: (input: WebServiceInput) => Promise<void>
   onCancelEdit?: () => void
   onDirtyChange?: (dirty: boolean) => void
@@ -47,7 +49,8 @@ export function WebServiceForm({
   submitError,
   onLoadTargets,
   onLoadComputeProfiles,
-  onLoadIsolationScopes,
+  scopeChoices,
+  onGroupChange,
   onSubmit,
   onCancelEdit,
   onDirtyChange,
@@ -60,7 +63,7 @@ export function WebServiceForm({
     initialValue?.resourceGroupId ?? resourceGroups[0]?.id ?? '',
   )
   const [isolationScopeId, setIsolationScopeId] = useState(initialValue?.isolationScopeId ?? '')
-  const scopes = useIsolationScopes(resourceGroupId, mode === 'create' ? onLoadIsolationScopes : undefined)
+  const scopes = scopeChoices ?? { items: [], status: 'idle', error: '', retry: () => {} }
   const resolvedScopeId = isolationScopeId || scopes.items.find((scope) => scope.isDefault)?.id
   const unavailableScope = Boolean(isolationScopeId && !scopes.items.some((scope) => scope.id === isolationScopeId))
   const [exposure, setExposure] = useState<'Private' | 'Public'>(initialValue?.exposure.mode ?? 'Private')
@@ -260,6 +263,7 @@ export function WebServiceForm({
           <span className="field__label">Resource group</span>
           <select className="field__control" disabled={mode === 'edit'} value={resourceGroupId} onChange={(event) => {
             setResourceGroupId(event.target.value)
+            onGroupChange?.(event.target.value)
             setIsolationScopeId('')
             setTargets(undefined)
           }}>
@@ -273,7 +277,7 @@ export function WebServiceForm({
           <div className="field">
             <label className="field__label" htmlFor="new-web-service-isolation-scope">Isolation scope</label>
             <select id="new-web-service-isolation-scope" className="field__control" value={isolationScopeId}
-              disabled={!resourceGroupId || scopes.status === 'loading' || !onLoadIsolationScopes} onChange={(event) => {
+              disabled={!resourceGroupId || scopes.status === 'loading' || !scopeChoices} onChange={(event) => {
               setIsolationScopeId(event.target.value)
               setTargets(undefined)
             }}>

@@ -2,7 +2,7 @@ import { ResourceOperations } from '../../ui/ResourceOperations'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchResourceGroup } from '../../api'
 import { ResourceGroupForm } from '../../components/ResourceGroupForm'
-import { useResourceGroupsManager } from '../../hooks/useResourceGroupsManager'
+import { useResourceGroupsManager } from './useResourceGroups'
 import { useScopedQuery } from '../../data/useScopedQuery'
 import { useApiScope } from '../../data/useApiScope'
 import { useAppServices } from '../../shell/AppContext'
@@ -13,14 +13,14 @@ import type { ResourceGroup } from '../../types'
 import { GroupResources } from './GroupResources'
 import type { GroupSection } from './workspaceState'
 
-export function GroupResourceView({ id, section, active, pageNumber, pageSize, refreshVersion, onSection, onPage, onLoaded, onDirtyChange, onChanged }:
-  { id: string; section: GroupSection; active: boolean; pageNumber: number; pageSize: number; refreshVersion: number;
+export function GroupResourceView({ id, section, active, pageNumber, pageSize, onSection, onPage, onLoaded, onDirtyChange, onChanged }:
+  { id: string; section: GroupSection; active: boolean; pageNumber: number; pageSize: number;
     onSection: (id: string, section: GroupSection) => void; onPage: (id: string, page: number, size: number, replace?: boolean) => void;
     onLoaded: (group: ResourceGroup) => void; onDirtyChange: (id: string, dirty: boolean) => void; onChanged: () => void }) {
   const { api, tenant, notifications } = useAppServices()
   const origin = useApiScope(api)
   const details = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['resource-groups', 'detail', id],
-    load: (signal) => fetchResourceGroup(api.baseUrl, id, origin.credential(), api.tenantId, signal), refreshVersion })
+    load: (signal) => fetchResourceGroup(api.baseUrl, id, origin.credential(), api.tenantId, signal) })
   const manager = useResourceGroupsManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId, enabled: true, loadInventory: false })
   const [dirty, setDirty] = useState(false)
   const [visitedConfiguration, setVisitedConfiguration] = useState(section === 'configuration')
@@ -45,7 +45,7 @@ export function GroupResourceView({ id, section, active, pageNumber, pageSize, r
     <TabPanel id={panelId} tabId="resources" activeId={section}>
       <section className="panel"><div className="panel__header"><h2 className="panel__title">Group resources</h2><span className="panel__meta">{group.resourceCount} resource{group.resourceCount === 1 ? '' : 's'}</span></div>
         <p className="field__hint">{group.tags.length ? group.tags.join(', ') : 'No tags'}</p>
-        {active && section === 'resources' && <GroupResources groupId={id} pageNumber={pageNumber} pageSize={pageSize} onPage={changePage} onPageSize={changePageSize} refreshVersion={refreshVersion} />}
+        {active && section === 'resources' && <GroupResources groupId={id} pageNumber={pageNumber} pageSize={pageSize} onPage={changePage} onPageSize={changePageSize} />}
       </section>
     </TabPanel>
     <TabPanel id={panelId} tabId="operations" activeId={section}>{active && section === "operations" && <ResourceOperations filter={{ resourceGroupId: id }} />}</TabPanel>

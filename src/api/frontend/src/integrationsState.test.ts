@@ -4,7 +4,7 @@ import {
   initialIntegrationSelection,
   integrationSelectionReducer,
   readIntegrationNavigation,
-} from './integrationsState'
+} from './modules/platform/integrationsState'
 import type { RepositoryAnalysis, SourceBuildPlan } from './types'
 
 const plan = (candidateKey: string): SourceBuildPlan => ({

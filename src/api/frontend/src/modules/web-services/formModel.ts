@@ -37,4 +37,3 @@ export const fieldsFor = (service: WebService) => ({
   portName: service.spec.config.portMappings[0]?.name ?? 'http',
   environmentText: Object.entries(service.spec.config.environmentVariables).map(([key, value]) => `${key}=${value}`).join('\n'),
 })
-

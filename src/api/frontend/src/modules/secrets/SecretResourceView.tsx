@@ -1,3 +1,4 @@
+import { eligibilityKeys } from '../../data/queryKeys'
 import { useEffect, useState } from 'react'
 import { deleteSecret, fetchIsolationScopes, fetchResourceGroup, fetchSecret, rotateSecret, SecretApiError } from '../../api'
 import { useSecretQuery, useSecretScope } from './queries'
@@ -13,14 +14,14 @@ import { SecretValues } from './SecretValues'
 import { useClearOnLeave, useWriteOnlyValues, validateValues } from './useWriteOnlyValues'
 import type { SecretSection } from './workspaceState'
 
-export function SecretResourceView({ id, section, active, version, onSection, actions }: { id: string; section: SecretSection; active: boolean; version: number; onSection: (section: SecretSection) => void; actions: WorkspaceActions<SecretSection> }) {
+export function SecretResourceView({ id, section, active, onSection, actions }: { id: string; section: SecretSection; active: boolean; onSection: (section: SecretSection) => void; actions: WorkspaceActions<SecretSection> }) {
   const { api, tenant, navigation, resourceTypes } = useAppServices()
   const origin = useSecretScope()
   const scope = `${origin.writeIdentity}:${id}`
-  const details = useSecretQuery(['secrets', 'detail', id], (token, signal) => fetchSecret(api.baseUrl, id, token, api.tenantId, signal), version, true, active && section === 'projections' ? 5000 : false)
+  const details = useSecretQuery(['secrets', 'detail', id], (token, signal) => fetchSecret(api.baseUrl, id, token, api.tenantId, signal), { enabled: true, interval: active && section === 'projections' ? 5000 : false })
   const secret = details.resource
-  const group = useSecretQuery(['resource-groups', 'detail', secret?.resourceGroupId], (token, signal) => secret ? fetchResourceGroup(api.baseUrl, secret.resourceGroupId, token, api.tenantId, signal) : Promise.resolve(null), 0, Boolean(secret))
-  const scopes = useSecretQuery(['resource-groups', 'scopes', secret?.resourceGroupId], (token, signal) => secret ? fetchIsolationScopes(api.baseUrl, secret.resourceGroupId, token, api.tenantId, signal) : Promise.resolve([]), 0, Boolean(secret))
+  const group = useSecretQuery(['resource-groups', 'detail', secret?.resourceGroupId], (token, signal) => secret ? fetchResourceGroup(api.baseUrl, secret.resourceGroupId, token, api.tenantId, signal) : Promise.resolve(null), { enabled: Boolean(secret) })
+  const scopes = useSecretQuery(eligibilityKeys.scopes(secret?.resourceGroupId), (token, signal) => secret ? fetchIsolationScopes(api.baseUrl, secret.resourceGroupId, token, api.tenantId, signal) : Promise.resolve([]), { enabled: Boolean(secret) })
   const mutation = useScopedMutation(scope)
   const [deleting, setDeleting] = useState(false)
   const onLoaded = actions.loaded
@@ -28,12 +29,7 @@ export function SecretResourceView({ id, section, active, version, onSection, ac
   if (!secret) return <EmptyState title={details.status === 'error' ? 'Unable to open this Secret.' : 'Loading Secret…'} error={details.status === 'error'}>{details.error && <p>{details.error}</p>}<Button onClick={() => void details.refresh()}>Retry Secret</Button></EmptyState>
   const canWrite = tenant.canManage && secret.lifecycle === 'Active'
   const panel = `secret-${id}`
-  const changed = async () => {
-    await details.refreshAfterWrite()
-    if (!origin.isCurrent()) return
-    await origin.session.client.invalidateQueries({ queryKey: origin.key(['secrets']), refetchType: 'active' })
-    if (origin.isCurrent()) actions.changed()
-  }
+  const changed = async () => { await origin.invalidate([['secrets']]) }
   return <div><header className="ui-page-header"><div><p className="ui-page-eyebrow">Secret · {group.resource?.name ?? 'Resource group'}</p><h1>{secret.name}</h1><p>{secret.purpose || 'Encrypted, write-only values'}</p></div><div className="row-actions"><Button onClick={() => void details.refresh()}>Refresh metadata</Button>{canWrite && !secret.managedBy && <Button variant="danger" onClick={() => setDeleting(true)}>Delete Secret</Button>}</div></header>
     {details.error && <Notice tone="error">{details.error} Last fetched metadata is shown.</Notice>}
     <Tabs id={panel} label={`${secret.name} sections`} variant="section" activeId={section} onSelect={(value) => onSection(value as SecretSection)} tabs={[{ id: 'overview', label: 'Overview' }, { id: 'rotate', label: 'Rotate values' }, { id: 'bindings', label: 'Bindings' }, { id: 'projections', label: 'Projections' }]} />
@@ -50,9 +46,9 @@ export function SecretResourceView({ id, section, active, version, onSection, ac
     {mutation.error instanceof Error && <Notice tone="error">{mutation.error.message}</Notice>}
     {deleting && canWrite && !secret.managedBy && <ConfirmationDialog title={`Delete ${secret.name}?`} confirmLabel="Delete Secret" busy={mutation.busy} onCancel={() => setDeleting(false)} onConfirm={() => {
       void mutation.run((signal) => deleteSecret(api.baseUrl, id, origin.credential(), api.tenantId, signal), async () => {
-        await origin.session.client.invalidateQueries({ queryKey: origin.key(['secrets']), refetchType: 'active' })
+        await origin.invalidate([['secrets'], ['resource-groups'], ['overview'], ['search']])
         if (!origin.isCurrent()) return
-        setDeleting(false); actions.changed(); actions.closed(id)
+        setDeleting(false); actions.closed(id)
       }).catch(() => {})
     }}>Delete this encrypted Secret permanently. Every binding must be detached first.</ConfirmationDialog>}
   </div>

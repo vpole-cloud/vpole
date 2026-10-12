@@ -43,7 +43,6 @@ function AppShellContent({ registry, auth, api, tenants, initialViewId }: AppShe
   const { viewId } = location
   const requestedTenantId = new URLSearchParams(location.search).get('tenant')
   const [theme, setTheme] = useState(initialTheme)
-  const [resourceVersion, setResourceVersion] = useState(0)
   const [searchOpen, setSearchOpen] = useState(false)
   const [notification, setNotification] = useState<{ message: string; tone: 'info' | 'error'; scopeKey: string } | null>(null)
   const activeTenant = auth.authenticated ? requestedTenantId !== null
@@ -204,8 +203,6 @@ function AppShellContent({ registry, auth, api, tenants, initialViewId }: AppShe
     theme: { value: theme, set: setTheme },
     notifications: { publish },
     resourceTypes: registry.resourceTypes,
-    resourceVersion,
-    invalidateResources: () => { if (currentScope.current === scopeKey) setResourceVersion((version) => version + 1) },
   }
   const permitted = activeView && (activeView.access === 'public' ||
     (auth.authenticated && (activeView.access === 'authenticated' || activeTenant !== null)))

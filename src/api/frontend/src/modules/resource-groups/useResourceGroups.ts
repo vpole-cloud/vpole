@@ -7,10 +7,10 @@ import { useScopedQuery } from '../../data/useScopedQuery'
 import type { ResourceGroupInput } from './types'
 
 type Api = { baseUrl: string; token?: string; tenantId?: string }
-export function useResourceGroupInventory(api: Api, pageNumber: number, pageSize: number, search = '', enabled = true, refreshVersion = 0) {
+export function useResourceGroupInventory(api: Api, pageNumber: number, pageSize: number, search = '', enabled = true) {
   const origin = useProviderInvalidation(api)
   const query = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['resource-groups', 'inventory', pageNumber, pageSize, search],
-    keepPrevious: true, enabled: enabled && Boolean(api.tenantId), refreshVersion,
+    keepPrevious: true, enabled: enabled && Boolean(api.tenantId),
     load: (signal) => fetchResourceGroups(api.baseUrl, origin.credential(), api.tenantId, signal, { pageNumber, pageSize, search }) })
   return { ...query, items: query.resource?.items ?? [], page: query.resource, isCurrentPage: query.isCurrent }
 }

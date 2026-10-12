@@ -7,12 +7,12 @@ import { Button, EmptyState } from '../../ui/components'
 import { Pagination } from '../../ui/InventoryControls'
 import { ResourceLink } from '../../ui/ResourceLink'
 
-export function GroupResources({ groupId, pageNumber, pageSize, onPage, onPageSize, compact = false, refreshVersion = 0 }:
-  { groupId: string; pageNumber: number; pageSize: number; onPage: (page: number, replace?: boolean) => void; onPageSize: (size: number) => void; compact?: boolean; refreshVersion?: number }) {
+export function GroupResources({ groupId, pageNumber, pageSize, onPage, onPageSize, compact = false }:
+  { groupId: string; pageNumber: number; pageSize: number; onPage: (page: number, replace?: boolean) => void; onPageSize: (size: number) => void; compact?: boolean }) {
   const { api, resourceTypes, navigation } = useAppServices()
   const origin = useApiScope(api)
   const query = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['resource-groups', 'resources', groupId, pageNumber, pageSize],
-    enabled: Boolean(api.tenantId), keepPrevious: true, refreshVersion,
+    enabled: Boolean(api.tenantId), keepPrevious: true,
     load: (signal) => fetchResourceGroupResources(api.baseUrl, groupId, pageNumber, pageSize, origin.credential(), api.tenantId, signal) })
   const inventory = { ...query, page: query.resource, items: query.resource?.items ?? [], isCurrentPage: query.isCurrent }
   const lastPage = Math.max(1, Math.ceil((inventory.page?.totalCount ?? 0) / pageSize))

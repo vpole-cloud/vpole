@@ -1,9 +1,9 @@
 import { useWorkspaceController } from '../../shell/useWorkspaceController'
-import { useCallback, useEffect, useState } from 'react'
-import { useApiScope } from '../../data/useApiScope'
+import { useCallback, useEffect } from 'react'
+import { useProviderInvalidation } from '../../data/useProviderInvalidation'
 import { ResourceGroupsPage } from '../../components/ResourceGroupsPage'
 import { useResourceGroupInventory } from './useResourceGroups'
-import { useResourceGroupsManager } from '../../hooks/useResourceGroupsManager'
+import { useResourceGroupsManager } from './useResourceGroups'
 import { useAppServices } from '../../shell/AppContext'
 import { catalogId, createId, positiveParam } from '../../shell/workspaceState'
 import { Button, ConfirmationDialog, EmptyState } from '../../ui/components'
@@ -14,7 +14,7 @@ import { groupSections, type GroupWorkspace } from './workspaceState'
 
 const workspaceId = 'resource-groups-workspace'
 export function ResourceGroupsView() {
-  const { api, tenant, navigation, invalidateResources } = useAppServices()
+  const { api, tenant, navigation } = useAppServices()
   const { route, workspace, creating, setCreating, closingId, setClosingId, names, dirtyTabs,
     updateTab, navigateWorkspace, loaded, dirty: onDirtyChange, open: openTab, section: onSection, close } =
     useWorkspaceController({ id: 'resource-groups', sections: groupSections, defaultSection: 'resources', decorateRoute: (workspace: GroupWorkspace, search) => {
@@ -24,8 +24,7 @@ export function ResourceGroupsView() {
         resourcePageSize: positiveParam(params, 'resourcePageSize', 20, 100),
       } : tab) }
     } })
-  const [refreshVersion, setRefreshVersion] = useState(0)
-  const origin = useApiScope(api)
+  const origin = useProviderInvalidation(api)
   const inventory = useResourceGroupInventory(api, route.pageNumber, route.pageSize, route.search, Boolean(tenant.active))
   const manager = useResourceGroupsManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId, enabled: tenant.canManage, loadInventory: false })
   const onLoaded = useCallback((group: ResourceGroup) => loaded(group.id, group.name), [loaded])
@@ -40,7 +39,7 @@ export function ResourceGroupsView() {
   }, [inventory.status, inventory.isCurrentPage, navigation, route.pageNumber, lastPage])
   const open = (id: string, edit = false) => openTab(id, edit ? 'configuration' : undefined)
   const label = (id: string) => id === createId ? 'New group' : names[id] ?? inventory.items.find((group) => group.id === id)?.name ?? `Group ${id.slice(0, 8)}`
-  const refreshCatalog = () => { void inventory.refresh(); invalidateResources() }
+  const refreshCatalog = () => { void inventory.refresh(); }
   const setInventory = (values: { pageNumber?: number; pageSize?: number; search?: string }) => {
     const params = new URLSearchParams(navigation.search)
     params.set('resource', catalogId); params.delete('section'); params.delete('resourcePage'); params.delete('resourcePageSize')
@@ -60,7 +59,7 @@ export function ResourceGroupsView() {
     <TabPanel id={workspaceId} tabId={catalogId} activeId={activeId}>
       <ResourceGroupsPage items={inventory.items} page={inventory.page} status={inventory.status} error={inventory.error} pageNumber={route.pageNumber} pageSize={route.pageSize} search={route.search}
         onPage={(pageNumber) => setInventory({ pageNumber })} onPageSize={(pageSize) => setInventory({ pageSize, pageNumber: 1 })} onSearch={(search) => setInventory({ search, pageNumber: 1 })}
-        canManage={tenant.canManage} deletingId={manager.deletingId} deleteError={manager.submitError} onRefresh={() => { refreshCatalog(); setRefreshVersion((version) => version + 1) }}
+        canManage={tenant.canManage} deletingId={manager.deletingId} deleteError={manager.submitError} onRefresh={() => { void origin.invalidate([['resource-groups']]) }}
         onCreate={() => { setCreating(true); navigateWorkspace({ ...workspace, activeId: createId }) }} onOpen={open}
         resourceHref={(id) => navigation.resourceHref({ resourceTypeId: 'pole/resource-group', resourceId: id, section: workspace.tabs.find((tab) => tab.id === id)?.section ?? 'resources' })}
         onDelete={async (id) => { const removed = await manager.remove(id); if (removed && origin.isCurrent()) { close(id); refreshCatalog() } }} />
@@ -69,7 +68,7 @@ export function ResourceGroupsView() {
       <NewGroupView onDirtyChange={onDirtyChange} onCreated={(group, shouldOpen) => { refreshCatalog(); if (shouldOpen) { setCreating(false); onLoaded(group); open(group.id) } }} />
       : <EmptyState title="Tenant viewer access is read-only." />}</TabPanel>}
     {workspace.tabs.map((tab) => <TabPanel key={tab.id} id={workspaceId} tabId={tab.id} activeId={activeId}>
-      <GroupResourceView id={tab.id} section={tab.section} active={activeId === tab.id} refreshVersion={refreshVersion}
+      <GroupResourceView id={tab.id} section={tab.section} active={activeId === tab.id}
         pageNumber={activeId === tab.id ? positiveParam(params, 'resourcePage', 1, 1_000_000) : tab.resourcePage ?? 1}
         pageSize={activeId === tab.id ? positiveParam(params, 'resourcePageSize', 20, 100) : tab.resourcePageSize ?? 20}
         onSection={onSection} onPage={onResourcePage} onLoaded={onLoaded} onDirtyChange={onDirtyChange} onChanged={refreshCatalog} />

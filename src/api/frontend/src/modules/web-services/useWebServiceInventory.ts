@@ -1,6 +1,6 @@
-import { fetchWebServices } from '../api'
-import { useScopedQuery } from '../data/useScopedQuery'
-import { useQuerySession } from '../data/querySession'
+import { fetchWebServices } from '../../api'
+import { useScopedQuery } from '../../data/useScopedQuery'
+import { useQuerySession } from '../../data/querySession'
 
 export interface WebServiceInventoryOptions {
   apiBaseUrl: string
