@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
-import { act } from 'react'
+import { act, useLayoutEffect } from 'react'
+import { useQuerySession, type QuerySession } from '../../data/querySession'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AppShell } from '../../shell/AppShell'
 import { createAppRegistry } from '../../shell/moduleRegistry'
 import { StorageView } from './PlatformViews'
 
+let session: QuerySession
+function StorageProbe() { const value = useQuerySession(); useLayoutEffect(() => { session = value }); return <StorageView /> }
 let root: Root
 let container: HTMLDivElement
 const profile = { id: 'disk', displayName: 'Data disk', description: '', mediaType: 'SSD', performanceTier: 'Standard', isEnabled: true, isDefault: false,
@@ -32,10 +35,10 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock)
 })
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals() })
-async function render(admin = true) {
+async function render(admin = true, token = 'bearer') {
   const tenant = { id: 'alpha', name: 'Alpha', role: 'Owner' as const, isDefault: true }
-  const registry = createAppRegistry([{ id: 'storage', views: [{ id: 'storage', label: 'Storage', component: StorageView, access: 'authenticated' }] }])
-  await act(async () => root.render(<AppShell registry={registry} initialViewId="storage" api={{ baseUrl: '/api', token: 'bearer' }}
+  const registry = createAppRegistry([{ id: 'storage', views: [{ id: 'storage', label: 'Storage', component: StorageProbe, access: 'authenticated' }] }])
+  await act(async () => root.render(<AppShell registry={registry} initialViewId="storage" api={{ baseUrl: '/api', token }}
     auth={{ initialized: true, authenticated: true, userId: 'user', isPlatformAdmin: admin, login: () => {}, logout: () => {} }}
     tenants={{ items: [tenant], activeTenant: tenant, activeTenantId: tenant.id, selectTenant: () => {}, status: 'success', error: '' }} />))
 }
@@ -98,4 +101,35 @@ it('clears an administrator draft when platform permission is revoked', async ()
   expect(field('Display name').value).toBe('')
   await act(async () => button('New profile').click())
   expect(container.querySelector('dialog')).toBeNull()
+})
+
+it('retains a dirty profile across token refresh and blocks a changed baseline after background refresh', async () => {
+  await render(); await act(async () => button('Edit').click()); await fill('Display name', 'Unsaved edit')
+  await render(true, 'fresh'); expect(field('Display name').value).toBe('Unsaved edit')
+  const oldRevision = profile.revision; profile.revision = 8
+  try {
+    await act(async () => session.client.invalidateQueries({ predicate: (query) => query.queryKey.includes('platform-storage'), refetchType: 'active' }))
+    expect(field('Display name').value).toBe('Unsaved edit')
+    expect(button('Save changes').disabled).toBe(true)
+    expect(container.textContent).toContain('This profile changed on the server')
+    const refresh = fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/profiles')).at(-1)!
+    expect(new Headers(refresh[1]?.headers).get('Authorization')).toBe('Bearer fresh')
+    await act(async () => button('Refresh').click()); await act(async () => button('Cancel').click())
+    expect(field('Display name').value).toBe('Unsaved edit')
+  } finally { profile.revision = oldRevision }
+})
+
+it('removes privileged inventory from the session cache when administrator access is revoked', async () => {
+  await render()
+  const client = session.client
+  expect(client.getQueryCache().getAll().some((query) => query.queryKey.includes('platform-storage') && query.state.data)).toBe(true)
+  await render(false)
+  expect(client.getQueryCache().getAll().filter((query) => query.queryKey.includes('platform-storage')).some((query) => query.state.data)).toBe(false)
+  expect(container.textContent).not.toContain('Data disk')
+})
+
+it('removes platform evidence when its owning view closes before a later permission change', async () => {
+  await render(); const client = session.client
+  await act(async () => root.render(null))
+  expect(client.getQueryCache().getAll().filter((query) => query.queryKey.includes('platform-storage'))).toHaveLength(0)
 })

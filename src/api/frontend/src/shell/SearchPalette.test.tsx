@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react'
-import { createRoot, type Root } from 'react-dom/client'
+import type { Root } from 'react-dom/client'
+import { createTestApp } from '../test/TestApp'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AppContext } from './AppContext'
 import { SearchPalette } from './SearchPalette'
@@ -20,13 +21,13 @@ const registry = createAppRegistry([{ id: 'test', views: [{ id: 'widgets', label
     viewId: 'widgets', available: ({ tenant }) => tenant.canManage, run: runCommand }] }])
 const hit = (id: string, type = 'test/widget'): SearchHit => ({ resourceTypeId: type, sourceType: 'Widget', sourceId: id, title: id, resourceGroupName: 'Production' })
 const page = (items: SearchHit[], totalCount = items.length, pageNumber = 1): PaginatedResponse<SearchHit> => ({ items, totalCount, pageNumber, pageSize: 20 })
-function services(id = 'alpha', canManage = true): AppServices {
+function services(id = 'alpha', canManage = true, token = 'token'): AppServices {
   return { auth: { initialized: true, authenticated: true, userId: 'user', isPlatformAdmin: false, login: vi.fn(), logout: vi.fn() },
-    api: { baseUrl: '/api', token: 'token', tenantId: id }, tenant: { active: { id, name: id, role: canManage ? 'Owner' : 'Viewer', isDefault: true }, canManage },
+    api: { baseUrl: '/api', token, tenantId: id }, tenant: { active: { id, name: id, role: canManage ? 'Owner' : 'Viewer', isDefault: true }, canManage },
     navigation: { viewId: 'widgets', search: '', goTo: vi.fn(), setSearch: vi.fn(), openResource, resourceHref: vi.fn(), registerUnsavedChanges: () => () => {} },
     theme: { value: 'light', set: vi.fn() }, notifications: { publish: vi.fn() }, resourceTypes: registry.resourceTypes, resourceVersion: 0, invalidateResources: vi.fn() }
 }
-function render(id = 'alpha', canManage = true) { root.render(<AppContext.Provider value={services(id, canManage)}><SearchPalette key={id} registry={registry} onClose={close} /></AppContext.Provider>) }
+function render(id = 'alpha', canManage = true, token = 'token') { root.render(<AppContext.Provider value={services(id, canManage, token)}><SearchPalette key={id} registry={registry} onClose={close} /></AppContext.Provider>) }
 async function type(value: string) {
   await act(async () => {
     const input = container.querySelector('input')!
@@ -43,7 +44,7 @@ beforeEach(() => {
     close: { configurable: true, value: function (this: HTMLDialogElement) { this.open = false } },
   })
   vi.useFakeTimers(); search.mockReset().mockResolvedValue(page([])); openResource.mockReset(); runCommand.mockReset(); close.mockReset()
-  container = document.createElement('div'); document.body.append(container); root = createRoot(container)
+  const app = createTestApp(); container = app.container; root = app.root
 })
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.useRealTimers(); vi.restoreAllMocks() })
 
@@ -88,4 +89,14 @@ it('filters commands by role and restores focus on close', async () => {
   await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="option"]')].find((item) => item.textContent?.includes('Create widget'))!.click())
   expect(runCommand).toHaveBeenCalledOnce()
   await act(async () => root.render(null)); expect(document.activeElement).toBe(opener); opener.remove()
+})
+
+it('retains accumulated results on token refresh and uses the refreshed token for the next page', async () => {
+  search.mockResolvedValueOnce(page([hit('first')], 2)).mockResolvedValueOnce(page([hit('second')], 2, 2))
+  await act(async () => render()); await type('fi'); await searchNow()
+  await act(async () => render('alpha', true, 'fresh'))
+  expect(container.querySelector('input')!.value).toBe('fi'); expect(container.textContent).toContain('first')
+  await act(async () => [...container.querySelectorAll('button')].find((item) => item.textContent === 'More results')!.click()); await searchNow()
+  expect(search).toHaveBeenLastCalledWith('/api', 'fi', 'fresh', 'alpha', expect.any(AbortSignal), 2)
+  expect([...container.querySelectorAll('[role="option"] strong')].map((item) => item.textContent)).toEqual(['first', 'second'])
 })

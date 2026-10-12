@@ -109,6 +109,14 @@ export function IntegrationsPage({
         </div>
       )}
 
+      <div className="row-actions" aria-label="GitHub repository pages">
+        <button className="button" disabled={manager.repositoryPage === 1 || manager.repositoryStatus === 'loading'} onClick={() => manager.selectRepositoryPage(manager.repositoryPage - 1)} type="button">Previous repositories</button>
+        <span>Repositories page {manager.repositoryPage}</span>
+        <button className="button" disabled={!manager.hasMoreRepositories || manager.repositoryStatus !== 'success'} onClick={() => manager.selectRepositoryPage(manager.repositoryPage + 1)} type="button">Next repositories</button>
+        <button className="button" disabled={manager.branchPage === 1 || manager.branchStatus === 'loading'} onClick={() => manager.selectBranchPage(manager.branchPage - 1)} type="button">Previous branches</button>
+        <span>Branches page {manager.branchPage}</span>
+        <button className="button" disabled={!manager.hasMoreBranches || manager.branchStatus !== 'success'} onClick={() => manager.selectBranchPage(manager.branchPage + 1)} type="button">Next branches</button>
+      </div>
       {(manager.error || manager.actionError) && (
         <div className="integration-notice integration-notice--error" role="alert">
           <span>{manager.actionError || manager.error}</span>
@@ -291,6 +299,7 @@ export function IntegrationsPage({
               value={manager.selection.branch}
             >
               {!manager.selection.branch && <option value="">Select a branch</option>}
+              {manager.selection.branch && !manager.branches.some((branch) => branch.name === manager.selection.branch) && <option value={manager.selection.branch}>{manager.selection.branch}</option>}
               {manager.branches.map((branch) => (
                 <option key={branch.name} value={branch.name}>
                   {branch.name}{branch.isProtected ? ' · protected' : ''}

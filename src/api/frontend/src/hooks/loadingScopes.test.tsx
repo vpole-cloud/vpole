@@ -153,7 +153,7 @@ it('does not append a completed zone mutation to a different tenant', async () =
   expect(state.submitStatus).toBe('idle')
 })
 
-it.each(['create', 'update'] as const)('does not refresh an old authentication scope after storage %s completes', async (operation) => {
+it.each(['create', 'update'] as const)('keeps an accepted storage %s across token refresh and reads with current credentials', async (operation) => {
   const input: StorageProfileInput = {
     displayName: 'Old', description: '', mediaType: 'SSD', performanceTier: 'Standard',
     isEnabled: true, isDefault: false, targetMappings: [{ deploymentTargetId: 'target', storageClassName: 'standard' }], revision: 1,
@@ -181,5 +181,5 @@ it.each(['create', 'update'] as const)('does not refresh an old authentication s
   expect(api.fetchStorageProfiles).toHaveBeenCalledTimes(2)
   expect(api.fetchStorageProfiles).toHaveBeenLastCalledWith('/api', 'new', expect.any(AbortSignal))
   expect(state.profiles).toEqual([])
-  expect(state.submitStatus).toBe('idle')
+  expect(state.submitStatus).toBe('success')
 })
