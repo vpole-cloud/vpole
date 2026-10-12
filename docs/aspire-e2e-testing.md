@@ -88,9 +88,9 @@ also replaces temporary literal addresses with target-resolved logical reference
 managed PostgreSQL credentials through ordinary Secret key references. This observation does not
 change the platform target's `Unknown` attestation or claim broader CNI conformance.
 
-E2E configures an optional outbox trigger interval of one second so asynchronous workflows do
-not wait for the production minute-based recurring schedule. The production default remains
-unset, so this faster trigger is active only when a test or another environment enables it.
+The API and E2E configure an outbox trigger interval of one second so asynchronous workflows do
+not wait for the minute-based recovery schedule. Dispatch shares that schedule's distributed lock
+and never queues a Hangfire job for every tick. Removing the optional interval disables fast dispatch.
 
 The first browser run may take several minutes while the pinned Playwright image is downloaded.
 Later runs reuse the local image and start the browser test immediately.

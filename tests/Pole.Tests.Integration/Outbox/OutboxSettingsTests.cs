@@ -118,15 +118,19 @@ public sealed class OutboxSettingsTests
     }
 
     [Fact]
-    public async Task ProcessingTriggerInterval_TriggersTheOutboxJobWithoutWaitingForTheCronSchedule()
+    public async Task ProcessingTriggerInterval_DispatchesWithoutWaitingForTheCronSchedule()
     {
         var trigger = new RecordingOutboxProcessingTrigger();
-        var service = new OutboxProcessingTriggerService(
+        using var services = new ServiceCollection()
+            .AddSingleton<IOutboxProcessingTrigger>(trigger)
+            .BuildServiceProvider();
+        using var service = new OutboxProcessingTriggerService(
             Options.Create(new OutboxSettings
             {
                 ProcessingTriggerInterval = TimeSpan.FromMilliseconds(10)
             }),
-            trigger,
+            services.GetRequiredService<IServiceScopeFactory>(),
+            TimeProvider.System,
             NullLogger<OutboxProcessingTriggerService>.Instance);
 
         await service.StartAsync(CancellationToken.None);
@@ -174,10 +178,11 @@ public sealed class OutboxSettingsTests
         public TaskCompletionSource FirstTrigger { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public void Trigger()
+        public Task TriggerAsync(CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref _count);
             FirstTrigger.TrySetResult();
+            return Task.CompletedTask;
         }
     }
 }

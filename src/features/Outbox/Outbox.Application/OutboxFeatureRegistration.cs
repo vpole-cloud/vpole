@@ -37,7 +37,12 @@ public static class OutboxFeatureRegistration
         services.TryAddScoped<IOutboxPublisher, MassTransitOutboxPublisher>();
         services.TryAddSingleton<OutboxMetrics>();
         services.TryAddSingleton<OutboxRetryDelayPolicy>();
-        services.TryAddSingleton<IOutboxProcessingTrigger, HangfireOutboxProcessingTrigger>();
+        services.TryAddSingleton(TimeProvider.System);
+        // Slice hosts may disable the optional loop and omit Hangfire storage.
+        // Resolve its dependencies only when an enabled loop asks for dispatch.
+        services.TryAddSingleton<IOutboxProcessingTrigger>(provider => new DirectOutboxProcessingTrigger(
+            provider.GetRequiredService<JobStorage>(),
+            provider.GetRequiredService<IServiceScopeFactory>()));
         services.AddHostedService<OutboxProcessingTriggerService>();
         return services;
     }
