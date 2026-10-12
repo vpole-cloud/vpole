@@ -20,6 +20,7 @@
         <Compile Include="Common\PostgresResourceDeployment.fs" />
         <Compile Include="Common\PostgresClusterCredentials.fs" />
         <Compile Include="Common\PostgresClusterEventExtensions.fs" />
+        <Compile Include="Realtime\PostgresRealtimeConsumers.fs" />
         <Compile Include="Search\PostgresSearchProjectionConsumers.fs" />
         <Compile Include="Persistence\PostgresOutcome.fs" />
         <Compile Include="Persistence\PostgresFilters.fs" />
@@ -89,6 +90,7 @@
       <ProjectReference Include="..\..\Quotas\Quotas.Primitives\Quotas.Primitives.csproj" />
       <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj" />
       <ProjectReference Include="..\Postgres.Contracts\Postgres.Contracts.csproj" />
+      <ProjectReference Include="..\..\Realtime\Realtime.Contracts\Realtime.Contracts.csproj" />
       <ProjectReference Include="..\Postgres.Domain\Postgres.Domain.fsproj" />
       <ProjectReference Include="..\Postgres.Events\Postgres.Events.fsproj" />
       <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />

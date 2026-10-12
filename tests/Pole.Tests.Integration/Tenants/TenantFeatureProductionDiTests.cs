@@ -1,5 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
+using Pole.Database;
+using Pole.Features.Outbox.Contracts;
 using Pole.Features.Tenants;
 using Pole.Features.Tenants.Application;
 using Pole.Features.Tenants.Application.Persistence;
@@ -24,6 +26,9 @@ public sealed class TenantFeatureProductionDiTests(MongoReplicaSetFixture fixtur
     {
         var services = new ServiceCollection();
         services.AddSingleton<IMongoDatabase>(fixture.Database);
+        services.AddSingleton<IMongoClient>(fixture.Client);
+        services.AddSingleton<MongoRunTransaction>();
+        services.AddSingleton<StoreOutboxWrites>(fixture.StoreOutboxWrites);
         services.AddTenantsFeature();
 
         Assert.DoesNotContain(services, descriptor =>

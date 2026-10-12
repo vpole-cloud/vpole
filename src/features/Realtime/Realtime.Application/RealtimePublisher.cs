@@ -16,7 +16,8 @@ public sealed class RealtimePublisher(
         var topic = topics.Find(change.Topic);
         if (topic is null || !topics.IsEnabled(change.Topic)) return;
         if (topic.Scope == RealtimeScope.Tenant && change.TenantId is null ||
-            topic.Scope == RealtimeScope.Platform && change.TenantId is not null)
+            topic.Scope == RealtimeScope.Platform && change.TenantId is not null ||
+            topic.Scope == RealtimeScope.User && (change.TenantId is not null || string.IsNullOrWhiteSpace(change.ResourceId)))
             throw new InvalidOperationException("A realtime change must preserve its registered topic scope.");
         var recipients = await subscriptions.FindAsync(change.Topic, change.TenantId, cancellationToken);
         var authorized = new HashSet<string>(StringComparer.Ordinal);
@@ -24,6 +25,9 @@ public sealed class RealtimePublisher(
         foreach (var subscription in recipients)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            // User topics never permit a wildcard, even if a corrupt/stale registry entry does.
+            if (topic.Scope == RealtimeScope.User && subscription.Request.ResourceId != change.ResourceId)
+                continue;
             if (subscription.Request.ResourceId is { } resourceId && change.ResourceId is { } changedId && resourceId != changedId)
                 continue;
             var ticket = await tickets.RetrieveAsync(subscription.SessionId);
@@ -43,7 +47,8 @@ public sealed class RealtimePublisher(
                 revoked.Add(subscription.ConnectionId);
                 authorized.Remove(subscription.ConnectionId);
                 await subscriptions.RemoveAsync(subscription.ConnectionId, [subscription.Id], cancellationToken);
-                await hub.Clients.Client(subscription.ConnectionId).AccessRevoked(subscription.Request.TenantId);
+                if (topic.Scope != RealtimeScope.User)
+                    await hub.Clients.Client(subscription.ConnectionId).AccessRevoked(subscription.Request.TenantId);
                 continue;
             }
             if (!revoked.Contains(subscription.ConnectionId)) authorized.Add(subscription.ConnectionId);

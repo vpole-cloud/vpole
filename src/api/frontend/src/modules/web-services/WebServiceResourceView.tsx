@@ -32,7 +32,7 @@ export function WebServiceResourceView({ id, section, active, groups, onSection,
   const { isCurrent } = useApiScope(api)
   const details = useWebService(id, api, active)
   const manager = useWebServicesManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId,
-    enabled: false, refreshAfterMutation: false })
+    enabled: false, refreshAfterMutation: false, active: active && ['configuration', 'deployments'].includes(section), resourceGroupId: details.service?.resourceGroupId })
   const builds = useSourceBuildsManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId,
     webServiceId: id, canManage: tenant.canManage, enabled: active && section === 'builds' })
   const [configurationDirty, setConfigurationDirty] = useState(false)

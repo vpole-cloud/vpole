@@ -4,13 +4,15 @@ import { useResourceGroupChoices } from '../../hooks/useResourceGroupChoices'
 import { useScopedMutation } from '../../hooks/useScopedMutation'
 import { useProviderInvalidation } from '../../data/useProviderInvalidation'
 import { useScopedQuery } from '../../data/useScopedQuery'
+import { groupInterests } from '../../realtime/resourceInterests'
 import type { ResourceGroupInput } from './types'
 
 type Api = { baseUrl: string; token?: string; tenantId?: string }
-export function useResourceGroupInventory(api: Api, pageNumber: number, pageSize: number, search = '', enabled = true) {
+export function useResourceGroupInventory(api: Api, pageNumber: number, pageSize: number, search = '', enabled = true, active = true) {
   const origin = useProviderInvalidation(api)
   const query = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['resource-groups', 'inventory', pageNumber, pageSize, search],
     keepPrevious: true, enabled: enabled && Boolean(api.tenantId),
+    active, realtime: groupInterests(api.tenantId),
     load: (signal) => fetchResourceGroups(api.baseUrl, origin.credential(), api.tenantId, signal, { pageNumber, pageSize, search }) })
   return { ...query, items: query.resource?.items ?? [], page: query.resource, isCurrentPage: query.isCurrent }
 }
@@ -27,12 +29,14 @@ export function useResourceGroupsManager({ apiBaseUrl, token, tenantId, enabled,
   const create = (input: ResourceGroupInput) => mutation.run(async (signal) => {
     if (!enabled) throw new DOMException('Aborted', 'AbortError')
     const created = await createResourceGroup(apiBaseUrl, input, origin.credential(), tenantId, signal)
+    if (signal.aborted || !origin.isCurrent()) throw new DOMException('Aborted', 'AbortError')
     await origin.invalidate(prefixes)
     return created
   }, () => { if (origin.isCurrent()) setCompleted(origin.identity) })
   const update = (id: string, input: ResourceGroupInput) => mutation.run(async (signal) => {
     if (!enabled) throw new DOMException('Aborted', 'AbortError')
     const updated = await updateResourceGroup(apiBaseUrl, id, input, origin.credential(), tenantId, signal)
+    if (signal.aborted || !origin.isCurrent()) throw new DOMException('Aborted', 'AbortError')
     await origin.invalidate(prefixes)
     return updated
   }, () => { if (origin.isCurrent()) setCompleted(origin.identity) })
@@ -42,6 +46,7 @@ export function useResourceGroupsManager({ apiBaseUrl, token, tenantId, enabled,
       return await mutation.run(async (signal) => {
         if (!enabled) throw new DOMException('Aborted', 'AbortError')
         await deleteResourceGroup(apiBaseUrl, id, origin.credential(), tenantId, signal)
+        if (signal.aborted || !origin.isCurrent()) throw new DOMException('Aborted', 'AbortError')
         await origin.invalidate(prefixes)
         return true
       }, () => { if (origin.isCurrent()) setCompleted(origin.identity) })

@@ -8,12 +8,13 @@ internal static class TenantMemberMutationFailures
 {
     public static async Task<TenantMemberMutationError> ResolveAsync(
         IMongoCollection<Tenant> tenants,
+        IClientSessionHandle session,
         string tenantId,
         string memberId,
         CancellationToken cancellationToken)
     {
         var tenant = await tenants
-            .Find(TenantFilters.ById(tenantId))
+            .Find(session, TenantFilters.ById(tenantId))
             .FirstOrDefaultAsync(cancellationToken);
         var member = tenant?.Members.FirstOrDefault(candidate => candidate.Id == memberId);
         if (tenant is null)

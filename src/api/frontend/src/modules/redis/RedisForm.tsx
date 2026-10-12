@@ -9,7 +9,7 @@ import { Button, Field, Notice } from '../../ui/components'
 import type { WorkspaceActions } from '../../ui/ResourceWorkspace'
 import { parseRedisTags, redisType, type RedisSection } from './workspaceState'
 
-export function NewRedisView({ actions }: { actions: WorkspaceActions<RedisSection>; active: boolean }) {
+export function NewRedisView({ actions, active }: { actions: WorkspaceActions<RedisSection>; active: boolean }) {
   const { api } = useAppServices()
   const origin = useProviderInvalidation(api)
   const scopeKey = `${origin.identity}:create-redis`
@@ -21,7 +21,7 @@ export function NewRedisView({ actions }: { actions: WorkspaceActions<RedisSecti
   const [computeId, setComputeId] = useState('')
   const [storageId, setStorageId] = useState('')
   const { groups, scopes, targets, storage, compute, group, isolation, target, computeProfile, storageProfile, profiles, allowed } = useResourceChoices(api, redisType,
-    { groupId, isolationScopeId: scopeId, deploymentTargetId: targetId, computeProfileId: computeId, storageProfileId: storageId })
+    { groupId, isolationScopeId: scopeId, deploymentTargetId: targetId, computeProfileId: computeId, storageProfileId: storageId }, active)
   const [size, setSize] = useState(1)
   const [submitted, setSubmitted] = useState(false)
   const [validation, setValidation] = useState('')

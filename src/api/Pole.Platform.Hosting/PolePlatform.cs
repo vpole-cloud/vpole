@@ -68,6 +68,7 @@ public static class PolePlatform
     typeof(UserEndpoints).Assembly,
 ];
     public static Assembly[] EventAssemblies => [
+        typeof(Pole.Features.Tenants.Events.TenantMembershipChangedEvent).Assembly,
         typeof(Pole.Features.Secrets.Events.SecretChangedEvent).Assembly,
         typeof(Pole.Features.PrivateAccess.Events.PrivateAccessGrantCreatedEvent).Assembly,
     typeof(Pole.Features.ResourceDeployments.Events.ResourceDeploymentAppliedEvent).Assembly,

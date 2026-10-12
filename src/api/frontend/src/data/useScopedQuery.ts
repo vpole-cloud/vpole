@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { LoadStatus } from '../types'
-import { scopedQueryKey, useQuerySession } from './querySession'
+import { scopedQueryKey, useQuerySession, type ScopedQueryData } from './querySession'
 import { useRealtime, useRealtimeInterest } from '../realtime/context'
 import { usePageVisible } from '../realtime/usePageVisible'
 import type { RealtimeSubscription } from '../realtime/types'
@@ -16,22 +16,27 @@ interface Options<T> {
   active?: boolean
   realtime?: readonly RealtimeSubscription[]
   privileged?: boolean
+  authorizationScope?: 'tenant' | 'user'
+  resourceGroupId?: string | ((value: NoInfer<T>) => string | undefined)
 }
-export function useScopedQuery<T>({ scope, key, load, enabled = true, interval = false, keepPrevious = false, active = true, realtime, privileged = false }: Options<T>) {
+export function useScopedQuery<T>({ scope, key, load, enabled = true, interval = false, keepPrevious = false, active = true, realtime, privileged = false, authorizationScope = 'tenant', resourceGroupId }: Options<T>) {
   const session = useQuerySession()
   const controller = useRealtime()
   const visible = usePageVisible()
-  const [baseUrl, tenantId] = scope
+  const [baseUrl, ownerId] = scope
+  const tenantId = authorizationScope === 'tenant' ? ownerId : undefined
   const allowed = (controller?.allowed(baseUrl, tenantId) ?? true) && (!privileged || (controller?.platformAllowed(baseUrl) ?? true))
   const observing = enabled && allowed && (!realtime || active && visible)
-  const covered = useRealtimeInterest(realtime, observing)
+  const covered = useRealtimeInterest(controller && !controller.ownsApi(baseUrl) ? undefined : realtime, observing)
   const queryKey = scopedQueryKey(session, scope, key)
+  const cached = session.client.getQueryData<ScopedQueryData<T>>(queryKey)?.value
+  const groupId = typeof resourceGroupId === 'function' ? cached == null ? undefined : resourceGroupId(cached) : resourceGroupId
   const identity = JSON.stringify(queryKey)
   const parameters = useRef({ identity, load, observing })
   useLayoutEffect(() => { parameters.current = { identity, load, observing } }, [identity, load, observing])
   const query = useQuery({
     queryKey,
-    meta: { privileged },
+    meta: { privileged, authorizationScope, resourceGroupId: groupId },
     enabled: observing,
     queryFn: async ({ signal }) => {
       if (!session.isActive() || controller && (!controller.allowed(baseUrl, tenantId) || privileged && !controller.platformAllowed(baseUrl)) || parameters.current.identity !== identity) throw new DOMException('Aborted', 'AbortError')

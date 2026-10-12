@@ -6,7 +6,7 @@ import { createQueryClient, scopedQueryKey, type QuerySession } from '../data/qu
 import { deferred } from '../test/http'
 import { RealtimeController } from './controller'
 import { FakeConnection } from '../test/fakeRealtimeConnection'
-import { normalizeChange, type RealtimeCoverage, type RealtimeSubscription } from './types'
+import { acceptsChange, normalizeChange, type RealtimeCoverage, type RealtimeSubscription } from './types'
 
 const owners: { controller: RealtimeController; session: QuerySession }[] = []
 afterEach(() => { owners.forEach(({ controller, session }) => { controller.dispose(); session.client.clear() }); owners.length = 0; vi.useRealTimers() })
@@ -17,7 +17,7 @@ function setup(configure?: (connection: FakeConnection) => void) {
   const bootstrap = vi.fn(async () => ({ expiresAtUtc: new Date(Date.now() + 300000).toISOString() }))
   const revoke = vi.fn(async () => {})
   const broadcast = vi.fn()
-  const controller = new RealtimeController(session, 'api', { bootstrap, revoke, broadcast,
+  const controller = new RealtimeController(session, 'api', { bootstrap, revoke, broadcast, userId: 'user',
     connection: () => { const connection = new FakeConnection(); configure?.(connection); connections.push(connection); return connection } })
   owners.push({ controller, session })
   return { session, controller, connections, bootstrap, revoke, broadcast }
@@ -298,4 +298,73 @@ it('keeps healthy heartbeats from causing repeated HTTP resyncs and stops them w
   controller.dispose(); await vi.advanceTimersByTimeAsync(30000)
   expect(connections[0].heartbeat).toHaveBeenCalledTimes(3)
   release()
+})
+
+it('matches own-user discovery by its account key, rejects wildcard subjects and retains user coverage after platform denial', async () => {
+  vi.useFakeTimers()
+  const { session, controller, connections } = setup()
+  const own: RealtimeSubscription = { topic: 'tenant-access', resourceId: 'user' }
+  const keys = [scopedQueryKey(session, ['api', 'user'], ['tenants']), scopedQueryKey(session, ['api', 'other'], ['tenants']),
+    scopedQueryKey(session, ['other-api', 'user'], ['tenants']), scopedQueryKey(session, ['api', 'user'], ['ordinary'])]
+  keys.forEach(key => session.client.setQueryData(key, 'saved'))
+  controller.register(own)
+  controller.register({ topic: 'tenant-access', resourceId: 'other' })
+  controller.register({ topic: 'tenant-access' })
+  await controller.renew()
+  expect(connections[0].subscribe).toHaveBeenCalledWith([own])
+  expect(acceptsChange(own, { version: 1, topic: 'tenant-access' })).toBe(false)
+  expect(acceptsChange(own, { version: 1, topic: 'tenant-access', resourceId: 'other' })).toBe(false)
+  keys.forEach(key => session.client.getQueryCache().find({ queryKey: key, exact: true })?.setState({ isInvalidated: false }))
+  connections[0].changed({ version: 1, topic: 'tenant-access', resourceId: 'user' })
+  expect(keys.map(key => session.client.getQueryState(key)?.isInvalidated)).toEqual([true, false, false, false])
+  connections[0].accessRevoked(); await settle()
+  expect(connections[0].subscribe).toHaveBeenLastCalledWith([own])
+  expect(controller.covered(own)).toBe(true)
+  expect(controller.platformAllowed('api')).toBe(false)
+})
+
+it('accepts only current successful membership reads, removes tenant caches and restores membership without restoring a revoked session', async () => {
+  const { session, controller, connections } = setup()
+  const alpha = scopedQueryKey(session, ['api', 'alpha'], ['web-services', 'detail', 'service'])
+  const beta = scopedQueryKey(session, ['api', 'beta'], ['web-services', 'detail', 'other'])
+  const signal = new AbortController().signal
+  controller.register({ topic: 'tenant-access', resourceId: 'user' }); await controller.renew()
+  const started = () => controller.beginMembershipRead('api', 'user')
+  expect(controller.acceptMembershipSnapshot('api', 'user', started(), ['alpha', 'beta'], signal)).toBe(true)
+  session.client.setQueryData(alpha, 'alpha'); session.client.setQueryData(beta, 'beta')
+  const old = started()
+  connections[0].accessRevoked('alpha'); await settle()
+  expect(controller.acceptMembershipSnapshot('api', 'user', old, ['alpha', 'beta'], signal)).toBe(false)
+  expect(controller.allowed('api', 'alpha')).toBe(false)
+  const hinted = started()
+  connections[0].changed({ version: 1, topic: 'tenant-access', resourceId: 'user' })
+  expect(controller.acceptMembershipSnapshot('api', 'user', hinted, ['alpha', 'beta'], signal)).toBe(false)
+  expect(controller.acceptMembershipSnapshot('api', 'user', started(), ['alpha', 'beta'], signal)).toBe(true)
+  expect(controller.allowed('api', 'alpha')).toBe(true)
+  session.client.setQueryData(alpha, 'restored')
+  expect(controller.acceptMembershipSnapshot('api', 'user', started(), ['beta'], signal)).toBe(true)
+  expect(session.client.getQueryData(alpha)).toBeUndefined()
+  expect(session.client.getQueryData(beta)).toBe('beta')
+  expect(controller.allowed('api', 'alpha')).toBe(false)
+  expect(controller.acceptMembershipSnapshot('other-api', 'user', started(), ['alpha'], signal)).toBe(false)
+  const canceled = new AbortController(); canceled.abort()
+  expect(controller.acceptMembershipSnapshot('api', 'user', started(), ['alpha'], canceled.signal)).toBe(false)
+  const revoked = started(); connections[0].sessionRevoked()
+  expect(controller.acceptMembershipSnapshot('api', 'user', revoked, ['alpha', 'beta'], signal)).toBe(false)
+  expect(controller.allowed('api', 'beta')).toBe(false)
+})
+
+it('reserves acknowledged own-user discovery before the 64-interest limit and leaves excluded resource interests uncovered', async () => {
+  const { controller, connections } = setup()
+  const resources: RealtimeSubscription[] = Array.from({ length: 70 }, (_, index) => ({ topic: 'resource-groups', tenantId: 'alpha', resourceId: `group-${index}` }))
+  resources.forEach(request => controller.register(request))
+  const own: RealtimeSubscription = { topic: 'tenant-access', resourceId: 'user' }
+  controller.register({ topic: 'tenant-access', resourceId: 'other' })
+  controller.register(own)
+  await controller.renew()
+  expect(connections[0].subscribe).toHaveBeenCalledWith([own, ...resources.slice(0, 63)])
+  expect(controller.covered(own)).toBe(true)
+  expect(controller.covered(resources[62])).toBe(true)
+  expect(controller.covered(resources[63])).toBe(false)
+  expect(controller.covered(resources[69])).toBe(false)
 })

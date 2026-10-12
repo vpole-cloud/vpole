@@ -1,10 +1,12 @@
 import { useApiScope } from '../data/useApiScope'
 import { fetchResourceGroups } from '../api'
 import { useScopedQuery } from '../data/useScopedQuery'
+import { groupInterests } from '../realtime/resourceInterests'
 
-export function useResourceGroupChoices(api: { apiBaseUrl: string; token?: string; tenantId?: string; enabled: boolean }) {
+export function useResourceGroupChoices(api: { apiBaseUrl: string; token?: string; tenantId?: string; enabled: boolean; active?: boolean }) {
   const { credential } = useApiScope({ baseUrl: api.apiBaseUrl, tenantId: api.tenantId, token: api.token })
   const query = useScopedQuery({ scope: [api.apiBaseUrl, api.tenantId], key: ['resource-groups', 'choices'], enabled: api.enabled,
+    active: api.active, realtime: groupInterests(api.tenantId),
     load: async (signal) => {
       const first = await fetchResourceGroups(api.apiBaseUrl, credential(), api.tenantId, signal, { pageSize: 200 })
       const items = [...first.items]

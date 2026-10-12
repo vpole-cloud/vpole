@@ -16,7 +16,7 @@ export interface WorkspaceActions<S extends string> {
 // Only workspace navigation mechanics are shared. Providers own their data, forms and actions.
 export function ResourceWorkspace<S extends string>({ id, label, newLabel, sections, defaultSection, Catalog, Create, Resource }:
   { id: string; label: string; newLabel: string; sections: readonly S[]; defaultSection: S;
-    Catalog: ComponentType<{ actions: WorkspaceActions<S> }>;
+    Catalog: ComponentType<{ actions: WorkspaceActions<S>; active: boolean }>;
     Create: ComponentType<{ actions: WorkspaceActions<S>; active: boolean }>;
     Resource: ComponentType<{ id: string; section: S; active: boolean; onSection: (section: S) => void; actions: WorkspaceActions<S> }> }) {
   const { tenant } = useAppServices()
@@ -33,7 +33,7 @@ export function ResourceWorkspace<S extends string>({ id, label, newLabel, secti
       tabs={[{ id: catalogId, label: `All ${label}` }, ...(creating ? [{ id: createId, label: newLabel, dirty: dirtyTabs[createId], onClose: () => dirtyTabs[createId] ? setClosing(createId) : closed(createId) }] : []),
         ...workspace.tabs.map((tab) => ({ id: tab.id, label: name(tab.id), dirty: dirtyTabs[tab.id], onClose: () => dirtyTabs[tab.id] ? setClosing(tab.id) : closed(tab.id) }))]} />
     <TabPanel id={workspaceId} tabId={catalogId} activeId={activeId}>
-      <Catalog actions={{ ...actions, open: (id, section) => { if (id === createId) setCreating(true); open(id, section) } }} />
+      <Catalog active={activeId === catalogId} actions={{ ...actions, open: (id, section) => { if (id === createId) setCreating(true); open(id, section) } }} />
     </TabPanel>
     {creating && <TabPanel id={workspaceId} tabId={createId} activeId={activeId}>{tenant.canManage ? <Create actions={actions} active={activeId === createId} /> : <EmptyState title="Tenant viewer access is read-only." />}</TabPanel>}
     {workspace.tabs.map((tab) => <TabPanel key={tab.id} id={workspaceId} tabId={tab.id} activeId={activeId}>

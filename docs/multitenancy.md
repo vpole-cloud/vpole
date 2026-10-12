@@ -213,6 +213,14 @@ Frontend tenant behavior:
 * It sends `X-Pole-Tenant-ID` on resource API calls.
 * It shows the active tenant and role in the top band.
 
+Membership mutations and their `Tenants.Events` outbox hints commit atomically, including personal
+tenant creation. The own-subject `tenant-access` realtime subscription remains available after
+membership removal, allowing `GET /api/v1/tenants` to discover additions, removals and role changes.
+The frontend accepts permissions only from a current authoritative read; a response begun before
+an access change cannot restore old membership. Removal clears that tenant's cached data, and
+restoring a blocked tenant requires a fresh membership read. Discovery also refreshes every
+60 seconds on visible screens when realtime is unavailable. Hints contain no roles or membership lists.
+
 ## Adding Tenant-Scoped Features
 
 For a new tenant-owned feature:

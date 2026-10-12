@@ -12,6 +12,7 @@ using Pole.Features.Search.Contracts;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.RedisServices.Contracts;
+using Pole.Features.Realtime.Contracts;
 
 namespace Pole.Features.RedisServices.Application;
 
@@ -20,6 +21,7 @@ public static class RedisServicesFeatureRegistration
     public static IServiceCollection AddRedisServicesFeature(
         this IServiceCollection services)
     {
+        services.AddSingleton(new RealtimeTopic("redis", RealtimeScope.Tenant));
         services.AddSingleton<IMigration>(new FeatureScopedMigration(
             "pole.redis", new RedisNameIndexesMigration()));
         services.AddSingleton<SearchSourceType>(RedisServiceSearchProjection.SourceType);

@@ -20,6 +20,8 @@ public sealed class RealtimeAccess(
             return false;
         var topic = registry.Find(request.Topic);
         if (topic is null || request.ResourceId is { Length: > 200 }) return false;
+        if (topic.Scope == RealtimeScope.User)
+            return request.TenantId is null && request.ResourceId == principal.FindFirstValue(Claims.UserId);
         var admin = principal.HasClaim(Claims.Roles, Roles.Admin);
         if (topic.Scope == RealtimeScope.Platform) return admin && request.TenantId is null;
         if (!ObjectId.TryParse(request.TenantId, out _)) return false;

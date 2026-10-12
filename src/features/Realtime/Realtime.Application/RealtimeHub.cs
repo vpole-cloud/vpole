@@ -32,6 +32,16 @@ public sealed class RealtimeHub(
             ? request with { TenantId = tenantId.ToString() } : request).ToArray();
         if (requests.Distinct().Count() != requests.Length)
             throw new HubException("Provide between one and 64 distinct subscriptions.");
+        // Invalid scope shapes are request errors, not revocation of an unrelated workspace.
+        foreach (var request in requests)
+            if (access.FindTopic(request.Topic) is { } topic && (topic.Scope switch
+            {
+                RealtimeScope.Tenant => !ObjectId.TryParse(request.TenantId, out _),
+                RealtimeScope.Platform => request.TenantId is not null,
+                RealtimeScope.User => request.TenantId is not null || string.IsNullOrWhiteSpace(request.ResourceId),
+                _ => true
+            }))
+                throw new HubException("This realtime subscription has an invalid scope.");
         var sessionId = Context.User?.FindFirst(RealtimeFeature.SessionClaim)?.Value;
         var ticket = sessionId is null ? null : await tickets.RetrieveAsync(sessionId);
         if (ticket?.Properties.ExpiresUtc is not { } expiry || expiry <= clock.GetUtcNow())
@@ -141,23 +151,29 @@ public sealed class RealtimeHub(
         return await RetainInterestsAsync(owned, deniedScopes);
     }
 
-    private async Task<HashSet<string?>> FindDeniedScopesAsync(
+    private sealed record DeniedScope(
+        RealtimeScope Scope,
+        string? TenantId);
+
+    private async Task<HashSet<DeniedScope>> FindDeniedScopesAsync(
         IEnumerable<RealtimeSubscriptionRequest> requests, ClaimsPrincipal principal)
     {
-        var deniedScopes = new HashSet<string?>(StringComparer.Ordinal);
+        var deniedScopes = new HashSet<DeniedScope>();
         foreach (var request in requests)
             if (access.FindTopic(request.Topic) is { } topic &&
                 !await access.AllowsAsync(principal, request, Context.ConnectionAborted))
-                deniedScopes.Add(topic.Scope == RealtimeScope.Platform ? null : request.TenantId);
+                deniedScopes.Add(new(topic.Scope, request.TenantId));
         return deniedScopes;
     }
 
     private async Task<RealtimeSubscription[]> RetainInterestsAsync(
-        RealtimeSubscription[] owned, HashSet<string?> deniedScopes)
+        RealtimeSubscription[] owned, HashSet<DeniedScope> deniedScopes)
     {
 
         // A denial on one request fences every owned interest in that tenant, including earlier checks.
-        var removed = owned.Where(subscription => deniedScopes.Contains(subscription.Request.TenantId) ||
+        var removed = owned.Where(subscription => deniedScopes.Any(scope => scope.Scope == RealtimeScope.Tenant
+                ? subscription.Request.TenantId == scope.TenantId
+                : access.FindTopic(subscription.Request.Topic)?.Scope == scope.Scope) ||
             subscription.ExpiresAtUtc <= clock.GetUtcNow()).ToArray();
         var removedIds = removed.Select(subscription => subscription.Id).ToHashSet(StringComparer.Ordinal);
         var retained = owned.Where(subscription => !removedIds.Contains(subscription.Id)).ToArray();
@@ -172,7 +188,8 @@ public sealed class RealtimeHub(
             try { await Task.WhenAll(removed.Select(ReleaseInterestAsync)); }
             finally
             {
-                foreach (var tenantId in deniedScopes) await Clients.Caller.AccessRevoked(tenantId);
+                foreach (var scope in deniedScopes.Where(scope => scope.Scope != RealtimeScope.User))
+                    await Clients.Caller.AccessRevoked(scope.TenantId);
             }
         }
         return retained;

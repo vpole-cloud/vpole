@@ -16,6 +16,32 @@ public sealed class RealtimeHeartbeatTests
     private const string Beta = "bbbbbbbbbbbbbbbbbbbbbbbb";
 
     [Fact]
+    public async Task PlatformRevocationRetainsOwnUserDiscoveryAndTenantInterests()
+    {
+        var scenario = await Scenario.CreateAsync(admin: true);
+        await scenario.Hub.Subscribe([new("platform"), new("user-discovery", ResourceId: "viewer"), new("fake", Alpha)]);
+        scenario.Tickets.Tickets["viewer"] = new AuthenticationTicket(IdentityFixture.User(), scenario.Ticket.Properties, RealtimeFeature.CookieScheme);
+        var remaining = await scenario.Hub.Heartbeat();
+        Assert.Equal(["user-discovery", "fake"], remaining.Select(value => value.Topic));
+        Assert.Equal([null], scenario.Client.AccessRevocations);
+        Assert.Equal(0, scenario.Client.SessionRevocations);
+    }
+
+    [Fact]
+    public async Task InvalidUserAndTenantScopesCannotRevokePlatformOrTenantAccess()
+    {
+        var scenario = await Scenario.CreateAsync();
+        await scenario.Hub.Subscribe([new("fake", Alpha)]);
+        await Assert.ThrowsAsync<HubException>(() => scenario.Hub.Subscribe([new("user-discovery", ResourceId: "other-user")]));
+        await Assert.ThrowsAsync<HubException>(() => scenario.Hub.Subscribe([new("user-discovery")]));
+        await Assert.ThrowsAsync<HubException>(() => scenario.Hub.Subscribe([new("fake")]));
+        Assert.Empty(scenario.Client.AccessRevocations);
+        Assert.Equal(0, scenario.Client.SessionRevocations);
+        Assert.Equal(Alpha, Assert.Single(await scenario.Hub.Heartbeat()).TenantId);
+        Assert.True(Assert.Single(await scenario.Hub.Subscribe([new("user-discovery", ResourceId: "viewer")])).Covered);
+    }
+
+    [Fact]
     public async Task MixedAvailableDisabledAndUnknownTopicsKeepIndependentStableCoverage()
     {
         var scenario = await Scenario.CreateAsync(enabledTopics: ["fake"]);
@@ -547,7 +573,8 @@ public sealed class RealtimeHeartbeatTests
             var principal = IdentityFixture.User(admin: admin);
             await scenario.Tickets.StoreAsync(new AuthenticationTicket(principal,
                 new AuthenticationProperties { ExpiresUtc = scenario.Clock.Now.AddMinutes(1) }, RealtimeFeature.CookieScheme));
-            var registry = new RealtimeTopicRegistry([new("fake", RealtimeScope.Tenant), new("disabled", RealtimeScope.Tenant), new("platform", RealtimeScope.Platform)],
+            var registry = new RealtimeTopicRegistry([new("fake", RealtimeScope.Tenant), new("disabled", RealtimeScope.Tenant), new("platform", RealtimeScope.Platform),
+                new("user-discovery", RealtimeScope.User)],
                 new() { Enabled = true, EnabledTopics = enabledTopics ?? [] });
             var access = new RealtimeAccess((tenant, user, _, _) => Task.FromResult(scenario.Membership(tenant, user)),
                 (tenant, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(tenant, "name")), registry);

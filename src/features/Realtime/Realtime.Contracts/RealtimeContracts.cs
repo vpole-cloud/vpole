@@ -3,7 +3,9 @@ namespace Pole.Features.Realtime.Contracts;
 public enum RealtimeScope
 {
     Tenant,
-    Platform
+    Platform,
+    /// <summary>An authenticated subject's discovery data, independent of tenant membership.</summary>
+    User
 }
 
 /// <summary>Registered by the owner, never inferred from a resource-type switch.</summary>

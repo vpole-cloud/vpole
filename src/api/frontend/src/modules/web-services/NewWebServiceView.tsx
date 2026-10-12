@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fetchIsolationScopes } from '../../api'
 import { eligibilityKeys } from '../../data/queryKeys'
+import { groupInterests } from '../../realtime/resourceInterests'
 import { useScopedQuery } from '../../data/useScopedQuery'
 import { useApiScope } from '../../data/useApiScope'
 import { useWebServiceCreation } from './useWebServiceCreation'
@@ -14,18 +15,19 @@ import { GitSourcePicker } from './GitSourcePicker'
 import { createId } from './workspaceState'
 import type { ServiceSection } from './workspaceState'
 
-export function NewWebServiceView({ groups, groupsStatus = 'success', groupsError, onRefreshGroups, onCreated, onDirtyChange }:
+export function NewWebServiceView({ groups, groupsStatus = 'success', groupsError, onRefreshGroups, onCreated, onDirtyChange, active = true }:
   { groups: ResourceGroup[]; groupsStatus?: LoadStatus; groupsError?: string; onRefreshGroups?: () => Promise<unknown>;
-    onCreated: (id: string, open: boolean, section?: ServiceSection) => void; onDirtyChange: (id: string, dirty: boolean) => void }) {
+    onCreated: (id: string, open: boolean, section?: ServiceSection) => void; onDirtyChange: (id: string, dirty: boolean) => void; active?: boolean }) {
   const { api, notifications, navigation } = useAppServices()
   const { credential } = useApiScope(api)
   const [selectedGroup, setSelectedGroup] = useState('')
   const groupId = selectedGroup || groups[0]?.id || ''
   const scopesQuery = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: eligibilityKeys.scopes(groupId), enabled: Boolean(groupId),
+    active, realtime: groupInterests(api.tenantId, groupId), resourceGroupId: groupId,
     load: (signal) => fetchIsolationScopes(api.baseUrl, groupId, credential(), api.tenantId, signal) })
   const scopeChoices = { ...scopesQuery, items: (scopesQuery.resource ?? []).filter((scope) => scope.resourceGroupId === groupId && scope.lifecycle === 'active'), retry: () => { void scopesQuery.refresh() } }
   const manager = useWebServicesManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId,
-    enabled: false, refreshAfterMutation: false })
+    enabled: false, refreshAfterMutation: false, active, resourceGroupId: groupId })
   const [dirty, setDirty] = useState(false)
   const [mode, setMode] = useState<'image' | 'git'>('image')
   const [gitVisited, setGitVisited] = useState(false)

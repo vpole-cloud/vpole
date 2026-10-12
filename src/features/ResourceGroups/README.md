@@ -35,8 +35,10 @@ type requires a stable feature-owned `ResourceTypeId` constant and the same crea
 transaction hooks; ResourceGroups must not reference that feature's Domain, Application, or
 Events assembly.
 
-Registration lifecycle events are intentionally absent because no asynchronous projection or
-external consumer currently needs them.
+Accepted registration, display-name change and final unregistration write ID-only lifecycle events
+in the resource owner's transaction. Repeated no-ops and typed conflicts emit no event. Owning
+realtime consumers translate committed events into group and workspace-inventory invalidations;
+HTTP remains authoritative for names, counts and resource details.
 
 ## RuntimeCell ingress baseline
 
