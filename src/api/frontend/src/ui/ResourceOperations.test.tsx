@@ -61,10 +61,10 @@ beforeEach(() => {
   })
   vi.stubGlobal('fetch', fetchMock)
 })
-afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals() })
-async function render(tenantId = 'active', role: 'Owner' | 'Viewer' = 'Owner') {
+afterEach(async () => { vi.useRealTimers(); await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals() })
+async function render(tenantId = 'active', role: 'Owner' | 'Viewer' = 'Owner', token = 'token') {
   const tenant = { id: tenantId, name: tenantId, role, isDefault: true }
-  await act(async () => root.render(<AppShell registry={registry} initialViewId="operations" api={{ baseUrl: 'http://localhost', token: 'token' }}
+  await act(async () => root.render(<AppShell registry={registry} initialViewId="operations" api={{ baseUrl: 'http://localhost', token }}
     auth={{ initialized: true, authenticated: true, userId: 'user', isPlatformAdmin: false, login: () => {}, logout: () => {} }}
     tenants={{ items: [tenant], activeTenant: tenant, activeTenantId: tenantId, selectTenant: () => {}, status: 'success', error: '' }} />))
 }
@@ -107,4 +107,28 @@ it('clears old tenant reads immediately, ignores late results, and keeps viewer 
   await render('new', 'Viewer'); expect(oldSignal.aborted).toBe(true)
   await act(async () => resolve(new Response(JSON.stringify({ ...data, items: [operation('foreign-canary', true)] }))))
   expect(text()).toContain('new-tenant'); expect(text()).not.toContain('foreign-canary'); expect(text()).not.toContain('Retry this apply')
+})
+
+
+it('coalesces polling of slow operation reads and preserves a confirmation through token renewal', async () => {
+  vi.useFakeTimers(); await render(); await click('Retry this apply')
+  await render('active', 'Owner', 'renewed-token')
+  expect(container.querySelector('dialog')?.textContent).toContain('Only deployment failed')
+  const original = fetchMock.getMockImplementation()!
+  let complete!: (response: Response) => void
+  let first = true
+  fetchMock.mockImplementation((url, init) => {
+    if (String(url).includes('/operations?') && first) { first = false; return new Promise(resolve => { complete = resolve }) }
+    return original(url, init)
+  })
+  await act(async () => { await vi.advanceTimersByTimeAsync(20000) })
+  const inFlight = fetchMock.mock.calls.filter(([url]) => String(url).includes('/operations?')).at(-1)!
+  const count = fetchMock.mock.calls.filter(([url]) => String(url).includes('/operations?')).length
+  await act(async () => { await vi.advanceTimersByTimeAsync(60000) })
+  expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/operations?'))).toHaveLength(count)
+  expect(inFlight[1]?.signal?.aborted).toBe(false)
+  expect(inFlight[1]?.headers).toEqual(expect.objectContaining({ Authorization: 'Bearer renewed-token' }))
+  await act(async () => complete(new Response(JSON.stringify(data))))
+  await click('Retry selected operation')
+  expect(fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')![1]?.headers).toEqual(expect.objectContaining({ Authorization: 'Bearer renewed-token' }))
 })

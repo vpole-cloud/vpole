@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { fetchResourceOperations, type ResourceOperationsFilter } from '../api'
-import { useResource } from '../hooks/useResource'
+import { fetchResourceOperations, type ResourceOperationsFilter } from '../modules/operations/api'
+import { useScopedQuery } from '../data/useScopedQuery'
+import { useApiScope } from '../data/useApiScope'
 import { useScopedMutation } from '../hooks/useScopedMutation'
 import { useAppServices } from '../shell/AppContext'
 import type { ResourceDeploymentOperation } from '../types'
@@ -11,7 +12,8 @@ import { useVisibleRefresh } from '../hooks/useVisibleRefresh'
 
 export function ResourceOperations({ filter = {}, active = true, onRetry }: { filter?: ResourceOperationsFilter; active?: boolean; onRetry?: (operation: ResourceDeploymentOperation, signal: AbortSignal) => Promise<unknown> }) {
   const { api, tenant, navigation } = useAppServices()
-  const scope = `${api.baseUrl}:${api.tenantId}:${api.token}:${filter.resourceGroupId}:${filter.resourceType}:${filter.resourceId}`
+  const { identity } = useApiScope(api)
+  const scope = `${identity}:${filter.resourceGroupId}:${filter.resourceType}:${filter.resourceId}`
   return <ResourceOperationsContent key={scope} filter={filter} active={active} scope={scope} canManage={tenant.canManage} resourceHref={navigation.resourceHref} onRetry={onRetry} />
 }
 
@@ -21,10 +23,12 @@ function ResourceOperationsContent({ filter, active, scope, canManage, resourceH
   resourceHref: (identity: { resourceTypeId: string; resourceId: string; section?: string }) => string | null
 }) {
   const { api } = useAppServices()
+  const apiScope = useApiScope(api)
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<ResourceDeploymentOperation | null>(null)
-  const operations = useResource(`${scope}:${page}`, (signal) => fetchResourceOperations(api.baseUrl, filter, page, api.token, api.tenantId, signal))
-  const mutation = useScopedMutation(scope)
+  const operations = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['operations', filter.resourceGroupId ?? null, filter.resourceType ?? null, filter.resourceId ?? null, page],
+    load: (signal) => fetchResourceOperations(api.baseUrl, filter, page, apiScope.credential(), api.tenantId, signal) })
+  const mutation = useScopedMutation(`${scope}:${canManage}`)
   useVisibleRefresh(active, operations.refresh)
   const value = operations.resource
   const counts = value?.counts
@@ -57,8 +61,17 @@ function ResourceOperationsContent({ filter, active, scope, canManage, resourceH
       <span>Page {page} of {Math.max(1, Math.ceil(value.totalCount / value.pageSize))}</span><Button disabled={page * value.pageSize >= value.totalCount || operations.status === 'loading'} onClick={() => setPage(page + 1)}>Next targets</Button></div>}
     {mutation.error instanceof Error && <Notice tone="error">{mutation.error.message}<Button onClick={() => { setSelected(null); void operations.refresh() }}>Refresh changed operation</Button></Notice>}
     {selected && canManage && onRetry && <ConfirmationDialog title={`Retry ${selected.deployment.placement.desiredOperation?.toLowerCase()} on this target?`} confirmLabel="Retry selected operation" busy={mutation.busy} onCancel={() => setSelected(null)} onConfirm={() => {
-      void mutation.run((signal) => onRetry(selected, signal), async () => {
-        setSelected(null); await operations.refresh()
+      let guard = () => {}
+      void mutation.run(async (signal) => {
+        guard = () => { if (signal.aborted || !apiScope.isCurrent()) throw new DOMException('Aborted', 'AbortError') }
+        guard(); const value = await onRetry(selected, signal); guard(); return { value }
+      }, async () => {
+        setSelected(null); await operations.refreshAfterWrite(); guard()
+        await Promise.all(['operations', 'health', 'runtime-discovery', 'endpoints'].map(async (prefix) => {
+          const queryKey = apiScope.key([prefix])
+          await apiScope.session.client.cancelQueries({ queryKey }); guard()
+          await apiScope.session.client.invalidateQueries({ queryKey, refetchType: 'active' })
+        })); guard()
       }).catch(() => {})
     }}>Only deployment <code>{selected.deployment.id}</code> on target <code>{selected.deployment.placement.deploymentTargetId}</code> will be retried. Successful targets and other resources are untouched.</ConfirmationDialog>}
   </section>

@@ -1,6 +1,9 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { fetchResourceDiagnostics, readResourceRuntimeLogs, RuntimeLogUnavailableError } from '../api'
-import { useResource } from '../hooks/useResource'
+import { readResourceRuntimeLogs, RuntimeLogUnavailableError } from '../api'
+import { fetchResourceDiagnostics } from '../modules/operations/api'
+import { useScopedQuery } from '../data/useScopedQuery'
+import { useApiScope } from '../data/useApiScope'
+import { useVisibleRefresh } from '../hooks/useVisibleRefresh'
 import { useAppServices } from '../shell/AppContext'
 import type { ResourceDeploymentOperation } from '../types'
 import { Button, EmptyState, Notice } from './components'
@@ -19,23 +22,27 @@ const reasons: Record<string, string> = {
 export function ResourceRuntimeDiagnostics({ operation, active }: { operation: ResourceDeploymentOperation; active: boolean }) {
   const { api } = useAppServices()
   const deployment = operation.deployment
-  const scope = `${api.baseUrl}:${api.tenantId}:${api.token}:${deployment.id}:${deployment.resourceType}:${deployment.resourceId}:${deployment.placement.deploymentTargetId}:${deployment.placement.deploymentRevision}:${deployment.placement.desiredGeneration}`
-  return <DiagnosticsToggle key={scope} operation={operation} active={active} scope={scope} />
+  const { identity } = useApiScope(api)
+  const scope = `${identity}:${deployment.id}:${deployment.resourceType}:${deployment.resourceId}:${deployment.placement.deploymentTargetId}:${deployment.placement.deploymentRevision}:${deployment.placement.desiredGeneration}`
+  return <DiagnosticsToggle key={scope} operation={operation} active={active} />
 }
-function DiagnosticsToggle({ operation, active, scope }: { operation: ResourceDeploymentOperation; active: boolean; scope: string }) {
+function DiagnosticsToggle({ operation, active }: { operation: ResourceDeploymentOperation; active: boolean }) {
   const [open, setOpen] = useState(false)
   return <div className="runtime-diagnostics">
     <Button onClick={() => setOpen(value => !value)}>{open ? 'Close runtime diagnostics' : 'Runtime logs and events'}</Button>
-    {active && open && <DiagnosticsContent operation={operation} scope={scope} />}
+    {active && open && <DiagnosticsContent operation={operation} />}
   </div>
 }
 type LogState = { text: string; status: 'idle' | 'opening' | 'reading' | 'ended' | 'error'; reason: string; discarded: boolean; bytes: number }
 const initial = (): LogState => ({ text: '', status: 'idle', reason: '', discarded: false, bytes: 0 })
-function DiagnosticsContent({ operation, scope }: { operation: ResourceDeploymentOperation; scope: string }) {
+function DiagnosticsContent({ operation }: { operation: ResourceDeploymentOperation }) {
   const fields = useId()
   const { api } = useAppServices()
   const deployment = operation.deployment
-  const details = useResource(scope, signal => fetchResourceDiagnostics(api.baseUrl, deployment.id, api.token, api.tenantId, signal))
+  const apiScope = useApiScope(api)
+  const details = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['runtime-discovery', deployment.id, deployment.resourceType, deployment.resourceId, deployment.placement.deploymentTargetId, deployment.placement.deploymentRevision, deployment.placement.desiredGeneration],
+    load: signal => fetchResourceDiagnostics(api.baseUrl, deployment.id, apiScope.credential(), api.tenantId, signal) })
+  useVisibleRefresh(true, details.refresh)
   const [uid, setUid] = useState(''); const [container, setContainer] = useState(''); const [previous, setPrevious] = useState(false)
   const [logs, setLogs] = useState<LogState>(initial)
   const current = useRef<AbortController | null>(null)
@@ -55,15 +62,15 @@ function DiagnosticsContent({ operation, scope }: { operation: ResourceDeploymen
     stop(); const owner = new AbortController(); current.current = owner
     setLogs({ ...initial(), status: 'opening' })
     void readResourceRuntimeLogs(api.baseUrl, deployment.id, { instanceUid: uid, container, expectedRevision: value.deploymentRevision, follow, previous, tailLines: 100 }, frame => {
-      if (!alive.current || owner.signal.aborted || current.current !== owner) return
+      if (!alive.current || !apiScope.isCurrent() || owner.signal.aborted || current.current !== owner) return
       setLogs(old => {
         let text = frame.kind === 'Output' ? old.text + frame.text : old.text
         let discarded = old.discarded
         if (text.length > 64 * 1024) { text = text.slice(-64 * 1024); if (text.charCodeAt(0) >= 0xDC00 && text.charCodeAt(0) <= 0xDFFF) text = text.slice(1); discarded = true }
         return { text, discarded, bytes: frame.outputBytes, status: frame.kind === 'Ended' ? 'ended' : 'reading', reason: frame.kind === 'Ended' ? reasons[frame.reason!] : '' }
       })
-    }, api.token, api.tenantId, owner.signal).catch(failure => {
-      if (!alive.current || owner.signal.aborted || current.current !== owner) return
+    }, apiScope.credential(), api.tenantId, owner.signal).catch(failure => {
+      if (!alive.current || !apiScope.isCurrent() || owner.signal.aborted || current.current !== owner) return
       setLogs(old => ({ ...old, status: 'error', reason: failure instanceof RuntimeLogUnavailableError ? reasons[failure.reason] ?? failure.message : failure instanceof Error ? failure.message : 'Runtime log read failed.' }))
     }).finally(() => { if (current.current === owner) current.current = null })
   }

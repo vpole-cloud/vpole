@@ -1,5 +1,6 @@
 import { fetchSourceBuildJobs, fetchWebServiceReleases, retryWebServiceDeployment } from '../../api'
-import { useResource } from '../../hooks/useResource'
+import { useWebServiceQuery } from './useWebServiceQuery'
+import { useApiScope } from '../../data/useApiScope'
 import { useAppServices } from '../../shell/AppContext'
 import { ResourceOperations } from '../../ui/ResourceOperations'
 import { useVisibleRefresh } from '../../hooks/useVisibleRefresh'
@@ -9,17 +10,17 @@ import { SourceBuildLogViewer } from '../../components/SourceBuildLogViewer'
 
 export function WebServiceOperations({ id, active }: { id: string; active: boolean }) {
   const { api, navigation } = useAppServices()
-  const scope = `${api.baseUrl}:${api.tenantId}:${api.token}:${id}`
+  const { credential } = useApiScope(api)
   const [logJobId, setLogJobId] = useState<string | null>(null)
-  const builds = useResource(`${scope}:jobs`, (signal) => fetchSourceBuildJobs(api.baseUrl, id, api.token, api.tenantId, signal))
-  const releases = useResource(`${scope}:releases`, (signal) => fetchWebServiceReleases(api.baseUrl, id, api.token, api.tenantId, signal))
+  const builds = useWebServiceQuery(['source-builds', 'jobs', id], (signal) => fetchSourceBuildJobs(api.baseUrl, id, credential(), api.tenantId, signal))
+  const releases = useWebServiceQuery(['web-services', 'releases', id, 1], (signal) => fetchWebServiceReleases(api.baseUrl, id, credential(), api.tenantId, signal))
   useVisibleRefresh(active, builds.refresh)
   useVisibleRefresh(active, releases.refresh)
   return <div className="resource-operations"><ResourceOperations filter={{ resourceType: 'pole/web-service', resourceId: id }} active={active} onRetry={(operation, signal) => {
       const placement = operation.deployment.placement
       const desiredOperation = placement.desiredOperation
       if (desiredOperation !== 'Apply' && desiredOperation !== 'Delete') return Promise.reject(new Error('Refresh this operation before retrying.'))
-      return retryWebServiceDeployment(api.baseUrl, id, operation.deployment.id, { expectedDeploymentRevision: placement.deploymentRevision!, expectedOperation: desiredOperation }, api.token, api.tenantId, signal)
+      return retryWebServiceDeployment(api.baseUrl, id, operation.deployment.id, { expectedDeploymentRevision: placement.deploymentRevision!, expectedOperation: desiredOperation }, credential(), api.tenantId, signal)
     }} />
     <section className="panel"><div className="panel__header"><h2 className="panel__title">Build operations</h2><a className="button" href={navigation.resourceHref({ resourceTypeId: 'pole/web-service', resourceId: id, section: 'builds' })}>Open builds</a><Button onClick={() => void builds.refresh()}>Refresh builds</Button></div>
       {active && logJobId && <SourceBuildLogViewer jobId={logJobId} webServiceId={id} onClose={() => setLogJobId(null)} />}

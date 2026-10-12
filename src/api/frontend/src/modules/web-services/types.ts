@@ -1,4 +1,4 @@
-import type { ComputeProfileSummary, PaginatedResponse, ResourcePlacement } from '../../types'
+import type { PaginatedResponse, ResourcePlacement } from '../../types'
 
 export interface ImageInfo {
   server: string
@@ -61,38 +61,6 @@ export interface WebServiceSpec {
 export interface ConnectionEnvironmentReference { connectionId: string; valueKind: 'Host' | 'Port' | 'Configuration'; configurationKey?: string | null }
 
 export interface SecretEnvironmentReference { secretId: string; key: string }
-
-export interface WebServiceDeploymentEndpoint {
-  kind: string
-  host: string
-  port: number
-  scheme: string
-}
-
-export interface WebServiceDeploymentIngress {
-  ingressClassName: string
-  clusterIssuerName: string
-  publicBaseDomain?: string | null
-  hostnames: string[]
-}
-
-export interface WebServiceDeployment {
-  deploymentId: string
-  isolationScopeId?: string | null
-  runtimeCellId: string
-  deploymentTargetId: string
-  desiredGeneration: number
-  observedGeneration: number
-  status: string
-  failureCode?: string | null
-  compute: ComputeProfileSummary
-  endpoints: WebServiceDeploymentEndpoint[]
-  resourceRevision: number
-  fixedReplicas: number
-  ingress?: WebServiceDeploymentIngress | null
-  deploymentRevision: number
-  desiredOperation: 'Apply' | 'Delete'
-}
 
 export interface WebServiceReleaseDeployment {
   resourceDeploymentId: string
@@ -169,3 +137,5 @@ export interface WebServiceDeploymentUpdateInput {
   fixedReplicas: number
   computeProfileId?: string
 }
+export type WebServiceDeployment = ResourcePlacement
+export type { DeploymentEndpoint as WebServiceDeploymentEndpoint, DeploymentIngress as WebServiceDeploymentIngress } from '../operations/types'
