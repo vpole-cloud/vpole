@@ -40,6 +40,25 @@ public sealed class RealtimeAccessTests
     public void DuplicateContributionsAndUnknownEnabledTopicsFailStartup()
     {
         Assert.Throws<InvalidOperationException>(() => new RealtimeTopicRegistry([new("same", RealtimeScope.Tenant), new("same", RealtimeScope.Tenant)], new()));
-        Assert.Throws<InvalidOperationException>(() => new RealtimeTopicRegistry([], new() { EnabledTopics = ["unknown"] }));
+        Assert.Throws<InvalidOperationException>(() => new RealtimeTopicRegistry([], new() { Enabled = true, EnabledTopics = ["unknown"] }));
+    }
+
+    [Fact]
+    public async Task AvailabilityDoesNotChangePermissionsAndDisabledStartupIgnoresStaleProviderConfiguration()
+    {
+        var registry = new RealtimeTopicRegistry([new("enabled", RealtimeScope.Tenant), new("disabled", RealtimeScope.Tenant)],
+            new() { Enabled = true, EnabledTopics = ["enabled"] });
+        var access = new RealtimeAccess((tenant, user, _, _) => Task.FromResult<LoadTenantMemberOutcome>(
+            tenant == Alpha ? new TenantMemberSnapshot(tenant, user, TenantMembershipRole.Viewer) : new TenantMemberMissing(tenant, user)),
+            (tenant, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentityNotFound(tenant)), registry);
+        Assert.True(await access.AllowsAsync(IdentityFixture.User(), new("disabled", Alpha), default));
+        Assert.False(await access.AllowsAsync(IdentityFixture.User(), new("disabled", Beta), default));
+        Assert.False(access.IsAvailable("disabled"));
+        Assert.False(access.IsAvailable("unknown"));
+        Assert.True(access.IsAvailable("enabled"));
+        Assert.Null(new RealtimeTopicRegistry([], new() { Enabled = false, EnabledTopics = ["removed-provider"] }).Find("removed-provider"));
+        Assert.Throws<InvalidOperationException>(() => new RealtimeTopicRegistry(
+            [new("same", RealtimeScope.Tenant), new("same", RealtimeScope.Tenant)],
+            new() { Enabled = false, EnabledTopics = ["removed-provider"] }));
     }
 }

@@ -9,6 +9,24 @@ namespace Pole.Features.Realtime.Tests;
 public sealed class RedisInfrastructureRegistrationTests
 {
     [Fact]
+    public void DisabledFeatureResolvesItsRegistryWithoutRemovedProvidersOrDistributedStores()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Realtime:Enabled"] = "false",
+            ["Realtime:EnabledTopics:0"] = "removed-provider"
+        }).Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddRealtimeFeature(configuration, development: false);
+        services.AddRealtimeRedis(configuration, development: false);
+        using var provider = services.BuildServiceProvider();
+        Assert.Null(provider.GetRequiredService<RealtimeTopicRegistry>().Find("removed-provider"));
+        Assert.Null(provider.GetService<IRealtimeTicketStore>());
+        Assert.Null(provider.GetService<IRealtimeSubscriptions>());
+    }
+
+    [Fact]
     public void DisabledFeatureDoesNotRegisterRedisOrTicketStores()
     {
         var services = new ServiceCollection();
