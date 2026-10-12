@@ -1,0 +1,19 @@
+import { useApiScope } from '../data/useApiScope'
+import { fetchResourceGroups } from '../api'
+import { useScopedQuery } from '../data/useScopedQuery'
+
+export function useResourceGroupChoices(api: { apiBaseUrl: string; token?: string; tenantId?: string; enabled: boolean }) {
+  const { credential } = useApiScope({ baseUrl: api.apiBaseUrl, tenantId: api.tenantId, token: api.token })
+  const query = useScopedQuery({ scope: [api.apiBaseUrl, api.tenantId], key: ['resource-groups', 'choices'], enabled: api.enabled,
+    load: async (signal) => {
+      const first = await fetchResourceGroups(api.apiBaseUrl, credential(), api.tenantId, signal, { pageSize: 200 })
+      const items = [...first.items]
+      for (let pageNumber = 2; items.length < first.totalCount; pageNumber++) {
+        const next = await fetchResourceGroups(api.apiBaseUrl, credential(), api.tenantId, signal, { pageNumber, pageSize: 200 })
+        items.push(...next.items)
+        if (!next.items.length) break
+      }
+      return [...new Map(items.map((item) => [item.id, item])).values()]
+    } })
+  return { ...query, items: query.resource ?? [] }
+}

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, useLayoutEffect } from 'react'
-import { createRoot, type Root } from 'react-dom/client'
+import type { Root } from 'react-dom/client'
+import { createTestApp } from '../test/TestApp'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as api from '../api'
 import { useTenants } from './useTenants'
@@ -34,7 +35,7 @@ beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
   localStorage.clear()
   vi.resetAllMocks()
-  root = createRoot(document.createElement('div'))
+  root = createTestApp().root
 })
 afterEach(async () => { await act(async () => { root.unmount() }) })
 

@@ -200,6 +200,25 @@ public sealed class BrowserSmokeE2ETests(
             Assert.Contains($"tenant={fixture.Alpha.DefaultTenantId}", configurationUrl);
             Assert.Contains($"resource={serviceId}", configurationUrl);
             Assert.Contains("section=configuration", configurationUrl);
+            var beforeRenewal = await page.RunAndWaitForResponseAsync(
+                () => page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Refresh service details", Exact = true }).ClickAsync(),
+                response => response.Request.Method == HttpMethod.Get.Method && new Uri(response.Url).AbsolutePath == $"/api/v1/web-services/{serviceId}");
+            var priorAuthorization = (await beforeRenewal.Request.AllHeadersAsync()).GetValueOrDefault("authorization");
+            // Force a real refresh through the Vite-served singleton; return no credentials.
+            var refreshResponse = await page.RunAndWaitForResponseAsync(
+                async () => Assert.True(await page.EvaluateAsync<bool>("async () => { const { default: keycloak } = await import('/src/auth/keycloak.ts'); return await keycloak.updateToken(-1); }"), "Keycloak did not refresh the browser session."),
+                response => new Uri(response.Url).AbsolutePath.EndsWith("/protocol/openid-connect/token", StringComparison.Ordinal)
+                    && response.Request.PostData?.Contains("grant_type=refresh_token", StringComparison.Ordinal) == true);
+            Assert.True(refreshResponse.Ok, "Browser token renewal failed.");
+            Assert.Equal("UI_REVIEW=true", await page.GetByLabel("Environment variables").InputValueAsync());
+            Assert.Equal(configurationUrl, page.Url);
+            var afterRenewal = await page.RunAndWaitForResponseAsync(
+                () => page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Refresh service details", Exact = true }).ClickAsync(),
+                response => response.Request.Method == HttpMethod.Get.Method && new Uri(response.Url).AbsolutePath == $"/api/v1/web-services/{serviceId}");
+            var renewedAuthorization = (await afterRenewal.Request.AllHeadersAsync()).GetValueOrDefault("authorization");
+            Assert.True(!string.IsNullOrWhiteSpace(renewedAuthorization) && renewedAuthorization != priorAuthorization,
+                "The resource read did not use renewed browser credentials.");
+            Assert.Equal("UI_REVIEW=true", await page.GetByLabel("Environment variables").InputValueAsync());
             await page.GoBackAsync();
             await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Physical deployments", Exact = true }).WaitForAsync();
             await page.GoForwardAsync();

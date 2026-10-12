@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { WebServicesPage } from '../../components/WebServicesPage'
-import { useResourceGroupsManager } from '../../hooks/useResourceGroupsManager'
+import { useResourceGroupChoices } from '../../hooks/useResourceGroupChoices'
 import { useWebServicesManager } from '../../hooks/useWebServicesManager'
 import { useAppServices } from '../../shell/AppContext'
 import { Button, ConfirmationDialog, EmptyState } from '../../ui/components'
@@ -29,7 +29,7 @@ export function WebServicesView() {
   const [dirtyTabs, setDirtyTabs] = useState<Record<string, boolean>>({})
   const [names, setNames] = useState<Record<string, string>>({})
   const [refreshVersion, setRefreshVersion] = useState(0)
-  const groups = useResourceGroupsManager(options)
+  const groups = useResourceGroupChoices(options)
   const services = useWebServicesManager({ ...options, pageNumber: route.pageNumber, pageSize: route.pageSize, search: route.search })
   const current = useRef({ workspace, navigation })
   const mounted = useRef(false)

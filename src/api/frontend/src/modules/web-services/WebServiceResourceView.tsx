@@ -1,3 +1,5 @@
+import { useApiScope } from '../../data/useApiScope'
+import { useVisibleRefresh } from '../../hooks/useVisibleRefresh'
 import { useEffect, useState } from 'react'
 import { SourceBuildPanel } from '../../components/SourceBuildPanel'
 import { WebServiceDeploymentsPanel } from '../../components/WebServiceDeploymentsPanel'
@@ -27,6 +29,7 @@ export function WebServiceResourceView({ id, section, active, refreshVersion, gr
     onSection: (id: string, section: ServiceSection) => void; onLoaded: (service: WebService) => void;
     onDirtyChange: (id: string, dirty: boolean) => void; onChanged: () => void }) {
   const { api, tenant, notifications } = useAppServices()
+  const { isCurrent } = useApiScope(api)
   const details = useWebService(id, api, refreshVersion)
   const manager = useWebServicesManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId,
     enabled: false, refreshAfterMutation: false })
@@ -39,21 +42,21 @@ export function WebServiceResourceView({ id, section, active, refreshVersion, gr
   const [domainDirty, setDomainDirty] = useState(false)
   const dirty = configurationDirty || deploymentDirty || buildDirty || dependencyDirty || domainDirty
   const [formVersion, setFormVersion] = useState(0)
-  const [saving, setSaving] = useState(false)
+  const [configurationSave, setConfigurationSave] = useState<{ kind: 'idle' } | { kind: 'saving' } | { kind: 'accepted'; revision: number }>({ kind: 'idle' })
+  const saving = configurationSave.kind === 'saving'
   const [discarding, setDiscarding] = useState(false)
   const [visited, setVisited] = useState<ServiceSection[]>([section])
   // Keep a section mounted after its first visit, including externally selected sections.
   if (!visited.includes(section)) setVisited([...visited, section])
   const service = details.service
+  if (configurationSave.kind === 'accepted' && service && service.activeRevision >= configurationSave.revision) {
+    setConfigurationSave({ kind: 'idle' }); setFormVersion((current) => current + 1)
+  }
   const refreshDetails = details.refresh
   const completedBuild = builds.jobs.filter((job) => ['succeeded', 'failed'].includes(job.state.status)).map((job) => `${job.id}:${job.state.status}`).join(',')
   useEffect(() => { if (completedBuild) void refreshDetails() }, [completedBuild, refreshDetails])
   const reconciling = service?.deployments.some((deployment) => ['WaitingForRuntimeCell', 'Pending', 'Reconciling'].includes(deployment.status)) ?? false
-  useEffect(() => {
-    if (!active || !reconciling) return
-    const timer = window.setInterval(() => void refreshDetails(), 2500)
-    return () => window.clearInterval(timer)
-  }, [active, reconciling, refreshDetails])
+  useVisibleRefresh(active && reconciling, refreshDetails, 2500)
   useUnsavedChanges(dirty, service?.name ?? 'Web service')
   useEffect(() => {
     onDirtyChange(id, dirty)
@@ -74,7 +77,8 @@ export function WebServiceResourceView({ id, section, active, refreshVersion, gr
 
   const mutate = async <T,>(action: () => Promise<T>) => {
     const result = await action()
-    await details.refresh()
+    await details.refreshAfterWrite()
+    if (!isCurrent()) throw new DOMException('Aborted', 'AbortError')
     onChanged()
     return result
   }
@@ -113,20 +117,24 @@ export function WebServiceResourceView({ id, section, active, refreshVersion, gr
     <TabPanel id={panelId} tabId="operations" activeId={section}>{active && section === "operations" && <WebServiceOperations id={id} active />}</TabPanel>
     <TabPanel id={panelId} tabId="releases" activeId={section}>{active && section === 'releases' && <WebServiceReleases service={service} onChanged={async () => { const updated = await details.refresh(); onChanged(); return updated }} />}</TabPanel>
     <TabPanel id={panelId} tabId="configuration" activeId={section}>
+      {configurationSave.kind === 'accepted' && <Notice>Configuration was accepted. Refresh service details before editing again; the last fetched configuration is shown.</Notice>}
       {visited.includes('configuration') && (tenant.canManage ? <div className="web-service-editor"><WebServiceForm key={formVersion}
         mode="edit" initialValue={service} resourceGroups={groups} availableTargets={manager.availableTargets}
         targetsStatus={manager.targetsStatus} computeProfilesByTarget={manager.computeProfilesByTarget}
         onLoadTargets={manager.loadAvailableTargets} onLoadComputeProfiles={manager.loadComputeProfiles}
-        submitStatus={saving ? 'loading' : manager.submitStatus} submitError={manager.submitError}
+        submitStatus={saving ? 'loading' : manager.submitStatus} submitError={manager.submitError} submitDisabled={configurationSave.kind === 'accepted'}
         onDirtyChange={setConfigurationDirty} onCancelEdit={() => setDiscarding(true)} onSubmit={async (input) => {
-          setSaving(true)
+          if (configurationSave.kind !== 'idle') return
+          setConfigurationSave({ kind: 'saving' })
           try {
-            await manager.update(id, input)
-            const updated = await details.refresh()
-            if (updated) setFormVersion((current) => current + 1)
+            const accepted = await manager.update(id, input)
+            setConfigurationSave({ kind: 'accepted', revision: accepted.resourceRevision })
+            const updated = await details.refreshAfterWrite()
+            if (!isCurrent()) return
+            if (updated && updated.activeRevision >= accepted.resourceRevision) { setFormVersion((current) => current + 1); setConfigurationSave({ kind: 'idle' }) }
             onChanged()
             notifications.publish(`Configuration accepted for ${service.name}.`)
-          } finally { setSaving(false) }
+          } catch (error) { setConfigurationSave({ kind: 'idle' }); throw error }
         }} /></div> : <EmptyState title="Tenant viewer access is read-only." />)}
     </TabPanel>
     <TabPanel id={panelId} tabId="deployments" activeId={section}>

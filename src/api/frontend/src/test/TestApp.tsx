@@ -1,8 +1,13 @@
 import { createRoot } from 'react-dom/client'
+import { SessionQueries } from '../data/SessionQueries'
 
-// Each interaction test owns its DOM root; query isolation is added by the app provider.
 export function createTestApp() {
   const container = document.createElement('div')
   document.body.append(container)
-  return { container, root: createRoot(container) }
+  const domRoot = createRoot(container)
+  const root = { ...domRoot, render: (node: Parameters<typeof domRoot.render>[0]) =>
+    domRoot.render(<SessionQueries identity="test">{node}</SessionQueries>),
+    unmount: () => domRoot.unmount(),
+  }
+  return { container, root }
 }

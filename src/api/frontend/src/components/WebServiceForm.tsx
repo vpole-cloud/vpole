@@ -1,3 +1,4 @@
+import { deploymentConfiguration, fieldsFor, parseEnvironmentVariables, type SelectedDeploymentInput } from '../modules/web-services/formModel'
 import { useEffect, useId, useState } from 'react'
 import { validationMessage } from '../api'
 import { Button, Notice } from '../ui/components'
@@ -32,44 +33,6 @@ interface WebServiceFormProps {
   submitDisabled?: boolean
   imageHint?: string
 }
-
-const parseEnvironmentVariables = (value: string) =>
-  value
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [key, ...rest] = line.split('=')
-      return { key: key?.trim() ?? '', value: rest.join('=').trim() }
-    })
-    .filter((item) => item.key)
-
-type SelectedDeploymentInput = WebServiceDeploymentInput & { deploymentTargetId: string }
-
-const deploymentConfiguration = (
-  targetId: string,
-  current?: WebServiceDeploymentInput,
-): SelectedDeploymentInput => ({
-  deploymentTargetId: targetId,
-  fixedReplicas: current?.fixedReplicas ?? 1,
-  computeProfileId: current?.computeProfileId,
-})
-
-const fieldsFor = (service: WebService) => ({
-  name: service.name,
-  resourceGroupId: service.resourceGroupId,
-  isolationScopeId: service.isolationScopeId ?? '',
-  exposure: service.exposure.mode,
-  imageServer: service.spec.image.server,
-  imageName: service.spec.image.name,
-  imageTag: service.spec.image.tag,
-  probePath: service.spec.probes?.readiness.path ?? '/health',
-  probePort: service.spec.probes?.readiness.port ?? '8080',
-  servicePort: String(service.spec.config.portMappings[0]?.servicePort ?? 80),
-  targetPort: service.spec.config.portMappings[0]?.targetPort ?? '8080',
-  portName: service.spec.config.portMappings[0]?.name ?? 'http',
-  environmentText: Object.entries(service.spec.config.environmentVariables).map(([key, value]) => `${key}=${value}`).join('\n'),
-})
 
 export function WebServiceForm({
   mode,
@@ -164,7 +127,7 @@ export function WebServiceForm({
     setFailure(null)
     setSavedSnapshot(JSON.stringify(fields))
   }
-  useEffect(() => { onDirtyChange?.(dirty) }, [dirty, onDirtyChange])
+  useEffect(() => { onDirtyChange?.(dirty); return () => onDirtyChange?.(false) }, [dirty, onDirtyChange])
 
   useEffect(() => {
     if (selectedTargets === undefined && defaultTargetId) {
@@ -284,7 +247,7 @@ export function WebServiceForm({
         {mode === 'edit' && dirty && initialValue?.activeRevision !== loadedRevision && (
           <div className="form-message" role="status">The service changed while this draft was open. Your draft is kept. Discard changes to load the latest configuration.</div>
         )}
-        <fieldset className="web-service-form__fields" disabled={submitStatus === 'loading'}>
+        <fieldset className="web-service-form__fields" disabled={submitStatus === 'loading' || submitDisabled}>
         <label className="field">
           <span className="field__label">Name</span>
           <input className="field__control" disabled={mode === 'edit'} value={name} onChange={(event) => setName(event.target.value)} placeholder="pole-api"

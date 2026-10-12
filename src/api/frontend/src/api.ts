@@ -614,7 +614,7 @@ export async function updateWebService(
   token?: string,
   tenantId?: string,
 ) {
-  return sendJson<{ id: string }>(`${apiBaseUrl}/api/v1/web-services/${id}`, {
+  return sendJson<{ id: string; resourceRevision: number }>(`${apiBaseUrl}/api/v1/web-services/${id}`, {
     method: 'PUT',
     headers: buildHeaders(token, tenantId),
     body: JSON.stringify({
