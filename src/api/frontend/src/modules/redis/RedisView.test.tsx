@@ -2,6 +2,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { strictFetch } from '../../test/http'
 import { AppShell } from '../../shell/AppShell'
 import { createAppRegistry } from '../../shell/moduleRegistry'
 import type { RedisService } from '../../types'
@@ -26,7 +27,8 @@ let redis: RedisService
 let failUpdate: boolean
 let failList: boolean
 let pendingDetails: Promise<Response> | undefined
-const fetchMock = vi.fn<(url: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+const requests = strictFetch()
+const fetchMock = requests.fetch
 const json = (value: unknown) => Promise.resolve(new Response(JSON.stringify(value)))
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -38,7 +40,8 @@ beforeEach(() => {
   localStorage.clear(); window.history.replaceState({}, '', '/?view=redis&resource=catalog')
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
   redis = structuredClone(initial); failUpdate = false; failList = false; pendingDetails = undefined
-  fetchMock.mockReset().mockImplementation((input, init) => {
+  requests.reset()
+  fetchMock.mockImplementation((input, init) => {
     const url = new URL(String(input), 'http://localhost')
     if (url.pathname.endsWith('/redis-services/')) {
       if (init?.method === 'POST') return json({ redisId: redis.id, placement: redis.placement })
@@ -61,14 +64,18 @@ beforeEach(() => {
     if (url.pathname.endsWith('/deployment-targets/available')) return json([{ id: 'target', displayName: 'Local cluster' }])
     if (url.pathname.endsWith('/compute-profiles/available')) return json([{ id: 'small', displayName: 'Small', isDefault: true }])
     if (url.pathname.endsWith('/storage-profiles')) return json([{ id: 'disk', displayName: 'Standard disk', isDefault: true, targetMappings: [{ deploymentTargetId: 'target', storageClassName: 'standard' }] }])
-    return json([])
+    if (url.pathname.endsWith('/resource-deployments/operations')) return json({ items: [], totalCount: 0, pageNumber: 1, pageSize: 10, checkedAtUtc: new Date().toISOString(), counts: { waiting: 0, accepted: 0, running: 0, applied: 0, failed: 0 } })
+    if (url.pathname.endsWith('/observation')) return json({ deploymentRevision: redis.placement?.deploymentRevision, desiredGeneration: redis.placement?.desiredGeneration, checkedAtUtc: new Date().toISOString(), observation: { kind: 'Unavailable', reason: 'Unsupported' } })
+    if (url.pathname.endsWith('/resource-connections/endpoints')) return json({ availability: 'Supported', endpoints: [], topology: { status: 'NotEvaluated', reasons: [] } })
+    if (url.pathname.endsWith('/postgres/')) return json({ items: [], totalCount: 0, pageNumber: 1, pageSize: 8 })
+    return requests.unhandled(input, init)
   })
   vi.stubGlobal('fetch', fetchMock)
 })
-afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals() })
-async function render(role: 'Owner' | 'Viewer' = 'Owner', tenantId = 'alpha') {
+afterEach(async () => { await act(async () => root.unmount()); container.remove(); requests.verify(); vi.unstubAllGlobals() })
+async function render(role: 'Owner' | 'Viewer' = 'Owner', tenantId = 'alpha', token = 'token') {
   const tenant = { id: tenantId, name: tenantId, role, isDefault: true }
-  await act(async () => root.render(<AppShell registry={registry} initialViewId="redis" api={{ baseUrl: 'http://localhost', token: 'token' }}
+  await act(async () => root.render(<AppShell registry={registry} initialViewId="redis" api={{ baseUrl: 'http://localhost', token }}
     auth={{ initialized: true, authenticated: true, userId: 'user', isPlatformAdmin: false, login: () => {}, logout: () => {} }}
     tenants={{ items: [tenant], activeTenant: tenant, activeTenantId: tenant.id, selectTenant: () => {}, status: 'success', error: '' }} />))
 }
@@ -161,3 +168,27 @@ it('aborts detail reads on tenant change and suppresses their late metadata', as
   expect((read[1]?.signal as AbortSignal).aborted).toBe(true)
   expect(text()).not.toContain('late-alpha')
 })
+
+ it('preserves Redis drafts through credential renewal and uses the new token', async () => {
+  await render(); await click('orders'); await tab('Configuration'); await fill('Tags', 'local-draft')
+  await render('Owner', 'alpha', 'renewed-token')
+  expect(field('Tags').value).toBe('local-draft')
+  await click('Refresh Redis')
+  const reads = fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/redis-services/database'))
+  expect(reads.at(-1)![1]?.headers).toEqual(expect.objectContaining({ Authorization: 'Bearer renewed-token' }))
+  expect(field('Tags').value).toBe('local-draft')
+ })
+
+ it('reviews a known concurrent Redis revision before reapplying its draft', async () => {
+  await open(); await tab('Configuration'); await fill('Tags', 'local-draft')
+  redis = { ...redis, revision: 2, tags: ['server-tags'] }
+  await click('Refresh Redis')
+  expect(text()).toContain('The Redis configuration changed since revision 1')
+  await act(async () => field('Tags').closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+  expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(false)
+  await click('Review and reapply draft'); await click('Reapply changes')
+  expect(field('Tags').value).toBe('local-draft')
+  await act(async () => field('Tags').closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+  const put = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')!
+  expect(JSON.parse(put[1]!.body as string)).toEqual({ spec: redis.spec, tags: ['local-draft'] })
+ })

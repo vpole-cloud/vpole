@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import { fetchResourceGroups } from '../../api'
-import { usePagedInventory } from '../../hooks/usePagedInventory'
+import { useResourceGroupInventory } from './useResourceGroups'
 import { useAppServices } from '../../shell/AppContext'
 import { validResourceId } from '../../shell/workspaceState'
 import { Button, EmptyState } from '../../ui/components'
@@ -31,9 +30,7 @@ export function ResourceTree() {
   const key = `pole.resource-tree.v1.${auth.userId}.${api.tenantId}`
   const [state, setState] = useState(() => readTree(key))
   const pageSize = state.pageSize
-  const inventory = usePagedInventory({ scopeKey: `${api.baseUrl}:${api.token}:${api.tenantId}`, enabled: state.open,
-    queryKey: JSON.stringify([state.page, pageSize, resourceVersion]),
-    load: (signal) => fetchResourceGroups(api.baseUrl, api.token, api.tenantId, signal, { pageNumber: state.page, pageSize }), getId: (group) => group.id })
+  const inventory = useResourceGroupInventory(api, state.page, pageSize, '', state.open, resourceVersion)
   useEffect(() => { try { localStorage.setItem(key, JSON.stringify(state)) } catch { /* Navigation works without storage. */ } }, [key, state])
   const lastPage = Math.max(1, Math.ceil((inventory.page?.totalCount ?? 0) / pageSize))
   if (inventory.status === 'success' && inventory.isCurrentPage && state.page > lastPage) setState({ ...state, page: lastPage })

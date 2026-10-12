@@ -1,8 +1,8 @@
 import { useWorkspaceController } from '../../shell/useWorkspaceController'
 import { useCallback, useEffect, useState } from 'react'
-import { fetchResourceGroups } from '../../api'
+import { useApiScope } from '../../data/useApiScope'
 import { ResourceGroupsPage } from '../../components/ResourceGroupsPage'
-import { usePagedInventory } from '../../hooks/usePagedInventory'
+import { useResourceGroupInventory } from './useResourceGroups'
 import { useResourceGroupsManager } from '../../hooks/useResourceGroupsManager'
 import { useAppServices } from '../../shell/AppContext'
 import { catalogId, createId, positiveParam } from '../../shell/workspaceState'
@@ -25,9 +25,9 @@ export function ResourceGroupsView() {
       } : tab) }
     } })
   const [refreshVersion, setRefreshVersion] = useState(0)
-  const inventory = usePagedInventory({ scopeKey: `${api.baseUrl}:${api.tenantId}:${api.token}`, queryKey: JSON.stringify([route.pageNumber, route.pageSize, route.search]), enabled: Boolean(tenant.active),
-    load: (signal) => fetchResourceGroups(api.baseUrl, api.token, api.tenantId, signal, route), getId: (group) => group.id })
-  const manager = useResourceGroupsManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId, enabled: true, loadInventory: false })
+  const origin = useApiScope(api)
+  const inventory = useResourceGroupInventory(api, route.pageNumber, route.pageSize, route.search, Boolean(tenant.active))
+  const manager = useResourceGroupsManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId, enabled: tenant.canManage, loadInventory: false })
   const onLoaded = useCallback((group: ResourceGroup) => loaded(group.id, group.name), [loaded])
   const onResourcePage = useCallback((id: string, resourcePage: number, resourcePageSize: number, replace = false) => {
     updateTab(id, { resourcePage, resourcePageSize }, replace)
@@ -63,7 +63,7 @@ export function ResourceGroupsView() {
         canManage={tenant.canManage} deletingId={manager.deletingId} deleteError={manager.submitError} onRefresh={() => { refreshCatalog(); setRefreshVersion((version) => version + 1) }}
         onCreate={() => { setCreating(true); navigateWorkspace({ ...workspace, activeId: createId }) }} onOpen={open}
         resourceHref={(id) => navigation.resourceHref({ resourceTypeId: 'pole/resource-group', resourceId: id, section: workspace.tabs.find((tab) => tab.id === id)?.section ?? 'resources' })}
-        onDelete={async (id) => { await manager.remove(id); inventory.removeItem(id); close(id); refreshCatalog() }} />
+        onDelete={async (id) => { const removed = await manager.remove(id); if (removed && origin.isCurrent()) { close(id); refreshCatalog() } }} />
     </TabPanel>
     {creating && <TabPanel id={workspaceId} tabId={createId} activeId={activeId}>{tenant.canManage ?
       <NewGroupView onDirtyChange={onDirtyChange} onCreated={(group, shouldOpen) => { refreshCatalog(); if (shouldOpen) { setCreating(false); onLoaded(group); open(group.id) } }} />

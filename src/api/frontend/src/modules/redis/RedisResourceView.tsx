@@ -2,7 +2,9 @@ import { ResourceHealth } from '../../ui/ResourceHealth'
 import { ResourceOperations } from '../../ui/ResourceOperations'
 import { useEffect, useState } from 'react'
 import { deleteRedisService, fetchAvailableComputeProfiles, fetchAvailableDeploymentTargets, fetchAvailableStorageProfiles, fetchIsolationScopes, fetchRedisService, fetchResourceGroup, retryResourceDeployment, updateRedisService, validationMessage } from '../../api'
-import { useResource } from '../../hooks/useResource'
+import { useScopedQuery } from '../../data/useScopedQuery'
+import { useVisibleRefresh } from '../../hooks/useVisibleRefresh'
+import { useProviderInvalidation } from '../../data/useProviderInvalidation'
 import { useScopedMutation } from '../../hooks/useScopedMutation'
 import { useAppServices } from '../../shell/AppContext'
 import { useUnsavedChanges } from '../../shell/useUnsavedChanges'
@@ -13,17 +15,20 @@ import { ResourceEndpoints } from '../../ui/ResourceEndpoints'
 import { Tabs, TabPanel } from '../../ui/Tabs'
 import type { WorkspaceActions } from '../../ui/ResourceWorkspace'
 import { parseRedisTags, redisType, type RedisSection } from './workspaceState'
+import { acceptedRedisChanges, isRedisDirty, reapplyRedisChanges, redisConfiguration } from './configurationModel'
 
 export function RedisResourceView({ id, section, active, version, onSection, actions }: { id: string; section: RedisSection; active: boolean; version: number; onSection: (section: RedisSection) => void; actions: WorkspaceActions<RedisSection> }) {
   const { api, tenant, navigation } = useAppServices()
-  const scopeKey = `${api.baseUrl}:${api.tenantId}:${api.token}:${id}`
-  const details = useResource(scopeKey, (signal) => fetchRedisService(api.baseUrl, id, api.token, api.tenantId, signal), version)
+  const origin = useProviderInvalidation(api)
+  const scopeKey = `${origin.identity}:${id}`
+  const scope = [api.baseUrl, api.tenantId]
+  const details = useScopedQuery({ scope, key: ['redis', 'detail', id], load: (signal) => fetchRedisService(api.baseUrl, id, origin.credential(), api.tenantId, signal), refreshVersion: version })
   const redis = details.resource
   const placement = redis?.placement
-  const group = useResource(`${scopeKey}:${redis?.resourceGroupId}`, (signal) => redis ? fetchResourceGroup(api.baseUrl, redis.resourceGroupId, api.token, api.tenantId, signal) : Promise.resolve(null))
-  const scopes = useResource(`${scopeKey}:${redis?.resourceGroupId}:scopes`, (signal) => redis ? fetchIsolationScopes(api.baseUrl, redis.resourceGroupId, api.token, api.tenantId, signal) : Promise.resolve([]))
-  const targets = useResource(`${scopeKey}:${placement?.isolationScopeId}`, (signal) => placement ? fetchAvailableDeploymentTargets(api.baseUrl, placement.isolationScopeId ?? undefined, api.token, api.tenantId, signal, false, redisType) : Promise.resolve([]))
-  const storage = useResource(`${scopeKey}:${placement?.deploymentTargetId}:storage`, (signal) => placement ? fetchAvailableStorageProfiles(api.baseUrl, redisType, placement.deploymentTargetId, api.token, api.tenantId, signal) : Promise.resolve([]))
+  const group = useScopedQuery({ scope, key: ['resource-groups', 'detail', redis?.resourceGroupId], enabled: Boolean(redis), load: (signal) => fetchResourceGroup(api.baseUrl, redis!.resourceGroupId, origin.credential(), api.tenantId, signal) })
+  const scopes = useScopedQuery({ scope, key: ['eligibility', 'isolation-scopes', redis?.resourceGroupId], enabled: Boolean(redis), load: (signal) => fetchIsolationScopes(api.baseUrl, redis!.resourceGroupId, origin.credential(), api.tenantId, signal) })
+  const targets = useScopedQuery({ scope, key: ['eligibility', 'deployment-targets', redisType, placement?.isolationScopeId, false], enabled: Boolean(placement), load: (signal) => fetchAvailableDeploymentTargets(api.baseUrl, placement!.isolationScopeId ?? undefined, origin.credential(), api.tenantId, signal, false, redisType) })
+  const storage = useScopedQuery({ scope, key: ['eligibility', 'storage-profiles', redisType, placement?.deploymentTargetId], enabled: Boolean(placement), load: (signal) => fetchAvailableStorageProfiles(api.baseUrl, redisType, placement!.deploymentTargetId, origin.credential(), api.tenantId, signal) })
   const mutation = useScopedMutation(scopeKey)
   const [deleting, setDeleting] = useState(false)
   const [visited, setVisited] = useState(section === 'configuration')
@@ -33,9 +38,12 @@ export function RedisResourceView({ id, section, active, version, onSection, act
   const onDirty = actions.dirty
   useEffect(() => { if (redis) onLoaded(redis.id, redis.name) }, [redis, onLoaded])
   useEffect(() => { onDirty(id, dirty); return () => onDirty(id, false) }, [id, dirty, onDirty])
-  const refresh = details.refresh
-  const pending = redis && (redis.lifecycle === 'Deleting' || placement && ['WaitingForRuntimeCell', 'Pending', 'Reconciling', 'Deleting', 'Failed'].includes(placement.status))
-  useEffect(() => { if (!active || !pending) return; const timer = window.setInterval(() => void refresh(), 2500); return () => window.clearInterval(timer) }, [active, pending, refresh])
+  const pending = Boolean(redis && (redis.lifecycle === 'Deleting' || placement && ['WaitingForRuntimeCell', 'Pending', 'Reconciling', 'Deleting', 'Failed'].includes(placement.status)))
+  useVisibleRefresh(active && pending, details.refresh, 2500)
+  const afterWrite = async () => {
+    await Promise.all([details.refreshAfterWrite(), origin.invalidate([['redis', 'inventory'], ['resource-groups'], ['overview'], ['search'], ['operations'], ['health'], ['endpoints']])])
+    if (origin.isCurrent()) actions.changed()
+  }
   if (!redis) return <EmptyState title={details.status === 'error' ? 'Unable to open this Redis service.' : 'Loading Redis service…'} error={details.status === 'error'}>{details.error && <p>{details.error}</p>}<Button onClick={() => void details.refresh()}>Retry Redis service</Button></EmptyState>
   const canWrite = tenant.canManage && redis.lifecycle === 'Active'
   const panelId = `redis-${id}`
@@ -52,56 +60,65 @@ export function RedisResourceView({ id, section, active, version, onSection, act
       <ResourceHealth placements={placement ? [placement] : []} active={active && section === 'overview'} refreshVersion={version} targetNames={Object.fromEntries((targets.resource ?? []).map((target) => [target.id, target.displayName]))} />
       {active && section === 'overview' && <ResourceEndpoints resourceType={redisType} resourceId={id} />}
       {tenant.canManage && placement?.status === 'Failed' && <Button disabled={mutation.busy} onClick={() => {
-        void mutation.run((signal) => retryResourceDeployment(api.baseUrl, placement.deploymentId, placement.deploymentRevision ?? 1, placement.desiredOperation ?? "Apply", api.token, api.tenantId, signal), async () => { await details.refresh(); actions.changed() }).catch(() => {})
+        void mutation.run((signal) => retryResourceDeployment(api.baseUrl, placement.deploymentId, placement.deploymentRevision ?? 1, placement.desiredOperation ?? "Apply", origin.credential(), api.tenantId, signal), afterWrite).catch(() => {})
       }}>Retry deployment</Button>}
     </TabPanel>
-    <TabPanel id={panelId} tabId="operations" activeId={section}>{active && section === "operations" && <ResourceOperations filter={{ resourceType: redisType, resourceId: id }} onRetry={(operation, signal) => retryResourceDeployment(api.baseUrl, operation.deployment.id, operation.deployment.placement.deploymentRevision!, operation.deployment.placement.desiredOperation!, api.token, api.tenantId, signal)} />}</TabPanel>
-    <TabPanel id={panelId} tabId="configuration" activeId={section}>{visited && (canWrite && placement ? <RedisConfiguration redis={redis} onDirtyChange={setDirty} onSaved={async () => { await details.refresh(); actions.changed() }} /> : <EmptyState title="Redis configuration is read-only." />)}</TabPanel>
+    <TabPanel id={panelId} tabId="operations" activeId={section}>{active && section === "operations" && <ResourceOperations filter={{ resourceType: redisType, resourceId: id }} onRetry={(operation, signal) => retryResourceDeployment(api.baseUrl, operation.deployment.id, operation.deployment.placement.deploymentRevision!, operation.deployment.placement.desiredOperation!, origin.credential(), api.tenantId, signal)} />}</TabPanel>
+    <TabPanel id={panelId} tabId="configuration" activeId={section}>{visited && (canWrite && placement ? <RedisConfiguration redis={redis} onDirtyChange={setDirty} onSaved={afterWrite} /> : <EmptyState title="Redis configuration is read-only." />)}</TabPanel>
     {mutation.error instanceof Error && <Notice tone="error">{mutation.error.message}</Notice>}
     {deleting && canWrite && <ConfirmationDialog title={`Delete ${redis.name}?`} confirmLabel="Delete Redis" busy={mutation.busy} onCancel={() => setDeleting(false)} onConfirm={() => {
-      void mutation.run((signal) => deleteRedisService(api.baseUrl, id, api.token, api.tenantId, signal), async () => { setDeleting(false); await details.refresh(); actions.changed() }).catch(() => {})
+      void mutation.run((signal) => deleteRedisService(api.baseUrl, id, origin.credential(), api.tenantId, signal), async () => { setDeleting(false); await afterWrite() }).catch(() => {})
     }}>This removes the Redis workload and its storage. Applications using it will lose access.</ConfirmationDialog>}
   </div>
 }
 
 function RedisConfiguration({ redis, onDirtyChange, onSaved }: { redis: RedisService; onDirtyChange: (dirty: boolean) => void; onSaved: () => Promise<void> }) {
   const { api, notifications } = useAppServices()
-  const scopeKey = `${api.baseUrl}:${api.tenantId}:${api.token}:${redis.id}`
+  const origin = useProviderInvalidation(api)
+  const scopeKey = `${origin.identity}:${redis.id}`
   const targetId = redis.placement!.deploymentTargetId
-  const compute = useResource(`${scopeKey}:${targetId}`, (signal) => fetchAvailableComputeProfiles(api.baseUrl, targetId, api.token, api.tenantId, signal, redisType))
-  const [tags, setTags] = useState(redis.tags.join(', '))
-  const [computeId, setComputeId] = useState('')
-  const snapshot = JSON.stringify([tags, computeId])
-  const [saved, setSaved] = useState(snapshot)
-  const [revision, setRevision] = useState(redis.revision)
-  const dirty = snapshot !== saved
-  if (!dirty && revision !== redis.revision) {
-    setRevision(redis.revision); setTags(redis.tags.join(', ')); setComputeId(''); setSaved(JSON.stringify([redis.tags.join(', '), '']))
-  }
+  const compute = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['eligibility', 'compute-profiles', redisType, targetId], load: (signal) => fetchAvailableComputeProfiles(api.baseUrl, targetId, origin.credential(), api.tenantId, signal, redisType) })
+  const [configuration, setConfiguration] = useState(() => redisConfiguration(redis))
+  const { tags, computeProfileId: computeId } = configuration.draft
+  const dirty = isRedisDirty(configuration)
+  if (!dirty && configuration.baseline.revision !== redis.revision) setConfiguration(redisConfiguration(redis))
+  const conflict = dirty && configuration.baseline.revision !== redis.revision
+  const awaitingRefresh = configuration.accepted && configuration.baseline.revision === redis.revision
+  const setTags = (tags: string) => setConfiguration((current) => ({ ...current, draft: { ...current.draft, tags } }))
+  const setComputeId = (computeProfileId: string) => setConfiguration((current) => ({ ...current, draft: { ...current.draft, computeProfileId } }))
   useUnsavedChanges(dirty, redis.name)
   useEffect(() => { onDirtyChange(dirty); return () => onDirtyChange(false) }, [onDirtyChange, dirty])
   const mutation = useScopedMutation(scopeKey)
   const [discarding, setDiscarding] = useState(false)
+  const [reapplying, setReapplying] = useState(false)
   const [validation, setValidation] = useState('')
   const error = (field: string) => validationMessage(mutation.error, field)
   return <section className="panel"><h2 className="panel__title">Redis configuration</h2><p className="field__hint">Name, group, target and storage are fixed after creation. This native StatefulSet does not support storage resizing. Compute and tags can be updated.</p>
+    {conflict && <Notice tone="error">The Redis configuration changed since revision {configuration.baseline.revision}. Your draft is preserved.
+      <p>Server tags: {redis.tags.join(', ') || 'No tags'} · Draft tags: {tags || 'No tags'}. Current compute: {redis.placement!.compute.displayName}.</p>
+      <Button onClick={() => setReapplying(true)}>Review and reapply draft</Button></Notice>}
+    {awaitingRefresh && <Notice>Configuration was accepted. Refresh Redis to load its new revision.</Notice>}
     <form className="database-form" onSubmit={(event) => {
-      event.preventDefault(); if (mutation.busy) return
+      event.preventDefault(); if (mutation.busy || !dirty || conflict || awaitingRefresh) return
       if (computeId && (compute.status !== 'success' || !compute.resource?.some((item) => item.id === computeId))) { setValidation('Choose an available compute profile.'); return }
       setValidation('')
-      void mutation.run((signal) => updateRedisService(api.baseUrl, redis.id, { spec: redis.spec, tags: parseRedisTags(tags), computeProfileId: computeId || undefined }, api.token, api.tenantId, signal), async () => {
-        setSaved(snapshot); await onSaved(); notifications.publish(`Configuration accepted for ${redis.name}.`)
+      const submitted = configuration
+      void mutation.run((signal) => updateRedisService(api.baseUrl, redis.id, { spec: redis.spec, tags: parseRedisTags(tags), computeProfileId: computeId || undefined }, origin.credential(), api.tenantId, signal), async () => {
+        setConfiguration(acceptedRedisChanges(submitted)); await onSaved(); if (!origin.isCurrent()) return; notifications.publish(`Configuration accepted for ${redis.name}.`)
       }).catch(() => {})
-    }}><fieldset disabled={mutation.busy}><div className="form-grid">
+    }}><fieldset disabled={mutation.busy || awaitingRefresh}><div className="form-grid">
       <Field label="Storage (GiB)"><input className="field__control" type="number" readOnly disabled value={redis.spec.storage.sizeGb} />{error('Spec.Storage.SizeGb') && <span className="field-error">{error('Spec.Storage.SizeGb')}</span>}</Field>
       <Field label="Compute profile" hint="Keeping the current profile preserves its resolved snapshot."><select className="field__control" value={computeId} onChange={(event) => setComputeId(event.target.value)}><option value="">Keep current · {redis.placement!.compute.displayName}</option>{compute.resource?.map((item) => <option key={item.id} value={item.id}>{item.displayName}</option>)}</select>{error('ComputeProfileId') && <span className="field-error">{error('ComputeProfileId')}</span>}</Field>
       <Field label="Tags" hint="Separate tags with commas."><input className="field__control" value={tags} onChange={(event) => setTags(event.target.value)} /></Field>
     </div></fieldset>
     {compute.error && <Notice tone="error">{compute.error}<Button onClick={() => void compute.refresh()}>Retry compute profiles</Button></Notice>}
     {validation && <Notice tone="error">{validation}</Notice>}{mutation.error instanceof Error && <Notice tone="error">{mutation.error.message}</Notice>}
-    <div className="row-actions"><Button type="submit" variant="primary" disabled={mutation.busy || !dirty}>{mutation.busy ? 'Saving…' : 'Save changes'}</Button><Button disabled={mutation.busy} onClick={() => setDiscarding(true)}>Discard changes</Button></div></form>
+    <div className="row-actions"><Button type="submit" variant="primary" disabled={mutation.busy || !dirty || conflict || awaitingRefresh}>{mutation.busy ? 'Saving…' : 'Save changes'}</Button><Button disabled={mutation.busy || awaitingRefresh} onClick={() => setDiscarding(true)}>Discard changes</Button></div></form>
+    {reapplying && <ConfirmationDialog title="Reapply your Redis changes?" confirmLabel="Reapply changes" onCancel={() => setReapplying(false)} onConfirm={() => {
+      setConfiguration(reapplyRedisChanges(configuration, redis)); mutation.clearError(); setValidation(''); setReapplying(false)
+    }}>Your changed tags and compute choice will be kept. Unchanged tags use the current server values. Review the result, then save.</ConfirmationDialog>}
     {discarding && <ConfirmationDialog title="Discard Redis changes?" confirmLabel="Discard changes" onCancel={() => setDiscarding(false)} onConfirm={() => {
-      setTags(redis.tags.join(', ')); setComputeId(''); setSaved(JSON.stringify([redis.tags.join(', '), ''])); mutation.clearError(); setDiscarding(false)
+      setConfiguration(redisConfiguration(redis)); mutation.clearError(); setValidation(''); setDiscarding(false)
     }}>The current server configuration will replace your unsaved draft.</ConfirmationDialog>}
   </section>
 }

@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react'
 import { validationMessage } from '../api'
 import { Button, EmptyState, Field } from '../ui/components'
 import type { ResourceGroup, ResourceGroupInput, LoadStatus } from '../types'
+import { resourceGroupInput, resourceGroupSignature as signature } from '../modules/resource-groups/configurationModel'
 
 interface ResourceGroupFormProps {
   mode: 'create' | 'edit'
@@ -12,14 +13,13 @@ interface ResourceGroupFormProps {
   onCancelEdit?: () => void
   onDirtyChange?: (dirty: boolean) => void
 }
-const signature = (value: ResourceGroupInput) => JSON.stringify({ name: value.name.trim(), description: value.description.trim(), tags: [...new Set(value.tags)].sort() })
 const empty = { name: '', description: '', tags: [] }
 export function ResourceGroupForm({ mode, initialValue, submitStatus, submitError, onSubmit, onCancelEdit, onDirtyChange }: ResourceGroupFormProps) {
   const initial = initialValue ?? empty
   const [name, setName] = useState(initial.name)
   const [description, setDescription] = useState(initial.description)
   const [tagsText, setTagsText] = useState(initial.tags.join(', '))
-  const input = { name: name.trim(), description: description.trim(), tags: tagsText.split(',').map((tag) => tag.trim()).filter(Boolean) }
+  const input = resourceGroupInput(name, description, tagsText)
   const [baseline, setBaseline] = useState(signature(initial))
   const dirty = signature(input) !== baseline
   const [loadedSignature, setLoadedSignature] = useState(signature(initial))
