@@ -31,7 +31,7 @@ public sealed class OutboxProcessorJob(
     private const string InvalidPayloadFailure = "InvalidPayload";
     private readonly OutboxSettings _settings = outboxSettings.Value;
 
-    [DisableConcurrentExecution(timeoutInSeconds: 300)]
+    [DisableConcurrentExecution(OutboxProcessingLock.Resource, timeoutSec: 300)]
     public async Task ProcessOutboxMessagesAsync(
         CancellationToken cancellationToken = default)
     {
