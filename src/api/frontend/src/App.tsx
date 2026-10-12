@@ -1,4 +1,7 @@
 import './App.css'
+import { useContext } from 'react'
+import { CredentialVersionContext } from './auth/credentialVersion'
+import { SessionQueries } from './data/SessionQueries'
 import { useKeycloak } from '@react-keycloak/web'
 import { AppShell } from './shell/AppShell'
 import { useTenants } from './hooks/useTenants'
@@ -16,11 +19,18 @@ const initialViewId = readIntegrationNavigation(
 ).view
 
 function App() {
+  useContext(CredentialVersionContext)
+  const { keycloak } = useKeycloak()
+  const identity = `${import.meta.env.VITE_API_BASE_URL}:${Boolean(keycloak.authenticated)}:${keycloak.subject ?? ''}`
+  return <SessionQueries identity={identity}><AuthenticatedWorkspace /></SessionQueries>
+}
+
+function AuthenticatedWorkspace() {
   const { keycloak, initialized } = useKeycloak()
   const authenticated = Boolean(keycloak.authenticated)
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL as string
   const token = authenticated ? keycloak.token : undefined
-  const tenants = useTenants(apiBaseUrl, token, initialized && authenticated)
+  const tenants = useTenants(apiBaseUrl, token, initialized && authenticated, keycloak.subject ?? '')
   const claims = keycloak.tokenParsed as RoleClaims | undefined
   const roles = [
     ...(claims?.roles ?? []), ...(claims?.realm_access?.roles ?? []),

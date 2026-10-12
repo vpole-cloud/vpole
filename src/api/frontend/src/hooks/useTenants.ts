@@ -1,67 +1,34 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { fetchTenants } from '../api'
-import type { LoadStatus, Tenant } from '../types'
+import { useScopedQuery } from '../data/useScopedQuery'
+import { useQuerySession } from '../data/querySession'
 
 const storageKey = 'pole.activeTenantId'
+const storedTenant = () => { try { return localStorage.getItem(storageKey) ?? '' } catch { return '' } }
+const storeTenant = (id: string) => { try { if (id) localStorage.setItem(storageKey, id); else localStorage.removeItem(storageKey) } catch { /* Storage is optional. */ } }
 
-export function useTenants(apiBaseUrl: string, token?: string, enabled = false) {
-  const [items, setItems] = useState<Tenant[]>([])
-  const [activeTenantId, setActiveTenantId] = useState<string>(() => localStorage.getItem(storageKey) ?? '')
-  const [status, setStatus] = useState<LoadStatus>(enabled ? 'loading' : 'idle')
-  const [error, setError] = useState('')
-
-  const [scope, setScope] = useState({ apiBaseUrl, token, enabled })
-
-  // Reset before rendering a different authentication scope, not in a follow-up effect.
-  if (scope.apiBaseUrl !== apiBaseUrl || scope.token !== token || scope.enabled !== enabled) {
-    setScope({ apiBaseUrl, token, enabled })
-    setItems([])
-    setStatus(enabled ? 'loading' : 'idle')
-    setError('')
-  }
-
+export function useTenants(apiBaseUrl: string, token?: string, enabled = false, userId = '') {
+  const session = useQuerySession()
+  const [preferredTenantId, setActiveTenantId] = useState(storedTenant)
+  const query = useScopedQuery({ scope: [apiBaseUrl, userId], key: ['tenants'], enabled,
+    load: (signal) => fetchTenants(apiBaseUrl, token, signal) })
+  const previousCredential = useRef(token)
+  const queryIdentity = JSON.stringify(query.queryKey)
+  const refresh = query.refresh
   useEffect(() => {
+    if (previousCredential.current === token) return
+    previousCredential.current = token
     if (!enabled) return
-
-    const controller = new AbortController()
-
-    const load = async () => {
-      try {
-        const tenants = await fetchTenants(apiBaseUrl, token, controller.signal)
-        if (controller.signal.aborted) return
-        setItems(tenants)
-        setActiveTenantId((current) => {
-          const next = tenants.some((tenant) => tenant.id === current)
-            ? current
-            : tenants.find((tenant) => tenant.isDefault)?.id ?? tenants[0]?.id ?? ''
-          if (next) localStorage.setItem(storageKey, next)
-          else localStorage.removeItem(storageKey)
-          return next
-        })
-        setStatus('success')
-      } catch (loadError) {
-        if (controller.signal.aborted) return
-        setItems([])
-        setStatus('error')
-        setError(loadError instanceof Error ? loadError.message : 'Unable to load tenants.')
-      }
-    }
-
-    void load()
-
-    return () => controller.abort()
-  }, [apiBaseUrl, enabled, token])
-
-  const activeTenant = useMemo(
-    () => items.find((tenant) => tenant.id === activeTenantId) ?? null,
-    [activeTenantId, items],
-  )
-
-  const selectTenant = (tenantId: string) => {
-    setActiveTenantId(tenantId)
-    if (tenantId) localStorage.setItem(storageKey, tenantId)
-    else localStorage.removeItem(storageKey)
+    let active = true
+    // Credential rotation revalidates membership without removing usable discovery data.
+    void session.client.cancelQueries({ queryKey: JSON.parse(queryIdentity), exact: true }).then(() => { if (active) void refresh() })
+    return () => { active = false }
+  }, [token, enabled, session, queryIdentity, refresh])
+  const items = useMemo(() => query.resource ?? [], [query.resource])
+  const activeTenantId = items.some((tenant) => tenant.id === preferredTenantId) ? preferredTenantId : items.find((tenant) => tenant.isDefault)?.id ?? items[0]?.id ?? ''
+  useEffect(() => { if (enabled && query.resource) storeTenant(activeTenantId) }, [activeTenantId, enabled, query.resource])
+  const activeTenant = useMemo(() => items.find((tenant) => tenant.id === activeTenantId) ?? null, [activeTenantId, items])
+  return { items, activeTenant, activeTenantId, status: query.status, error: query.error,
+    selectTenant: (id: string) => { setActiveTenantId(id); storeTenant(id) },
   }
-
-  return { items, activeTenant, activeTenantId, status, error, selectTenant }
 }

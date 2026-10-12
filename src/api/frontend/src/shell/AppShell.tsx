@@ -1,3 +1,5 @@
+import { SessionQueries } from '../data/SessionQueries'
+import { useQuerySession } from '../data/querySession'
 import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { TopBandPlaceholder } from '../components/TopBandPlaceholder'
 import type { useTenants } from '../hooks/useTenants'
@@ -22,7 +24,13 @@ function initialTheme(): Theme {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
-export function AppShell({ registry, auth, api, tenants, initialViewId }: AppShellProps) {
+export function AppShell(props: AppShellProps) {
+  const identity = `${props.api.baseUrl}:${props.auth.authenticated}:${props.auth.userId}`
+  return <SessionQueries identity={identity}><AppShellContent {...props} /></SessionQueries>
+}
+
+function AppShellContent({ registry, auth, api, tenants, initialViewId }: AppShellProps) {
+  const session = useQuerySession()
   const readView = (params: URLSearchParams, fallback: string) => {
     const type = params.get('resourceType')
     return type ? registry.resourceTypes.find((entry) => entry.id === type)?.viewId ?? 'unavailable-resource'
@@ -45,6 +53,9 @@ export function AppShell({ registry, auth, api, tenants, initialViewId }: AppShe
   }, [activeTenant, requestedTenantId, tenants])
   const tenantContext = { active: activeTenant, canManage: ['Owner', 'Admin', 'Member'].includes(activeTenant?.role ?? '') }
   const scopeKey = `${auth.authenticated ? auth.userId : 'guest'}:${activeTenant?.id ?? 'no-tenant'}`
+  useLayoutEffect(() => {
+    return () => { void session.client.cancelQueries({ queryKey: ['pole', session.identity, session.id, api.baseUrl, activeTenant?.id] }) }
+  }, [session, api.baseUrl, activeTenant?.id])
   const [unsavedChanges, setUnsavedChanges] = useState<Map<symbol, { label: string; scopeKey: string }>>(new Map())
   const [pendingNavigation, setPendingNavigation] = useState<{ run: () => void; scopeKey: string } | null>(null)
   const [navigationScope, setNavigationScope] = useState(scopeKey)

@@ -74,7 +74,7 @@ beforeEach(() => {
         }
         const updated = { ...resource, activeRevision: resource.activeRevision + 1, spec: request.spec }
         records.set(resource.id, updated)
-        return json(updated)
+        return json({ id: updated.id, resourceRevision: updated.activeRevision, deployments: updated.deployments })
       }
       return json(resource)
     }
@@ -97,10 +97,10 @@ afterEach(async () => {
   requests.verify()
 })
 
-function render(tenantId = 'alpha', role: 'Owner' | 'Viewer' = 'Owner', authenticated = true) {
+function render(tenantId = 'alpha', role: 'Owner' | 'Viewer' = 'Owner', authenticated = true, token = 'test-token') {
   const tenant = { id: tenantId, name: tenantId, role, isDefault: true }
   root.render(<AppShell registry={registry} initialViewId="web-services"
-    api={{ baseUrl: 'http://localhost', token: 'test-token' }}
+    api={{ baseUrl: 'http://localhost', token }}
     auth={{ initialized: true, authenticated, userId: 'user', isPlatformAdmin: false, login: () => {}, logout: () => {} }}
     tenants={{ items: [tenant, { ...tenant, id: 'beta', name: 'beta' }], activeTenant: tenant, activeTenantId: tenantId,
       status: 'success', error: '', selectTenant }} />)
@@ -815,4 +815,87 @@ it('selects repository, branch and an explicit build plan before linking a new G
   const link = fetchMock.mock.calls.find(([url, init]) => String(url).endsWith('/links') && init?.method === 'POST')!
   expect(JSON.parse(String(link[1]?.body))).toEqual({ branch: 'release', candidateKey: 'docker' })
   expect(container.textContent).toContain('team/app')
+})
+
+
+it('preserves a dirty configuration and selected tab across token rotation, then uses the current credential', async () => {
+  created = true
+  await act(async () => render())
+  await click('sample'); await click('Configuration')
+  await fill(textInput('latest'), 'token-refresh-draft')
+  const url = window.location.href
+  await act(async () => render('alpha', 'Owner', true, 'refreshed-token'))
+  expect(textInput('latest').value).toBe('token-refresh-draft')
+  expect(workspaceTab('sample').getAttribute('aria-selected')).toBe('true')
+  expect(window.location.href).toBe(url)
+  expect(container.querySelector('dialog')).toBeNull()
+  await click('Refresh service details')
+  expect(textInput('latest').value).toBe('token-refresh-draft')
+  expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/web-services/service')).at(-1)?.[1]?.headers)
+    .toMatchObject({ Authorization: 'Bearer refreshed-token', 'X-Pole-Tenant-ID': 'alpha' })
+  await submit()
+  expect(fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')?.[1]?.headers)
+    .toMatchObject({ Authorization: 'Bearer refreshed-token' })
+})
+
+
+it('retains the accepted draft and blocks another write until a post-save read recovers', async () => {
+  created = true
+  await act(async () => render()); await click('sample'); await click('Configuration')
+  await fill(textInput('latest'), 'accepted-tag')
+  const base = fetchMock.getMockImplementation()!
+  let unavailable = true
+  fetchMock.mockImplementation((url, init) => String(url).endsWith('/web-services/service') && !init?.method && unavailable
+    ? Promise.resolve(new Response('Read temporarily unavailable', { status: 503 })) : base(url, init))
+  await submit()
+  expect(textInput('latest').value).toBe('accepted-tag')
+  expect(button('Save changes').disabled).toBe(true)
+  expect(container.textContent).toContain('Configuration was accepted. Refresh service details')
+  expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'PUT')).toHaveLength(1)
+  unavailable = false
+  await click('Refresh service details')
+  expect(textInput('latest').value).toBe('accepted-tag')
+  expect(container.textContent).not.toContain('Configuration was accepted. Refresh service details')
+  await fill(textInput('latest'), 'next-tag'); await submit()
+  const writes = fetchMock.mock.calls.filter(([, init]) => init?.method === 'PUT')
+  expect(JSON.parse(writes.at(-1)![1]!.body as string).expectedRevision).toBe(2)
+})
+
+it('reads the accepted revision instead of adopting a pre-save response that finishes late', async () => {
+  created = true
+  await act(async () => render()); await click('sample'); await click('Configuration')
+  await fill(textInput('latest'), 'accepted-tag')
+  const base = fetchMock.getMockImplementation()!
+  let complete!: (value: Response) => void
+  const oldRead = new Promise<Response>((resolve) => { complete = resolve })
+  let intercept = true
+  let signal: AbortSignal | null | undefined
+  fetchMock.mockImplementation((url, init) => {
+    if (String(url).endsWith('/web-services/service') && !init?.method && intercept) {
+      intercept = false; signal = init?.signal; return oldRead
+    }
+    return base(url, init)
+  })
+  await click('Refresh service details')
+  await submit()
+  expect(signal?.aborted).toBe(true)
+  await act(async () => complete(await json(service)))
+  expect(textInput('latest').value).toBe('accepted-tag')
+  await fill(textInput('latest'), 'next-tag'); await submit()
+  const writes = fetchMock.mock.calls.filter(([, init]) => init?.method === 'PUT')
+  expect(JSON.parse(writes.at(-1)![1]!.body as string).expectedRevision).toBe(2)
+})
+
+
+it('clears the discarded editor guard and disables mutations when membership becomes Viewer', async () => {
+  created = true
+  await act(async () => render()); await click('sample'); await click('Configuration')
+  await fill(textInput('latest'), 'privileged-draft')
+  await act(async () => render('alpha', 'Viewer'))
+  expect(container.textContent).toContain('Tenant viewer access is read-only.')
+  expect(button('Save changes')).toBeUndefined()
+  expect(workspaceTab('sample').getAttribute('aria-label')).toBe('sample')
+  await click('Resource groups')
+  expect(container.querySelector('dialog')).toBeNull()
+  expect(container.textContent).toContain('Group provider')
 })
