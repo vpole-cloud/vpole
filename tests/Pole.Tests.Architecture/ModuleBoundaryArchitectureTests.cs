@@ -26,6 +26,7 @@ public sealed class ModuleBoundaryArchitectureTests
             ["Outbox"] = FeatureRole.Platform,
             ["PrivateAccess"] = FeatureRole.Platform,
             ["Quotas"] = FeatureRole.Platform,
+            ["Realtime"] = FeatureRole.Platform,
             ["ResourceConnections"] = FeatureRole.Platform,
             ["ResourceDeployments"] = FeatureRole.Platform,
             ["ResourceGroups"] = FeatureRole.Platform,

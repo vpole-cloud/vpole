@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Pole.Features.Realtime.Application</AssemblyName>
+    <RootNamespace>Pole.Features.Realtime.Application</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="../Realtime.Contracts/Realtime.Contracts.csproj" />
+    <ProjectReference Include="../../Tenants/Tenants.Contracts/Tenants.Contracts.csproj" />
+    <ProjectReference Include="../../../shared/helpers/ASP/ASP.csproj" />
+    <ProjectReference Include="../../../shared/Multitenancy/Multitenancy.csproj" />
+    <ProjectReference Include="../../../shared/Mediator/Mediator.csproj" />
+  </ItemGroup>
+</Project>
