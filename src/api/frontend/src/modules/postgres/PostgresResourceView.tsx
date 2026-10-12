@@ -1,9 +1,10 @@
 import { ResourceHealth } from '../../ui/ResourceHealth'
 import { ResourceOperations } from '../../ui/ResourceOperations'
 import { useEffect, useState } from 'react'
-import { deletePostgresCluster, fetchAvailableComputeProfiles, fetchAvailableDeploymentTargets, fetchAvailableStorageProfiles, fetchIsolationScopes, fetchPostgresCluster, fetchResourceGroup, retryResourceDeployment, updatePostgresCluster, validationMessage } from '../../api'
+import { ApiError, deletePostgresCluster, fetchAvailableComputeProfiles, fetchAvailableDeploymentTargets, fetchAvailableStorageProfiles, fetchIsolationScopes, fetchPostgresCluster, fetchResourceGroup, retryResourceDeployment, updatePostgresCluster, validationMessage } from '../../api'
 import { useResource } from '../../hooks/useResource'
 import { useScopedMutation } from '../../hooks/useScopedMutation'
+import { useApiScope } from '../../data/useApiScope'
 import { useAppServices } from '../../shell/AppContext'
 import { useUnsavedChanges } from '../../shell/useUnsavedChanges'
 import type { PostgresCluster } from '../../types'
@@ -14,11 +15,13 @@ import { Tabs, TabPanel } from '../../ui/Tabs'
 import type { WorkspaceActions } from '../../ui/ResourceWorkspace'
 import type { PostgresSection } from './workspaceState'
 import { PostgresCredentials } from './PostgresCredentials'
+import { acceptedPostgresChanges, isPostgresDirty, postgresChanges, postgresConfiguration, reapplyPostgresChanges } from './configurationModel'
 
 const resourceType = 'pole/postgresql'
 export function PostgresResourceView({ id, section, active, version, onSection, actions }:
   { id: string; section: PostgresSection; active: boolean; version: number; onSection: (section: PostgresSection) => void; actions: WorkspaceActions<PostgresSection> }) {
   const { api, tenant, navigation } = useAppServices()
+  const origin = useApiScope(api)
   const scopeKey = `${api.baseUrl}:${api.tenantId}:${api.token}:${id}`
   const details = useResource(scopeKey, (signal) => fetchPostgresCluster(api.baseUrl, id, api.token, api.tenantId, signal), version)
   const cluster = details.resource
@@ -67,67 +70,82 @@ export function PostgresResourceView({ id, section, active, version, onSection, 
       <ResourceHealth placements={[cluster.placement]} active={active && section === 'overview'} refreshVersion={version} targetNames={Object.fromEntries((targets.resource ?? []).map((target) => [target.id, target.displayName]))} />
       {active && section === 'overview' && <ResourceEndpoints resourceType="pole/postgresql" resourceId={id} />}
       {tenant.canManage && cluster.placement.status === 'Failed' && <Button disabled={mutation.busy} onClick={() => {
-        void mutation.run((signal) => retryResourceDeployment(api.baseUrl, cluster.placement.deploymentId, cluster.placement.deploymentRevision ?? 1, cluster.placement.desiredOperation ?? "Apply", api.token, api.tenantId, signal), async () => { await details.refresh(); actions.changed() }).catch(() => {})
+        void mutation.run((signal) => retryResourceDeployment(api.baseUrl, cluster.placement.deploymentId, cluster.placement.deploymentRevision ?? 1, cluster.placement.desiredOperation ?? "Apply", api.token, api.tenantId, signal), async () => { await details.refresh(); if (origin.isCurrent()) actions.changed() }).catch(() => {})
       }}>Retry deployment</Button>}
     </TabPanel>
     <TabPanel id={panelId} tabId="operations" activeId={section}>{active && section === "operations" && <ResourceOperations filter={{ resourceType: "pole/postgresql", resourceId: id }} onRetry={(operation, signal) => retryResourceDeployment(api.baseUrl, operation.deployment.id, operation.deployment.placement.deploymentRevision!, operation.deployment.placement.desiredOperation!, api.token, api.tenantId, signal)} />}</TabPanel>
-    <TabPanel id={panelId} tabId="configuration" activeId={section}>{visited && (canWrite ? <PostgresConfiguration cluster={cluster} onDirtyChange={setConfigurationDirty} onSaved={async () => { await details.refresh(); actions.changed() }} /> : <EmptyState title="Database configuration is read-only." />)}</TabPanel>
+    <TabPanel id={panelId} tabId="configuration" activeId={section}>{visited && (canWrite ? <PostgresConfiguration cluster={cluster} onDirtyChange={setConfigurationDirty} onRefresh={details.refresh} onSaved={async () => { await details.refresh(); if (origin.isCurrent()) actions.changed() }} /> : <EmptyState title="Database configuration is read-only." />)}</TabPanel>
     <TabPanel id={panelId} tabId="credentials" activeId={section}>
-      {active && section === 'credentials' && canWrite && <PostgresCredentials key={`${scopeKey}:${tenant.canManage}`} cluster={cluster} onDirtyChange={setCredentialsDirty} onChanged={async () => { await details.refresh(); actions.changed() }} />}
+      {active && section === 'credentials' && canWrite && <PostgresCredentials key={`${scopeKey}:${tenant.canManage}`} cluster={cluster} onDirtyChange={setCredentialsDirty} onChanged={async () => { await details.refresh(); if (origin.isCurrent()) actions.changed() }} />}
       {!tenant.canManage && section === 'credentials' && <EmptyState title="Tenant viewer access is read-only. Credentials require write access." />}
     </TabPanel>
     {mutation.error instanceof Error && <Notice tone="error">{mutation.error.message}</Notice>}
     {deleting && canWrite && <ConfirmationDialog title={`Delete ${cluster.name}?`} confirmLabel="Delete database" busy={mutation.busy} onCancel={() => setDeleting(false)} onConfirm={() => {
       if (!canWrite) return
       void mutation.run((signal) => deletePostgresCluster(api.baseUrl, id, api.token, api.tenantId, signal), async () => {
-        setDeleting(false); await details.refresh(); actions.changed()
+        setDeleting(false); await details.refresh(); if (origin.isCurrent()) actions.changed()
       }).catch(() => {})
     }}>This removes the database workload and its storage. Applications using it will lose access.</ConfirmationDialog>}
   </div>
 }
 
-function PostgresConfiguration({ cluster, onDirtyChange, onSaved }: { cluster: PostgresCluster; onDirtyChange: (dirty: boolean) => void; onSaved: () => Promise<void> }) {
+function PostgresConfiguration({ cluster, onDirtyChange, onSaved, onRefresh }: { cluster: PostgresCluster; onDirtyChange: (dirty: boolean) => void; onSaved: () => Promise<void>; onRefresh: () => Promise<PostgresCluster | null> }) {
   const { api, notifications } = useAppServices()
+  const origin = useApiScope(api)
   const scopeKey = `${api.baseUrl}:${api.tenantId}:${api.token}:${cluster.id}`
   const compute = useResource(`${scopeKey}:${cluster.placement.deploymentTargetId}`, (signal) => fetchAvailableComputeProfiles(api.baseUrl, cluster.placement.deploymentTargetId, api.token, api.tenantId, signal, resourceType))
-  const [instances, setInstances] = useState(cluster.spec.instances)
-  const [storage, setStorage] = useState(cluster.spec.storage)
-  const [computeId, setComputeId] = useState('')
-  const snapshot = JSON.stringify([instances, storage, computeId])
-  const [saved, setSaved] = useState(snapshot)
-  const [loadedRevision, setLoadedRevision] = useState(cluster.revision)
-  const dirty = saved !== snapshot
-  if (!dirty && loadedRevision !== cluster.revision) {
-    setLoadedRevision(cluster.revision); setInstances(cluster.spec.instances); setStorage(cluster.spec.storage); setComputeId('')
-    setSaved(JSON.stringify([cluster.spec.instances, cluster.spec.storage, '']))
-  }
+  const [configuration, setConfiguration] = useState(() => postgresConfiguration(cluster))
+  const { instances, storage, computeProfileId } = configuration.draft
+  const dirty = isPostgresDirty(configuration)
+  if (!dirty && configuration.baseline.revision !== cluster.revision) setConfiguration(postgresConfiguration(cluster))
   useUnsavedChanges(dirty, cluster.name)
   useEffect(() => { onDirtyChange(dirty); return () => onDirtyChange(false) }, [onDirtyChange, dirty])
   const mutation = useScopedMutation(scopeKey)
   const [discarding, setDiscarding] = useState(false)
+  const [reapplying, setReapplying] = useState(false)
   const [validation, setValidation] = useState('')
   const fieldError = (field: string) => validationMessage(mutation.error, field)
+  const conflict = dirty && (configuration.baseline.revision !== cluster.revision || (mutation.error instanceof ApiError && mutation.error.code === 'postgres.update.concurrent-change'))
+  const awaitingRefresh = configuration.accepted && configuration.baseline.revision === cluster.revision
   const native = cluster.spec.deploymentMode === 'StatefulSet'
+  const change = (field: 'instances' | 'storage' | 'computeProfileId', value: number | string) =>
+    setConfiguration((current) => ({ ...current, draft: { ...current.draft, [field]: value } }))
+  const changes = postgresChanges(configuration)
   return <section className="panel"><h2 className="panel__title">Database configuration</h2><p className="field__hint">Name, PostgreSQL version, group, target and storage profile are fixed after creation. {native ? 'Native StatefulSet storage is fixed; compute can be updated.' : 'Operator-managed storage can grow; shrinking is rejected.'}</p>
+    {conflict && <Notice tone="error">The server configuration changed since revision {configuration.baseline.revision}. Your draft is preserved. Review the current configuration before saving.
+      <dl className="web-service-facts"><div><dt>Current server revision</dt><dd>{cluster.revision}</dd></div>
+        <div><dt>Instances: server / draft</dt><dd>{cluster.spec.instances} / {instances}</dd></div>
+        <div><dt>Storage GiB: server / draft</dt><dd>{cluster.spec.storage} / {storage}</dd></div>
+        <div><dt>Compute profile: server / draft</dt><dd>{cluster.placement.compute.displayName} / {compute.resource?.find((profile) => profile.id === computeProfileId)?.displayName ?? (computeProfileId || 'Keep current')}</dd></div></dl>
+      <Button disabled={mutation.busy} onClick={() => setReapplying(true)}>Review and reapply draft</Button>
+      <Button disabled={mutation.busy} onClick={() => void onRefresh()}>Refresh current configuration</Button>
+    </Notice>}
+    {awaitingRefresh && <Notice>Configuration was accepted. Refresh the database to load its new revision.</Notice>}
     <form className="database-form" onSubmit={(event) => {
-      event.preventDefault(); if (mutation.busy) return
-      if (!Number.isInteger(instances) || instances < 1 || !Number.isInteger(storage) || storage < cluster.spec.storage || (computeId && (compute.status !== 'success' || !compute.resource?.some((profile) => profile.id === computeId)))) { setValidation('Choose valid capacity and an available compute profile. Storage cannot shrink.'); return }
+      event.preventDefault(); if (mutation.busy || !dirty || conflict || awaitingRefresh) return
+      if (!Number.isInteger(instances) || instances < 1 || !Number.isInteger(storage) || storage < cluster.spec.storage || (computeProfileId && (compute.status !== 'success' || !compute.resource?.some((profile) => profile.id === computeProfileId)))) { setValidation('Choose valid capacity and an available compute profile. Storage cannot shrink.'); return }
       setValidation('')
-      void mutation.run((signal) => updatePostgresCluster(api.baseUrl, cluster.id, { instances, storage, computeProfileId: computeId || undefined }, api.token, api.tenantId, signal), async () => {
-        setSaved(snapshot); await onSaved(); notifications.publish(`Configuration accepted for ${cluster.name}.`)
-      }).catch(() => {})
-    }}><fieldset disabled={mutation.busy}><div className="form-grid">
-      <Field label="Instances"><input className="field__control" type="number" min="1" step="1" value={instances} disabled={cluster.spec.deploymentMode === 'StatefulSet'} onChange={(event) => setInstances(Number(event.target.value))} />{fieldError('Instances') && <span className="field-error">{fieldError('Instances')}</span>}</Field>
-      <Field label="Storage per instance (GiB)"><input className="field__control" type="number" min={cluster.spec.storage} step="1" value={storage} disabled={native} onChange={(event) => setStorage(Number(event.target.value))} />{fieldError('Storage') && <span className="field-error">{fieldError('Storage')}</span>}</Field>
-      <Field label="Compute profile" hint="Keeping the current profile preserves its resolved resource snapshot."><select className="field__control" value={computeId} onChange={(event) => setComputeId(event.target.value)}>
+      const submitted = configuration
+      void mutation.run((signal) => updatePostgresCluster(api.baseUrl, cluster.id, postgresChanges(submitted), api.token, api.tenantId, signal), async () => {
+        setConfiguration(acceptedPostgresChanges(submitted)); await onSaved(); if (!origin.isCurrent()) return; notifications.publish(`Configuration accepted for ${cluster.name}.`)
+      }).catch((error: unknown) => {
+        if (origin.isCurrent() && error instanceof ApiError && error.code === 'postgres.update.concurrent-change') void onRefresh()
+      })
+    }}><fieldset disabled={mutation.busy || awaitingRefresh}><div className="form-grid">
+      <Field label="Instances"><input className="field__control" type="number" min="1" step="1" value={instances} disabled={native} onChange={(event) => change('instances', Number(event.target.value))} />{fieldError('Instances') && <span className="field-error">{fieldError('Instances')}</span>}</Field>
+      <Field label="Storage per instance (GiB)"><input className="field__control" type="number" min={cluster.spec.storage} step="1" value={storage} disabled={native} onChange={(event) => change('storage', Number(event.target.value))} />{fieldError('Storage') && <span className="field-error">{fieldError('Storage')}</span>}</Field>
+      <Field label="Compute profile" hint="Keeping the current profile preserves its resolved resource snapshot."><select className="field__control" value={computeProfileId} onChange={(event) => change('computeProfileId', event.target.value)}>
         <option value="">Keep current · {cluster.placement.compute.displayName}</option>{compute.resource?.map((profile) => <option key={profile.id} value={profile.id}>{profile.displayName}</option>)}</select>{fieldError('ComputeProfileId') && <span className="field-error">{fieldError('ComputeProfileId')}</span>}</Field>
     </div></fieldset>
     {compute.error && <Notice tone="error">{compute.error}<Button onClick={() => void compute.refresh()}>Retry compute profiles</Button></Notice>}
-    {validation && <Notice tone="error">{validation}</Notice>}{mutation.error instanceof Error && <Notice tone="error">{mutation.error.message}</Notice>}
-    <div className="row-actions"><Button variant="primary" type="submit" disabled={mutation.busy || !dirty}>{mutation.busy ? 'Saving…' : 'Save changes'}</Button><Button disabled={mutation.busy} onClick={() => setDiscarding(true)}>Discard changes</Button></div>
+    {validation && <Notice tone="error">{validation}</Notice>}{!conflict && mutation.error instanceof Error && <Notice tone="error">{mutation.error.message}</Notice>}
+    <div className="row-actions"><Button variant="primary" type="submit" disabled={mutation.busy || !dirty || conflict || awaitingRefresh}>{mutation.busy ? 'Saving…' : 'Save changes'}</Button><Button disabled={mutation.busy} onClick={() => setDiscarding(true)}>Discard changes</Button></div>
     </form>
+    {reapplying && <ConfirmationDialog title="Reapply your changes?" confirmLabel="Reapply changes" onCancel={() => setReapplying(false)} onConfirm={() => {
+      setConfiguration(reapplyPostgresChanges(configuration, cluster)); mutation.clearError(); setValidation(''); setReapplying(false)
+    }}>Only your changed fields ({Object.keys(changes).filter((field) => field !== 'expectedRevision').join(', ')}) will be applied to current revision {cluster.revision}. Unchanged fields keep the current server values. Review the result, then save.</ConfirmationDialog>}
     {discarding && <ConfirmationDialog title="Discard database changes?" confirmLabel="Discard changes" onCancel={() => setDiscarding(false)} onConfirm={() => {
-      setInstances(cluster.spec.instances); setStorage(cluster.spec.storage); setComputeId(''); setSaved(JSON.stringify([cluster.spec.instances, cluster.spec.storage, ''])); mutation.clearError(); setDiscarding(false)
+      setConfiguration(postgresConfiguration(cluster)); mutation.clearError(); setValidation(''); setDiscarding(false)
     }}>The current server configuration will replace your unsaved draft.</ConfirmationDialog>}
   </section>
 }

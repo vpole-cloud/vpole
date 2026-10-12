@@ -24,7 +24,8 @@ open Pole.Mediator
 open Pole.Validation
 
 type UpdatePostgresClusterRequestBody =
-    { Instances : int option
+    { ExpectedRevision : int64
+      Instances : int option
       Storage : int option
       ComputeProfileId : string option }
 
@@ -113,6 +114,11 @@ module private UpdatePostgresClusterWorkflow =
                     Completed(
                         UpdatePostgresClusterRejected(
                             UpdateState(PostgresClusterUpdateNotFound request.ClusterId)))
+            | Some cluster when request.Body.ExpectedRevision <> cluster.Revision ->
+                return
+                    Completed(
+                        UpdatePostgresClusterRejected(
+                            UpdateConflict { ClusterId = cluster.Id }))
             | Some cluster when (cluster.Lifecycle :? DeletingPostgresClusterLifecycle) ->
                 return
                     Completed(
@@ -308,6 +314,10 @@ type UpdatePostgresClusterRequestValidator() as this =
     inherit AbstractValidator<UpdatePostgresClusterRequest>()
     do
         this.RuleFor(_.ClusterId).MongoObjectId("PostgreSQL cluster ID") |> ignore
+        this.RuleFor(_.Body.ExpectedRevision)
+            .GreaterThan(0L)
+            .WithMessage("Expected revision must be greater than zero.")
+        |> ignore
         this.RuleFor(_.Body.Instances)
             .Must(fun instances -> Option.forall (fun value -> value > 0) instances)
             .WithMessage("Instances must be greater than zero.")
