@@ -899,3 +899,62 @@ it('clears the discarded editor guard and disables mutations when membership bec
   expect(container.querySelector('dialog')).toBeNull()
   expect(container.textContent).toContain('Group provider')
 })
+
+
+it('freezes the selected Git source and delivery mode while the initial create request is pending', async () => {
+  const base = fetchMock.getMockImplementation()!
+  const otherSource = { ...gitSource, id: 'other-source', repositoryFullName: 'team/other' }
+  let resolveCreate!: (response: Response) => void
+  pendingCreate = new Promise<Response>((resolve) => { resolveCreate = resolve })
+  fetchMock.mockImplementation((url, init) => {
+    const path = new URL(String(url), 'http://localhost').pathname
+    if (path.endsWith('/source-repositories')) return json([gitSource, otherSource])
+    if (path.endsWith('/source-build-configurations') && init?.method === 'POST') return json(buildConfiguration)
+    if (path.endsWith('/builds') && init?.method === 'POST') return json({ id: 'build', configurationId: 'configuration', webServiceId: service.id })
+    return base(url, init)
+  })
+  await act(async () => render()); await fillCreateForm(); await chooseGitSource(); await submit()
+  expect(button('Container image').disabled).toBe(true)
+  const selector = [...container.querySelectorAll('select')].find((select) => select.querySelector('option[value="source"]'))!
+  expect(selector.disabled).toBe(true)
+  expect(selector.value).toBe('source')
+  await act(async () => resolveCreate(new Response(JSON.stringify({ webServiceId: service.id }))))
+  const write = fetchMock.mock.calls.find(([url, init]) => String(url).endsWith('/source-build-configurations') && init?.method === 'POST')!
+  expect(JSON.parse(String(write[1]?.body))).toEqual({ sourceRepositoryId: 'source', webServiceId: service.id })
+  expect(new URLSearchParams(window.location.search).get('section')).toBe('builds')
+})
+
+it('recovers an accepted build queue response without queueing the job twice', async () => {
+  const base = fetchMock.getMockImplementation()!
+  let queued = false
+  const job = { id: 'build', configurationId: 'configuration', webServiceId: service.id, branch: 'main', commitSha: 'abc', createdAtUtc: '2026-10-03T00:00:00Z', state: { status: 'queued' } }
+  fetchMock.mockImplementation((url, init) => {
+    const path = new URL(String(url), 'http://localhost').pathname
+    if (path.endsWith('/source-repositories')) return json([gitSource])
+    if (path.endsWith('/source-build-configurations')) return json(init?.method === 'POST' ? buildConfiguration : queued ? [buildConfiguration] : [])
+    if (path.endsWith('/source-build-jobs')) return json(page(queued ? [job] : []))
+    if (path.endsWith('/builds') && init?.method === 'POST') { queued = true; return Promise.resolve(new Response('Queue result unavailable', { status: 503 })) }
+    return base(url, init)
+  })
+  await act(async () => render()); await fillCreateForm(); await chooseGitSource(); await submit()
+  expect(container.textContent).toContain('Your service is retained.')
+  await click('Retry source setup')
+  expect(new URLSearchParams(window.location.search).get('section')).toBe('builds')
+  expect(fetchMock.mock.calls.filter(([url, init]) => String(url).endsWith('/builds') && init?.method === 'POST')).toHaveLength(1)
+})
+
+it('retains the creation draft after a definitive rejection and never repeats an uncertain create', async () => {
+  await act(async () => render()); await fillCreateForm()
+  failCreate = true
+  await submit()
+  expect(textInput('pole-api').value).toBe('sample')
+  expect(textInput('library/nginx').value).toBe('library/nginx')
+  const base = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation((url, init) => String(url).endsWith('/web-services') && init?.method === 'POST'
+    ? Promise.resolve(new Response('Creation result unavailable', { status: 503 })) : base(url, init))
+  await submit()
+  expect(container.textContent).toContain('The creation request will not be repeated.')
+  await click('Inspect creation result')
+  expect(container.textContent).toContain('The creation result is still unknown.')
+  expect(fetchMock.mock.calls.filter(([url, init]) => String(url).endsWith('/web-services') && init?.method === 'POST')).toHaveLength(2)
+})
