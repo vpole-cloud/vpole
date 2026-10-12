@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { createTestApp } from '../../test/TestApp'
+import { jsonResponse as json, strictFetch } from '../../test/http'
+import { resourceGroup, webService } from '../../test/fixtures'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AppShell } from '../../shell/AppShell'
 import { createAppRegistry } from '../../shell/moduleRegistry'
@@ -12,24 +15,13 @@ const registry = createAppRegistry([
   { ...webServicesModule, views: webServicesModule.views.map((view) => ({ ...view, component: WebServicesView })) },
   { id: 'test-groups', views: [{ id: 'resource-groups', label: 'Resource groups', component: () => <p>Group provider</p>, access: 'tenant' }] },
 ])
-const group = { id: 'group', name: 'Applications', description: '', tags: [], resourceCount: 1 }
+const group = resourceGroup()
 const scope = (id: string, resourceGroupId = group.id, isDefault = false): IsolationScope => ({
   id, resourceGroupId, name: isDefault ? 'default' : 'Production', isDefault, lifecycle: 'active', revision: 1,
   createdAtUtc: '', updatedAtUtc: '',
 })
 const target = { id: 'target', displayName: 'Local target', workloadConfigurationRevision: 1, hasPublicIngress: true }
-const service: WebService = {
-  id: 'service', name: 'sample', resourceGroupId: group.id, activeRevision: 1,
-  exposure: { mode: 'Private', generatedHostnameLabelPrefix: '' },
-  spec: { image: { server: 'docker.io', name: 'library/nginx', tag: 'stable' },
-    config: { environmentVariables: {}, portMappings: [{ name: 'http', servicePort: 80, targetPort: '80', protocol: 'TCP' }] },
-    probes: { startup: { path: '/', port: '80' }, liveness: { path: '/', port: '80' }, readiness: { path: '/', port: '80' } } },
-  deployments: [{ deploymentId: 'deployment', deploymentTargetId: target.id, runtimeCellId: 'cell',
-    desiredGeneration: 1, observedGeneration: 0, status: 'PendingApply', resourceRevision: 1,
-    fixedReplicas: 1, deploymentRevision: 1, desiredOperation: 'Apply', endpoints: [],
-    compute: { displayName: 'Small', profile: { computeProfileId: 'small', computeProfileRevision: 1 },
-      requests: { cpuMillis: 100, memoryMi: 128 }, limits: { cpuMillis: 200, memoryMi: 256 }, extendedResources: [] } }],
-}
+const service = webService()
 const secondService: WebService = { ...service, id: 'second', name: 'worker' }
 let root: Root
 let container: HTMLDivElement
@@ -39,8 +31,8 @@ let failUpdate: boolean
 let pendingCreate: Promise<Response> | null
 let records: Map<string, WebService>
 const selectTenant = vi.fn()
-const fetchMock = vi.fn<(url: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
-const json = (body: unknown) => Promise.resolve(new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } }))
+const requests = strictFetch()
+const fetchMock = requests.fetch
 const page = (items: unknown[]) => ({ items, totalCount: items.length, pageNumber: 1, pageSize: 8 })
 const storageKey = 'pole.web-services.workspace.v1.user.alpha'
 
@@ -53,16 +45,15 @@ beforeEach(() => {
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { callback(0); return 1 })
   localStorage.clear()
   window.history.replaceState({}, '', '/')
-  container = document.createElement('div')
-  document.body.append(container)
-  root = createRoot(container)
+  ;({ container, root } = createTestApp())
   created = false
   failCreate = false
   failUpdate = false
   pendingCreate = null
   records = new Map([[service.id, service], [secondService.id, secondService]])
   selectTenant.mockReset()
-  fetchMock.mockReset().mockImplementation((url, init) => {
+  requests.reset()
+  fetchMock.mockImplementation((url, init) => {
     const path = new URL(String(url), 'http://localhost').pathname
     if (path.endsWith('/web-services') && init?.method === 'POST') {
       if (pendingCreate) return pendingCreate
@@ -92,7 +83,10 @@ beforeEach(() => {
     if (path.endsWith('/compute-profiles/available')) return json([{ id: 'profile', displayName: 'Default', isDefault: true }])
     if (path.endsWith('/releases')) return json({ activeRevision: 1, releases: page([]) })
     if (path.endsWith('/source-build-jobs')) return json(page([]))
-    return json([])
+    if (path.endsWith('/isolation-scopes') || path.endsWith('/source-build-configurations') || path.endsWith('/git-provider-connections') || path.endsWith('/source-repositories')) return json([])
+    if (path === '/api/v1/resource-deployments/deployment/observation') return json({ deploymentRevision: 1, desiredGeneration: 1, checkedAtUtc: new Date().toISOString(), observation: { kind: 'Unavailable', reason: 'Unsupported' } })
+    if (path === '/api/v1/resource-connections/endpoints') return json({ endpoints: [], availability: 'Unsupported', topology: { status: 'NotEvaluated' } })
+    return requests.unhandled(url, init)
   })
   vi.stubGlobal('fetch', fetchMock)
 })
@@ -100,6 +94,7 @@ afterEach(async () => {
   await act(async () => { root.unmount() })
   container.remove()
   vi.unstubAllGlobals()
+  requests.verify()
 })
 
 function render(tenantId = 'alpha', role: 'Owner' | 'Viewer' = 'Owner', authenticated = true) {
