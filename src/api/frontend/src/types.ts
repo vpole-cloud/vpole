@@ -1,3 +1,4 @@
+import type { WebService, WebServiceDeployment } from './modules/web-services/types'
 export type LoadStatus = 'idle' | 'loading' | 'success' | 'error'
 export interface RuntimeDiagnosticInstance {
   uid: string; name: string; phase: string; ready: boolean; currentGeneration: boolean; restartCount: number; reasons: string[]
@@ -53,67 +54,6 @@ export interface ResourceRegistration {
   createdAtUtc: string
   updatedAtUtc: string
 }
-
-export interface ImageInfo {
-  server: string
-  name: string
-  tag: string
-}
-
-export interface ProbeConfig {
-  path: string
-  port: string
-}
-
-export interface PortMapping {
-  servicePort: number
-  targetPort: string
-  protocol: string
-  name: string
-}
-
-export interface WebService {
-  tags?: string[]
-  id: string
-  name: string
-  resourceGroupId: string
-  isolationScopeId?: string | null
-  activeRevision: number
-  spec: WebServiceSpec
-  exposure: WebServiceExposure
-  deployments: WebServiceDeployment[]
-}
-
-export interface WebServiceExposure {
-  mode: 'Private' | 'Public'
-  generatedHostnameLabelPrefix: string
-}
-
-export interface WebServiceSpec {
-  image: ImageInfo
-  config: {
-    environmentVariables: Record<string, string>
-    portMappings: PortMapping[]
-    connectionEnvironmentReferences?: Record<string, ConnectionEnvironmentReference>
-    secretEnvironmentReferences?: Record<string, SecretEnvironmentReference>
-  }
-  probes: {
-    startup: ProbeConfig
-    liveness: ProbeConfig
-    readiness: ProbeConfig
-  }
-  autoscaling?: {
-    minReplicas: number
-    maxReplicas: number
-    metric: {
-      type: string
-      targetAverageUtilization: number
-    }
-  } | null
-}
-
-export interface ConnectionEnvironmentReference { connectionId: string; valueKind: 'Host' | 'Port' | 'Configuration'; configurationKey?: string | null }
-export interface SecretEnvironmentReference { secretId: string; key: string }
 export interface ResourceConnection {
   id: string; name: string; sourceResourceType: string; sourceResourceId: string; destinationResourceType: string; destinationResourceId: string
   endpointId: string; status: string; generation: number
@@ -138,38 +78,6 @@ export interface ComputeProfileSummary {
     name: string
     quantity: number
   }>
-}
-
-export interface WebServiceDeploymentEndpoint {
-  kind: string
-  host: string
-  port: number
-  scheme: string
-}
-
-export interface WebServiceDeploymentIngress {
-  ingressClassName: string
-  clusterIssuerName: string
-  publicBaseDomain?: string | null
-  hostnames: string[]
-}
-
-export interface WebServiceDeployment {
-  deploymentId: string
-  isolationScopeId?: string | null
-  runtimeCellId: string
-  deploymentTargetId: string
-  desiredGeneration: number
-  observedGeneration: number
-  status: string
-  failureCode?: string | null
-  compute: ComputeProfileSummary
-  endpoints: WebServiceDeploymentEndpoint[]
-  resourceRevision: number
-  fixedReplicas: number
-  ingress?: WebServiceDeploymentIngress | null
-  deploymentRevision: number
-  desiredOperation: 'Apply' | 'Delete'
 }
 
 export interface AvailableDeploymentTarget {
@@ -366,48 +274,6 @@ export interface DomainZoneBindingUsage {
   placement: ResourcePlacement | null
 }
 
-export interface WebServiceReleaseDeployment {
-  resourceDeploymentId: string
-  deploymentTargetId: string
-  resourceRevision: number
-  deploymentGeneration: number
-  operation: string
-  outcome: string
-  completedAtUtc?: string | null
-  failureCode?: string | null
-  failureMessage?: string | null
-}
-
-export interface WebServiceRelease {
-  id: string
-  resourceRevision: number
-  action: string
-  outcome: string
-  requestedAtUtc: string
-  completedAtUtc?: string | null
-  failureMessage?: string | null
-  deployments: WebServiceReleaseDeployment[]
-  traceId?: string | null
-  correlationId?: string | null
-  actorUserId: string | null
-  actorEmail: string | null
-  spec: WebServiceSpec
-  provenance: {
-    source: string; commitSha: string | null; buildUrl: string | null; imageDigest: string | null;
-    previousImageTag: string; newImageTag: string; actorType: string; deploymentTokenId: string | null;
-    deploymentTokenName: string | null; buildJobId: string | null; sourceRepositoryId: string | null
-  } | null
-}
-
-export interface WebServiceRecoveryResponse { id: string; resourceRevision: number; releaseId: string; deployments: ResourcePlacement[] }
-
-export interface SourceBuildLogEntry { sequence: number; stream: 'system' | 'stdout' | 'stderr'; text: string; recordedAtUtc: string }
-export interface SourceBuildLogs {
-  buildJobId: string; webServiceId: string; captureState: 'Open' | 'Completed' | 'Interrupted' | 'Expired' | 'Unavailable';
-  entries: SourceBuildLogEntry[]; nextSequence: number; lastSequence: number; hasMore: boolean; truncated: boolean;
-  expiresAtUtc: string | null; capturedBytes: number; maximumBytes: number | null
-}
-
 export interface ResourceDeploymentOperation {
   deployment: { id: string; resourceType: string; resourceId: string; resourceGroupId: string; placement: ResourcePlacement; createdAtUtc: string; updatedAtUtc: string }
   resourceDisplayName: string | null
@@ -433,11 +299,6 @@ export type WorkloadObservation = { kind: 'Unavailable'; reason: string } | {
 }
 export interface ResourceDeploymentObservation {
   deploymentId: string; deploymentRevision: number; desiredGeneration: number; checkedAtUtc: string; observation: WorkloadObservation
-}
-
-export interface WebServiceReleaseHistory {
-  activeRevision: number
-  releases: PaginatedResponse<WebServiceRelease>
 }
 
 export interface PaginatedResponse<T> {
@@ -540,64 +401,6 @@ export interface SourceRepository {
   selectedPlan: SourceBuildPlan
 }
 
-// SourceBuild DTOs serialize these .NET enums numerically.
-export type SourceBuildRecipeKind = 0 | 1 | 2
-export type SourceBuildPhase = 0 | 1 | 2 | 3 | 4 | 5
-
-export interface SourceBuildRecipe {
-  candidateKey: string
-  kind: SourceBuildRecipeKind
-  sourceRoot: string
-  manifestPath: string
-  commands: string[]
-  startCommand?: string | null
-  dockerfile: string
-  isCustomized: boolean
-}
-
-export interface SourceBuildConfiguration {
-  id: string
-  sourceRepositoryId: string
-  webServiceId: string
-  recipe: SourceBuildRecipe
-  createdByUserId: string
-  createdAtUtc: string
-  updatedAtUtc: string
-}
-
-export interface SourceBuildJobState {
-  status:
-    | 'queued'
-    | 'cloning'
-    | 'analyzing'
-    | 'building'
-    | 'pushing'
-    | 'deploying'
-    | 'succeeded'
-    | 'failed'
-  phase?: SourceBuildPhase | null
-  startedAtUtc: string
-  completedAtUtc?: string | null
-  imageReference?: string | null
-  imageDigest?: string | null
-  releaseId?: string | null
-  failureCode?: string | null
-  failureMessage?: string | null
-}
-
-export interface SourceBuildJob {
-  id: string
-  configurationId: string
-  sourceRepositoryId: string
-  webServiceId: string
-  branch: string
-  commitSha: string
-  recipe: SourceBuildRecipe
-  state: SourceBuildJobState
-  createdAtUtc: string
-  updatedAtUtc: string
-}
-
 export interface OverviewData {
   resourceGroups: ResourceGroup[]
   webServices: WebService[]
@@ -607,42 +410,6 @@ export interface ResourceGroupInput {
   name: string
   description: string
   tags: string[]
-}
-
-export interface WebServiceInput {
-  expectedRevision?: number
-  connectionEnvironmentReferences?: Record<string, ConnectionEnvironmentReference>
-  secretEnvironmentReferences?: Record<string, SecretEnvironmentReference>
-  tags?: string[]
-  exposure: 'Private' | 'Public'
-  name: string
-  resourceGroupId: string
-  isolationScopeId?: string
-  imageServer: string
-  imageName: string
-  imageTag: string
-  probePath: string
-  probePort: string
-  servicePort: number
-  targetPort: string
-  portName: string
-  environmentVariables: Array<{
-    key: string
-    value: string
-  }>
-  autoscaling?: WebServiceSpec['autoscaling']
-  targets: WebServiceDeploymentInput[]
-}
-
-export interface WebServiceDeploymentInput {
-  deploymentTargetId?: string
-  fixedReplicas: number
-  computeProfileId?: string
-}
-
-export interface WebServiceDeploymentUpdateInput {
-  fixedReplicas: number
-  computeProfileId?: string
 }
 
 export type StorageMediaType = 'Unknown' | 'HDD' | 'SSD' | 'NVMe' | 'Network'
@@ -737,3 +504,6 @@ export interface KubernetesPersistentVolumeClaim {
   volumeName?: string | null
   owner: KubernetesStorageOwner
 }
+
+export type { ImageInfo, ProbeConfig, PortMapping, WebService, WebServiceExposure, WebServiceSpec, ConnectionEnvironmentReference, SecretEnvironmentReference, WebServiceDeploymentEndpoint, WebServiceDeploymentIngress, WebServiceDeployment, WebServiceReleaseDeployment, WebServiceRelease, WebServiceRecoveryResponse, WebServiceReleaseHistory, WebServiceInput, WebServiceDeploymentInput, WebServiceDeploymentUpdateInput } from './modules/web-services/types'
+export type { SourceBuildLogEntry, SourceBuildLogs, SourceBuildRecipeKind, SourceBuildPhase, SourceBuildRecipe, SourceBuildConfiguration, SourceBuildJobState, SourceBuildJob } from './modules/web-services/buildTypes'

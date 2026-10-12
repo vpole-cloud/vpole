@@ -34,7 +34,7 @@ export function WebServiceResourceView({ id, section, active, refreshVersion, gr
   const manager = useWebServicesManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId,
     enabled: false, refreshAfterMutation: false })
   const builds = useSourceBuildsManager({ apiBaseUrl: api.baseUrl, token: api.token, tenantId: api.tenantId,
-    webServiceId: id, enabled: active && section === 'builds' })
+    webServiceId: id, canManage: tenant.canManage, enabled: active && section === 'builds' })
   const [configurationDirty, setConfigurationDirty] = useState(false)
   const [deploymentDirty, setDeploymentDirty] = useState(false)
   const [buildDirty, setBuildDirty] = useState(false)
@@ -115,7 +115,7 @@ export function WebServiceResourceView({ id, section, active, refreshVersion, gr
       {active && section === 'overview' && <ResourceEndpoints resourceType="pole/web-service" resourceId={id} />}
     </TabPanel>
     <TabPanel id={panelId} tabId="operations" activeId={section}>{active && section === "operations" && <WebServiceOperations id={id} active />}</TabPanel>
-    <TabPanel id={panelId} tabId="releases" activeId={section}>{active && section === 'releases' && <WebServiceReleases service={service} onChanged={async () => { const updated = await details.refresh(); onChanged(); return updated }} />}</TabPanel>
+    <TabPanel id={panelId} tabId="releases" activeId={section}>{active && section === 'releases' && <WebServiceReleases service={service} onChanged={async () => { const updated = await details.refreshAfterWrite(); if (isCurrent()) onChanged(); return updated }} />}</TabPanel>
     <TabPanel id={panelId} tabId="configuration" activeId={section}>
       {configurationSave.kind === 'accepted' && <Notice>Configuration was accepted. Refresh service details before editing again; the last fetched configuration is shown.</Notice>}
       {visited.includes('configuration') && (tenant.canManage ? <div className="web-service-editor"><WebServiceForm key={formVersion}
@@ -148,10 +148,10 @@ export function WebServiceResourceView({ id, section, active, refreshVersion, gr
         onRetryDeployment={(...args) => mutate(() => manager.retryDeployment(...args))} />}
     </TabPanel>
     <TabPanel id={panelId} tabId="domains" activeId={section}>
-      {visited.includes('domains') && <WebServiceDomains key={`${api.baseUrl}:${api.tenantId}:${api.token}:${id}`} service={service} active={active && section === 'domains'} onDirtyChange={setDomainDirty} onChanged={async () => { await details.refresh(); onChanged() }} />}
+      {visited.includes('domains') && <WebServiceDomains key={`${api.baseUrl}:${api.tenantId}:${id}`} service={service} active={active && section === 'domains'} onDirtyChange={setDomainDirty} onChanged={async () => { await details.refreshAfterWrite(); if (isCurrent()) onChanged() }} />}
     </TabPanel>
     <TabPanel id={panelId} tabId="dependencies" activeId={section}>
-      {visited.includes('dependencies') && <WebServiceDependencies key={`${api.baseUrl}:${api.tenantId}:${api.token}:${id}`} service={service} canWrite={tenant.canManage} onDirtyChange={setDependencyDirty} onChanged={async () => { await details.refresh(); onChanged() }} />}
+      {visited.includes('dependencies') && <WebServiceDependencies active={active && section === 'dependencies'} key={`${api.baseUrl}:${api.tenantId}:${id}`} service={service} canWrite={tenant.canManage} onDirtyChange={setDependencyDirty} onChanged={async () => { await details.refreshAfterWrite(); if (isCurrent()) onChanged() }} />}
     </TabPanel>
     <TabPanel id={panelId} tabId="builds" activeId={section}>
       {visited.includes('builds') && <SourceBuildPanel webService={service} manager={builds} canManage={tenant.canManage} onDirtyChange={setBuildDirty} active={active && section === 'builds'} />}

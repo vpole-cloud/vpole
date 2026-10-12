@@ -1,10 +1,9 @@
+import { fieldsFor } from '../modules/web-services/recipeDraft'
 import { useEffect, useState } from 'react'
 import { validationMessage } from '../api'
 import type { SourceBuildConfiguration, SourceBuildRecipe } from '../types'
 import { Button, ConfirmationDialog, Notice } from '../ui/components'
 
-const fieldsFor = (recipe: SourceBuildRecipe) => ({ sourceRoot: recipe.sourceRoot, manifestPath: recipe.manifestPath,
-  commands: recipe.commands.join('\n'), startCommand: recipe.startCommand ?? '', dockerfile: recipe.dockerfile })
 
 export function BuildRecipeForm({ configuration, canManage, busy, onSave, onDirtyChange }: {
   configuration: SourceBuildConfiguration; canManage: boolean; busy: boolean;
@@ -15,8 +14,10 @@ export function BuildRecipeForm({ configuration, canManage, busy, onSave, onDirt
   const [serverRecipe, setServerRecipe] = useState(() => JSON.stringify(configuration.recipe))
   const [failure, setFailure] = useState<unknown>(null)
   const [discarding, setDiscarding] = useState(false)
+  const [reviewing, setReviewing] = useState(false)
   const dirty = JSON.stringify(fields) !== saved
   const currentRecipe = JSON.stringify(configuration.recipe)
+  const conflict = dirty && currentRecipe !== serverRecipe
   if (!dirty && currentRecipe !== serverRecipe) {
     const fields = fieldsFor(configuration.recipe)
     setFields(fields); setSaved(JSON.stringify(fields)); setServerRecipe(currentRecipe)
@@ -24,11 +25,12 @@ export function BuildRecipeForm({ configuration, canManage, busy, onSave, onDirt
   useEffect(() => { onDirtyChange(dirty); return () => onDirtyChange(false) }, [dirty, onDirtyChange])
   const labels = { sourceRoot: 'Source directory', manifestPath: 'Manifest path', commands: 'Build commands', startCommand: 'Start command', dockerfile: 'Dockerfile' }
   return <details className="build-recipe"><summary>Build recipe · {configuration.recipe.isCustomized ? 'Customized' : 'Detected'}</summary>
+    {conflict && <Notice tone="error">The saved recipe changed while this draft was open. Your draft is kept.<Button onClick={() => setReviewing(true)}>Review saved recipe</Button></Notice>}
     <p className="field__hint">Changes apply to future builds. Running jobs retain their recorded recipe and commit.</p>
     <p className="field__hint">Edit the Dockerfile to change build and start commands. The source directory and detected commands are read-only reference information.</p>
     <form onSubmit={(event) => {
       event.preventDefault()
-      if (!canManage || busy || !dirty) return
+      if (!canManage || busy || !dirty || conflict) return
       setFailure(null)
       const recipe = { ...configuration.recipe, ...fields, startCommand: fields.startCommand.trim() || null,
         commands: fields.commands.split('\n').map((command) => command.trim()).filter(Boolean) }
@@ -44,11 +46,21 @@ export function BuildRecipeForm({ configuration, canManage, busy, onSave, onDirt
         {validationMessage(failure, `recipe.${field}`) && <span className="field-error">{validationMessage(failure, `recipe.${field}`)}</span>}
       </label>)}
       {failure !== null && <Notice tone="error">{failure instanceof Error ? failure.message : 'Unable to save the build recipe.'}</Notice>}
-      {canManage && <div className="row-actions"><Button type="submit" variant="primary" disabled={!dirty || busy}>Save build recipe</Button>
+      {canManage && <div className="row-actions"><Button type="submit" variant="primary" disabled={!dirty || busy || conflict}>Save build recipe</Button>
         <Button disabled={!dirty || busy} onClick={() => setDiscarding(true)}>Discard recipe changes</Button></div>}
     </fieldset></form>
     {discarding && <ConfirmationDialog title="Discard build recipe changes?" confirmLabel="Discard changes" onCancel={() => setDiscarding(false)} onConfirm={() => {
-      const fields = fieldsFor(configuration.recipe); setFields(fields); setSaved(JSON.stringify(fields)); setFailure(null); setDiscarding(false)
+      const fields = fieldsFor(configuration.recipe); setFields(fields); setSaved(JSON.stringify(fields)); setServerRecipe(currentRecipe); setFailure(null); setDiscarding(false)
     }}><p>Your unsaved recipe changes will be lost.</p></ConfirmationDialog>}
+    {reviewing && <ConfirmationDialog title="Review the saved build recipe" confirmLabel="Keep draft for this recipe" onCancel={() => setReviewing(false)} onConfirm={() => {
+      const current = fieldsFor(configuration.recipe)
+      const baseline = JSON.parse(saved) as typeof fields
+      const rebased = { ...current }
+      for (const field of Object.keys(fields) as Array<keyof typeof fields>) if (fields[field] !== baseline[field]) rebased[field] = fields[field]
+      setFields(rebased); setSaved(JSON.stringify(current)); setServerRecipe(currentRecipe); setReviewing(false); setFailure(null)
+    }}>
+      <p>Current Dockerfile:</p><pre>{configuration.recipe.dockerfile}</pre><p>Your draft:</p><pre>{fields.dockerfile}</pre>
+      <p>Keeping the draft authorizes replacing the current recipe on the next Save.</p>
+    </ConfirmationDialog>}
   </details>
 }

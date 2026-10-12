@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { addWebServiceHostnameBinding, deleteWebServiceHostnameBinding, fetchAvailableDeploymentTargets, fetchDomainZones, fetchWebServiceHostnameBindings } from '../../api'
-import { useResource } from '../../hooks/useResource'
-import { useScopedMutation } from '../../hooks/useScopedMutation'
+import { useWebServiceQuery } from './useWebServiceQuery'
+import { useApiScope } from '../../data/useApiScope'
+import { useVisibleRefresh } from '../../hooks/useVisibleRefresh'
+import { invalidateWebServiceState } from './invalidate'
+import { useWebServiceMutation } from './useWebServiceMutation'
 import { useAppServices } from '../../shell/AppContext'
 import type { AvailableDeploymentTarget, HostnameBinding, TenantDomainZone, WebService, WebServiceDeployment } from '../../types'
 import { Button, ConfirmationDialog, EmptyState, Field, Notice, StatusBadge } from '../../ui/components'
@@ -9,9 +12,10 @@ import { domainZoneHref } from '../domains/navigation'
 
 export function WebServiceDomains({ service, active, onDirtyChange, onChanged }: { service: WebService; active: boolean; onDirtyChange: (dirty: boolean) => void; onChanged: () => Promise<void> }) {
   const { api, tenant, navigation } = useAppServices()
-  const scope = `${api.baseUrl}:${api.tenantId}:${api.token}:${service.id}`
-  const zones = useResource(scope, (signal) => fetchDomainZones(api.baseUrl, api.token, api.tenantId, signal))
-  const targets = useResource(scope, (signal) => fetchAvailableDeploymentTargets(api.baseUrl, service.isolationScopeId ?? undefined, api.token, api.tenantId, signal, false))
+  const { identity, credential } = useApiScope(api)
+  const scope = `${identity}:${service.id}`
+  const zones = useWebServiceQuery(['domains', 'zones'], (signal) => fetchDomainZones(api.baseUrl, credential(), api.tenantId, signal))
+  const targets = useWebServiceQuery(['eligibility', 'targets', service.isolationScopeId, false], (signal) => fetchAvailableDeploymentTargets(api.baseUrl, service.isolationScopeId ?? undefined, credential(), api.tenantId, signal, false))
   const [dirtyTargets, setDirtyTargets] = useState<Record<string, boolean>>({})
   const setDirty = useCallback((id: string, dirty: boolean) => setDirtyTargets((current) => current[id] === dirty ? current : { ...current, [id]: dirty }), [])
   const dirty = service.deployments.some((deployment) => dirtyTargets[deployment.deploymentId])
@@ -31,15 +35,17 @@ export function WebServiceDomains({ service, active, onDirtyChange, onChanged }:
 
 function DeploymentDomains({ service, deployment, active, canManage, zones, zonesAvailable, target, onDirtyChange, onChanged }: { service: WebService; deployment: WebServiceDeployment; active: boolean; canManage: boolean; zones: TenantDomainZone[]; zonesAvailable: boolean; target?: AvailableDeploymentTarget; onDirtyChange: (id: string, dirty: boolean) => void; onChanged: () => Promise<void> }) {
   const { api } = useAppServices()
-  const scope = `${api.baseUrl}:${api.tenantId}:${api.token}:${service.id}:${deployment.deploymentId}`
-  const bindings = useResource(scope, (signal) => fetchWebServiceHostnameBindings(api.baseUrl, service.id, deployment.deploymentId, api.token, api.tenantId, signal), deployment.deploymentRevision)
-  const mutation = useScopedMutation(scope)
+  const apiScope = useApiScope(api)
+  const { identity, credential, isCurrent } = apiScope
+  const scope = `${identity}:${service.id}:${deployment.deploymentId}`
+  const bindings = useWebServiceQuery(['web-services', 'hostnames', service.id, deployment.deploymentId], (signal) => fetchWebServiceHostnameBindings(api.baseUrl, service.id, deployment.deploymentId, credential(), api.tenantId, signal), deployment.deploymentRevision)
+  const mutation = useWebServiceMutation(scope, canManage)
   const [zoneId, setZoneId] = useState(''); const [relativeName, setRelativeName] = useState(''); const [editing, setEditing] = useState<HostnameBinding | null>(null)
   const [removing, setRemoving] = useState<HostnameBinding | null>(null); const [notice, setNotice] = useState('')
   const dirty = Boolean(zoneId || relativeName || editing)
   useEffect(() => { onDirtyChange(deployment.deploymentId, dirty); return () => onDirtyChange(deployment.deploymentId, false) }, [deployment.deploymentId, dirty, onDirtyChange])
   const refreshBindings = bindings.refresh
-  useEffect(() => { if (!active || !['WaitingForRuntimeCell', 'Pending', 'Reconciling'].includes(deployment.status)) return; const timer = window.setInterval(() => void refreshBindings(), 2500); return () => window.clearInterval(timer) }, [active, deployment.status, refreshBindings])
+  useVisibleRefresh(active && ['WaitingForRuntimeCell', 'Pending', 'Reconciling'].includes(deployment.status), refreshBindings, 2500)
   const eligible = zones.filter((zone) => zone.deploymentTargetId === deployment.deploymentTargetId && zone.kind === 'managed-reservation')
   const selected = eligible.find((zone) => zone.id === zoneId)
   const validName = relativeName.trim().toLowerCase().split('.').every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))
@@ -51,13 +57,13 @@ function DeploymentDomains({ service, deployment, active, canManage, zones, zone
     if (!canAttach || (draftMatches && draftMatches.id === editing?.id)) return
     setNotice('')
     void mutation.run(async (signal) => {
-      if (!draftMatches) await addWebServiceHostnameBinding(api.baseUrl, service.id, deployment.deploymentId, { tenantDomainZoneId: zoneId, relativeName: relativeName.trim().toLowerCase() }, api.token, api.tenantId, signal)
-      if (signal.aborted) return
+      if (!draftMatches) await addWebServiceHostnameBinding(api.baseUrl, service.id, deployment.deploymentId, { tenantDomainZoneId: zoneId, relativeName: relativeName.trim().toLowerCase() }, credential(), api.tenantId, signal)
+      if (signal.aborted || !isCurrent()) throw new DOMException('Aborted', 'AbortError')
       if (editing && bindings.resource?.some((binding) => binding.id === editing.id)) {
-        try { await deleteWebServiceHostnameBinding(api.baseUrl, service.id, deployment.deploymentId, editing.id, api.token, api.tenantId, signal) }
-        catch (failure) { if (!signal.aborted) { setNotice('The replacement alias was accepted. Detach could not be confirmed. Refresh hostnames; if the original remains, detach it to finish replacement.'); await bindings.refresh(); await onChanged() }; throw failure }
+        try { await deleteWebServiceHostnameBinding(api.baseUrl, service.id, deployment.deploymentId, editing.id, credential(), api.tenantId, signal) }
+        catch (failure) { if (!signal.aborted && isCurrent()) { setNotice('The replacement alias was accepted. Detach could not be confirmed. Refresh hostnames; if the original remains, detach it to finish replacement.'); await bindings.refreshAfterWrite(); if (signal.aborted || !isCurrent()) throw new DOMException('Aborted', 'AbortError'); await onChanged() }; throw failure }
       }
-    }, async () => { clear(); setNotice('Hostname configuration accepted for this target. Inspect its apply state below.'); await bindings.refresh(); await onChanged() }).catch(() => {})
+    }, async (_value, guard) => { clear(); setNotice('Hostname configuration accepted for this target. Inspect its apply state below.'); await bindings.refreshAfterWrite(); guard(); await onChanged(); guard(); await invalidateWebServiceState(apiScope, [['domains']]) }).catch(() => {})
   }
   return <section className="panel"><div className="panel__header"><div><p className="panel__eyebrow">Deployment target</p><h3 className="panel__title">{target?.displayName ?? 'Target unavailable'}</h3></div><StatusBadge tone={deployment.failureCode ? 'danger' : 'neutral'}>{deployment.status}</StatusBadge></div>
     <p>Generation {deployment.observedGeneration}/{deployment.desiredGeneration} · desired operation {deployment.desiredOperation}</p>
@@ -77,6 +83,6 @@ function DeploymentDomains({ service, deployment, active, canManage, zones, zone
       {!eligible.length && <Notice>Reserve a tenant zone on this target before attaching a custom hostname.</Notice>}
       <div className="row-actions"><Button type="submit" variant="primary" disabled={!canAttach || mutation.busy || (draftMatches && (!editing || draftMatches.id === editing.id))}>{editing ? 'Replace alias' : 'Attach alias'}</Button><Button disabled={mutation.busy} onClick={clear}>Discard hostname draft</Button></div>
     </form>}
-    {removing && <ConfirmationDialog title={`Detach ${removing.hostname}?`} confirmLabel="Detach alias" busy={mutation.busy} onCancel={() => setRemoving(null)} onConfirm={() => { const binding = removing; void mutation.run((signal) => deleteWebServiceHostnameBinding(api.baseUrl, service.id, deployment.deploymentId, binding.id, api.token, api.tenantId, signal), async () => { setRemoving(null); if (editing?.id === binding.id) clear(); await bindings.refresh(); await onChanged() }).catch(() => setRemoving(null)) }}>This releases this custom hostname reservation and requests removal from this target’s ingress. The application, zone and other targets remain.</ConfirmationDialog>}
+    {removing && <ConfirmationDialog title={`Detach ${removing.hostname}?`} confirmLabel="Detach alias" busy={mutation.busy} onCancel={() => setRemoving(null)} onConfirm={() => { const binding = removing; void mutation.run((signal) => deleteWebServiceHostnameBinding(api.baseUrl, service.id, deployment.deploymentId, binding.id, credential(), api.tenantId, signal), async (_value, guard) => { setRemoving(null); if (editing?.id === binding.id) clear(); await bindings.refreshAfterWrite(); guard(); await onChanged(); guard(); await invalidateWebServiceState(apiScope, [['domains']]) }).catch(() => { if (isCurrent()) setRemoving(null) }) }}>This releases this custom hostname reservation and requests removal from this target’s ingress. The application, zone and other targets remain.</ConfirmationDialog>}
   </section>
 }

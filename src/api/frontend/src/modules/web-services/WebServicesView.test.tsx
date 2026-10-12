@@ -102,7 +102,7 @@ function render(tenantId = 'alpha', role: 'Owner' | 'Viewer' = 'Owner', authenti
   root.render(<AppShell registry={registry} initialViewId="web-services"
     api={{ baseUrl: 'http://localhost', token }}
     auth={{ initialized: true, authenticated, userId: 'user', isPlatformAdmin: false, login: () => {}, logout: () => {} }}
-    tenants={{ items: [tenant, { ...tenant, id: 'beta', name: 'beta' }], activeTenant: tenant, activeTenantId: tenantId,
+    tenants={{ items: [tenant, ...(tenantId === 'beta' ? [] : [{ ...tenant, id: 'beta', name: 'beta' }])], activeTenant: tenant, activeTenantId: tenantId,
       status: 'success', error: '', selectTenant }} />)
 }
 const visible = (element: Element) => !element.closest('[hidden]')

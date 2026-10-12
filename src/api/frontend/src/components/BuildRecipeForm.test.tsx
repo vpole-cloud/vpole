@@ -11,6 +11,7 @@ const configuration: SourceBuildConfiguration = { id: 'configuration', sourceRep
 
 it('preserves a dirty recipe across refresh and field failure, then records the successful normalized recipe', async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+  Object.defineProperties(HTMLDialogElement.prototype, { showModal: { configurable: true, value: function (this: HTMLDialogElement) { this.open = true } }, close: { configurable: true, value: function (this: HTMLDialogElement) { this.open = false } } })
   const container = document.createElement('div'); const mountedRoot = createRoot(container)
   const onSave = vi.fn().mockRejectedValueOnce(new ApiError('Invalid recipe', 400, { 'Body.Recipe.Dockerfile': ['Dockerfile is invalid.'] }))
     .mockImplementationOnce(async (recipe) => ({ ...configuration, recipe: { ...recipe, isCustomized: true } }))
@@ -26,6 +27,10 @@ it('preserves a dirty recipe across refresh and field failure, then records the 
     expect(onDirtyChange).toHaveBeenLastCalledWith(true)
     await act(async () => render({ ...configuration, recipe: { ...configuration.recipe, dockerfile: 'FROM refreshed' } }))
     expect(dockerfile.value).toContain('FROM busybox')
+    expect([...container.querySelectorAll('button')].find((button) => button.textContent === 'Save build recipe')!.disabled).toBe(true)
+    await act(async () => [...container.querySelectorAll('button')].find((button) => button.textContent === 'Review saved recipe')!.click())
+    expect(container.querySelector('dialog')?.textContent).toContain('Current Dockerfile')
+    await act(async () => [...container.querySelectorAll('button')].find((button) => button.textContent === 'Keep draft for this recipe')!.click())
     await act(async () => container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
     expect(container.textContent).toContain('Dockerfile is invalid.'); expect(dockerfile.value).toContain('FROM busybox')
     await act(async () => container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
@@ -36,6 +41,7 @@ it('preserves a dirty recipe across refresh and field failure, then records the 
 
 it('preserves a draft but refuses form submission after tenant access becomes read-only', async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+  Object.defineProperties(HTMLDialogElement.prototype, { showModal: { configurable: true, value: function (this: HTMLDialogElement) { this.open = true } }, close: { configurable: true, value: function (this: HTMLDialogElement) { this.open = false } } })
   const container = document.createElement('div'); const mountedRoot = createRoot(container)
   const onSave = vi.fn(); const onDirtyChange = vi.fn()
   const render = (canManage: boolean) => mountedRoot.render(<BuildRecipeForm configuration={configuration} canManage={canManage} busy={false} onSave={onSave} onDirtyChange={onDirtyChange} />)

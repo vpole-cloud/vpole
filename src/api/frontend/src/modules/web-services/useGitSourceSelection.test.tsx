@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, useLayoutEffect } from 'react'
+import { SessionQueries } from '../../data/SessionQueries'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import * as api from '../../api'
@@ -9,7 +10,8 @@ vi.mock('../../api', () => ({ analyzeProviderRepository: vi.fn(), fetchGitProvid
   fetchProviderRepositories: vi.fn(), fetchSourceRepositories: vi.fn(), linkProviderRepository: vi.fn(), reanalyzeSourceRepository: vi.fn() }))
 let root: Root
 let state!: ReturnType<typeof useGitSourceSelection>
-function Probe({ tenant = 'alpha' }: { tenant?: string }) { const value = useGitSourceSelection({ baseUrl: '/api', token: 'token', tenantId: tenant }); useLayoutEffect(() => { state = value }); return null }
+function ProbeContent({ tenant = 'alpha', token = 'token' }: { tenant?: string; token?: string }) { const value = useGitSourceSelection({ baseUrl: '/api', token, tenantId: tenant }); useLayoutEffect(() => { state = value }); return null }
+function Probe({ tenant = 'alpha', token = 'token' }: { tenant?: string; token?: string }) { return <SessionQueries identity={`test:${tenant}`}><ProbeContent tenant={tenant} token={token} /></SessionQueries> }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>((done) => { resolve = done }); return { promise, resolve } }
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); vi.resetAllMocks(); root = createRoot(document.createElement('div'))
@@ -55,9 +57,23 @@ it('refreshes an existing linked source when the user selects a newly analyzed c
     branch: 'main', commitSha: 'old', createdAtUtc: '', updatedAtUtc: '', analyzedAtUtc: '', selectedPlan: plan }
   vi.mocked(api.fetchSourceRepositories).mockResolvedValue([source])
   vi.mocked(api.analyzeProviderRepository).mockResolvedValue({ repositoryId: 'repo', repositoryFullName: 'team/app', branch: 'main', commitSha: 'new', analyzedAtUtc: '', detectedFiles: [], candidates: [plan] })
-  vi.mocked(api.reanalyzeSourceRepository).mockResolvedValue({ ...source, commitSha: 'new' })
+  vi.mocked(api.reanalyzeSourceRepository).mockImplementation(async () => { const updated = { ...source, commitSha: 'new' }; vi.mocked(api.fetchSourceRepositories).mockResolvedValue([updated]); return updated })
   await act(async () => root.render(<Probe />)); await act(async () => state.selectRepository('repo')); await act(async () => { await state.analyze() })
   let selected!: Awaited<ReturnType<typeof state.link>>; await act(async () => { selected = await state.link() })
   expect(selected?.commitSha).toBe('new'); expect(state.sources[0].commitSha).toBe('new')
   expect(api.reanalyzeSourceRepository).toHaveBeenCalledWith('/api', 'source', 'token', 'alpha'); expect(api.linkProviderRepository).not.toHaveBeenCalled()
+})
+
+
+it('keeps branch and build-plan selection across credential refresh and links with the current token', async () => {
+  const plan = { candidateKey: 'docker', kind: 'Dockerfile' as const, displayName: 'Dockerfile', sourceRoot: '.', manifestPath: 'Dockerfile', confidence: 'High' as const,
+    signals: [], warnings: [], commands: [], dockerfilePreview: 'FROM scratch' }
+  vi.mocked(api.analyzeProviderRepository).mockResolvedValue({ repositoryId: 'repo', repositoryFullName: 'team/app', branch: 'main', commitSha: 'commit', analyzedAtUtc: '', detectedFiles: [], candidates: [plan] })
+  const source = { id: 'source', connectionId: 'account', externalRepositoryId: 'repo', repositoryFullName: 'team/app', repositoryUrl: '', isPrivate: true, branch: 'main', commitSha: 'commit', analyzedAtUtc: '', createdAtUtc: '', updatedAtUtc: '', selectedPlan: plan }
+  vi.mocked(api.linkProviderRepository).mockImplementation(async () => { vi.mocked(api.fetchSourceRepositories).mockResolvedValue([source]); return source })
+  await act(async () => root.render(<Probe />)); await act(async () => state.selectRepository('repo')); await act(async () => state.analyze())
+  await act(async () => root.render(<Probe token="renewed-token" />))
+  expect(state.selection.repositoryId).toBe('repo'); expect(state.selection.branch).toBe('main'); expect(state.selection.candidateKey).toBe('docker')
+  await act(async () => state.link())
+  expect(api.linkProviderRepository).toHaveBeenCalledWith('/api', 'account', 'repo', 'main', 'docker', 'renewed-token', 'alpha')
 })
