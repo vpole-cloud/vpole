@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act } from 'react'
-import { strictFetch } from '../test/http'
+import { deferred, strictFetch } from '../test/http'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { retryResourceDeployment } from '../api'
@@ -34,6 +34,7 @@ let nativeReady: boolean
 let failedRefresh: boolean
 let retryConflict: boolean
 let oldRequest: Promise<Response> | undefined
+let heldOperations: Promise<Response> | undefined
 const requests = strictFetch()
 const fetchMock = requests.fetch
 const json = (value: unknown) => Promise.resolve(new Response(JSON.stringify(value)))
@@ -44,11 +45,12 @@ beforeEach(() => {
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
   Object.defineProperties(HTMLDialogElement.prototype, { showModal: { configurable: true, value: function (this: HTMLDialogElement) { this.open = true } }, close: { configurable: true, value: function (this: HTMLDialogElement) { this.open = false } } })
   data = { items: [operation('healthy'), operation('failed', true)], totalCount: 2, pageNumber: 1, pageSize: 10, checkedAtUtc: new Date().toISOString(), counts: { waiting: 0, accepted: 0, running: 0, applied: 1, failed: 1 } }
-  nativeReady = true; failedRefresh = false; retryConflict = false; oldRequest = undefined
+  nativeReady = true; failedRefresh = false; retryConflict = false; oldRequest = undefined; heldOperations = undefined
   fetchMock.mockReset().mockImplementation((input, init) => {
     const url = new URL(String(input))
     if (url.pathname.endsWith('/operations')) {
       if (oldRequest && (init?.headers as Record<string, string>)['X-Pole-Tenant-ID'] === 'old') return oldRequest
+      if (heldOperations) return heldOperations
       return failedRefresh ? Promise.resolve(new Response('raw-secret-canary', { status: 503 })) : json(data)
     }
     if (url.pathname.endsWith('/observation')) {
@@ -134,4 +136,73 @@ it('coalesces polling of slow operation reads and preserves a confirmation throu
   await act(async () => complete(new Response(JSON.stringify(data))))
   await click('Retry selected operation')
   expect(fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')![1]?.headers).toEqual(expect.objectContaining({ Authorization: 'Bearer renewed-token' }))
+})
+
+
+const retryWrites = () => fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST')
+const retryChoice = () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Retry this apply')!
+const retryConfirm = () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Retry selected operation')!
+
+it('opens an exact failed-operation confirmation during a healthy held metadata refresh and emits only its captured retry command', async () => {
+  await render()
+  const held = deferred<Response>(); heldOperations = held.promise
+  await click('Refresh operations')
+  expect.soft(retryChoice().disabled).toBe(false)
+  await click('Retry this apply')
+  expect(container.querySelector('dialog')?.textContent).toContain('Only deployment failed')
+  expect(retryConfirm().disabled).toBe(false); expect(retryWrites()).toHaveLength(0)
+  const inFlight = fetchMock.mock.calls.filter(([url]) => String(url).includes('/operations?')).at(-1)!
+  expect(inFlight[1]?.signal?.aborted).toBe(false)
+  heldOperations = undefined
+  await act(async () => held.resolve(new Response(JSON.stringify(data))))
+  await click('Retry selected operation'); expect(retryWrites()).toHaveLength(1)
+  const url = new URL(String(retryWrites()[0][0]))
+  expect(url.pathname).toContain('/failed/retry'); expect(url.searchParams.get('expectedRevision')).toBe('7'); expect(url.searchParams.get('expectedOperation')).toBe('Apply')
+  expect(retryWrites()[0][1]?.headers).toEqual(expect.objectContaining({ Authorization: 'Bearer token', 'X-Pole-Tenant-ID': 'active' }))
+})
+
+it('keeps an open retry actionable during a healthy read but blocks a failed read and held failed retry', async () => {
+  await render(); await click('Retry this apply')
+  const dialog = container.querySelector('dialog')!
+  const held = deferred<Response>(); heldOperations = held.promise
+  await click('Refresh operations')
+  expect(container.querySelector('dialog')).toBe(dialog); expect(retryConfirm().disabled).toBe(false)
+  heldOperations = undefined
+  await act(async () => held.resolve(new Response(JSON.stringify(data))))
+  failedRefresh = true; await click('Refresh operations')
+  expect.soft(retryConfirm().disabled).toBe(true)
+  await click('Retry selected operation'); expect(retryWrites()).toHaveLength(0)
+  const retry = deferred<Response>(); heldOperations = retry.promise; failedRefresh = false
+  await click('Refresh operations')
+  expect(retryConfirm().disabled).toBe(true)
+  heldOperations = undefined
+  await act(async () => retry.resolve(new Response(JSON.stringify(data))))
+  expect(retryConfirm().disabled).toBe(false)
+})
+
+it.each(['revision', 'operation', 'phase', 'retryable', 'missing'] as const)('blocks an open retry when fresh metadata changes its selected %s context', async change => {
+  await render(); await click('Retry this apply')
+  const held = deferred<Response>(); heldOperations = held.promise
+  await click('Refresh operations')
+  let changed = data.items[1]
+  if (change === 'revision') changed = { ...changed, deployment: { ...changed.deployment, placement: { ...changed.deployment.placement, deploymentRevision: 8 } } }
+  if (change === 'operation') changed = { ...changed, deployment: { ...changed.deployment, placement: { ...changed.deployment.placement, desiredOperation: 'Delete' } } }
+  if (change === 'phase') changed = { ...changed, phase: 'Accepted' }
+  if (change === 'retryable') changed = { ...changed, retryable: false }
+  data = { ...data, items: change === 'missing' ? [data.items[0]] : [data.items[0], changed] }
+  heldOperations = undefined
+  await act(async () => held.resolve(new Response(JSON.stringify(data))))
+  expect.soft(retryConfirm().disabled).toBe(true)
+  await click('Retry selected operation'); expect(retryWrites()).toHaveLength(0)
+})
+
+it('keeps initial metadata absence and a changed tenant or Viewer role from authorizing retry', async () => {
+  const held = deferred<Response>(); heldOperations = held.promise
+  await render(); expect(container.querySelector('dialog')).toBeNull(); expect(retryChoice()).toBeUndefined()
+  heldOperations = undefined
+  await act(async () => held.resolve(new Response(JSON.stringify(data))))
+  await click('Retry this apply'); await render('active', 'Viewer')
+  expect(container.querySelector('dialog')).toBeNull(); expect(retryWrites()).toHaveLength(0)
+  await render('active', 'Owner'); await click('Retry this apply'); await render('another', 'Owner')
+  expect(container.querySelector('dialog')).toBeNull(); expect(retryWrites()).toHaveLength(0)
 })

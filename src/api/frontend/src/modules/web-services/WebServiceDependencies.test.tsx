@@ -8,7 +8,7 @@ import { createTestApp } from '../../test/TestApp'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AppContext } from '../../shell/AppContext'
 import type { AppServices } from '../../shell/contracts'
-import type { WebService } from '../../types'
+import type { SecretUsage, WebService } from '../../types'
 import { WebServiceDependencies } from './WebServiceDependencies'
 import { RealtimeProvider } from '../../realtime/RealtimeProvider'
 import { createRealtimeConnection } from '../../realtime/connection'
@@ -28,14 +28,16 @@ const service = { id: 'app', name: 'Application', resourceGroupId: 'group', isol
 const connection = { id: 'connection', name: 'Orders network', sourceResourceType: 'pole/web-service', sourceResourceId: 'app', destinationResourceType: 'example/queue', destinationResourceId: 'destination', endpointId: 'orders', status: 'Failed', generation: 2,
   targets: [{ targetId: 'target', phase: 'Apply', status: 'Applied', host: 'orders.first.svc.cluster.local', port: 5672, failureCode: null }, { targetId: 'other', phase: 'Apply', status: 'Failed', host: 'orders.second.svc.cluster.local', port: 5672, failureCode: 'PolicyApplyFailed' }] }
 const secret = { id: 'secret', name: 'Application key', resourceGroupId: 'group', isolationScopeId: 'scope', revision: 2, currentVersion: 1, keyNames: ['token'] }
-let connectionItems: unknown[]; let writesFail: boolean; let endpointLabel: string; let currentSecret: typeof secret; let liveConnection: FakeConnection
+let connectionItems: unknown[]; let writesFail: boolean; let endpointLabel: string; let currentSecret: typeof secret & { managedBy?: { bindingId: string } }; let liveConnection: FakeConnection
+let usageItems: SecretUsage[]; let heldChoices: Promise<Response> | undefined; let heldUsage: Promise<Response> | undefined; let choicesFail: boolean; let usageFail: boolean
+const initialUsage = () => [{ binding: { id: 'binding', consumerType: 'pole/web-service', consumerId: 'app', allDeployments: true, deploymentIds: [], keyMappings: { token: 'APP_TOKEN' } }, affectedDeploymentIds: ['deployment'] }]
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status })
 beforeEach(() => {
   requests.reset()
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', '') }
   HTMLDialogElement.prototype.close = function () { this.removeAttribute('open') }
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); ({ container, root } = createTestApp())
-  dirty.mockReset(); changed.mockReset(); fetchMock.mockReset(); connectionItems = [connection]; writesFail = false; endpointLabel = 'Virtual host'; currentSecret = { ...secret }
+  dirty.mockReset(); changed.mockReset(); fetchMock.mockReset(); connectionItems = [connection]; writesFail = false; endpointLabel = 'Virtual host'; currentSecret = { ...secret }; usageItems = initialUsage(); heldChoices = undefined; heldUsage = undefined; choicesFail = false; usageFail = false
   vi.mocked(createRealtimeConnection).mockImplementation(() => { liveConnection = new FakeConnection(); return liveConnection })
   vi.mocked(createRealtimeSession).mockImplementation(async () => ({ expiresAtUtc: new Date(Date.now() + 300000).toISOString() }))
   fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -47,8 +49,8 @@ beforeEach(() => {
     if (path === '/api/v1/resource-groups') return json({ items: [{ id: 'group', name: 'Applications' }], totalCount: 1 })
     if (path === '/api/v1/deployment-targets/available') return json([{ id: 'target', displayName: 'Primary cluster' }, { id: 'other', displayName: 'Recovery cluster' }])
     if (path.endsWith('/resources')) return json({ items: [{ registrationId: 'registration', resourceTypeId: 'example/queue', resourceId: 'destination', displayName: 'Orders queue' }], totalCount: 1 })
-    if (path === '/api/v1/secrets/') return json({ items: [currentSecret], nextCursor: null })
-    if (path.endsWith('/usage')) return json([{ binding: { id: 'binding', consumerType: 'pole/web-service', consumerId: 'app', allDeployments: true, deploymentIds: [], keyMappings: { token: 'APP_TOKEN' } }, affectedDeploymentIds: ['deployment'] }])
+    if (path === '/api/v1/secrets/') return heldChoices?.then(response => response.clone()) ?? (choicesFail ? json({}, 503) : json({ items: [currentSecret], nextCursor: null }))
+    if (path.endsWith('/usage')) return heldUsage?.then(response => response.clone()) ?? (usageFail ? json({}, 503) : json(usageItems))
     if (path.endsWith('/projections')) return json([{ bindingId: 'binding', resourceDeploymentId: 'deployment', deploymentTargetId: 'target', desiredVersion: 1, appliedVersion: 1, health: 'Ready', failureCode: null }])
     return requests.unhandled(input, init)
   }); vi.stubGlobal('fetch', fetchMock)
@@ -130,7 +132,7 @@ it('keeps the selected Secret, binding and projections through a slow failed met
   expect(controls('Dependency Secret')[0].value).toBe('secret')
   expect(container.textContent).toContain('saved binding for every current deployment')
   expect(container.textContent).toContain('Projected to target')
-  expect(button('Detach application binding').disabled).toBe(true)
+  expect(button('Detach application binding').disabled).toBe(false)
   await act(async () => read.resolve(new Response('private-canary', { status: 503 })))
   expect(controls('Dependency Secret')[0].value).toBe('secret')
   expect(container.textContent).toContain('saved binding for every current deployment')
@@ -178,4 +180,136 @@ it('observes connection fields and composite Secret bindings through hints, pres
   await act(async () => vi.advanceTimersByTimeAsync(120000))
   expect(fetchMock).not.toHaveBeenCalled()
   expect(liveConnection.unsubscribe).toHaveBeenCalled()
+})
+
+
+const secretWrites = () => fetchMock.mock.calls.filter(([url, init]) => String(url).includes('/api/v1/secrets/') && init?.method && init.method !== 'GET')
+async function selectedSecret(bound = true) {
+  vi.useFakeTimers(); if (!bound) usageItems = []
+  await render(service, true, 'alpha', true, true)
+  await act(async () => vi.advanceTimersByTimeAsync(500))
+  await input(controls('Dependency Secret')[0], 'secret')
+}
+async function secretHint() {
+  await act(async () => liveConnection.changed({ version: 1, topic: 'secrets', tenantId: 'alpha', resourceId: 'secret' }))
+  await act(async () => vi.advanceTimersByTimeAsync(250))
+}
+function detachConfirm() { return button('Detach binding') }
+
+it.each(['choices', 'usage', 'both'] as const)('authorizes the selected eligible Secret from loaded empty usage during held %s push reads', async heldRead => {
+  await selectedSecret(false)
+  const choicesRead = deferred<Response>(); const usageRead = deferred<Response>()
+  if (heldRead !== 'usage') heldChoices = choicesRead.promise
+  if (heldRead !== 'choices') heldUsage = usageRead.promise
+  await secretHint()
+  expect.soft(button('Authorize Secret for all application deployments').disabled).toBe(false)
+  await click('Authorize Secret for all application deployments')
+  expect(secretWrites()).toHaveLength(1)
+  const [url, command] = secretWrites()[0]
+  expect(String(url)).toBe('http://localhost/api/v1/secrets/secret/bindings')
+  expect(JSON.parse(command?.body as string)).toEqual({ consumerType: 'pole/web-service', consumerId: 'app', allDeployments: true, deploymentIds: [], keyMappings: {} })
+  expect(new Headers(command?.headers).get('X-Pole-Tenant-ID')).toBe('alpha')
+  expect(new Headers(command?.headers).get('Authorization')).toBe('Bearer bearer')
+  heldChoices = undefined; heldUsage = undefined
+  await act(async () => { choicesRead.resolve(json({ items: [currentSecret], nextCursor: null })); usageRead.resolve(json(usageItems)) })
+})
+
+it('opens and confirms exact application binding removal during healthy held choices and usage reads', async () => {
+  await selectedSecret()
+  const choicesRead = deferred<Response>(); const usageRead = deferred<Response>()
+  heldChoices = choicesRead.promise; heldUsage = usageRead.promise
+  await secretHint()
+  expect.soft(button('Detach application binding').disabled).toBe(false)
+  await click('Detach application binding')
+  expect(container.querySelector('dialog[open]')).not.toBeNull()
+  expect(detachConfirm().disabled).toBe(false)
+  await click('Detach binding')
+  expect(secretWrites()).toHaveLength(1)
+  const [url, command] = secretWrites()[0]
+  expect(String(url)).toBe('http://localhost/api/v1/secrets/secret/bindings/binding')
+  expect(command?.method).toBe('DELETE')
+  expect(new Headers(command?.headers).get('X-Pole-Tenant-ID')).toBe('alpha')
+  heldChoices = undefined; heldUsage = undefined
+  await act(async () => { choicesRead.resolve(json({ items: [currentSecret], nextCursor: null })); usageRead.resolve(json(usageItems)) })
+})
+
+it.each(['choices', 'usage'] as const)('blocks an open Secret detach after failed %s metadata and through a held retry', async failedRead => {
+  await selectedSecret(); await click('Detach application binding')
+  choicesFail = failedRead === 'choices'; usageFail = failedRead === 'usage'
+  await secretHint()
+  expect.soft(detachConfirm().disabled).toBe(true)
+  await click('Detach binding'); expect(secretWrites()).toHaveLength(0)
+  choicesFail = false; usageFail = false
+  const read = deferred<Response>()
+  if (failedRead === 'choices') heldChoices = read.promise
+  else heldUsage = read.promise
+  await secretHint()
+  expect(detachConfirm().disabled).toBe(true)
+  await click('Detach binding'); expect(secretWrites()).toHaveLength(0)
+  heldChoices = undefined; heldUsage = undefined
+  await act(async () => read.resolve(json(failedRead === 'choices' ? { items: [currentSecret], nextCursor: null } : usageItems)))
+  expect(detachConfirm().disabled).toBe(false)
+})
+
+it.each(['binding', 'secret revision', 'source revision', 'managed binding', 'group', 'scope', 'selection', 'removed binding', 'removed Secret'] as const)('does not retarget an open Secret detach after current %s changes', async changedField => {
+  await selectedSecret(); await click('Detach application binding')
+  if (changedField === 'binding') usageItems = [{ ...usageItems[0], binding: { ...usageItems[0].binding, id: 'new-binding' } }]
+  if (changedField === 'secret revision') currentSecret = { ...currentSecret, revision: 3 }
+  if (changedField === 'managed binding') currentSecret = { ...currentSecret, managedBy: { bindingId: 'binding' } }
+  if (changedField === 'group') currentSecret = { ...currentSecret, resourceGroupId: 'other-group' }
+  if (changedField === 'scope') currentSecret = { ...currentSecret, isolationScopeId: 'other-scope' }
+  if (changedField === 'removed binding') usageItems = []
+  if (changedField === 'selection') await input(controls('Dependency Secret')[0], '')
+  if (changedField === 'removed Secret') {
+    const read = deferred<Response>(); heldChoices = read.promise
+    await secretHint(); heldChoices = undefined
+    await act(async () => read.resolve(json({ items: [], nextCursor: null })))
+  } else if (changedField === 'source revision') await render({ ...service, activeRevision: 8 }, true, 'alpha', true, true)
+  else await secretHint()
+  expect.soft(detachConfirm()?.disabled ?? true).toBe(true)
+  if (detachConfirm()) await click('Detach binding')
+  expect(secretWrites()).toHaveLength(0)
+})
+
+it('requires initial usage and current permission/scope for Secret commands', async () => {
+  usageItems = []; const read = deferred<Response>(); heldUsage = read.promise
+  await render(); await input(controls('Dependency Secret')[0], 'secret')
+  expect(button('Authorize Secret for all application deployments').disabled).toBe(true)
+  await click('Authorize Secret for all application deployments'); expect(secretWrites()).toHaveLength(0)
+  heldUsage = undefined; await act(async () => read.resolve(json(initialUsage())))
+  await click('Detach application binding'); await render(service, false)
+  expect(detachConfirm()).toBeUndefined(); expect(secretWrites()).toHaveLength(0)
+  await render(service, true, 'beta')
+  expect(container.querySelector('dialog[open]')).toBeNull(); expect(secretWrites()).toHaveLength(0)
+})
+
+
+it.each(['choices', 'usage'] as const)('does not authorize a Secret after failed %s validation or during its held retry', async failedRead => {
+  await selectedSecret(false)
+  choicesFail = failedRead === 'choices'; usageFail = failedRead === 'usage'
+  await secretHint()
+  expect(button('Authorize Secret for all application deployments').disabled).toBe(true)
+  await click('Authorize Secret for all application deployments'); expect(secretWrites()).toHaveLength(0)
+  choicesFail = false; usageFail = false
+  const read = deferred<Response>()
+  if (failedRead === 'choices') heldChoices = read.promise
+  else heldUsage = read.promise
+  await secretHint()
+  expect(button('Authorize Secret for all application deployments').disabled).toBe(true)
+  await click('Authorize Secret for all application deployments'); expect(secretWrites()).toHaveLength(0)
+  heldChoices = undefined; heldUsage = undefined
+  await act(async () => read.resolve(json(failedRead === 'choices' ? { items: [currentSecret], nextCursor: null } : usageItems)))
+  expect(button('Authorize Secret for all application deployments').disabled).toBe(false)
+})
+
+it('keeps authorization eligibility distinct from removing an existing invalid-scope binding', async () => {
+  currentSecret = { ...currentSecret, isolationScopeId: 'other-scope' }
+  usageItems = []
+  await render(); await input(controls('Dependency Secret')[0], 'secret')
+  expect(button('Authorize Secret for all application deployments')).toBeUndefined()
+  expect(secretWrites()).toHaveLength(0)
+  usageItems = initialUsage()
+  await click('Refresh Secret access'); await click('Detach application binding'); await click('Detach binding')
+  expect(secretWrites()).toHaveLength(1)
+  expect(secretWrites()[0][1]?.method).toBe('DELETE')
 })

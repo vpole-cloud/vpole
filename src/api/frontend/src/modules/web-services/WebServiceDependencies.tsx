@@ -1,4 +1,5 @@
 import { eligibilityKeys } from '../../data/queryKeys'
+import { hasHealthyCurrentQueryData } from '../../data/hasHealthyCurrentQueryData'
 import { groupInterests } from '../../realtime/resourceInterests'
 import { secretInterests } from '../secrets/realtime'
 import { endpointInterests, endpointCompositeInterests } from '../operations/endpointRealtime'
@@ -120,7 +121,7 @@ export function WebServiceDependencies({ service, canWrite, onDirtyChange, onCha
         <Button type="submit" variant="primary" disabled={!canCreate || network.busy}>Create network access</Button>
       </form>}
     </section>
-    <DependencySecretAccess active={active} service={service} secrets={secrets.resource ?? []} choicesCurrent={secrets.status === 'success'} unavailable={Boolean(secrets.error)} canWrite={canWrite} targetName={targetName} />
+    <DependencySecretAccess active={active} service={service} secrets={secrets.resource ?? []} choicesCurrent={hasHealthyCurrentQueryData(secrets)} unavailable={Boolean(secrets.error)} canWrite={canWrite} targetName={targetName} />
     <DependencyConfiguration key={service.id} active={active} service={service} connections={connections.resource ?? []} secrets={secrets.resource ?? []} canWrite={canWrite} onDirtyChange={setConfigurationDirty} onChanged={onChanged} />
     {disconnecting && <ConfirmationDialog title="Disconnect network access?" confirmLabel="Disconnect network" busy={network.busy} onCancel={() => setDisconnecting(null)} onConfirm={() => {
       void network.run((signal) => deleteResourceConnection(api.baseUrl, disconnecting.id, credential(), api.tenantId, signal), async (_value, guard) => { setDisconnecting(null); await connections.refreshAfterWrite(); guard(); await invalidateWebServiceState(apiScope, [['connections']]) }).catch(() => { if (isCurrent()) setDisconnecting(null) })
@@ -129,7 +130,8 @@ export function WebServiceDependencies({ service, canWrite, onDirtyChange, onCha
 }
 
 function DependencySecretAccess({ active, service, secrets, choicesCurrent, unavailable, canWrite, targetName }: { active: boolean; service: WebService; secrets: SecretMetadata[]; choicesCurrent: boolean; unavailable: boolean; canWrite: boolean; targetName: (id: string) => string }) {
-  const { api, navigation } = useAppServices(); const [selected, setSelected] = useState(''); const [detaching, setDetaching] = useState(false)
+  const { api, navigation } = useAppServices(); const [selected, setSelected] = useState('')
+  const [detaching, setDetaching] = useState<{ scope: string; secret: SecretMetadata; sourceId: string; sourceRevision: number; bindingId: string } | null>(null)
   const apiScope = useApiScope(api); const { credential, isCurrent } = apiScope
   const secret = secrets.find((item) => item.id === selected); const scope = `${apiScope.identity}:${service.id}:${selected}`
   const savedBindings = useWebServiceQuery(['secrets', 'consumer-bindings', service.id, secrets.map((item) => `${item.id}:${item.revision}`).join(',')], async (signal) => {
@@ -146,6 +148,12 @@ function DependencySecretAccess({ active, service, secrets, choicesCurrent, unav
   const eligible = Boolean(secret && secret.resourceGroupId === service.resourceGroupId && secret.isolationScopeId === service.isolationScopeId && live.length && live.every((item) => item.isolationScopeId === secret.isolationScopeId))
   const covered = Boolean(binding && live.every((item) => binding.binding.allDeployments || binding.binding.deploymentIds.includes(item.deploymentId)))
   const mutation = useWebServiceMutation(scope, canWrite)
+  const metadataCurrent = choicesCurrent && hasHealthyCurrentQueryData(usage)
+  const canAuthorize = canWrite && metadataCurrent && eligible && !binding
+  const canDetach = canWrite && metadataCurrent && Boolean(secret && binding && secret.managedBy?.bindingId !== binding.binding.id)
+  const eligibleDetach = canDetach && detaching?.scope === scope && detaching.sourceId === service.id && detaching.sourceRevision === service.activeRevision &&
+    detaching.secret.id === secret?.id && detaching.secret.revision === secret?.revision && detaching.secret.resourceGroupId === secret?.resourceGroupId &&
+    detaching.secret.isolationScopeId === secret?.isolationScopeId && detaching.bindingId === binding?.binding.id
   const selectedProjections = projections.resource?.filter((item) => item.bindingId === binding?.binding.id) ?? []
   const pending = Boolean(binding && (!selectedProjections.length || selectedProjections.some((item) => item.health !== 'Ready' || item.appliedVersion !== secret?.currentVersion)))
   const refresh = projections.refresh
@@ -159,7 +167,7 @@ function DependencySecretAccess({ active, service, secrets, choicesCurrent, unav
       <p>Current version {secret.currentVersion} · available keys: {secret.keyNames.join(', ')}</p>
       {!eligible && <Notice tone="error">Secret bindings require the same resource group and isolation scope on every application deployment. Network permission uses different rules. Select an eligible Secret.</Notice>}
       {binding ? <Notice tone={covered ? 'info' : 'error'}>{covered ? 'This application has a saved binding for every current deployment.' : 'The saved binding does not cover every application deployment. Review its deployment selection in Secret bindings.'}</Notice> : <Notice>No Secret binding exists for this application.</Notice>}
-      {canWrite && !binding && eligible && <Button disabled={mutation.busy || !choicesCurrent || usage.status !== 'success'} onClick={() => void mutation.run((signal) => bindSecret(api.baseUrl, secret.id, { consumerType: sourceType, consumerId: service.id, allDeployments: true, deploymentIds: [], keyMappings: {} }, credential(), api.tenantId, signal), async (_value, guard) => { await usage.refreshAfterWrite(); guard(); await projections.refreshAfterWrite(); guard(); await savedBindings.refreshAfterWrite(); guard(); await invalidateWebServiceState(apiScope, [['secrets']]) }).catch(() => {})}>Authorize Secret for all application deployments</Button>}
+      {canWrite && !binding && eligible && <Button disabled={mutation.busy || !canAuthorize} onClick={() => { if (!canAuthorize || mutation.busy) return; void mutation.run((signal) => bindSecret(api.baseUrl, secret.id, { consumerType: sourceType, consumerId: service.id, allDeployments: true, deploymentIds: [], keyMappings: {} }, credential(), api.tenantId, signal), async (_value, guard) => { await usage.refreshAfterWrite(); guard(); await projections.refreshAfterWrite(); guard(); await savedBindings.refreshAfterWrite(); guard(); await invalidateWebServiceState(apiScope, [['secrets']]) }).catch(() => {}) }}>Authorize Secret for all application deployments</Button>}
       {!!selectedProjections.length && <DataTable label="Dependency Secret projections" items={selectedProjections} itemKey={(item) => item.resourceDeploymentId} columns={[
         { id: 'target', label: 'Target', render: (item) => targetName(item.deploymentTargetId) },
         { id: 'state', label: 'Secret projection', render: (item) => <StatusBadge tone={item.health === 'Failed' ? 'danger' : item.health === 'Ready' && item.appliedVersion === secret.currentVersion ? 'success' : 'info'}>{item.health === 'Ready' ? item.appliedVersion === secret.currentVersion ? 'Projected to target' : 'Waiting for current version' : item.health}</StatusBadge> },
@@ -167,11 +175,11 @@ function DependencySecretAccess({ active, service, secrets, choicesCurrent, unav
         { id: 'failure', label: 'Failure', render: (item) => item.failureCode ?? '—' },
       ]} />}
       {binding && !selectedProjections.length && <Notice>Waiting for authorized projections. Refresh to inspect each target.</Notice>}
-      <div className="row-actions"><Button onClick={() => { void usage.refresh(); void projections.refresh() }}>Refresh Secret access</Button>{canWrite && binding && secret.managedBy?.bindingId !== binding.binding.id && <Button variant="danger" disabled={!choicesCurrent} onClick={() => setDetaching(true)}>Detach application binding</Button>}</div>
+      <div className="row-actions"><Button onClick={() => { void usage.refresh(); void projections.refresh() }}>Refresh Secret access</Button>{canWrite && binding && secret.managedBy?.bindingId !== binding.binding.id && <Button variant="danger" disabled={!canDetach || mutation.busy} onClick={() => { if (canDetach && !mutation.busy) setDetaching({ scope, secret, sourceId: service.id, sourceRevision: service.activeRevision, bindingId: binding.binding.id }) }}>Detach application binding</Button>}</div>
     </>}
     {usage.error || projections.error || mutation.error ? <Notice tone="error">Secret access is unavailable or the request failed. Refresh its saved binding and projections before retrying.</Notice> : null}
     <p className="field__hint">Projected confirms native Secret delivery. Saving selected references below creates an application release. Rotation alone does not refresh environment values in an already running process.</p>
-    {detaching && canWrite && secret && binding && <ConfirmationDialog title="Detach application Secret access?" confirmLabel="Detach binding" confirmDisabled={!choicesCurrent} busy={mutation.busy} onCancel={() => setDetaching(false)} onConfirm={() => void mutation.run((signal) => detachSecret(api.baseUrl, secret.id, binding.binding.id, credential(), api.tenantId, signal), async (_value, guard) => { setDetaching(false); await usage.refreshAfterWrite(); guard(); await projections.refreshAfterWrite(); guard(); await savedBindings.refreshAfterWrite(); guard(); await invalidateWebServiceState(apiScope, [['secrets']]) }).catch(() => { if (isCurrent()) setDetaching(false) })}>This removes only this application’s binding and projections. The shared Secret, database and other consumers remain. Saved Secret references become unavailable until configured separately.</ConfirmationDialog>}
+    {detaching && canWrite && <ConfirmationDialog title="Detach application Secret access?" confirmLabel="Detach binding" confirmDisabled={!eligibleDetach} busy={mutation.busy} onCancel={() => setDetaching(null)} onConfirm={() => { if (!eligibleDetach || mutation.busy || !isCurrent()) return; void mutation.run((signal) => detachSecret(api.baseUrl, detaching.secret.id, detaching.bindingId, credential(), api.tenantId, signal), async (_value, guard) => { setDetaching(null); await usage.refreshAfterWrite(); guard(); await projections.refreshAfterWrite(); guard(); await savedBindings.refreshAfterWrite(); guard(); await invalidateWebServiceState(apiScope, [['secrets']]) }).catch(() => { if (isCurrent()) setDetaching(null) }) }}><p>This removes only this application’s binding and projections. The shared Secret, database and other consumers remain. Saved Secret references become unavailable until configured separately.</p>{!eligibleDetach && <Notice>The application or Secret binding changed or is unavailable. Refresh access and reopen this confirmation.</Notice>}</ConfirmationDialog>}
   </section>
 }
 

@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { fetchWebServiceReleases, redeployWebService, rollbackWebService } from '../../api'
 import { useWebServiceQuery } from './useWebServiceQuery'
+import { hasHealthyCurrentQueryData } from '../../data/hasHealthyCurrentQueryData'
 import { useApiScope } from '../../data/useApiScope'
 import { invalidateWebServiceState } from './invalidate'
 import { useWebServiceMutation } from './useWebServiceMutation'
@@ -43,7 +44,7 @@ function ReleaseHistory({ scope, service, onChanged }: { scope: string; service:
   useVisibleRefresh(true, poll, pending ? 2500 : 20000, interest)
   if (value && history.status === 'success' && page > Math.max(1, Math.ceil(value.releases.totalCount / value.releases.pageSize))) setPage(Math.max(1, Math.ceil(value.releases.totalCount / value.releases.pageSize)))
   // A healthy background fetch does not invalidate this scoped revision context.
-  const current = value && history.isCurrent && history.status !== 'error' && !history.error && value.activeRevision === service.activeRevision
+  const current = hasHealthyCurrentQueryData(history) && value?.activeRevision === service.activeRevision
   const hasDesiredTarget = service.deployments.some(placement => placement.desiredOperation !== 'Delete')
   const writable = tenant.canManage && current && !mutation.busy && hasDesiredTarget
   const resource = { resourceTypeId: 'pole/web-service', resourceId: service.id }

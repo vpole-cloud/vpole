@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { fetchResourceOperations, type ResourceOperationsFilter } from '../modules/operations/api'
 import { useScopedQuery } from '../data/useScopedQuery'
+import { hasHealthyCurrentQueryData } from '../data/hasHealthyCurrentQueryData'
 import { useApiScope } from '../data/useApiScope'
 import { useScopedMutation } from '../hooks/useScopedMutation'
 import { useAppServices } from '../shell/AppContext'
@@ -36,6 +37,10 @@ function ResourceOperationsContent({ filter, active, scope, canManage, resourceH
   useVisibleRefresh(active, operations.refresh, 20000, interest)
   const value = operations.resource
   const counts = value?.counts
+  const metadataCurrent = hasHealthyCurrentQueryData(operations)
+  const eligibleSelection = selected && metadataCurrent && value?.items.some(operation => operation.deployment.id === selected.deployment.id &&
+    operation.retryable && operation.phase === 'Failed' && operation.deployment.placement.deploymentRevision === selected.deployment.placement.deploymentRevision &&
+    operation.deployment.placement.desiredOperation === selected.deployment.placement.desiredOperation)
   if (value && operations.status === 'success' && page > Math.max(1, Math.ceil(value.totalCount / value.pageSize))) {
     setPage(Math.max(1, Math.ceil(value.totalCount / value.pageSize)))
   }
@@ -54,7 +59,7 @@ function ResourceOperationsContent({ filter, active, scope, canManage, resourceH
       return <article key={deployment.id} data-testid={`operation-row-${deployment.id}`} className="operation-target"><header className="panel__header"><div><h3 className="panel__title">{href ? <a href={href}>{operation.resourceDisplayName ?? 'Resource'}</a> : operation.resourceDisplayName ?? 'Unavailable resource metadata'}</h3>
         <p className="field__hint">{placement.desiredOperation} · operation generation {operation.operationGeneration ?? placement.desiredGeneration} · desired {placement.desiredGeneration} · attempt {operation.attemptCount} · {new Date(operation.sinceUtc).toLocaleString()}</p></div>
         <div className="row-actions"><StatusBadge data-testid="operation-status" tone={operation.phase === 'Failed' ? 'danger' : operation.phase === 'Applied' ? 'success' : 'info'}>{operation.phase}</StatusBadge>
-          {canManage && onRetry && operation.retryable && operation.phase === 'Failed' && <Button disabled={operations.status !== 'success' || mutation.busy} onClick={() => setSelected(operation)}>Retry this {placement.desiredOperation?.toLowerCase() ?? 'operation'}</Button>}</div></header>
+          {canManage && onRetry && operation.retryable && operation.phase === 'Failed' && <Button disabled={!metadataCurrent || mutation.busy} onClick={() => setSelected(operation)}>Retry this {placement.desiredOperation?.toLowerCase() ?? 'operation'}</Button>}</div></header>
         {placement.failureCode && <Notice tone="error">Apply outcome: {placement.failureCode}. Other targets are shown independently.</Notice>}
         {operation.retryNotBeforeUtc && <p className="field__hint">Automatic retry due after {new Date(operation.retryNotBeforeUtc).toLocaleString()}. A manual retry requests this exact failed operation.</p>}
         <ResourceHealthTarget placement={placement} active={active} targetName={operation.targetDisplayName ?? undefined} resourceType={deployment.resourceType} />
@@ -64,7 +69,8 @@ function ResourceOperationsContent({ filter, active, scope, canManage, resourceH
     {value && value.totalCount > value.pageSize && <div className="row-actions"><Button disabled={page === 1 || operations.status === 'loading'} onClick={() => setPage(page - 1)}>Previous targets</Button>
       <span>Page {page} of {Math.max(1, Math.ceil(value.totalCount / value.pageSize))}</span><Button disabled={page * value.pageSize >= value.totalCount || operations.status === 'loading'} onClick={() => setPage(page + 1)}>Next targets</Button></div>}
     {mutation.error instanceof Error && <Notice tone="error">{mutation.error.message}<Button onClick={() => { setSelected(null); void operations.refresh() }}>Refresh changed operation</Button></Notice>}
-    {selected && canManage && onRetry && <ConfirmationDialog title={`Retry ${selected.deployment.placement.desiredOperation?.toLowerCase()} on this target?`} confirmLabel="Retry selected operation" busy={mutation.busy} onCancel={() => setSelected(null)} onConfirm={() => {
+    {selected && canManage && onRetry && <ConfirmationDialog title={`Retry ${selected.deployment.placement.desiredOperation?.toLowerCase()} on this target?`} confirmLabel="Retry selected operation" busy={mutation.busy} confirmDisabled={!eligibleSelection} onCancel={() => setSelected(null)} onConfirm={() => {
+      if (!eligibleSelection) return
       let guard = () => {}
       void mutation.run(async (signal) => {
         guard = () => { if (signal.aborted || !apiScope.isCurrent()) throw new DOMException('Aborted', 'AbortError') }
@@ -77,6 +83,8 @@ function ResourceOperationsContent({ filter, active, scope, canManage, resourceH
           await apiScope.session.client.invalidateQueries({ queryKey, refetchType: 'active' })
         })); guard()
       }).catch(() => {})
-    }}>Only deployment <code>{selected.deployment.id}</code> on target <code>{selected.deployment.placement.deploymentTargetId}</code> will be retried. Successful targets and other resources are untouched.</ConfirmationDialog>}
+    }}>Only deployment <code>{selected.deployment.id}</code> on target <code>{selected.deployment.placement.deploymentTargetId}</code> will be retried. Successful targets and other resources are untouched.
+      {!eligibleSelection && <Notice>The selected operation changed or its current state is unavailable. Refresh operations and select a current failed operation.</Notice>}
+    </ConfirmationDialog>}
   </section>
 }

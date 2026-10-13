@@ -24,6 +24,8 @@ let service: WebService; let rows: HostnameBinding[]; let targetAvailable: boole
 let root: Root; let container: HTMLDivElement; let liveConnection: FakeConnection
 let heldZones: Promise<Response> | undefined; let heldBindings: Promise<Response> | undefined; let heldAttach: Promise<Response> | undefined
 let zoneRows: TenantDomainZone[]; let zonesFail: boolean; let bindingsFail: boolean
+let currentZone: TenantDomainZone; let ownerCount: number; let ownersFail: boolean; let zoneFail: boolean
+let heldZone: Promise<Response> | undefined; let heldOwners: Promise<Response> | undefined
 const requests = strictFetch()
 const fetchMock = requests.fetch
 const json = (value: unknown) => Promise.resolve(new Response(JSON.stringify(value)))
@@ -43,6 +45,7 @@ beforeEach(() => {
   service = { id: 'app', name: 'Application', isolationScopeId: 'scope', exposure: { mode: 'Public' }, deployments: [{ deploymentId: 'dep', deploymentTargetId: 'target', status: 'Applied', desiredOperation: 'Apply', desiredGeneration: 2, observedGeneration: 2, deploymentRevision: 2 }, { deploymentId: 'failed', deploymentTargetId: 'other', status: 'Failed', failureCode: 'IngressApplyFailed', desiredOperation: 'Apply', desiredGeneration: 2, observedGeneration: 1, deploymentRevision: 2 }] } as WebService
   rows = [generated, custom]; targetAvailable = true; detachFails = false; createFails = false; attachFails = false
   heldZones = undefined; heldBindings = undefined; heldAttach = undefined; zoneRows = [zone]; zonesFail = false; bindingsFail = false
+  currentZone = { ...zone }; ownerCount = 26; ownersFail = false; zoneFail = false; heldZone = undefined; heldOwners = undefined
   vi.mocked(createRealtimeConnection).mockImplementation(() => { liveConnection = new FakeConnection(); return liveConnection })
   vi.mocked(createRealtimeSession).mockImplementation(async () => ({ expiresAtUtc: new Date(Date.now() + 300000).toISOString() }))
   fetchMock.mockReset().mockImplementation((input, init) => {
@@ -53,8 +56,11 @@ beforeEach(() => {
       if (init?.method === 'POST') return createFails ? Promise.resolve(new Response(JSON.stringify({ code: 'domains.zone.already-reserved', detail: 'foreign-private-canary' }), { status: 409 })) : json(zone)
       return heldZones ?? (zonesFail ? Promise.resolve(new Response('{}', { status: 503 })) : json(zoneRows))
     }
-    if (url.pathname.endsWith('/domain-zones/zone')) return json(zone)
-    if (url.pathname.endsWith('/domain-zones/zone/bindings')) return json({ items: [{ binding: custom, resourceDisplayName: 'Application', resourceGroupId: 'group', placement: service.deployments[1] }], totalCount: 26, pageNumber: Number(url.searchParams.get('pageNumber')), pageSize: 25 })
+    if (url.pathname.endsWith('/domain-zones/zone')) {
+      if (init?.method === 'DELETE') return Promise.resolve(new Response(null, { status: 204 }))
+      return heldZone?.then(response => response.clone()) ?? (zoneFail ? Promise.resolve(new Response('{}', { status: 503 })) : json(currentZone))
+    }
+    if (url.pathname.endsWith('/domain-zones/zone/bindings')) return heldOwners?.then(response => response.clone()) ?? (ownersFail ? Promise.resolve(new Response('{}', { status: 503 })) : json(ownerSnapshot(Number(url.searchParams.get('pageNumber')))))
     if (url.pathname.endsWith('/resource-groups/group')) return json({ id: 'group', name: 'Production' })
     if (url.pathname.endsWith('/deployments/failed/hostnames')) return json([])
     if (url.pathname.endsWith('/deployments/dep/hostnames')) {
@@ -260,4 +266,78 @@ it('keeps initial absent metadata, invalid labels and duplicate aliases blocked 
     await click('Attach alias'); expect(aliasPosts()).toHaveLength(0)
   }
   await fill('Hostname label', 'valid'); expect(attachButton().disabled).toBe(false)
+})
+
+
+const reservationDeletes = () => fetchMock.mock.calls.filter(([url, init]) => String(url).endsWith('/domain-zones/zone') && init?.method === 'DELETE')
+const reservationButton = () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(item => visible(item) && item.textContent === 'Remove reservation')!
+const reservationConfirm = () => [...container.querySelectorAll<HTMLButtonElement>('dialog[open] button')].find(item => item.textContent === 'Remove reservation')!
+function ownerSnapshot(pageNumber = 1) {
+  return { items: ownerCount ? [{ binding: custom, resourceDisplayName: 'Application', resourceGroupId: 'group', placement: service.deployments[1] }] : [], totalCount: ownerCount, pageNumber, pageSize: 25 }
+}
+async function removableReservation() {
+  vi.useFakeTimers(); ownerCount = 0
+  await render('Owner', 'alpha', 'domains', 'token', true); await click(zone.domain)
+  await act(async () => vi.advanceTimersByTimeAsync(500))
+}
+
+it.each(['zone', 'owners', 'both'] as const)('removes the exact loaded reservation during held %s push reads without treating fetch activity as missing ownership evidence', async heldRead => {
+  await removableReservation()
+  const zoneRead = deferred<Response>(); const ownerRead = deferred<Response>()
+  if (heldRead !== 'owners') heldZone = zoneRead.promise
+  if (heldRead !== 'zone') heldOwners = ownerRead.promise
+  await domainHint()
+  expect.soft(reservationButton().disabled).toBe(false)
+  await click('Remove reservation')
+  expect(container.querySelector('dialog[open]')).not.toBeNull()
+  await click('Remove reservation')
+  expect(reservationDeletes()).toHaveLength(1)
+  const [url, command] = reservationDeletes()[0]
+  expect(String(url)).toBe('http://localhost/api/v1/domain-zones/zone')
+  expect(new Headers(command?.headers).get('X-Pole-Tenant-ID')).toBe('alpha')
+  expect(new Headers(command?.headers).get('Authorization')).toBe('Bearer token')
+  expect(command?.body).toBeUndefined()
+  heldZone = undefined; heldOwners = undefined
+  await act(async () => { zoneRead.resolve(new Response(JSON.stringify(currentZone))); ownerRead.resolve(new Response(JSON.stringify(ownerSnapshot()))) })
+})
+
+it.each(['zone', 'owners'] as const)('blocks an open reservation removal after a %s read failure and throughout its held retry', async failedRead => {
+  await removableReservation(); await click('Remove reservation')
+  zoneFail = failedRead === 'zone'; ownersFail = failedRead === 'owners'
+  await domainHint()
+  expect.soft(reservationConfirm().disabled).toBe(true)
+  await click('Remove reservation'); expect(reservationDeletes()).toHaveLength(0)
+  zoneFail = false; ownersFail = false
+  const read = deferred<Response>()
+  if (failedRead === 'zone') heldZone = read.promise
+  else heldOwners = read.promise
+  await domainHint()
+  expect(reservationConfirm().disabled).toBe(true)
+  await click('Remove reservation'); expect(reservationDeletes()).toHaveLength(0)
+  heldZone = undefined; heldOwners = undefined
+  await act(async () => read.resolve(new Response(JSON.stringify(failedRead === 'zone' ? currentZone : ownerSnapshot()))))
+  expect(reservationConfirm().disabled).toBe(false)
+})
+
+it.each(['owners', 'revision', 'kind'] as const)('does not retarget an open reservation removal when current %s metadata changes', async changedField => {
+  await removableReservation(); await click('Remove reservation')
+  if (changedField === 'owners') ownerCount = 1
+  if (changedField === 'revision') currentZone = { ...currentZone, revision: 2 }
+  if (changedField === 'kind') currentZone = { ...currentZone, kind: 'generated' }
+  await domainHint()
+  expect.soft(reservationConfirm().disabled).toBe(true)
+  await click('Remove reservation'); expect(reservationDeletes()).toHaveLength(0)
+})
+
+it('requires initial owner evidence and current tenant management rights for reservation removal', async () => {
+  ownerCount = 0; const read = deferred<Response>(); heldOwners = read.promise
+  await render(); await click(zone.domain)
+  expect(reservationButton().disabled).toBe(true)
+  heldOwners = undefined; await act(async () => read.resolve(new Response(JSON.stringify(ownerSnapshot()))))
+  await click('Remove reservation'); await render('Viewer')
+  expect(reservationConfirm()?.disabled ?? true).toBe(true)
+  expect(reservationDeletes()).toHaveLength(0)
+  await render('Owner', 'beta')
+  expect(container.querySelector('dialog[open]')).toBeNull()
+  expect(reservationDeletes()).toHaveLength(0)
 })
