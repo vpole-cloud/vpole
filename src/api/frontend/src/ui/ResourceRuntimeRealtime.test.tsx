@@ -26,14 +26,14 @@ const initialPlacement: ResourcePlacement = { deploymentId: 'deployment', deploy
 let root: Root; let container: HTMLDivElement; let connection: FakeConnection; let controller: RealtimeController; let session: QuerySession
 let placement: ResourcePlacement; let health: ResourceDeploymentObservation; let diagnostic: ResourceDeploymentDiagnostics
 let hidden: boolean; let nativeCovered: boolean; let oldTime: string | undefined
-let heldHealth: Promise<Response> | undefined; let heldDiagnostics: Promise<Response> | undefined
+let heldHealth: Promise<Response> | undefined; let heldDiagnostics: Promise<Response> | undefined; let heldLogs: Promise<Response> | undefined
 let healthSignal: AbortSignal | undefined; let diagnosticSignal: AbortSignal | undefined; let streamCanceled: boolean
 let streamController: ReadableStreamDefaultController<Uint8Array>; let streamSignal: AbortSignal | undefined
 const encoder = new TextEncoder()
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
   vi.useFakeTimers(); vi.clearAllMocks(); http.reset(); localStorage.clear()
-  hidden = false; nativeCovered = true; oldTime = undefined; heldHealth = undefined; heldDiagnostics = undefined; streamCanceled = false
+  hidden = false; nativeCovered = true; oldTime = undefined; heldHealth = undefined; heldDiagnostics = undefined; heldLogs = undefined; streamCanceled = false
   Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden }); window.dispatchEvent(new Event('pageshow'))
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
   placement = { ...initialPlacement }
@@ -55,6 +55,7 @@ beforeEach(() => {
     if (url.pathname === '/api/api/v1/resource-deployments/deployment/diagnostics') { diagnosticSignal = init?.signal ?? undefined; return heldDiagnostics ?? jsonResponse({ ...diagnostic, checkedAtUtc: oldTime ?? new Date().toISOString() }) }
     if (url.pathname === '/api/api/v1/resource-deployments/deployment/runtime-logs') {
       streamSignal = init?.signal ?? undefined
+      if (heldLogs) return heldLogs
       const body = new ReadableStream<Uint8Array>({ start(value) { streamController = value; value.enqueue(encoder.encode(`${JSON.stringify({ kind: 'Opened', text: null, reason: null, outputBytes: 0 })}\n`)) }, cancel() { streamCanceled = true } })
       return Promise.resolve(new Response(body, { headers: { 'Content-Type': 'application/x-ndjson' } }))
     }
@@ -203,4 +204,155 @@ it.each(['pole/redis', 'pole/postgresql'])('uses acknowledged runtime observatio
   nativeCovered = false; await act(async () => { connection.reconnecting(); connection.reconnected() }); await tick(500)
   expect(controller.covered({ topic: 'runtime-observations', tenantId: 'alpha', resourceId: 'deployment' })).toBe(false)
   const fallback = reads('observation'); await tick(20000); expect(reads('observation')).toBe(fallback + 1)
+})
+
+
+it.each(['replacement', 'removal', 'container'] as const)('keeps a terminal selection notice when fresh Available discovery proves %s, without acting on hints or held stale reads', async change => {
+  await open(); await select('Instance', 'owned-uid'); await select('Container', 'app'); await click('Follow runtime logs')
+  await act(async () => streamController.enqueue(encoder.encode(`${JSON.stringify({ kind: 'Output', text: 'removed-uid-output-canary', reason: null, outputBytes: 24 })}\n`)))
+  const previous = structuredClone(diagnostic)
+  const held = deferred<Response>(); heldDiagnostics = held.promise
+  const key = scopedQueryKey(session, ['/api', 'alpha'], ['runtime-discovery', 'deployment', 'pole/web-service', 'app', 'target', 7, 2])
+  let reading!: Promise<void>
+  await act(async () => { reading = session.client.refetchQueries({ queryKey: key, exact: true }, { cancelRefetch: false }) })
+  if (diagnostic.diagnostics.kind !== 'Available') throw new Error('Expected complete native fixture')
+  const original = diagnostic.diagnostics.instances[0]
+  diagnostic = { ...diagnostic, observationVersion: 2, diagnostics: { ...diagnostic.diagnostics, instances: change === 'removal' ? [] :
+    [{ ...original, ...(change === 'replacement' ? { uid: 'replacement-uid' } : { containers: [{ name: 'sidecar', kind: 'Application', previousAvailable: false }] }) }] } }
+  health = { ...health, observationVersion: 2 }
+  await hint(2); await tick(250)
+  expect(streamSignal?.aborted).toBe(false); expect(streamCanceled).toBe(false)
+  expect(container.textContent).toContain('removed-uid-output-canary'); expect(instances().value).toBe('owned-uid')
+  expect(diagnosticSignal?.aborted).toBe(false)
+  heldDiagnostics = undefined
+  await act(async () => { held.resolve(new Response(JSON.stringify(previous))); await reading }); await tick(500)
+  const reason = change === 'container' ? 'The selected container is unavailable.' : 'The selected instance no longer exists.'
+  expect(streamSignal?.aborted).toBe(true); expect(streamCanceled).toBe(true)
+  expect(container.textContent).toContain(reason); expect(container.textContent).not.toContain('removed-uid-output-canary')
+  expect(container.textContent).not.toContain('No output was available in this window.')
+  expect(reads('runtime-logs')).toBe(1)
+  if (change !== 'removal') {
+    expect(instances().value).toBe('')
+    const read = [...container.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent === 'Read recent logs')!
+    expect(read.disabled).toBe(true)
+    await select('Instance', change === 'replacement' ? 'replacement-uid' : 'owned-uid')
+    expect(container.textContent).not.toContain(reason)
+    await select('Container', change === 'replacement' ? 'app' : 'sidecar'); await click('Follow runtime logs')
+    expect(reads('runtime-logs')).toBe(2)
+  }
+  if (change === 'removal') {
+    diagnostic = { ...diagnostic, observationVersion: 3, diagnostics: { kind: 'Unavailable', reason: 'TargetUnavailable' } }
+    health = { ...health, observationVersion: 3 }; await hint(3); await tick(500)
+    expect(container.textContent).toContain('Other targets can be inspected independently')
+    expect(container.textContent).toContain(reason)
+  }
+  expect(JSON.stringify(session.client.getQueryCache().getAll().map(query => query.state.data))).not.toContain('removed-uid-output-canary')
+})
+
+it('does not mistake transient Unavailable discovery for proof that a selected UID disappeared', async () => {
+  await open(); await select('Instance', 'owned-uid'); await select('Container', 'app'); await click('Follow runtime logs')
+  await act(async () => streamController.enqueue(encoder.encode(`${JSON.stringify({ kind: 'Output', text: 'outage-output-canary', reason: null, outputBytes: 20 })}\n`)))
+  const available = structuredClone(diagnostic)
+  diagnostic = { ...diagnostic, observationVersion: 2, diagnostics: { kind: 'Unavailable', reason: 'TargetUnavailable' } }
+  health = { ...health, observationVersion: 2 }; await hint(2); await tick(500)
+  expect(container.textContent).toContain('Other targets can be inspected independently')
+  expect(container.textContent).not.toContain('The selected instance no longer exists.')
+  expect(container.textContent).not.toContain('The selected container is unavailable.')
+  expect(streamSignal?.aborted).toBe(true); expect(streamCanceled).toBe(true)
+  expect(container.textContent).not.toContain('outage-output-canary')
+  expect(container.textContent).not.toContain('Reading runtime logs')
+  diagnostic = { ...available, observationVersion: 3 }; health = { ...health, observationVersion: 3 }
+  await hint(3); await tick(500)
+  expect(instances().value).toBe('owned-uid')
+  const selected = [...container.querySelectorAll<HTMLSelectElement>('select')].find(item => item.closest('label')?.textContent?.startsWith('Container'))!
+  expect(selected.value).toBe('app'); expect(reads('runtime-logs')).toBe(1)
+  expect(container.textContent).toContain('Other targets can be inspected independently')
+  expect(container.textContent).not.toContain('Reading runtime logs')
+  await click('Reconnect recent logs'); expect(reads('runtime-logs')).toBe(2)
+})
+
+it.each(['replacement', 'unavailable'] as const)('discards late old-UID log frames after %s without restoring the tail or erasing its terminal notice', async change => {
+  await open(); await select('Instance', 'owned-uid'); await select('Container', 'app')
+  const late = deferred<Response>(); heldLogs = late.promise
+  await click('Follow runtime logs')
+  const oldSignal = streamSignal
+  if (diagnostic.diagnostics.kind !== 'Available') throw new Error('Expected complete native fixture')
+  diagnostic = { ...diagnostic, observationVersion: 2, diagnostics: change === 'unavailable' ? { kind: 'Unavailable', reason: 'TargetUnavailable' } :
+    { ...diagnostic.diagnostics, instances: [{ ...diagnostic.diagnostics.instances[0], uid: 'replacement-uid' }] } }
+  health = { ...health, observationVersion: 2 }; await hint(2); await tick(500)
+  expect(oldSignal?.aborted).toBe(true)
+  const reason = change === 'unavailable' ? 'Other targets can be inspected independently' : 'The selected instance no longer exists.'
+  expect(container.textContent).toContain(reason)
+  let canceled = false
+  const body = new ReadableStream<Uint8Array>({ start(value) {
+    for (const frame of [{ kind: 'Opened', text: null, reason: null, outputBytes: 0 },
+      { kind: 'Output', text: 'late-old-uid-output-canary', reason: null, outputBytes: 24 },
+      { kind: 'Ended', text: null, reason: 'InstanceReplaced', outputBytes: 24 }]) value.enqueue(encoder.encode(`${JSON.stringify(frame)}\n`))
+  }, cancel() { canceled = true } })
+  await act(async () => late.resolve(new Response(body, { headers: { 'Content-Type': 'application/x-ndjson' } })))
+  expect(canceled).toBe(true); expect(container.textContent).toContain(reason)
+  expect(container.textContent).not.toContain('late-old-uid-output-canary'); expect(reads('runtime-logs')).toBe(1)
+  if (change === 'replacement') expect(instances().value).toBe('')
+})
+
+
+it('preserves an existing safe replacement reason when fresh discovery also removes the old UID', async () => {
+  await open(); await select('Instance', 'owned-uid'); await select('Container', 'app'); await click('Follow runtime logs')
+  await act(async () => {
+    streamController.enqueue(encoder.encode(`${JSON.stringify({ kind: 'Output', text: 'completed-old-uid-canary', reason: null, outputBytes: 24 })}\n`))
+    streamController.enqueue(encoder.encode(`${JSON.stringify({ kind: 'Ended', text: null, reason: 'InstanceReplaced', outputBytes: 24 })}\n`))
+  })
+  expect(container.textContent).toContain('explicitly select its replacement')
+  if (diagnostic.diagnostics.kind !== 'Available') throw new Error('Expected complete native fixture')
+  diagnostic = { ...diagnostic, observationVersion: 2, diagnostics: { ...diagnostic.diagnostics, instances: [{ ...diagnostic.diagnostics.instances[0], uid: 'replacement-uid' }] } }
+  health = { ...health, observationVersion: 2 }; await hint(2); await tick(500)
+  expect(container.textContent).toContain('explicitly select its replacement')
+  expect(container.textContent).not.toContain('completed-old-uid-canary')
+  expect(container.textContent).not.toContain('No output was available in this window.')
+  expect(instances().value).toBe(''); expect(reads('runtime-logs')).toBe(1)
+})
+
+
+it.each(['instance', 'container'] as const)('explains a %s omitted from bounded discovery without claiming physical removal', async selection => {
+  await open(); await select('Instance', 'owned-uid'); await select('Container', 'app'); await click('Follow runtime logs')
+  await act(async () => streamController.enqueue(encoder.encode(`${JSON.stringify({ kind: 'Output', text: 'unverified-selection-canary', reason: null, outputBytes: 24 })}\n`)))
+  if (diagnostic.diagnostics.kind !== 'Available') throw new Error('Expected complete native fixture')
+  diagnostic = { ...diagnostic, observationVersion: 2, diagnostics: { ...diagnostic.diagnostics,
+    instancesTruncated: selection === 'instance', instances: selection === 'instance' ? [] : [{ ...diagnostic.diagnostics.instances[0], containers: [], containersTruncated: true }] } }
+  health = { ...health, observationVersion: 2 }; await hint(2); await tick(500)
+  expect(container.textContent).toContain(`The selected ${selection} was not found in this bounded discovery.`)
+  expect(container.textContent).not.toContain('The selected instance no longer exists.')
+  expect(container.textContent).not.toContain('unverified-selection-canary')
+  expect(container.textContent).not.toContain('No output was available in this window.')
+  expect(streamSignal?.aborted).toBe(true); expect(streamCanceled).toBe(true); expect(reads('runtime-logs')).toBe(1)
+})
+
+
+it.each(['ended', 'errored'] as const)('clears a retained %s log window on Unavailable discovery so recovery cannot resurrect its output', async outcome => {
+  await open(); await select('Instance', 'owned-uid'); await select('Container', 'app'); await click('Follow runtime logs')
+  const oldOutput = `retained-${outcome}-output-canary`
+  await act(async () => {
+    streamController.enqueue(encoder.encode(`${JSON.stringify({ kind: 'Output', text: oldOutput, reason: null, outputBytes: 32 })}\n`))
+    if (outcome === 'ended') streamController.enqueue(encoder.encode(`${JSON.stringify({ kind: 'Ended', text: null, reason: 'EndOfWindow', outputBytes: 32 })}\n`))
+    else streamController.error(new Error('private-stream-error-canary'))
+  })
+  expect(container.textContent).toContain(oldOutput)
+  const available = structuredClone(diagnostic)
+  diagnostic = { ...diagnostic, observationVersion: 2, diagnostics: { kind: 'Unavailable', reason: 'TargetUnavailable' } }
+  health = { ...health, observationVersion: 2 }; await hint(2); await tick(500)
+  expect(container.textContent).toContain('Other targets can be inspected independently')
+  expect(container.textContent).not.toContain(oldOutput)
+  diagnostic = { ...available, observationVersion: 3 }; health = { ...health, observationVersion: 3 }
+  await hint(3); await tick(500)
+  expect(container.textContent).not.toContain(oldOutput)
+  expect(container.textContent).toContain('Other targets can be inspected independently')
+  expect(container.textContent).not.toContain('No output was available in this window.')
+  expect(instances().value).toBe('owned-uid')
+  const selected = [...container.querySelectorAll<HTMLSelectElement>('select')].find(item => item.closest('label')?.textContent?.startsWith('Container'))!
+  expect(selected.value).toBe('app'); expect(reads('runtime-logs')).toBe(1)
+  expect(JSON.stringify(session.client.getQueryCache().getAll().map(query => query.state.data))).not.toContain(oldOutput)
+  expect(JSON.stringify(localStorage)).not.toContain(oldOutput); expect(JSON.stringify(sessionStorage)).not.toContain(oldOutput)
+  await click('Reconnect recent logs'); expect(reads('runtime-logs')).toBe(2)
+  await act(async () => streamController.enqueue(encoder.encode(`${JSON.stringify({ kind: 'Output', text: 'fresh-window-marker', reason: null, outputBytes: 20 })}\n`)))
+  expect(container.textContent).toContain('fresh-window-marker'); expect(container.textContent).not.toContain(oldOutput)
 })
