@@ -1,6 +1,6 @@
 export { fetchResourceDeploymentSet, fetchResourceEndpoints, retryResourceDeployment, fetchResourceOperations, fetchResourceObservation, fetchResourceDiagnostics } from './modules/operations/api'
 export type { ResourceOperationsFilter } from './modules/operations/api'
-export { fetchStorageProfiles, fetchPlatformDeploymentTargets, fetchKubernetesStorageClasses, fetchKubernetesPersistentVolumes, fetchKubernetesPersistentVolumeClaims, createStorageProfile, updateStorageProfile } from './modules/platform/storageApi'
+export { fetchStorageObservation, fetchStorageProfiles, fetchPlatformDeploymentTargets, fetchKubernetesStorageClasses, fetchKubernetesPersistentVolumes, fetchKubernetesPersistentVolumeClaims, createStorageProfile, updateStorageProfile } from './modules/platform/storageApi'
 export { fetchGitProviderConnections, beginGitHubInstallation, disconnectGitProviderConnection, fetchProviderRepositories, fetchProviderBranches, analyzeProviderRepository, linkProviderRepository, fetchSourceRepositories, reanalyzeSourceRepository, unlinkSourceRepository } from './modules/platform/gitApi'
 export { fetchProtectedGreeting, searchResources } from './modules/platform/discoveryApi'
 export { SecretApiError, fetchSecrets, fetchSecret, createSecret, rotateSecret, deleteSecret, fetchSecretUsage, fetchSecretProjections, bindSecret, detachSecret } from './modules/secrets/api'

@@ -2,6 +2,7 @@ import { expect, it } from 'vitest'
 import { matchesPilotQuery } from './pilotQueries'
 import { groupInterests, operationInterests } from './resourceInterests'
 import type { RealtimeChange } from './types'
+import { endpointInterests, endpointCompositeInterests } from '../modules/operations/endpointRealtime'
 import { secretInterests } from '../modules/secrets/realtime'
 
 it('targets Secret metadata by Secret ID, refreshes composite dependencies broadly and excludes sensitive reads', () => {
@@ -95,4 +96,33 @@ it('refreshes conservative hostname ownership and connection composites without 
   expect(matchesPilotQuery(['source-builds', 'jobs', 'app'], recipe)).toBe(true)
   expect(matchesPilotQuery(['source-builds', 'jobs', 'other-app'], recipe)).toBe(false)
   expect(matchesPilotQuery(['source-builds', 'logs', 'app'], recipe)).toBe(false)
+})
+
+it('maps endpoint declarations and topology to exact source/destination metadata and committed placement/registry changes', () => {
+  const key = ['endpoints', 'pole/postgresql', 'database', 'pole/web-service', 'app']
+  for (const event of [{ topic: 'postgres', resourceId: 'database' }, { topic: 'web-services', resourceId: 'app' },
+    { topic: 'workspace-inventory', resourceId: 'database' }, { topic: 'workspace-inventory', resourceId: 'app' }, { topic: 'workspace-inventory' }])
+    expect(matchesPilotQuery(key, { version: 1, tenantId: 'alpha', ...event } as RealtimeChange)).toBe(true)
+  for (const event of [{ topic: 'postgres', resourceId: 'app' }, { topic: 'redis', resourceId: 'database' },
+    { topic: 'workspace-inventory', resourceId: 'other' }, { topic: 'runtime-observations', resourceId: 'database' }])
+    expect(matchesPilotQuery(key, { version: 1, tenantId: 'alpha', ...event } as RealtimeChange)).toBe(false)
+  expect(endpointInterests('alpha', { resourceType: 'pole/postgresql', resourceId: 'database' }, { resourceType: 'pole/web-service', resourceId: 'app' }))
+    .toEqual([{ topic: 'workspace-inventory', tenantId: 'alpha' }, { topic: 'postgres', tenantId: 'alpha', resourceId: 'database' }, { topic: 'web-services', tenantId: 'alpha', resourceId: 'app' }])
+  expect(endpointInterests('alpha', { resourceType: 'custom/provider', resourceId: 'custom' })).toEqual([])
+  const dependencies = [{ resourceType: 'pole/postgresql', resourceId: 'database' }, { resourceType: 'pole/redis', resourceId: 'cache' }]
+  const fields = ['endpoints', 'dependency-fields', 'app', 'connection:2', dependencies]
+  expect(matchesPilotQuery(fields, { version: 1, topic: 'postgres', resourceId: 'database' })).toBe(true)
+  expect(matchesPilotQuery(fields, { version: 1, topic: 'redis', resourceId: 'cache' })).toBe(true)
+  expect(matchesPilotQuery(fields, { version: 1, topic: 'postgres', resourceId: 'cache' })).toBe(false)
+  expect(matchesPilotQuery(fields, { version: 1, topic: 'workspace-inventory' })).toBe(true)
+  expect(endpointCompositeInterests('alpha', dependencies, true).map(value => value.topic)).toEqual(['workspace-inventory', 'resource-connections', 'postgres', 'redis'])
+  expect(endpointCompositeInterests('alpha', [...dependencies, { resourceType: 'custom/provider', resourceId: 'queue' }], true)).toEqual([])
+})
+
+it('maps storage hints only to privileged exact target/connection snapshot queries', () => {
+  const event: RealtimeChange = { version: 1, topic: 'storage-observations', resourceId: 'target', revision: 3, observationVersion: 5 }
+  expect(matchesPilotQuery(['platform-storage', 'discovery', 'target', 3], event, { privileged: true })).toBe(true)
+  for (const key of [['platform-storage', 'inventory'], ['platform-storage', 'discovery', 'other', 3], ['platform-storage', 'discovery', 'target', 2], ['eligibility', 'storage-profiles']])
+    expect(matchesPilotQuery(key, event, { privileged: true })).toBe(false)
+  expect(matchesPilotQuery(['platform-storage', 'discovery', 'target', 3], event, { privileged: false })).toBe(false)
 })

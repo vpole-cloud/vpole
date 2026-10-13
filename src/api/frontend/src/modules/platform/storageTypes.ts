@@ -6,6 +6,7 @@ export interface PlatformDeploymentTarget {
   enabled: boolean
   acceptsWorkloads: boolean
   isDefault: boolean
+  connection: { kind: string; version: number }
 }
 
 export type StorageMediaType = 'Unknown' | 'HDD' | 'SSD' | 'NVMe' | 'Network'
@@ -65,8 +66,6 @@ export interface KubernetesStorageClass {
   reclaimPolicy?: string | null
   volumeBindingMode?: string | null
   allowVolumeExpansion?: boolean | null
-  parameters: Record<string, string>
-  metadata: Record<string, string>
 }
 
 export interface KubernetesStorageOwner {
@@ -97,4 +96,15 @@ export interface KubernetesPersistentVolumeClaim {
   storageClassName?: string | null
   volumeName?: string | null
   owner: KubernetesStorageOwner
+}
+
+export interface StorageObservation {
+  deploymentTargetId: string
+  connectionVersion: number
+  observationVersion: number | null
+  checkedAtUtc: string
+  complete: boolean
+  storageClasses: KubernetesStorageClass[]
+  persistentVolumes: KubernetesPersistentVolume[]
+  persistentVolumeClaims: KubernetesPersistentVolumeClaim[]
 }

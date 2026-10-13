@@ -22,6 +22,7 @@ interface StorageSettingsPageProps {
   deploymentTargetId: string
   onSelectTarget: (id: string) => void
   hasDiscovery: boolean
+  discoveryCurrent: boolean
   storageClasses: KubernetesStorageClass[]
   persistentVolumes: KubernetesPersistentVolume[]
   persistentVolumeClaims: KubernetesPersistentVolumeClaim[]
@@ -74,6 +75,7 @@ export function StorageSettingsPage({
   deploymentTargetId,
   onSelectTarget,
   hasDiscovery,
+  discoveryCurrent,
   storageClasses,
   persistentVolumes,
   persistentVolumeClaims,
@@ -300,6 +302,7 @@ export function StorageSettingsPage({
             mode={selectedProfile ? 'edit' : 'create'}
             initialValue={selectedProfile}
             storageClasses={storageClasses}
+            inventoryCurrent={discoveryCurrent}
             submitStatus={submitStatus}
             submitError={submitError}
             onSubmit={async (input) => {
@@ -327,6 +330,7 @@ export function StorageSettingsPage({
         onCancel={() => setPending(null)} onConfirm={() => { setDirty(false); pending.run(); setPending(null) }}>
         The unsaved storage profile will be discarded.
       </ConfirmationDialog>}
+      {canManage && hasDiscovery && !discoveryCurrent && <p role="status">Storage inventory is stale or incomplete. Refresh before saving a profile.</p>}
       <div className="storage-inventory-grid">
         <section className="panel">
           <div className="panel__header">
@@ -347,7 +351,7 @@ export function StorageSettingsPage({
                 <span>{item.allowVolumeExpansion ? 'Expandable' : item.reclaimPolicy ?? 'Policy unset'}</span>
               </div>
             ))}
-            {status === 'success' && storageClasses.length === 0 && (
+            {discoveryCurrent && storageClasses.length === 0 && (
               <div className="empty-state">No storage classes discovered.</div>
             )}
           </div>
@@ -373,7 +377,7 @@ export function StorageSettingsPage({
                 <span>{ownerLabel(item.owner)}</span>
               </div>
             ))}
-            {status === 'success' && persistentVolumeClaims.length === 0 && (
+            {discoveryCurrent && persistentVolumeClaims.length === 0 && (
               <div className="empty-state">No volume claims discovered.</div>
             )}
           </div>
@@ -389,6 +393,7 @@ interface StorageProfileFormProps {
   mode: 'create' | 'edit'
   initialValue?: StorageProfile | null
   storageClasses: KubernetesStorageClass[]
+  inventoryCurrent: boolean
   submitStatus: LoadStatus
   submitError?: string
   onSubmit: (input: StorageProfileInput) => Promise<void>
@@ -401,6 +406,7 @@ function StorageProfileForm({
   mode,
   initialValue,
   storageClasses,
+  inventoryCurrent,
   submitStatus,
   submitError,
   onSubmit,
@@ -446,7 +452,7 @@ function StorageProfileForm({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (submitStatus === 'loading' || conflict) return
+    if (submitStatus === 'loading' || conflict || !inventoryCurrent) return
 
     const command = storageProfileCommand({ displayName, description, mediaType, performanceTier, isEnabled, isDefault, storageClassName, allowedResourceTypes, tenantAccessMode, tenantIdsText, minSizeGb, maxSizeGb }, baseline, deploymentTargetId)
     if ('error' in command) { setValidationError(command.error); return }
@@ -637,7 +643,7 @@ function StorageProfileForm({
         <div className="resource-group-form__actions">
           <button
             className="button button--primary"
-            disabled={submitStatus === 'loading' || conflict}
+            disabled={submitStatus === 'loading' || conflict || !inventoryCurrent}
             type="submit"
           >
             {submitStatus === 'loading'

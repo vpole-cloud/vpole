@@ -1,7 +1,7 @@
 import type { Query } from '@tanstack/react-query'
 import { ApiError } from '../api/transport'
 import { credentialExpiresAt, fingerprintCredential } from '../auth/credentialIdentity'
-import { changeRuntimeContext, queryRuntimeContext, runtimeContextKey, type RuntimeContext, type RuntimeReadFence } from './runtimeContext'
+import { changeObservationContext, queryObservationContext, observationContextKey, isStorageContext, observationTopic, type ObservationContext, type RuntimeReadFence } from './runtimeContext'
 import type { QuerySession } from '../data/querySession'
 import type { RealtimeConnection } from './connection'
 import { InvalidationScheduler } from './invalidationScheduler'
@@ -37,7 +37,7 @@ export class RealtimeController {
   private platformAdminClaim = false
   private membershipEpoch = 0
   private searchEpochs = new Map<string, number>()
-  private runtimeReads = new Map<string, RuntimeReadFence & { context: RuntimeContext; hinted?: number }>()
+  private observationReads = new Map<string, RuntimeReadFence & { context: ObservationContext; hinted?: number }>()
   private knownMemberships?: Set<string>
   private epoch = 0
   private revision = 0
@@ -87,54 +87,57 @@ export class RealtimeController {
   private advanceSearchEpoch(tenantId?: string) {
     if (tenantId) this.searchEpochs.set(tenantId, (this.searchEpochs.get(tenantId) ?? 0) + 1)
   }
-  runtimeReadState(baseUrl: string, context: RuntimeContext): RuntimeReadFence {
-    const state = this.ownsApi(baseUrl) ? this.runtimeReads.get(runtimeContextKey(context)) : undefined
+  private observationAllowed(baseUrl: string, context: ObservationContext) {
+    return isStorageContext(context) ? this.allowed(baseUrl) && this.platformAllowed(baseUrl) : this.allowed(baseUrl, context.tenantId)
+  }
+  observationReadState(baseUrl: string, context: ObservationContext): RuntimeReadFence {
+    const state = this.ownsApi(baseUrl) ? this.observationReads.get(observationContextKey(context)) : undefined
     return { epoch: state?.epoch ?? 0, floor: state?.floor ?? 0 }
   }
-  beginRuntimeRead(baseUrl: string, context: RuntimeContext): RuntimeReadFence {
-    if (!this.ownsApi(baseUrl) || !this.session.isActive() || !this.allowed(baseUrl, context.tenantId)) throw new DOMException('Aborted', 'AbortError')
-    this.pruneRuntimeReads()
-    const key = runtimeContextKey(context)
-    if (!this.runtimeReads.has(key)) this.runtimeReads.set(key, { context, epoch: 0, floor: 0 })
-    return this.runtimeReadState(baseUrl, context)
+  beginObservationRead(baseUrl: string, context: ObservationContext): RuntimeReadFence {
+    if (!this.ownsApi(baseUrl) || !this.session.isActive() || !this.observationAllowed(baseUrl, context)) throw new DOMException('Aborted', 'AbortError')
+    this.pruneObservationReads()
+    const key = observationContextKey(context)
+    if (!this.observationReads.has(key)) this.observationReads.set(key, { context, epoch: 0, floor: 0 })
+    return this.observationReadState(baseUrl, context)
   }
-  acceptRuntimeRead(baseUrl: string, context: RuntimeContext, started: RuntimeReadFence, version: number | null | undefined, signal: AbortSignal) {
-    const current = this.runtimeReadState(baseUrl, context)
-    return this.ownsApi(baseUrl) && this.runtimeReads.has(runtimeContextKey(context)) && this.session.isActive() && this.allowed(baseUrl, context.tenantId) && !signal.aborted && started.epoch === current.epoch &&
+  acceptObservationRead(baseUrl: string, context: ObservationContext, started: RuntimeReadFence, version: number | null | undefined, signal: AbortSignal) {
+    const current = this.observationReadState(baseUrl, context)
+    return this.ownsApi(baseUrl) && this.observationReads.has(observationContextKey(context)) && this.session.isActive() && this.observationAllowed(baseUrl, context) && !signal.aborted && started.epoch === current.epoch &&
       (version == null ? started.floor === 0 && current.floor === 0 : Number.isSafeInteger(version) && version >= Math.max(started.floor, current.floor))
   }
-  private pruneRuntimeReads() {
+  private pruneObservationReads() {
     // Context floors live no longer than their scoped query cache. Removed revisions and
     // inactive snapshots expire with the existing query GC rather than growing a history.
     const cached = new Set(this.session.client.getQueryCache().getAll().flatMap(query => {
       if (!this.matchesScope(query.queryKey, query.queryKey[4] as string)) return []
-      const context = queryRuntimeContext(query.queryKey[4], query.queryKey.slice(5))
-      return context ? [runtimeContextKey(context)] : []
+      const context = queryObservationContext(query.queryKey[4], query.queryKey.slice(5))
+      return context ? [observationContextKey(context)] : []
     }))
-    for (const key of this.runtimeReads.keys()) if (!cached.has(key)) this.runtimeReads.delete(key)
+    for (const key of this.observationReads.keys()) if (!cached.has(key)) this.observationReads.delete(key)
   }
-  private advanceRuntimeReads(requests?: readonly RealtimeSubscription[]) {
-    this.pruneRuntimeReads()
+  private advanceObservationReads(requests?: readonly RealtimeSubscription[]) {
+    this.pruneObservationReads()
     let changed = false
-    for (const state of this.runtimeReads.values()) if (!requests || requests.some(request => request.topic === 'runtime-observations' && request.tenantId === state.context.tenantId && request.resourceId === state.context.deploymentId)) {
+    for (const state of this.observationReads.values()) if (!requests || requests.some(request => (isStorageContext(state.context) ? request.topic === 'storage-observations' && request.tenantId === undefined && request.resourceId === state.context.targetId : request.topic === 'runtime-observations' && request.tenantId === state.context.tenantId && request.resourceId === state.context.deploymentId))) {
       state.epoch++; changed = true
     }
     return changed
   }
-  private recordRuntimeHint(change: RealtimeChange) {
-    const context = changeRuntimeContext(change)
+  private recordObservationHint(change: RealtimeChange) {
+    const context = changeObservationContext(change)
     if (!context) return false
-    this.pruneRuntimeReads()
-    const key = runtimeContextKey(context)
+    this.pruneObservationReads()
+    const key = observationContextKey(context)
     const query = this.session.client.getQueryCache().getAll().some(query => {
-      const cachedContext = queryRuntimeContext(context.tenantId, query.queryKey.slice(5))
-      return this.matchesScope(query.queryKey, context.tenantId) && cachedContext !== undefined && runtimeContextKey(cachedContext) === key
+      const cachedContext = queryObservationContext(query.queryKey[4], query.queryKey.slice(5))
+      return this.matchesScope(query.queryKey, isStorageContext(context) ? undefined : context.tenantId) && cachedContext !== undefined && observationContextKey(cachedContext) === key
     })
     if (!query) return false
-    const state = this.runtimeReads.get(key) ?? { context, epoch: 0, floor: 0, hinted: undefined }
+    const state = this.observationReads.get(key) ?? { context, epoch: 0, floor: 0, hinted: undefined }
     if (state.hinted !== undefined && change.observationVersion! <= state.floor) return false
     state.epoch++; state.floor = Math.max(state.floor, change.observationVersion!); state.hinted = change.observationVersion
-    this.runtimeReads.set(key, state); this.publish()
+    this.observationReads.set(key, state); this.publish()
     return true
   }
   beginMembershipRead(baseUrl: string, userId: string) {
@@ -174,7 +177,7 @@ export class RealtimeController {
     queueMicrotask(() => { void this.sync() })
   }
   private disconnect() {
-    if (this.connection) this.advanceRuntimeReads()
+    if (this.connection) this.advanceObservationReads()
     this.epoch++; this.subscriptionEpoch++; this.abort?.abort(); clearTimeout(this.retry); clearTimeout(this.expiry); clearTimeout(this.heartbeatTimer); clearTimeout(this.coverageTimer)
     this.coverageTimer = undefined
     this.scheduler.cancel(); this.coverage.clear(); this.status = 'offline'; this.publish()
@@ -228,11 +231,16 @@ export class RealtimeController {
           return
         }
         if (this.status !== 'connected') return
-        const runtime = change.topic === 'runtime-observations'
-        const accepted = this.requests().some(request => (runtime || this.covered(request)) && acceptsChange(request, change))
+        const observation = observationTopic(change.topic)
+        const accepted = this.requests().some(request => (observation || this.covered(request)) && acceptsChange(request, change))
         if (accepted) {
-          if (runtime) {
-            if (!this.recordRuntimeHint(change)) return
+          if (change.topic === 'deployment-targets') {
+            const affected = [...this.observationReads.values()].filter(state => isStorageContext(state.context) && (!change.resourceId || state.context.targetId === change.resourceId))
+            for (const state of affected) state.epoch++
+            if (affected.length) this.publish()
+          }
+          if (observation) {
+            if (!this.recordObservationHint(change)) return
             // Native coverage can recover between heartbeats. A hint fences the read
             // immediately; only a fresh server acknowledgement restores coverage.
             this.scheduleCoverageCheck()
@@ -248,12 +256,12 @@ export class RealtimeController {
         else this.revokePlatformAccess()
       })
       connection.onReconnecting(() => {
-        if (valid()) { this.subscriptionEpoch++; this.advanceRuntimeReads(); clearTimeout(this.heartbeatTimer); clearTimeout(this.coverageTimer); this.coverageTimer = undefined; this.scheduler.cancel(); this.coverage.clear(); this.status = 'connecting'; this.publish() }
+        if (valid()) { this.subscriptionEpoch++; this.advanceObservationReads(); clearTimeout(this.heartbeatTimer); clearTimeout(this.coverageTimer); this.coverageTimer = undefined; this.scheduler.cancel(); this.coverage.clear(); this.status = 'connecting'; this.publish() }
       })
       connection.onReconnected(() => { if (valid()) { this.status = 'connected'; this.publish(); this.scheduleHeartbeat(); void this.sync() } })
       connection.onClose(() => {
         if (!valid()) return
-        clearTimeout(this.heartbeatTimer); clearTimeout(this.coverageTimer); this.coverageTimer = undefined; this.advanceRuntimeReads(); this.scheduler.cancel(); this.coverage.clear(); this.status = 'offline'; this.publish()
+        clearTimeout(this.heartbeatTimer); clearTimeout(this.coverageTimer); this.coverageTimer = undefined; this.advanceObservationReads(); this.scheduler.cancel(); this.coverage.clear(); this.status = 'offline'; this.publish()
         this.retry = setTimeout(() => { void this.renew() }, 10000)
       })
       await connection.start()
@@ -277,7 +285,7 @@ export class RealtimeController {
     return [...this.interests.values()].map(value => value.request)
       .filter(request => this.allowed(this.baseUrl, request.tenantId) && (request.topic === 'tenant-access'
         ? request.tenantId === undefined && Boolean(request.resourceId) && request.resourceId === this.dependencies.userId
-        : request.topic === 'runtime-observations' ? Boolean(request.tenantId && request.resourceId) : request.tenantId !== undefined || this.platformAllowed(this.baseUrl)))
+        : request.topic === 'runtime-observations' ? Boolean(request.tenantId && request.resourceId) : request.topic === 'storage-observations' ? request.tenantId === undefined && Boolean(request.resourceId) && this.platformAllowed(this.baseUrl) : request.tenantId !== undefined || this.platformAllowed(this.baseUrl)))
       // Membership discovery must not be crowded out by a tree or retained resource tabs.
       .sort((left, right) => Number(right.topic === 'tenant-access') - Number(left.topic === 'tenant-access')).slice(0, 64)
   }
@@ -291,13 +299,13 @@ export class RealtimeController {
     const next = new Set(acknowledgements.filter(value => value.covered && requested.has(subscriptionKey(value))).map(subscriptionKey))
     const resync = requests.filter(request => next.has(subscriptionKey(request)) && (resyncAll || !this.coverage.has(subscriptionKey(request))))
     const changed = next.size !== this.coverage.size || [...next].some(key => !this.coverage.has(key))
-    const lostRuntime = requests.filter(request => request.topic === 'runtime-observations' && this.coverage.has(subscriptionKey(request)) && !next.has(subscriptionKey(request)))
+    const lostObservations = requests.filter(request => observationTopic(request.topic) && this.coverage.has(subscriptionKey(request)) && !next.has(subscriptionKey(request)))
     this.coverage = next
     const searchResync = resync.filter(request => request.topic === 'search')
     for (const tenantId of new Set(searchResync.map(request => request.tenantId))) this.advanceSearchEpoch(tenantId)
-    const runtimeResync = resync.filter(request => request.topic === 'runtime-observations')
-    const runtimeChanged = this.advanceRuntimeReads([...runtimeResync, ...lostRuntime])
-    if (changed || searchResync.length || runtimeChanged) this.publish()
+    const observationResync = resync.filter(request => observationTopic(request.topic))
+    const observationsChanged = this.advanceObservationReads([...observationResync, ...lostObservations])
+    if (changed || searchResync.length || observationsChanged) this.publish()
     if (resync.length) this.scheduler.invalidate((key, meta) => resync.some(request => this.matchesChange(key, { version: 1, ...request }, meta)))
   }
   private scheduleHeartbeat() {
@@ -312,7 +320,7 @@ export class RealtimeController {
     if (!connection || this.status !== 'connected') return
     this.coverageTimer = setTimeout(() => {
       this.coverageTimer = undefined
-      if (this.requests().some(request => request.topic === 'runtime-observations'))
+      if (this.requests().some(request => observationTopic(request.topic)))
         void this.checkHeartbeat(connection, epoch)
     }, 250)
   }

@@ -73,7 +73,7 @@ export function PostgresResourceView({ id, section, active, onSection, actions }
         <div><dt>Revision</dt><dd>{cluster.revision}</dd></div><div><dt>Group tags</dt><dd>{group.resource?.tags.join(', ') || 'No tags'}</dd></div></dl>
       <p className="field__hint">This database has one deployment target. Network access and application credentials are configured separately.</p></section>
       <PlacementSummary placement={cluster.placement} targetName={targets.resource?.find((target) => target.id === cluster.placement.deploymentTargetId)?.displayName} />
-      <ResourceHealth placements={[cluster.placement]} active={active && section === 'overview'} targetNames={Object.fromEntries((targets.resource ?? []).map((target) => [target.id, target.displayName]))} />
+      <ResourceHealth resourceType="pole/postgresql" placements={[cluster.placement]} active={active && section === 'overview'} targetNames={Object.fromEntries((targets.resource ?? []).map((target) => [target.id, target.displayName]))} />
       {active && section === 'overview' && <ResourceEndpoints resourceType="pole/postgresql" resourceId={id} />}
       {tenant.canManage && cluster.placement.status === 'Failed' && <Button disabled={mutation.busy} onClick={() => {
         void mutation.run((signal) => retryResourceDeployment(api.baseUrl, cluster.placement.deploymentId, cluster.placement.deploymentRevision ?? 1, cluster.placement.desiredOperation ?? "Apply", origin.credential(), api.tenantId, signal), afterWrite).catch(() => {})

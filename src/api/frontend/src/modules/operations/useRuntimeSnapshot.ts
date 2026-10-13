@@ -23,7 +23,7 @@ function useSnapshot<T extends Snapshot>(key: readonly unknown[], { placement, r
   } : undefined
   const query = useScopedQuery<Read<T>>({ scope: [api.baseUrl, api.tenantId], key, active, realtime, interval: 20000, coveredInterval: 30000,
     load: async signal => {
-      const started = context ? controller!.beginRuntimeRead(api.baseUrl, context) : undefined
+      const started = context ? controller!.beginObservationRead(api.baseUrl, context) : undefined
       const snapshot = await load(api.baseUrl, placement.deploymentId, origin.credential(), api.tenantId, signal)
       // This response belongs to the shared query, which can outlive its initiating
       // observer. Session, authorization and context fences still protect the cache.
@@ -34,11 +34,11 @@ function useSnapshot<T extends Snapshot>(key: readonly unknown[], { placement, r
       if (!same || diagnostics && (detail.resourceType !== resourceType || detail.resourceId !== resourceId || detail.targetId !== placement.deploymentTargetId))
         throw new ApiError('This deployment changed. Refresh operations before opening runtime diagnostics.', 409)
       if (!Number.isFinite(Date.parse(snapshot.checkedAtUtc))) throw new ApiError('Runtime state response is unavailable. Refresh to reconnect.', 502)
-      if (context && !controller!.acceptRuntimeRead(api.baseUrl, context, started!, snapshot.observationVersion, signal)) throw new DOMException('Aborted', 'AbortError')
+      if (context && !controller!.acceptObservationRead(api.baseUrl, context, started!, snapshot.observationVersion, signal)) throw new DOMException('Aborted', 'AbortError')
       return { snapshot, epoch: started?.epoch }
     } })
   const resource = query.resource?.snapshot ?? null
-  const state = context ? controller!.runtimeReadState(api.baseUrl, context) : undefined
+  const state = context ? controller!.observationReadState(api.baseUrl, context) : undefined
   const snapshotCurrent = Boolean(resource && query.status !== 'error' && (!state || query.resource?.epoch === state.epoch &&
     (resource.observationVersion == null ? state.floor === 0 : resource.observationVersion >= state.floor)))
   const refresh = query.refresh
