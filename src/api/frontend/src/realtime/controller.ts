@@ -1,6 +1,7 @@
 import type { Query } from '@tanstack/react-query'
 import { ApiError } from '../api/transport'
 import { credentialExpiresAt, fingerprintCredential } from '../auth/credentialIdentity'
+import { changeRuntimeContext, queryRuntimeContext, runtimeContextKey, type RuntimeContext, type RuntimeReadFence } from './runtimeContext'
 import type { QuerySession } from '../data/querySession'
 import type { RealtimeConnection } from './connection'
 import { InvalidationScheduler } from './invalidationScheduler'
@@ -36,6 +37,7 @@ export class RealtimeController {
   private platformAdminClaim = false
   private membershipEpoch = 0
   private searchEpochs = new Map<string, number>()
+  private runtimeReads = new Map<string, RuntimeReadFence & { context: RuntimeContext; hinted?: number }>()
   private knownMemberships?: Set<string>
   private epoch = 0
   private revision = 0
@@ -46,6 +48,8 @@ export class RealtimeController {
   private retry?: ReturnType<typeof setTimeout>
   private expiry?: ReturnType<typeof setTimeout>
   private heartbeatTimer?: ReturnType<typeof setTimeout>
+  private coverageTimer?: ReturnType<typeof setTimeout>
+  private heartbeatCheck?: { connection: RealtimeConnection; epoch: number; followup: boolean; promise: Promise<void> }
   private syncing?: { epoch: number; promise: Promise<void> }
   private scheduler: InvalidationScheduler
   private session: QuerySession
@@ -82,6 +86,56 @@ export class RealtimeController {
   searchEpoch(baseUrl: string, tenantId?: string) { return this.ownsApi(baseUrl) && tenantId ? this.searchEpochs.get(tenantId) ?? 0 : 0 }
   private advanceSearchEpoch(tenantId?: string) {
     if (tenantId) this.searchEpochs.set(tenantId, (this.searchEpochs.get(tenantId) ?? 0) + 1)
+  }
+  runtimeReadState(baseUrl: string, context: RuntimeContext): RuntimeReadFence {
+    const state = this.ownsApi(baseUrl) ? this.runtimeReads.get(runtimeContextKey(context)) : undefined
+    return { epoch: state?.epoch ?? 0, floor: state?.floor ?? 0 }
+  }
+  beginRuntimeRead(baseUrl: string, context: RuntimeContext): RuntimeReadFence {
+    if (!this.ownsApi(baseUrl) || !this.session.isActive() || !this.allowed(baseUrl, context.tenantId)) throw new DOMException('Aborted', 'AbortError')
+    this.pruneRuntimeReads()
+    const key = runtimeContextKey(context)
+    if (!this.runtimeReads.has(key)) this.runtimeReads.set(key, { context, epoch: 0, floor: 0 })
+    return this.runtimeReadState(baseUrl, context)
+  }
+  acceptRuntimeRead(baseUrl: string, context: RuntimeContext, started: RuntimeReadFence, version: number | null | undefined, signal: AbortSignal) {
+    const current = this.runtimeReadState(baseUrl, context)
+    return this.ownsApi(baseUrl) && this.runtimeReads.has(runtimeContextKey(context)) && this.session.isActive() && this.allowed(baseUrl, context.tenantId) && !signal.aborted && started.epoch === current.epoch &&
+      (version == null ? started.floor === 0 && current.floor === 0 : Number.isSafeInteger(version) && version >= Math.max(started.floor, current.floor))
+  }
+  private pruneRuntimeReads() {
+    // Context floors live no longer than their scoped query cache. Removed revisions and
+    // inactive snapshots expire with the existing query GC rather than growing a history.
+    const cached = new Set(this.session.client.getQueryCache().getAll().flatMap(query => {
+      if (!this.matchesScope(query.queryKey, query.queryKey[4] as string)) return []
+      const context = queryRuntimeContext(query.queryKey[4], query.queryKey.slice(5))
+      return context ? [runtimeContextKey(context)] : []
+    }))
+    for (const key of this.runtimeReads.keys()) if (!cached.has(key)) this.runtimeReads.delete(key)
+  }
+  private advanceRuntimeReads(requests?: readonly RealtimeSubscription[]) {
+    this.pruneRuntimeReads()
+    let changed = false
+    for (const state of this.runtimeReads.values()) if (!requests || requests.some(request => request.topic === 'runtime-observations' && request.tenantId === state.context.tenantId && request.resourceId === state.context.deploymentId)) {
+      state.epoch++; changed = true
+    }
+    return changed
+  }
+  private recordRuntimeHint(change: RealtimeChange) {
+    const context = changeRuntimeContext(change)
+    if (!context) return false
+    this.pruneRuntimeReads()
+    const key = runtimeContextKey(context)
+    const query = this.session.client.getQueryCache().getAll().some(query => {
+      const cachedContext = queryRuntimeContext(context.tenantId, query.queryKey.slice(5))
+      return this.matchesScope(query.queryKey, context.tenantId) && cachedContext !== undefined && runtimeContextKey(cachedContext) === key
+    })
+    if (!query) return false
+    const state = this.runtimeReads.get(key) ?? { context, epoch: 0, floor: 0, hinted: undefined }
+    if (state.hinted !== undefined && change.observationVersion! <= state.floor) return false
+    state.epoch++; state.floor = Math.max(state.floor, change.observationVersion!); state.hinted = change.observationVersion
+    this.runtimeReads.set(key, state); this.publish()
+    return true
   }
   beginMembershipRead(baseUrl: string, userId: string) {
     if (!this.ownsApi(baseUrl) || !userId || userId !== this.dependencies.userId || this.revoked || !this.session.isActive()) throw new DOMException('Aborted', 'AbortError')
@@ -120,7 +174,9 @@ export class RealtimeController {
     queueMicrotask(() => { void this.sync() })
   }
   private disconnect() {
-    this.epoch++; this.subscriptionEpoch++; this.abort?.abort(); clearTimeout(this.retry); clearTimeout(this.expiry); clearTimeout(this.heartbeatTimer)
+    if (this.connection) this.advanceRuntimeReads()
+    this.epoch++; this.subscriptionEpoch++; this.abort?.abort(); clearTimeout(this.retry); clearTimeout(this.expiry); clearTimeout(this.heartbeatTimer); clearTimeout(this.coverageTimer)
+    this.coverageTimer = undefined
     this.scheduler.cancel(); this.coverage.clear(); this.status = 'offline'; this.publish()
     const old = this.connection; this.connection = undefined
     return old?.stop().catch(() => {}) ?? Promise.resolve()
@@ -172,8 +228,15 @@ export class RealtimeController {
           return
         }
         if (this.status !== 'connected') return
-        const accepted = [...this.interests.values()].some(({ request }) => this.covered(request) && acceptsChange(request, change))
+        const runtime = change.topic === 'runtime-observations'
+        const accepted = this.requests().some(request => (runtime || this.covered(request)) && acceptsChange(request, change))
         if (accepted) {
+          if (runtime) {
+            if (!this.recordRuntimeHint(change)) return
+            // Native coverage can recover between heartbeats. A hint fences the read
+            // immediately; only a fresh server acknowledgement restores coverage.
+            this.scheduleCoverageCheck()
+          }
           if (change.topic === 'search') { this.advanceSearchEpoch(change.tenantId); this.publish() }
           this.scheduler.invalidate((key, meta) => this.matchesChange(key, change, meta))
         }
@@ -185,12 +248,12 @@ export class RealtimeController {
         else this.revokePlatformAccess()
       })
       connection.onReconnecting(() => {
-        if (valid()) { this.subscriptionEpoch++; clearTimeout(this.heartbeatTimer); this.scheduler.cancel(); this.coverage.clear(); this.status = 'connecting'; this.publish() }
+        if (valid()) { this.subscriptionEpoch++; this.advanceRuntimeReads(); clearTimeout(this.heartbeatTimer); clearTimeout(this.coverageTimer); this.coverageTimer = undefined; this.scheduler.cancel(); this.coverage.clear(); this.status = 'connecting'; this.publish() }
       })
       connection.onReconnected(() => { if (valid()) { this.status = 'connected'; this.publish(); this.scheduleHeartbeat(); void this.sync() } })
       connection.onClose(() => {
         if (!valid()) return
-        clearTimeout(this.heartbeatTimer); this.scheduler.cancel(); this.coverage.clear(); this.status = 'offline'; this.publish()
+        clearTimeout(this.heartbeatTimer); clearTimeout(this.coverageTimer); this.coverageTimer = undefined; this.advanceRuntimeReads(); this.scheduler.cancel(); this.coverage.clear(); this.status = 'offline'; this.publish()
         this.retry = setTimeout(() => { void this.renew() }, 10000)
       })
       await connection.start()
@@ -214,7 +277,7 @@ export class RealtimeController {
     return [...this.interests.values()].map(value => value.request)
       .filter(request => this.allowed(this.baseUrl, request.tenantId) && (request.topic === 'tenant-access'
         ? request.tenantId === undefined && Boolean(request.resourceId) && request.resourceId === this.dependencies.userId
-        : request.tenantId !== undefined || this.platformAllowed(this.baseUrl)))
+        : request.topic === 'runtime-observations' ? Boolean(request.tenantId && request.resourceId) : request.tenantId !== undefined || this.platformAllowed(this.baseUrl)))
       // Membership discovery must not be crowded out by a tree or retained resource tabs.
       .sort((left, right) => Number(right.topic === 'tenant-access') - Number(left.topic === 'tenant-access')).slice(0, 64)
   }
@@ -228,10 +291,13 @@ export class RealtimeController {
     const next = new Set(acknowledgements.filter(value => value.covered && requested.has(subscriptionKey(value))).map(subscriptionKey))
     const resync = requests.filter(request => next.has(subscriptionKey(request)) && (resyncAll || !this.coverage.has(subscriptionKey(request))))
     const changed = next.size !== this.coverage.size || [...next].some(key => !this.coverage.has(key))
+    const lostRuntime = requests.filter(request => request.topic === 'runtime-observations' && this.coverage.has(subscriptionKey(request)) && !next.has(subscriptionKey(request)))
     this.coverage = next
     const searchResync = resync.filter(request => request.topic === 'search')
     for (const tenantId of new Set(searchResync.map(request => request.tenantId))) this.advanceSearchEpoch(tenantId)
-    if (changed || searchResync.length) this.publish()
+    const runtimeResync = resync.filter(request => request.topic === 'runtime-observations')
+    const runtimeChanged = this.advanceRuntimeReads([...runtimeResync, ...lostRuntime])
+    if (changed || searchResync.length || runtimeChanged) this.publish()
     if (resync.length) this.scheduler.invalidate((key, meta) => resync.some(request => this.matchesChange(key, { version: 1, ...request }, meta)))
   }
   private scheduleHeartbeat() {
@@ -240,20 +306,46 @@ export class RealtimeController {
     if (!connection || this.status !== 'connected') return
     this.heartbeatTimer = setTimeout(() => { void this.checkHeartbeat(connection, epoch) }, 10000)
   }
+  private scheduleCoverageCheck() {
+    if (this.coverageTimer !== undefined) return
+    const connection = this.connection; const epoch = this.epoch
+    if (!connection || this.status !== 'connected') return
+    this.coverageTimer = setTimeout(() => {
+      this.coverageTimer = undefined
+      if (this.requests().some(request => request.topic === 'runtime-observations'))
+        void this.checkHeartbeat(connection, epoch)
+    }, 250)
+  }
   private async checkHeartbeat(connection: RealtimeConnection, epoch: number) {
-    const subscriptionEpoch = this.subscriptionEpoch; const revision = this.revision
     const connected = () => this.epoch === epoch && this.connection === connection && this.status === 'connected' && this.session.isActive()
-    const current = () => connected() && this.subscriptionEpoch === subscriptionEpoch && this.revision === revision
     if (!connected()) return
-    try {
-      const acknowledgements = await connection.heartbeat()
-      if (current()) this.acknowledge(this.requests(), acknowledgements, false)
-    } catch {
-      // A live WebSocket can outlast Redis. Clear acknowledged coverage and reconnect through
-      // ordinary bootstrap without treating a transient infrastructure failure as revocation.
-      if (current()) { await this.renew(); return }
+    if (this.heartbeatCheck?.connection === connection && this.heartbeatCheck.epoch === epoch) {
+      this.heartbeatCheck.followup = true
+      return this.heartbeatCheck.promise
     }
-    if (connected()) this.scheduleHeartbeat()
+    const check = { connection, epoch, followup: false, promise: Promise.resolve() }
+    this.heartbeatCheck = check
+    check.promise = (async () => {
+      try {
+        do {
+          check.followup = false
+          const subscriptionEpoch = this.subscriptionEpoch; const revision = this.revision
+          const current = () => connected() && this.subscriptionEpoch === subscriptionEpoch && this.revision === revision
+          try {
+            const acknowledgements = await connection.heartbeat()
+            if (current()) this.acknowledge(this.requests(), acknowledgements, false)
+          } catch {
+            // A live WebSocket can outlast Redis. Clear coverage and reconnect through
+            // ordinary bootstrap without treating transient failure as revocation.
+            if (current()) { await this.renew(); return }
+          }
+        } while (check.followup && connected())
+      } finally {
+        if (this.heartbeatCheck === check) this.heartbeatCheck = undefined
+        if (connected()) this.scheduleHeartbeat()
+      }
+    })()
+    return check.promise
   }
   private sync() {
     const connection = this.connection; const epoch = this.subscriptionEpoch

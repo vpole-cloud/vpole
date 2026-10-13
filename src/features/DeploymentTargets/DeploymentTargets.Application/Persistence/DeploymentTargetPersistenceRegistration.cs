@@ -116,6 +116,9 @@ public static class DeploymentTargetPersistenceRegistration
             FenceDeploymentTargetWorkloadConfigurations>(
             services,
             implementation => implementation.InvokeAsync);
+        AddCapability<MongoFenceDeploymentTargetObservation, FenceDeploymentTargetObservation>(
+            services,
+            implementation => implementation.InvokeAsync);
         AddCapability<MongoRewrapDeploymentTargetCredentials, RewrapDeploymentTargetCredentials>(
             services,
             implementation => implementation.InvokeAsync);

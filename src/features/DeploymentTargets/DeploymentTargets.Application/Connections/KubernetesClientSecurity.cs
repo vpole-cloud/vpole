@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using k8s;
+using Pole.Features.Core.Kubernetes;
 using Pole.Features.DeploymentTargets.Application.Common;
 
 namespace Pole.Features.DeploymentTargets.Application.Connections;
@@ -106,7 +107,7 @@ internal static class KubernetesClientSecurity
 
             ApplyTransportHardening(configuration, expectedHost, trustedAuthorities);
             cancellationToken.ThrowIfCancellationRequested();
-            return new Kubernetes(configuration);
+            return new Kubernetes(configuration, new KubernetesWatchHeaders());
         }
         catch (OperationCanceledException)
         {
@@ -137,7 +138,7 @@ internal static class KubernetesClientSecurity
 
             ApplyTransportHardening(configuration, expectedHost, trustedAuthorities);
             cancellationToken.ThrowIfCancellationRequested();
-            return new Kubernetes(configuration);
+            return new Kubernetes(configuration, new KubernetesWatchHeaders());
         }
         catch (OperationCanceledException)
         {

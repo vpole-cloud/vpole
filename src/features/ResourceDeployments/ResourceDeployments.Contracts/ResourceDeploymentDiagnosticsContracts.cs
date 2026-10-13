@@ -16,4 +16,7 @@ public sealed record ResourceDeploymentDiagnosticsDto(
     long DeploymentRevision,
     long DesiredGeneration,
     DateTime CheckedAtUtc,
-    WorkloadDiagnostics Diagnostics);
+    WorkloadDiagnostics Diagnostics)
+{
+    public long? ObservationVersion { get; init; }
+}

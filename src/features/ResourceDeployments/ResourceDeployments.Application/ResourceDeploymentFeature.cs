@@ -14,6 +14,8 @@ using Pole.Features.ResourceDeployments.Application.Jobs;
 using Pole.Features.ResourceDeployments.Application.Kubernetes;
 using Pole.Features.ResourceDeployments.Application.Persistence;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
+using Pole.Features.ResourceDeployments.Application.Realtime;
+using Pole.Features.ResourceDeployments.Application.Persistence.Observation;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
 
@@ -26,6 +28,7 @@ public static class ResourceDeploymentFeature
         IConfiguration configuration)
     {
         services.AddSingleton(new RealtimeTopic("operations", RealtimeScope.Tenant));
+        services.AddSingleton(new RealtimeTopic("runtime-observations", RealtimeScope.Tenant));
         services.AddHttpProblemMappings(ResourceDeploymentContractHttpMappings.All);
 
         services.TryAddEnumerable(
@@ -43,6 +46,18 @@ public static class ResourceDeploymentFeature
         services.AddResourceDeploymentPersistence();
         services.TryAddScoped<ResourceDeploymentOperationsPersistence>();
         services.TryAddSingleton<ResourceDeploymentObserverCatalog>();
+        services.TryAddSingleton<IResourceDeploymentObservationReadBudget, ResourceDeploymentObservationReadBudget>();
+        services.AddOptions<ResourceDeploymentObservationOptions>()
+            .Bind(configuration.GetSection(ResourceDeploymentObservationOptions.SectionName))
+            .Configure(options => options.Enabled = options.Enabled && configuration.GetValue<bool>("Realtime:Enabled"))
+            .Validate(options => options.Valid, "Runtime observation limits are outside the supported bounds.").ValidateOnStart();
+        services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<ResourceDeploymentObservationOptions>>().Value);
+        services.TryAddScoped<IResourceDeploymentObservationStore, MongoResourceDeploymentObservationStore>();
+        services.TryAddScoped<ResourceDeploymentObservationContextLoader>();
+        services.TryAddScoped<ResourceDeploymentSharedObservationReader>();
+        services.TryAddSingleton<ResourceDeploymentObservationWakeup>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IRealtimeTopicLifecycle, ResourceDeploymentObservationLifecycle>());
+        services.AddHostedService<ResourceDeploymentObservationCoordinator>();
         services.TryAddScoped<ObserveResourceDeployment>();
         services.AddOptions<RuntimeDiagnosticsOptions>().Bind(configuration.GetSection(RuntimeDiagnosticsOptions.SectionName))
             .Validate(options => options.Valid, "RuntimeDiagnostics limits are outside the supported bounds.").ValidateOnStart();
@@ -73,7 +88,11 @@ public static class ResourceDeploymentFeature
     public static void ValidateResourceDeploymentContributions(this IServiceProvider services)
     {
         _ = services.GetRequiredService<ResourceDeploymentAdapterCatalog>();
-        _ = services.GetRequiredService<ResourceDeploymentObserverCatalog>();
+        var observers = services.GetRequiredService<ResourceDeploymentObserverCatalog>();
+        var registrations = services.GetRequiredService<IServiceProviderIsService>();
+        foreach (var descriptor in observers.Contributions)
+            foreach (var type in new[] { descriptor.ObserverType, descriptor.DiagnosticsType, descriptor.ChangeSourceType, descriptor.BoundObserverType }.OfType<Type>())
+                if (!registrations.IsService(type)) throw new InvalidOperationException("A resource deployment observer contribution is not registered.");
         _ = services.GetRequiredService<ResourceIngressPolicyCatalog>();
     }
 

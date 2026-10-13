@@ -68,9 +68,10 @@ public sealed class ResourceDeploymentDiagnostics(
     TimeProvider clock,
     IHostApplicationLifetime host,
     RuntimeLogCapacity capacity,
-    RuntimeDiagnosticsOptions options)
+    RuntimeDiagnosticsOptions options,
+    ResourceDeploymentSharedObservationReader shared,
+    IResourceDeploymentObservationReadBudget reads)
 {
-    private static readonly SemaphoreSlim DiscoveryCapacity = new(4);
     public RuntimeDiagnosticsOptions Options => options;
     public CancellationToken Shutdown => host.ApplicationStopping;
     private IResourceDeploymentDiagnosticsProvider? Provider(ResourceDeployment deployment) => catalog.Find(deployment.ResourceType)?.DiagnosticsType is { } type
@@ -87,22 +88,32 @@ public sealed class ResourceDeploymentDiagnostics(
 
     public async Task<ResourceDeploymentDiagnosticsDto> DiscoverAsync(ResourceDeployment deployment, CancellationToken ct)
     {
-        using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct, Shutdown);
-        budget.CancelAfter(TimeSpan.FromSeconds(15));
+        var read = await shared.BeginAsync(deployment, ct);
+        if (read is SharedObservationRead { Snapshot.Diagnostics: { } diagnosticsSnapshot } cached)
+            return new(deployment.Id, deployment.ResourceType, deployment.ResourceId, deployment.ResolvedPlacement.DeploymentTargetId,
+                deployment.Revision, deployment.DesiredGeneration, cached.Snapshot.CheckedAtUtc, diagnosticsSnapshot)
+            { ObservationVersion = cached.Snapshot.ObservationVersion };
+        var version = read switch
+        {
+            LiveObservationRead live => live.ObservationVersion,
+            UnavailableObservationRead unavailable => unavailable.ObservationVersion,
+            SharedObservationRead sharedRead => sharedRead.Snapshot.ObservationVersion
+        };
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, Shutdown);
         WorkloadDiagnostics diagnostics;
-        var acquired = false;
         try
         {
-            await DiscoveryCapacity.WaitAsync(budget.Token); acquired = true;
-            var provider = Provider(deployment);
-            diagnostics = provider is null ? new UnavailableWorkloadDiagnostics("Unsupported") : await provider.DiscoverAsync(deployment.ToReconciliationSnapshot(), budget.Token);
+            diagnostics = read is UnavailableObservationRead unavailable ? new UnavailableWorkloadDiagnostics(unavailable.Reason) :
+                await reads.ReadAsync(async token => Provider(deployment) is { } provider
+                    ? await provider.DiscoverAsync(deployment.ToReconciliationSnapshot(), token)
+                    : new UnavailableWorkloadDiagnostics("Unsupported"), linked.Token);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested && !Shutdown.IsCancellationRequested) { diagnostics = new UnavailableWorkloadDiagnostics("Timeout"); }
         catch (Exception exception) when (RuntimeDiagnosticFailures.Reason(exception) is { }) { diagnostics = new UnavailableWorkloadDiagnostics(RuntimeDiagnosticFailures.Reason(exception)!); }
-        finally { if (acquired) DiscoveryCapacity.Release(); }
-        if (!await IsCurrentAsync(deployment, ct)) diagnostics = new UnavailableWorkloadDiagnostics("Superseded");
+        if (!await shared.IsCurrentAsync(deployment, (read as LiveObservationRead)?.Context, ct)) diagnostics = new UnavailableWorkloadDiagnostics("Superseded");
         return new(deployment.Id, deployment.ResourceType, deployment.ResourceId, deployment.ResolvedPlacement.DeploymentTargetId,
-            deployment.Revision, deployment.DesiredGeneration, clock.GetUtcNow().UtcDateTime, diagnostics);
+            deployment.Revision, deployment.DesiredGeneration, clock.GetUtcNow().UtcDateTime, diagnostics)
+        { ObservationVersion = version };
     }
 
     public async Task<PrepareRuntimeLogsResult> OpenAsync(ResourceDeployment deployment, RuntimeLogSelection selection, CancellationToken ct)

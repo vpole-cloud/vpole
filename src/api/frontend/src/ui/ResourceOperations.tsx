@@ -57,7 +57,7 @@ function ResourceOperationsContent({ filter, active, scope, canManage, resourceH
           {canManage && onRetry && operation.retryable && operation.phase === 'Failed' && <Button disabled={operations.status !== 'success' || mutation.busy} onClick={() => setSelected(operation)}>Retry this {placement.desiredOperation?.toLowerCase() ?? 'operation'}</Button>}</div></header>
         {placement.failureCode && <Notice tone="error">Apply outcome: {placement.failureCode}. Other targets are shown independently.</Notice>}
         {operation.retryNotBeforeUtc && <p className="field__hint">Automatic retry due after {new Date(operation.retryNotBeforeUtc).toLocaleString()}. A manual retry requests this exact failed operation.</p>}
-        <ResourceHealthTarget placement={placement} active={active} targetName={operation.targetDisplayName ?? undefined} />
+        <ResourceHealthTarget placement={placement} active={active} targetName={operation.targetDisplayName ?? undefined} resourceType={deployment.resourceType} />
         <ResourceRuntimeDiagnostics operation={operation} active={active} />
       </article>
     })}

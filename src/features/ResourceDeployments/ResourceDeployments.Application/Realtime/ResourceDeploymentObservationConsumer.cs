@@ -1,0 +1,16 @@
+using MassTransit;
+using Pole.Features.Realtime.Contracts;
+using Pole.Features.ResourceDeployments.Events;
+
+namespace Pole.Features.ResourceDeployments.Application.Realtime;
+
+public sealed class ResourceDeploymentObservationConsumer(PublishRealtimeChange publish)
+    : IConsumer<ResourceDeploymentObservationChangedEvent>
+{
+    public Task Consume(ConsumeContext<ResourceDeploymentObservationChangedEvent> context)
+    {
+        var message = context.Message;
+        return publish(new("runtime-observations", message.EventCore.TenantId, message.DeploymentId,
+            message.ResourceGroupId, message.DeploymentRevision, message.DesiredGeneration, message.ObservationVersion), context.CancellationToken);
+    }
+}

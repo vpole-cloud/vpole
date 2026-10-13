@@ -12,6 +12,7 @@ interface Options<T> {
   load: (signal: AbortSignal) => Promise<T>
   enabled?: boolean
   interval?: number | false
+  coveredInterval?: number | false
   keepPrevious?: boolean
   active?: boolean
   realtime?: readonly RealtimeSubscription[]
@@ -19,7 +20,7 @@ interface Options<T> {
   authorizationScope?: 'tenant' | 'user'
   resourceGroupId?: string | ((value: NoInfer<T>) => string | undefined)
 }
-export function useScopedQuery<T>({ scope, key, load, enabled = true, interval = false, keepPrevious = false, active = true, realtime, privileged = false, authorizationScope = 'tenant', resourceGroupId }: Options<T>) {
+export function useScopedQuery<T>({ scope, key, load, enabled = true, interval = false, coveredInterval = 60000, keepPrevious = false, active = true, realtime, privileged = false, authorizationScope = 'tenant', resourceGroupId }: Options<T>) {
   const session = useQuerySession()
   const controller = useRealtime()
   const visible = usePageVisible()
@@ -47,7 +48,7 @@ export function useScopedQuery<T>({ scope, key, load, enabled = true, interval =
     // A previous page is useful only within the same authenticated tenant scope.
     placeholderData: keepPrevious ? (previous, previousQuery) =>
       JSON.stringify(previousQuery?.queryKey.slice(0, 3 + scope.length)) === JSON.stringify(queryKey.slice(0, 3 + scope.length)) ? previous : undefined : undefined,
-    refetchInterval: realtime && observing && covered ? 60000 : interval,
+    refetchInterval: realtime && observing && covered ? coveredInterval : interval,
     refetchIntervalInBackground: false,
   }, session.client)
   const mounted = useRef(false)

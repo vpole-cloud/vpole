@@ -8,6 +8,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <ProjectReference Include="../Pole.Tests.ObservationSerializationProbe/Pole.Tests.ObservationSerializationProbe.csproj" ReferenceOutputAssembly="false" IsAspireProjectResource="false" />
         <ProjectReference Include="../../src/features/PrivateAccess/PrivateAccess.Application/PrivateAccess.Application.csproj" />
         <ProjectReference Include="../../src/features/Realtime/Realtime.Application/Realtime.Application.csproj" />
         <PackageReference Include="FSharp.Core" />
@@ -54,4 +55,10 @@
 <ItemGroup>
     <ProjectReference Include="../../src/api/Pole.Testing/Pole.Testing.csproj" />
 </ItemGroup>
+<Target Name="CopyObservationSerializationProbe" AfterTargets="Build">
+    <ItemGroup>
+        <ObservationSerializationProbeFiles Include="../Pole.Tests.ObservationSerializationProbe/bin/$(Configuration)/$(TargetFramework)/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ObservationSerializationProbeFiles)" DestinationFolder="$(OutDir)ObservationSerializationProbe" SkipUnchangedFiles="true" />
+</Target>
 </Project>

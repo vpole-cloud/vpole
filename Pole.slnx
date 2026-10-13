@@ -171,6 +171,7 @@
     <Project Path="tests/Pole.Tests.Kubernetes/Pole.Tests.Kubernetes.csproj" />
     <Project Path="tests/Pole.Tests.E2E.GitHubStub/Pole.Tests.E2E.GitHubStub.csproj" />
     <Project Path="tests/Pole.Tests.E2E/Pole.Tests.E2E.csproj" />
+    <Project Path="tests/Pole.Tests.ObservationSerializationProbe/Pole.Tests.ObservationSerializationProbe.csproj" />
   </Folder>
   <Folder Name="/features/Secrets/">
     <Project Path="src/features/Secrets/Secrets.Contracts/Secrets.Contracts.csproj" />

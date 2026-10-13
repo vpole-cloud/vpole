@@ -3,6 +3,7 @@ using Pole.Features.ResourceDeployments.Application.Consumers;
 using Pole.Features.ResourceDeployments.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Application.Jobs;
 using Pole.Features.ResourceDeployments.Application.Persistence;
+using Pole.Features.ResourceDeployments.Application.Persistence.Observation;
 using Pole.Features.ResourceDeployments.Application.Persistence.Creation;
 using Pole.Features.ResourceDeployments.Application.Persistence.Finalization;
 using Pole.Features.ResourceDeployments.Application.Persistence.Reads;
@@ -83,6 +84,7 @@ public sealed class ResourceDeploymentBoundaryArchitectureTests
             typeof(LoadResourceDeploymentRecoveryCandidatesOperation),
             typeof(RecoverResourceDeploymentOperation),
             typeof(ResourceDeploymentWakePersistence),
+            typeof(MongoResourceDeploymentObservationStore),
             typeof(ResourceDeploymentFilters)
         ];
 
@@ -101,7 +103,8 @@ public sealed class ResourceDeploymentBoundaryArchitectureTests
                     StringComparison.Ordinal) == true)
             .ToArray();
 
-        Type[] providerStrategies = [typeof(IResourceDeploymentAdapter), typeof(IResourceDeploymentObserver), typeof(IResourceDeploymentDiagnosticsProvider)];
+        Type[] providerStrategies = [typeof(IResourceDeploymentAdapter), typeof(IResourceDeploymentObserver), typeof(IResourceDeploymentDiagnosticsProvider),
+            typeof(IResourceDeploymentObservationChangeSource), typeof(IResourceDeploymentBoundObserver), typeof(IResourceDeploymentObservationReadBudget)];
         Assert.Equal(providerStrategies.OrderBy(type => type.FullName), interfaces.OrderBy(type => type.FullName));
     }
 
