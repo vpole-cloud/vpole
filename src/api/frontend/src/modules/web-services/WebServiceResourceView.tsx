@@ -115,7 +115,7 @@ export function WebServiceResourceView({ id, section, active, groups, onSection,
         </div>)}</div>
         <p className="field__hint">Deployment status reports reconciliation. Inspect targets, generations and hostnames in Deployments.</p>
       </section>
-      <ResourceHealth placements={service.deployments} active={active && section === 'overview'} />
+      <ResourceHealth placements={service.deployments} active={active && section === 'overview'} resourceType="pole/web-service" />
       {active && section === 'overview' && <ResourceEndpoints resourceType="pole/web-service" resourceId={id} />}
     </TabPanel>
     <TabPanel id={panelId} tabId="operations" activeId={section}>{active && section === "operations" && <WebServiceOperations id={id} active />}</TabPanel>

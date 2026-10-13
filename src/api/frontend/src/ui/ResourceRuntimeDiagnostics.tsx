@@ -1,9 +1,7 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { readResourceRuntimeLogs, RuntimeLogUnavailableError } from '../api'
-import { fetchResourceDiagnostics } from '../modules/operations/api'
-import { useScopedQuery } from '../data/useScopedQuery'
+import { useRuntimeDiagnostics } from '../modules/operations/useRuntimeSnapshot'
 import { useApiScope } from '../data/useApiScope'
-import { useVisibleRefresh } from '../hooks/useVisibleRefresh'
 import { useAppServices } from '../shell/AppContext'
 import type { ResourceDeploymentOperation } from '../types'
 import { Button, EmptyState, Notice } from './components'
@@ -40,26 +38,46 @@ function DiagnosticsContent({ operation }: { operation: ResourceDeploymentOperat
   const { api } = useAppServices()
   const deployment = operation.deployment
   const apiScope = useApiScope(api)
-  const details = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['runtime-discovery', deployment.id, deployment.resourceType, deployment.resourceId, deployment.placement.deploymentTargetId, deployment.placement.deploymentRevision, deployment.placement.desiredGeneration],
-    load: signal => fetchResourceDiagnostics(api.baseUrl, deployment.id, apiScope.credential(), api.tenantId, signal) })
-  useVisibleRefresh(true, details.refresh)
+  const details = useRuntimeDiagnostics({ placement: { ...deployment.placement, deploymentId: deployment.id }, resourceType: deployment.resourceType, resourceId: deployment.resourceId, active: true })
   const [uid, setUid] = useState(''); const [container, setContainer] = useState(''); const [previous, setPrevious] = useState(false)
   const [logs, setLogs] = useState<LogState>(initial)
-  const current = useRef<AbortController | null>(null)
+  const current = useRef<(AbortController & { uid: string; container: string }) | null>(null)
   const alive = useRef(true)
   const heading = useRef<HTMLHeadingElement>(null)
+  const authorized = apiScope.isCurrent()
+  const [wasAuthorized, setWasAuthorized] = useState(authorized)
+  if (wasAuthorized !== authorized) {
+    setWasAuthorized(authorized)
+    if (!authorized) { setLogs(initial()); setUid(''); setContainer(''); setPrevious(false) }
+  }
+  useLayoutEffect(() => {
+    if (authorized) return
+    current.current?.abort(); current.current = null
+  }, [authorized])
   useEffect(() => { alive.current = true; heading.current?.focus(); return () => { alive.current = false; current.current?.abort() } }, [])
   const value = details.resource
-  const exact = value && value.deploymentId === deployment.id && value.resourceType === deployment.resourceType && value.resourceId === deployment.resourceId &&
-    value.targetId === deployment.placement.deploymentTargetId && value.deploymentRevision === deployment.placement.deploymentRevision && value.desiredGeneration === deployment.placement.desiredGeneration
-  const diagnostics = exact && value.diagnostics.kind === 'Available' ? value.diagnostics : null
+  const identityExact = value && value.deploymentId === deployment.id && value.resourceType === deployment.resourceType && value.resourceId === deployment.resourceId &&
+    value.targetId === deployment.placement.deploymentTargetId && value.deploymentRevision === (deployment.placement.deploymentRevision ?? 1) && value.desiredGeneration === deployment.placement.desiredGeneration
+  const exact = identityExact && details.snapshotCurrent
+  // Retain the last safe instance list during resync. A hint is not evidence that an
+  // instance vanished; only a fresh authoritative snapshot can remove its UID.
+  const diagnostics = identityExact && value.diagnostics.kind === 'Available' ? value.diagnostics : null
   const instance = diagnostics?.instances.find(item => item.uid === uid)
   const selectedContainer = instance?.containers.find(item => item.name === container)
+  if (authorized && exact && details.status === 'success' && uid && (!instance || container && !selectedContainer)) {
+    setLogs(initial()); setUid(''); setContainer(''); setPrevious(false)
+  }
+  useLayoutEffect(() => {
+    const reader = current.current
+    if (reader && exact && details.status === 'success' && !diagnostics?.instances.some(item => item.uid === reader.uid && item.containers.some(value => value.name === reader.container))) {
+      reader.abort(); current.current = null
+    }
+  }, [exact, details.status, diagnostics])
   const stop = () => { current.current?.abort(); current.current = null }
   const reset = () => { stop(); setLogs(initial()) }
   const start = (follow: boolean) => {
-    if (!exact || !instance || !selectedContainer || details.status !== 'success') return
-    stop(); const owner = new AbortController(); current.current = owner
+    if (!authorized || !exact || !instance || !selectedContainer || details.status !== 'success') return
+    stop(); const owner = Object.assign(new AbortController(), { uid, container }); current.current = owner
     setLogs({ ...initial(), status: 'opening' })
     void readResourceRuntimeLogs(api.baseUrl, deployment.id, { instanceUid: uid, container, expectedRevision: value.deploymentRevision, follow, previous, tailLines: 100 }, frame => {
       if (!alive.current || !apiScope.isCurrent() || owner.signal.aborted || current.current !== owner) return
@@ -81,6 +99,7 @@ function DiagnosticsContent({ operation }: { operation: ResourceDeploymentOperat
     {details.error && <Notice tone="error">{details.error} Previous discovery is stale; refresh before opening another read.</Notice>}
     {!value && <EmptyState title={details.status === 'error' ? 'Runtime discovery unavailable.' : 'Discovering owned instances…'} />}
     {value && !exact && <Notice tone="error">This deployment changed. Refresh operations before opening runtime diagnostics.</Notice>}
+    {identityExact && !details.snapshotCurrent && <Notice>Previous instance metadata is stale. Refresh before opening another read.</Notice>}
     {exact && value.diagnostics.kind === 'Unavailable' && <Notice>{reasons[value.diagnostics.reason] ?? 'Runtime diagnostics are unavailable.'}</Notice>}
     {diagnostics && <>
       {diagnostics.instancesTruncated && <Notice>Instance discovery is limited. Only listed, verified instances can be selected.</Notice>}
@@ -90,11 +109,11 @@ function DiagnosticsContent({ operation }: { operation: ResourceDeploymentOperat
         <label className="field"><span className="field__label" id={`${fields}-container`}>Container</span><select aria-labelledby={`${fields}-container`} className="field__control" value={container} disabled={!instance} onChange={event => { reset(); setContainer(event.target.value); setPrevious(false) }}><option value="">Select a container</option>
           {instance?.containers.map(item => <option key={item.name} value={item.name}>{item.name} · {item.kind}</option>)}</select></label>
       </div>}
-      {instance && <p className="field__hint">{instance.ready ? 'Observed ready' : 'Not ready'} · {instance.restartCount} restarts · {instance.reasons.join(', ') || 'No warning reason observed'}.</p>}
+      {instance && <p className="field__hint">{!details.snapshotCurrent ? 'Stale instance metadata' : instance.ready ? 'Observed ready' : 'Not ready'} · {instance.restartCount} restarts · {instance.reasons.join(', ') || 'No warning reason observed'}.</p>}
       {instance?.containersTruncated && <Notice>Container discovery is limited. Only listed containers can be selected.</Notice>}
       <label className="field field--checkbox"><input type="checkbox" checked={previous} disabled={!selectedContainer?.previousAvailable} onChange={event => { reset(); setPrevious(event.target.checked) }} />Previous terminated container output</label>
-      <div className="row-actions"><Button disabled={!selectedContainer || details.status !== 'success'} onClick={() => start(false)}>{logs.status === 'ended' || logs.status === 'error' ? 'Reconnect recent logs' : 'Read recent logs'}</Button>
-        <Button disabled={!selectedContainer || previous || details.status !== 'success'} onClick={() => start(true)}>Follow runtime logs</Button>
+      <div className="row-actions"><Button disabled={!exact || !selectedContainer || details.status !== 'success'} onClick={() => start(false)}>{logs.status === 'ended' || logs.status === 'error' ? 'Reconnect recent logs' : 'Read recent logs'}</Button>
+        <Button disabled={!exact || !selectedContainer || previous || details.status !== 'success'} onClick={() => start(true)}>Follow runtime logs</Button>
         {(logs.status === 'opening' || logs.status === 'reading') && <Button onClick={() => { stop(); setLogs(old => ({ ...old, status: 'ended', reason: 'Reading stopped. The workload continues running.' })) }}>Stop reading</Button>}
       </div>
       <p className="field__hint">Every read starts a new recent window of up to 100 lines. Reconnection can overlap output; runtime logs are not archived. This view retains at most 65,536 characters.</p>

@@ -8,6 +8,7 @@ import { deferred } from '../test/http'
 import { RealtimeController } from './controller'
 import { FakeConnection } from '../test/fakeRealtimeConnection'
 import { acceptsChange, normalizeChange, type RealtimeCoverage, type RealtimeSubscription } from './types'
+import type { RuntimeContext } from './runtimeContext'
 
 const owners: { controller: RealtimeController; session: QuerySession }[] = []
 afterEach(() => { owners.forEach(({ controller, session }) => { controller.dispose(); session.client.clear() }); owners.length = 0; vi.useRealTimers(); vi.unstubAllGlobals() })
@@ -24,6 +25,94 @@ function setup(configure?: (connection: FakeConnection) => void) {
   return { session, controller, connections, bootstrap, revoke, broadcast }
 }
 const interest: RealtimeSubscription = { topic: 'source-builds', tenantId: 'alpha', resourceId: 'service' }
+
+it('fences runtime GETs by exact revision/generation and retained version floor while allowing current nullable initial fallback', async () => {
+  const { session, controller, connections } = setup()
+  const context: RuntimeContext = { tenantId: 'alpha', deploymentId: 'deployment', revision: 7, generation: 2 }
+  const key = scopedQueryKey(session, ['api', 'alpha'], ['health', 'deployment', 7, 2]); session.client.setQueryData(key, 'snapshot')
+  const initial = controller.beginRuntimeRead('api', context); const signal = new AbortController().signal
+  expect(controller.acceptRuntimeRead('api', context, initial, null, signal)).toBe(true)
+  controller.register({ topic: 'runtime-observations', tenantId: 'alpha', resourceId: 'deployment' }); await controller.renew()
+  expect(controller.acceptRuntimeRead('api', context, initial, 5, signal)).toBe(false)
+  connections[0].changed({ version: 1, topic: 'runtime-observations', tenantId: 'alpha', resourceId: 'deployment', revision: 7, generation: 2, observationVersion: 5 })
+  const started = controller.beginRuntimeRead('api', context)
+  expect(started.floor).toBe(5)
+  expect(controller.acceptRuntimeRead('api', context, started, 4, signal)).toBe(false)
+  expect(controller.acceptRuntimeRead('api', context, started, null, signal)).toBe(false)
+  expect(controller.acceptRuntimeRead('api', context, started, 5, signal)).toBe(true)
+  connections[0].changed({ version: 1, topic: 'runtime-observations', tenantId: 'alpha', resourceId: 'deployment', revision: 7, generation: 2, observationVersion: 6 })
+  expect(controller.acceptRuntimeRead('api', context, started, 6, signal)).toBe(false)
+  const next = { ...context, revision: 8, generation: 3 }
+  session.client.setQueryData(scopedQueryKey(session, ['api', 'alpha'], ['health', 'deployment', 8, 3]), 'new context')
+  const current = controller.beginRuntimeRead('api', next)
+  expect(current.floor).toBe(0); expect(controller.acceptRuntimeRead('api', next, current, null, signal)).toBe(true)
+  expect(controller.acceptRuntimeRead('other-api', next, current, 7, signal)).toBe(false)
+})
+
+it('resyncs runtime epochs on coverage/reconnect transitions but keeps healthy heartbeats and duplicate/out-of-order hints unchanged', async () => {
+  vi.useFakeTimers()
+  const { session, controller, connections } = setup()
+  const context: RuntimeContext = { tenantId: 'alpha', deploymentId: 'deployment', revision: 7, generation: 2 }
+  session.client.setQueryData(scopedQueryKey(session, ['api', 'alpha'], ['health', 'deployment', 7, 2]), 'snapshot')
+  controller.beginRuntimeRead('api', context)
+  controller.register({ topic: 'runtime-observations', tenantId: 'alpha', resourceId: 'deployment' }); await controller.renew()
+  const initial = controller.runtimeReadState('api', context)
+  await vi.advanceTimersByTimeAsync(10000); expect(controller.runtimeReadState('api', context)).toEqual(initial)
+  const hint = { version: 1 as const, topic: 'runtime-observations' as const, tenantId: 'alpha', resourceId: 'deployment', revision: 7, generation: 2, observationVersion: 8 }
+  connections[0].changed(hint); const changed = controller.runtimeReadState('api', context)
+  connections[0].changed(hint); connections[0].changed({ ...hint, observationVersion: 7 }); connections[0].changed({ ...hint, observationVersion: undefined })
+  expect(controller.runtimeReadState('api', context)).toEqual(changed)
+  connections[0].reconnecting(); connections[0].reconnected(); await settle()
+  expect(controller.runtimeReadState('api', context).epoch).toBeGreaterThan(changed.epoch)
+  expect(controller.runtimeReadState('api', context).floor).toBe(8)
+})
+
+it('resyncs uncovered runtime hints and promptly rechecks coverage through one coalesced singleflight heartbeat', async () => {
+  vi.useFakeTimers()
+  const request: RealtimeSubscription = { topic: 'runtime-observations', tenantId: 'alpha', resourceId: 'deployment' }
+  const { session, controller, connections } = setup(connection => connection.subscribe.mockResolvedValue([{ ...request, subscriptionId: 'runtime', covered: false }]))
+  const context: RuntimeContext = { tenantId: 'alpha', deploymentId: 'deployment', revision: 7, generation: 2 }
+  const key = scopedQueryKey(session, ['api', 'alpha'], ['health', 'deployment', 7, 2])
+  session.client.setQueryData(key, 'snapshot'); controller.beginRuntimeRead('api', context)
+  controller.register(request); await controller.renew()
+  const connection = connections[0]
+  const held = deferred<RealtimeCoverage[]>()
+  connection.heartbeat.mockImplementationOnce(() => held.promise).mockResolvedValue([{ ...request, subscriptionId: 'runtime', covered: true }])
+  const hint = { version: 1 as const, ...request, revision: 7, generation: 2, observationVersion: 1 }
+  for (let version = 1; version <= 100; version++) connection.changed({ ...hint, observationVersion: version })
+  expect(controller.covered(request)).toBe(false)
+  expect(controller.runtimeReadState('api', context).floor).toBe(100)
+  expect(session.client.getQueryState(key)?.isInvalidated).toBe(true)
+  await vi.advanceTimersByTimeAsync(250)
+  expect(connection.heartbeat).toHaveBeenCalledTimes(1)
+  for (let version = 101; version <= 200; version++) connection.changed({ ...hint, observationVersion: version })
+  await vi.advanceTimersByTimeAsync(250)
+  expect(connection.heartbeat).toHaveBeenCalledTimes(1)
+  held.resolve([{ ...request, subscriptionId: 'runtime', covered: false }]); await settle()
+  expect(connection.heartbeat).toHaveBeenCalledTimes(2)
+  expect(controller.covered(request)).toBe(true)
+  expect(controller.runtimeReadState('api', context).floor).toBe(200)
+  for (let index = 0; index < 100; index++) connection.changed({ ...hint, observationVersion: 199 })
+  await vi.advanceTimersByTimeAsync(250)
+  expect(connection.heartbeat).toHaveBeenCalledTimes(2)
+})
+
+it('cancels expedited coverage checks when a runtime interest leaves or its tenant is revoked', async () => {
+  vi.useFakeTimers()
+  const { session, controller, connections } = setup()
+  const request: RealtimeSubscription = { topic: 'runtime-observations', tenantId: 'alpha', resourceId: 'deployment' }
+  session.client.setQueryData(scopedQueryKey(session, ['api', 'alpha'], ['health', 'deployment', 7, 2]), 'snapshot')
+  const release = controller.register(request); await controller.renew()
+  const hint = { version: 1 as const, ...request, revision: 7, generation: 2, observationVersion: 1 }
+  connections[0].changed(hint); release(); await settle(); connections[0].changed({ ...hint, observationVersion: 2 })
+  await vi.advanceTimersByTimeAsync(250)
+  expect(connections[0].heartbeat).not.toHaveBeenCalled()
+  controller.register(request); await settle()
+  connections[0].changed({ ...hint, observationVersion: 2 })
+  connections[0].accessRevoked('alpha'); await settle(); connections[0].changed({ ...hint, observationVersion: 3 })
+  await vi.advanceTimersByTimeAsync(250)
+  expect(connections[0].heartbeat).not.toHaveBeenCalled()
+})
 
 it('atomically replaces deduplicated subscriptions, resyncs after acknowledgement, and unsubscribes all when hidden owners leave', async () => {
   vi.useFakeTimers()

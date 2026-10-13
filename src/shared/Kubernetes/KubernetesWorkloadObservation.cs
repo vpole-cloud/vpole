@@ -43,7 +43,7 @@ public static class KubernetesWorkloadObservation
         if (!Owns(controller.Metadata, identity)) return new UnavailableWorkloadObservation("OwnershipMismatch");
         var replicas = await client.AppsV1.ListNamespacedReplicaSetAsync(namespaceName,
             labelSelector: Selector(identity), limit: MaximumPods, cancellationToken: cancellationToken);
-        var controllerUids = replicas.Items.Where(replica => Owns(replica.Metadata, identity) &&
+        var controllerUids = replicas.Items.Where(replica => replica.Metadata.NamespaceProperty == namespaceName && Owns(replica.Metadata, identity) &&
             ControlledBy(replica.Metadata, new HashSet<string>([controller.Metadata.Uid], StringComparer.Ordinal))).Select(replica => replica.Metadata.Uid).ToHashSet(StringComparer.Ordinal);
         var status = controller.Status;
         return await PodsAsync(client, namespaceName, identity, controller.Metadata,
@@ -52,6 +52,16 @@ public static class KubernetesWorkloadObservation
             status?.ObservedGeneration >= controller.Metadata.Generation && string.IsNullOrEmpty(replicas.Metadata.ContinueProperty),
             controller.Spec.Replicas ?? 1, status?.Replicas ?? 0, status?.UpdatedReplicas ?? 0,
             status?.ReadyReplicas ?? 0, status?.AvailableReplicas ?? 0, cancellationToken);
+    }
+
+    /// <summary>Checks the source binding before reads; callers must revalidate again after diagnostics.</summary>
+    public static async Task<bool> MatchesDeploymentBindingAsync(
+        IKubernetes client, string name, string namespaceName, WorkloadIdentityLabels identity,
+        string expectedUid, CancellationToken cancellationToken)
+    {
+        var controller = await client.AppsV1.ReadNamespacedDeploymentAsync(name, namespaceName, cancellationToken: cancellationToken);
+        return controller.Metadata is { } metadata && metadata.Name == name && metadata.NamespaceProperty == namespaceName &&
+            metadata.Uid == expectedUid && Owns(metadata, identity);
     }
 
     public static async Task<WorkloadObservation> StatefulSetAsync(
@@ -95,7 +105,7 @@ public static class KubernetesWorkloadObservation
         if (!Owns(controller, identity)) return new UnavailableWorkloadObservation("OwnershipMismatch");
         var listed = await client.CoreV1.ListNamespacedPodAsync(namespaceName, labelSelector: Selector(identity),
             limit: MaximumPods, cancellationToken: cancellationToken);
-        var pods = listed.Items.Where(pod => Owns(pod.Metadata, identity) && ControlledBy(pod.Metadata, controllerUids))
+        var pods = listed.Items.Where(pod => pod.Metadata.NamespaceProperty == namespaceName && Owns(pod.Metadata, identity) && ControlledBy(pod.Metadata, controllerUids))
             .OrderBy(pod => pod.Metadata.Name, StringComparer.Ordinal).ToArray();
         var summary = pods.Select(pod => SummarizePod(pod, generation, generationKey, generationLabel)).ToArray();
         var truncated = !string.IsNullOrEmpty(listed.Metadata.ContinueProperty);
@@ -109,7 +119,8 @@ public static class KubernetesWorkloadObservation
         try
         {
             // Eight verified UIDs, four events each: never scan or return another resource's namespace events.
-            foreach (var uid in new[] { controller.Uid }.Concat(pods.Select(pod => pod.Metadata.Uid)).Distinct(StringComparer.Ordinal).Take(8))
+            foreach (var uid in new[] { controller.Uid }.Concat(controllerUids.Order(StringComparer.Ordinal))
+                .Concat(pods.Select(pod => pod.Metadata.Uid).Order(StringComparer.Ordinal)).Distinct(StringComparer.Ordinal).Take(8))
             {
                 var recent = await client.CoreV1.ListNamespacedEventAsync(namespaceName,
                     fieldSelector: $"involvedObject.uid={uid},type=Warning", limit: 4, cancellationToken: cancellationToken);

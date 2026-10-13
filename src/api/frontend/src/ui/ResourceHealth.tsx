@@ -1,9 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useVisibleRefresh } from '../hooks/useVisibleRefresh'
-import { fetchResourceObservation } from '../modules/operations/api'
-import { useScopedQuery } from '../data/useScopedQuery'
-import { useApiScope } from '../data/useApiScope'
-import { useAppServices } from '../shell/AppContext'
+import { useRuntimeObservation } from '../modules/operations/useRuntimeSnapshot'
 import type { ResourcePlacement } from '../types'
 import { Button, DataTable, Notice, StatusBadge } from './components'
 
@@ -14,29 +10,32 @@ const reasons: Record<string, string> = {
   Timeout: 'The observation timed out.', Superseded: 'A newer deployment revision replaced this observation. Refresh for the current state.', ResourceNotFound: 'The logical resource is no longer available.',
 }
 
-export function ResourceHealth({ placements, active, targetNames = {} }: {
-  placements: ResourcePlacement[]; active: boolean; targetNames?: Record<string, string>
+export function ResourceHealth({ placements, active, targetNames = {}, resourceType }: {
+  placements: ResourcePlacement[]; active: boolean; targetNames?: Record<string, string>; resourceType?: string
 }) {
   return <section className="resource-health" aria-label="Observed resource health"><h2 className="panel__title">Runtime readiness</h2>
     <p className="field__hint">Observed pod readiness is separate from reconciliation and application connectivity. Each target is checked independently.</p>
     {placements.length === 0 && <Notice>No current deployment is known.</Notice>}
     {active && placements.map((placement) => <ResourceHealthTarget key={placement.deploymentId} placement={placement} active={active}
-      targetName={targetNames[placement.deploymentTargetId]} />)}
+      targetName={targetNames[placement.deploymentTargetId]} resourceType={resourceType} />)}
   </section>
 }
 
-export function ResourceHealthTarget({ placement, active, targetName }: {
-  placement: ResourcePlacement; active: boolean; targetName?: string
+export function ResourceHealthTarget({ placement, active, targetName, resourceType }: {
+  placement: ResourcePlacement; active: boolean; targetName?: string; resourceType?: string
 }) {
-  const { api } = useAppServices()
-  const { credential } = useApiScope(api)
-  const details = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['health', placement.deploymentId, placement.deploymentRevision, placement.desiredGeneration],
-    load: (signal) => fetchResourceObservation(api.baseUrl, placement.deploymentId, credential(), api.tenantId, signal) })
-  useVisibleRefresh(active, details.refresh)
+  const details = useRuntimeObservation({ placement, active, resourceType })
   const [now, setNow] = useState(Date.now)
-  useEffect(() => { if (!active) return; const timer = window.setInterval(() => setNow(Date.now()), 10000); return () => window.clearInterval(timer) }, [active])
+  useEffect(() => {
+    if (!active) return
+    const updateClock = () => setNow(Date.now())
+    updateClock()
+    document.addEventListener('visibilitychange', updateClock)
+    const timer = window.setInterval(updateClock, 10000)
+    return () => { document.removeEventListener('visibilitychange', updateClock); window.clearInterval(timer) }
+  }, [active])
   const result = details.resource
-  const fresh = result && result.deploymentRevision === (placement.deploymentRevision ?? 1) && result.desiredGeneration === placement.desiredGeneration
+  const fresh = result && details.snapshotCurrent && result.deploymentId === placement.deploymentId && result.deploymentRevision === (placement.deploymentRevision ?? 1) && result.desiredGeneration === placement.desiredGeneration
   const value = fresh ? result.observation : null
   const stale = details.status === 'error' || !fresh || Boolean(result && now - Date.parse(result.checkedAtUtc) > 45000)
   const observed = value?.kind === 'Observed' ? value : null

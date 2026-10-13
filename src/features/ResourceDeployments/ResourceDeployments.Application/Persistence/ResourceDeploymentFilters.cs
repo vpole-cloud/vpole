@@ -6,7 +6,7 @@ using Pole.Features.ResourceDeployments.Domain;
 
 namespace Pole.Features.ResourceDeployments.Application.Persistence;
 
-internal static class ResourceDeploymentFilters
+internal static partial class ResourceDeploymentFilters
 {
     public static FilterDefinition<ResourceDeployment> ForOperationState<TState>(FilterDefinition<ResourceDeployment> scope) where TState : ResourceDeploymentState =>
         scope & Builders<ResourceDeployment>.Filter.OfType<ResourceDeploymentState, TState>(deployment => deployment.State);

@@ -103,8 +103,38 @@ public sealed class ResourceDeploymentHealthApiTests(MongoReplicaSetFixture fixt
             (_, _, _, _) => Task.FromResult<RegisteredResource?>(null),
             (id, _) => Task.FromResult<LookupDeploymentTargetOutcome>(new DeploymentTargetLookupError(new DeploymentTargetNotFound(id))), TimeProvider.System);
         var catalog = new ResourceDeploymentObserverCatalog([ResourceDeploymentObserverDescriptor.Create<TestObserver>(ResourceTypeId.Create(deployment.ResourceType))]);
-        var result = await new ObserveResourceDeployment(persistence, catalog, services, TimeProvider.System).InvokeAsync(deployment, CancellationToken.None);
+        var contexts = new ResourceDeploymentObservationContextLoader(persistence, catalog,
+            (id, _) => Task.FromResult<LookupDeploymentTargetOutcome>(new DeploymentTargetLookupError(new DeploymentTargetNotFound(id))));
+        var shared = new ResourceDeploymentSharedObservationReader(new ObservationTestStore(), contexts, new() { Enabled = false });
+        using var reads = new ResourceDeploymentObservationReadBudget(TimeProvider.System);
+        var result = await new ObserveResourceDeployment(catalog, services, TimeProvider.System, shared, reads).InvokeAsync(deployment, CancellationToken.None);
         Assert.Equal("Superseded", Assert.IsType<UnavailableWorkloadObservation>(result.Observation).Reason);
+    }
+
+    [Fact]
+    public async Task Disabled_shared_reads_pin_retained_version_before_native_read_and_never_forward_label_old_evidence()
+    {
+        var deployment = Create(TestData.TenantId);
+        await Fixture.DbContext.ResourceDeployments.InsertOneAsync(deployment);
+        var store = new ObservationTestStore { Version = 7 };
+        var fake = new TestObserver(_ =>
+        {
+            store.Version = 11; // Represents a committed hint while this native read was in flight.
+            return Task.FromResult<WorkloadObservation>(new ObservedWorkload(true, true, 1, 1, 1, 1, 1, false, [], [], null));
+        });
+        using var services = new ServiceCollection().AddSingleton(fake).BuildServiceProvider();
+        var persistence = new ResourceDeploymentOperationsPersistence(Fixture.DbContext.ResourceDeployments,
+            (_, _, _, _) => Task.FromResult<RegisteredResource?>(null),
+            (id, _) => Task.FromResult<LookupDeploymentTargetOutcome>(new DeploymentTargetLookupError(new DeploymentTargetNotFound(id))), TimeProvider.System);
+        var catalog = new ResourceDeploymentObserverCatalog([ResourceDeploymentObserverDescriptor.Create<TestObserver>(ResourceTypeId.Create(deployment.ResourceType))]);
+        var contexts = new ResourceDeploymentObservationContextLoader(persistence, catalog,
+            (id, _) => Task.FromResult<LookupDeploymentTargetOutcome>(new DeploymentTargetLookupError(new DeploymentTargetNotFound(id))));
+        var shared = new ResourceDeploymentSharedObservationReader(store, contexts, new() { Enabled = false });
+        using var reads = new ResourceDeploymentObservationReadBudget(TimeProvider.System);
+        var result = await new ObserveResourceDeployment(catalog, services, TimeProvider.System, shared, reads).InvokeAsync(deployment, CancellationToken.None);
+        Assert.IsType<ObservedWorkload>(result.Observation);
+        Assert.Equal(7, result.ObservationVersion);
+        Assert.Equal(11, store.Version);
     }
 
     private sealed class TestObserver(Func<ResourceDeploymentReconciliationSnapshot, Task<WorkloadObservation>> observe) : IResourceDeploymentObserver

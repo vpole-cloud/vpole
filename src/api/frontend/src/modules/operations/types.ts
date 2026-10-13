@@ -38,6 +38,7 @@ export interface RuntimeDiagnosticInstance {
 }
 
 export interface ResourceDeploymentDiagnostics {
+  observationVersion?: number | null
   deploymentId: string; resourceType: string; resourceId: string; targetId: string; deploymentRevision: number; desiredGeneration: number; checkedAtUtc: string
   diagnostics: { kind: 'Unavailable'; reason: string } | { kind: 'Available'; instances: RuntimeDiagnosticInstance[]; instancesTruncated: boolean
     events: { objectKind: string; objectName: string; reason: string; count: number; lastSeenAtUtc?: string | null }[]; eventsTruncated: boolean; eventsUnavailableReason?: string | null }
@@ -78,6 +79,7 @@ export type WorkloadObservation = { kind: 'Unavailable'; reason: string } | {
 }
 
 export interface ResourceDeploymentObservation {
+  observationVersion?: number | null
   deploymentId: string; deploymentRevision: number; desiredGeneration: number; checkedAtUtc: string; observation: WorkloadObservation
 }
 

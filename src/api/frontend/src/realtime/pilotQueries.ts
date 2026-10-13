@@ -3,6 +3,7 @@ import { matchesSecretQuery } from '../modules/secrets/realtime'
 import { matchesDomainQuery } from '../modules/domains/realtime'
 import { matchesConnectionQuery } from '../modules/web-services/connectionRealtime'
 import { matchesGitQuery } from '../modules/platform/gitRealtime'
+import { matchesRuntimeQuery } from '../modules/operations/runtimeRealtime'
 // Query parameters are provider owned; events invalidate metadata rather than inserting DTOs.
 const sameResource = (id: unknown, event: RealtimeChange) => !event.resourceId || id === event.resourceId
 const sameGroup = (id: unknown, groupId?: string) => !groupId || !id || id === groupId
@@ -18,6 +19,7 @@ function matchesGroup(key: readonly unknown[], groupId?: string) {
 }
 export function matchesPilotQuery(key: readonly unknown[], event: RealtimeChange, meta?: Record<string, unknown>) {
   const [namespace, kind, resourceId] = key
+  if (event.topic === 'runtime-observations') return matchesRuntimeQuery(key, event)
   if (event.topic === 'search') return namespace === 'search'
   if (event.topic === 'git') return matchesGitQuery(key, event)
   if (event.topic === 'domains') return matchesDomainQuery(key, event)

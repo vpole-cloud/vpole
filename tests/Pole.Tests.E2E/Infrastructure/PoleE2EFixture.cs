@@ -18,6 +18,7 @@ using k8s.Autorest;
 using k8s.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.Core.Kubernetes;
 using Pole.Testing;
 using Xunit;
 
@@ -621,6 +622,85 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             ["get", "secret", secretName, "--namespace", GetNamespaceName(resourceGroupId)],
             cancellationToken) == 0;
 
+    public async Task<IReadOnlyList<OwnedObservationPod>> ListOwnedObservationPodsAsync(
+        TestUser user, string tenantId, string serviceId, string deploymentId, CancellationToken cancellationToken)
+    {
+        var context = await ObservationPodContextAsync(user, tenantId, serviceId, deploymentId, cancellationToken);
+        return await OwnedObservationPodsAsync(context, cancellationToken);
+    }
+
+    public async Task DeleteOwnedObservationPodAsync(
+        TestUser user, string tenantId, string serviceId, string deploymentId, string podUid, CancellationToken cancellationToken)
+    {
+        var context = await ObservationPodContextAsync(user, tenantId, serviceId, deploymentId, cancellationToken);
+        var pod = (await OwnedObservationPodsAsync(context, cancellationToken)).SingleOrDefault(item => item.Uid == podUid)
+            ?? throw new InvalidOperationException("The requested pod is not owned by the current test workload.");
+        await _kubernetes.CoreV1.DeleteNamespacedPodAsync(pod.Name, context.Namespace,
+            body: new V1DeleteOptions { GracePeriodSeconds = 0, Preconditions = new V1Preconditions { Uid = pod.Uid } },
+            cancellationToken: cancellationToken);
+    }
+
+    private async Task<ObservationPodContext> ObservationPodContextAsync(
+        TestUser user, string tenantId, string serviceId, string deploymentId, CancellationToken ct)
+    {
+        using var request = CreateAuthenticatedRequest(HttpMethod.Get, $"/api/v1/web-services/{serviceId}", user, tenantId);
+        using var response = await Api.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(ct));
+        var service = document.RootElement;
+        if (service.GetProperty("id").GetString() != serviceId) throw new InvalidOperationException("The requested workload identity changed.");
+        var placement = service.GetProperty("deployments").EnumerateArray().Single(item => item.GetProperty("deploymentId").GetString() == deploymentId);
+        if (placement.GetProperty("desiredOperation").GetString() != "Apply") throw new InvalidOperationException("The test workload is no longer applied.");
+        var groupId = service.GetProperty("resourceGroupId").GetString()!;
+        var recorded = _kubernetesNamespaces.TryGetValue(groupId, out var owned) ? owned :
+            throw new InvalidOperationException("No fixture-owned namespace was recorded for the requested workload.");
+        var nativeNamespace = await _kubernetes.CoreV1.ReadNamespaceAsync(recorded.Name, cancellationToken: ct);
+        VerifyOwnedNamespace(nativeNamespace, recorded.Uid);
+        // Namespace discovery remains an authenticated API read, independently of native labels.
+        using var cellsRequest = CreateAuthenticatedRequest(HttpMethod.Get, $"/api/v1/resource-groups/{groupId}/runtime-cells", user, tenantId);
+        using var cellsResponse = await Api.SendAsync(cellsRequest, ct);
+        cellsResponse.EnsureSuccessStatusCode();
+        using var cellsDocument = JsonDocument.Parse(await cellsResponse.Content.ReadAsStreamAsync(ct));
+        var runtimeCellId = placement.GetProperty("runtimeCellId").GetString()!;
+        var cell = cellsDocument.RootElement.EnumerateArray().Single(item => item.GetProperty("id").GetString() == runtimeCellId);
+        if (cell.GetProperty("kubernetesNamespace").GetString() != recorded.Name ||
+            cell.GetProperty("deploymentTargetId").GetString() != placement.GetProperty("deploymentTargetId").GetString())
+            throw new InvalidOperationException("The current runtime placement does not match the owned namespace.");
+        var identity = new WorkloadIdentityLabels(tenantId, groupId, placement.GetProperty("isolationScopeId").GetString()!, runtimeCellId,
+            placement.GetProperty("deploymentTargetId").GetString()!, "WebService", serviceId, deploymentId);
+        return new(recorded.Name, recorded.Uid, service.GetProperty("name").GetString()!, identity);
+    }
+
+    private async Task<IReadOnlyList<OwnedObservationPod>> OwnedObservationPodsAsync(ObservationPodContext context, CancellationToken ct)
+    {
+        VerifyOwnedNamespace(await _kubernetes.CoreV1.ReadNamespaceAsync(context.Namespace, cancellationToken: ct), context.NamespaceUid);
+        var controller = await _kubernetes.AppsV1.ReadNamespacedDeploymentAsync(context.Name, context.Namespace, cancellationToken: ct);
+        if (!Owns(controller.Metadata)) throw new InvalidOperationException("The native controller no longer matches the test identity.");
+        var selector = string.Join(',', context.Identity.ToDictionary().Select(pair => $"{pair.Key}={pair.Value}"));
+        var replicas = await _kubernetes.AppsV1.ListNamespacedReplicaSetAsync(context.Namespace, labelSelector: selector, limit: 100, cancellationToken: ct);
+        if (!string.IsNullOrEmpty(replicas.Metadata.ContinueProperty)) throw new InvalidOperationException("The test workload replica-set discovery exceeded its bound.");
+        var replicaUids = replicas.Items.Where(replica => Owns(replica.Metadata) &&
+            replica.Metadata.OwnerReferences?.Any(owner => owner.Controller == true && owner.Kind == "Deployment" && owner.Uid == controller.Metadata.Uid) == true)
+            .Select(replica => replica.Metadata.Uid).ToHashSet(StringComparer.Ordinal);
+        var pods = await _kubernetes.CoreV1.ListNamespacedPodAsync(context.Namespace, labelSelector: selector, limit: 100, cancellationToken: ct);
+        if (!string.IsNullOrEmpty(pods.Metadata.ContinueProperty)) throw new InvalidOperationException("The test workload pod discovery exceeded its bound.");
+        var result = pods.Items.Where(pod => Owns(pod.Metadata) && pod.Metadata.OwnerReferences?.Any(owner => owner.Controller == true &&
+            owner.Kind == "ReplicaSet" && replicaUids.Contains(owner.Uid)) == true)
+            .Select(pod => new OwnedObservationPod(pod.Metadata.Uid, pod.Metadata.Name, pod.Metadata.DeletionTimestamp is null &&
+                pod.Status?.Conditions?.Any(condition => condition.Type == "Ready" && condition.Status == "True") == true))
+            .OrderBy(pod => pod.Name, StringComparer.Ordinal).ToArray();
+        if (!await KubernetesWorkloadObservation.MatchesDeploymentBindingAsync(_kubernetes, context.Name, context.Namespace,
+            context.Identity, controller.Metadata.Uid, ct)) throw new InvalidOperationException("The native test controller changed during pod discovery.");
+        return result;
+        bool Owns(V1ObjectMeta metadata) => metadata.NamespaceProperty == context.Namespace && KubernetesWorkloadObservation.Owns(metadata, context.Identity);
+    }
+
+    private sealed record ObservationPodContext(
+        string Namespace,
+        string NamespaceUid,
+        string Name,
+        WorkloadIdentityLabels Identity);
+
     public async Task WaitForWebServiceReadyAsync(string groupId, string name, CancellationToken ct)
     {
         var deadline = DateTime.UtcNow.AddMinutes(3);
@@ -1058,9 +1138,13 @@ public sealed class PoleE2EFixture : IAsyncLifetime
 
     private int KeycloakPort => ((IPEndPoint)_keycloakPortReservation.LocalEndpoint).Port;
 
-    private static TcpListener ReserveTcpPort()
+    internal static TcpListener ReserveTcpPort()
     {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
+        // Kestrel's localhost endpoints bind both address families. An IPv4-only
+        // reservation leaves the same IPv6 port available to another Aspire resource.
+        var listener = new TcpListener(Socket.OSSupportsIPv6 ? IPAddress.IPv6Any : IPAddress.Loopback, 0);
+        if (Socket.OSSupportsIPv6) listener.Server.DualMode = true;
+        listener.ExclusiveAddressUse = true;
         listener.Start();
         return listener;
     }
@@ -1412,3 +1496,8 @@ internal sealed record HarborCredentials(
 internal sealed record RecordedNamespace(
     string Name,
     string Uid);
+
+public sealed record OwnedObservationPod(
+    string Uid,
+    string Name,
+    bool Ready);

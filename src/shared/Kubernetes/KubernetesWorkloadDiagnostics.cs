@@ -41,7 +41,7 @@ public static class KubernetesWorkloadDiagnostics
         var controller = await client.AppsV1.ReadNamespacedDeploymentAsync(name, namespaceName, cancellationToken: ct);
         if (!KubernetesWorkloadObservation.Owns(controller.Metadata, identity)) return null;
         var replicas = await client.AppsV1.ListNamespacedReplicaSetAsync(namespaceName, labelSelector: Selector(identity), limit: 100, cancellationToken: ct);
-        var owned = replicas.Items.Where(replica => KubernetesWorkloadObservation.Owns(replica.Metadata, identity) && ControlledBy(replica.Metadata, new HashSet<string>([controller.Metadata.Uid], StringComparer.Ordinal)))
+        var owned = replicas.Items.Where(replica => replica.Metadata.NamespaceProperty == namespaceName && KubernetesWorkloadObservation.Owns(replica.Metadata, identity) && ControlledBy(replica.Metadata, new HashSet<string>([controller.Metadata.Uid], StringComparer.Ordinal)))
             .Select(replica => replica.Metadata).ToArray();
         return new(client, namespaceName, identity, controller.Metadata, "Deployment", owned, owned.Select(replica => replica.Uid).ToHashSet(StringComparer.Ordinal),
             !string.IsNullOrEmpty(replicas.Metadata.ContinueProperty), generation, KubernetesWorkloadObservation.TemplateGenerationAnnotation, false);
@@ -59,7 +59,7 @@ public static class KubernetesWorkloadDiagnostics
     private static async Task<(V1Pod[] Pods, bool Truncated)> PodsAsync(OwnedKubernetesWorkload workload, CancellationToken ct)
     {
         var list = await workload.Client.CoreV1.ListNamespacedPodAsync(workload.Namespace, labelSelector: Selector(workload.Identity), limit: 100, cancellationToken: ct);
-        return (list.Items.Where(pod => KubernetesWorkloadObservation.Owns(pod.Metadata, workload.Identity) && ControlledBy(pod.Metadata, workload.PodOwnerUids))
+        return (list.Items.Where(pod => pod.Metadata.NamespaceProperty == workload.Namespace && KubernetesWorkloadObservation.Owns(pod.Metadata, workload.Identity) && ControlledBy(pod.Metadata, workload.PodOwnerUids))
             .OrderBy(pod => pod.Metadata.Name, StringComparer.Ordinal).Take(100).ToArray(), workload.ControllersTruncated || !string.IsNullOrEmpty(list.Metadata.ContinueProperty));
     }
 
@@ -78,8 +78,8 @@ public static class KubernetesWorkloadDiagnostics
             return new DiagnosticWorkloadInstance(pod.Metadata.Uid, summary.Name, summary.Phase, summary.Ready, summary.CurrentGeneration, summary.RestartCount, summary.Reasons, Containers(pod), (pod.Spec?.Containers?.Count ?? 0) > 32 || (pod.Spec?.InitContainers?.Count ?? 0) > 32);
         }).ToArray();
         var objects = new[] { (Kind: workload.ControllerKind, Metadata: workload.Controller) }
-            .Concat(workload.ReplicaSets.Select(metadata => (Kind: "ReplicaSet", Metadata: metadata)))
-            .Concat(pods.Select(pod => (Kind: "Pod", Metadata: pod.Metadata))).DistinctBy(item => item.Metadata.Uid).ToArray();
+            .Concat(workload.ReplicaSets.OrderBy(metadata => metadata.Uid, StringComparer.Ordinal).Select(metadata => (Kind: "ReplicaSet", Metadata: metadata)))
+            .Concat(pods.OrderBy(pod => pod.Metadata.Uid, StringComparer.Ordinal).Select(pod => (Kind: "Pod", Metadata: pod.Metadata))).DistinctBy(item => item.Metadata.Uid).ToArray();
         var events = new List<DiagnosticWorkloadEvent>();
         var eventsTruncated = objects.Length > 8 || truncated;
         string? unavailable = null;
