@@ -1,11 +1,12 @@
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr'
-import type { RealtimeChange, RealtimeCoverage, RealtimeSubscription } from './types'
-import { normalizeChange, normalizeCoverage, type RealtimeWireChange, type RealtimeWireCoverage } from './types'
+import type { RealtimeChange, RealtimeClientLifecycleReport, RealtimeCoverage, RealtimeSubscription } from './types'
+import { boundedLifecycleCount, normalizeChange, normalizeCoverage, type RealtimeWireChange, type RealtimeWireCoverage } from './types'
 export interface RealtimeConnection {
   start(): Promise<void>; stop(): Promise<void>;
   subscribe(requests: RealtimeSubscription[]): Promise<RealtimeCoverage[]>;
   heartbeat(): Promise<RealtimeCoverage[]>;
   unsubscribe(): Promise<void>;
+  reportLifecycle?(report: RealtimeClientLifecycleReport): Promise<boolean>;
   onChanged(callback: (change: RealtimeChange) => void): void;
   onSessionRevoked(callback: () => void): void;
   onAccessRevoked(callback: (tenantId?: string) => void): void;
@@ -19,6 +20,11 @@ export function createRealtimeConnection(baseUrl: string): RealtimeConnection {
   return { start: () => hub.start(), stop: () => hub.stop(), subscribe: (requests) => hub.invoke<RealtimeWireCoverage[]>('Subscribe', requests).then(values => values.map(normalizeCoverage)),
     heartbeat: () => hub.invoke<RealtimeWireCoverage[]>('Heartbeat').then(values => values.map(normalizeCoverage)),
     unsubscribe: () => hub.invoke('Unsubscribe'),
+    reportLifecycle: async (report) => {
+      const counts = { reconnects: boundedLifecycleCount(report.reconnects), fallbacks: boundedLifecycleCount(report.fallbacks) }
+      if (!counts.reconnects && !counts.fallbacks) return false
+      try { return await hub.invoke<unknown>('ReportClientLifecycle', counts) === true } catch { return false }
+    },
     onChanged: (callback) => hub.on('Changed', (value: RealtimeWireChange) => callback(normalizeChange(value))), onSessionRevoked: (callback) => hub.on('SessionRevoked', callback),
     onAccessRevoked: (callback) => hub.on('AccessRevoked', (tenantId: string | null) => callback(tenantId ?? undefined)), onReconnecting: (callback) => hub.onreconnecting(callback),
     onReconnected: (callback) => hub.onreconnected(callback), onClose: (callback) => hub.onclose(callback) }

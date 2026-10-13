@@ -54,6 +54,7 @@ public static class ResourceDeploymentFeature
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<ResourceDeploymentObservationOptions>>().Value);
         services.TryAddScoped<IResourceDeploymentObservationStore, MongoResourceDeploymentObservationStore>();
         services.TryAddScoped<ResourceDeploymentObservationContextLoader>();
+        services.TryAddSingleton<ResourceDeploymentObservationMetrics>();
         services.TryAddScoped<ResourceDeploymentSharedObservationReader>();
         services.TryAddSingleton<ResourceDeploymentObservationWakeup>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IRealtimeTopicLifecycle, ResourceDeploymentObservationLifecycle>());

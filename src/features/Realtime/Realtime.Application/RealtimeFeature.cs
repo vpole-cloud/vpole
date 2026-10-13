@@ -26,6 +26,7 @@ public static class RealtimeFeature
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<RealtimeOptions>>().Value);
         services.TryAddSingleton<TimeProvider>(TimeProvider.System);
         services.TryAddSingleton<RealtimeTopicRegistry>();
+        services.TryAddSingleton<RealtimeMetrics>();
         // Disabled bootstrap still returns a browser-readable 404 with exact-origin CORS.
         services.AddCors(cors => cors.AddPolicy(CorsPolicy, policy =>
         {

@@ -149,7 +149,8 @@ public sealed class KubernetesNativeWatchTests
         clock.Advance(TimeSpan.FromSeconds(1));
         Assert.True(await pending.WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.Equal(KubernetesListWatchChangeKind.Unavailable, changes.Current.Kind);
-        Assert.True(stalled.Canceled);
+        // The SDK can finish its enumerator before the cancelled HTTP handler unwinds.
+        Assert.True(await stalled.CancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(2)));
         cancellation.Cancel();
         await changes.DisposeAsync();
 
@@ -236,14 +237,14 @@ public sealed class KubernetesNativeWatchTests
     private sealed class NoWatchHeadersHandler : DelegatingHandler
     {
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public bool Canceled { get; private set; }
+        public TaskCompletionSource<bool> CancellationObserved { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             if (IsWatch(request.RequestUri!))
             {
                 Entered.TrySetResult();
                 try { await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); }
-                finally { Canceled = cancellationToken.IsCancellationRequested; }
+                finally { CancellationObserved.TrySetResult(cancellationToken.IsCancellationRequested); }
             }
             return new(HttpStatusCode.OK) { RequestMessage = request, Content = new StringContent(List("list")) };
         }

@@ -10,8 +10,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Pole.Features.Realtime.Application;
 using Pole.Features.Realtime.Application.Endpoints;
@@ -82,7 +82,7 @@ public sealed class RealtimeSessionHttpTests
         Assert.Single(app.Services.GetRequiredService<MemoryTickets>().Tickets);
     }
 
-    private static async Task<WebApplication> StartAsync()
+    private static async Task<WebApplication> StartAsync(ObservedSessionHandler? handler = null, CancellationToken? requestAborted = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
@@ -103,7 +103,9 @@ public sealed class RealtimeSessionHttpTests
         builder.Services.AddScoped<IMediator, Pole.Mediator.Mediator>();
         builder.Services.AddScoped<IMediatorOutcomeHandler<CreateRealtimeSessionRequest, CreateRealtimeSessionOutcome>, CreateRealtimeSessionHandler>();
         builder.Services.AddScoped<IMediatorOutcomeHandler<DeleteRealtimeSessionRequest, DeleteRealtimeSessionOutcome>, DeleteRealtimeSessionHandler>();
+        if (handler is not null) builder.Services.AddSingleton<IMediatorOutcomeHandler<CreateRealtimeSessionRequest, CreateRealtimeSessionOutcome>>(handler);
         var app = builder.Build();
+        if (requestAborted is { } token) app.Use(async (context, next) => { context.RequestAborted = token; await next(context); });
         app.UseRealtimeOriginGuard();
         app.UseCors();
         app.UseAuthentication();
@@ -112,6 +114,27 @@ public sealed class RealtimeSessionHttpTests
         app.MapGet("/ordinary-api", () => "ok").RequireAuthorization();
         await app.StartAsync();
         return app;
+    }
+
+    [Fact]
+    public async Task BootstrapEndpointPropagatesRequestCancellationToTheSessionHandler()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var handler = new ObservedSessionHandler();
+        await using var app = await StartAsync(handler, cancellation.Token);
+        using var client = app.GetTestClient();
+        client.DefaultRequestHeaders.Add("Origin", "https://frontend.test");
+        client.DefaultRequestHeaders.Authorization = new("Bearer", "viewer");
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsync(RealtimeFeature.Route + "/session", null)).StatusCode);
+        Assert.True(handler.Received.CanBeCanceled);
+        Assert.Equal(cancellation.Token, handler.Received);
+    }
+
+    private sealed class ObservedSessionHandler : IMediatorOutcomeHandler<CreateRealtimeSessionRequest, CreateRealtimeSessionOutcome>
+    {
+        public CancellationToken Received { get; private set; }
+        public Task<CreateRealtimeSessionOutcome> HandleAsync(CreateRealtimeSessionRequest request, CancellationToken cancellationToken = default)
+        { Received = cancellationToken; return Task.FromResult<CreateRealtimeSessionOutcome>(new RealtimeSessionIdentityUnavailable()); }
     }
 
     [Fact]

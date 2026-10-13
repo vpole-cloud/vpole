@@ -48,3 +48,34 @@ The feature-local tests exercise route/scheme separation, expiry, origin restric
 tenant isolation, delivery-time membership, disabled startup and failure-safe provider
 interest cleanup. Their authentication fixture proves routing, not real Keycloak JWT
 validation; real Redis and browser flows are verified by integration/E2E tests.
+
+## Coverage and diagnostics
+
+Coverage is acknowledged per subscription; transport connectivity or an arriving hint never
+proves coverage. Metadata topics use provider-owned committed events and projection adapters.
+`runtime-observations` is tenant-scoped by physical deployment ID; WebServices, Redis and
+PostgreSQL contribute their native change sources through the observation catalog. PostgreSQL
+supports its selected native StatefulSet or CloudNativePG source. `storage-observations` is
+platform-admin-only and targets one deployment target. A disabled, unavailable or unregistered
+owner remains uncovered without disabling available sibling topics.
+
+Clients coalesce hints for 250 ms, retain a running HTTP read and perform one trailing read.
+Observation hints fence exact scoped read epochs and version floors before resync; a coalesced
+heartbeat can recheck recovered coverage, but only its current acknowledgement enables it.
+Healthy heartbeats renew interests without repeatedly refetching HTTP metadata. Hidden pages
+release interests. See the [observation lifecycle](../ResourceDeployments/README.md#shared-observation-lifecycle)
+and [frontend query ownership](../../api/frontend/README.md#realtime-query-ownership).
+
+`Pole.Realtime` measures delivery attempts, authorized send recipients, bounded outcomes and
+server authorization/send duration; it also records connection, subscription and coverage
+transitions. These measurements do not establish commit-to-browser latency or successful
+application connectivity. Metric labels contain registered topics, normalized scopes/outcomes
+and a controlled server/client source, never account or workspace identifiers.
+
+The optional hub method `ReportClientLifecycle` accepts only `{reconnects, fallbacks}`, each
+0–100 and not both zero. It rechecks the current cookie ticket, subject, session revocation and
+expiry without changing any subscription or workspace authority. Accepted reports are at least
+ten seconds apart per connection; `false` means the client should retain its coalesced counts.
+Reports are best-effort client observations, distinguishable by `source=client`; existing clients
+need not invoke the method. Reports are not persisted, published through the outbox or stored in
+the query cache. Diagnostic transport failure must leave ordinary actions usable.

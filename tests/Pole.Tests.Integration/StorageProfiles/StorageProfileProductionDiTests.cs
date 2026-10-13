@@ -62,6 +62,7 @@ public sealed class StorageProfileProductionDiTests(MongoReplicaSetFixture fixtu
         AssertResolved<IStorageObservationSource>(scope.ServiceProvider);
         AssertResolved<StorageObservationReader>(scope.ServiceProvider);
         AssertResolved<StorageObservationNativeReader>(scope.ServiceProvider);
+        Assert.Same(provider.GetRequiredService<StorageObservationMetrics>(), scope.ServiceProvider.GetRequiredService<StorageObservationMetrics>());
     }
 
     private static void AssertResolved<T>(IServiceProvider provider)

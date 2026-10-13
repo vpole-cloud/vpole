@@ -20,7 +20,7 @@ public sealed record KubernetesListWatchChange<T>(
 /// <summary>Independent, bounded LIST/WATCH state for one native kind and selector.</summary>
 public static class KubernetesListWatch
 {
-    private enum Failure { Unavailable, Expired, Malformed }
+    private enum Failure { Unavailable, Expired, Malformed, Eof }
     private sealed record MoveResult(
         bool Moved,
         Failure? Failure = null);
@@ -35,98 +35,109 @@ public static class KubernetesListWatch
         Func<T, string?> resourceVersion,
         TimeProvider clock,
         int maximumItems = 100,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        [EnumeratorCancellation] CancellationToken cancellationToken = default,
+        KubernetesWatchMetrics? metrics = null)
     {
+        metrics ??= KubernetesWatchMetrics.Shared;
         string? version = null;
         var retry = TimeSpan.FromMilliseconds(500);
-        while (!cancellationToken.IsCancellationRequested)
+        try
         {
-            if (version is null)
+            while (!cancellationToken.IsCancellationRequested)
             {
-                var listed = await ListAsync(listPage, maximumItems, cancellationToken);
-                if (listed.Failure is not null)
+                if (version is null)
                 {
-                    yield return new(KubernetesListWatchChangeKind.Unavailable);
-                    await Task.Delay(retry, clock, cancellationToken);
-                    retry = NextRetry(retry);
-                    continue;
+                    var listed = await ListAsync(listPage, maximumItems, cancellationToken);
+                    if (listed.Failure is not null)
+                    {
+                        metrics.Record(Recovery(listed.Failure.Value));
+                        yield return new(KubernetesListWatchChangeKind.Unavailable);
+                        await Task.Delay(retry, clock, cancellationToken);
+                        retry = NextRetry(retry);
+                        continue;
+                    }
+                    version = listed.Version!;
+                    metrics.Record(KubernetesWatchOutcome.Listed);
+                    yield return new(KubernetesListWatchChangeKind.Listed, listed.Items);
                 }
-                version = listed.Version!;
-                yield return new(KubernetesListWatchChangeKind.Listed, listed.Items);
-            }
 
-            using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            var opened = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            Failure? callbackFailure = null;
-            var openingState = 0; // 0 waiting, 1 opened, 2 expired. One winner prevents late false readiness.
-            ITimer? watchdog = null;
-            DateTimeOffset? openedAt = null;
-            using var headers = KubernetesWatchHeaders.Begin(() =>
-            {
-                if (Interlocked.CompareExchange(ref openingState, 1, 0) != 0) return;
-                watchdog!.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
-                openedAt = clock.GetUtcNow();
-                opened.TrySetResult();
-            }, lifetime.Token);
-            using var openingWatchdog = watchdog = clock.CreateTimer(_ =>
-            {
-                if (Interlocked.CompareExchange(ref openingState, 2, 0) == 0) lifetime.Cancel();
-            }, null, TimeSpan.FromSeconds(15), Timeout.InfiniteTimeSpan);
-            var events = watch(version, exception =>
-            {
-                callbackFailure ??= Classify(exception);
-                // SDK onError otherwise waits for EOF, even after Status410 or malformed JSON.
-                lifetime.Cancel();
-            }, lifetime.Token).GetAsyncEnumerator(lifetime.Token);
-            Task<bool>? pending = null;
-            Failure? failure = null;
-            var ready = false;
-            try
-            {
-                pending = events.MoveNextAsync().AsTask();
-                if (await Task.WhenAny(opened.Task, pending) == opened.Task && opened.Task.IsCompletedSuccessfully && !lifetime.IsCancellationRequested)
+                using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                var opened = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                Failure? callbackFailure = null;
+                var openingState = 0; // 0 waiting, 1 opened, 2 expired. One winner prevents late false readiness.
+                ITimer? watchdog = null;
+                DateTimeOffset? openedAt = null;
+                using var headers = KubernetesWatchHeaders.Begin(() =>
                 {
-                    ready = true;
-                    yield return new(KubernetesListWatchChangeKind.Ready);
-                }
-                while (!cancellationToken.IsCancellationRequested)
+                    if (Interlocked.CompareExchange(ref openingState, 1, 0) != 0) return;
+                    watchdog!.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+                    openedAt = clock.GetUtcNow();
+                    metrics.Record(KubernetesWatchOutcome.Opened);
+                    opened.TrySetResult();
+                }, lifetime.Token);
+                using var openingWatchdog = watchdog = clock.CreateTimer(_ =>
                 {
-                    var moved = await MoveAsync(pending);
-                    pending = null;
-                    failure = callbackFailure ?? moved.Failure;
-                    if (failure is not null || !moved.Moved) break;
-                    if (!ready && opened.Task.IsCompletedSuccessfully && !lifetime.IsCancellationRequested)
+                    if (Interlocked.CompareExchange(ref openingState, 2, 0) == 0)
+                    { metrics.Record(KubernetesWatchOutcome.StalledHeaders); lifetime.Cancel(); }
+                }, null, TimeSpan.FromSeconds(15), Timeout.InfiniteTimeSpan);
+                var events = watch(version, exception =>
+                {
+                    callbackFailure ??= Classify(exception);
+                    // SDK onError otherwise waits for EOF, even after Status410 or malformed JSON.
+                    lifetime.Cancel();
+                }, lifetime.Token).GetAsyncEnumerator(lifetime.Token);
+                Task<bool>? pending = null;
+                Failure? failure = null;
+                var ready = false;
+                try
+                {
+                    pending = events.MoveNextAsync().AsTask();
+                    if (await Task.WhenAny(opened.Task, pending) == opened.Task && opened.Task.IsCompletedSuccessfully && !lifetime.IsCancellationRequested)
                     {
                         ready = true;
                         yield return new(KubernetesListWatchChangeKind.Ready);
                     }
-                    var (type, item) = events.Current;
-                    var nextVersion = resourceVersion(item);
-                    if (string.IsNullOrEmpty(nextVersion)) { failure = Failure.Malformed; break; }
-                    retry = TimeSpan.FromMilliseconds(500);
-                    version = nextVersion; // Opaque, local to this kind AND selector; never order versions.
-                    if (type != WatchEventType.Bookmark)
-                        yield return new(KubernetesListWatchChangeKind.Changed, Type: type, Item: item);
-                    pending = events.MoveNextAsync().AsTask();
+                    while (!cancellationToken.IsCancellationRequested)
+                    {
+                        var moved = await MoveAsync(pending);
+                        pending = null;
+                        failure = callbackFailure ?? moved.Failure;
+                        if (failure is not null || !moved.Moved) break;
+                        if (!ready && opened.Task.IsCompletedSuccessfully && !lifetime.IsCancellationRequested)
+                        {
+                            ready = true;
+                            yield return new(KubernetesListWatchChangeKind.Ready);
+                        }
+                        var (type, item) = events.Current;
+                        var nextVersion = resourceVersion(item);
+                        if (string.IsNullOrEmpty(nextVersion)) { failure = Failure.Malformed; break; }
+                        retry = TimeSpan.FromMilliseconds(500);
+                        version = nextVersion; // Opaque, local to this kind AND selector; never order versions.
+                        if (type != WatchEventType.Bookmark)
+                            yield return new(KubernetesListWatchChangeKind.Changed, Type: type, Item: item);
+                        pending = events.MoveNextAsync().AsTask();
+                    }
                 }
-            }
-            finally
-            {
-                lifetime.Cancel();
-                headers.CloseResponse();
-                if (pending is not null) await MoveAsync(pending);
-                await events.DisposeAsync();
+                finally
+                {
+                    lifetime.Cancel();
+                    headers.CloseResponse();
+                    if (pending is not null) await MoveAsync(pending);
+                    await events.DisposeAsync();
+                }
+                cancellationToken.ThrowIfCancellationRequested();
+                // A quiet, functioning transport can expire without a bookmark or data frame.
+                if (openedAt is { } since && clock.GetUtcNow() - since >= TimeSpan.FromSeconds(30))
+                    retry = TimeSpan.FromMilliseconds(500);
+                if (openingState != 2) metrics.Record(failure is { } reason ? Recovery(reason) : KubernetesWatchOutcome.Eof);
+                yield return new(KubernetesListWatchChangeKind.Unavailable);
+                if (failure is Failure.Expired or Failure.Malformed) version = null;
+                await Task.Delay(retry, clock, cancellationToken);
+                retry = NextRetry(retry);
             }
             cancellationToken.ThrowIfCancellationRequested();
-            // A quiet, functioning transport can expire without a bookmark or data frame.
-            if (openedAt is { } since && clock.GetUtcNow() - since >= TimeSpan.FromSeconds(30))
-                retry = TimeSpan.FromMilliseconds(500);
-            yield return new(KubernetesListWatchChangeKind.Unavailable);
-            if (failure is Failure.Expired or Failure.Malformed) version = null;
-            await Task.Delay(retry, clock, cancellationToken);
-            retry = NextRetry(retry);
         }
-        cancellationToken.ThrowIfCancellationRequested();
+        finally { if (cancellationToken.IsCancellationRequested) metrics.Record(KubernetesWatchOutcome.Cancelled); }
     }
 
     /// <summary>Reacquire an externally owned client for each stream; never dispose its shared lifetime.</summary>
@@ -138,6 +149,9 @@ public static class KubernetesListWatch
         var client = await currentClient(cancellationToken);
         await foreach (var item in watch(client).WithCancellation(cancellationToken)) yield return item;
     }
+
+    private static KubernetesWatchOutcome Recovery(Failure failure) => failure switch
+    { Failure.Expired => KubernetesWatchOutcome.Expired, Failure.Malformed => KubernetesWatchOutcome.Malformed, Failure.Eof => KubernetesWatchOutcome.Eof, _ => KubernetesWatchOutcome.Unavailable };
 
     private static TimeSpan NextRetry(TimeSpan retry) => TimeSpan.FromMilliseconds(Math.Min(retry.TotalMilliseconds * 2, 30_000));
 
@@ -181,6 +195,9 @@ public static class KubernetesListWatch
         HttpOperationException { Response.StatusCode: HttpStatusCode.Gone } => Failure.Expired,
         KubernetesException { Status.Code: 410 } => Failure.Expired,
         JsonException => Failure.Malformed,
+        // The SDK wraps a quiet, empty response EOF in HttpRequestException.
+        HttpRequestException { InnerException: EndOfStreamException } => Failure.Eof,
+        EndOfStreamException => Failure.Eof,
         _ => Failure.Unavailable
     };
 }

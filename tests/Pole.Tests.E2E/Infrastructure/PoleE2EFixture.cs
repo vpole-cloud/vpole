@@ -55,6 +55,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
     private string? _scratchDirectory;
     private bool _realtimeReplicaStarted;
     private bool _realtimeReplicaStopped;
+    private bool _realtimeRedisStopped;
 
     public PoleE2EFixture()
     {
@@ -299,7 +300,18 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             _realtimeReplicaPortReservations.Add(reservation);
             return ((IPEndPoint)reservation.LocalEndpoint).Port;
         }).ToArray();
-        var replica = appHost.AddProject<Projects.Pole_Server>("pole-server-replica", launchProfileName: null)
+        var projectDirectory = Path.GetDirectoryName(new Projects.Pole_Server().ProjectPath)
+            ?? throw new InvalidOperationException("The API project directory is unavailable.");
+        var testOutput = new FileInfo(typeof(PoleE2EFixture).Assembly.Location).Directory
+            ?? throw new InvalidOperationException("The E2E build output directory is unavailable.");
+        var configuration = testOutput.Parent?.Name
+            ?? throw new InvalidOperationException("The E2E build configuration is unavailable.");
+        var serverAssembly = Path.Combine(projectDirectory, "bin", configuration, testOutput.Name, "Pole.Server.dll");
+        if (!File.Exists(serverAssembly))
+            throw new InvalidOperationException("The matching built API assembly is unavailable; build the E2E project before running it.");
+        // The E2E build already includes the full API. Launch that same artifact directly
+        // so DCP supervises the API process without a dotnet-run parent and its process tree.
+        var replica = appHost.AddExecutable("pole-server-replica", "dotnet", projectDirectory, "exec", serverAssembly)
             .WithExplicitStart()
             .WithHttpEndpoint(port: ports[0], targetPort: ports[0], name: "http", isProxied: false)
             .WithHttpEndpoint(port: ports[1], targetPort: ports[1], name: "functions-public", isProxied: false)
@@ -311,6 +323,10 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         foreach (var environment in primary.Resource.Annotations.OfType<EnvironmentCallbackAnnotation>())
             replica.Resource.Annotations.Add(environment);
         replica.WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
+            // The pinned DCP stop command retries for about 15s. Bound this owned
+            // replica's graceful shutdown below that window; still require its real
+            // terminal state, same-instance stop timestamp and accepted exit status.
+            .WithEnvironment("DOTNET_SHUTDOWNTIMEOUTSECONDS", "10")
             .WithEnvironment("ASPNETCORE_URLS", string.Join(';', ports.Take(3).Select(port => $"http://localhost:{port}")))
             .WithEnvironment("Functions__Gateway__ControlPort", ports[0].ToString(System.Globalization.CultureInfo.InvariantCulture))
             .WithEnvironment("Functions__Gateway__PublicPort", ports[1].ToString(System.Globalization.CultureInfo.InvariantCulture))
@@ -323,11 +339,24 @@ public sealed class PoleE2EFixture : IAsyncLifetime
     {
         var application = _application ?? throw new InvalidOperationException("The E2E application is not initialized.");
         foreach (var reservation in _realtimeReplicaPortReservations) reservation.Stop();
-        var result = await application.ResourceCommands.ExecuteCommandAsync("pole-server-replica", KnownResourceCommands.StartCommand, cancellationToken);
-        if (!result.Success) throw new InvalidOperationException("The realtime API replica could not start.");
-        await WaitForRequiredResourceHealthyAsync("pole-server-replica", cancellationToken);
-        _realtimeReplicaStarted = true;
+        using var command = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        command.CancelAfter(TimeSpan.FromSeconds(60));
+        var intent = DateTimeOffset.UtcNow;
+        var before = GetRealtimeReplicaLifecycleSnapshot();
         _realtimeReplicaStopped = false;
+        var result = await application.ResourceCommands.ExecuteCommandAsync("pole-server-replica", KnownResourceCommands.StartCommand, command.Token);
+        if (!result.Success) throw new InvalidOperationException($"The realtime API replica could not start: commandSucceeded={result.Success}, canceled={result.Canceled}, intentUtc={intent:O}. Before: {before}. Current: {GetRealtimeReplicaLifecycleSnapshot()}");
+        // Restart may initially expose the previous instance's terminal/health snapshot.
+        try
+        {
+            await application.ResourceNotifications.WaitForResourceAsync("pole-server-replica", KnownResourceStates.Running, command.Token);
+            await WaitForRequiredResourceHealthyAsync("pole-server-replica", command.Token);
+        }
+        catch (Exception exception)
+        {
+            throw new InvalidOperationException($"The realtime API replica did not become running and healthy: commandSucceeded={result.Success}, canceled={result.Canceled}, budgetCanceled={cancellationToken.IsCancellationRequested}, intentUtc={intent:O}. Before: {before}. Current: {GetRealtimeReplicaLifecycleSnapshot()}", exception);
+        }
+        _realtimeReplicaStarted = true;
         using var client = application.CreateHttpClient("pole-server-replica", "http");
         return client.BaseAddress ?? throw new InvalidOperationException("Aspire did not resolve the realtime API replica endpoint.");
     }
@@ -340,8 +369,9 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             throw new InvalidOperationException("The realtime API replica state is unavailable before cleanup.");
         if (!_realtimeReplicaStarted && (before.Snapshot.State?.Text is "NotStarted" or "FailedToStart")) return;
         if (before.Snapshot.State?.Text is not "Running")
-            throw new InvalidOperationException($"The realtime API replica exited before its owned stop. {DescribeStartupStates([name])}");
+            throw new InvalidOperationException($"The realtime API replica was not running before its owned stop. {GetRealtimeReplicaLifecycleSnapshot()}");
         var intent = DateTimeOffset.UtcNow;
+        var beforeStop = GetRealtimeReplicaLifecycleSnapshot();
         var result = await _application.ResourceCommands.ExecuteCommandAsync(before.Resource.Name, KnownResourceCommands.StopCommand, cancellationToken);
         var retryExhausted = result.Message?.Contains("Failed to stop resource", StringComparison.Ordinal) == true;
         using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -353,9 +383,9 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             await _application.ResourceNotifications.WaitForResourceAsync(name,
                 [KnownResourceStates.Finished, KnownResourceStates.Exited, "Terminated"], wait.Token);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException exception)
         {
-            throw new InvalidOperationException($"The realtime API replica did not finish its owned stop: commandSucceeded={result.Success}, canceled={result.Canceled}, budgetCanceled={cancellationToken.IsCancellationRequested}. {DescribeStartupStates([name])}");
+            throw new InvalidOperationException($"The realtime API replica did not finish its owned stop: commandSucceeded={result.Success}, canceled={result.Canceled}, retryExhausted={retryExhausted}, budgetCanceled={cancellationToken.IsCancellationRequested}, intentUtc={intent:O}. Before: {beforeStop}. Current: {GetRealtimeReplicaLifecycleSnapshot()}", exception);
         }
         if (!_application.ResourceNotifications.TryGetCurrentState(name, out var after))
             throw new InvalidOperationException("The realtime API replica state is unavailable after cleanup.");
@@ -365,8 +395,77 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         // only after a successful stop of this same instance; actual failure codes stay failures.
         var acceptedExit = after.Snapshot.ExitCode == 0 || result.Success && after.Snapshot.ExitCode == -1;
         if (!controlledStop || !acceptedExit || result.Canceled || !result.Success && !retryExhausted)
-            throw new InvalidOperationException($"The realtime API replica stop was not verified: commandSucceeded={result.Success}, canceled={result.Canceled}, retryExhausted={retryExhausted}. {DescribeStartupStates([name])}");
+            throw new InvalidOperationException($"The realtime API replica stop was not verified: commandSucceeded={result.Success}, canceled={result.Canceled}, retryExhausted={retryExhausted}, intentUtc={intent:O}. Before: {beforeStop}. Current: {GetRealtimeReplicaLifecycleSnapshot()}");
         _realtimeReplicaStopped = true;
+    }
+
+    public string GetRealtimeReplicaLifecycleSnapshot()
+    {
+        const string name = "pole-server-replica";
+        // Report only fixed resource identity and lifecycle scalars. Never serialize a
+        // snapshot, resource configuration, command message, endpoint, environment or log.
+        try
+        {
+            if (_application is null || !_application.ResourceNotifications.TryGetCurrentState(name, out var resource))
+                return $"{name}: snapshot=unavailable, started={_realtimeReplicaStarted}, verifiedStop={_realtimeReplicaStopped}";
+            var snapshot = resource.Snapshot;
+            var observedState = snapshot.State?.Text;
+            var state = observedState switch
+            {
+                "Starting" or "Running" or "FailedToStart" or "RuntimeUnhealthy" or "Waiting" or
+                "NotStarted" or "Building" or "Stopping" or "Exited" or "Finished" or "Terminated" or "Unknown" => observedState,
+                null => "none",
+                _ => "Other"
+            };
+            var instance = resource.ResourceId is { } id && (id == name || id.StartsWith(name + "-", StringComparison.Ordinal)) &&
+                Regex.IsMatch(id, "^[A-Za-z0-9_-]{1,200}$") ? id : "unexpected";
+            return $"{name}: instance={instance}, sameLogicalResource={resource.Resource.Name == name}, state={state}, health={snapshot.HealthStatus?.ToString() ?? "none"}, startUtc={snapshot.StartTimeStamp?.ToString("O") ?? "none"}, stopUtc={snapshot.StopTimeStamp?.ToString("O") ?? "none"}, exit={snapshot.ExitCode?.ToString() ?? "none"}, started={_realtimeReplicaStarted}, verifiedStop={_realtimeReplicaStopped}";
+        }
+        catch { return $"{name}: snapshot=unavailable"; }
+    }
+
+    public async Task StopRealtimeRedisAsync(CancellationToken cancellationToken)
+    {
+        var application = _application ?? throw new InvalidOperationException("The E2E application is not initialized.");
+        const string name = "realtime";
+        if (_realtimeRedisStopped) return;
+        if (!application.ResourceNotifications.TryGetCurrentState(name, out var before) ||
+            before.Resource is not ContainerResource || before.Snapshot.State?.Text != KnownResourceStates.Running)
+            throw new InvalidOperationException("The fixture-owned realtime Redis is not running before its controlled outage.");
+        // Register caller cleanup first. Mark intent before the command so a partial stop also
+        // gets restored. Only this fixture's session-scoped graph resource can be controlled.
+        _realtimeRedisStopped = true;
+        using var command = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        command.CancelAfter(TimeSpan.FromSeconds(30));
+        var result = await application.ResourceCommands.ExecuteCommandAsync(before.Resource.Name, KnownResourceCommands.StopCommand, command.Token);
+        if (!result.Success) throw new InvalidOperationException("The fixture-owned realtime Redis stop command failed.");
+        await application.ResourceNotifications.WaitForResourceAsync(name,
+            [KnownResourceStates.Finished, KnownResourceStates.Exited, "Terminated"], command.Token);
+        if (!application.ResourceNotifications.TryGetCurrentState(name, out var after) ||
+            !ReferenceEquals(after.Resource, before.Resource) || after.Snapshot.StartTimeStamp != before.Snapshot.StartTimeStamp)
+            throw new InvalidOperationException("The fixture-owned realtime Redis stop did not retain its controlled resource identity.");
+    }
+
+    public async Task StartRealtimeRedisAsync(CancellationToken cancellationToken)
+    {
+        if (!_realtimeRedisStopped) return;
+        var application = _application ?? throw new InvalidOperationException("The E2E application is not initialized.");
+        const string name = "realtime";
+        using var command = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        command.CancelAfter(TimeSpan.FromSeconds(45));
+        if (!application.ResourceNotifications.TryGetCurrentState(name, out var current))
+            throw new InvalidOperationException("The fixture-owned realtime Redis state is unavailable during recovery.");
+        if (current.Snapshot.State?.Text == "Stopping")
+            await application.ResourceNotifications.WaitForResourceAsync(name,
+                [KnownResourceStates.Finished, KnownResourceStates.Exited, "Terminated"], command.Token);
+        if (current.Snapshot.State?.Text != KnownResourceStates.Running)
+        {
+            var result = await application.ResourceCommands.ExecuteCommandAsync(name, KnownResourceCommands.StartCommand, command.Token);
+            if (!result.Success) throw new InvalidOperationException("The fixture-owned realtime Redis recovery command failed.");
+            await application.ResourceNotifications.WaitForResourceAsync(name, KnownResourceStates.Running, command.Token);
+        }
+        await WaitForRequiredResourceHealthyAsync(name, command.Token);
+        _realtimeRedisStopped = false;
     }
 
     private void ConfigureOwnedContainerResources(IDistributedApplicationBuilder appHost)
@@ -572,16 +671,17 @@ public sealed class PoleE2EFixture : IAsyncLifetime
 
     }
 
-    public async Task WaitForNamespaceCreationAsync(string resourceGroupId, CancellationToken cancellationToken)
+    public async Task WaitForNamespaceCreationAsync(string resourceGroupId, CancellationToken cancellationToken, TestUser? owner = null)
     {
+        owner ??= Alpha;
         var deadline = DateTimeOffset.UtcNow.AddMinutes(2);
         while (DateTimeOffset.UtcNow < deadline)
         {
             using var request = CreateAuthenticatedRequest(
                 HttpMethod.Get,
                 $"/api/v1/resource-groups/{resourceGroupId}/runtime-cells",
-                Alpha,
-                Alpha.DefaultTenantId);
+                owner,
+                owner.DefaultTenantId);
             using var response = await Api.SendAsync(request, cancellationToken);
             response.EnsureSuccessStatusCode();
             using var document = JsonDocument.Parse(

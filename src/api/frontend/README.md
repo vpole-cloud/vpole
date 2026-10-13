@@ -90,6 +90,12 @@ read before requesting authoritative state. Render loaded content by data presen
 `isInitialLoading` and `isRefreshing` to distinguish initial loading from background work.
 See [TanStack defaults](https://tanstack.com/query/latest/docs/framework/react/guides/important-defaults).
 
+Metadata commands use `hasHealthyCurrentQueryData` to distinguish a healthy current cached result
+from an initial or failed read. Background fetching alone does not disable a valid command.
+Each feature still checks permissions, scope, revision, phase and eligibility. Confirmations capture
+the selected command's identity and revision; a changed selection or failed refresh requires review.
+The predicate does not establish native observation freshness.
+
 Imperative metadata reads use `fetchScopedQuery` to share the same cache envelope and pending
 request as rendered queries. A temporary observer owns the read until completion or scope exit;
 exiting its last active owner cancels it without interrupting other active consumers.
@@ -270,6 +276,14 @@ account leaves realtime offline with bearer HTTP fallback until that browser ses
 Production requires the same-site reverse proxy described by the Realtime feature; local HTTP
 development must use the same hostname for UI and API so its Lax cookie is available.
 
+Optional client lifecycle diagnostics aggregate only reconnect/fallback counts in the controller
+for its current QuerySession and API. Attempts are singleflight and at least ten seconds apart;
+false or failed reports retain bounded counts for a later healthy heartbeat. Rotation fences held
+callbacks, and logout/dispose drops pending counts. Diagnostic errors never alter authorization,
+coverage or ordinary actions. Reports contain no identities or tokens and never enter query caches,
+browser storage or URLs. Reporting is best-effort; retry after an uncertain delivery can duplicate
+a diagnostic count.
+
 Run `npm test`, `npm run build` and `npm run lint` from this directory. Tests include independent
 module composition, registration conflicts, tenant races, image mutation/errors, separate drafts,
 dirty-close/navigation/unload guards, restoration, missing resources, URL precedence/history,
@@ -316,3 +330,38 @@ cursor. The viewer marks server truncation, interrupted capture, expiry and unav
 plain text, and limits its tail to 256 KiB/512 entries with an explicit discarded-range notice.
 Changing session, tenant, service or job aborts old reads and clears the buffer. Token renewal preserves the in-memory buffer and cursor. Logs stay on the
 server until their snapshotted retention deadline; output and cursor are not saved in browser storage.
+
+## Realtime query ownership
+
+One account-scoped cookie connection follows the authenticated query session independently of
+tenant workspaces and dirty drafts. Visible active queries register their owning metadata topics;
+server subscription acknowledgement determines coverage per topic. Reconnect acknowledges first,
+then refetches active authoritative HTTP queries. Hints only invalidate metadata and advance scoped
+observation fences; they never insert resource DTOs or grant permissions. Bursts coalesce for 250 ms,
+keep slow reads alive and schedule one trailing read. Healthy heartbeats do not create HTTP churn.
+
+Covered metadata retains a 60-second safety refresh; disabled or unhealthy transport restores each
+screen's existing fallback interval. WebService, Redis and PostgreSQL runtime health/diagnostics
+use 30-second covered validation and 20-second uncovered reads. Health evidence becomes stale
+at 45 seconds. Admin storage discovery uses one complete sanitized target snapshot, 30-second
+covered validation and its existing initial/manual/visibility uncovered behavior. Storage evidence
+also expires at 45 seconds; stale or incomplete inventory cannot enable a profile save.
+
+Storage snapshot keys and read epochs include the exact target connection version. Catalog revision
+is distinct from connection version: a target catalog hint fences the old native read before target
+inventory refresh. Complete prior evidence may remain explicitly stale for the same target, keeping
+a dirty profile form mounted through ordinary hints, renewal and rotation. Incomplete responses
+cannot replace its last complete rows or class choices. Permission loss clears privileged metadata
+and drafts; restoration waits for current fresh admin authority and new reads. Tenant memberships,
+ordinary tenant drafts and account discovery retain their independent ownership.
+
+Connection endpoints are declared provider metadata and persisted source/destination topology.
+Their queries observe the destination/source provider and committed registration/placement hints;
+dependency-field composites retain exact destination identities. Unknown providers retain 20-second
+fallback until their metadata capability is known. This path does not claim live EndpointSlice
+coverage, endpoint readiness, network enforcement or database connectivity.
+
+Visibility releases observation interests and suspends native/query work. Bearer renewal preserves
+ordinary drafts and authorized log reads; tenant/session/permission loss clears sensitive ownership.
+Passwords, credentials and runtime/build output remain outside notification payloads, query/mutation
+caches, URLs and persisted workspace references. Runtime logs remain short-lived bounded HTTP streams.
