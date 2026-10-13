@@ -64,8 +64,18 @@ function DiagnosticsContent({ operation }: { operation: ResourceDeploymentOperat
   const diagnostics = identityExact && value.diagnostics.kind === 'Available' ? value.diagnostics : null
   const instance = diagnostics?.instances.find(item => item.uid === uid)
   const selectedContainer = instance?.containers.find(item => item.name === container)
-  if (authorized && exact && details.status === 'success' && uid && (!instance || container && !selectedContainer)) {
-    setLogs(initial()); setUid(''); setContainer(''); setPrevious(false)
+  const unavailableReason = exact && value.diagnostics.kind === 'Unavailable' ? reasons[value.diagnostics.reason] ?? 'Runtime diagnostics are unavailable.' : ''
+  if (authorized && exact && details.status === 'success' && diagnostics && uid && (!instance || container && !selectedContainer)) {
+    // Discovery can outrun the stream's terminal frame. Clear its sensitive tail,
+    // but retain a safe reason until the user explicitly selects another instance.
+    let reason = reasons.ContainerUnavailable
+    if (!instance) reason = [reasons.InstanceReplaced, reasons.InstanceRemoved].includes(logs.reason) ? logs.reason : diagnostics.instancesTruncated
+      ? 'The selected instance was not found in this bounded discovery. Refresh and explicitly select an available instance.' : reasons.InstanceRemoved
+    else if (instance.containersTruncated) reason = 'The selected container was not found in this bounded discovery. Refresh and explicitly select an available container.'
+    setLogs({ ...initial(), reason }); setUid(''); setContainer(''); setPrevious(false)
+  } else if (authorized && details.status === 'success' && unavailableReason && (logs.status === 'opening' || logs.status === 'reading' || logs.text.length > 0)) {
+    // An unavailable target clears each log window without proving that its UID vanished.
+    setLogs({ ...initial(), status: 'error', reason: unavailableReason })
   }
   useLayoutEffect(() => {
     const reader = current.current
@@ -100,7 +110,8 @@ function DiagnosticsContent({ operation }: { operation: ResourceDeploymentOperat
     {!value && <EmptyState title={details.status === 'error' ? 'Runtime discovery unavailable.' : 'Discovering owned instances…'} />}
     {value && !exact && <Notice tone="error">This deployment changed. Refresh operations before opening runtime diagnostics.</Notice>}
     {identityExact && !details.snapshotCurrent && <Notice>Previous instance metadata is stale. Refresh before opening another read.</Notice>}
-    {exact && value.diagnostics.kind === 'Unavailable' && <Notice>{reasons[value.diagnostics.reason] ?? 'Runtime diagnostics are unavailable.'}</Notice>}
+    {unavailableReason && <Notice>{unavailableReason}</Notice>}
+    {logs.reason && logs.reason !== unavailableReason && <Notice tone={logs.status === 'error' ? 'error' : 'info'}>{logs.reason}</Notice>}
     {diagnostics && <>
       {diagnostics.instancesTruncated && <Notice>Instance discovery is limited. Only listed, verified instances can be selected.</Notice>}
       {diagnostics.instances.length === 0 ? <EmptyState title="No owned instances are currently available." /> : <div className="form-grid">
@@ -118,7 +129,6 @@ function DiagnosticsContent({ operation }: { operation: ResourceDeploymentOperat
       </div>
       <p className="field__hint">Every read starts a new recent window of up to 100 lines. Reconnection can overlap output; runtime logs are not archived. This view retains at most 65,536 characters.</p>
       {(logs.status === 'opening' || logs.status === 'reading') && <p role="status">{logs.status === 'opening' ? 'Opening runtime logs…' : `Reading runtime logs · ${logs.bytes.toLocaleString()} bytes…`}</p>}
-      {logs.reason && <Notice tone={logs.status === 'error' ? 'error' : 'info'}>{logs.reason}</Notice>}
       {logs.discarded && <Notice>Earlier output left this bounded view. Server limits and Kubernetes log retention are separate.</Notice>}
       {logs.text && <pre className="build-log-output" aria-label="Runtime log output">{logs.text}</pre>}
       {logs.status === 'ended' && !logs.text && <Notice>No output was available in this window.</Notice>}
