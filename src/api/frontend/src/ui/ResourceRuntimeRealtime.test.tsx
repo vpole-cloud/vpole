@@ -109,7 +109,7 @@ it('isolates old revision/generation, foreign tenant and logical resource hints 
   const oldKey = scopedQueryKey(session, ['/api', 'alpha'], ['health', 'deployment', 7, 1]); session.client.setQueryData(oldKey, { value: { snapshot: health, epoch: 0 }, identity: JSON.stringify(oldKey) })
   await hint(99, 1); await hint(100, 2, 'beta'); await hint(100, 2, 'alpha', 'app'); await tick(500)
   expect(http.fetch).not.toHaveBeenCalled(); expect(readiness()).toBe('Ready'); expect(session.client.getQueryState(oldKey)?.isInvalidated).toBe(true)
-  expect(controller.runtimeReadState('/api', { tenantId: 'alpha', deploymentId: 'deployment', revision: 7, generation: 2 }).floor).toBe(0)
+  expect(controller.observationReadState('/api', { tenantId: 'alpha', deploymentId: 'deployment', revision: 7, generation: 2 }).floor).toBe(0)
   await render('first', false); http.fetch.mockClear(); await hint(1); await tick(120000)
   expect(http.fetch).not.toHaveBeenCalled(); expect(connection.unsubscribe).toHaveBeenCalled()
 })
@@ -137,11 +137,11 @@ it('retains logs on token refresh but immediately aborts and clears a revoked te
   expect(http.fetch.mock.calls.every(([, init]) => new Headers(init?.headers).get('X-Pole-Tenant-ID') === 'alpha')).toBe(true)
 })
 
-it('preserves45second stale evidence and leaves non-WebService native interests uncovered', async () => {
+it('preserves45second stale evidence and leaves unknown provider native interests uncovered', async () => {
   oldTime = new Date(Date.now() - 46000).toISOString()
   await render(); await tick(500); await tick(500); expect(readiness()).toBe('Stale observation')
   oldTime = undefined
-  await render('first', true, 'pole/redis'); await tick(500)
+  await render('first', true, 'custom/provider'); await tick(500)
   expect(connection.unsubscribe).toHaveBeenCalled()
   expect(controller.covered({ topic: 'runtime-observations', tenantId: 'alpha', resourceId: 'deployment' })).toBe(false)
   const count = reads('observation'); await tick(20000); expect(reads('observation')).toBe(count + 1)
@@ -189,4 +189,18 @@ it('accepts a shared snapshot for the surviving observer when its initiating obs
   expect(readiness()).toBe('Ready')
   const key = scopedQueryKey(session, ['/api', 'alpha'], ['health', 'deployment', 7, 2])
   expect(session.client.getQueryState(key)?.error).toBeNull()
+})
+
+it.each(['pole/redis', 'pole/postgresql'])('uses acknowledged runtime observations for%s and keeps20second fallback when native coverage is unavailable', async resourceType => {
+  diagnostic = { ...diagnostic, resourceType }
+  await render('first', true, resourceType); await tick(1000)
+  expect(controller.covered({ topic: 'runtime-observations', tenantId: 'alpha', resourceId: 'deployment' })).toBe(true)
+  await click('Runtime logs and events'); await tick(500)
+  const count = reads('observation'); const diagnostics = reads('diagnostics')
+  await tick(30000); expect(reads('observation')).toBe(count + 1); expect(reads('diagnostics')).toBe(diagnostics + 1)
+  health = { ...health, observationVersion: 2, observation: { kind: 'Unavailable', reason: 'NotFound' } }; diagnostic = { ...diagnostic, observationVersion: 2, diagnostics: { kind: 'Available', instances: [], instancesTruncated: false, events: [], eventsTruncated: false } }
+  await hint(2); await tick(500); expect(readiness()).toBe('Readiness unavailable'); expect(instances()).toBeUndefined()
+  nativeCovered = false; await act(async () => { connection.reconnecting(); connection.reconnected() }); await tick(500)
+  expect(controller.covered({ topic: 'runtime-observations', tenantId: 'alpha', resourceId: 'deployment' })).toBe(false)
+  const fallback = reads('observation'); await tick(20000); expect(reads('observation')).toBe(fallback + 1)
 })

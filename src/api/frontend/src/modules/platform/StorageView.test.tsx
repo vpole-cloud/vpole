@@ -15,6 +15,7 @@ let container: HTMLDivElement
 const profile = { id: 'disk', displayName: 'Data disk', description: '', mediaType: 'SSD', performanceTier: 'Standard', isEnabled: true, isDefault: false,
   targetMappings: [{ deploymentTargetId: 'a', storageClassName: 'fast' }, { deploymentTargetId: 'b', storageClassName: 'standard' }],
   revision: 7, allowedResourceTypes: ['pole/redis'], tenantAccess: { mode: 'AllTenants', tenantIds: [] }, sizeLimits: null }
+const storageSnapshot = (id: string) => ({ deploymentTargetId: id, connectionVersion: 1, observationVersion: null, checkedAtUtc: new Date().toISOString(), complete: true, storageClasses: [{ name: id === 'a' ? 'fast' : 'standard', provisioner: 'test', isDefault: true }], persistentVolumes: [], persistentVolumeClaims: [] })
 const http = strictFetch()
 const fetchMock = http.fetch
 beforeEach(() => {
@@ -29,12 +30,12 @@ beforeEach(() => {
   fetchMock.mockImplementation((input, init) => {
     const url = new URL(String(input), 'http://localhost')
     const method = init?.method ?? 'GET'
-    if (!(method === 'GET' && ['/deployment-targets', '/profiles', '/storage-classes', '/persistent-volumes', '/persistent-volume-claims'].some((path) => url.pathname.endsWith(path))) &&
+    if (!(method === 'GET' && ['/deployment-targets', '/profiles', '/observation'].some((path) => url.pathname.endsWith(path))) &&
       !(method === 'PUT' && url.pathname.endsWith('/profiles/disk'))) return http.unhandled(input, init)
     const value = url.pathname.endsWith('/deployment-targets')
-      ? [{ id: 'a', displayName: 'East', enabled: true, acceptsWorkloads: true, isDefault: true }, { id: 'b', displayName: 'West', enabled: true, acceptsWorkloads: true, isDefault: false }]
+      ? [{ id: 'a', displayName: 'East', enabled: true, acceptsWorkloads: true, isDefault: true, connection: { kind: 'Kubeconfig', version: 1 } }, { id: 'b', displayName: 'West', enabled: true, acceptsWorkloads: true, isDefault: false, connection: { kind: 'Kubeconfig', version: 1 } }]
       : url.pathname.endsWith('/profiles') ? [profile]
-      : url.pathname.endsWith('/storage-classes') ? [{ name: url.searchParams.get('deploymentTargetId') === 'a' ? 'fast' : 'standard', provisioner: 'test', isDefault: true }]
+      : url.pathname.endsWith('/observation') ? storageSnapshot(url.searchParams.get('deploymentTargetId')!)
       : init?.method === 'PUT' ? { ...profile, revision: 8 } : []
     return Promise.resolve(new Response(JSON.stringify(value)))
   })
@@ -57,8 +58,8 @@ async function fill(name: string, value: string) {
 it('uses named target inventory and preserves other mappings and the expected revision on edit', async () => {
   await render()
   expect(container.textContent).toContain('East: fast, West: standard')
-  const inventory = fetchMock.mock.calls.filter(([url]) => String(url).includes('storage-classes'))
-  expect(inventory[0][0]).toBe('/api/api/v1/platform/storage/storage-classes?deploymentTargetId=a')
+  const inventory = fetchMock.mock.calls.filter(([url]) => String(url).includes('/observation'))
+  expect(inventory[0][0]).toBe('/api/api/v1/platform/storage/observation?deploymentTargetId=a')
   expect(inventory[0][1]?.headers).toMatchObject({ Authorization: 'Bearer bearer' })
   expect(inventory[0][1]?.headers).not.toHaveProperty('X-Pole-Tenant-ID')
   await act(async () => button('Edit').click())
@@ -74,11 +75,11 @@ it('uses named target inventory and preserves other mappings and the expected re
 it('waits for the first target discovery before initializing the new profile default', async () => {
   const discovery = deferred<Response>()
   const respond = fetchMock.getMockImplementation()!
-  fetchMock.mockImplementation((input, init) => String(input).includes('/storage-classes') ? discovery.promise : respond(input, init))
+  fetchMock.mockImplementation((input, init) => String(input).includes('/observation') ? discovery.promise : respond(input, init))
   await render()
   expect(field('Deployment target').value).toBe('a')
   expect(container.querySelector('form')).toBeNull()
-  await act(async () => discovery.resolve(new Response(JSON.stringify([{ name: 'fast', provisioner: 'test', isDefault: true }]))))
+  await act(async () => discovery.resolve(new Response(JSON.stringify(storageSnapshot('a')))))
   expect(field('Storage class').value).toBe('fast')
 })
 
@@ -87,7 +88,7 @@ it('retains the mounted profile draft during a slow failed discovery refresh', a
   await fill('Display name', 'Unsaved disk')
   const discovery = deferred<Response>()
   const respond = fetchMock.getMockImplementation()!
-  fetchMock.mockImplementation((input, init) => String(input).includes('/storage-classes') ? discovery.promise : respond(input, init))
+  fetchMock.mockImplementation((input, init) => String(input).includes('/observation') ? discovery.promise : respond(input, init))
   let refresh!: Promise<unknown>
   await act(async () => { refresh = session.client.refetchQueries({ predicate: (query) => query.queryKey.includes('discovery') }) })
   expect(field('Display name').value).toBe('Unsaved disk')
@@ -128,7 +129,7 @@ it('protects an unsaved profile when changing target and loads only the confirme
   expect(field('Display name').value).toBe('Unsaved disk'); expect(field('Deployment target').value).toBe('a')
   await fill('Deployment target', 'b'); await act(async () => button('Discard changes').click())
   expect(field('Deployment target').value).toBe('b'); expect(field('Display name').value).toBe('')
-  expect(fetchMock.mock.calls.some(([url]) => String(url).includes('storage-classes?deploymentTargetId=b'))).toBe(true)
+  expect(fetchMock.mock.calls.some(([url]) => String(url).includes('observation?deploymentTargetId=b'))).toBe(true)
 })
 
 it('actually clears a new-profile draft only after confirming discard', async () => {

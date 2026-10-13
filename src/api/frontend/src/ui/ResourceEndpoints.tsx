@@ -1,8 +1,7 @@
 import { fetchResourceEndpoints } from '../modules/operations/api'
 import { useScopedQuery } from '../data/useScopedQuery'
 import { useApiScope } from '../data/useApiScope'
-import { useVisibleRefresh } from '../hooks/useVisibleRefresh'
-import { connectionInterests } from '../modules/web-services/connectionRealtime'
+import { endpointInterests } from '../modules/operations/endpointRealtime'
 import { useAppServices } from '../shell/AppContext'
 import { Button, DataTable, EmptyState, Notice, StatusBadge } from './components'
 
@@ -10,9 +9,8 @@ export function ResourceEndpoints({ resourceType, resourceId, source, active = t
   const { api } = useAppServices()
   const { credential } = useApiScope(api)
   const discovery = useScopedQuery({ scope: [api.baseUrl, api.tenantId], key: ['endpoints', resourceType, resourceId, source?.resourceType, source?.resourceId],
-    active, realtime: connectionInterests(api.tenantId),
+    active, realtime: endpointInterests(api.tenantId, { resourceType, resourceId }, source), interval: 20000,
     load: (signal) => fetchResourceEndpoints(api.baseUrl, resourceType, resourceId, credential(), api.tenantId, signal, source) })
-  useVisibleRefresh(active, discovery.refresh, 20000, connectionInterests(api.tenantId))
   const value = discovery.resource
   const reasons: Record<string, string> = {
     SourceUnsupported: 'This resource cannot initiate connections.', DestinationUnsupported: 'This resource does not publish connection endpoints.',

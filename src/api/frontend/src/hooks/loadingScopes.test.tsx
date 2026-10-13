@@ -21,6 +21,7 @@ vi.mock('../api', () => ({
   updateStorageProfile: vi.fn(),
   fetchStorageProfiles: vi.fn(),
   fetchPlatformDeploymentTargets: vi.fn(),
+  fetchStorageObservation: vi.fn(),
   fetchKubernetesStorageClasses: vi.fn(),
   fetchKubernetesPersistentVolumes: vi.fn(),
   fetchKubernetesPersistentVolumeClaims: vi.fn(),
@@ -57,13 +58,14 @@ afterEach(async () => { await act(async () => { root.unmount() }) })
 
 describe('loading scope changes', () => {
   it('aborts old target inventory and rejects a late response after selecting another target', async () => {
-    const oldInventory = deferred<Awaited<ReturnType<typeof api.fetchKubernetesStorageClasses>>>()
+    const oldInventory = deferred<Awaited<ReturnType<typeof api.fetchStorageObservation>>>()
     vi.mocked(api.fetchStorageProfiles).mockResolvedValue([])
     vi.mocked(api.fetchPlatformDeploymentTargets).mockResolvedValue([
-      { id: 'a', displayName: 'East', enabled: true, acceptsWorkloads: true, isDefault: true },
-      { id: 'b', displayName: 'West', enabled: true, acceptsWorkloads: true, isDefault: false },
+      { id: 'a', displayName: 'East', enabled: true, acceptsWorkloads: true, isDefault: true, connection: { kind: 'Kubeconfig', version: 1 } },
+      { id: 'b', displayName: 'West', enabled: true, acceptsWorkloads: true, isDefault: false, connection: { kind: 'Kubeconfig', version: 1 } },
     ])
-    vi.mocked(api.fetchKubernetesStorageClasses).mockImplementation((_base, target) => target === 'a' ? oldInventory.promise : Promise.resolve([{ name: 'west', provisioner: 'test', isDefault: true, parameters: {}, metadata: {} }]))
+    const snapshot = (id: string, name: string) => ({ deploymentTargetId: id, connectionVersion: 1, observationVersion: null, checkedAtUtc: new Date().toISOString(), complete: true, storageClasses: [{ name, provisioner: 'test', isDefault: true }], persistentVolumes: [], persistentVolumeClaims: [] })
+    vi.mocked(api.fetchStorageObservation).mockImplementation((_base, target) => target === 'a' ? oldInventory.promise : Promise.resolve(snapshot('b', 'west')))
     vi.mocked(api.fetchKubernetesPersistentVolumes).mockResolvedValue([])
     vi.mocked(api.fetchKubernetesPersistentVolumeClaims).mockResolvedValue([])
     let state!: ReturnType<typeof useStorageSettingsManager>
@@ -73,11 +75,11 @@ describe('loading scope changes', () => {
       return null
     }
     await act(async () => root.render(<Probe />))
-    const signal = vi.mocked(api.fetchKubernetesStorageClasses).mock.calls[0][3]
+    const signal = vi.mocked(api.fetchStorageObservation).mock.calls[0][3]
     await act(async () => state.selectTarget('b'))
     expect(signal?.aborted).toBe(true)
     expect(state.storageClasses.map((item) => item.name)).toEqual(['west'])
-    await act(async () => oldInventory.resolve([{ name: 'late-east', provisioner: 'test', isDefault: true, parameters: {}, metadata: {} }]))
+    await act(async () => oldInventory.resolve(snapshot('a', 'late-east')))
     expect(state.deploymentTargetId).toBe('b')
     expect(state.storageClasses.map((item) => item.name)).toEqual(['west'])
     expect(state.status).toBe('success')
@@ -179,10 +181,8 @@ it.each(['create', 'update'] as const)('keeps an accepted storage %s across toke
   vi.mocked(api.createStorageProfile).mockReturnValue(mutation.promise)
   vi.mocked(api.updateStorageProfile).mockReturnValue(mutation.promise)
   vi.mocked(api.fetchStorageProfiles).mockResolvedValue([])
-  vi.mocked(api.fetchPlatformDeploymentTargets).mockResolvedValue([])
-  vi.mocked(api.fetchKubernetesStorageClasses).mockResolvedValue([])
-  vi.mocked(api.fetchKubernetesPersistentVolumes).mockResolvedValue([])
-  vi.mocked(api.fetchKubernetesPersistentVolumeClaims).mockResolvedValue([])
+  vi.mocked(api.fetchPlatformDeploymentTargets).mockResolvedValue([{ id: 'target', displayName: 'Target', enabled: true, acceptsWorkloads: true, isDefault: true, connection: { kind: 'Kubeconfig', version: 1 } }])
+  vi.mocked(api.fetchStorageObservation).mockResolvedValue({ deploymentTargetId: 'target', connectionVersion: 1, observationVersion: null, checkedAtUtc: new Date().toISOString(), complete: true, storageClasses: [], persistentVolumes: [], persistentVolumeClaims: [] })
   let state!: ReturnType<typeof useStorageSettingsManager>
   function Probe({ token }: { token: string }) {
     const value = useStorageSettingsManager({ apiBaseUrl: '/api', token, enabled: true })

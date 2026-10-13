@@ -1,7 +1,7 @@
 import type { RealtimeChange, RealtimeSubscription } from '../../realtime/types'
 import { queryRuntimeContext } from '../../realtime/runtimeContext'
 export function runtimeInterests(tenantId: string | undefined, resourceType: string | undefined, deploymentId: string): RealtimeSubscription[] {
-  return tenantId && resourceType === 'pole/web-service' && deploymentId ? [{ topic: 'runtime-observations', tenantId, resourceId: deploymentId }] : []
+  return tenantId && ['pole/web-service', 'pole/redis', 'pole/postgresql'].includes(resourceType ?? '') && deploymentId ? [{ topic: 'runtime-observations', tenantId, resourceId: deploymentId }] : []
 }
 export function matchesRuntimeQuery(key: readonly unknown[], change: RealtimeChange) {
   const context = queryRuntimeContext(change.tenantId, key)

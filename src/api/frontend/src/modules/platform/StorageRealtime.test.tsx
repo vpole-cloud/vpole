@@ -31,6 +31,9 @@ let container: HTMLDivElement
 let connections: FakeConnection[]
 let privateProfile: StorageProfile
 let publicProfile: StorageProfile
+let storageConnectionVersion = 1
+let storageObservationVersion = 1
+let pendingDiscovery: Promise<Response> | undefined
 let pendingRead: Promise<Response> | undefined
 let pendingWrite: Promise<Response> | undefined
 let pendingTenants: Promise<Response> | undefined
@@ -60,7 +63,7 @@ beforeEach(() => {
   window.history.replaceState({}, '', '/')
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
   privateProfile = { ...profile }; publicProfile = { ...profile, displayName: 'Tenant profile' }
-  pendingRead = undefined; pendingWrite = undefined; pendingTenants = undefined; readSignal = undefined; writeSignal = undefined; connections = []; workspaceMounts = 0
+  storageConnectionVersion = 1; storageObservationVersion = 1; pendingDiscovery = undefined; pendingRead = undefined; pendingWrite = undefined; pendingTenants = undefined; readSignal = undefined; writeSignal = undefined; connections = []; workspaceMounts = 0
   vi.mocked(createRealtimeConnection).mockImplementation(() => { const connection = new FakeConnection(); connections.push(connection); return connection })
   vi.mocked(createRealtimeSession).mockResolvedValue({ expiresAtUtc: new Date(Date.now() + 300000).toISOString() })
   const json = (value: unknown) => Promise.resolve(new Response(JSON.stringify(value)))
@@ -69,12 +72,11 @@ beforeEach(() => {
     const method = init?.method ?? 'GET'
     if (method === 'PUT' && url.pathname === '/api/api/v1/platform/storage/profiles/disk') { writeSignal = init?.signal ?? undefined; return pendingWrite ?? json(privateProfile) }
     if (method !== 'GET') return http.unhandled(input, init)
-    if (url.pathname === '/api/api/v1/tenants') return pendingTenants ?? json([{ id: 'alpha', name: 'Alpha', role: 'Member', isDefault: true }])
+    if (url.pathname === '/api/api/v1/tenants') return pendingTenants ?? json([{ id: 'alpha', name: 'Alpha', role: 'Member', isDefault: true, connection: { kind: 'Kubeconfig', version: storageConnectionVersion } }])
     if (url.pathname === '/api/api/v1/platform/storage/profiles') { readSignal = init?.signal ?? undefined; return pendingRead ?? json([privateProfile]) }
-    if (url.pathname === '/api/api/v1/platform/deployment-targets') return json([{ id: 'target', displayName: 'Target', enabled: true, acceptsWorkloads: true, isDefault: true }])
+    if (url.pathname === '/api/api/v1/platform/deployment-targets') return json([{ id: 'target', displayName: 'Target', enabled: true, acceptsWorkloads: true, isDefault: true, connection: { kind: 'Kubeconfig', version: storageConnectionVersion } }])
     if (url.pathname === '/api/api/v1/storage-profiles') return json([publicProfile])
-    if (url.pathname === '/api/api/v1/platform/storage/storage-classes') return json([{ name: 'fast', provisioner: 'test', isDefault: true }])
-    if (['/api/api/v1/platform/storage/persistent-volumes', '/api/api/v1/platform/storage/persistent-volume-claims'].includes(url.pathname)) return json([])
+    if (url.pathname === '/api/api/v1/platform/storage/observation') return pendingDiscovery ?? json({ deploymentTargetId: 'target', connectionVersion: storageConnectionVersion, observationVersion: storageObservationVersion, checkedAtUtc: new Date().toISOString(), complete: true, storageClasses: [{ name: 'fast', provisioner: 'test', isDefault: true }], persistentVolumes: [], persistentVolumeClaims: [] })
     return http.unhandled(input, init)
   })
   vi.stubGlobal('fetch', http.fetch)
@@ -175,7 +177,7 @@ it('retains the actual tenant workspace while platform denial revalidates a held
   expect(workspaceDraft).toBe('Unsaved workspace')
   expect(container.querySelector<HTMLInputElement>('[aria-label="Tenant workspace draft"]')?.value).toBe('Unsaved workspace')
   expect(workspaceMounts).toBe(1)
-  await act(async () => discovery.resolve(new Response(JSON.stringify([{ id: 'alpha', name: 'Alpha', role: 'Member', isDefault: true }]))))
+  await act(async () => discovery.resolve(new Response(JSON.stringify([{ id: 'alpha', name: 'Alpha', role: 'Member', isDefault: true, connection: { kind: 'Kubeconfig', version: storageConnectionVersion } }]))))
   expect(workspaceMounts).toBe(1); expect(workspaceDraft).toBe('Unsaved workspace')
 })
 
@@ -211,4 +213,26 @@ it('clears private caches and late work on credential claim loss without a serve
   await act(async () => render('fresh-admin', true, true)); await act(async () => vi.advanceTimersByTimeAsync(500))
   expect(controller.platformAllowed('/api')).toBe(true); expect(tenantDraft).toBe('Unsaved tenant draft')
   expect(field()?.value).toBe(''); expect(session).toBe(originalSession)
+})
+
+it('preserves the dirty form and disables saving while a native hint and connection rotation resync storage', async () => {
+  await act(async () => render()); await act(async () => vi.advanceTimersByTimeAsync(1000))
+  await act(async () => button('Edit').click()); await fill('Dirty retained profile')
+  const original = field()!; const held = deferred<Response>(); pendingDiscovery = held.promise
+  storageObservationVersion = 2
+  await act(async () => connections[0].changed({ version: 1, topic: 'storage-observations', resourceId: 'target', revision: 1, observationVersion: 2 }))
+  await act(async () => vi.advanceTimersByTimeAsync(250))
+  expect(field()).toBe(original); expect(field()?.value).toBe('Dirty retained profile'); expect(button('Save changes').disabled).toBe(true)
+  storageConnectionVersion = 2; storageObservationVersion = 3
+  await act(async () => connections[0].changed({ version: 1, topic: 'deployment-targets', resourceId: 'target', revision: 100 }))
+  await act(async () => vi.advanceTimersByTimeAsync(250))
+  expect(field()).toBe(original); expect(field()?.value).toBe('Dirty retained profile'); expect(button('Save changes').disabled).toBe(true)
+  pendingDiscovery = undefined
+  await act(async () => held.resolve(new Response(JSON.stringify({ deploymentTargetId: 'target', connectionVersion: 1, observationVersion: 2, checkedAtUtc: new Date().toISOString(), complete: true, storageClasses: [], persistentVolumes: [], persistentVolumeClaims: [] }))))
+  // Read the new connection context after releasing the deliberately stale response.
+  await act(async () => session.client.invalidateQueries({ predicate: query => query.queryKey[6] === 'discovery', refetchType: 'active' }))
+  await act(async () => vi.advanceTimersByTimeAsync(1000))
+  expect(field()).toBe(original); expect(field()?.value).toBe('Dirty retained profile'); expect(button('Save changes').disabled).toBe(false)
+  await act(async () => render('renewed')); await act(async () => vi.advanceTimersByTimeAsync(1000))
+  expect(field()).toBe(original); expect(field()?.value).toBe('Dirty retained profile')
 })

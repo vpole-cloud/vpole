@@ -1,6 +1,7 @@
 import { eligibilityKeys } from '../../data/queryKeys'
 import { groupInterests } from '../../realtime/resourceInterests'
 import { secretInterests } from '../secrets/realtime'
+import { endpointInterests, endpointCompositeInterests } from '../operations/endpointRealtime'
 import { connectionInterests } from './connectionRealtime'
 import { rowsFor, type ReferenceRow } from './dependencyDraft'
 import { useEffect, useState } from 'react'
@@ -72,7 +73,7 @@ export function WebServiceDependencies({ service, canWrite, onDirtyChange, onCha
   const [destinationId, setDestinationId] = useState(''); const [endpointId, setEndpointId] = useState(''); const [name, setName] = useState('')
   const destination = inventory.resource?.find((item) => item.registrationId === destinationId)
   const discovery = useWebServiceQuery(['endpoints', destination?.resourceTypeId, destination?.resourceId, sourceType, service.id], (signal) => destination ? fetchResourceEndpoints(api.baseUrl, destination.resourceTypeId, destination.resourceId,
-    credential(), api.tenantId, signal, { resourceType: sourceType, resourceId: service.id }) : Promise.resolve(null), { active, enabled: Boolean(destination), realtime: connectionInterests(api.tenantId) })
+    credential(), api.tenantId, signal, { resourceType: sourceType, resourceId: service.id }) : Promise.resolve(null), { active, enabled: Boolean(destination), interval: 20000, realtime: endpointInterests(api.tenantId, destination ? { resourceType: destination.resourceTypeId, resourceId: destination.resourceId } : undefined, { resourceType: sourceType, resourceId: service.id }) })
   const network = useWebServiceMutation(scope, canWrite)
   const [disconnecting, setDisconnecting] = useState<ResourceConnection | null>(null)
   const refreshConnections = connections.refresh
@@ -184,7 +185,8 @@ function DependencyConfiguration({ active, service, connections, secrets, canWri
     const next = rowsFor(service); setRows(next); setSaved(JSON.stringify(next)); setObservedRevision(service.activeRevision); setDraftRevision(service.activeRevision)
   }
   useEffect(() => { onDirtyChange(dirty); return () => onDirtyChange(false) }, [dirty, onDirtyChange])
-  const fields = useWebServiceQuery(['endpoints', 'dependency-fields', service.id, connections.map((item) => `${item.id}:${item.generation}`).join(',')], async (signal) => {
+  const destinations = connections.filter(item => item.status !== 'Deleting').map(item => ({ resourceType: item.destinationResourceType, resourceId: item.destinationResourceId }))
+  const fields = useWebServiceQuery(['endpoints', 'dependency-fields', service.id, connections.map((item) => `${item.id}:${item.generation}:${item.endpointId}`).join(','), destinations], async (signal) => {
     const result: Record<string, ResourceEndpointDiscovery['endpoints'][number]> = {}
     const discoveries = await Promise.allSettled(connections.filter((item) => item.status !== 'Deleting').map(async (connection) => {
       const discovery = await fetchResourceEndpoints(api.baseUrl, connection.destinationResourceType, connection.destinationResourceId, credential(), api.tenantId, signal)
@@ -197,7 +199,7 @@ function DependencyConfiguration({ active, service, connections, secrets, canWri
       else unavailable++
     }
     return { endpoints: result, unavailable }
-  }, { active, realtime: connectionInterests(api.tenantId) })
+  }, { active, interval: 20000, realtime: endpointCompositeInterests(api.tenantId, destinations, true) })
   const patch = (id: number, next: Partial<ReferenceRow>) => { setAccepted(false); setRows((current) => current.map((row) => row.id === id ? { ...row, ...next } : row)) }
   const add = (kind: ReferenceRow['kind']) => { setAccepted(false); setRows((current) => [...current, { id: Math.max(-1, ...current.map((row) => row.id)) + 1, kind, name: '', connectionId: '', valueKind: 'Host', configurationKey: '', secretId: '', key: '' }]) }
   const save = () => {

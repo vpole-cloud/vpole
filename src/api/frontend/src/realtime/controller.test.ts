@@ -30,23 +30,23 @@ it('fences runtime GETs by exact revision/generation and retained version floor 
   const { session, controller, connections } = setup()
   const context: RuntimeContext = { tenantId: 'alpha', deploymentId: 'deployment', revision: 7, generation: 2 }
   const key = scopedQueryKey(session, ['api', 'alpha'], ['health', 'deployment', 7, 2]); session.client.setQueryData(key, 'snapshot')
-  const initial = controller.beginRuntimeRead('api', context); const signal = new AbortController().signal
-  expect(controller.acceptRuntimeRead('api', context, initial, null, signal)).toBe(true)
+  const initial = controller.beginObservationRead('api', context); const signal = new AbortController().signal
+  expect(controller.acceptObservationRead('api', context, initial, null, signal)).toBe(true)
   controller.register({ topic: 'runtime-observations', tenantId: 'alpha', resourceId: 'deployment' }); await controller.renew()
-  expect(controller.acceptRuntimeRead('api', context, initial, 5, signal)).toBe(false)
+  expect(controller.acceptObservationRead('api', context, initial, 5, signal)).toBe(false)
   connections[0].changed({ version: 1, topic: 'runtime-observations', tenantId: 'alpha', resourceId: 'deployment', revision: 7, generation: 2, observationVersion: 5 })
-  const started = controller.beginRuntimeRead('api', context)
+  const started = controller.beginObservationRead('api', context)
   expect(started.floor).toBe(5)
-  expect(controller.acceptRuntimeRead('api', context, started, 4, signal)).toBe(false)
-  expect(controller.acceptRuntimeRead('api', context, started, null, signal)).toBe(false)
-  expect(controller.acceptRuntimeRead('api', context, started, 5, signal)).toBe(true)
+  expect(controller.acceptObservationRead('api', context, started, 4, signal)).toBe(false)
+  expect(controller.acceptObservationRead('api', context, started, null, signal)).toBe(false)
+  expect(controller.acceptObservationRead('api', context, started, 5, signal)).toBe(true)
   connections[0].changed({ version: 1, topic: 'runtime-observations', tenantId: 'alpha', resourceId: 'deployment', revision: 7, generation: 2, observationVersion: 6 })
-  expect(controller.acceptRuntimeRead('api', context, started, 6, signal)).toBe(false)
+  expect(controller.acceptObservationRead('api', context, started, 6, signal)).toBe(false)
   const next = { ...context, revision: 8, generation: 3 }
   session.client.setQueryData(scopedQueryKey(session, ['api', 'alpha'], ['health', 'deployment', 8, 3]), 'new context')
-  const current = controller.beginRuntimeRead('api', next)
-  expect(current.floor).toBe(0); expect(controller.acceptRuntimeRead('api', next, current, null, signal)).toBe(true)
-  expect(controller.acceptRuntimeRead('other-api', next, current, 7, signal)).toBe(false)
+  const current = controller.beginObservationRead('api', next)
+  expect(current.floor).toBe(0); expect(controller.acceptObservationRead('api', next, current, null, signal)).toBe(true)
+  expect(controller.acceptObservationRead('other-api', next, current, 7, signal)).toBe(false)
 })
 
 it('resyncs runtime epochs on coverage/reconnect transitions but keeps healthy heartbeats and duplicate/out-of-order hints unchanged', async () => {
@@ -54,17 +54,17 @@ it('resyncs runtime epochs on coverage/reconnect transitions but keeps healthy h
   const { session, controller, connections } = setup()
   const context: RuntimeContext = { tenantId: 'alpha', deploymentId: 'deployment', revision: 7, generation: 2 }
   session.client.setQueryData(scopedQueryKey(session, ['api', 'alpha'], ['health', 'deployment', 7, 2]), 'snapshot')
-  controller.beginRuntimeRead('api', context)
+  controller.beginObservationRead('api', context)
   controller.register({ topic: 'runtime-observations', tenantId: 'alpha', resourceId: 'deployment' }); await controller.renew()
-  const initial = controller.runtimeReadState('api', context)
-  await vi.advanceTimersByTimeAsync(10000); expect(controller.runtimeReadState('api', context)).toEqual(initial)
+  const initial = controller.observationReadState('api', context)
+  await vi.advanceTimersByTimeAsync(10000); expect(controller.observationReadState('api', context)).toEqual(initial)
   const hint = { version: 1 as const, topic: 'runtime-observations' as const, tenantId: 'alpha', resourceId: 'deployment', revision: 7, generation: 2, observationVersion: 8 }
-  connections[0].changed(hint); const changed = controller.runtimeReadState('api', context)
+  connections[0].changed(hint); const changed = controller.observationReadState('api', context)
   connections[0].changed(hint); connections[0].changed({ ...hint, observationVersion: 7 }); connections[0].changed({ ...hint, observationVersion: undefined })
-  expect(controller.runtimeReadState('api', context)).toEqual(changed)
+  expect(controller.observationReadState('api', context)).toEqual(changed)
   connections[0].reconnecting(); connections[0].reconnected(); await settle()
-  expect(controller.runtimeReadState('api', context).epoch).toBeGreaterThan(changed.epoch)
-  expect(controller.runtimeReadState('api', context).floor).toBe(8)
+  expect(controller.observationReadState('api', context).epoch).toBeGreaterThan(changed.epoch)
+  expect(controller.observationReadState('api', context).floor).toBe(8)
 })
 
 it('resyncs uncovered runtime hints and promptly rechecks coverage through one coalesced singleflight heartbeat', async () => {
@@ -73,7 +73,7 @@ it('resyncs uncovered runtime hints and promptly rechecks coverage through one c
   const { session, controller, connections } = setup(connection => connection.subscribe.mockResolvedValue([{ ...request, subscriptionId: 'runtime', covered: false }]))
   const context: RuntimeContext = { tenantId: 'alpha', deploymentId: 'deployment', revision: 7, generation: 2 }
   const key = scopedQueryKey(session, ['api', 'alpha'], ['health', 'deployment', 7, 2])
-  session.client.setQueryData(key, 'snapshot'); controller.beginRuntimeRead('api', context)
+  session.client.setQueryData(key, 'snapshot'); controller.beginObservationRead('api', context)
   controller.register(request); await controller.renew()
   const connection = connections[0]
   const held = deferred<RealtimeCoverage[]>()
@@ -81,7 +81,7 @@ it('resyncs uncovered runtime hints and promptly rechecks coverage through one c
   const hint = { version: 1 as const, ...request, revision: 7, generation: 2, observationVersion: 1 }
   for (let version = 1; version <= 100; version++) connection.changed({ ...hint, observationVersion: version })
   expect(controller.covered(request)).toBe(false)
-  expect(controller.runtimeReadState('api', context).floor).toBe(100)
+  expect(controller.observationReadState('api', context).floor).toBe(100)
   expect(session.client.getQueryState(key)?.isInvalidated).toBe(true)
   await vi.advanceTimersByTimeAsync(250)
   expect(connection.heartbeat).toHaveBeenCalledTimes(1)
@@ -91,7 +91,7 @@ it('resyncs uncovered runtime hints and promptly rechecks coverage through one c
   held.resolve([{ ...request, subscriptionId: 'runtime', covered: false }]); await settle()
   expect(connection.heartbeat).toHaveBeenCalledTimes(2)
   expect(controller.covered(request)).toBe(true)
-  expect(controller.runtimeReadState('api', context).floor).toBe(200)
+  expect(controller.observationReadState('api', context).floor).toBe(200)
   for (let index = 0; index < 100; index++) connection.changed({ ...hint, observationVersion: 199 })
   await vi.advanceTimersByTimeAsync(250)
   expect(connection.heartbeat).toHaveBeenCalledTimes(2)
@@ -573,4 +573,37 @@ it('keeps platform recovery denied without native fingerprint support while reta
   controller.updateCredential('second', true); await controller.renew()
   expect(controller.platformAllowed('api')).toBe(false)
   expect(controller.allowed('api', 'alpha')).toBe(true)
+})
+
+
+it('isolates platform storage floors by exact target/connection and restores coverage only from its coalesced acknowledgement', async () => {
+  vi.useFakeTimers()
+  const request: RealtimeSubscription = { topic: 'storage-observations', resourceId: 'target' }
+  const { session, controller, connections } = setup(connection => connection.subscribe.mockResolvedValue([{ ...request, subscriptionId: 'storage', covered: false }]))
+  const context = { targetId: 'target', connectionVersion: 7 }
+  const key = scopedQueryKey(session, ['api', undefined], ['platform-storage', 'discovery', 'target', 7])
+  session.client.setQueryData(key, 'snapshot'); controller.beginObservationRead('api', context)
+  controller.register(request); await controller.renew()
+  const initial = controller.beginObservationRead('api', context); const signal = new AbortController().signal
+  connections[0].changed({ version: 1, ...request, revision: 6, observationVersion: 100 })
+  connections[0].changed({ version: 1, ...request, tenantId: 'alpha', revision: 7, observationVersion: 101 })
+  connections[0].changed({ version: 1, ...request, revision: 7, observationVersion: undefined })
+  expect(controller.observationReadState('api', context)).toEqual(initial)
+  const held = deferred<RealtimeCoverage[]>()
+  connections[0].heartbeat.mockImplementationOnce(() => held.promise).mockResolvedValue([{ ...request, subscriptionId: 'storage', covered: true }])
+  for (let version = 1; version <= 20; version++) connections[0].changed({ version: 1, ...request, revision: 7, observationVersion: version })
+  expect(controller.acceptObservationRead('api', context, initial, 20, signal)).toBe(false)
+  expect(controller.covered(request)).toBe(false)
+  await vi.advanceTimersByTimeAsync(250); expect(connections[0].heartbeat).toHaveBeenCalledTimes(1)
+  connections[0].changed({ version: 1, ...request, revision: 7, observationVersion: 21 })
+  await vi.advanceTimersByTimeAsync(250); expect(connections[0].heartbeat).toHaveBeenCalledTimes(1)
+  held.resolve([{ ...request, subscriptionId: 'storage', covered: false }]); await settle()
+  expect(connections[0].heartbeat).toHaveBeenCalledTimes(2); expect(controller.covered(request)).toBe(true)
+  const current = controller.beginObservationRead('api', context)
+  expect(controller.acceptObservationRead('api', context, current, null, signal)).toBe(false)
+  expect(controller.acceptObservationRead('api', context, current, 21, signal)).toBe(true)
+  const floor = current.floor
+  connections[0].changed({ version: 1, ...request, revision: 7, observationVersion: 21 }); connections[0].changed({ version: 1, ...request, revision: 7, observationVersion: 20 })
+  expect(controller.observationReadState('api', context)).toEqual(current)
+  connections[0].accessRevoked(); expect(controller.acceptObservationRead('api', context, current, floor, signal)).toBe(false)
 })

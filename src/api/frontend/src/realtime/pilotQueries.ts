@@ -3,6 +3,8 @@ import { matchesSecretQuery } from '../modules/secrets/realtime'
 import { matchesDomainQuery } from '../modules/domains/realtime'
 import { matchesConnectionQuery } from '../modules/web-services/connectionRealtime'
 import { matchesGitQuery } from '../modules/platform/gitRealtime'
+import { queryObservationContext, isStorageContext } from './runtimeContext'
+import { matchesEndpointQuery } from '../modules/operations/endpointRealtime'
 import { matchesRuntimeQuery } from '../modules/operations/runtimeRealtime'
 // Query parameters are provider owned; events invalidate metadata rather than inserting DTOs.
 const sameResource = (id: unknown, event: RealtimeChange) => !event.resourceId || id === event.resourceId
@@ -19,6 +21,12 @@ function matchesGroup(key: readonly unknown[], groupId?: string) {
 }
 export function matchesPilotQuery(key: readonly unknown[], event: RealtimeChange, meta?: Record<string, unknown>) {
   const [namespace, kind, resourceId] = key
+  if (matchesEndpointQuery(key, event)) return true
+  if (event.topic === 'storage-observations') {
+    const context = queryObservationContext(undefined, key)
+    return meta?.privileged === true && context !== undefined && isStorageContext(context) && context.targetId === event.resourceId &&
+      (event.revision === undefined || context.connectionVersion === event.revision)
+  }
   if (event.topic === 'runtime-observations') return matchesRuntimeQuery(key, event)
   if (event.topic === 'search') return namespace === 'search'
   if (event.topic === 'git') return matchesGitQuery(key, event)

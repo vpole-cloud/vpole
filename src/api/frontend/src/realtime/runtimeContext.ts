@@ -14,3 +14,21 @@ export function changeRuntimeContext(change: RealtimeChange): RuntimeContext | u
     typeof change.observationVersion === 'number' && Number.isSafeInteger(change.observationVersion) && change.observationVersion >= 0
     ? { tenantId: change.tenantId, deploymentId: change.resourceId, revision: change.revision, generation: change.generation } : undefined
 }
+
+export interface StorageContext { targetId: string; connectionVersion: number }
+export type ObservationContext = RuntimeContext | StorageContext
+export const isStorageContext = (context: ObservationContext): context is StorageContext => 'targetId' in context
+export const observationContextKey = (context: ObservationContext) => isStorageContext(context)
+  ? JSON.stringify(['storage', context.targetId, context.connectionVersion]) : runtimeContextKey(context)
+export function queryObservationContext(tenantId: unknown, key: readonly unknown[]): ObservationContext | undefined {
+  if (tenantId === undefined && key[0] === 'platform-storage' && key[1] === 'discovery' && typeof key[2] === 'string' && key[2] && positive(key[3]))
+    return { targetId: key[2], connectionVersion: key[3] }
+  return queryRuntimeContext(tenantId, key)
+}
+export function changeObservationContext(change: RealtimeChange): ObservationContext | undefined {
+  if (change.topic === 'storage-observations' && change.tenantId === undefined && change.resourceId && positive(change.revision) &&
+    typeof change.observationVersion === 'number' && Number.isSafeInteger(change.observationVersion) && change.observationVersion >= 0)
+    return { targetId: change.resourceId, connectionVersion: change.revision }
+  return changeRuntimeContext(change)
+}
+export const observationTopic = (topic: RealtimeChange['topic']) => topic === 'runtime-observations' || topic === 'storage-observations'

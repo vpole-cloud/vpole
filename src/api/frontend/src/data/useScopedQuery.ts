@@ -77,6 +77,6 @@ export function useScopedQuery<T>({ scope, key, load, enabled = true, interval =
   return { resource: enabled && allowed ? query.data?.value ?? null : null, status,
     error: query.error instanceof Error ? query.error.message : '', refresh, refreshAfterWrite,
     isInitialLoading: enabled && query.isPending, isRefreshing: query.isFetching && !query.isPending,
-    isCurrent: query.data?.identity === identity, queryKey,
+    isCurrent: query.data?.identity === identity, updatedAt: query.dataUpdatedAt, queryKey,
   }
 }

@@ -62,7 +62,7 @@ export function RedisResourceView({ id, section, active, onSection, actions }: {
       <div><dt>Storage</dt><dd>{redis.spec.storage.sizeGb} GiB</dd></div><div><dt>Storage profile</dt><dd>{storage.resource?.find((item) => item.id === redis.spec.storage.storageProfileId)?.displayName ?? redis.spec.storage.storageProfileId}</dd></div>
       <div><dt>Tags</dt><dd>{redis.tags.join(', ') || 'No tags'}</dd></div><div><dt>Revision</dt><dd>{redis.revision}</dd></div></dl><p className="field__hint">Application network access and workload configuration are managed separately.</p></section>
       {placement ? <PlacementSummary placement={placement} targetName={targets.resource?.find((item) => item.id === placement.deploymentTargetId)?.displayName} /> : <Notice>Deployment metadata is unavailable. No readiness result is known.</Notice>}
-      <ResourceHealth placements={placement ? [placement] : []} active={active && section === 'overview'} targetNames={Object.fromEntries((targets.resource ?? []).map((target) => [target.id, target.displayName]))} />
+      <ResourceHealth resourceType="pole/redis" placements={placement ? [placement] : []} active={active && section === 'overview'} targetNames={Object.fromEntries((targets.resource ?? []).map((target) => [target.id, target.displayName]))} />
       {active && section === 'overview' && <ResourceEndpoints resourceType={redisType} resourceId={id} />}
       {tenant.canManage && placement?.status === 'Failed' && <Button disabled={mutation.busy} onClick={() => {
         void mutation.run((signal) => retryResourceDeployment(api.baseUrl, placement.deploymentId, placement.deploymentRevision ?? 1, placement.desiredOperation ?? "Apply", origin.credential(), api.tenantId, signal), afterWrite).catch(() => {})
