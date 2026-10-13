@@ -23,7 +23,11 @@ public sealed class PostgresRegistrationTests
         Assert.Contains(other, descriptors);
         var postgres = Assert.Single(descriptors, descriptor => descriptor.ResourceType.Value == "pole/postgresql");
         Assert.Equal(typeof(PostgresResourceDeploymentAdapter), postgres.AdapterType);
-        Assert.Equal(typeof(PostgresResourceDeploymentObserver), Assert.Single(provider.GetServices<ResourceDeploymentObserverDescriptor>()).ObserverType);
+        var observer = Assert.Single(provider.GetServices<ResourceDeploymentObserverDescriptor>());
+        Assert.Equal(typeof(PostgresResourceDeploymentObserver), observer.ObserverType);
+        Assert.Equal(typeof(PostgresResourceDeploymentObserver), observer.BoundObserverType);
+        Assert.Equal(typeof(PostgresResourceDeploymentChangeSource), observer.ChangeSourceType);
+        Assert.Contains(services, service => service.ServiceType == typeof(PostgresResourceDeploymentChangeSource));
     }
 
     private sealed class OtherAdapter : IResourceDeploymentAdapter

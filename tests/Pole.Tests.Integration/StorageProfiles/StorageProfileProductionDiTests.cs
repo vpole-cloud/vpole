@@ -10,6 +10,10 @@ using Pole.Features.StorageProfiles.Application.Persistence.Mutations;
 using Pole.Features.StorageProfiles.Application.Persistence.Reads;
 using Pole.Features.StorageProfiles.Application.Validation;
 using Pole.Features.StorageProfiles.Contracts;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceDeployments.Application.Observation;
+using Pole.Features.StorageProfiles.Application.Observation;
+using Pole.Features.StorageProfiles.Application.Discovery.Observation;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -29,6 +33,9 @@ public sealed class StorageProfileProductionDiTests(MongoReplicaSetFixture fixtu
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IKubernetesClientProvider>(
             new FixedKubernetesClientProvider(null!));
+        services.AddSingleton<LookupDeploymentTarget>((id, _) => Task.FromResult<LookupDeploymentTargetOutcome>(new DeploymentTargetLookupError(new DeploymentTargetNotFound(id))));
+        services.AddSingleton<FenceDeploymentTargetObservation>((_, _, _) => Task.FromResult<FenceDeploymentTargetObservationOutcome>(new DeploymentTargetObservationFenced()));
+        services.AddSingleton<IResourceDeploymentObservationReadBudget, ResourceDeploymentObservationReadBudget>();
         services.AddOutboxPersistence();
         services.AddStorageProfilesFeature();
 
@@ -51,6 +58,10 @@ public sealed class StorageProfileProductionDiTests(MongoReplicaSetFixture fixtu
         AssertResolved<DiscoverKubernetesPersistentVolumes>(scope.ServiceProvider);
         AssertResolved<DiscoverKubernetesPersistentVolumeClaims>(scope.ServiceProvider);
         AssertResolved<ValidateStorageProfileTargetMappings>(scope.ServiceProvider);
+        AssertResolved<IStorageObservationStore>(scope.ServiceProvider);
+        AssertResolved<IStorageObservationSource>(scope.ServiceProvider);
+        AssertResolved<StorageObservationReader>(scope.ServiceProvider);
+        AssertResolved<StorageObservationNativeReader>(scope.ServiceProvider);
     }
 
     private static void AssertResolved<T>(IServiceProvider provider)

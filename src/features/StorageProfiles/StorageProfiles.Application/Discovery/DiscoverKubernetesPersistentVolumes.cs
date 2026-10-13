@@ -1,6 +1,9 @@
 using k8s;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.StorageProfiles.Application.Common;
+using Pole.Features.StorageProfiles.Application.Observation;
+using Pole.Features.StorageProfiles.Contracts;
+using Pole.Features.StorageProfiles.Application.Discovery.Observation;
 
 namespace Pole.Features.StorageProfiles.Application.Discovery;
 
@@ -13,26 +16,17 @@ public delegate Task<DiscoverKubernetesPersistentVolumesOutcome> DiscoverKuberne
     CancellationToken cancellationToken = default);
 
 internal sealed class KubernetesDiscoverPersistentVolumes(
-    IKubernetesClientProvider kubernetesClientProvider)
+    StorageObservationReader reader)
 {
     public async Task<DiscoverKubernetesPersistentVolumesOutcome> InvokeAsync(
         string deploymentTargetId,
         CancellationToken cancellationToken = default)
     {
-        var resolved = await KubernetesStorageDiscovery.ResolveAsync(
-            kubernetesClientProvider,
-            deploymentTargetId,
-            cancellationToken);
-        if (resolved is KubernetesStorageDiscoveryUnavailable error)
-            return error;
-
-        var kubernetes = (IKubernetes)resolved.Value;
-
-        var persistentVolumes = await kubernetes.CoreV1.ListPersistentVolumeAsync(
-            cancellationToken: cancellationToken);
-        return persistentVolumes.Items
-                .OrderBy(volume => volume.Metadata.Name, StringComparer.Ordinal)
-                .Select(KubernetesStorageDiscovery.MapPersistentVolume)
-                .ToArray();
+        return await reader.ReadLegacyAsync(deploymentTargetId, StorageInventoryKind.Volumes, cancellationToken) switch
+        {
+            StorageObservationSnapshot snapshot => snapshot.PersistentVolumes.Select(item => new KubernetesPersistentVolumeDto(item.Name, item.Capacity, item.Status, item.StorageClassName, item.BoundClaimNamespace, item.BoundClaimName, item.ReclaimPolicy, Owner(item.Owner))).ToArray(),
+            KubernetesStorageDiscoveryUnavailable unavailable => unavailable
+        };
     }
+    private static KubernetesStorageOwnerDto Owner(StorageOwnerObservation owner) => new(owner.TenantId, owner.ResourceGroupId, owner.ResourceType, owner.ResourceId, owner.ResourceName);
 }

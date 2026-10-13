@@ -64,6 +64,15 @@ public static class KubernetesWorkloadObservation
             metadata.Uid == expectedUid && Owns(metadata, identity);
     }
 
+    public static async Task<bool> MatchesStatefulSetBindingAsync(
+        IKubernetes client, string name, string namespaceName, WorkloadIdentityLabels identity,
+        string expectedUid, CancellationToken cancellationToken)
+    {
+        var controller = await client.AppsV1.ReadNamespacedStatefulSetAsync(name, namespaceName, cancellationToken: cancellationToken);
+        return controller.Metadata is { } metadata && metadata.Name == name && metadata.NamespaceProperty == namespaceName &&
+            metadata.Uid == expectedUid && Owns(metadata, identity);
+    }
+
     public static async Task<WorkloadObservation> StatefulSetAsync(
         IKubernetes client,
         string name,
