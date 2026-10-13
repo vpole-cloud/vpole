@@ -1,6 +1,9 @@
 using k8s;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.StorageProfiles.Application.Common;
+using Pole.Features.StorageProfiles.Application.Observation;
+using Pole.Features.StorageProfiles.Contracts;
+using Pole.Features.StorageProfiles.Application.Discovery.Observation;
 
 namespace Pole.Features.StorageProfiles.Application.Discovery;
 
@@ -13,28 +16,17 @@ public delegate Task<DiscoverKubernetesPersistentVolumeClaimsOutcome> DiscoverKu
     CancellationToken cancellationToken = default);
 
 internal sealed class KubernetesDiscoverPersistentVolumeClaims(
-    IKubernetesClientProvider kubernetesClientProvider)
+    StorageObservationReader reader)
 {
     public async Task<DiscoverKubernetesPersistentVolumeClaimsOutcome> InvokeAsync(
         string deploymentTargetId,
         CancellationToken cancellationToken = default)
     {
-        var resolved = await KubernetesStorageDiscovery.ResolveAsync(
-            kubernetesClientProvider,
-            deploymentTargetId,
-            cancellationToken);
-        if (resolved is KubernetesStorageDiscoveryUnavailable error)
-            return error;
-
-        var kubernetes = (IKubernetes)resolved.Value;
-
-        var persistentVolumeClaims =
-            await kubernetes.CoreV1.ListPersistentVolumeClaimForAllNamespacesAsync(
-                cancellationToken: cancellationToken);
-        return persistentVolumeClaims.Items
-                .OrderBy(claim => claim.Metadata.NamespaceProperty, StringComparer.Ordinal)
-                .ThenBy(claim => claim.Metadata.Name, StringComparer.Ordinal)
-                .Select(KubernetesStorageDiscovery.MapPersistentVolumeClaim)
-                .ToArray();
+        return await reader.ReadLegacyAsync(deploymentTargetId, StorageInventoryKind.Claims, cancellationToken) switch
+        {
+            StorageObservationSnapshot snapshot => snapshot.PersistentVolumeClaims.Select(item => new KubernetesPersistentVolumeClaimDto(item.Name, item.Namespace, item.Capacity, item.RequestedCapacity, item.Status, item.StorageClassName, item.VolumeName, Owner(item.Owner))).ToArray(),
+            KubernetesStorageDiscoveryUnavailable unavailable => unavailable
+        };
     }
+    private static KubernetesStorageOwnerDto Owner(StorageOwnerObservation owner) => new(owner.TenantId, owner.ResourceGroupId, owner.ResourceType, owner.ResourceId, owner.ResourceName);
 }

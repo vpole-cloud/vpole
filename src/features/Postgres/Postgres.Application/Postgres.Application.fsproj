@@ -55,6 +55,9 @@
         <Compile Include="Endpoints\GetPostgresClusterById.fs" />
         <Compile Include="Endpoints\GetPostgresClusters.fs" />
         <Compile Include="Endpoints\AllPostgresEndpoints.fs" />
+        <Compile Include="Kubernetes/PostgresClusterObservation.fs" />
+        <Compile Include="Kubernetes/PostgresOperatorReadiness.fs" />
+        <Compile Include="Kubernetes/PostgresResourceDeploymentChangeSource.fs" />
         <Compile Include="Kubernetes/PostgresResourceDeploymentObserver.fs" />
         <Compile Include="PostgresFeatureRegistration.fs" />
     </ItemGroup>

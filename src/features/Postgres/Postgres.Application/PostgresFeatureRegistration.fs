@@ -74,7 +74,8 @@ type PostgresFeatureRegistration =
         |> ignore
         services.TryAddScoped<PostgresResourceDeploymentAdapter>() |> ignore
         services.TryAddScoped<PostgresResourceDeploymentObserver>() |> ignore
-        services.AddSingleton(ResourceDeploymentObserverDescriptor.Create<PostgresResourceDeploymentObserver>(PostgresResourceDeployment.ResourceType)) |> ignore
+        services.TryAddScoped<PostgresResourceDeploymentChangeSource>() |> ignore
+        services.AddSingleton(ResourceDeploymentObserverDescriptor.Create<PostgresResourceDeploymentObserver, PostgresResourceDeploymentChangeSource>(PostgresResourceDeployment.ResourceType)) |> ignore
         services.TryAddSingleton<IPostgresClusterDeploymentManager, PostgresClusterDeploymentManager>()
         |> ignore
         services.AddSingleton(PostgresResourceDeploymentAdapterRegistration.Descriptor)

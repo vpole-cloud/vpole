@@ -47,8 +47,8 @@ internal static class KubernetesStorageDiscovery
             storageClass.ReclaimPolicy,
             storageClass.VolumeBindingMode,
             storageClass.AllowVolumeExpansion,
-            new Dictionary<string, string>(storageClass.Parameters ?? new Dictionary<string, string>()),
-            SafeMetadata(storageClass.Metadata.Labels, storageClass.Metadata.Annotations));
+            new Dictionary<string, string>(),
+            new Dictionary<string, string>());
     }
 
     public static KubernetesPersistentVolumeDto MapPersistentVolume(V1PersistentVolume volume)
@@ -103,11 +103,11 @@ internal static class KubernetesStorageDiscovery
         IDictionary<string, string>? labels,
         IDictionary<string, string>? annotations) =>
         new(
-            GetMetadataValue(PoleStorageLabels.TenantId, labels, annotations),
-            GetMetadataValue(PoleStorageLabels.ResourceGroupId, labels, annotations),
-            GetMetadataValue(PoleStorageLabels.ResourceType, annotations, labels),
-            GetMetadataValue(PoleStorageLabels.ResourceId, labels, annotations),
-            GetMetadataValue(PoleStorageLabels.ResourceName, labels, annotations));
+            StorageOwnerValueRules.MongoIdentity(GetMetadataValue(PoleStorageLabels.TenantId, labels, annotations)),
+            StorageOwnerValueRules.MongoIdentity(GetMetadataValue(PoleStorageLabels.ResourceGroupId, labels, annotations)),
+            StorageOwnerValueRules.OptionalText(GetMetadataValue(PoleStorageLabels.ResourceType, annotations, labels), 253),
+            StorageOwnerValueRules.ResourceIdentity(GetMetadataValue(PoleStorageLabels.ResourceId, labels, annotations)),
+            StorageOwnerValueRules.OptionalText(GetMetadataValue(PoleStorageLabels.ResourceName, labels, annotations), 253));
 
     private static string? GetMetadataValue(
         string key,
@@ -122,33 +122,4 @@ internal static class KubernetesStorageDiscovery
             : null;
     }
 
-    private static IReadOnlyDictionary<string, string> SafeMetadata(
-        IDictionary<string, string>? labels,
-        IDictionary<string, string>? annotations)
-    {
-        var metadata = new SortedDictionary<string, string>(StringComparer.Ordinal);
-        AddSafeMetadata(labels, "label", metadata);
-        AddSafeMetadata(annotations, "annotation", metadata);
-        return metadata;
-    }
-
-    private static void AddSafeMetadata(
-        IDictionary<string, string>? source,
-        string prefix,
-        IDictionary<string, string> metadata)
-    {
-        if (source is null)
-            return;
-
-        foreach (var (key, value) in source)
-        {
-            if (IsSafeMetadataKey(key))
-                metadata[$"{prefix}:{key}"] = value;
-        }
-    }
-
-    private static bool IsSafeMetadataKey(string key) =>
-        key.StartsWith("pole.io/", StringComparison.Ordinal) ||
-        key.StartsWith("app.kubernetes.io/", StringComparison.Ordinal) ||
-        DefaultStorageClassAnnotationKeys.Contains(key, StringComparer.Ordinal);
 }

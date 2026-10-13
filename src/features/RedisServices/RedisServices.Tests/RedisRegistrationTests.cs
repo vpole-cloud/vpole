@@ -23,7 +23,11 @@ public sealed class RedisRegistrationTests
         Assert.Contains(other, descriptors);
         var redis = Assert.Single(descriptors, item => item.ResourceType.Value == "pole/redis");
         Assert.Equal(typeof(RedisResourceDeploymentAdapter), redis.AdapterType);
-        Assert.Equal(typeof(RedisResourceDeploymentObserver), Assert.Single(provider.GetServices<ResourceDeploymentObserverDescriptor>()).ObserverType);
+        var observer = Assert.Single(provider.GetServices<ResourceDeploymentObserverDescriptor>());
+        Assert.Equal(typeof(RedisResourceDeploymentObserver), observer.ObserverType);
+        Assert.Equal(typeof(RedisResourceDeploymentObserver), observer.BoundObserverType);
+        Assert.Equal(typeof(RedisResourceDeploymentChangeSource), observer.ChangeSourceType);
+        Assert.Contains(services, service => service.ServiceType == typeof(RedisResourceDeploymentChangeSource));
     }
 
     [Fact]

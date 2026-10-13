@@ -129,6 +129,16 @@ public static class KubernetesListWatch
         cancellationToken.ThrowIfCancellationRequested();
     }
 
+    /// <summary>Reacquire an externally owned client for each stream; never dispose its shared lifetime.</summary>
+    public static async IAsyncEnumerable<(WatchEventType Type, T Item)> WithClientAsync<T>(
+        Func<CancellationToken, Task<IKubernetes>> currentClient,
+        Func<IKubernetes, IAsyncEnumerable<(WatchEventType Type, T Item)>> watch,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var client = await currentClient(cancellationToken);
+        await foreach (var item in watch(client).WithCancellation(cancellationToken)) yield return item;
+    }
+
     private static TimeSpan NextRetry(TimeSpan retry) => TimeSpan.FromMilliseconds(Math.Min(retry.TotalMilliseconds * 2, 30_000));
 
     private static async Task<MoveResult> MoveAsync(Task<bool> pending)

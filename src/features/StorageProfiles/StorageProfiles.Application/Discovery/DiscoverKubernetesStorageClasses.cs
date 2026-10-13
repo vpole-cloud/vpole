@@ -1,6 +1,9 @@
 using k8s;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.StorageProfiles.Application.Common;
+using Pole.Features.StorageProfiles.Application.Observation;
+using Pole.Features.StorageProfiles.Contracts;
+using Pole.Features.StorageProfiles.Application.Discovery.Observation;
 
 namespace Pole.Features.StorageProfiles.Application.Discovery;
 
@@ -13,26 +16,16 @@ public delegate Task<DiscoverKubernetesStorageClassesOutcome> DiscoverKubernetes
     CancellationToken cancellationToken = default);
 
 internal sealed class KubernetesDiscoverStorageClasses(
-    IKubernetesClientProvider kubernetesClientProvider)
+    StorageObservationReader reader)
 {
     public async Task<DiscoverKubernetesStorageClassesOutcome> InvokeAsync(
         string deploymentTargetId,
         CancellationToken cancellationToken = default)
     {
-        var resolved = await KubernetesStorageDiscovery.ResolveAsync(
-            kubernetesClientProvider,
-            deploymentTargetId,
-            cancellationToken);
-        if (resolved is KubernetesStorageDiscoveryUnavailable error)
-            return error;
-
-        var kubernetes = (IKubernetes)resolved.Value;
-
-        var storageClasses = await kubernetes.StorageV1.ListStorageClassAsync(
-            cancellationToken: cancellationToken);
-        return storageClasses.Items
-                .OrderBy(storageClass => storageClass.Metadata.Name, StringComparer.Ordinal)
-                .Select(KubernetesStorageDiscovery.MapStorageClass)
-                .ToArray();
+        return await reader.ReadLegacyAsync(deploymentTargetId, StorageInventoryKind.Classes, cancellationToken) switch
+        {
+            StorageObservationSnapshot snapshot => snapshot.StorageClasses.Select(item => new KubernetesStorageClassDto(item.Name, item.Provisioner, item.IsDefault, item.ReclaimPolicy, item.VolumeBindingMode, item.AllowVolumeExpansion, new Dictionary<string, string>(), new Dictionary<string, string>())).ToArray(),
+            KubernetesStorageDiscoveryUnavailable unavailable => unavailable
+        };
     }
 }

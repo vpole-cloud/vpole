@@ -1,5 +1,7 @@
 using k8s;
 using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.StorageProfiles.Application.Observation;
+using Pole.Features.StorageProfiles.Application.Discovery.Observation;
 
 namespace Pole.Features.StorageProfiles.Application.Discovery;
 
@@ -12,26 +14,16 @@ public delegate Task<DiscoverKubernetesStorageClassNamesOutcome> DiscoverKuberne
     CancellationToken cancellationToken = default);
 
 internal sealed class KubernetesDiscoverStorageClassNames(
-    IKubernetesClientProvider kubernetesClientProvider)
+    StorageObservationNativeReader native,
+    StorageObservationContextLoader contexts)
 {
     public async Task<DiscoverKubernetesStorageClassNamesOutcome> InvokeAsync(
         string deploymentTargetId,
         CancellationToken cancellationToken = default)
     {
-        var resolved = await KubernetesStorageDiscovery.ResolveAsync(
-            kubernetesClientProvider,
-            deploymentTargetId,
-            cancellationToken);
-        if (resolved is KubernetesStorageDiscoveryUnavailable error)
-            return error;
-
-        var kubernetes = (IKubernetes)resolved.Value;
-
-        var storageClasses = await kubernetes.StorageV1.ListStorageClassAsync(
-            cancellationToken: cancellationToken);
-        return storageClasses.Items
-                .Select(storageClass => storageClass.Metadata.Name)
-                .Where(name => !string.IsNullOrWhiteSpace(name))
-                .ToHashSet(StringComparer.Ordinal);
+        var context = await contexts.LoadAsync(deploymentTargetId, cancellationToken);
+        if (context is null || await native.ReadNamesAsync(context, cancellationToken) is not { } names)
+            return new KubernetesStorageDiscoveryUnavailable(deploymentTargetId);
+        return names;
     }
 }

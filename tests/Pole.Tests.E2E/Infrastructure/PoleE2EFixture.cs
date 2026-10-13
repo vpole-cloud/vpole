@@ -193,9 +193,11 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         await WaitForRequiredResourceHealthyAsync("frontend", _shutdown.Token);
         await WaitForRequiredResourceHealthyAsync("github-stub", _shutdown.Token);
 
-        var apiClient = _application.CreateHttpClient("pole-server", "http");
+        using var apiClient = _application.CreateHttpClient("pole-server", "http");
         ApiBaseAddress = apiClient.BaseAddress ?? throw new InvalidOperationException("Aspire did not resolve the API endpoint.");
-        Api = new E2eApiClient(apiClient);
+        // Ordinary fixture HTTP authenticates each request with its user's bearer.
+        // Hub scenarios own independent cookie jars, including different accounts.
+        Api = new E2eApiClient(new HttpClient(new HttpClientHandler { UseCookies = false }) { BaseAddress = ApiBaseAddress });
         Stub = _application.CreateHttpClient("github-stub", "http");
         Stub.DefaultRequestHeaders.Add("X-Pole-E2E-Stub-Key", _stubControlKey);
         FrontendBaseAddress = _application.CreateHttpClient("frontend", "http").BaseAddress
@@ -621,6 +623,48 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         await RunKubectlAsync(
             ["get", "secret", secretName, "--namespace", GetNamespaceName(resourceGroupId)],
             cancellationToken) == 0;
+
+    public async Task<string> CreateOwnedStorageObservationClassAsync(
+        TestResourceScope resources, string deploymentTargetId, string canary, CancellationToken ct)
+    {
+        using var request = CreatePlatformAdminRequest(HttpMethod.Get, "/api/v1/platform/deployment-targets");
+        using var response = await Api.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(ct));
+        var target = document.RootElement.EnumerateArray().Single(item => item.GetProperty("id").GetString() == deploymentTargetId);
+        if (!target.GetProperty("isDefault").GetBoolean() || !target.GetProperty("enabled").GetBoolean())
+            throw new InvalidOperationException("Native observation fixtures require their enabled bootstrap target.");
+
+        var created = await _kubernetes.StorageV1.CreateStorageClassAsync(new V1StorageClass
+        {
+            Metadata = new V1ObjectMeta
+            {
+                Name = $"pole-observation-{Guid.NewGuid():N}",
+                Labels = _identity.NamespaceLabels.ToDictionary(pair => pair.Key, pair => pair.Value),
+                Annotations = new Dictionary<string, string> { ["pole.io/testing-canary"] = canary }
+            },
+            // A Kubernetes qualified provisioner may contain a 253-character DNS
+            // prefix and a 63-character suffix; it need not be a CSI driver in use.
+            Provisioner = string.Join('.', new[] { new string('a', 63), new string('b', 63), new string('c', 63), new string('d', 61) }) + "/" + new string('e', 63),
+            ReclaimPolicy = "Retain",
+            VolumeBindingMode = "WaitForFirstConsumer",
+            Parameters = new Dictionary<string, string> { ["fake.credentials"] = canary }
+        }, cancellationToken: ct);
+        var name = created.Metadata.Name;
+        var uid = created.Metadata.Uid;
+        resources.Defer("delete exact fixture-owned observation StorageClass", async cleanup =>
+        {
+            V1StorageClass current;
+            try { current = await _kubernetes.StorageV1.ReadStorageClassAsync(name, cancellationToken: cleanup); }
+            catch (HttpOperationException exception) when (exception.Response?.StatusCode == HttpStatusCode.NotFound) { return; }
+            if (string.IsNullOrEmpty(uid) || current.Metadata.Uid != uid ||
+                _identity.NamespaceLabels.Any(pair => current.Metadata.Labels?.TryGetValue(pair.Key, out var value) != true || value != pair.Value))
+                throw new InvalidOperationException("The observation StorageClass no longer matches exact test ownership.");
+            await _kubernetes.StorageV1.DeleteStorageClassAsync(name,
+                body: new V1DeleteOptions { Preconditions = new V1Preconditions { Uid = uid } }, cancellationToken: cleanup);
+        });
+        return name;
+    }
 
     public async Task<IReadOnlyList<OwnedObservationPod>> ListOwnedObservationPodsAsync(
         TestUser user, string tenantId, string serviceId, string deploymentId, CancellationToken cancellationToken)

@@ -23,6 +23,7 @@ public static class StorageProfileEndpoints
                 .MapCreateStorageProfileEndpoint()
                 .MapUpdateStorageProfileEndpoint()
                 .MapGetKubernetesStorageClassesEndpoint()
+                .MapGetStorageObservationEndpoint()
                 .MapGetKubernetesPersistentVolumesEndpoint()
                 .MapGetKubernetesPersistentVolumeClaimsEndpoint();
 

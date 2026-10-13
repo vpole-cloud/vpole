@@ -40,7 +40,8 @@ public static class RedisServicesFeatureRegistration
                 .InvokeOutcomeAsync<FinalizeRedisDeletionOutcome>);
         services.TryAddScoped<RedisResourceDeploymentAdapter>();
         services.TryAddScoped<RedisResourceDeploymentObserver>();
-        services.AddSingleton(ResourceDeploymentObserverDescriptor.Create<RedisResourceDeploymentObserver>(RedisResourceDeployment.ResourceType));
+        services.TryAddScoped<RedisResourceDeploymentChangeSource>();
+        services.AddSingleton(ResourceDeploymentObserverDescriptor.Create<RedisResourceDeploymentObserver, RedisResourceDeploymentChangeSource>(RedisResourceDeployment.ResourceType));
         services.AddSingleton(RedisResourceDeploymentAdapterRegistration.Descriptor);
         return services;
     }
