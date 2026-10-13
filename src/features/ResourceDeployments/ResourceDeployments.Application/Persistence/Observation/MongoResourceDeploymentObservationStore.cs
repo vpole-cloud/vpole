@@ -218,6 +218,11 @@ internal sealed class MongoResourceDeploymentObservationStore(
             if (control.SourceHealthy == healthy && control.BindingId == bindingId)
             {
                 await TouchControlAsync(control, transaction.Session, token);
+                if (healthy)
+                {
+                    var deadline = await FenceCommitDeadlineAsync(lease, context, control, transaction.Session, token);
+                    if (deadline is not null) return transaction.Abort(deadline);
+                }
                 return transaction.Commit(new ObservationSourceState(control.SourceControlVersion));
             }
             var updated = await controls.FindOneAndUpdateAsync(transaction.Session, SourceAtVersion(lease, context, expectedSourceControlVersion),

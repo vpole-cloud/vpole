@@ -1,6 +1,7 @@
 using System.Text.Json;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using MongoDB.Driver.Core.Events;
 using Pole.Database;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Application.Persistence.Admission;
@@ -513,6 +514,51 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
             owner.SourceControlVersion, "owned-controller", Sample())).Value);
         Assert.Equal(0, await Snapshots.CountDocumentsAsync(FilterDefinition<ObservationSnapshotDocument>.Empty));
         Assert.Equal(1, await EventCountAsync());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UnchangedHealthyStateCannotAcknowledgeAfterItsFinalAwaitCrossesExpiry(bool demandExpires)
+    {
+        var seeded = await SeedAsync();
+        var owner = await StartAsync(seeded);
+        var expiry = (await ServerNowAsync()).AddSeconds(1);
+        if (demandExpires)
+            await Demands.UpdateManyAsync(FilterDefinition<ObservationDemandDocument>.Empty,
+                Builders<ObservationDemandDocument>.Update.Set(item => item.ExpiresAtUtc, expiry));
+        else
+            await Controls.UpdateOneAsync(item => item.Id == owner.Lease.DeploymentId,
+                Builders<ObservationControlDocument>.Update.Set(item => item.LeaseExpiresAtUtc, expiry));
+        var before = await Controls.Find(item => item.Id == owner.Lease.DeploymentId).SingleAsync();
+        var settings = fixture.Client.Settings.Clone();
+        var previous = settings.ClusterConfigurator;
+        var updates = 0;
+        var touchRequest = 0;
+        settings.ClusterConfigurator = builder =>
+        {
+            previous?.Invoke(builder);
+            builder.Subscribe<CommandStartedEvent>(command =>
+            {
+                if (command.CommandName == "update" && command.Command["update"] == MongoResourceDeploymentObservationStore.ControlsCollection)
+                    Volatile.Write(ref touchRequest, command.RequestId);
+            });
+            builder.Subscribe<CommandSucceededEvent>(command =>
+            {
+                if (command.RequestId == Volatile.Read(ref touchRequest) && Interlocked.Increment(ref updates) == 1)
+                    Thread.Sleep(1400);
+            });
+        };
+        using var client = new MongoClient(settings);
+        var database = client.GetDatabase(fixture.Database.DatabaseNamespace.DatabaseName);
+        var delayed = new MongoResourceDeploymentObservationStore(database, new MongoRunTransaction(client),
+            (request, session, ct) => new MongoFenceDeploymentTargetObservation(database.GetCollection<Pole.Features.DeploymentTargets.Domain.DeploymentTarget>("DeploymentTargets"))
+                .InvokeAsync(request, session, ct), fixture.StoreOutboxWrites);
+        AssertRejected(demandExpires ? ObservationStoreRejection.NoDemand : ObservationStoreRejection.LeaseLost,
+            (await delayed.SetSourceStateAsync(owner.Lease, seeded.Context, owner.SourceControlVersion, true, "owned-controller")).Value);
+        Assert.Equal(before.ToBsonDocument(), (await Controls.Find(item => item.Id == owner.Lease.DeploymentId).SingleAsync()).ToBsonDocument());
+        Assert.Equal(1, await EventCountAsync());
+        Assert.True(updates >= 1);
     }
 
     [Fact]
