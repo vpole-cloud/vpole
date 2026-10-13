@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act } from 'react'
-import { strictFetch } from '../../test/http'
+import { deferred, strictFetch } from '../../test/http'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AppShell } from '../../shell/AppShell'
@@ -22,6 +22,8 @@ const generated: HostnameBinding = { id: 'generated', tenantId: 'alpha', tenantD
 const custom: HostnameBinding = { ...generated, id: 'old', tenantDomainZoneId: zone.id, relativeName: 'api', hostname: 'api.company.apps.test', kind: 'custom' }
 let service: WebService; let rows: HostnameBinding[]; let targetAvailable: boolean; let detachFails: boolean; let createFails: boolean; let attachFails: boolean
 let root: Root; let container: HTMLDivElement; let liveConnection: FakeConnection
+let heldZones: Promise<Response> | undefined; let heldBindings: Promise<Response> | undefined; let heldAttach: Promise<Response> | undefined
+let zoneRows: TenantDomainZone[]; let zonesFail: boolean; let bindingsFail: boolean
 const requests = strictFetch()
 const fetchMock = requests.fetch
 const json = (value: unknown) => Promise.resolve(new Response(JSON.stringify(value)))
@@ -40,6 +42,7 @@ beforeEach(() => {
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
   service = { id: 'app', name: 'Application', isolationScopeId: 'scope', exposure: { mode: 'Public' }, deployments: [{ deploymentId: 'dep', deploymentTargetId: 'target', status: 'Applied', desiredOperation: 'Apply', desiredGeneration: 2, observedGeneration: 2, deploymentRevision: 2 }, { deploymentId: 'failed', deploymentTargetId: 'other', status: 'Failed', failureCode: 'IngressApplyFailed', desiredOperation: 'Apply', desiredGeneration: 2, observedGeneration: 1, deploymentRevision: 2 }] } as WebService
   rows = [generated, custom]; targetAvailable = true; detachFails = false; createFails = false; attachFails = false
+  heldZones = undefined; heldBindings = undefined; heldAttach = undefined; zoneRows = [zone]; zonesFail = false; bindingsFail = false
   vi.mocked(createRealtimeConnection).mockImplementation(() => { liveConnection = new FakeConnection(); return liveConnection })
   vi.mocked(createRealtimeSession).mockImplementation(async () => ({ expiresAtUtc: new Date(Date.now() + 300000).toISOString() }))
   fetchMock.mockReset().mockImplementation((input, init) => {
@@ -48,7 +51,7 @@ beforeEach(() => {
     if (url.pathname.endsWith('/deployment-targets/available')) return json(targetAvailable ? [{ id: 'target', displayName: 'Local cluster', hasPublicIngress: true, publicBaseDomain: 'apps.test' }] : [])
     if (url.pathname.endsWith('/domain-zones')) {
       if (init?.method === 'POST') return createFails ? Promise.resolve(new Response(JSON.stringify({ code: 'domains.zone.already-reserved', detail: 'foreign-private-canary' }), { status: 409 })) : json(zone)
-      return json([zone])
+      return heldZones ?? (zonesFail ? Promise.resolve(new Response('{}', { status: 503 })) : json(zoneRows))
     }
     if (url.pathname.endsWith('/domain-zones/zone')) return json(zone)
     if (url.pathname.endsWith('/domain-zones/zone/bindings')) return json({ items: [{ binding: custom, resourceDisplayName: 'Application', resourceGroupId: 'group', placement: service.deployments[1] }], totalCount: 26, pageNumber: Number(url.searchParams.get('pageNumber')), pageSize: 25 })
@@ -56,8 +59,8 @@ beforeEach(() => {
     if (url.pathname.endsWith('/deployments/failed/hostnames')) return json([])
     if (url.pathname.endsWith('/deployments/dep/hostnames')) {
       if (init?.method === 'POST' && attachFails) return Promise.resolve(new Response(JSON.stringify({ code: 'domains.hostname.already-bound', detail: 'foreign-private-canary', resourceId: 'inaccessible-owner' }), { status: 409 }))
-      if (init?.method === 'POST') { const body = JSON.parse(init.body as string); rows.push({ ...custom, id: 'new', relativeName: body.relativeName, hostname: `${body.relativeName}.${zone.domain}` }); return json(service.deployments[0]) }
-      return json([...rows])
+      if (init?.method === 'POST') { const body = JSON.parse(init.body as string); rows.push({ ...custom, id: 'new', relativeName: body.relativeName, hostname: `${body.relativeName}.${zone.domain}` }); return heldAttach ?? json(service.deployments[0]) }
+      return heldBindings ?? (bindingsFail ? Promise.resolve(new Response('{}', { status: 503 })) : json([...rows]))
     }
     if (url.pathname.endsWith('/hostnames/old')) {
       if (detachFails) return Promise.resolve(new Response(JSON.stringify({ code: 'domains.hostname.delete.conflict', detail: 'foreign-private-canary' }), { status: 409 }))
@@ -159,4 +162,102 @@ it('observes conservative binding hints without replacing an alias draft and res
   await act(async () => vi.advanceTimersByTimeAsync(250))
   expect(text()).toContain('Public ingress is unavailable'); expect(text()).not.toContain('Attach alias')
   expect(fetchMock.mock.calls.some(([, init]) => init?.method && init.method !== 'GET')).toBe(false)
+})
+
+
+const aliasPosts = () => fetchMock.mock.calls.filter(([url, init]) => String(url).endsWith('/hostnames') && init?.method === 'POST')
+const attachButton = () => [...container.querySelectorAll<HTMLButtonElement>('button')].find(item => visible(item) && item.textContent === 'Attach alias')!
+async function aliasDraft() {
+  vi.useFakeTimers(); window.history.replaceState({}, '', '/?view=web-services')
+  await render('Owner', 'alpha', 'web-services', 'token', true)
+  await act(async () => vi.advanceTimersByTimeAsync(500))
+  await fill('Reserved zone', 'zone'); await fill('Hostname label', ' Fresh.Alias ')
+}
+async function domainHint() {
+  await act(async () => liveConnection.changed({ version: 1, topic: 'domains', tenantId: 'alpha', resourceId: 'other-binding' }))
+  await act(async () => vi.advanceTimersByTimeAsync(250))
+}
+
+it.each(['zones', 'bindings', 'both'] as const)('keeps a loaded alias form actionable during held %s push reads and submits exactly one immutable scoped command', async heldRead => {
+  await aliasDraft()
+  const input = field('Hostname label')
+  expect(attachButton().disabled).toBe(false)
+  const zonesRead = deferred<Response>(); const bindingsRead = deferred<Response>(); const accepted = deferred<Response>()
+  if (heldRead !== 'bindings') heldZones = zonesRead.promise
+  if (heldRead !== 'zones') heldBindings = bindingsRead.promise
+  heldAttach = accepted.promise
+  const before = fetchMock.mock.calls.length
+  await domainHint()
+  expect(fetchMock.mock.calls.slice(before).some(([url, init]) => String(url).endsWith('/domain-zones') && (init?.method ?? 'GET') === 'GET')).toBe(true)
+  expect(fetchMock.mock.calls.slice(before).some(([url, init]) => String(url).endsWith('/deployments/dep/hostnames') && (init?.method ?? 'GET') === 'GET')).toBe(true)
+  expect(field('Hostname label')).toBe(input); expect(input.value).toBe(' Fresh.Alias ')
+  expect.soft(attachButton().disabled).toBe(false)
+  await click('Attach alias')
+  expect(aliasPosts()).toHaveLength(1)
+  const [url, command] = aliasPosts()[0]
+  const submitted = command?.body
+  expect(String(url)).toContain('/web-services/app/deployments/dep/hostnames')
+  expect(JSON.parse(submitted as string)).toEqual({ tenantDomainZoneId: 'zone', relativeName: 'fresh.alias' })
+  expect(new Headers(command?.headers).get('X-Pole-Tenant-ID')).toBe('alpha')
+  expect(new Headers(command?.headers).get('Authorization')).toBe('Bearer token')
+  expect(attachButton().disabled).toBe(true)
+  await act(async () => container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+  expect(aliasPosts()).toHaveLength(1)
+  heldZones = undefined; heldBindings = undefined
+  await act(async () => { zonesRead.resolve(new Response(JSON.stringify(zoneRows))); bindingsRead.resolve(new Response(JSON.stringify(rows))) })
+  expect(command?.body).toBe(submitted); expect(aliasPosts()).toHaveLength(1)
+  heldAttach = undefined
+  await act(async () => accepted.resolve(new Response(JSON.stringify(service.deployments[0]))))
+  expect(field('Hostname label').value).toBe('')
+  expect(rows.filter(row => row.hostname === 'fresh.alias.company.apps.test')).toHaveLength(1)
+})
+
+it.each(['zones', 'bindings'] as const)('blocks an alias after failed %s validation and through a held retry until fresh evidence succeeds', async failedRead => {
+  await aliasDraft()
+  zonesFail = failedRead === 'zones'; bindingsFail = failedRead === 'bindings'
+  await domainHint()
+  expect(attachButton().disabled).toBe(true); expect(field('Hostname label').value).toBe(' Fresh.Alias ')
+  await act(async () => container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+  expect(aliasPosts()).toHaveLength(0)
+  const retried = deferred<Response>()
+  if (failedRead === 'zones') heldZones = retried.promise
+  else heldBindings = retried.promise
+  zonesFail = false; bindingsFail = false
+  await domainHint()
+  expect(attachButton().disabled).toBe(true)
+  await click('Attach alias'); expect(aliasPosts()).toHaveLength(0)
+  heldZones = undefined; heldBindings = undefined
+  await act(async () => retried.resolve(new Response(JSON.stringify(failedRead === 'zones' ? zoneRows : rows))))
+  await act(async () => vi.advanceTimersByTimeAsync(1))
+  expect(attachButton().disabled).toBe(false)
+  await click('Attach alias'); expect(aliasPosts()).toHaveLength(1)
+})
+
+it('blocks a draft when accepted push inventory removes its actual reserved zone', async () => {
+  await aliasDraft(); zoneRows = []
+  await domainHint()
+  expect(attachButton().disabled).toBe(true); expect(field('Hostname label').value).toBe(' Fresh.Alias ')
+  expect(text()).toContain('Reserve a tenant zone on this target')
+  await act(async () => container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+  expect(aliasPosts()).toHaveLength(0)
+})
+
+it('keeps initial absent metadata, invalid labels and duplicate aliases blocked before any command', async () => {
+  vi.useFakeTimers(); window.history.replaceState({}, '', '/?view=web-services')
+  const zonesRead = deferred<Response>(); const bindingsRead = deferred<Response>()
+  heldZones = zonesRead.promise; heldBindings = bindingsRead.promise
+  await render('Owner', 'alpha', 'web-services', 'token', true)
+  await act(async () => vi.advanceTimersByTimeAsync(500))
+  expect(attachButton().disabled).toBe(true)
+  await act(async () => container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+  expect(aliasPosts()).toHaveLength(0)
+  heldZones = undefined; heldBindings = undefined
+  await act(async () => { zonesRead.resolve(new Response(JSON.stringify(zoneRows))); bindingsRead.resolve(new Response(JSON.stringify(rows))) })
+  await act(async () => vi.advanceTimersByTimeAsync(1))
+  await fill('Reserved zone', 'zone')
+  for (const name of ['', 'bad_name', '.api', 'api']) {
+    await fill('Hostname label', name); expect(attachButton().disabled).toBe(true)
+    await click('Attach alias'); expect(aliasPosts()).toHaveLength(0)
+  }
+  await fill('Hostname label', 'valid'); expect(attachButton().disabled).toBe(false)
 })
