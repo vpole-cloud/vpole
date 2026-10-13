@@ -98,3 +98,38 @@ atomic replacement/removal, revocation fencing, cross-replica delivery, API rest
 failure and recovery. `RedisInfrastructureRegistrationTests` proves disabled composition and
 required connection/certificate configuration. These focused checks require a Docker-compatible
 runtime; broader Aspire/browser/Keycloak rollout verification remains in the final realtime gate.
+
+## Coverage, observation and rollback
+
+Apply the same realtime/topic settings on every API replica. An empty `Realtime:EnabledTopics`
+list enables all registered topics; a nonempty list is an allowlist, not a blocklist. Removing a
+topic from that allowlist returns only its consumers to existing fallback behavior. Unknown enabled
+topic names fail startup while realtime is enabled. Set `Realtime:Enabled=false` for transport
+rollback: no Redis connections/ticket adapters/backplane are required, and HTTP remains usable.
+Do not delete a shared keyring or certificate as a rollback action.
+
+`ResourceDeployments:Observation:Enabled=false` returns runtime observation topics to uncovered
+HTTP reads. `StorageProfiles:Observation:Enabled=false` independently stops platform storage
+observation ownership. The latter option is owned by StorageProfiles; its limits include
+`MaximumSources` (16), `ScanBatchSize` (64), `MaximumItemsPerKind` (2000) and
+`MaximumSnapshotBytes` (4 MiB). Disabled transport also disables both observation owners.
+Roll out changes consistently and expect current clients to resubscribe/resync; notifications are
+transient, so rollback/restart recovery depends on authoritative HTTP, not replay.
+
+Covered metadata uses 60-second safety reads. Runtime health/diagnostics use 30-second covered
+validation and 20-second uncovered reads; storage uses 30-second covered validation and retains
+initial/manual/visibility discovery when uncovered. Stable WebService detail keeps its prior
+initial/manual behavior when uncovered; known reconciliation keeps its 2.5-second polling.
+Runtime health and storage evidence expire
+at 45 seconds. Hidden pages release interests. Native owners use 30-second Mongo leases renewed
+every 10 seconds, exact target credential versions and five-minute inactive payload retention.
+Read epochs, retained observation floors and final transaction deadline checks fence late responses,
+source loss, expired demand/leases and old owner commits. A source hint alone never grants coverage.
+
+Monitor bounded realtime delivery/coverage counters, observation source/sample outcomes,
+LIST/WATCH recovery categories and existing outbox oldest-pending age. A spike in 410 indicates
+resource-version recovery; repeated stalled headers/unavailable outcomes or sustained source loss
+should be checked against native API connectivity/permissions and target credential versions.
+Server send duration ends at SignalR dispatch; it is not commit-to-visible browser latency.
+Optional aggregate client lifecycle reports are bounded, session-checked and rate limited, with
+no workspace identities or retained payload. See [observability](observability.md).

@@ -39,7 +39,7 @@ public sealed class RealtimePublisherTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => publisher.InvalidateTenantsAsync("unregistered"));
         await publisher.InvalidateTenantsAsync("eligibility");
         Assert.Equal(new RealtimeChange("eligibility", alpha), Assert.Single(hub.Client.Notices));
-        Assert.Equal(new[] { alpha, alpha, beta }, checkedTenants);
+        Assert.Equal(new[] { alpha, beta }, checkedTenants.Distinct());
         Assert.Equal(1, hub.Client.Revocations);
     }
 

@@ -1,5 +1,7 @@
 export type RealtimeTopic = 'source-builds' | 'operations' | 'web-services' | 'tenant-access' | 'resource-groups' | 'workspace-inventory' | 'postgres' | 'redis'
   | 'compute-profiles' | 'storage-profiles' | 'deployment-targets' | 'compute-eligibility' | 'storage-eligibility' | 'deployment-target-eligibility' | 'secrets' | 'git' | 'search' | 'domains' | 'resource-connections' | 'runtime-observations' | 'storage-observations'
+export interface RealtimeClientLifecycleReport { reconnects: number; fallbacks: number }
+export const boundedLifecycleCount = (value: number) => Number.isFinite(value) ? Math.min(100, Math.max(0, Math.floor(value))) : 0
 export interface RealtimeSubscription { topic: RealtimeTopic; tenantId?: string; resourceId?: string }
 export interface RealtimeCoverage extends RealtimeSubscription { subscriptionId: string; covered: boolean }
 export type RealtimeWireCoverage = Omit<RealtimeCoverage, 'tenantId' | 'resourceId'> & { tenantId?: string | null; resourceId?: string | null }

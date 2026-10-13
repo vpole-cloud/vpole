@@ -6,7 +6,7 @@ import type { QuerySession } from '../data/querySession'
 import type { RealtimeConnection } from './connection'
 import { InvalidationScheduler } from './invalidationScheduler'
 import { matchesPilotQuery } from './pilotQueries'
-import { acceptsChange, subscriptionKey, type RealtimeChange, type RealtimeCoverage, type RealtimeSubscription, type RealtimeStatus } from './types'
+import { acceptsChange, boundedLifecycleCount, subscriptionKey, type RealtimeChange, type RealtimeCoverage, type RealtimeSubscription, type RealtimeStatus } from './types'
 
 export type CoordinationMessage = { type: 'renewed' | 'session-revoked' | 'access-revoked'; tenantId?: string }
 interface Dependencies {
@@ -22,6 +22,11 @@ export class RealtimeController {
   private listeners = new Set<() => void>()
   private interests = new Map<string, { request: RealtimeSubscription; owners: number }>()
   private coverage = new Set<string>()
+  private lifecycleCounts = { reconnects: 0, fallbacks: 0 }
+  private everConnected = false
+  private lifecycleEpoch = 0
+  private lifecycleAttemptAt?: number
+  private lifecycleReport?: { connection: RealtimeConnection; epoch: number; promise: Promise<void> }
   private blockedTenants = new Set<string>()
   private revoked = false
   private cookieMismatch = false
@@ -176,11 +181,44 @@ export class RealtimeController {
     this.revision++; this.scheduler.cancel(); this.coverage.clear(); this.publish()
     queueMicrotask(() => { void this.sync() })
   }
+  private recordConnected() {
+    if (this.everConnected) this.lifecycleCounts.reconnects = boundedLifecycleCount(this.lifecycleCounts.reconnects + 1)
+    this.everConnected = true
+  }
+  private loseCoverage() {
+    if (this.coverage.size) this.lifecycleCounts.fallbacks = boundedLifecycleCount(this.lifecycleCounts.fallbacks + 1)
+    this.coverage.clear()
+  }
+  private advanceLifecycleEpoch() { this.lifecycleEpoch++; this.lifecycleReport = undefined }
+  private clearClientLifecycle() { this.lifecycleCounts = { reconnects: 0, fallbacks: 0 }; this.advanceLifecycleEpoch() }
+  private flushClientLifecycle(connection: RealtimeConnection) {
+    // Optional diagnostics are separate from authentication, coverage and query work.
+    if (this.revoked || !this.session.isActive() || this.connection !== connection || this.status !== 'connected' || !connection.reportLifecycle ||
+      this.lifecycleReport || !this.lifecycleCounts.reconnects && !this.lifecycleCounts.fallbacks ||
+      this.lifecycleAttemptAt !== undefined && Date.now() - this.lifecycleAttemptAt < 10000) return
+    const epoch = this.lifecycleEpoch
+    // Accepted reports subtract their immutable submission only. A replacement
+    // epoch retains counts and fences both subtraction and singleflight cleanup.
+    const submitted = Object.freeze({ ...this.lifecycleCounts })
+    const attempt = { connection, epoch, promise: Promise.resolve() }
+    this.lifecycleAttemptAt = Date.now(); this.lifecycleReport = attempt
+    attempt.promise = (async () => {
+      try {
+        const accepted = await connection.reportLifecycle!(submitted)
+        if (accepted === true && this.lifecycleEpoch === epoch && this.connection === connection && this.session.isActive() && !this.revoked) {
+          this.lifecycleCounts.reconnects = Math.max(0, this.lifecycleCounts.reconnects - submitted.reconnects)
+          this.lifecycleCounts.fallbacks = Math.max(0, this.lifecycleCounts.fallbacks - submitted.fallbacks)
+        }
+      } catch { /* Older servers and diagnostic failures leave application behavior unchanged. */ }
+      finally { if (this.lifecycleReport === attempt) this.lifecycleReport = undefined }
+    })()
+  }
   private disconnect() {
+    this.advanceLifecycleEpoch(); this.loseCoverage()
     if (this.connection) this.advanceObservationReads()
     this.epoch++; this.subscriptionEpoch++; this.abort?.abort(); clearTimeout(this.retry); clearTimeout(this.expiry); clearTimeout(this.heartbeatTimer); clearTimeout(this.coverageTimer)
     this.coverageTimer = undefined
-    this.scheduler.cancel(); this.coverage.clear(); this.status = 'offline'; this.publish()
+    this.scheduler.cancel(); this.status = 'offline'; this.publish()
     const old = this.connection; this.connection = undefined
     return old?.stop().catch(() => {}) ?? Promise.resolve()
   }
@@ -256,17 +294,17 @@ export class RealtimeController {
         else this.revokePlatformAccess()
       })
       connection.onReconnecting(() => {
-        if (valid()) { this.subscriptionEpoch++; this.advanceObservationReads(); clearTimeout(this.heartbeatTimer); clearTimeout(this.coverageTimer); this.coverageTimer = undefined; this.scheduler.cancel(); this.coverage.clear(); this.status = 'connecting'; this.publish() }
+        if (valid()) { this.advanceLifecycleEpoch(); this.loseCoverage(); this.subscriptionEpoch++; this.advanceObservationReads(); clearTimeout(this.heartbeatTimer); clearTimeout(this.coverageTimer); this.coverageTimer = undefined; this.scheduler.cancel(); this.status = 'connecting'; this.publish() }
       })
-      connection.onReconnected(() => { if (valid()) { this.status = 'connected'; this.publish(); this.scheduleHeartbeat(); void this.sync() } })
+      connection.onReconnected(() => { if (valid()) { this.recordConnected(); this.status = 'connected'; this.publish(); this.scheduleHeartbeat(); void this.sync() } })
       connection.onClose(() => {
         if (!valid()) return
-        clearTimeout(this.heartbeatTimer); clearTimeout(this.coverageTimer); this.coverageTimer = undefined; this.advanceObservationReads(); this.scheduler.cancel(); this.coverage.clear(); this.status = 'offline'; this.publish()
+        this.advanceLifecycleEpoch(); this.loseCoverage(); clearTimeout(this.heartbeatTimer); clearTimeout(this.coverageTimer); this.coverageTimer = undefined; this.advanceObservationReads(); this.scheduler.cancel(); this.status = 'offline'; this.publish()
         this.retry = setTimeout(() => { void this.renew() }, 10000)
       })
       await connection.start()
       if (!valid()) { await connection.stop(); return }
-      this.status = 'connected'; this.publish(); this.scheduleHeartbeat(); await this.sync()
+      this.recordConnected(); this.status = 'connected'; this.publish(); this.scheduleHeartbeat(); await this.sync()
     } catch (failure) {
       if (!valid()) return
       const stopped = this.disconnect(); const retryEpoch = this.epoch
@@ -300,6 +338,7 @@ export class RealtimeController {
     const resync = requests.filter(request => next.has(subscriptionKey(request)) && (resyncAll || !this.coverage.has(subscriptionKey(request))))
     const changed = next.size !== this.coverage.size || [...next].some(key => !this.coverage.has(key))
     const lostObservations = requests.filter(request => observationTopic(request.topic) && this.coverage.has(subscriptionKey(request)) && !next.has(subscriptionKey(request)))
+    if ([...this.coverage].some(key => !next.has(key))) this.lifecycleCounts.fallbacks = boundedLifecycleCount(this.lifecycleCounts.fallbacks + 1)
     this.coverage = next
     const searchResync = resync.filter(request => request.topic === 'search')
     for (const tenantId of new Set(searchResync.map(request => request.tenantId))) this.advanceSearchEpoch(tenantId)
@@ -341,7 +380,7 @@ export class RealtimeController {
           const current = () => connected() && this.subscriptionEpoch === subscriptionEpoch && this.revision === revision
           try {
             const acknowledgements = await connection.heartbeat()
-            if (current()) this.acknowledge(this.requests(), acknowledgements, false)
+            if (current()) { this.acknowledge(this.requests(), acknowledgements, false); this.flushClientLifecycle(connection) }
           } catch {
             // A live WebSocket can outlast Redis. Clear coverage and reconnect through
             // ordinary bootstrap without treating transient failure as revocation.
@@ -369,10 +408,11 @@ export class RealtimeController {
         if (revision !== this.revision) continue
         // An acknowledgement closes the connect/subscribe gap; HTTP remains authoritative.
         this.acknowledge(requests, acknowledgements, true)
+        this.flushClientLifecycle(connection)
       } while (revision !== this.revision)
     }
     const promise = run().catch(() => {
-      if (epoch === this.subscriptionEpoch) { this.coverage.clear(); this.publish() }
+      if (epoch === this.subscriptionEpoch) { this.loseCoverage(); this.publish() }
     }).finally(() => {
       if (this.syncing?.promise === promise) {
         this.syncing = undefined
@@ -385,7 +425,7 @@ export class RealtimeController {
   revokeAccess(tenantId?: string, broadcast = true) {
     this.membershipEpoch++
     if (tenantId) this.blockedTenants.add(tenantId)
-    else this.revoked = true
+    else { this.revoked = true; this.clearClientLifecycle() }
     this.scheduler.cancel(); this.coverage.clear(); this.publish()
     if (broadcast) this.dependencies.broadcast?.({ type: tenantId ? 'access-revoked' : 'session-revoked', tenantId })
     if (tenantId) { this.clearTenant(tenantId); this.refreshDiscovery(); this.changedInterests() }
@@ -451,5 +491,5 @@ export class RealtimeController {
     this.revokeAccess()
     try { await this.dependencies.revoke() } catch { /* IdP logout must still complete when the API is offline. */ }
   }
-  dispose() { void this.disconnect() }
+  dispose() { void this.disconnect(); this.clearClientLifecycle() }
 }

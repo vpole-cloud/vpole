@@ -92,3 +92,28 @@ correlation IDs, exception messages, or payload data.
 Use `CorrelationId` when tracing a user-visible workflow across API logs, outbox records, and consumers.
 
 Use `TraceId` when opening the same operation in an OpenTelemetry-compatible tracing backend.
+
+## Realtime and native observation metrics
+
+ServiceDefaults exports `Pole.Realtime`, `Pole.ResourceDeploymentObservations`, `Pole.StorageObservations` and
+`Pole.KubernetesWatch`, alongside the existing `Pole.Outbox` meter. OTLP export uses the existing
+`OTEL_EXPORTER_OTLP_ENDPOINT` configuration. The new measurements use registered/normalized
+bounded topics, scopes, outcomes, recovery categories and a controlled server/client source.
+They exclude tenant/resource/target/connection/session/user IDs, native resource versions,
+selectors, payloads, URLs, credentials and raw exception messages.
+
+| Instrument family | Meaning |
+| --- | --- |
+| `pole.realtime.delivery.attempts`, `.recipients`, `.duration` | Server publish outcomes and authorized send recipients; duration includes authorization and SignalR dispatch. |
+| `pole.realtime.connections.transitions`, `.subscriptions.transitions`, `.coverage.transitions` | Server lifecycle/coverage changes; healthy identical heartbeat coverage is not another transition. |
+| `pole.realtime.reconnects`, `pole.realtime.fallbacks` | Bounded optional client-reported transitions (`source=client`); server uncovered coverage uses `source=server`. |
+| `pole.observation.reads`, `.sources.transitions`, `.samples`, `.sample.duration` | Shared/live/unavailable read selection, source gain/loss and sample outcomes/duration. |
+| `pole.storage.observation.reads`, `.sources.transitions`, `.samples`, `.sample.duration` | Admin storage shared/live/unavailable reads, accepted source transitions and committed sample outcomes/duration; read kind is coherent/classes/volumes/claims. |
+| `pole.kubernetes.watch.outcomes` | LIST/open/EOF/410/malformed/stalled-headers/cancelled/unavailable recovery categories. |
+| `pole.outbox.pending.oldest_age` | Existing age of the oldest pending outbox event, refreshed by processing/cleanup passes. |
+
+These counters are operational diagnostics, not durable audit events or a delivery acknowledgement.
+An authorized recipient and a successful SignalR send do not prove browser processing. Client
+reports are best-effort and rate limited; missing reports are not zero transitions. Measure
+commit-to-visible latency and quiet HTTP reduction with browser journals over a stated sample and
+baseline. Pod readiness, declared topology and application connectivity remain separate signals.

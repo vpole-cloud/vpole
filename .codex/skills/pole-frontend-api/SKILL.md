@@ -29,9 +29,20 @@ Preserve backend contracts, tenant isolation and the verified query/draft/worksp
 
 Use data presence to keep loaded content mounted during background loading/errors. Expose initial loading and background refresh separately. Retries are false; staleTime, gcTime, mount/reconnect/focus behavior and intervals are explicit. Poll only active visible screens and coalesce slow reads with `refresh()`; do not cancel them on each timer tick. `refresh()` returns null on failed current reads while retaining display data. `refreshAfterWrite()` cancels pre-write reads before fetching fresh state.
 
+Metadata commands use `hasHealthyCurrentQueryData` to keep healthy current cached values actionable during background reads. Keep permission, scope, revision, phase and eligibility checks in the feature. Capture the selected command tuple for confirmations and recheck it before submitting; changed metadata or failed refresh requires review. This predicate does not prove native observation freshness.
+
 Imperative metadata reads use `fetchScopedQuery`; never store a different data envelope under a shared query key. Its temporary active observer preserves coalesced reads when rendered consumers disable. Bind ownership to `useApiScope.onExit`; cancel only after the last active owner leaves.
 
 Account/logout changes cancel and clear the session cache. Tenant/screen changes cancel reads and fence old callbacks. Permission changes separately disable actions and cancel/remove privileged metadata. Credential renewal preserves ordinary drafts and tabs. Keep `pole.activeTenantId` discovery-based and preserve page-number versus cursor pagination.
+
+## Realtime and observation ownership
+
+- Read `realtime/controller.ts`, `invalidationScheduler.ts` and the owning feature interest/query matcher before adding notifications. One account/API cookie connection serves independently scoped tenant subscriptions; ordinary HTTP keeps bearer headers. Never add an accessTokenFactory or a bearer token to a hub URL.
+- TanStack Query remains authoritative. Hints only invalidate matching metadata and advance observation fences; a current server acknowledgement alone grants coverage. Coalesce bursts, keep a running GET alive and perform one trailing read. Reconnect/resubscribe and visibility restoration resync active queries; inactive queries only become stale.
+- Explicitly declare every topic needed by a composite query. Covered metadata uses 60-second safety reads; uncovered screens retain their existing intervals or manual behavior. Runtime uses covered30s/uncovered20s; admin storage uses covered30s and its initial/manual/visibility fallback.
+- Observation keys/read epochs include deployment revision/generation or target connection version, never catalog revision in place of credential version. Use controller observation read guards and retained version floors. Do not accept a late, mismatched or incomplete snapshot as current evidence.
+- Health/storage evidence expires after45s. Use authoritative checked time and query acceptance time, with bounded timer/visibility updates; keep the last complete rows and dirty form mounted, but disable storage writes while evidence is stale. Permission loss clears privileged metadata/forms.
+- Client lifecycle reports contain only bounded ephemeral reconnect/fallback counts; diagnostic errors cannot change authentication, subscriptions or query work. Logs remain bounded uncached HTTP streams. See `docs/realtime-hosting.md` and frontend README for rollback and precise fallback policies.
 
 ## Mutations and sensitive state
 

@@ -66,7 +66,11 @@ public static class Extensions
                         .AddHttpClientInstrumentation()
                         .AddRuntimeInstrumentation()
                         .AddMeter("Microsoft.Orleans")
-                        .AddMeter("Pole.Outbox");
+                        .AddMeter("Pole.Outbox")
+                        .AddMeter("Pole.Realtime")
+                        .AddMeter("Pole.ResourceDeploymentObservations")
+                        .AddMeter("Pole.StorageObservations")
+                        .AddMeter("Pole.KubernetesWatch");
                 })
                 .WithTracing(tracing =>
                 {

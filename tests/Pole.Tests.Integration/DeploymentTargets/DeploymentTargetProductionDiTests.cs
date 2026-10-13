@@ -24,6 +24,8 @@ using Pole.Features.Functions.Runtime;
 using Pole.Features.ResourceGroups.Application;
 using Pole.Features.ResourceGroups.Application.Endpoints;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.ResourceDeployments.Application.Observation;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.StorageProfiles.Application;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.WebServices.Application.Kubernetes;
@@ -143,7 +145,18 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
     {
         var expected = new TestProviderInfrastructureException();
         var provider = new ThrowingKubernetesClientProvider(expected);
+        var target = DeploymentTargetNetworkPolicyTests.Target().AttestForTests().ToLookupDto() with { Id = DeploymentTargetId };
         var services = new ServiceCollection();
+        services.AddSingleton<IMongoClient>(fixture.Client);
+        services.AddSingleton<IMongoDatabase>(fixture.Database);
+        services.AddSingleton<MongoRunTransaction>();
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<LookupDeploymentTarget>((_, _) =>
+            Task.FromResult<LookupDeploymentTargetOutcome>(new(target)));
+        services.AddSingleton<FenceDeploymentTargetObservation>((_, _, _) =>
+            Task.FromResult<FenceDeploymentTargetObservationOutcome>(new(new DeploymentTargetObservationFenced())));
+        services.AddSingleton<IResourceDeploymentObservationReadBudget, ResourceDeploymentObservationReadBudget>();
+        services.AddOutboxPersistence();
         services.AddSingleton<IKubernetesClientProvider>(provider);
         services.AddStorageProfilesFeature();
         using var serviceProvider = services.BuildServiceProvider(validateScopes: true);
@@ -154,7 +167,6 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
         var storageFailure = await Assert.ThrowsAsync<TestProviderInfrastructureException>(
             () => discoverStorageClasses(
                 DeploymentTargetId));
-        var target = DeploymentTargetNetworkPolicyTests.Target().AttestForTests().ToLookupDto();
         var configuredTarget = target with
         {
             WorkloadConfiguration = target.WorkloadConfiguration with

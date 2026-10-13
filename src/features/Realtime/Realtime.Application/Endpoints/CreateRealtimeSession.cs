@@ -41,6 +41,8 @@ public sealed class CreateRealtimeSessionHandler(
         if (expires > maximum) expires = maximum;
 
         var previous = await context.AuthenticateAsync(RealtimeFeature.CookieScheme);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (expires <= clock.GetUtcNow()) return new RealtimeSessionIdentityUnavailable();
         if (previous.Succeeded && (previous.Principal.FindFirstValue(Claims.UserId) != userId || previous.Principal.FindFirstValue("iss") != issuer))
             return new RealtimeSessionAccountMismatch();
         var sessionId = previous.Succeeded ? previous.Principal.FindFirstValue(RealtimeFeature.SessionClaim) : null;
@@ -60,6 +62,14 @@ public sealed class CreateRealtimeSessionHandler(
             });
         }
         catch (RealtimeSessionUnavailableException) { return new RealtimeSessionIdentityUnavailable(); }
+        if (cancellationToken.IsCancellationRequested || expires <= clock.GetUtcNow())
+        {
+            // A slow ticket write must not return a positive expired session. Remove only
+            // this transport cookie; natural expiry does not create an explicit logout marker.
+            await context.SignOutAsync(RealtimeFeature.CookieScheme);
+            cancellationToken.ThrowIfCancellationRequested();
+            return new RealtimeSessionIdentityUnavailable();
+        }
         return new RealtimeSessionCreated(expires);
     }
 }
@@ -73,7 +83,7 @@ public static class CreateRealtimeSessionEndpoint
         {
             if (!enabled) return Results.NotFound();
             var mediator = context.RequestServices.GetRequiredService<IMediator>();
-            var result = await mediator.Send(new CreateRealtimeSessionRequest());
+            var result = await mediator.Send(new CreateRealtimeSessionRequest(), cancellationToken: context.RequestAborted);
             return result.ToHttpResult(outcome => outcome switch
             {
                 RealtimeSessionCreated created => Results.Ok(created),

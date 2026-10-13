@@ -73,7 +73,22 @@ public sealed class DomainBrowserE2ETests(PoleE2EFixture fixture)
         await content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = "Domains and hostnames", Exact = true }).WaitForAsync();
         await content.GetByLabel("Reserved zone", new LocatorGetByLabelOptions { Exact = true }).SelectOptionAsync(zoneId);
         await content.GetByLabel("Hostname label", new LocatorGetByLabelOptions { Exact = true }).FillAsync("api");
-        var attached = await page.RunAndWaitForResponseAsync(() => content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Attach alias", Exact = true }).ClickAsync(), response => response.Request.Method == "POST" && new Uri(response.Url).AbsolutePath.EndsWith("/hostnames", StringComparison.Ordinal));
+        var attachRequestsStarted = 0;
+        page.Request += (_, request) =>
+        {
+            if (request.Method == "POST" && new Uri(request.Url).AbsolutePath.EndsWith("/hostnames", StringComparison.Ordinal))
+                Interlocked.Increment(ref attachRequestsStarted);
+        };
+        IResponse attached;
+        try
+        {
+            attached = await page.RunAndWaitForResponseAsync(() => content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Attach alias", Exact = true }).ClickAsync(), response => response.Request.Method == "POST" && new Uri(response.Url).AbsolutePath.EndsWith("/hostnames", StringComparison.Ordinal));
+        }
+        catch (Exception failure) when (failure is TimeoutException or PlaywrightException)
+        {
+            // Record only a count: headers and mutation payloads may contain private data.
+            throw new InvalidOperationException($"The domain alias submit did not receive its awaited response. Matching requests started: {Volatile.Read(ref attachRequestsStarted)}.", failure);
+        }
         Assert.Equal(202, attached.Status);
         await page.ReloadAsync();
         await content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = "api." + domain, Exact = true }).WaitForAsync();

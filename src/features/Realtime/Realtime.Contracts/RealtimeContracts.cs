@@ -34,3 +34,8 @@ public delegate Task PublishRealtimeChange(
 public delegate Task InvalidateRealtimeTenants(
     string topic,
     CancellationToken cancellationToken = default);
+
+/// <summary>Best-effort aggregate diagnostics; never carries workspace or credential data.</summary>
+public sealed record RealtimeClientLifecycleReport(
+    int Reconnects,
+    int Fallbacks);

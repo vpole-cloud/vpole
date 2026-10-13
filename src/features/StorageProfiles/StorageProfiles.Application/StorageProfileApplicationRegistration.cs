@@ -36,6 +36,7 @@ public static class StorageProfileApplicationRegistration
         services.TryAddScoped<IStorageObservationStore, MongoStorageObservationStore>();
         services.TryAddScoped<StorageObservationContextLoader>();
         services.TryAddScoped<StorageObservationNativeReader>();
+        services.TryAddSingleton<StorageObservationMetrics>();
         services.TryAddScoped<StorageObservationReader>();
         services.TryAddSingleton<StorageObservationWakeup>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IRealtimeTopicLifecycle, StorageObservationLifecycle>());

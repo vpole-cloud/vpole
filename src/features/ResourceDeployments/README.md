@@ -22,8 +22,10 @@ state and are displayed separately in the WebService Operations section.
 placement. Providers contribute `IResourceDeploymentObserver` through a validated descriptor
 catalog; the platform never switches on built-in resource types. WebServices select Deployments,
 Redis StatefulSets, and PostgreSQL its configured StatefulSet or CloudNativePG Cluster.
-The operator signal checks the Ready condition and its observed generation using the
-[CloudNativePG API](https://cloudnative-pg.io/docs/1.27/cloudnative-pg.v1/).
+The operator signal combines Ready with provider-owned evidence for the current native generation.
+CloudNativePG 1.30 Ready conditions can omit `observedGeneration`, as shown by its
+[pinned status writer](https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/v1.30.0/pkg/resources/status/transactions.go);
+condition presence alone does not establish freshness.
 Applied confirms an adapter write, not application health. Ready requires the current Pole and
 native rollout, complete desired replica counts and current owned Ready pods. Redis and native
 PostgreSQL currently lack readiness probes; their signal is pod readiness, not a database query.
@@ -42,8 +44,9 @@ Generic retry requires `expectedRevision` and `expectedOperation` query values a
 existing tenant write check and atomic state/outbox transaction. Stale selections return conflict.
 WebServices use their owner retry endpoint to preserve release bookkeeping. Tenant/group summaries
 link to resources; supported precise retries appear in the owner's Operations section. Browser
-reads clear on tenant/token/API scope changes, refresh on reconnect and explicitly mark stale
-observations. The API is authoritative for Viewer versus writer access.
+reads are fenced on tenant/session/API scope changes, refresh after acknowledged reconnect and
+explicitly mark stale observations. Bearer renewal preserves ordinary drafts, tabs and authorized
+runtime streams while the realtime cookie transport renews. The API is authoritative for Viewer versus writer access.
 
 ## Runtime logs and Kubernetes diagnostics
 
@@ -78,3 +81,42 @@ unsupported providers, lifetime/output bounds and a follow connection ending are
 Generated diagnostics omit raw native messages and configuration, but arbitrary workload output
 can contain sensitive values and is displayed as plain text. The browser keeps at most 65,536
 characters, reports discarded output and clears it when the view closes or scope changes.
+
+## Shared observation lifecycle
+
+Realtime interest creates expiring durable demand for a tenant-owned physical deployment.
+Registered provider change sources establish bounded native LIST/WATCH ownership before the
+server acknowledges coverage. An opaque controller binding, source-control version, deployment
+revision/generation, target connection version and owner epoch fence every snapshot. Kubernetes
+resource versions remain opaque and local to each native kind/selector; bookmarks are not
+readiness evidence. EOF restarts the watch, while 410 or malformed frames require a new LIST.
+Missing/foreign controllers, incomplete ownership graphs, stalled headers and source loss withdraw
+coverage before slow samples can commit.
+
+Mongo supplies the lease clock. One API replica owns a 30-second CAS lease renewed every ten
+seconds. Samples are singleflight with a 250 ms coalesced hint and one trailing sample, using the
+shared four-reader/15-second budget. Quiet healthy sources revalidate every 30 seconds.
+Unchanged authoritative validation refreshes checked time and retained observation versions.
+Snapshot and minimal observation-change outbox records commit atomically; the final transaction
+decision rechecks lease/demand deadlines after awaited outbox work. Demand renewal never extends
+its original transport expiry. Final interest removal, expiry, source/binding changes, credential
+rotation and late old owners cannot revive stale evidence. Inactive snapshot payloads expire after
+five minutes; retained control counters prevent version reuse after payload expiry.
+
+`GET /resource-deployments/{id}/observation` and `/diagnostics` prefer a fresh shared snapshot and
+otherwise use the bounded live read path. Runtime notifications carry only deployment identity and
+versions. Health and diagnostics HTTP responses contain sanitized bounded metadata; log output
+continues through its separate uncached, bounded HTTP stream. Native readiness remains separate
+from declared connection endpoints, persisted topology, reconciliation and application connectivity.
+
+`ResourceDeployments:Observation:Enabled=false` disables shared observation ownership and
+acknowledged runtime coverage, preserving existing HTTP behavior. `MaximumSources` defaults to 64
+and `ScanBatchSize` to 128; startup validates their bounds. The composition also disables ownership
+when `Realtime:Enabled=false`. Platform storage uses the separate
+`StorageProfiles:Observation:Enabled` option and its own admin-scoped target/version lifecycle.
+
+The `Pole.ResourceDeploymentObservations` meter records shared/live/unavailable read selections,
+source gain/loss, sample accepted/rejected/cancelled/failed outcomes and sample duration. Labels
+are fixed outcomes, without tenant, resource, target, binding, lease or native metadata values.
+The `Pole.KubernetesWatch` meter reports bounded LIST/WATCH recovery categories. See
+[observability](../../../docs/observability.md) for export and interpretation.

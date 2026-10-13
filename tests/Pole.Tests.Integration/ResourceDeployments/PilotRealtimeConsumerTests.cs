@@ -21,14 +21,14 @@ public sealed class PilotRealtimeConsumerTests
     private const string GroupId = "group-pilot";
 
     [Fact]
-    public void Owners_RegisterEachPilotTopicOnceThroughContracts()
+    public void Owners_RegisterEachMetadataAndObservationTopicOnceThroughContracts()
     {
         var services = new ServiceCollection();
         var configuration = new ConfigurationBuilder().Build();
         services.AddSourceBuildsFeature(configuration).AddResourceDeploymentsFeature(configuration).AddWebServicesFeature();
         var topics = services.Where(descriptor => descriptor.ServiceType == typeof(RealtimeTopic))
             .Select(descriptor => Assert.IsType<RealtimeTopic>(descriptor.ImplementationInstance)).ToArray();
-        Assert.Equal(["operations", "source-builds", "web-services"], topics.Select(topic => topic.Name).Order());
+        Assert.Equal(["operations", "runtime-observations", "source-builds", "web-services"], topics.Select(topic => topic.Name).Order());
         Assert.All(topics, topic => Assert.Equal(RealtimeScope.Tenant, topic.Scope));
     }
 

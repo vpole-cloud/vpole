@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -28,7 +29,8 @@ public sealed class ResourceDeploymentObservationCoordinator(
     ResourceDeploymentObservationOptions options,
     ResourceDeploymentObservationWakeup wakeup,
     TimeProvider clock,
-    ILogger<ResourceDeploymentObservationCoordinator> logger) : BackgroundService
+    ILogger<ResourceDeploymentObservationCoordinator> logger,
+    ResourceDeploymentObservationMetrics? metrics = null) : BackgroundService
 {
     private readonly string instanceId = Guid.NewGuid().ToString("N");
     private readonly Dictionary<ObservationIdentity, RunningOwner> owners = [];
@@ -99,7 +101,7 @@ public sealed class ResourceDeploymentObservationCoordinator(
             var source = (IResourceDeploymentObservationChangeSource)scope.ServiceProvider.GetRequiredService(descriptor.ChangeSourceType!);
             var observer = (IResourceDeploymentBoundObserver)scope.ServiceProvider.GetRequiredService(descriptor.BoundObserverType!);
             var reads = scope.ServiceProvider.GetRequiredService<IResourceDeploymentObservationReadBudget>();
-            await new ResourceDeploymentObservationOwner(store, source, observer, reads, clock)
+            await new ResourceDeploymentObservationOwner(store, source, observer, reads, clock, metrics)
                 .RunAsync(context, ownership, lifetime.Token);
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
@@ -139,7 +141,8 @@ public sealed class ResourceDeploymentObservationOwner(
     IResourceDeploymentObservationChangeSource source,
     IResourceDeploymentBoundObserver observer,
     IResourceDeploymentObservationReadBudget reads,
-    TimeProvider clock)
+    TimeProvider clock,
+    ResourceDeploymentObservationMetrics? metrics = null)
 {
     private readonly SemaphoreSlim stateGate = new(1);
     private readonly Channel<bool> hints = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
@@ -189,6 +192,7 @@ public sealed class ResourceDeploymentObservationOwner(
                 var outcome = await store.SetSourceStateAsync(ownership.Lease, context, state.Version, healthy, binding, lifetime.Token);
                 if (outcome.Value is not ObservationSourceState accepted) { await lifetime.CancelAsync(); return; }
                 if (accepted.SourceControlVersion == state.Version && state.Binding == binding) return;
+                if ((state.Binding is not null) != healthy) metrics?.RecordSource(healthy);
                 // Persistence changed its fence before cancellation or any later sample.
                 state.SampleLifetime?.Cancel();
                 state.SampleLifetime?.Dispose();
@@ -211,15 +215,20 @@ public sealed class ResourceDeploymentObservationOwner(
                 try { captured = state; sampleToken = captured.SampleLifetime?.Token ?? lifetime.Token; }
                 finally { stateGate.Release(); }
                 if (captured.Binding is null || captured.SampleLifetime is null) continue;
+                var started = Stopwatch.GetTimestamp();
+                var sampleOutcome = ObservationSampleOutcome.Failed;
                 try
                 {
                     var observation = await reads.ReadAsync(token => observer.ObserveBoundAsync(context, captured.Binding, token), sampleToken);
-                    if (observation.BindingId != captured.Binding) { await SetSourceAsync(false, null); continue; }
+                    if (observation.BindingId != captured.Binding) { sampleOutcome = ObservationSampleOutcome.Rejected; await SetSourceAsync(false, null); continue; }
                     var result = await store.TryCommitSnapshotAsync(ownership.Lease, context, captured.Version, captured.Binding, observation, sampleToken);
+                    sampleOutcome = result.Value is ResourceDeploymentSharedObservation ? ObservationSampleOutcome.Accepted : ObservationSampleOutcome.Rejected;
                     if (result.Value is ObservationStoreRejected { Reason: not ObservationStoreRejection.BindingChanged })
                         await lifetime.CancelAsync();
                 }
-                catch (OperationCanceledException) when (sampleToken.IsCancellationRequested && !lifetime.IsCancellationRequested) { }
+                catch (OperationCanceledException) when (sampleToken.IsCancellationRequested && !lifetime.IsCancellationRequested) { sampleOutcome = ObservationSampleOutcome.Cancelled; }
+                catch (OperationCanceledException) { sampleOutcome = ObservationSampleOutcome.Cancelled; throw; }
+                finally { metrics?.RecordSample(sampleOutcome, Stopwatch.GetElapsedTime(started)); }
             }
         }
 

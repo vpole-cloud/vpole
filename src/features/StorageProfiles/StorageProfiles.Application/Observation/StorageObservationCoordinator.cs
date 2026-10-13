@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -13,7 +14,8 @@ public sealed class StorageObservationCoordinator(
     StorageObservationOptions options,
     StorageObservationWakeup wakeup,
     TimeProvider clock,
-    ILogger<StorageObservationCoordinator> logger) : BackgroundService
+    ILogger<StorageObservationCoordinator> logger,
+    StorageObservationMetrics? metrics = null) : BackgroundService
 {
     private readonly string instanceId = Guid.NewGuid().ToString("N");
     private readonly Dictionary<string, RunningOwner> owners = new(StringComparer.Ordinal);
@@ -64,7 +66,7 @@ public sealed class StorageObservationCoordinator(
         await using var scope = scopes.CreateAsyncScope(); var store = scope.ServiceProvider.GetRequiredService<IStorageObservationStore>();
         try
         {
-            await new StorageObservationOwner(store, scope.ServiceProvider.GetRequiredService<IStorageObservationSource>(), scope.ServiceProvider.GetRequiredService<StorageObservationNativeReader>(), clock).RunAsync(context, ownership, lifetime.Token);
+            await new StorageObservationOwner(store, scope.ServiceProvider.GetRequiredService<IStorageObservationSource>(), scope.ServiceProvider.GetRequiredService<StorageObservationNativeReader>(), clock, metrics).RunAsync(context, ownership, lifetime.Token);
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (Exception exception) when (exception is not OutOfMemoryException) { logger.LogWarning("Storage observation owner stopped ({FailureType}); coverage returns to polling.", exception.GetType().Name); }
@@ -88,11 +90,13 @@ internal sealed class StorageObservationOwner(
     IStorageObservationStore store,
     IStorageObservationSource source,
     StorageObservationNativeReader native,
-    TimeProvider clock)
+    TimeProvider clock,
+    StorageObservationMetrics? metrics = null)
 {
     private readonly SemaphoreSlim stateGate = new(1);
     private readonly Channel<bool> hints = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite, SingleReader = true });
     private SourceState state = new(0, null, null, null);
+    private bool measuredSourceHealthy;
     public async Task RunAsync(StorageObservationContext context, StorageObservationOwnership ownership, CancellationToken ct)
     {
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(ct); state = new(ownership.SourceControlVersion, null, null, null);
@@ -119,6 +123,7 @@ internal sealed class StorageObservationOwner(
                         var healthy = change.Kind == StorageObservationChangeKind.Ready && change.SourceId is not null && change.Inventory is { Complete: true };
                         var outcome = await store.SetSourceStateAsync(ownership.Lease, context, state.Version, healthy, healthy ? change.SourceId : null, lifetime.Token);
                         if (outcome.Value is not StorageObservationSourceState accepted) { await lifetime.CancelAsync(); return; }
+                        RecordSource(healthy);
                         // Control was fenced BEFORE canceling or awaiting recovery/native sampling.
                         state.SampleLifetime?.Cancel(); state.SampleLifetime?.Dispose();
                         state = new(accepted.SourceControlVersion, healthy ? change.SourceId : null, healthy ? change.Inventory : null, healthy ? CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token) : null);
@@ -139,6 +144,7 @@ internal sealed class StorageObservationOwner(
                 try { captured = state; sampleToken = captured.SampleLifetime?.Token ?? lifetime.Token; }
                 finally { stateGate.Release(); }
                 if (captured.SourceId is null || captured.Inventory is null || captured.SampleLifetime is null) continue;
+                var started = Stopwatch.GetTimestamp(); var sampleOutcome = StorageObservationSampleOutcome.Failed;
                 try
                 {
                     // Watch frames are hints. A delayed frame must never replace newer live evidence.
@@ -148,17 +154,22 @@ internal sealed class StorageObservationOwner(
                         await stateGate.WaitAsync(lifetime.Token);
                         try
                         {
-                            if (state.Version != captured.Version) continue;
-                            await store.SetSourceStateAsync(ownership.Lease, context, state.Version, false, null, lifetime.Token);
+                            if (state.Version != captured.Version) { sampleOutcome = StorageObservationSampleOutcome.Rejected; continue; }
+                            var withdrawn = await store.SetSourceStateAsync(ownership.Lease, context, state.Version, false, null, lifetime.Token);
+                            if (withdrawn.Value is StorageObservationSourceState) RecordSource(false);
+                            sampleOutcome = StorageObservationSampleOutcome.Rejected;
                             await lifetime.CancelAsync();
                         }
                         finally { stateGate.Release(); }
                         return;
                     }
                     var outcome = await store.TryCommitSnapshotAsync(ownership.Lease, context, captured.Version, captured.SourceId, inventory, sampleToken);
+                    sampleOutcome = outcome.Value is StorageObservationSnapshot ? StorageObservationSampleOutcome.Accepted : StorageObservationSampleOutcome.Rejected;
                     if (outcome.Value is StorageObservationRejected { Reason: not StorageObservationRejection.SourceChanged }) await lifetime.CancelAsync();
                 }
-                catch (OperationCanceledException) when (sampleToken.IsCancellationRequested && !lifetime.IsCancellationRequested) { }
+                catch (OperationCanceledException) when (sampleToken.IsCancellationRequested && !lifetime.IsCancellationRequested) { sampleOutcome = StorageObservationSampleOutcome.Cancelled; }
+                catch (OperationCanceledException) { sampleOutcome = StorageObservationSampleOutcome.Cancelled; throw; }
+                finally { metrics?.RecordSample(sampleOutcome, Stopwatch.GetElapsedTime(started)); }
             }
         }
         async Task RenewAsync()
@@ -177,6 +188,11 @@ internal sealed class StorageObservationOwner(
                 hints.Writer.TryWrite(true);
             }
         }
+    }
+    private void RecordSource(bool healthy)
+    {
+        if (measuredSourceHealthy == healthy) return;
+        measuredSourceHealthy = healthy; metrics?.RecordSource(healthy);
     }
     private sealed record SourceState(
         long Version,

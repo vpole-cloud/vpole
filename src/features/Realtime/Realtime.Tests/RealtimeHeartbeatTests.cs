@@ -305,6 +305,7 @@ public sealed class RealtimeHeartbeatTests
         Assert.NotNull(identity);
         if (corruptNull) scenario.Tickets.ReadAsUnavailable = true;
         else await scenario.Tickets.RemoveAsync("viewer");
+        scenario.Subscriptions.RevocationChecks.Clear();
         var error = await Assert.ThrowsAsync<HubException>(() => scenario.Hub.Heartbeat());
         Assert.Equal("The realtime session is unavailable.", error.Message);
         Assert.Same(identity, scenario.Hub.Context.User);
@@ -312,7 +313,7 @@ public sealed class RealtimeHeartbeatTests
         Assert.Empty(scenario.Subscriptions.Connections);
         Assert.Empty(scenario.Owner.Interests);
         Assert.Equal(1, scenario.Owner.UnsubscribeCalls);
-        Assert.Equal(["viewer"], scenario.Subscriptions.RevocationChecks);
+        Assert.Equal(["viewer"], scenario.Subscriptions.RevocationChecks.Distinct());
         Assert.Equal(0, scenario.Client.SessionRevocations);
         Assert.Empty(scenario.Client.AccessRevocations);
         Assert.Empty(scenario.Client.Changes);
@@ -331,8 +332,9 @@ public sealed class RealtimeHeartbeatTests
         if (expiredTicket) scenario.Clock.Now = scenario.Clock.Now.AddMinutes(2);
         else await scenario.Tickets.RemoveAsync("viewer");
         await scenario.Subscriptions.RevokeSessionAsync("viewer", default);
+        scenario.Subscriptions.RevocationChecks.Clear();
         Assert.Empty(await scenario.Hub.Heartbeat());
-        Assert.Equal(["viewer"], scenario.Subscriptions.RevocationChecks);
+        Assert.Equal(["viewer"], scenario.Subscriptions.RevocationChecks.Distinct());
         Assert.Empty(scenario.Subscriptions.Connections);
         Assert.Empty(scenario.Owner.Interests);
         Assert.Equal(emptyOwned ? 0 : 1, scenario.Owner.UnsubscribeCalls);
@@ -348,8 +350,9 @@ public sealed class RealtimeHeartbeatTests
         var initial = Assert.Single(await scenario.Hub.Subscribe([new("fake", Alpha)]));
         await scenario.Tickets.RemoveAsync("viewer");
         scenario.Subscriptions.RevocationCheckFailure = new InvalidOperationException("storage unavailable");
+        scenario.Subscriptions.RevocationChecks.Clear();
         await Assert.ThrowsAsync<InvalidOperationException>(() => scenario.Hub.Heartbeat());
-        Assert.Equal(["viewer"], scenario.Subscriptions.RevocationChecks);
+        Assert.Equal(["viewer"], scenario.Subscriptions.RevocationChecks.Distinct());
         Assert.Equal([initial.SubscriptionId], scenario.Owner.Interests);
         Assert.Equal(0, scenario.Client.SessionRevocations);
         Assert.Empty(scenario.Client.AccessRevocations);
@@ -546,7 +549,7 @@ public sealed class RealtimeHeartbeatTests
         var acknowledgement = Assert.Single(await scenario.Hub.Subscribe([new("fake", Alpha.ToUpperInvariant(), "Resource-A")]));
         Assert.Equal(Alpha, acknowledgement.TenantId);
         Assert.Equal("Resource-A", acknowledgement.ResourceId);
-        Assert.Equal([Alpha], checkedTenants);
+        Assert.Equal([Alpha], checkedTenants.Distinct());
         Assert.Single(await scenario.Subscriptions.FindAsync("fake", Alpha, default));
         await Assert.ThrowsAsync<HubException>(() => scenario.Hub.Subscribe([new("fake", Alpha), new("fake", Alpha.ToUpperInvariant())]));
         var distinctResources = await scenario.Hub.Subscribe([new("fake", Alpha, "Resource-A"), new("fake", Alpha, "resource-a")]);

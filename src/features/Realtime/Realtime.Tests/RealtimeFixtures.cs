@@ -33,6 +33,7 @@ internal sealed class MemorySubscriptions : IRealtimeSubscriptions
     public Dictionary<string, RealtimeSubscription[]> Connections { get; } = new();
     public Exception? ReplaceFailure { get; set; }
     public Exception? RevocationCheckFailure { get; set; }
+    public Action? OnRevocationCheck { get; set; }
     public HashSet<string> Revoked { get; } = new(StringComparer.Ordinal);
     public List<string> RevocationChecks { get; } = [];
     public int ReplaceCalls { get; private set; }
@@ -70,6 +71,7 @@ internal sealed class MemorySubscriptions : IRealtimeSubscriptions
     public Task<bool> IsSessionRevokedAsync(string sessionId, CancellationToken cancellationToken)
     {
         RevocationChecks.Add(sessionId);
+        OnRevocationCheck?.Invoke();
         if (RevocationCheckFailure is { } failure) throw failure;
         return Task.FromResult(Revoked.Contains(sessionId));
     }

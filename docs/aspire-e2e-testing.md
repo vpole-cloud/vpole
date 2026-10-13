@@ -196,3 +196,55 @@ placement generations, releases and native image/release metadata before and aft
 build to prove that failure did not redeploy the resource. Log screenshots cover desktop/narrow
 views and both themes under `.artifacts/frontend-build-logs`. A separate API scenario still checks
 failure when only the fixture's BuildKit port-forward is stopped.
+
+## Realtime verification lanes
+
+`RealtimeBrowserE2ETests` exercises two full API processes with real Keycloak/shared cookie,
+protected keyring/backplane and remote logout; bearer refresh preserving a dirty tenant workspace;
+quiet covered metadata reads compared with disconnected polling; and committed metadata bursts
+around a held HTTP read. `RealtimeMembershipE2ETests` checks current roles, Viewer actions,
+held-read fencing and membership removal/restoration without relying on token rotation.
+`RealtimeObservationBrowserE2ETests` uses owned WebService Pod deletes with exact UID preconditions
+and journals write-start-to-visible old UID removal. Its twenty-sample upper bound is compared
+with a five-second p95 budget; the verified stage 7 sample measured 3.1 s. That result is a specific
+WebService/native scenario, not a universal provider latency claim. The quiet metadata pilot's
+88.5% reduction likewise applies to its stated pending-release window and disconnected baseline,
+not every 60-second safety refresh or every provider.
+
+The quiet comparison uses tenant-scoped, revision-fenced manual retries of its owned disabled-target
+deployment until the retry backoff covers both 65-second windows and their setup margin. It verifies
+the failure phase and unchanged attempt count before/after each window, and zero owned change hints
+during the covered window. The production recovery scheduler stays enabled. Automatic reconciliation
+is a real change and must not be counted as idle polling. The current isolated comparison measured
+26 disconnected GETs versus 3 covered GETs, an 88.5% reduction with uninterrupted coverage.
+After restoring the target, the test reloads the owned operation and explicitly retries a known
+retryable disabled-target failure through the public tenant-scoped API, with the current deployment
+revision and `Apply` precondition. Accepted/running operations are only observed; conflicts trigger
+a fresh read. The original four-minute recovery bound and release-2 success assertion remain.
+
+The second API process runs the matching configuration/target-framework build of `Pole.Server.dll`
+through `dotnet exec`. DCP supervises the API directly, without a `dotnet run` launcher and child
+process tree. The primary's service, protected-key and OTLP environment callbacks are retained.
+The replica alone has `DOTNET_SHUTDOWNTIMEOUTSECONDS=10`, below the pinned Aspire DCP
+stop command's approximately 15-second retry window. The primary host retains its normal deadline.
+The test waits for owned release reconciliation before stop/cleanup and still requires the same
+process instance's terminal state, a stop timestamp after the command intent and an accepted exit
+status. It verifies that stopping the replica closes its existing hub connection, while the primary
+connection survives, then restarts at the same endpoint and reuses the existing shared cookie.
+Safe lifecycle scalars identify the failing phase; primary and cleanup failures are reported together.
+
+`RealtimeRedisTests` separately proves real Redis outage/restart and server/API recovery.
+`KubernetesNativeWatchTests` proves actual SDK response ownership, quiet watch opening,
+bookmarks/EOF/410/malformed recovery and cancellation against controlled transports.
+Observation-owner tests prove singleflight/source-loss fencing; Mongo observation tests prove
+lease takeover, original demand expiry, snapshot/outbox visibility/rollback and final deadline
+fences. MeterListener tests prove bounded operational labels and diagnostic report authority/rate
+limits. Controlled transports and browser interception are not substitutes for a new provider's
+live native ownership or end-to-end outage evidence.
+
+Redis/PostgreSQL/storage browser observation rollout, client reconnect/fallback reporting and
+final merged lifecycle evidence must be evaluated on their current source tree; the earlier
+WebService pilot is not their passing result. Serialize heavy lanes according to the documented
+worktree scheduling. Final publication still requires `python3 scripts/quality_gate.py run` with
+zero failed or skipped tests across all backend/frontend/automation/infrastructure lanes; missing
+prerequisites and pre-existing failures block it. No focused result alone is a full-gate claim.

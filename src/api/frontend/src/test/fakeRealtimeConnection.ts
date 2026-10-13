@@ -1,6 +1,6 @@
 import { vi } from 'vitest'
 import type { RealtimeConnection } from '../realtime/connection'
-import type { RealtimeChange, RealtimeCoverage, RealtimeSubscription } from '../realtime/types'
+import type { RealtimeChange, RealtimeClientLifecycleReport, RealtimeCoverage, RealtimeSubscription } from '../realtime/types'
 
 export class FakeConnection implements RealtimeConnection {
   private requests: RealtimeSubscription[] = []
@@ -17,6 +17,7 @@ export class FakeConnection implements RealtimeConnection {
     return requests.map((request, index) => ({ ...request, subscriptionId: String(index), covered: true }))
   })
   heartbeat = vi.fn(async (): Promise<RealtimeCoverage[]> => this.requests.map((request, index) => ({ ...request, subscriptionId: String(index), covered: true })))
+  reportLifecycle = vi.fn<(report: RealtimeClientLifecycleReport) => Promise<boolean>>().mockResolvedValue(true)
   unsubscribe = vi.fn(async () => { this.requests = [] })
   onChanged(callback: typeof this.changed) { this.changed = callback }
   onSessionRevoked(callback: typeof this.sessionRevoked) { this.sessionRevoked = callback }
