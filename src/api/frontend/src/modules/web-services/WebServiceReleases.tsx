@@ -42,8 +42,10 @@ function ReleaseHistory({ scope, service, onChanged }: { scope: string; service:
   }, [historyStatus, refreshHistory])
   useVisibleRefresh(true, poll, pending ? 2500 : 20000, interest)
   if (value && history.status === 'success' && page > Math.max(1, Math.ceil(value.releases.totalCount / value.releases.pageSize))) setPage(Math.max(1, Math.ceil(value.releases.totalCount / value.releases.pageSize)))
-  const current = value && history.status === 'success' && value.activeRevision === service.activeRevision
-  const writable = tenant.canManage && current && !mutation.busy && service.deployments.some(placement => placement.desiredOperation !== 'Delete')
+  // A healthy background fetch does not invalidate this scoped revision context.
+  const current = value && history.isCurrent && history.status !== 'error' && !history.error && value.activeRevision === service.activeRevision
+  const hasDesiredTarget = service.deployments.some(placement => placement.desiredOperation !== 'Delete')
+  const writable = tenant.canManage && current && !mutation.busy && hasDesiredTarget
   const resource = { resourceTypeId: 'pole/web-service', resourceId: service.id }
   const refresh = async () => { await Promise.all([history.refresh(), onChanged()]) }
   const choose = (target: WebServiceRelease | null) => {
@@ -57,7 +59,7 @@ function ReleaseHistory({ scope, service, onChanged }: { scope: string; service:
     setSelected({ ...selected, expectedRevision: updatedHistory.activeRevision, image: image(selected.target?.spec ?? updatedService.spec) })
     mutation.clearError()
   }
-  const eligibleSelection = selected && current && selected.expectedRevision === value?.activeRevision &&
+  const eligibleSelection = selected && current && hasDesiredTarget && selected.expectedRevision === value?.activeRevision &&
     (!selected.target || selected.target.outcome === 'Succeeded' && selected.target.resourceRevision < value!.activeRevision)
   const error = mutation.error instanceof Error ? mutation.error.message : ''
   return <section className="web-service-releases" aria-label="Release history and recovery">

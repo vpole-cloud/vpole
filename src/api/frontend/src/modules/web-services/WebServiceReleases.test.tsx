@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act } from 'react'
-import { strictFetch } from '../../test/http'
+import { deferred, strictFetch } from '../../test/http'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useWebService } from './useWebService'
@@ -24,6 +24,7 @@ let container: HTMLDivElement
 let failRead: boolean
 let conflict: boolean
 let oldRead: Promise<Response> | undefined
+let heldHistory: Promise<Response> | undefined
 const requests = strictFetch()
 const fetchMock = requests.fetch
 const json = (value: unknown) => Promise.resolve(new Response(JSON.stringify(value)))
@@ -44,11 +45,12 @@ beforeEach(() => {
     spec: { image: { server: 'registry.test', name: 'app', tag: 'current' }, config: { environmentVariables: { PASSWORD: 'literal-secret-canary' }, portMappings: [], secretEnvironmentReferences: { TOKEN: { secretId: 'secret', key: 'token' } } }, probes: { startup: probe, readiness: probe, liveness: probe }, autoscaling: null },
     deployments: [{ deploymentId: 'deployment', runtimeCellId: 'cell', deploymentTargetId: 'target', desiredGeneration: 13, observedGeneration: 13, deploymentRevision: 13, resourceRevision: 13, fixedReplicas: 1, desiredOperation: 'Apply', status: 'Applied', endpoints: [], compute: { displayName: 'Small', profile: { computeProfileId: 'small', computeProfileRevision: 1 }, requests: { cpuMillis: 100, memoryMi: 128 }, limits: { cpuMillis: 200, memoryMi: 256 }, extendedResources: [] } }] }
   releases = Array.from({ length: 13 }, (_, index) => release(13 - index))
-  failRead = false; conflict = false; oldRead = undefined
+  failRead = false; conflict = false; oldRead = undefined; heldHistory = undefined
   fetchMock.mockReset().mockImplementation((input, init) => {
     const url = new URL(String(input))
     if (url.pathname.endsWith('/releases')) {
       if ((init?.headers as Record<string, string>)['X-Pole-Tenant-ID'] === 'old' && oldRead) return oldRead
+      if (heldHistory) return heldHistory
       if (failRead) return Promise.resolve(new Response('raw-server-canary', { status: 503 }))
       const page = Number(url.searchParams.get('pageNumber'))
       return json({ activeRevision: service.activeRevision, releases: { items: releases.slice((page - 1) * 10, page * 10), totalCount: releases.length, pageNumber: page, pageSize: 10 } })
@@ -150,4 +152,106 @@ it('cancels and clears old tenant history, confirmation and late successful resu
   await act(async () => complete(new Response(JSON.stringify({ activeRevision: 13, releases: { items: [foreign], totalCount: 1, pageNumber: 1, pageSize: 10 } }))))
   expect(text()).not.toContain('foreign-tenant-canary')
   await click('Rollback to revision 11'); await render('third'); expect(container.querySelector('dialog')).toBeNull(); expect(writes()).toHaveLength(0)
+})
+
+
+const historySnapshot = () => ({ activeRevision: service.activeRevision, releases: { items: releases.slice(0, 10), totalCount: releases.length, pageNumber: 1, pageSize: 10 } })
+
+it.each(['redeploy', 'rollback'] as const)('opens the %s confirmation from loaded matching history during a held background refresh', async action => {
+  await render()
+  const held = deferred<Response>(); heldHistory = held.promise
+  await click('Refresh releases')
+  const inFlight = fetchMock.mock.calls.filter(([url]) => String(url).includes('/releases')).at(-1)!
+  expect(inFlight[1]?.signal?.aborted).toBe(false)
+  const choice = buttons().find(button => button.textContent === (action === 'redeploy' ? 'Redeploy current revision' : 'Rollback to revision 11'))!
+  expect.soft(choice.disabled).toBe(false)
+  await act(async () => choice.click())
+  const dialog = container.querySelector('dialog')
+  expect(dialog?.textContent).toContain(action === 'redeploy' ? 'Redeploy reapplies current configuration.' : 'Restore the specification saved in revision 11')
+  const confirm = buttons().find(button => button.textContent === (action === 'redeploy' ? 'Confirm redeploy' : 'Confirm rollback'))!
+  expect(confirm.disabled).toBe(false); expect(writes()).toHaveLength(0)
+  heldHistory = undefined
+  await act(async () => held.resolve(new Response(JSON.stringify(historySnapshot()))))
+  expect(container.querySelector('dialog')).toBe(dialog)
+  await click(action === 'redeploy' ? 'Confirm redeploy' : 'Confirm rollback')
+  expect(writes()).toHaveLength(1)
+  const [url, command] = writes()[0]
+  if (action === 'redeploy') expect(new URL(String(url)).searchParams.get('expectedRevision')).toBe('13')
+  else expect(JSON.parse(String(command?.body))).toEqual({ targetRevision: 11, expectedRevision: 13 })
+  expect(command?.headers).toEqual(expect.objectContaining({ Authorization: 'Bearer token', 'X-Pole-Tenant-ID': 'active' }))
+})
+
+it('keeps an already open recovery dialog actionable through a healthy held refresh without resetting its captured selection', async () => {
+  await render(); await click('Rollback to revision 11')
+  const dialog = container.querySelector('dialog')!
+  const held = deferred<Response>(); heldHistory = held.promise
+  await click('Refresh releases')
+  expect(container.querySelector('dialog')).toBe(dialog); expect(dialog.open).toBe(true)
+  expect(dialog.textContent).toContain('revision 11'); expect(text()).toContain('Current desired revision 13')
+  expect(buttons().find(button => button.textContent === 'Confirm rollback')!.disabled).toBe(false)
+  expect(writes()).toHaveLength(0)
+  heldHistory = undefined
+  await act(async () => held.resolve(new Response(JSON.stringify(historySnapshot()))))
+  expect(container.querySelector('dialog')).toBe(dialog)
+})
+
+it('retains confirmation but blocks failed history and a held retry until current history succeeds', async () => {
+  await render(); await click('Redeploy current revision')
+  const dialog = container.querySelector('dialog')!
+  failRead = true; await click('Refresh releases')
+  expect(container.querySelector('dialog')).toBe(dialog)
+  expect(buttons().find(button => button.textContent === 'Confirm redeploy')!.disabled).toBe(true)
+  expect(text()).not.toContain('raw-server-canary')
+  const held = deferred<Response>(); heldHistory = held.promise; failRead = false
+  await click('Refresh releases')
+  expect(container.querySelector('dialog')).toBe(dialog)
+  expect(buttons().find(button => button.textContent === 'Confirm redeploy')!.disabled).toBe(true)
+  await click('Confirm redeploy'); expect(writes()).toHaveLength(0)
+  heldHistory = undefined
+  await act(async () => held.resolve(new Response(JSON.stringify(historySnapshot()))))
+  expect(buttons().find(button => button.textContent === 'Confirm redeploy')!.disabled).toBe(false)
+})
+
+it('keeps a captured revision disabled through a real service/history revision change until explicit review', async () => {
+  await render(); await click('Rollback to revision 11')
+  const held = deferred<Response>(); heldHistory = held.promise
+  service = { ...service, activeRevision: 14 }; releases.unshift({ ...release(14), outcome: 'Succeeded' })
+  await click('Refresh releases')
+  expect(buttons().find(button => button.textContent === 'Confirm rollback')!.disabled).toBe(true)
+  await click('Confirm rollback'); expect(writes()).toHaveLength(0)
+  heldHistory = undefined
+  await act(async () => held.resolve(new Response(JSON.stringify(historySnapshot()))))
+  expect(buttons().find(button => button.textContent === 'Confirm rollback')!.disabled).toBe(true)
+  expect(container.querySelector('dialog')?.textContent).toContain('selection changed')
+  await click('Refresh recovery context')
+  expect(buttons().find(button => button.textContent === 'Confirm rollback')!.disabled).toBe(false)
+  await click('Confirm rollback')
+  expect(JSON.parse(String(writes()[0][1]?.body))).toEqual({ targetRevision: 11, expectedRevision: 14 })
+})
+
+it('blocks recovery before initial history arrives and when every desired target is deleting', async () => {
+  const held = deferred<Response>(); heldHistory = held.promise
+  await render()
+  expect(buttons().find(button => button.textContent === 'Redeploy current revision')!.disabled).toBe(true)
+  await click('Redeploy current revision'); expect(container.querySelector('dialog')).toBeNull()
+  heldHistory = undefined
+  await act(async () => held.resolve(new Response(JSON.stringify(historySnapshot()))))
+  service = { ...service, deployments: service.deployments.map(placement => ({ ...placement, desiredOperation: 'Delete' })) }
+  await click('Refresh releases')
+  expect(buttons().find(button => button.textContent === 'Redeploy current revision')!.disabled).toBe(true)
+  await click('Redeploy current revision'); expect(container.querySelector('dialog')).toBeNull(); expect(writes()).toHaveLength(0)
+})
+
+
+it('disables an open recovery when a service refresh makes every desired target deleting at the same revision', async () => {
+  await render(); await click('Redeploy current revision')
+  const held = deferred<Response>(); heldHistory = held.promise
+  service = { ...service, deployments: service.deployments.map(placement => ({ ...placement, desiredOperation: 'Delete' })) }
+  await click('Refresh releases')
+  expect.soft(buttons().find(button => button.textContent === 'Confirm redeploy')!.disabled).toBe(true)
+  await click('Confirm redeploy'); expect(writes()).toHaveLength(0)
+  heldHistory = undefined
+  await act(async () => held.resolve(new Response(JSON.stringify(historySnapshot()))))
+  expect(buttons().find(button => button.textContent === 'Confirm redeploy')!.disabled).toBe(true)
+  await click('Confirm redeploy'); expect(writes()).toHaveLength(0)
 })
