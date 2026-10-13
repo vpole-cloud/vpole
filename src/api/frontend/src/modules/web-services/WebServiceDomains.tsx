@@ -18,6 +18,8 @@ export function WebServiceDomains({ service, active, onDirtyChange, onChanged }:
   const scope = `${identity}:${service.id}`
   const zones = useWebServiceQuery(['domains', 'zones'], (signal) => fetchDomainZones(api.baseUrl, credential(), api.tenantId, signal), { active, realtime: domainInterests(api.tenantId) })
   const targets = useWebServiceQuery(eligibilityKeys.targets('pole/web-service', service.isolationScopeId, false), (signal) => fetchAvailableDeploymentTargets(api.baseUrl, service.isolationScopeId ?? undefined, credential(), api.tenantId, signal, false), { active, realtime: [{ topic: 'deployment-target-eligibility', tenantId: api.tenantId }] })
+  // A healthy background read retains usable metadata in this exact query scope.
+  const zonesAvailable = zones.isCurrent && zones.resource !== null && zones.status !== 'error' && !zones.error
   const [dirtyTargets, setDirtyTargets] = useState<Record<string, boolean>>({})
   const setDirty = useCallback((id: string, dirty: boolean) => setDirtyTargets((current) => current[id] === dirty ? current : { ...current, [id]: dirty }), [])
   const dirty = service.deployments.some((deployment) => dirtyTargets[deployment.deploymentId])
@@ -31,7 +33,7 @@ export function WebServiceDomains({ service, active, onDirtyChange, onChanged }:
     <div className="row-actions"><Button onClick={() => { void zones.refresh(); void targets.refresh(); void onChanged() }}>Refresh zones and targets</Button>{tenant.canManage && <a className="button" href={domainZoneHref('create', api.tenantId)}>Reserve a zone</a>}</div>
     <p className="field__hint">An accepted alias reserves ownership and requests ingress configuration. Applied does not establish external DNS, certificate readiness or application reachability.</p>
   </section>
-    {service.deployments.map((deployment) => <DeploymentDomains key={`${scope}:${deployment.deploymentId}`} service={service} deployment={deployment} active={active} canManage={tenant.canManage} zones={zones.resource ?? []} zonesAvailable={zones.status === 'success'} target={targets.resource?.find((target) => target.id === deployment.deploymentTargetId)} onDirtyChange={setDirty} onChanged={onChanged} />)}
+    {service.deployments.map((deployment) => <DeploymentDomains key={`${scope}:${deployment.deploymentId}`} service={service} deployment={deployment} active={active} canManage={tenant.canManage} zones={zones.resource ?? []} zonesAvailable={zonesAvailable} target={targets.resource?.find((target) => target.id === deployment.deploymentTargetId)} onDirtyChange={setDirty} onChanged={onChanged} />)}
   </div>
 }
 
@@ -52,7 +54,8 @@ function DeploymentDomains({ service, deployment, active, canManage, zones, zone
   const selected = eligible.find((zone) => zone.id === zoneId)
   const validName = relativeName.trim().toLowerCase().split('.').every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))
   const publicReady = service.exposure.mode === 'Public' && target?.hasPublicIngress && deployment.desiredOperation === 'Apply'
-  const canAttach = canManage && publicReady && zonesAvailable && bindings.status === 'success' && selected && validName && relativeName.trim()
+  const bindingsAvailable = bindings.isCurrent && bindings.resource !== null && bindings.status !== 'error' && !bindings.error
+  const canAttach = canManage && publicReady && zonesAvailable && bindingsAvailable && selected && validName && relativeName.trim()
   const draftMatches = bindings.resource?.find((binding) => binding.tenantDomainZoneId === zoneId && binding.relativeName === relativeName.trim().toLowerCase())
   const clear = () => { setZoneId(''); setRelativeName(''); setEditing(null) }
   const save = () => {
