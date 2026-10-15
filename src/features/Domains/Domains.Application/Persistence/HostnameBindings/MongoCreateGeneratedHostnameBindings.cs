@@ -17,6 +17,7 @@ internal sealed class MongoCreateGeneratedHostnameBindings(
 {
     private readonly IMongoCollection<TenantDomainZone> zones =
         database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
+
     private readonly IMongoCollection<HostnameBinding> bindings =
         database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
 
@@ -42,10 +43,9 @@ internal sealed class MongoCreateGeneratedHostnameBindings(
             StringComparer.Ordinal);
         if (zoneIds.Any(zoneId => !zonesById.ContainsKey(CanonicalObjectId(zoneId))))
         {
-            var missingZoneId = zoneIds.First(
-                zoneId => !zonesById.ContainsKey(CanonicalObjectId(zoneId)));
+            var missingZoneId = zoneIds.First(zoneId => !zonesById.ContainsKey(CanonicalObjectId(zoneId)));
             return new GeneratedHostnameBindingError(
-                    new GeneratedHostnameBindingZoneNotFound(missingZoneId));
+                new GeneratedHostnameBindingZoneNotFound(missingZoneId));
         }
 
         var candidates = new List<HostnameBinding>(requests.Count);
@@ -58,9 +58,9 @@ internal sealed class MongoCreateGeneratedHostnameBindings(
                     StringComparison.Ordinal))
             {
                 return new GeneratedHostnameBindingError(
-                        new GeneratedHostnameBindingTargetMismatch(
-                            zone.Id,
-                            request.DeploymentTargetId));
+                    new GeneratedHostnameBindingTargetMismatch(
+                        zone.Id,
+                        request.DeploymentTargetId));
             }
 
             candidates.Add(HostnameBindingFactory.CreateGenerated(
@@ -107,8 +107,8 @@ internal sealed class MongoCreateGeneratedHostnameBindings(
                 cancellationToken))
         {
             return new GeneratedHostnameBindingError(
-                    new GeneratedHostnameBindingZoneChanged(
-                        persistedZones.Select(zone => zone.Id).ToArray()));
+                new GeneratedHostnameBindingZoneChanged(
+                    persistedZones.Select(zone => zone.Id).ToArray()));
         }
 
         try
@@ -130,8 +130,11 @@ internal sealed class MongoCreateGeneratedHostnameBindings(
             return new GeneratedHostnameBindingError(new GeneratedHostnameBindingConflict(hostnames));
         }
 
-        await outbox(session, candidates.Select(binding => OutboxWrite.Create(
-            cleanup.WithAdvancedRevision(zonesById[CanonicalObjectId(binding.TenantDomainZoneId)]).ToChangedEvent(binding.Id))).ToArray(), cancellationToken);
+        await outbox(session,
+            candidates.Select(binding => OutboxWrite.Create(
+                cleanup.WithAdvancedRevision(zonesById[CanonicalObjectId(binding.TenantDomainZoneId)])
+                    .ToChangedEvent(binding.Id))).ToArray(),
+            cancellationToken);
         return candidates.Select(DomainContractMappings.ToSnapshot).ToArray();
     }
 

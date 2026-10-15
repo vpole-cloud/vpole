@@ -25,43 +25,65 @@ public sealed class RealtimeHub(
 {
     private const string ClientLifecycle = "pole.realtime.client-lifecycle";
     private const string AcknowledgedCoverage = "pole.realtime.coverage";
+
     private sealed class ClientReportState
     {
-        public SemaphoreSlim Gate { get; } = new(1);
-        public DateTimeOffset? LastAcceptedAtUtc { get; set; }
+        public SemaphoreSlim Gate
+        {
+            get;
+        } = new(1);
+
+        public DateTimeOffset? LastAcceptedAtUtc
+        {
+            get;
+            set;
+        }
     }
 
     /// <summary>Optional aggregate diagnostics. False means coalesced by the ten-second limit.</summary>
     public async Task<bool> ReportClientLifecycle(RealtimeClientLifecycleReport report)
     {
-        if (report is null || report.Reconnects is < 0 or > 100 || report.Fallbacks is < 0 or > 100 || report is { Reconnects: 0, Fallbacks: 0 })
+        if (report is null || report.Reconnects is < 0 or > 100 || report.Fallbacks is < 0 or > 100 ||
+            report is { Reconnects: 0, Fallbacks: 0 })
             throw new HubException("Provide bounded client lifecycle counts.");
         ClientReportState state;
         lock (Context.Items)
         {
-            if (Context.Items.TryGetValue(ClientLifecycle, out var value) && value is ClientReportState existing) state = existing;
-            else { state = new(); Context.Items[ClientLifecycle] = state; }
+            if (Context.Items.TryGetValue(ClientLifecycle, out var value) && value is ClientReportState existing)
+                state = existing;
+            else
+            {
+                state = new();
+                Context.Items[ClientLifecycle] = state;
+            }
         }
+
         await state.Gate.WaitAsync(Context.ConnectionAborted);
         try
         {
             var sessionId = Context.User?.FindFirst(RealtimeFeature.SessionClaim)?.Value;
             var ticket = sessionId is null ? null : await tickets.RetrieveAsync(sessionId);
             if (ticket?.Properties.ExpiresUtc is not { } expiry || expiry <= clock.GetUtcNow() ||
-                ticket.Principal.Identity?.IsAuthenticated != true || string.IsNullOrWhiteSpace(Context.User?.FindFirst("sub")?.Value) ||
+                ticket.Principal.Identity?.IsAuthenticated != true ||
+                string.IsNullOrWhiteSpace(Context.User?.FindFirst("sub")?.Value) ||
                 ticket.Principal.FindFirst("sub")?.Value != Context.User?.FindFirst("sub")?.Value ||
                 ticket.Principal.FindFirst(RealtimeFeature.SessionClaim)?.Value != sessionId ||
                 await subscriptions.IsSessionRevokedAsync(sessionId!, Context.ConnectionAborted))
                 throw new HubException("The realtime session is unavailable.");
             Context.ConnectionAborted.ThrowIfCancellationRequested();
             var now = clock.GetUtcNow();
-            if (expiry <= now) throw new HubException("The realtime session is unavailable.");
-            if (state.LastAcceptedAtUtc is { } last && now - last < TimeSpan.FromSeconds(10)) return false;
+            if (expiry <= now)
+                throw new HubException("The realtime session is unavailable.");
+            if (state.LastAcceptedAtUtc is { } last && now - last < TimeSpan.FromSeconds(10))
+                return false;
             state.LastAcceptedAtUtc = now;
             metrics?.RecordClientLifecycle(report);
             return true;
         }
-        finally { state.Gate.Release(); }
+        finally
+        {
+            state.Gate.Release();
+        }
     }
 
     public override Task OnConnectedAsync()
@@ -72,13 +94,19 @@ public sealed class RealtimeHub(
 
     private const string OwnedSubscriptions = "pole.realtime.subscriptions";
 
-    public async Task<IReadOnlyList<RealtimeSubscriptionAcknowledgement>> Subscribe(RealtimeSubscriptionRequest[] requests)
+    public async Task<IReadOnlyList<RealtimeSubscriptionAcknowledgement>> Subscribe(
+        RealtimeSubscriptionRequest[] requests)
     {
         if (requests is null || requests.Length > 64 || requests.Length == 0 || requests.Any(request =>
-                request is null || string.IsNullOrWhiteSpace(request.Topic) || request.Topic.Length > 100 || request.ResourceId is { Length: > 200 }))
+                request is null || string.IsNullOrWhiteSpace(request.Topic) || request.Topic.Length > 100 ||
+                request.ResourceId is { Length: > 200 }))
             throw new HubException("Provide between one and 64 distinct subscriptions.");
         requests = requests.Select(request => ObjectId.TryParse(request.TenantId, out var tenantId)
-            ? request with { TenantId = tenantId.ToString() } : request).ToArray();
+            ? request with
+            {
+                TenantId = tenantId.ToString()
+            }
+            : request).ToArray();
         if (requests.Distinct().Count() != requests.Length)
             throw new HubException("Provide between one and 64 distinct subscriptions.");
         // Invalid scope shapes are request errors, not revocation of an unrelated workspace.
@@ -109,7 +137,10 @@ public sealed class RealtimeHub(
             await subscriptions.RemoveAsync(Context.ConnectionId, null, Context.ConnectionAborted);
             await ReleaseInterestsAsync();
             var owned = requests.Select(request => new RealtimeSubscription(Guid.NewGuid().ToString("N"),
-                Context.ConnectionId, sessionId!, request, expiry)).ToArray();
+                Context.ConnectionId,
+                sessionId!,
+                request,
+                expiry)).ToArray();
             var acknowledgements = new List<RealtimeSubscriptionAcknowledgement>();
             Context.Items[OwnedSubscriptions] = owned;
             try
@@ -119,18 +150,27 @@ public sealed class RealtimeHub(
                     var covered = false;
                     if (access.IsAvailable(subscription.Request.Topic))
                     {
-                        var lifecycle = lifecycles.SingleOrDefault(candidate => candidate.Topic == subscription.Request.Topic);
-                        covered = lifecycle is null || await lifecycle.SubscribeAsync(subscription, ticket.Principal, Context.ConnectionAborted);
+                        var lifecycle =
+                            lifecycles.SingleOrDefault(candidate => candidate.Topic == subscription.Request.Topic);
+                        covered = lifecycle is null || await lifecycle.SubscribeAsync(subscription,
+                            ticket.Principal,
+                            Context.ConnectionAborted);
                     }
-                    acknowledgements.Add(new(subscription.Id, subscription.Request.Topic, subscription.Request.TenantId,
-                        subscription.Request.ResourceId, covered));
+
+                    acknowledgements.Add(new(subscription.Id,
+                        subscription.Request.Topic,
+                        subscription.Request.TenantId,
+                        subscription.Request.ResourceId,
+                        covered));
                 }
+
                 await ReplaceAvailableInterestsAsync(owned);
                 owned = await FenceAcknowledgementsAsync(owned);
                 var retainedIds = owned.Select(value => value.Id).ToHashSet(StringComparer.Ordinal);
                 acknowledgements.RemoveAll(value => !retainedIds.Contains(value.SubscriptionId));
                 Context.Items[OwnedSubscriptions] = owned;
-                foreach (var subscription in owned) metrics?.RecordSubscription(access.FindTopic(subscription.Request.Topic), true);
+                foreach (var subscription in owned)
+                    metrics?.RecordSubscription(access.FindTopic(subscription.Request.Topic), true);
                 RecordAcknowledgements(acknowledgements);
                 return acknowledgements;
             }
@@ -140,9 +180,15 @@ public sealed class RealtimeHub(
                 throw;
             }
         }
-        catch (RealtimeSessionUnavailableException) { return await RevokeSessionInterestsAsync(); }
+        catch (RealtimeSessionUnavailableException)
+        {
+            return await RevokeSessionInterestsAsync();
+        }
         catch (OperationCanceledException) when (Context.ConnectionAborted.IsCancellationRequested)
-        { await ClearInterestsAsync(); throw; }
+        {
+            await ClearInterestsAsync();
+            throw;
+        }
     }
 
     public async Task<IReadOnlyList<RealtimeSubscriptionAcknowledgement>> Heartbeat()
@@ -166,9 +212,12 @@ public sealed class RealtimeHub(
                     coverage[subscription.Id] = false;
                     continue;
                 }
+
                 var lifecycle = lifecycles.SingleOrDefault(candidate => candidate.Topic == subscription.Request.Topic);
                 coverage[subscription.Id] = lifecycle is null ||
-                    await lifecycle.RenewAsync(subscription, ticket.Principal, Context.ConnectionAborted);
+                                            await lifecycle.RenewAsync(subscription,
+                                                ticket.Principal,
+                                                Context.ConnectionAborted);
             }
 
             // Renewal may take time. Re-read the live session before acknowledging distributed coverage.
@@ -183,12 +232,18 @@ public sealed class RealtimeHub(
             owned = await FenceAcknowledgementsAsync(owned);
             Context.Items[OwnedSubscriptions] = owned;
             var acknowledgements = owned.Select(subscription => new RealtimeSubscriptionAcknowledgement(subscription.Id,
-                subscription.Request.Topic, subscription.Request.TenantId, subscription.Request.ResourceId, coverage[subscription.Id])).ToArray();
+                subscription.Request.Topic,
+                subscription.Request.TenantId,
+                subscription.Request.ResourceId,
+                coverage[subscription.Id])).ToArray();
             RecordAcknowledgements(acknowledgements);
             return acknowledgements;
         }
         catch (OperationCanceledException) when (Context.ConnectionAborted.IsCancellationRequested)
-        { await ClearInterestsAsync(owned); throw; }
+        {
+            await ClearInterestsAsync(owned);
+            throw;
+        }
         catch (RealtimeSessionUnavailableException)
         {
             return await RevokeSessionInterestsAsync();
@@ -199,11 +254,14 @@ public sealed class RealtimeHub(
     {
         var sessionId = Context.User?.FindFirst(RealtimeFeature.SessionClaim)?.Value;
         var ticket = sessionId is null ? null : await tickets.RetrieveAsync(sessionId);
-        var revoked = sessionId is not null && await subscriptions.IsSessionRevokedAsync(sessionId, Context.ConnectionAborted);
+        var revoked = sessionId is not null &&
+                      await subscriptions.IsSessionRevokedAsync(sessionId, Context.ConnectionAborted);
         Context.ConnectionAborted.ThrowIfCancellationRequested();
-        if (revoked) throw new RealtimeSessionUnavailableException();
+        if (revoked)
+            throw new RealtimeSessionUnavailableException();
         if (ticket?.Properties.ExpiresUtc is not { } expiry || expiry <= clock.GetUtcNow() ||
-            ticket.Principal.Identity?.IsAuthenticated != true || string.IsNullOrWhiteSpace(Context.User?.FindFirst("sub")?.Value) ||
+            ticket.Principal.Identity?.IsAuthenticated != true ||
+            string.IsNullOrWhiteSpace(Context.User?.FindFirst("sub")?.Value) ||
             ticket.Principal.FindFirst("sub")?.Value != Context.User?.FindFirst("sub")?.Value ||
             ticket.Principal.FindFirst("iss")?.Value != Context.User?.FindFirst("iss")?.Value ||
             ticket.Principal.FindFirst(RealtimeFeature.SessionClaim)?.Value != sessionId)
@@ -212,13 +270,15 @@ public sealed class RealtimeHub(
             // Transport expiry/loss requests cookie bootstrap, never revocation of the ordinary workspace.
             throw new HubException("The realtime session is unavailable.");
         }
+
         return ticket;
     }
 
     private async Task RequireUnchangedAuthorityAsync(ClaimsPrincipal principal)
     {
         var current = await ReadLiveSessionAsync();
-        if (SameAuthority(principal, current.Principal)) return;
+        if (SameAuthority(principal, current.Principal))
+            return;
         await ClearInterestsAsync();
         throw new HubException("The realtime session is unavailable.");
     }
@@ -237,12 +297,14 @@ public sealed class RealtimeHub(
             await ClearInterestsAsync();
             throw new HubException("The realtime session is unavailable.");
         }
+
         if (owned.Any(value => value.ExpiresAtUtc <= clock.GetUtcNow()))
         {
             await ClearInterestsAsync();
             Context.ConnectionAborted.ThrowIfCancellationRequested();
             return [];
         }
+
         Context.ConnectionAborted.ThrowIfCancellationRequested();
         // These final reads fence completed work; an authority write and network acknowledgement cannot be atomic.
         return owned;
@@ -251,17 +313,22 @@ public sealed class RealtimeHub(
     private async Task ClearInterestsAsync(RealtimeSubscription[]? pending = null)
     {
         var alreadyReleased = GetOwnedSubscriptions().Length == 0;
-        try { await subscriptions.RemoveAsync(Context.ConnectionId, null, CancellationToken.None); }
+        try
+        {
+            await subscriptions.RemoveAsync(Context.ConnectionId, null, CancellationToken.None);
+        }
         finally
         {
             await ReleaseInterestsAsync();
             // A non-cooperative provider can finish its write after OnDisconnected removed local context.
-            if (alreadyReleased && pending is not null) await Task.WhenAll(pending.Select(ReleaseInterestAsync));
+            if (alreadyReleased && pending is not null)
+                await Task.WhenAll(pending.Select(ReleaseInterestAsync));
         }
     }
 
     private static bool SameAuthority(ClaimsPrincipal left, ClaimsPrincipal right) =>
-        left.Claims.Select(value => (value.Type, value.Value)).Order().SequenceEqual(right.Claims.Select(value => (value.Type, value.Value)).Order());
+        left.Claims.Select(value => (value.Type, value.Value)).Order()
+            .SequenceEqual(right.Claims.Select(value => (value.Type, value.Value)).Order());
 
     private async Task<RealtimeSubscription[]> RetainAuthorizedInterestsAsync(
         RealtimeSubscription[] owned,
@@ -277,7 +344,8 @@ public sealed class RealtimeHub(
         string? TenantId);
 
     private async Task<HashSet<DeniedScope>> FindDeniedScopesAsync(
-        IEnumerable<RealtimeSubscriptionRequest> requests, ClaimsPrincipal principal)
+        IEnumerable<RealtimeSubscriptionRequest> requests,
+        ClaimsPrincipal principal)
     {
         var deniedScopes = new HashSet<DeniedScope>();
         foreach (var request in requests)
@@ -288,14 +356,15 @@ public sealed class RealtimeHub(
     }
 
     private async Task<RealtimeSubscription[]> RetainInterestsAsync(
-        RealtimeSubscription[] owned, HashSet<DeniedScope> deniedScopes)
+        RealtimeSubscription[] owned,
+        HashSet<DeniedScope> deniedScopes)
     {
-
         // A denial on one request fences every owned interest in that tenant, including earlier checks.
         var removed = owned.Where(subscription => deniedScopes.Any(scope => scope.Scope == RealtimeScope.Tenant
-                ? subscription.Request.TenantId == scope.TenantId
-                : access.FindTopic(subscription.Request.Topic)?.Scope == scope.Scope) ||
-            subscription.ExpiresAtUtc <= clock.GetUtcNow()).ToArray();
+                                                      ? subscription.Request.TenantId == scope.TenantId
+                                                      : access.FindTopic(subscription.Request.Topic)?.Scope ==
+                                                        scope.Scope) ||
+                                                  subscription.ExpiresAtUtc <= clock.GetUtcNow()).ToArray();
         var removedIds = removed.Select(subscription => subscription.Id).ToHashSet(StringComparer.Ordinal);
         var retained = owned.Where(subscription => !removedIds.Contains(subscription.Id)).ToArray();
         Context.Items[OwnedSubscriptions] = retained;
@@ -306,38 +375,65 @@ public sealed class RealtimeHub(
         }
         finally
         {
-            try { await Task.WhenAll(removed.Select(ReleaseInterestAsync)); }
+            try
+            {
+                await Task.WhenAll(removed.Select(ReleaseInterestAsync));
+            }
             finally
             {
                 foreach (var scope in deniedScopes.Where(scope => scope.Scope != RealtimeScope.User))
                     await Clients.Caller.AccessRevoked(scope.TenantId);
             }
         }
+
         return retained;
     }
 
     private async Task<IReadOnlyList<RealtimeSubscriptionAcknowledgement>> RevokeSessionInterestsAsync()
     {
-        try { await subscriptions.RemoveAsync(Context.ConnectionId, null, Context.ConnectionAborted); }
+        try
+        {
+            await subscriptions.RemoveAsync(Context.ConnectionId, null, Context.ConnectionAborted);
+        }
         finally
         {
-            try { await ReleaseInterestsAsync(); }
-            finally { await Clients.Caller.SessionRevoked(); }
+            try
+            {
+                await ReleaseInterestsAsync();
+            }
+            finally
+            {
+                await Clients.Caller.SessionRevoked();
+            }
         }
+
         return [];
     }
 
     public async Task Unsubscribe()
     {
-        try { await subscriptions.RemoveAsync(Context.ConnectionId, null, Context.ConnectionAborted); }
-        finally { await ReleaseInterestsAsync(); }
+        try
+        {
+            await subscriptions.RemoveAsync(Context.ConnectionId, null, Context.ConnectionAborted);
+        }
+        finally
+        {
+            await ReleaseInterestsAsync();
+        }
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         metrics?.RecordConnection(false);
-        try { await subscriptions.RemoveAsync(Context.ConnectionId, null, CancellationToken.None); }
-        finally { await ReleaseInterestsAsync(); }
+        try
+        {
+            await subscriptions.RemoveAsync(Context.ConnectionId, null, CancellationToken.None);
+        }
+        finally
+        {
+            await ReleaseInterestsAsync();
+        }
+
         await base.OnDisconnectedAsync(exception);
     }
 
@@ -350,26 +446,37 @@ public sealed class RealtimeHub(
     private async Task ReleaseInterestAsync(RealtimeSubscription subscription)
     {
         metrics?.RecordSubscription(access.FindTopic(subscription.Request.Topic), false);
-        if (Context.Items.TryGetValue(AcknowledgedCoverage, out var value) && value is Dictionary<string, bool> states) states.Remove(subscription.Id);
-        if (!access.IsAvailable(subscription.Request.Topic)) return;
+        if (Context.Items.TryGetValue(AcknowledgedCoverage, out var value) && value is Dictionary<string, bool> states)
+            states.Remove(subscription.Id);
+        if (!access.IsAvailable(subscription.Request.Topic))
+            return;
         var lifecycle = lifecycles.SingleOrDefault(candidate => candidate.Topic == subscription.Request.Topic);
-        if (lifecycle is not null) await lifecycle.UnsubscribeAsync(subscription, CancellationToken.None);
+        if (lifecycle is not null)
+            await lifecycle.UnsubscribeAsync(subscription, CancellationToken.None);
     }
 
     private void RecordAcknowledgements(IEnumerable<RealtimeSubscriptionAcknowledgement> acknowledgements)
     {
-        if (!Context.Items.TryGetValue(AcknowledgedCoverage, out var value) || value is not Dictionary<string, bool> states)
-        { states = new(StringComparer.Ordinal); Context.Items[AcknowledgedCoverage] = states; }
+        if (!Context.Items.TryGetValue(AcknowledgedCoverage, out var value) ||
+            value is not Dictionary<string, bool> states)
+        {
+            states = new(StringComparer.Ordinal);
+            Context.Items[AcknowledgedCoverage] = states;
+        }
+
         foreach (var acknowledgement in acknowledgements)
         {
-            if (!states.TryGetValue(acknowledgement.SubscriptionId, out var previous) || previous != acknowledgement.Covered)
+            if (!states.TryGetValue(acknowledgement.SubscriptionId, out var previous) ||
+                previous != acknowledgement.Covered)
                 metrics?.RecordCoverage(access.FindTopic(acknowledgement.Topic), acknowledgement.Covered);
             states[acknowledgement.SubscriptionId] = acknowledgement.Covered;
         }
     }
 
     private RealtimeSubscription[] GetOwnedSubscriptions() =>
-        Context.Items.TryGetValue(OwnedSubscriptions, out var value) && value is RealtimeSubscription[] current ? current : [];
+        Context.Items.TryGetValue(OwnedSubscriptions, out var value) && value is RealtimeSubscription[] current
+            ? current
+            : [];
 
     private async Task ReplaceAvailableInterestsAsync(RealtimeSubscription[] owned)
     {

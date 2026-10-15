@@ -54,7 +54,10 @@ public static class WebServicesFeatureRegistration
         services.TryAddScoped<WebServiceResourceDeploymentAdapter>();
         services.TryAddScoped<WebServiceResourceDeploymentObserver>();
         services.TryAddScoped<WebServiceResourceDeploymentChangeSource>();
-        services.AddSingleton(ResourceDeploymentObserverDescriptor.Create<WebServiceResourceDeploymentObserver, WebServiceResourceDeploymentChangeSource>(WebServiceResourceDeployment.ResourceType));
+        services.AddSingleton(
+            ResourceDeploymentObserverDescriptor
+                .Create<WebServiceResourceDeploymentObserver, WebServiceResourceDeploymentChangeSource>(
+                    WebServiceResourceDeployment.ResourceType));
         services.AddSingleton(WebServiceResourceDeploymentAdapterRegistration.Descriptor);
         services.AddSingleton<ResourceIngressPolicyDefinition>(WebServiceIngressPolicyDefinitions.Public);
         services.AddSingleton<ResourceIngressPolicyDefinition>(WebServiceIngressPolicyDefinitions.Http01);
@@ -65,9 +68,8 @@ public static class WebServicesFeatureRegistration
         this IServiceCollection services)
         where TOutcome : notnull
     {
-        services.TryAddScoped<RunMongoOutcomeTransaction<TOutcome>>(
-            serviceProvider => serviceProvider
-                .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<TOutcome>);
+        services.TryAddScoped<RunMongoOutcomeTransaction<TOutcome>>(serviceProvider => serviceProvider
+            .GetRequiredService<MongoRunTransaction>()
+            .InvokeOutcomeAsync<TOutcome>);
     }
 }

@@ -11,9 +11,17 @@ public sealed class NotifySecretChangedConsumer(PublishRealtimeChange publish)
         publish(new("secrets", message.EventCore.TenantId, message.SecretId, Revision: message.Revision), ct);
 
     public Task HandleAsync(SecretProjectionChangedEvent message, CancellationToken ct = default) =>
-        publish(new("secrets", message.EventCore.TenantId, message.SecretId, message.ResourceGroupId,
-            message.DesiredRevision, ObservationVersion: message.StorageRevision), ct);
+        publish(new("secrets",
+                message.EventCore.TenantId,
+                message.SecretId,
+                message.ResourceGroupId,
+                message.DesiredRevision,
+                ObservationVersion: message.StorageRevision),
+            ct);
 
-    public Task Consume(ConsumeContext<SecretChangedEvent> context) => HandleAsync(context.Message, context.CancellationToken);
-    public Task Consume(ConsumeContext<SecretProjectionChangedEvent> context) => HandleAsync(context.Message, context.CancellationToken);
+    public Task Consume(ConsumeContext<SecretChangedEvent> context) =>
+        HandleAsync(context.Message, context.CancellationToken);
+
+    public Task Consume(ConsumeContext<SecretProjectionChangedEvent> context) =>
+        HandleAsync(context.Message, context.CancellationToken);
 }

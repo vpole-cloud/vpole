@@ -27,11 +27,12 @@ public static class StorageProfileApplicationRegistration
         services.AddSingleton(new RealtimeTopic("storage-eligibility", RealtimeScope.Tenant));
         services.AddSingleton(new RealtimeTopic("storage-observations", RealtimeScope.Platform));
         services.AddOptions<StorageObservationOptions>().Configure<IServiceProvider>((options, provider) =>
-        {
-            var configuration = provider.GetService<IConfiguration>();
-            configuration?.GetSection(StorageObservationOptions.SectionName).Bind(options);
-            options.Enabled = options.Enabled && configuration?.GetValue<bool>("Realtime:Enabled") == true;
-        }).Validate(options => options.Valid, "Storage observation limits are outside the supported bounds.").ValidateOnStart();
+            {
+                var configuration = provider.GetService<IConfiguration>();
+                configuration?.GetSection(StorageObservationOptions.SectionName).Bind(options);
+                options.Enabled = options.Enabled && configuration?.GetValue<bool>("Realtime:Enabled") == true;
+            }).Validate(options => options.Valid, "Storage observation limits are outside the supported bounds.")
+            .ValidateOnStart();
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<StorageObservationOptions>>().Value);
         services.TryAddScoped<IStorageObservationStore, MongoStorageObservationStore>();
         services.TryAddScoped<StorageObservationContextLoader>();

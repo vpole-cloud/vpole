@@ -23,7 +23,8 @@ public union GetStorageObservationOutcome(
 public sealed class GetStorageObservationHandler(StorageObservationReader reader)
     : IMediatorOutcomeHandler<GetStorageObservationRequest, GetStorageObservationOutcome>
 {
-    public async Task<GetStorageObservationOutcome> HandleAsync(GetStorageObservationRequest request, CancellationToken cancellationToken = default) =>
+    public async Task<GetStorageObservationOutcome> HandleAsync(GetStorageObservationRequest request,
+        CancellationToken cancellationToken = default) =>
         await reader.ReadAsync(request.DeploymentTargetId.Trim(), cancellationToken) switch
         {
             StorageObservationSnapshot snapshot => snapshot,
@@ -33,19 +34,21 @@ public sealed class GetStorageObservationHandler(StorageObservationReader reader
 
 public sealed class GetStorageObservationRequestValidator : AbstractValidator<GetStorageObservationRequest>
 {
-    public GetStorageObservationRequestValidator() => RuleFor(request => request.DeploymentTargetId).MongoObjectId("Deployment target ID");
+    public GetStorageObservationRequestValidator() =>
+        RuleFor(request => request.DeploymentTargetId).MongoObjectId("Deployment target ID");
 }
 
 public static class GetStorageObservationEndpoint
 {
     public static IEndpointRouteBuilder MapGetStorageObservationEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/observation", async (IMediator mediator, [AsParameters] GetStorageObservationRequest request, CancellationToken ct) =>
-            (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
-            {
-                StorageObservationSnapshot snapshot => Results.Ok(snapshot),
-                KubernetesStorageDiscoveryUnavailable unavailable => MapDiscoveryUnavailable(unavailable)
-            }))
+        app.MapGet("/observation",
+                async (IMediator mediator, [AsParameters] GetStorageObservationRequest request, CancellationToken ct) =>
+                (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
+                {
+                    StorageObservationSnapshot snapshot => Results.Ok(snapshot),
+                    KubernetesStorageDiscoveryUnavailable unavailable => MapDiscoveryUnavailable(unavailable)
+                }))
             .WithName("GetStorageObservation").RequireAuthorization(Policy.Admin)
             .Produces<StorageObservationSnapshot>().ProducesProblem(StatusCodes.Status503ServiceUnavailable);
         return app;

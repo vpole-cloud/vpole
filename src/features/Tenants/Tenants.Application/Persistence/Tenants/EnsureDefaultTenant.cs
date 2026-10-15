@@ -21,17 +21,20 @@ internal sealed class MongoEnsureDefaultTenant(
     public Task InvokeAsync(
         Tenant tenant,
         CancellationToken cancellationToken = default) => runTransaction(async (transaction, ct) =>
-    {
-        var result = await _tenants.UpdateOneAsync(
-            transaction.Session,
-            TenantFilters.ById(tenant.Id),
-            TenantUpdates.CreateIfMissing(tenant),
-            new UpdateOptions { IsUpsert = true },
-            ct);
-        if (result.UpsertedId is null) return transaction.Abort(Unit.Value);
-        await storeOutboxWrites(transaction.Session,
-            tenant.Members.Select(member => member.UserId).Distinct(StringComparer.Ordinal)
-                .Select(userId => TenantAccessEventExtensions.MembershipChanged(tenant.Id, userId)).ToArray(), ct);
-        return transaction.Commit(Unit.Value);
-    }, cancellationToken);
+        {
+            var result = await _tenants.UpdateOneAsync(
+                transaction.Session,
+                TenantFilters.ById(tenant.Id),
+                TenantUpdates.CreateIfMissing(tenant),
+                new UpdateOptions { IsUpsert = true },
+                ct);
+            if (result.UpsertedId is null)
+                return transaction.Abort(Unit.Value);
+            await storeOutboxWrites(transaction.Session,
+                tenant.Members.Select(member => member.UserId).Distinct(StringComparer.Ordinal)
+                    .Select(userId => TenantAccessEventExtensions.MembershipChanged(tenant.Id, userId)).ToArray(),
+                ct);
+            return transaction.Commit(Unit.Value);
+        },
+        cancellationToken);
 }

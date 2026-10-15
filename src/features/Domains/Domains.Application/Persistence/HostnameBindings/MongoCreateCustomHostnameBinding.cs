@@ -17,6 +17,7 @@ internal sealed class MongoCreateCustomHostnameBinding(
 {
     private readonly IMongoCollection<TenantDomainZone> zones =
         database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
+
     private readonly IMongoCollection<HostnameBinding> bindings =
         database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
 
@@ -34,7 +35,7 @@ internal sealed class MongoCreateCustomHostnameBinding(
         if (zone is null)
         {
             return new CustomHostnameBindingError(
-                    new CustomHostnameBindingZoneNotFound(request.TenantDomainZoneId));
+                new CustomHostnameBindingZoneNotFound(request.TenantDomainZoneId));
         }
 
         if (!string.Equals(
@@ -43,9 +44,9 @@ internal sealed class MongoCreateCustomHostnameBinding(
                 StringComparison.Ordinal))
         {
             return new CustomHostnameBindingError(
-                    new CustomHostnameBindingTargetMismatch(
-                        zone.Id,
-                        request.DeploymentTargetId));
+                new CustomHostnameBindingTargetMismatch(
+                    zone.Id,
+                    request.DeploymentTargetId));
         }
 
         var binding = HostnameBindingFactory.CreateCustom(
@@ -64,7 +65,7 @@ internal sealed class MongoCreateCustomHostnameBinding(
         if (!await cleanup.TryAdvanceZoneRevisionsAsync([zone], session, cancellationToken))
         {
             return new CustomHostnameBindingError(
-                    new CustomHostnameBindingZoneChanged([zone.Id]));
+                new CustomHostnameBindingZoneChanged([zone.Id]));
         }
 
         try
@@ -75,9 +76,12 @@ internal sealed class MongoCreateCustomHostnameBinding(
             exception.WriteError.Category == ServerErrorCategory.DuplicateKey)
         {
             return new CustomHostnameBindingError(
-                    new CustomHostnameBindingConflict(binding.Hostname));
+                new CustomHostnameBindingConflict(binding.Hostname));
         }
-        await outbox(session, [OutboxWrite.Create(cleanup.WithAdvancedRevision(zone).ToChangedEvent(binding.Id))], cancellationToken);
+
+        await outbox(session,
+            [OutboxWrite.Create(cleanup.WithAdvancedRevision(zone).ToChangedEvent(binding.Id))],
+            cancellationToken);
         return binding.ToSnapshot();
     }
 

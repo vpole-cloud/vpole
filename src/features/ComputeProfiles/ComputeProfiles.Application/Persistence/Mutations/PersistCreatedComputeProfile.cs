@@ -16,8 +16,8 @@ public union PersistCreatedComputeProfileOutcome(
 
 public delegate Task<PersistCreatedComputeProfileOutcome>
     PersistCreatedComputeProfile(
-    ComputeProfile profile,
-    CancellationToken cancellationToken = default);
+        ComputeProfile profile,
+        CancellationToken cancellationToken = default);
 
 internal sealed class MongoPersistCreatedComputeProfile(
     IMongoCollection<ComputeProfile> computeProfiles,
@@ -31,36 +31,38 @@ internal sealed class MongoPersistCreatedComputeProfile(
     {
         ArgumentNullException.ThrowIfNull(profile);
         return runMongoTransaction(async (transaction, ct) =>
-        {
-            var references = await ComputeProfileTargetReferences.ApplyChangesAsync(
-                applyTargetReferenceChanges,
-                profile,
-                profile.TargetMappings.Select(mapping => mapping.DeploymentTargetId),
-                [],
-                transaction.Session,
-                ct);
-            if (references is DeploymentTargetReferenceChangeRejected error)
             {
-                return transaction.Abort(error);
-            }
-
-            if (profile.IsDefault)
-            {
-                await ComputeProfileDefaultPersistence.DemoteOtherDefaultsAsync(
-                    computeProfiles,
+                var references = await ComputeProfileTargetReferences.ApplyChangesAsync(
+                    applyTargetReferenceChanges,
+                    profile,
+                    profile.TargetMappings.Select(mapping => mapping.DeploymentTargetId),
+                    [],
                     transaction.Session,
-                    exceptProfileId: null,
-                    profile.UpdatedAtUtc,
                     ct);
-            }
+                if (references is DeploymentTargetReferenceChangeRejected error)
+                {
+                    return transaction.Abort(error);
+                }
 
-            await computeProfiles.InsertOneAsync(
-                transaction.Session,
-                profile,
-                cancellationToken: ct);
-            await storeOutboxWrites(transaction.Session,
-                [OutboxWrite.Create(new ComputeProfileCatalogChangedEvent(profile.Id, profile.Revision))], ct);
-            return transaction.Commit(profile);
-        }, cancellationToken);
+                if (profile.IsDefault)
+                {
+                    await ComputeProfileDefaultPersistence.DemoteOtherDefaultsAsync(
+                        computeProfiles,
+                        transaction.Session,
+                        exceptProfileId: null,
+                        profile.UpdatedAtUtc,
+                        ct);
+                }
+
+                await computeProfiles.InsertOneAsync(
+                    transaction.Session,
+                    profile,
+                    cancellationToken: ct);
+                await storeOutboxWrites(transaction.Session,
+                    [OutboxWrite.Create(new ComputeProfileCatalogChangedEvent(profile.Id, profile.Revision))],
+                    ct);
+                return transaction.Commit(profile);
+            },
+            cancellationToken);
     }
 }

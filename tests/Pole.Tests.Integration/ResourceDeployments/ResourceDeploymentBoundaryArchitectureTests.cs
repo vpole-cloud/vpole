@@ -41,11 +41,12 @@ public sealed class ResourceDeploymentBoundaryArchitectureTests
             .Select(parameter => parameter.ParameterType)
             .ToArray();
 
-        Assert.DoesNotContain(dependencies, dependency =>
-            dependency.Name.Contains("DbContext", StringComparison.Ordinal) ||
-            dependency == typeof(IServiceProvider) ||
-            dependency.IsGenericType &&
-            dependency.GetGenericTypeDefinition() == typeof(IMongoCollection<>));
+        Assert.DoesNotContain(dependencies,
+            dependency =>
+                dependency.Name.Contains("DbContext", StringComparison.Ordinal) ||
+                dependency == typeof(IServiceProvider) ||
+                dependency.IsGenericType &&
+                dependency.GetGenericTypeDefinition() == typeof(IMongoCollection<>));
     }
 
     [Fact]
@@ -103,8 +104,13 @@ public sealed class ResourceDeploymentBoundaryArchitectureTests
                     StringComparison.Ordinal) == true)
             .ToArray();
 
-        Type[] providerStrategies = [typeof(IResourceDeploymentAdapter), typeof(IResourceDeploymentObserver), typeof(IResourceDeploymentDiagnosticsProvider),
-            typeof(IResourceDeploymentObservationChangeSource), typeof(IResourceDeploymentBoundObserver), typeof(IResourceDeploymentObservationReadBudget)];
+        Type[] providerStrategies =
+        [
+            typeof(IResourceDeploymentAdapter), typeof(IResourceDeploymentObserver),
+            typeof(IResourceDeploymentDiagnosticsProvider),
+            typeof(IResourceDeploymentObservationChangeSource), typeof(IResourceDeploymentBoundObserver),
+            typeof(IResourceDeploymentObservationReadBudget)
+        ];
         Assert.Equal(providerStrategies.OrderBy(type => type.FullName), interfaces.OrderBy(type => type.FullName));
     }
 
@@ -131,14 +137,15 @@ public sealed class ResourceDeploymentBoundaryArchitectureTests
             .ToArray();
 
         Assert.NotEmpty(sourceFiles);
-        Assert.All(sourceFiles, file =>
-        {
-            var source = File.ReadAllText(file);
-            Assert.Equal(1, source.Split("public delegate", StringSplitOptions.None).Length - 1);
-            Assert.Equal(
-                1,
-                source.Split("internal sealed class", StringSplitOptions.None).Length - 1);
-        });
+        Assert.All(sourceFiles,
+            file =>
+            {
+                var source = File.ReadAllText(file);
+                Assert.Equal(1, source.Split("public delegate", StringSplitOptions.None).Length - 1);
+                Assert.Equal(
+                    1,
+                    source.Split("internal sealed class", StringSplitOptions.None).Length - 1);
+            });
     }
 
     [Fact]

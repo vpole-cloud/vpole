@@ -39,7 +39,11 @@ public sealed record ResourceDeploymentBoundObservation(
     string? BindingId,
     WorkloadObservation Observation)
 {
-    public WorkloadDiagnostics? Diagnostics { get; init; }
+    public WorkloadDiagnostics? Diagnostics
+    {
+        get;
+        init;
+    }
 }
 
 /// <summary>Revalidates the source's exact native controller before and after sampling.</summary>
@@ -63,13 +67,30 @@ public sealed record ResourceDeploymentObserverDescriptor(
     ResourceTypeId ResourceType,
     Type ObserverType)
 {
-    public Type? DiagnosticsType { get; init; }
-    public Type? ChangeSourceType { get; init; }
-    public Type? BoundObserverType { get; init; }
+    public Type? DiagnosticsType
+    {
+        get;
+        init;
+    }
+
+    public Type? ChangeSourceType
+    {
+        get;
+        init;
+    }
+
+    public Type? BoundObserverType
+    {
+        get;
+        init;
+    }
+
     public static ResourceDeploymentObserverDescriptor Create<TObserver>(ResourceTypeId resourceType)
         where TObserver : class, IResourceDeploymentObserver => new(resourceType, typeof(TObserver))
         {
-            DiagnosticsType = typeof(IResourceDeploymentDiagnosticsProvider).IsAssignableFrom(typeof(TObserver)) ? typeof(TObserver) : null
+            DiagnosticsType = typeof(IResourceDeploymentDiagnosticsProvider).IsAssignableFrom(typeof(TObserver))
+            ? typeof(TObserver)
+            : null
         };
 
     public static ResourceDeploymentObserverDescriptor Create<TObserver, TSource>(ResourceTypeId resourceType)
@@ -90,8 +111,17 @@ public sealed record ResourceDeploymentOperationDto(
     bool Retryable,
     DateTime? RetryNotBeforeUtc)
 {
-    public long OperationGeneration { get; init; } = 1;
-    public string? TargetDisplayName { get; init; }
+    public long OperationGeneration
+    {
+        get;
+        init;
+    } = 1;
+
+    public string? TargetDisplayName
+    {
+        get;
+        init;
+    }
 }
 
 public sealed record ResourceDeploymentObservationDto(
@@ -101,5 +131,9 @@ public sealed record ResourceDeploymentObservationDto(
     DateTime CheckedAtUtc,
     WorkloadObservation Observation)
 {
-    public long? ObservationVersion { get; init; }
+    public long? ObservationVersion
+    {
+        get;
+        init;
+    }
 }

@@ -41,7 +41,7 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
         if (tenant is null)
         {
             return new GeneratedDomainZoneError(
-                    new GeneratedDomainZoneTenantUnavailable(tenantId));
+                new GeneratedDomainZoneTenantUnavailable(tenantId));
         }
 
         var candidates = requests
@@ -64,7 +64,7 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
                 !string.Equals(candidate.Domain, persisted.Domain, StringComparison.Ordinal))
             {
                 return new GeneratedDomainZoneError(
-                        new GeneratedDomainZoneMismatch(candidate.DeploymentTargetId));
+                    new GeneratedDomainZoneMismatch(candidate.DeploymentTargetId));
             }
         }
 
@@ -93,8 +93,8 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
             if (fence is DeploymentTargetWorkloadConfigurationFenceRejected)
             {
                 return new GeneratedDomainZoneError(
-                        new GeneratedDomainZoneTargetChanged(
-                            missing.Select(candidate => candidate.DeploymentTargetId).ToArray()));
+                    new GeneratedDomainZoneTargetChanged(
+                        missing.Select(candidate => candidate.DeploymentTargetId).ToArray()));
             }
 
             try
@@ -129,19 +129,22 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
                 if (registered is DeploymentTargetReferenceChangeRejected)
                 {
                     return new GeneratedDomainZoneError(
-                            new GeneratedDomainZoneTargetChanged(
-                                [candidate.DeploymentTargetId]));
+                        new GeneratedDomainZoneTargetChanged(
+                            [candidate.DeploymentTargetId]));
                 }
 
                 existingByTarget.Add(CanonicalObjectId(candidate.DeploymentTargetId), candidate);
             }
-            await outbox(session, missing.Select(zone => OutboxWrite.Create(zone.ToChangedEvent())).ToArray(), cancellationToken);
+
+            await outbox(session,
+                missing.Select(zone => OutboxWrite.Create(zone.ToChangedEvent())).ToArray(),
+                cancellationToken);
         }
 
         return requests
-                .Select(request => existingByTarget[
-                    CanonicalObjectId(request.DeploymentTargetId)].ToSnapshot())
-                .ToArray();
+            .Select(request => existingByTarget[
+                CanonicalObjectId(request.DeploymentTargetId)].ToSnapshot())
+            .ToArray();
     }
 
     private TenantDomainZone CreateGeneratedZone(
@@ -159,7 +162,7 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
     private static GeneratedDomainZoneError GeneratedZoneConflict(
         IReadOnlyList<TenantDomainZone> zones) =>
         new GeneratedDomainZoneConflict(
-                zones.Select(zone => zone.DeploymentTargetId).ToArray());
+            zones.Select(zone => zone.DeploymentTargetId).ToArray());
 
     private static string GeneratedZoneLabel(string displayName, string tenantId)
     {
@@ -167,17 +170,18 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
             throw new ArgumentException("A MongoDB ObjectId is required.", nameof(tenantId));
 
         var slug = new string(displayName.Trim().ToLowerInvariant()
-            .Select(character => character is >= 'a' and <= 'z' or >= '0' and <= '9'
-                ? character
-                : '-')
-            .ToArray())
+                .Select(character => character is >= 'a' and <= 'z' or >= '0' and <= '9'
+                    ? character
+                    : '-')
+                .ToArray())
             .Trim('-');
         slug = string.IsNullOrEmpty(slug) ? "tenant" : slug;
         const int tenantIdFragmentWithSeparatorLength = 9;
         var maximumSlugLength = DnsLabel.MaximumLength -
-            TenantDomainZoneLabelPolicy.GeneratedPrefix.Length -
-            tenantIdFragmentWithSeparatorLength;
-        return $"{TenantDomainZoneLabelPolicy.GeneratedPrefix}{slug[..Math.Min(slug.Length, maximumSlugLength)].TrimEnd('-')}-{tenantId[..8]}";
+                                TenantDomainZoneLabelPolicy.GeneratedPrefix.Length -
+                                tenantIdFragmentWithSeparatorLength;
+        return
+            $"{TenantDomainZoneLabelPolicy.GeneratedPrefix}{slug[..Math.Min(slug.Length, maximumSlugLength)].TrimEnd('-')}-{tenantId[..8]}";
     }
 
     private static void EnsureRequestSet(IReadOnlyList<GetOrCreateGeneratedZoneRequest> requests)

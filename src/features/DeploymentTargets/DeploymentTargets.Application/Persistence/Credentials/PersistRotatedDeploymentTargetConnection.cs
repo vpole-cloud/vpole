@@ -30,32 +30,34 @@ internal sealed class MongoPersistRotatedDeploymentTargetConnection(
     {
         EnsureSameIdentity(current, replacement);
         return await runMongoTransaction(async (transaction, ct) =>
-        {
-            var before = await deploymentTargets.Find(transaction.Session,
-                DeploymentTargetFilters.AtRevisionAndConnectionVersion(current)).FirstOrDefaultAsync(ct);
-            if (before is null)
-                return transaction.Abort(new DeploymentTargetRevisionConflict(current.Id));
-            var persisted = await deploymentTargets.FindOneAndUpdateAsync(
-                transaction.Session,
-                DeploymentTargetFilters.AtRevisionAndConnectionVersion(current),
-                Builders<DeploymentTarget>.Update.Combine(
-                    Builders<DeploymentTarget>.Update.Set(item => item.Connection, replacement.Connection),
-                    Builders<DeploymentTarget>.Update.Set(item => item.Health, replacement.Health),
-                    Builders<DeploymentTarget>.Update.Set(item => item.Capabilities, replacement.Capabilities),
-                    Builders<DeploymentTarget>.Update.Set(item => item.Revision, replacement.Revision),
-                    Builders<DeploymentTarget>.Update.Set(item => item.UpdatedAtUtc, replacement.UpdatedAtUtc)),
-                new FindOneAndUpdateOptions<DeploymentTarget>
-                {
-                    ReturnDocument = ReturnDocument.After
-                },
-                ct);
-            if (persisted is null)
-                return transaction.Abort(new DeploymentTargetRevisionConflict(current.Id));
-            if (ConnectionFieldsChanged(before, persisted))
-                await storeOutboxWrites(transaction.Session,
-                    [OutboxWrite.Create(new DeploymentTargetCatalogChangedEvent(persisted.Id, persisted.Revision))], ct);
-            return transaction.Commit(persisted);
-        }, cancellationToken);
+            {
+                var before = await deploymentTargets.Find(transaction.Session,
+                    DeploymentTargetFilters.AtRevisionAndConnectionVersion(current)).FirstOrDefaultAsync(ct);
+                if (before is null)
+                    return transaction.Abort(new DeploymentTargetRevisionConflict(current.Id));
+                var persisted = await deploymentTargets.FindOneAndUpdateAsync(
+                    transaction.Session,
+                    DeploymentTargetFilters.AtRevisionAndConnectionVersion(current),
+                    Builders<DeploymentTarget>.Update.Combine(
+                        Builders<DeploymentTarget>.Update.Set(item => item.Connection, replacement.Connection),
+                        Builders<DeploymentTarget>.Update.Set(item => item.Health, replacement.Health),
+                        Builders<DeploymentTarget>.Update.Set(item => item.Capabilities, replacement.Capabilities),
+                        Builders<DeploymentTarget>.Update.Set(item => item.Revision, replacement.Revision),
+                        Builders<DeploymentTarget>.Update.Set(item => item.UpdatedAtUtc, replacement.UpdatedAtUtc)),
+                    new FindOneAndUpdateOptions<DeploymentTarget>
+                    {
+                        ReturnDocument = ReturnDocument.After
+                    },
+                    ct);
+                if (persisted is null)
+                    return transaction.Abort(new DeploymentTargetRevisionConflict(current.Id));
+                if (ConnectionFieldsChanged(before, persisted))
+                    await storeOutboxWrites(transaction.Session,
+                        [OutboxWrite.Create(new DeploymentTargetCatalogChangedEvent(persisted.Id, persisted.Revision))],
+                        ct);
+                return transaction.Commit(persisted);
+            },
+            cancellationToken);
     }
 
     private static bool ConnectionFieldsChanged(DeploymentTarget before, DeploymentTarget after) =>

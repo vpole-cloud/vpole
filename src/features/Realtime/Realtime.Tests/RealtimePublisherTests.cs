@@ -16,23 +16,36 @@ public sealed class RealtimePublisherTests
         const string beta = "000000000000000000000002";
         const string expired = "000000000000000000000003";
         var checkedTenants = new List<string>();
-        var registry = new RealtimeTopicRegistry([new("eligibility", RealtimeScope.Tenant), new("private", RealtimeScope.Platform)], new());
+        var registry =
+            new RealtimeTopicRegistry(
+                [new("eligibility", RealtimeScope.Tenant), new("private", RealtimeScope.Platform)],
+                new());
         var access = new RealtimeAccess((id, user, _, _) =>
             {
                 checkedTenants.Add(id);
                 return Task.FromResult<LoadTenantMemberOutcome>(id == alpha
-                    ? new TenantMemberSnapshot(id, user, TenantMembershipRole.Viewer) : new TenantMemberMissing(id, user));
-            }, (id, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(id, "name")), registry);
+                    ? new TenantMemberSnapshot(id, user, TenantMembershipRole.Viewer)
+                    : new TenantMemberMissing(id, user));
+            },
+            (id, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(id, "name")),
+            registry);
         var expiry = DateTimeOffset.UtcNow.AddMinutes(1);
         var tickets = new MemoryTickets();
-        await tickets.StoreAsync(new AuthenticationTicket(IdentityFixture.User(), new() { ExpiresUtc = expiry }, RealtimeFeature.CookieScheme));
+        await tickets.StoreAsync(new AuthenticationTicket(IdentityFixture.User(),
+            new()
+            {
+                ExpiresUtc = expiry
+            },
+            RealtimeFeature.CookieScheme));
         var subscriptions = new MemorySubscriptions();
-        await subscriptions.ReplaceAsync("connection", [
-            new("a", "connection", "viewer", new("eligibility", alpha), expiry),
-            new("a-detail", "connection", "viewer", new("eligibility", alpha, "private-profile-id"), expiry),
-            new("b", "connection", "viewer", new("eligibility", beta), expiry),
-            new("old", "connection", "viewer", new("eligibility", expired), DateTimeOffset.UtcNow.AddSeconds(-1))
-        ], default);
+        await subscriptions.ReplaceAsync("connection",
+            [
+                new("a", "connection", "viewer", new("eligibility", alpha), expiry),
+                new("a-detail", "connection", "viewer", new("eligibility", alpha, "private-profile-id"), expiry),
+                new("b", "connection", "viewer", new("eligibility", beta), expiry),
+                new("old", "connection", "viewer", new("eligibility", expired), DateTimeOffset.UtcNow.AddSeconds(-1))
+            ],
+            default);
         var hub = new RecordingHubContext();
         var publisher = new RealtimePublisher(subscriptions, tickets, access, registry, hub, TimeProvider.System);
         await Assert.ThrowsAsync<InvalidOperationException>(() => publisher.InvalidateTenantsAsync("private"));
@@ -48,17 +61,28 @@ public sealed class RealtimePublisherTests
     {
         var registry = new RealtimeTopicRegistry([new("user-discovery", RealtimeScope.User)], new());
         var access = new RealtimeAccess((_, _, _, _) => throw new InvalidOperationException("Not a tenant scope."),
-            (_, _) => throw new InvalidOperationException("Not a tenant scope."), registry);
+            (_, _) => throw new InvalidOperationException("Not a tenant scope."),
+            registry);
         var tickets = new MemoryTickets();
         var expiry = DateTimeOffset.UtcNow.AddMinutes(1);
-        await tickets.StoreAsync(new AuthenticationTicket(IdentityFixture.User(), new() { ExpiresUtc = expiry }, RealtimeFeature.CookieScheme));
+        await tickets.StoreAsync(new AuthenticationTicket(IdentityFixture.User(),
+            new()
+            {
+                ExpiresUtc = expiry
+            },
+            RealtimeFeature.CookieScheme));
         var subscriptions = new MemorySubscriptions();
-        await subscriptions.ReplaceAsync("connection", [new("own", "connection", "viewer", new("user-discovery", ResourceId: "viewer"), expiry),
-            new("corrupt-wildcard", "connection", "viewer", new("user-discovery"), expiry)], default);
+        await subscriptions.ReplaceAsync("connection",
+            [
+                new("own", "connection", "viewer", new("user-discovery", ResourceId: "viewer"), expiry),
+                new("corrupt-wildcard", "connection", "viewer", new("user-discovery"), expiry)
+            ],
+            default);
         var hub = new RecordingHubContext();
         var publisher = new RealtimePublisher(subscriptions, tickets, access, registry, hub, TimeProvider.System);
         await Assert.ThrowsAsync<InvalidOperationException>(() => publisher.PublishAsync(new("user-discovery")));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => publisher.PublishAsync(new("user-discovery", "000000000000000000000001", "viewer")));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            publisher.PublishAsync(new("user-discovery", "000000000000000000000001", "viewer")));
         await publisher.PublishAsync(new("user-discovery", ResourceId: "other"));
         Assert.Empty(hub.Client.Notices);
         await publisher.PublishAsync(new("user-discovery", ResourceId: "viewer"));
@@ -75,11 +99,15 @@ public sealed class RealtimePublisherTests
         var registry = new RealtimeTopicRegistry([new("fake", RealtimeScope.Tenant)], new());
         var access = new RealtimeAccess((id, user, _, _) => Task.FromResult<LoadTenantMemberOutcome>(
                 new TenantMemberSnapshot(id, user, TenantMembershipRole.Viewer)),
-            (id, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(id, "name")), registry);
+            (id, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(id, "name")),
+            registry);
         var subscriptions = new MemorySubscriptions();
-        await subscriptions.ReplaceAsync("connection", [new("s", "connection", "viewer", new("fake", tenant), DateTimeOffset.UtcNow.AddMinutes(1))], default);
+        await subscriptions.ReplaceAsync("connection",
+            [new("s", "connection", "viewer", new("fake", tenant), DateTimeOffset.UtcNow.AddMinutes(1))],
+            default);
         // Reproduce a publisher that already acquired its recipient snapshot when logout commits.
-        if (loggedOut) subscriptions.Revoked.Add("viewer");
+        if (loggedOut)
+            subscriptions.Revoked.Add("viewer");
         var hub = new RecordingHubContext();
         await new RealtimePublisher(subscriptions, new MemoryTickets(), access, registry, hub, TimeProvider.System)
             .PublishAsync(new("fake", tenant, "resource"));
@@ -95,12 +123,19 @@ public sealed class RealtimePublisherTests
         var registry = new RealtimeTopicRegistry([new("fake", RealtimeScope.Tenant)], new());
         var access = new RealtimeAccess((id, user, _, _) => Task.FromResult<LoadTenantMemberOutcome>(
                 new TenantMemberSnapshot(id, user, TenantMembershipRole.Viewer)),
-            (id, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(id, "name")), registry);
+            (id, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(id, "name")),
+            registry);
         var tickets = new MemoryTickets();
         await tickets.StoreAsync(new AuthenticationTicket(IdentityFixture.User(),
-            new() { ExpiresUtc = DateTimeOffset.UtcNow.AddSeconds(-1) }, RealtimeFeature.CookieScheme));
+            new()
+            {
+                ExpiresUtc = DateTimeOffset.UtcNow.AddSeconds(-1)
+            },
+            RealtimeFeature.CookieScheme));
         var subscriptions = new MemorySubscriptions();
-        await subscriptions.ReplaceAsync("connection", [new("s", "connection", "viewer", new("fake", tenant), DateTimeOffset.UtcNow.AddMinutes(1))], default);
+        await subscriptions.ReplaceAsync("connection",
+            [new("s", "connection", "viewer", new("fake", tenant), DateTimeOffset.UtcNow.AddMinutes(1))],
+            default);
         var hub = new RecordingHubContext();
         await new RealtimePublisher(subscriptions, tickets, access, registry, hub, TimeProvider.System)
             .PublishAsync(new("fake", tenant, "resource"));
@@ -116,16 +151,25 @@ public sealed class RealtimePublisherTests
         var checks = 0;
         var registry = new RealtimeTopicRegistry([new("fake", RealtimeScope.Tenant)], new());
         var access = new RealtimeAccess((id, user, _, _) => Task.FromResult<LoadTenantMemberOutcome>(++checks == 1
-                ? new TenantMemberSnapshot(id, user, TenantMembershipRole.Viewer) : new TenantMemberMissing(id, user)),
-            (id, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(id, "name")), registry);
+                ? new TenantMemberSnapshot(id, user, TenantMembershipRole.Viewer)
+                : new TenantMemberMissing(id, user)),
+            (id, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(id, "name")),
+            registry);
         var expiry = DateTimeOffset.UtcNow.AddMinutes(1);
         var tickets = new MemoryTickets();
-        await tickets.StoreAsync(new AuthenticationTicket(IdentityFixture.User(), new() { ExpiresUtc = expiry }, RealtimeFeature.CookieScheme));
+        await tickets.StoreAsync(new AuthenticationTicket(IdentityFixture.User(),
+            new()
+            {
+                ExpiresUtc = expiry
+            },
+            RealtimeFeature.CookieScheme));
         var subscriptions = new MemorySubscriptions();
-        await subscriptions.ReplaceAsync("connection", [
-            new("all", "connection", "viewer", new("fake", tenant), expiry),
-            new("resource", "connection", "viewer", new("fake", tenant, "resource"), expiry)
-        ], default);
+        await subscriptions.ReplaceAsync("connection",
+            [
+                new("all", "connection", "viewer", new("fake", tenant), expiry),
+                new("resource", "connection", "viewer", new("fake", tenant, "resource"), expiry)
+            ],
+            default);
         var hub = new RecordingHubContext();
         await new RealtimePublisher(subscriptions, tickets, access, registry, hub, TimeProvider.System)
             .PublishAsync(new("fake", tenant, "resource"));
@@ -140,13 +184,22 @@ public sealed class RealtimePublisherTests
         var allowed = true;
         var registry = new RealtimeTopicRegistry([new("fake", RealtimeScope.Tenant)], new());
         var access = new RealtimeAccess((id, user, _, _) => Task.FromResult<LoadTenantMemberOutcome>(allowed
-                ? new TenantMemberSnapshot(id, user, TenantMembershipRole.Viewer) : new TenantMemberMissing(id, user)),
-            (id, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(id, "name")), registry);
+                ? new TenantMemberSnapshot(id, user, TenantMembershipRole.Viewer)
+                : new TenantMemberMissing(id, user)),
+            (id, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(id, "name")),
+            registry);
         var tickets = new MemoryTickets();
         var expiry = DateTimeOffset.UtcNow.AddMinutes(1);
-        await tickets.StoreAsync(new AuthenticationTicket(IdentityFixture.User(), new() { ExpiresUtc = expiry }, RealtimeFeature.CookieScheme));
+        await tickets.StoreAsync(new AuthenticationTicket(IdentityFixture.User(),
+            new()
+            {
+                ExpiresUtc = expiry
+            },
+            RealtimeFeature.CookieScheme));
         var subscriptions = new MemorySubscriptions();
-        await subscriptions.ReplaceAsync("connection", [new("s", "connection", "viewer", new("fake", tenant), expiry)], default);
+        await subscriptions.ReplaceAsync("connection",
+            [new("s", "connection", "viewer", new("fake", tenant), expiry)],
+            default);
         var hub = new RecordingHubContext();
         var publisher = new RealtimePublisher(subscriptions, tickets, access, registry, hub, TimeProvider.System);
         await publisher.PublishAsync(new("fake", tenant, "resource"));
@@ -157,7 +210,9 @@ public sealed class RealtimePublisherTests
         Assert.Empty(subscriptions.Connections["connection"]);
         Assert.Equal(1, hub.Client.Revocations);
 
-        await subscriptions.ReplaceAsync("connection", [new("s", "connection", "viewer", new("fake", tenant), expiry)], default);
+        await subscriptions.ReplaceAsync("connection",
+            [new("s", "connection", "viewer", new("fake", tenant), expiry)],
+            default);
         allowed = true;
         await tickets.RemoveAsync("viewer");
         await publisher.PublishAsync(new("fake", tenant, "resource"));
@@ -166,18 +221,47 @@ public sealed class RealtimePublisherTests
 
     private sealed class RecordingHubContext : IHubContext<RealtimeHub, IRealtimeClient>
     {
-        public RecordingClient Client { get; } = new();
+        public RecordingClient Client
+        {
+            get;
+        } = new();
+
         public IHubClients<IRealtimeClient> Clients => new RecordingClients(Client);
         public IGroupManager Groups => throw new NotSupportedException();
     }
+
     private sealed class RecordingClient : IRealtimeClient
     {
-        public List<RealtimeChange> Notices { get; } = [];
-        public int Revocations { get; private set; }
-        public Task Changed(RealtimeChange change) { Notices.Add(change); return Task.CompletedTask; }
-        public Task SessionRevoked() { Revocations++; return Task.CompletedTask; }
-        public Task AccessRevoked(string? tenantId) { Revocations++; return Task.CompletedTask; }
+        public List<RealtimeChange> Notices
+        {
+            get;
+        } = [];
+
+        public int Revocations
+        {
+            get;
+            private set;
+        }
+
+        public Task Changed(RealtimeChange change)
+        {
+            Notices.Add(change);
+            return Task.CompletedTask;
+        }
+
+        public Task SessionRevoked()
+        {
+            Revocations++;
+            return Task.CompletedTask;
+        }
+
+        public Task AccessRevoked(string? tenantId)
+        {
+            Revocations++;
+            return Task.CompletedTask;
+        }
     }
+
     private sealed class RecordingClients(RecordingClient client) : IHubClients<IRealtimeClient>
     {
         public IRealtimeClient All => client;

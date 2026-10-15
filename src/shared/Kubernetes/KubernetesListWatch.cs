@@ -10,7 +10,15 @@ public sealed record KubernetesListPage<T>(
     IReadOnlyList<T> Items,
     string? ResourceVersion,
     string? ContinuationToken);
-public enum KubernetesListWatchChangeKind { Listed, Ready, Changed, Unavailable }
+
+public enum KubernetesListWatchChangeKind
+{
+    Listed,
+    Ready,
+    Changed,
+    Unavailable
+}
+
 public sealed record KubernetesListWatchChange<T>(
     KubernetesListWatchChangeKind Kind,
     IReadOnlyList<T>? Items = null,
@@ -20,10 +28,18 @@ public sealed record KubernetesListWatchChange<T>(
 /// <summary>Independent, bounded LIST/WATCH state for one native kind and selector.</summary>
 public static class KubernetesListWatch
 {
-    private enum Failure { Unavailable, Expired, Malformed, Eof }
+    private enum Failure
+    {
+        Unavailable,
+        Expired,
+        Malformed,
+        Eof
+    }
+
     private sealed record MoveResult(
         bool Moved,
         Failure? Failure = null);
+
     private sealed record ListResult<T>(
         IReadOnlyList<T>? Items,
         string? Version,
@@ -56,6 +72,7 @@ public static class KubernetesListWatch
                         retry = NextRetry(retry);
                         continue;
                     }
+
                     version = listed.Version!;
                     metrics.Record(KubernetesWatchOutcome.Listed);
                     yield return new(KubernetesListWatchChangeKind.Listed, listed.Items);
@@ -68,49 +85,68 @@ public static class KubernetesListWatch
                 ITimer? watchdog = null;
                 DateTimeOffset? openedAt = null;
                 using var headers = KubernetesWatchHeaders.Begin(() =>
-                {
-                    if (Interlocked.CompareExchange(ref openingState, 1, 0) != 0) return;
-                    watchdog!.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
-                    openedAt = clock.GetUtcNow();
-                    metrics.Record(KubernetesWatchOutcome.Opened);
-                    opened.TrySetResult();
-                }, lifetime.Token);
+                    {
+                        if (Interlocked.CompareExchange(ref openingState, 1, 0) != 0)
+                            return;
+                        watchdog!.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+                        openedAt = clock.GetUtcNow();
+                        metrics.Record(KubernetesWatchOutcome.Opened);
+                        opened.TrySetResult();
+                    },
+                    lifetime.Token);
                 using var openingWatchdog = watchdog = clock.CreateTimer(_ =>
-                {
-                    if (Interlocked.CompareExchange(ref openingState, 2, 0) == 0)
-                    { metrics.Record(KubernetesWatchOutcome.StalledHeaders); lifetime.Cancel(); }
-                }, null, TimeSpan.FromSeconds(15), Timeout.InfiniteTimeSpan);
-                var events = watch(version, exception =>
-                {
-                    callbackFailure ??= Classify(exception);
-                    // SDK onError otherwise waits for EOF, even after Status410 or malformed JSON.
-                    lifetime.Cancel();
-                }, lifetime.Token).GetAsyncEnumerator(lifetime.Token);
+                    {
+                        if (Interlocked.CompareExchange(ref openingState, 2, 0) == 0)
+                        {
+                            metrics.Record(KubernetesWatchOutcome.StalledHeaders);
+                            lifetime.Cancel();
+                        }
+                    },
+                    null,
+                    TimeSpan.FromSeconds(15),
+                    Timeout.InfiniteTimeSpan);
+                var events = watch(version,
+                    exception =>
+                    {
+                        callbackFailure ??= Classify(exception);
+                        // SDK onError otherwise waits for EOF, even after Status410 or malformed JSON.
+                        lifetime.Cancel();
+                    },
+                    lifetime.Token).GetAsyncEnumerator(lifetime.Token);
                 Task<bool>? pending = null;
                 Failure? failure = null;
                 var ready = false;
                 try
                 {
                     pending = events.MoveNextAsync().AsTask();
-                    if (await Task.WhenAny(opened.Task, pending) == opened.Task && opened.Task.IsCompletedSuccessfully && !lifetime.IsCancellationRequested)
+                    if (await Task.WhenAny(opened.Task, pending) == opened.Task &&
+                        opened.Task.IsCompletedSuccessfully && !lifetime.IsCancellationRequested)
                     {
                         ready = true;
                         yield return new(KubernetesListWatchChangeKind.Ready);
                     }
+
                     while (!cancellationToken.IsCancellationRequested)
                     {
                         var moved = await MoveAsync(pending);
                         pending = null;
                         failure = callbackFailure ?? moved.Failure;
-                        if (failure is not null || !moved.Moved) break;
+                        if (failure is not null || !moved.Moved)
+                            break;
                         if (!ready && opened.Task.IsCompletedSuccessfully && !lifetime.IsCancellationRequested)
                         {
                             ready = true;
                             yield return new(KubernetesListWatchChangeKind.Ready);
                         }
+
                         var (type, item) = events.Current;
                         var nextVersion = resourceVersion(item);
-                        if (string.IsNullOrEmpty(nextVersion)) { failure = Failure.Malformed; break; }
+                        if (string.IsNullOrEmpty(nextVersion))
+                        {
+                            failure = Failure.Malformed;
+                            break;
+                        }
+
                         retry = TimeSpan.FromMilliseconds(500);
                         version = nextVersion; // Opaque, local to this kind AND selector; never order versions.
                         if (type != WatchEventType.Bookmark)
@@ -122,22 +158,31 @@ public static class KubernetesListWatch
                 {
                     lifetime.Cancel();
                     headers.CloseResponse();
-                    if (pending is not null) await MoveAsync(pending);
+                    if (pending is not null)
+                        await MoveAsync(pending);
                     await events.DisposeAsync();
                 }
+
                 cancellationToken.ThrowIfCancellationRequested();
                 // A quiet, functioning transport can expire without a bookmark or data frame.
                 if (openedAt is { } since && clock.GetUtcNow() - since >= TimeSpan.FromSeconds(30))
                     retry = TimeSpan.FromMilliseconds(500);
-                if (openingState != 2) metrics.Record(failure is { } reason ? Recovery(reason) : KubernetesWatchOutcome.Eof);
+                if (openingState != 2)
+                    metrics.Record(failure is { } reason ? Recovery(reason) : KubernetesWatchOutcome.Eof);
                 yield return new(KubernetesListWatchChangeKind.Unavailable);
-                if (failure is Failure.Expired or Failure.Malformed) version = null;
+                if (failure is Failure.Expired or Failure.Malformed)
+                    version = null;
                 await Task.Delay(retry, clock, cancellationToken);
                 retry = NextRetry(retry);
             }
+
             cancellationToken.ThrowIfCancellationRequested();
         }
-        finally { if (cancellationToken.IsCancellationRequested) metrics.Record(KubernetesWatchOutcome.Cancelled); }
+        finally
+        {
+            if (cancellationToken.IsCancellationRequested)
+                metrics.Record(KubernetesWatchOutcome.Cancelled);
+        }
     }
 
     /// <summary>Reacquire an externally owned client for each stream; never dispose its shared lifetime.</summary>
@@ -147,21 +192,37 @@ public static class KubernetesListWatch
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var client = await currentClient(cancellationToken);
-        await foreach (var item in watch(client).WithCancellation(cancellationToken)) yield return item;
+        await foreach (var item in watch(client).WithCancellation(cancellationToken))
+            yield return item;
     }
 
     private static KubernetesWatchOutcome Recovery(Failure failure) => failure switch
-    { Failure.Expired => KubernetesWatchOutcome.Expired, Failure.Malformed => KubernetesWatchOutcome.Malformed, Failure.Eof => KubernetesWatchOutcome.Eof, _ => KubernetesWatchOutcome.Unavailable };
+    {
+        Failure.Expired => KubernetesWatchOutcome.Expired,
+        Failure.Malformed => KubernetesWatchOutcome.Malformed,
+        Failure.Eof => KubernetesWatchOutcome.Eof,
+        _ => KubernetesWatchOutcome.Unavailable
+    };
 
-    private static TimeSpan NextRetry(TimeSpan retry) => TimeSpan.FromMilliseconds(Math.Min(retry.TotalMilliseconds * 2, 30_000));
+    private static TimeSpan NextRetry(TimeSpan retry) =>
+        TimeSpan.FromMilliseconds(Math.Min(retry.TotalMilliseconds * 2, 30_000));
 
     private static async Task<MoveResult> MoveAsync(Task<bool> pending)
     {
-        try { return new(await pending); }
-        catch (Exception exception) when (IsNativeFailure(exception)) { return new(false, Classify(exception)); }
+        try
+        {
+            return new(await pending);
+        }
+        catch (Exception exception) when (IsNativeFailure(exception))
+        {
+            return new(false, Classify(exception));
+        }
     }
 
-    private static async Task<ListResult<T>> ListAsync<T>(Func<string?, CancellationToken, Task<KubernetesListPage<T>>> page, int maximumItems, CancellationToken ct)
+    private static async Task<ListResult<T>> ListAsync<T>(
+        Func<string?, CancellationToken, Task<KubernetesListPage<T>>> page,
+        int maximumItems,
+        CancellationToken ct)
     {
         try
         {
@@ -172,22 +233,28 @@ public static class KubernetesListWatch
             do
             {
                 var listed = await page(continuation, ct);
-                if (string.IsNullOrEmpty(listed.ResourceVersion) || version is not null && listed.ResourceVersion != version)
+                if (string.IsNullOrEmpty(listed.ResourceVersion) ||
+                    version is not null && listed.ResourceVersion != version)
                     return new(null, null, Failure.Malformed);
                 version = listed.ResourceVersion;
                 items.AddRange(listed.Items);
-                if (items.Count > maximumItems) return new(null, null, Failure.Unavailable);
+                if (items.Count > maximumItems)
+                    return new(null, null, Failure.Unavailable);
                 continuation = listed.ContinuationToken;
                 if (!string.IsNullOrEmpty(continuation) && (!seen.Add(continuation) || seen.Count > 100))
                     return new(null, null, Failure.Malformed);
             } while (!string.IsNullOrEmpty(continuation));
+
             return new(items, version);
         }
         catch (Exception exception) when (IsNativeFailure(exception) && !ct.IsCancellationRequested)
-        { return new(null, null, Classify(exception)); }
+        {
+            return new(null, null, Classify(exception));
+        }
     }
 
-    private static bool IsNativeFailure(Exception exception) => exception is HttpOperationException or KubernetesException or
+    private static bool IsNativeFailure(Exception exception) => exception is HttpOperationException
+        or KubernetesException or
         HttpRequestException or IOException or JsonException or OperationCanceledException or ObjectDisposedException;
 
     private static Failure Classify(Exception exception) => exception switch

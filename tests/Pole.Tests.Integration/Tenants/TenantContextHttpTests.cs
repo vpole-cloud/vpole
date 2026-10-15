@@ -36,26 +36,36 @@ public sealed class TenantContextHttpTests
         app.MapApiEndpoints();
         var endpoints = ((IEndpointRouteBuilder)app).DataSources.SelectMany(source => source.Endpoints).ToArray();
         var tenantEndpoints = endpoints.Where(endpoint => endpoint.Metadata.GetMetadata<MethodInfo>()?
-            .GetParameters().Any(parameter => typeof(ITenantOperation).IsAssignableFrom(parameter.ParameterType)) == true)
+                                                              .GetParameters().Any(parameter =>
+                                                                  typeof(ITenantOperation).IsAssignableFrom(
+                                                                      parameter.ParameterType)) ==
+                                                          true)
             .ToArray();
         Assert.NotEmpty(tenantEndpoints);
-        Assert.All(tenantEndpoints, endpoint => Assert.Equal(ActiveTenantRequirement.Required,
-            endpoint.Metadata.GetMetadata<TenantEndpointMetadata>()?.ActiveTenant));
-        Assert.Contains(tenantEndpoints, endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == "GetSearch");
-        Assert.Contains(tenantEndpoints, endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == "CreateRedisService");
-        Assert.Contains(tenantEndpoints, endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == "CreatePostgresCluster");
-        Assert.Contains(tenantEndpoints, endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == "CreateSecret");
+        Assert.All(tenantEndpoints,
+            endpoint => Assert.Equal(ActiveTenantRequirement.Required,
+                endpoint.Metadata.GetMetadata<TenantEndpointMetadata>()?.ActiveTenant));
+        Assert.Contains(tenantEndpoints,
+            endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == "GetSearch");
+        Assert.Contains(tenantEndpoints,
+            endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == "CreateRedisService");
+        Assert.Contains(tenantEndpoints,
+            endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName ==
+                        "CreatePostgresCluster");
+        Assert.Contains(tenantEndpoints,
+            endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == "CreateSecret");
         var apiEndpoints = endpoints.OfType<RouteEndpoint>().ToArray();
-        Assert.All(apiEndpoints, endpoint =>
-        {
-            var route = endpoint.RoutePattern.RawText!;
-            var independent = route.StartsWith("/api/v1/platform/", StringComparison.Ordinal) ||
-                              route.StartsWith("/api/v1/realtime/", StringComparison.Ordinal) ||
-                              route.StartsWith("/api/v1/tenants", StringComparison.Ordinal) ||
-                              route.StartsWith("/api/v1/users", StringComparison.Ordinal);
-            Assert.Equal(independent ? ActiveTenantRequirement.None : ActiveTenantRequirement.Required,
-                endpoint.Metadata.GetMetadata<TenantEndpointMetadata>()?.ActiveTenant);
-        });
+        Assert.All(apiEndpoints,
+            endpoint =>
+            {
+                var route = endpoint.RoutePattern.RawText!;
+                var independent = route.StartsWith("/api/v1/platform/", StringComparison.Ordinal) ||
+                                  route.StartsWith("/api/v1/realtime/", StringComparison.Ordinal) ||
+                                  route.StartsWith("/api/v1/tenants", StringComparison.Ordinal) ||
+                                  route.StartsWith("/api/v1/users", StringComparison.Ordinal);
+                Assert.Equal(independent ? ActiveTenantRequirement.None : ActiveTenantRequirement.Required,
+                    endpoint.Metadata.GetMetadata<TenantEndpointMetadata>()?.ActiveTenant);
+            });
     }
 
     [Theory]
@@ -252,21 +262,24 @@ public sealed class TenantContextHttpTests
             nested.WithoutTenantContext();
         nested.MapGet("/plain", (ITenantContextAccessor accessor) => Results.Text(accessor.Current!.TenantId));
         app.MapGet("/health", () => Results.Text("healthy"));
-        nested.MapGet("/redis", (
+        nested.MapGet("/redis",
+            (
                 [AsParameters] GetRedisServicesRequest request,
                 ITenantContextAccessor accessor) =>
             {
                 Assert.Equal(accessor.Current?.TenantId, request.TenantId);
                 return Results.Text(request.TenantId);
             });
-        nested.MapGet("/search", ([AsParameters] GetSearchRequest request, ITenantContextAccessor accessor) =>
-        {
-            Assert.Equal(accessor.Current?.TenantId, request.TenantId);
-            return Results.Text(request.TenantId);
-        });
+        nested.MapGet("/search",
+            ([AsParameters] GetSearchRequest request, ITenantContextAccessor accessor) =>
+            {
+                Assert.Equal(accessor.Current?.TenantId, request.TenantId);
+                return Results.Text(request.TenantId);
+            });
         api.MapGet("/optional", (ITenantContextAccessor accessor) => Results.Text(accessor.Current?.TenantId ?? "none"))
             .WithMetadata(new TenantEndpointMetadata(ActiveTenantRequirement.Optional));
-        api.MapGet("/independent", (ITenantContextAccessor accessor) => Results.Text(accessor.Current?.TenantId ?? "none"))
+        api.MapGet("/independent",
+                (ITenantContextAccessor accessor) => Results.Text(accessor.Current?.TenantId ?? "none"))
             .WithoutTenantContext();
         api.MapGet("/credential", () => Results.Text("credential-handler"))
             .WithMetadata(new TenantCredentialMetadata("pole_ci_"))
@@ -282,6 +295,7 @@ public sealed class TenantContextHttpTests
             await app.DisposeAsync();
             throw;
         }
+
         return app;
     }
 }

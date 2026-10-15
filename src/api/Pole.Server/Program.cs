@@ -53,14 +53,16 @@ using Pole.Features.PrivateAccess.Runtime;
 
 var builder = WebApplication.CreateBuilder(args);
 var configuration = builder.Configuration;
-Assembly[] serviceAssemblies = [
+Assembly[] serviceAssemblies =
+[
     typeof(WebServiceEndpoints).Assembly, typeof(FunctionAppFeature).Assembly,
     typeof(FunctionRuntimeFeature).Assembly,
     typeof(RedisServicesFeatureRegistration).Assembly,
     typeof(ResourceConnectionsFeature).Assembly,
     typeof(PostgresFeatureRegistration).Assembly
 ];
-Assembly[] serviceEventAssemblies = [
+Assembly[] serviceEventAssemblies =
+[
     typeof(Pole.Features.WebServices.Events.WebServiceCreatedEvent).Assembly,
     typeof(Pole.Features.Functions.Events.FunctionAppCreatedEvent).Assembly,
     typeof(Pole.Features.RedisServices.Events.RedisServiceCreatedEvent).Assembly,
@@ -75,7 +77,11 @@ builder.AddMongoDBClient("pole-database");
 builder.AddFunctionOrleansHosting();
 builder.AddSecurity();
 
-builder.Services.AddPolePlatform(configuration, serviceAssemblies, serviceEventAssemblies, [], development: builder.Environment.IsDevelopment())
+builder.Services.AddPolePlatform(configuration,
+        serviceAssemblies,
+        serviceEventAssemblies,
+        [],
+        development: builder.Environment.IsDevelopment())
     .AddEventBus(configuration, assemblies)
     .AddFunctionAppsFeature()
     .AddFunctionRuntimeFeature(configuration)
@@ -87,15 +93,17 @@ builder.Services.AddPolePlatform(configuration, serviceAssemblies, serviceEventA
     .AddHangfireWithMongo(configuration)
     .AddOpenApi();
 builder.Services.AddSingleton<IMigration>(new FeatureScopedMigration(
-    "pole.redis", new RedisSchemaValidationMigration()));
+    "pole.redis",
+    new RedisSchemaValidationMigration()));
 builder.Services.AddCors(options =>
 {
     var frontendOrigin = configuration["Cors:FrontendOrigin"] ?? "http://localhost:5173";
-    options.AddPolicy("frontend-dev", policy =>
-        policy.WithOrigins(frontendOrigin)
-            .AllowAnyHeader()
-            .AllowAnyMethod()
-            .WithExposedHeaders(TraceHeaders.CorrelationId, TraceHeaders.TraceId));
+    options.AddPolicy("frontend-dev",
+        policy =>
+            policy.WithOrigins(frontendOrigin)
+                .AllowAnyHeader()
+                .AllowAnyMethod()
+                .WithExposedHeaders(TraceHeaders.CorrelationId, TraceHeaders.TraceId));
 });
 
 var app = builder.Build();
@@ -122,6 +130,7 @@ if (configuration.GetValue<bool>($"{PrivateAccessBrokerOptions.Section}:Enabled"
     app.MapPrivateAccessGatewayStreamEndpoint();
     app.MapPrivateAccessStreamEndpoint();
 }
+
 app.MapDefaultEndpoints();
 app.UseTraceContext();
 

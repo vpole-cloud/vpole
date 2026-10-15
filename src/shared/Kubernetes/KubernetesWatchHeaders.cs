@@ -14,7 +14,8 @@ public sealed class KubernetesWatchHeaders : DelegatingHandler
         return registration;
     }
 
-    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+        CancellationToken cancellationToken)
     {
         // Capture before await. Concurrent watches on a cached client have separate async flows.
         var registration = Current.Value;
@@ -28,7 +29,7 @@ public sealed class KubernetesWatchHeaders : DelegatingHandler
     {
         var parts = parameter.Split('=', 2);
         return parts.Length == 2 && Uri.UnescapeDataString(parts[0]) == "watch" &&
-            string.Equals(Uri.UnescapeDataString(parts[1]), "true", StringComparison.OrdinalIgnoreCase);
+               string.Equals(Uri.UnescapeDataString(parts[1]), "true", StringComparison.OrdinalIgnoreCase);
     }) == true;
 
     public sealed class Registration : IDisposable
@@ -57,7 +58,9 @@ public sealed class KubernetesWatchHeaders : DelegatingHandler
                     response.Dispose();
                     return;
                 }
-                if (_response is not null) throw new InvalidOperationException("A watch registration owns one request.");
+
+                if (_response is not null)
+                    throw new InvalidOperationException("A watch registration owns one request.");
                 _response = response;
                 // The SDK replaces Response.Content with an internal wrapper after this callback.
                 _originalContent = response.Content;
@@ -71,28 +74,43 @@ public sealed class KubernetesWatchHeaders : DelegatingHandler
             HttpContent? original;
             lock (_gate)
             {
-                if (_closed) return;
+                if (_closed)
+                    return;
                 _closed = true;
                 response = _response;
                 original = _originalContent;
                 _response = null;
                 _originalContent = null;
             }
-            try { original?.Dispose(); }
+
+            try
+            {
+                original?.Dispose();
+            }
             finally
             {
-                try { response?.Dispose(); }
-                finally { response?.RequestMessage?.Dispose(); }
+                try
+                {
+                    response?.Dispose();
+                }
+                finally
+                {
+                    response?.RequestMessage?.Dispose();
+                }
             }
         }
 
         public void Dispose()
         {
-            try { CloseResponse(); }
+            try
+            {
+                CloseResponse();
+            }
             finally
             {
                 _cancellation.Dispose();
-                if (ReferenceEquals(Current.Value, this)) Current.Value = _previous;
+                if (ReferenceEquals(Current.Value, this))
+                    Current.Value = _previous;
             }
         }
     }

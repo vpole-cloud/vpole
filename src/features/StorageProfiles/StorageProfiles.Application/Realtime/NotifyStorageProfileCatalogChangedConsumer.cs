@@ -10,8 +10,10 @@ public sealed class NotifyStorageProfileCatalogChangedConsumer(
 {
     public async Task HandleAsync(StorageProfileCatalogChangedEvent message, CancellationToken ct = default)
     {
-        await publish(new RealtimeChange("storage-profiles", ResourceId: message.StorageProfileId,
-            Revision: message.Revision), ct);
+        await publish(new RealtimeChange("storage-profiles",
+                ResourceId: message.StorageProfileId,
+                Revision: message.Revision),
+            ct);
         // Eligibility is public tenant metadata. Never forward catalog IDs or configuration.
         await invalidateTenants("storage-eligibility", ct);
     }

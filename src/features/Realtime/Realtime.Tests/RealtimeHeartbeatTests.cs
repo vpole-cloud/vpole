@@ -19,8 +19,12 @@ public sealed class RealtimeHeartbeatTests
     public async Task PlatformRevocationRetainsOwnUserDiscoveryAndTenantInterests()
     {
         var scenario = await Scenario.CreateAsync(admin: true);
-        await scenario.Hub.Subscribe([new("platform"), new("user-discovery", ResourceId: "viewer"), new("fake", Alpha)]);
-        scenario.Tickets.Tickets["viewer"] = new AuthenticationTicket(IdentityFixture.User(), scenario.Ticket.Properties, RealtimeFeature.CookieScheme);
+        await scenario.Hub.Subscribe([
+            new("platform"), new("user-discovery", ResourceId: "viewer"), new("fake", Alpha)
+        ]);
+        scenario.Tickets.Tickets["viewer"] = new AuthenticationTicket(IdentityFixture.User(),
+            scenario.Ticket.Properties,
+            RealtimeFeature.CookieScheme);
         var remaining = await scenario.Hub.Heartbeat();
         Assert.Equal(["user-discovery", "fake"], remaining.Select(value => value.Topic));
         Assert.Equal([null], scenario.Client.AccessRevocations);
@@ -32,7 +36,8 @@ public sealed class RealtimeHeartbeatTests
     {
         var scenario = await Scenario.CreateAsync();
         await scenario.Hub.Subscribe([new("fake", Alpha)]);
-        await Assert.ThrowsAsync<HubException>(() => scenario.Hub.Subscribe([new("user-discovery", ResourceId: "other-user")]));
+        await Assert.ThrowsAsync<HubException>(() =>
+            scenario.Hub.Subscribe([new("user-discovery", ResourceId: "other-user")]));
         await Assert.ThrowsAsync<HubException>(() => scenario.Hub.Subscribe([new("user-discovery")]));
         await Assert.ThrowsAsync<HubException>(() => scenario.Hub.Subscribe([new("fake")]));
         Assert.Empty(scenario.Client.AccessRevocations);
@@ -46,7 +51,8 @@ public sealed class RealtimeHeartbeatTests
     {
         var scenario = await Scenario.CreateAsync(enabledTopics: ["fake"]);
         var initial = await scenario.Hub.Subscribe([
-            new("fake", Alpha.ToUpperInvariant(), "Resource-A"), new("disabled", Alpha), new("unknown", Beta)]);
+            new("fake", Alpha.ToUpperInvariant(), "Resource-A"), new("disabled", Alpha), new("unknown", Beta)
+        ]);
         Assert.Equal([true, false, false], initial.Select(value => value.Covered));
         Assert.Equal(Alpha, initial[0].TenantId);
         Assert.Equal("Resource-A", initial[0].ResourceId);
@@ -100,8 +106,11 @@ public sealed class RealtimeHeartbeatTests
     public async Task DisabledTopicDenialDuringReplacementFencesAllOwnedRequestsInThatTenant()
     {
         var scenario = await Scenario.CreateAsync(enabledTopics: ["fake"]);
-        await scenario.Hub.Subscribe([new("fake", Alpha), new("disabled", Alpha), new("unknown", Alpha), new("fake", Beta)]);
-        scenario.Membership = (tenant, user) => tenant == Alpha ? new TenantMemberMissing(tenant, user)
+        await scenario.Hub.Subscribe([
+            new("fake", Alpha), new("disabled", Alpha), new("unknown", Alpha), new("fake", Beta)
+        ]);
+        scenario.Membership = (tenant, user) => tenant == Alpha
+            ? new TenantMemberMissing(tenant, user)
             : new TenantMemberSnapshot(tenant, user, TenantMembershipRole.Viewer);
         await Assert.ThrowsAsync<HubException>(() => scenario.Hub.Subscribe([new("disabled", Alpha)]));
         Assert.Equal(Beta, Assert.Single(await scenario.Hub.Heartbeat()).TenantId);
@@ -120,7 +129,9 @@ public sealed class RealtimeHeartbeatTests
         scenario.Membership = (tenant, user) =>
         {
             checkedTenants.Add(tenant);
-            return tenant == Beta ? new TenantMemberMissing(tenant, user) : new TenantMemberSnapshot(tenant, user, TenantMembershipRole.Viewer);
+            return tenant == Beta
+                ? new TenantMemberMissing(tenant, user)
+                : new TenantMemberSnapshot(tenant, user, TenantMembershipRole.Viewer);
         };
         var initial = await scenario.Hub.Subscribe([new("unknown", Beta), new("fake", Alpha)]);
         Assert.Equal(initial, await scenario.Hub.Heartbeat());
@@ -136,7 +147,8 @@ public sealed class RealtimeHeartbeatTests
     {
         var scenario = await Scenario.CreateAsync(enabledTopics: ["fake"]);
         await scenario.Hub.Subscribe([new("disabled", Alpha), new("unknown", Alpha), new("fake", Beta)]);
-        scenario.Membership = (tenant, user) => tenant == Alpha ? new TenantMemberMissing(tenant, user)
+        scenario.Membership = (tenant, user) => tenant == Alpha
+            ? new TenantMemberMissing(tenant, user)
             : new TenantMemberSnapshot(tenant, user, TenantMembershipRole.Viewer);
         Assert.Equal(Beta, Assert.Single(await scenario.Hub.Heartbeat()).TenantId);
         Assert.Equal([Alpha], scenario.Client.AccessRevocations);
@@ -171,13 +183,16 @@ public sealed class RealtimeHeartbeatTests
     [InlineData(false, true)]
     [InlineData(true, false)]
     [InlineData(true, true)]
-    public async Task UnavailableOnlyTicketLossDistinguishesExplicitMarkersFromTransientStorageLoss(bool revoked, bool corruptNull)
+    public async Task UnavailableOnlyTicketLossDistinguishesExplicitMarkersFromTransientStorageLoss(bool revoked,
+        bool corruptNull)
     {
         var scenario = await Scenario.CreateAsync(enabledTopics: ["fake"]);
         var ticket = scenario.Ticket;
         var initial = await scenario.Hub.Subscribe([new("disabled", Alpha), new("unknown", Beta)]);
-        if (corruptNull) scenario.Tickets.ReadAsUnavailable = true;
-        else await scenario.Tickets.RemoveAsync("viewer");
+        if (corruptNull)
+            scenario.Tickets.ReadAsUnavailable = true;
+        else
+            await scenario.Tickets.RemoveAsync("viewer");
         if (revoked)
         {
             await scenario.Subscriptions.RevokeSessionAsync("viewer", default);
@@ -190,9 +205,11 @@ public sealed class RealtimeHeartbeatTests
             await scenario.Tickets.StoreAsync(ticket);
             var recovered = await scenario.Hub.Subscribe([new("disabled", Alpha), new("unknown", Beta)]);
             Assert.All(recovered, value => Assert.False(value.Covered));
-            Assert.DoesNotContain(recovered, value => initial.Any(previous => previous.SubscriptionId == value.SubscriptionId));
+            Assert.DoesNotContain(recovered,
+                value => initial.Any(previous => previous.SubscriptionId == value.SubscriptionId));
             Assert.Equal(recovered, await scenario.Hub.Heartbeat());
         }
+
         Assert.Equal(revoked ? 1 : 0, scenario.Client.SessionRevocations);
         Assert.Empty(scenario.Client.AccessRevocations);
         Assert.Empty(scenario.Client.Changes);
@@ -210,7 +227,8 @@ public sealed class RealtimeHeartbeatTests
         await scenario.Hub.Subscribe([new("fake", Alpha), new("disabled", Alpha), new("unknown", Beta)]);
         scenario.Subscriptions.ReplaceFailure = new InvalidOperationException("storage unavailable");
         await Assert.ThrowsAsync<InvalidOperationException>(() => scenario.Hub.Subscribe([
-            new("fake", Alpha), new("disabled", Alpha), new("unknown", Beta)]));
+            new("fake", Alpha), new("disabled", Alpha), new("unknown", Beta)
+        ]));
         scenario.Subscriptions.ReplaceFailure = null;
         Assert.Empty(await scenario.Hub.Heartbeat());
         Assert.Empty(scenario.Owner.Interests);
@@ -235,8 +253,10 @@ public sealed class RealtimeHeartbeatTests
         Assert.Equal(removeCalls, scenario.Subscriptions.RemoveCalls);
         Assert.Equal(0, scenario.Tickets.RenewCalls);
         Assert.Empty(scenario.Client.Changes);
-        var json = JsonSerializer.SerializeToElement(Assert.Single(result), new JsonSerializerOptions(JsonSerializerDefaults.Web));
-        Assert.Equal(["covered", "resourceId", "subscriptionId", "tenantId", "topic"], json.EnumerateObject().Select(property => property.Name).Order());
+        var json = JsonSerializer.SerializeToElement(Assert.Single(result),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Equal(["covered", "resourceId", "subscriptionId", "tenantId", "topic"],
+            json.EnumerateObject().Select(property => property.Name).Order());
     }
 
     [Fact]
@@ -259,12 +279,15 @@ public sealed class RealtimeHeartbeatTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task UnexpectedTicketOrRegistryFailureProducesNoAcknowledgementOrPermanentRevocation(bool ticketFailure)
+    public async Task UnexpectedTicketOrRegistryFailureProducesNoAcknowledgementOrPermanentRevocation(
+        bool ticketFailure)
     {
         var scenario = await Scenario.CreateAsync();
         var initial = Assert.Single(await scenario.Hub.Subscribe([new("fake", Alpha)]));
-        if (ticketFailure) scenario.Tickets.RetrieveFailure = new InvalidOperationException("storage unavailable");
-        else scenario.Subscriptions.ReplaceFailure = new InvalidOperationException("storage unavailable");
+        if (ticketFailure)
+            scenario.Tickets.RetrieveFailure = new InvalidOperationException("storage unavailable");
+        else
+            scenario.Subscriptions.ReplaceFailure = new InvalidOperationException("storage unavailable");
         await Assert.ThrowsAsync<InvalidOperationException>(() => scenario.Hub.Heartbeat());
         Assert.Equal([initial.SubscriptionId], scenario.Owner.Interests);
         Assert.Equal(0, scenario.Owner.UnsubscribeCalls);
@@ -285,7 +308,9 @@ public sealed class RealtimeHeartbeatTests
             await scenario.Tickets.RemoveAsync("viewer");
             await scenario.Subscriptions.RevokeSessionAsync("viewer", default);
         }
-        else scenario.Subscriptions.ReplaceFailure = new RealtimeSessionUnavailableException();
+        else
+            scenario.Subscriptions.ReplaceFailure = new RealtimeSessionUnavailableException();
+
         Assert.Empty(await scenario.Hub.Heartbeat());
         Assert.Empty(scenario.Subscriptions.Connections);
         Assert.Empty(scenario.Owner.Interests);
@@ -297,14 +322,17 @@ public sealed class RealtimeHeartbeatTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task TicketLossOrCorruptNullBeforeExpiryPreservesWorkspaceIdentityAndRequestsBootstrap(bool corruptNull)
+    public async Task TicketLossOrCorruptNullBeforeExpiryPreservesWorkspaceIdentityAndRequestsBootstrap(
+        bool corruptNull)
     {
         var scenario = await Scenario.CreateAsync();
         await scenario.Hub.Subscribe([new("fake", Alpha)]);
         var identity = scenario.Hub.Context.User;
         Assert.NotNull(identity);
-        if (corruptNull) scenario.Tickets.ReadAsUnavailable = true;
-        else await scenario.Tickets.RemoveAsync("viewer");
+        if (corruptNull)
+            scenario.Tickets.ReadAsUnavailable = true;
+        else
+            await scenario.Tickets.RemoveAsync("viewer");
         scenario.Subscriptions.RevocationChecks.Clear();
         var error = await Assert.ThrowsAsync<HubException>(() => scenario.Hub.Heartbeat());
         Assert.Equal("The realtime session is unavailable.", error.Message);
@@ -325,12 +353,16 @@ public sealed class RealtimeHeartbeatTests
     [InlineData(false, true)]
     [InlineData(true, false)]
     [InlineData(true, true)]
-    public async Task ExplicitMarkerRevokesMissingOrExpiredSessionsIncludingEmptyOwnedLists(bool expiredTicket, bool emptyOwned)
+    public async Task ExplicitMarkerRevokesMissingOrExpiredSessionsIncludingEmptyOwnedLists(bool expiredTicket,
+        bool emptyOwned)
     {
         var scenario = await Scenario.CreateAsync();
-        if (!emptyOwned) await scenario.Hub.Subscribe([new("fake", Alpha)]);
-        if (expiredTicket) scenario.Clock.Now = scenario.Clock.Now.AddMinutes(2);
-        else await scenario.Tickets.RemoveAsync("viewer");
+        if (!emptyOwned)
+            await scenario.Hub.Subscribe([new("fake", Alpha)]);
+        if (expiredTicket)
+            scenario.Clock.Now = scenario.Clock.Now.AddMinutes(2);
+        else
+            await scenario.Tickets.RemoveAsync("viewer");
         await scenario.Subscriptions.RevokeSessionAsync("viewer", default);
         scenario.Subscriptions.RevocationChecks.Clear();
         Assert.Empty(await scenario.Hub.Heartbeat());
@@ -362,12 +394,14 @@ public sealed class RealtimeHeartbeatTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task NaturalExpiryOrLateMissingTicketReleasesInterestsAndRequestsBootstrapWithoutRevocation(bool missingTicket)
+    public async Task NaturalExpiryOrLateMissingTicketReleasesInterestsAndRequestsBootstrapWithoutRevocation(
+        bool missingTicket)
     {
         var scenario = await Scenario.CreateAsync();
         await scenario.Hub.Subscribe([new("fake", Alpha)]);
         scenario.Clock.Now = scenario.Clock.Now.AddMinutes(2);
-        if (missingTicket) await scenario.Tickets.RemoveAsync("viewer");
+        if (missingTicket)
+            await scenario.Tickets.RemoveAsync("viewer");
         var error = await Assert.ThrowsAsync<HubException>(() => scenario.Hub.Heartbeat());
         Assert.Equal("The realtime session is unavailable.", error.Message);
         Assert.Empty(scenario.Subscriptions.Connections);
@@ -389,7 +423,8 @@ public sealed class RealtimeHeartbeatTests
         scenario.Owner.OnRenew = () =>
         {
             scenario.Clock.Now = scenario.Clock.Now.AddMinutes(2);
-            if (missingTicket) scenario.Tickets.Tickets.TryRemove("viewer", out _);
+            if (missingTicket)
+                scenario.Tickets.Tickets.TryRemove("viewer", out _);
         };
         await Assert.ThrowsAsync<HubException>(() => scenario.Hub.Heartbeat());
         Assert.Empty(scenario.Subscriptions.Connections);
@@ -417,7 +452,8 @@ public sealed class RealtimeHeartbeatTests
     {
         var scenario = await Scenario.CreateAsync();
         await scenario.Hub.Subscribe([new("fake", Alpha), new("fake", Alpha, "resource"), new("fake", Beta)]);
-        scenario.Membership = (tenant, user) => tenant == Alpha ? new TenantMemberMissing(tenant, user)
+        scenario.Membership = (tenant, user) => tenant == Alpha
+            ? new TenantMemberMissing(tenant, user)
             : new TenantMemberSnapshot(tenant, user, TenantMembershipRole.Viewer);
         Assert.Equal(Beta, Assert.Single(await scenario.Hub.Heartbeat()).TenantId);
         Assert.Equal([Alpha], scenario.Client.AccessRevocations);
@@ -433,7 +469,8 @@ public sealed class RealtimeHeartbeatTests
         await scenario.Hub.Subscribe([new("fake", Alpha), new("fake", Alpha, "resource")]);
         var checks = 0;
         scenario.Membership = (tenant, user) => ++checks == 1
-            ? new TenantMemberSnapshot(tenant, user, TenantMembershipRole.Viewer) : new TenantMemberMissing(tenant, user);
+            ? new TenantMemberSnapshot(tenant, user, TenantMembershipRole.Viewer)
+            : new TenantMemberMissing(tenant, user);
         Assert.Empty(await scenario.Hub.Heartbeat());
         Assert.Empty(scenario.Owner.Interests);
         Assert.Empty(scenario.Subscriptions.Connections["connection"]);
@@ -506,7 +543,9 @@ public sealed class RealtimeHeartbeatTests
     {
         var scenario = await Scenario.CreateAsync(admin: true, enabledTopics: disabled ? ["fake"] : []);
         await scenario.Hub.Subscribe([new("platform")]);
-        scenario.Tickets.Tickets["viewer"] = new AuthenticationTicket(IdentityFixture.User(), scenario.Ticket.Properties, RealtimeFeature.CookieScheme);
+        scenario.Tickets.Tickets["viewer"] = new AuthenticationTicket(IdentityFixture.User(),
+            scenario.Ticket.Properties,
+            RealtimeFeature.CookieScheme);
         Assert.Empty(await scenario.Hub.Heartbeat());
         Assert.Equal([null], scenario.Client.AccessRevocations);
         Assert.Equal(0, scenario.Client.SessionRevocations);
@@ -545,29 +584,74 @@ public sealed class RealtimeHeartbeatTests
     {
         var scenario = await Scenario.CreateAsync();
         var checkedTenants = new List<string>();
-        scenario.Membership = (tenant, user) => { checkedTenants.Add(tenant); return new TenantMemberSnapshot(tenant, user, TenantMembershipRole.Viewer); };
-        var acknowledgement = Assert.Single(await scenario.Hub.Subscribe([new("fake", Alpha.ToUpperInvariant(), "Resource-A")]));
+        scenario.Membership = (tenant, user) =>
+        {
+            checkedTenants.Add(tenant);
+            return new TenantMemberSnapshot(tenant, user, TenantMembershipRole.Viewer);
+        };
+        var acknowledgement =
+            Assert.Single(await scenario.Hub.Subscribe([new("fake", Alpha.ToUpperInvariant(), "Resource-A")]));
         Assert.Equal(Alpha, acknowledgement.TenantId);
         Assert.Equal("Resource-A", acknowledgement.ResourceId);
         Assert.Equal([Alpha], checkedTenants.Distinct());
         Assert.Single(await scenario.Subscriptions.FindAsync("fake", Alpha, default));
-        await Assert.ThrowsAsync<HubException>(() => scenario.Hub.Subscribe([new("fake", Alpha), new("fake", Alpha.ToUpperInvariant())]));
-        var distinctResources = await scenario.Hub.Subscribe([new("fake", Alpha, "Resource-A"), new("fake", Alpha, "resource-a")]);
+        await Assert.ThrowsAsync<HubException>(() =>
+            scenario.Hub.Subscribe([new("fake", Alpha), new("fake", Alpha.ToUpperInvariant())]));
+        var distinctResources =
+            await scenario.Hub.Subscribe([new("fake", Alpha, "Resource-A"), new("fake", Alpha, "resource-a")]);
         Assert.Equal(2, distinctResources.Count);
     }
 
     private sealed class Scenario
     {
-        public MemoryTickets Tickets { get; } = new();
-        public MemorySubscriptions Subscriptions { get; } = new();
-        public RenewalLifecycle Owner { get; } = new();
-        public RenewalLifecycle DisabledOwner { get; } = new("disabled");
-        public RenewalLifecycle UnknownOwner { get; } = new("unknown");
-        public RecordingClient Client { get; } = new();
-        public FixedClock Clock { get; } = new();
+        public MemoryTickets Tickets
+        {
+            get;
+        } = new();
+
+        public MemorySubscriptions Subscriptions
+        {
+            get;
+        } = new();
+
+        public RenewalLifecycle Owner
+        {
+            get;
+        } = new();
+
+        public RenewalLifecycle DisabledOwner
+        {
+            get;
+        } = new("disabled");
+
+        public RenewalLifecycle UnknownOwner
+        {
+            get;
+        } = new("unknown");
+
+        public RecordingClient Client
+        {
+            get;
+        } = new();
+
+        public FixedClock Clock
+        {
+            get;
+        } = new();
+
         public AuthenticationTicket Ticket => Tickets.Tickets["viewer"];
-        public RealtimeHub Hub { get; private set; } = null!;
-        public Func<string, string, LoadTenantMemberOutcome> Membership { get; set; } =
+
+        public RealtimeHub Hub
+        {
+            get;
+            private set;
+        } = null!;
+
+        public Func<string, string, LoadTenantMemberOutcome> Membership
+        {
+            get;
+            set;
+        } =
             (tenant, user) => new TenantMemberSnapshot(tenant, user, TenantMembershipRole.Viewer);
 
         public static async Task<Scenario> CreateAsync(bool admin = false, string[]? enabledTopics = null)
@@ -575,15 +659,30 @@ public sealed class RealtimeHeartbeatTests
             var scenario = new Scenario();
             var principal = IdentityFixture.User(admin: admin);
             await scenario.Tickets.StoreAsync(new AuthenticationTicket(principal,
-                new AuthenticationProperties { ExpiresUtc = scenario.Clock.Now.AddMinutes(1) }, RealtimeFeature.CookieScheme));
-            var registry = new RealtimeTopicRegistry([new("fake", RealtimeScope.Tenant), new("disabled", RealtimeScope.Tenant), new("platform", RealtimeScope.Platform),
-                new("user-discovery", RealtimeScope.User)],
-                new() { Enabled = true, EnabledTopics = enabledTopics ?? [] });
+                new AuthenticationProperties { ExpiresUtc = scenario.Clock.Now.AddMinutes(1) },
+                RealtimeFeature.CookieScheme));
+            var registry = new RealtimeTopicRegistry([
+                    new("fake", RealtimeScope.Tenant), new("disabled", RealtimeScope.Tenant),
+                    new("platform", RealtimeScope.Platform),
+                    new("user-discovery", RealtimeScope.User)
+                ],
+                new()
+                {
+                    Enabled = true,
+                    EnabledTopics = enabledTopics ?? []
+                });
             var access = new RealtimeAccess((tenant, user, _, _) => Task.FromResult(scenario.Membership(tenant, user)),
-                (tenant, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(tenant, "name")), registry);
-            scenario.Hub = new RealtimeHub(scenario.Subscriptions, scenario.Tickets, access,
-                [scenario.Owner, scenario.DisabledOwner, scenario.UnknownOwner], scenario.Clock)
-            { Context = new CallerContext(principal), Clients = new RecordingClients(scenario.Client) };
+                (tenant, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(tenant, "name")),
+                registry);
+            scenario.Hub = new RealtimeHub(scenario.Subscriptions,
+                    scenario.Tickets,
+                    access,
+                    [scenario.Owner, scenario.DisabledOwner, scenario.UnknownOwner],
+                    scenario.Clock)
+            {
+                Context = new CallerContext(principal),
+                Clients = new RecordingClients(scenario.Client)
+            };
             return scenario;
         }
     }
@@ -591,23 +690,74 @@ public sealed class RealtimeHeartbeatTests
     private sealed class RenewalLifecycle(string topic = "fake") : IRealtimeTopicLifecycle
     {
         public string Topic => topic;
-        public HashSet<string> Interests { get; } = [];
-        public int SubscribeCalls { get; private set; }
-        public int RenewCalls { get; private set; }
-        public int UnsubscribeCalls { get; private set; }
-        public bool Covered { get; set; } = true;
-        public Action? OnRenew { get; set; }
-        public Task<bool> SubscribeAsync(RealtimeSubscription subscription, ClaimsPrincipal principal, CancellationToken ct)
-        { SubscribeCalls++; Interests.Add(subscription.Id); return Task.FromResult(true); }
+
+        public HashSet<string> Interests
+        {
+            get;
+        } = [];
+
+        public int SubscribeCalls
+        {
+            get;
+            private set;
+        }
+
+        public int RenewCalls
+        {
+            get;
+            private set;
+        }
+
+        public int UnsubscribeCalls
+        {
+            get;
+            private set;
+        }
+
+        public bool Covered
+        {
+            get;
+            set;
+        } = true;
+
+        public Action? OnRenew
+        {
+            get;
+            set;
+        }
+
+        public Task<bool> SubscribeAsync(RealtimeSubscription subscription,
+            ClaimsPrincipal principal,
+            CancellationToken ct)
+        {
+            SubscribeCalls++;
+            Interests.Add(subscription.Id);
+            return Task.FromResult(true);
+        }
+
         public Task<bool> RenewAsync(RealtimeSubscription subscription, ClaimsPrincipal principal, CancellationToken ct)
-        { RenewCalls++; OnRenew?.Invoke(); return Task.FromResult(Covered && Interests.Contains(subscription.Id)); }
+        {
+            RenewCalls++;
+            OnRenew?.Invoke();
+            return Task.FromResult(Covered && Interests.Contains(subscription.Id));
+        }
+
         public Task UnsubscribeAsync(RealtimeSubscription subscription, CancellationToken ct)
-        { UnsubscribeCalls++; Interests.Remove(subscription.Id); return Task.CompletedTask; }
+        {
+            UnsubscribeCalls++;
+            Interests.Remove(subscription.Id);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FixedClock : TimeProvider
     {
-        public DateTimeOffset Now { get; set; } = new(2026, 10, 12, 12, 0, 0, TimeSpan.Zero);
+        public DateTimeOffset Now
+        {
+            get;
+            set;
+        } = new(2026, 10, 12, 12, 0, 0, TimeSpan.Zero);
+
         public override DateTimeOffset GetUtcNow() => Now;
     }
 
@@ -616,20 +766,59 @@ public sealed class RealtimeHeartbeatTests
         public override string ConnectionId => "connection";
         public override string UserIdentifier => "viewer";
         public override ClaimsPrincipal User => principal;
-        public override IDictionary<object, object?> Items { get; } = new Dictionary<object, object?>();
-        public override IFeatureCollection Features { get; } = new FeatureCollection();
+
+        public override IDictionary<object, object?> Items
+        {
+            get;
+        } = new Dictionary<object, object?>();
+
+        public override IFeatureCollection Features
+        {
+            get;
+        } = new FeatureCollection();
+
         public override CancellationToken ConnectionAborted => CancellationToken.None;
-        public override void Abort() { }
+
+        public override void Abort()
+        {
+        }
     }
 
     private sealed class RecordingClient : IRealtimeClient
     {
-        public List<RealtimeChange> Changes { get; } = [];
-        public List<string?> AccessRevocations { get; } = [];
-        public int SessionRevocations { get; private set; }
-        public Task Changed(RealtimeChange change) { Changes.Add(change); return Task.CompletedTask; }
-        public Task SessionRevoked() { SessionRevocations++; return Task.CompletedTask; }
-        public Task AccessRevoked(string? tenantId) { AccessRevocations.Add(tenantId); return Task.CompletedTask; }
+        public List<RealtimeChange> Changes
+        {
+            get;
+        } = [];
+
+        public List<string?> AccessRevocations
+        {
+            get;
+        } = [];
+
+        public int SessionRevocations
+        {
+            get;
+            private set;
+        }
+
+        public Task Changed(RealtimeChange change)
+        {
+            Changes.Add(change);
+            return Task.CompletedTask;
+        }
+
+        public Task SessionRevoked()
+        {
+            SessionRevocations++;
+            return Task.CompletedTask;
+        }
+
+        public Task AccessRevoked(string? tenantId)
+        {
+            AccessRevocations.Add(tenantId);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class RecordingClients(RecordingClient client) : IHubCallerClients<IRealtimeClient>

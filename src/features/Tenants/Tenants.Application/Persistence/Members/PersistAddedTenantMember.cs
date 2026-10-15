@@ -25,25 +25,28 @@ internal sealed class MongoPersistAddedTenantMember(
     public Task<PersistAddedTenantMemberOutcome> InvokeAsync(
         TenantMember member,
         CancellationToken cancellationToken = default) => runTransaction(async (transaction, ct) =>
-    {
-        var updatedTenant = await _tenants.FindOneAndUpdateAsync(
-            transaction.Session,
-            TenantFilters.ByIdWithoutMemberUser(member.TenantId, member.UserId),
-            TenantUpdates.AddMember(member),
-            new FindOneAndUpdateOptions<Tenant> { ReturnDocument = ReturnDocument.After },
-            ct);
-        if (updatedTenant is not null)
         {
-            await storeOutboxWrites(transaction.Session, [TenantAccessEventExtensions.MembershipChanged(member.TenantId, member.UserId)], ct);
-            return transaction.Commit(member);
-        }
+            var updatedTenant = await _tenants.FindOneAndUpdateAsync(
+                transaction.Session,
+                TenantFilters.ByIdWithoutMemberUser(member.TenantId, member.UserId),
+                TenantUpdates.AddMember(member),
+                new FindOneAndUpdateOptions<Tenant> { ReturnDocument = ReturnDocument.After },
+                ct);
+            if (updatedTenant is not null)
+            {
+                await storeOutboxWrites(transaction.Session,
+                    [TenantAccessEventExtensions.MembershipChanged(member.TenantId, member.UserId)],
+                    ct);
+                return transaction.Commit(member);
+            }
 
-        var tenant = await _tenants
-            .Find(transaction.Session, TenantFilters.ById(member.TenantId))
-            .FirstOrDefaultAsync(ct);
-        PersistAddedTenantMemberOutcome failure = tenant is null
-            ? new TenantNotFound(member.TenantId)
-            : new TenantMemberAlreadyExists(member.TenantId, member.UserId);
-        return transaction.Abort(failure);
-    }, cancellationToken);
+            var tenant = await _tenants
+                .Find(transaction.Session, TenantFilters.ById(member.TenantId))
+                .FirstOrDefaultAsync(ct);
+            PersistAddedTenantMemberOutcome failure = tenant is null
+                ? new TenantNotFound(member.TenantId)
+                : new TenantMemberAlreadyExists(member.TenantId, member.UserId);
+            return transaction.Abort(failure);
+        },
+        cancellationToken);
 }

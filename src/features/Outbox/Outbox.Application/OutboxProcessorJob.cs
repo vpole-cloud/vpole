@@ -99,10 +99,10 @@ public sealed class OutboxProcessorJob(
         try
         {
             deserializedEvent = JsonSerializer.Deserialize(
-                    message.PayloadJson,
-                    eventType,
-                    EventExtensions.SerializerOptions)
-                ?? throw new JsonException("The event payload produced a null value.");
+                                    message.PayloadJson,
+                                    eventType,
+                                    EventExtensions.SerializerOptions)
+                                ?? throw new JsonException("The event payload produced a null value.");
         }
         catch (JsonException exception)
         {

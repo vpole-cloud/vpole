@@ -47,7 +47,8 @@ public sealed class ModuleBoundaryArchitectureTests
     {
         var projects = LoadProductionFeatureProjects(Path.Combine(FindRepositoryRoot(), "src/features"));
         Assert.DoesNotContain(projects.Values.Select(project => project.Feature)
-            .Distinct(StringComparer.Ordinal), feature => !FeatureRoles.ContainsKey(feature));
+                .Distinct(StringComparer.Ordinal),
+            feature => !FeatureRoles.ContainsKey(feature));
     }
 
     [Fact]
@@ -114,10 +115,14 @@ public sealed class ModuleBoundaryArchitectureTests
         string sourceRole,
         bool expected)
     {
-        var source = new ProjectNode("Consumer", "Consumer.Project",
-            Enum.Parse<ProjectRole>(sourceRole), string.Empty);
-        var target = new ProjectNode("Provider", "Provider.Contracts.HttpMapping",
-            ProjectRole.ContractHttpMapping, string.Empty);
+        var source = new ProjectNode("Consumer",
+            "Consumer.Project",
+            Enum.Parse<ProjectRole>(sourceRole),
+            string.Empty);
+        var target = new ProjectNode("Provider",
+            "Provider.Contracts.HttpMapping",
+            ProjectRole.ContractHttpMapping,
+            string.Empty);
 
         Assert.Equal(expected, IsAllowed(source, target));
     }
@@ -129,24 +134,29 @@ public sealed class ModuleBoundaryArchitectureTests
         var visited = new HashSet<string>(StringComparer.Ordinal);
         Visit(Path.Combine(root, "src/api/Pole.Platform.Hosting/Pole.Platform.Hosting.csproj"));
         Visit(Path.Combine(root, "src/api/Pole.Testing/Pole.Testing.csproj"));
-        var centralTests = File.ReadAllText(Path.Combine(root, "tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj"));
+        var centralTests =
+            File.ReadAllText(Path.Combine(root, "tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj"));
         Assert.DoesNotContain("RedisServices", centralTests);
         Assert.DoesNotContain("Postgres", centralTests);
         foreach (var feature in new[] { "RedisServices", "Postgres" })
-            foreach (var project in Directory.EnumerateFiles(Path.Combine(root, "src/features", feature), "*.*proj", SearchOption.AllDirectories))
+            foreach (var project in Directory.EnumerateFiles(Path.Combine(root, "src/features", feature),
+                         "*.*proj",
+                         SearchOption.AllDirectories))
                 Assert.DoesNotContain("Pole.Tests.Integration.csproj", File.ReadAllText(project));
 
         void Visit(string project)
         {
             project = Path.GetFullPath(project);
-            if (!visited.Add(project)) return;
+            if (!visited.Add(project))
+                return;
             Assert.DoesNotContain("Pole.Server.csproj", project);
             foreach (var feature in new[] { "RedisServices", "WebServices", "Postgres", "Functions" })
                 Assert.DoesNotContain($"{Path.DirectorySeparatorChar}{feature}{Path.DirectorySeparatorChar}", project);
             foreach (var reference in XDocument.Load(project).Descendants("ProjectReference")
                          .Where(reference => reference.Attribute("ReferenceOutputAssembly")?.Value != "false"))
-                Visit(Path.Combine(Path.GetDirectoryName(project)!, reference.Attribute("Include")!.Value
-                    .Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar)));
+                Visit(Path.Combine(Path.GetDirectoryName(project)!,
+                    reference.Attribute("Include")!.Value
+                        .Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar)));
         }
     }
 
@@ -169,20 +179,22 @@ public sealed class ModuleBoundaryArchitectureTests
                 value!.Replace('\\', Path.DirectorySeparatorChar)))
             .ToArray();
 
-        Assert.DoesNotContain(references, reference =>
-            reference.EndsWith(".Events", StringComparison.Ordinal) && reference != "Search.Events" ||
-            reference.StartsWith("ResourceDeployments.", StringComparison.Ordinal));
+        Assert.DoesNotContain(references,
+            reference =>
+                reference.EndsWith(".Events", StringComparison.Ordinal) && reference != "Search.Events" ||
+                reference.StartsWith("ResourceDeployments.", StringComparison.Ordinal));
 
         var sourceText = Directory
             .EnumerateFiles(Path.GetDirectoryName(projectPath)!, "*.fs", SearchOption.AllDirectories)
             .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
             .Select(File.ReadAllText);
-        Assert.DoesNotContain(sourceText, source =>
-            source.Contains("Pole.Features.ResourceGroups", StringComparison.Ordinal) ||
-            source.Contains("Pole.Features.WebServices", StringComparison.Ordinal) ||
-            source.Contains("Pole.Features.RedisServices", StringComparison.Ordinal) ||
-            source.Contains("Pole.Features.Postgres", StringComparison.Ordinal) ||
-            source.Contains("Pole.Features.ResourceDeployments", StringComparison.Ordinal));
+        Assert.DoesNotContain(sourceText,
+            source =>
+                source.Contains("Pole.Features.ResourceGroups", StringComparison.Ordinal) ||
+                source.Contains("Pole.Features.WebServices", StringComparison.Ordinal) ||
+                source.Contains("Pole.Features.RedisServices", StringComparison.Ordinal) ||
+                source.Contains("Pole.Features.Postgres", StringComparison.Ordinal) ||
+                source.Contains("Pole.Features.ResourceDeployments", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -409,7 +421,7 @@ public sealed class ModuleBoundaryArchitectureTests
                     ProjectRole.ContractHttpMapping or
                     ProjectRole.Events ||
                 target.Role is ProjectRole.Primitives &&
-                    ReferencesProviderContract(source, target.Feature),
+                ReferencesProviderContract(source, target.Feature),
             ProjectRole.Runtime when source.Feature == target.Feature =>
                 target.Role is ProjectRole.Primitives or
                     ProjectRole.Domain or
@@ -420,7 +432,7 @@ public sealed class ModuleBoundaryArchitectureTests
                 target.Role is ProjectRole.Contracts or
                     ProjectRole.Events ||
                 target.Role is ProjectRole.Primitives &&
-                    ReferencesProviderContract(source, target.Feature),
+                ReferencesProviderContract(source, target.Feature),
             _ => true
         };
 

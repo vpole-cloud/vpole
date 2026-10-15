@@ -33,8 +33,8 @@ internal static class KubernetesClientSecurity
         catch (InvalidKubernetesClientConfigurationException)
         {
             return ConnectionRejections.Validation(
-                    "connection",
-                    "The Kubernetes connection configuration is invalid.");
+                "connection",
+                "The Kubernetes connection configuration is invalid.");
         }
     }
 
@@ -62,8 +62,8 @@ internal static class KubernetesClientSecurity
         catch (InvalidKubernetesClientConfigurationException)
         {
             return ConnectionRejections.Validation(
-                    "connection",
-                    "The Kubernetes connection configuration is invalid.");
+                "connection",
+                "The Kubernetes connection configuration is invalid.");
         }
     }
 
@@ -303,67 +303,67 @@ internal static class KubernetesClientSecurity
     private static RemoteCertificateValidationCallback CreateStrictCertificateValidator(
         string expectedHost,
         IReadOnlyList<byte[]> trustedAuthorities) => (_, certificate, presentedChain, _) =>
+    {
+        if (certificate is null)
+            return false;
+
+        var ownedCertificates = new List<X509Certificate2>();
+        try
         {
-            if (certificate is null)
-                return false;
-
-            var ownedCertificates = new List<X509Certificate2>();
-            try
-            {
-                var leaf = X509CertificateLoader.LoadCertificate(
-                    certificate.Export(X509ContentType.Cert));
-                ownedCertificates.Add(leaf);
-                if (!leaf.MatchesHostname(
-                        expectedHost,
-                        allowWildcards: true,
-                        allowCommonName: false))
-                {
-                    return false;
-                }
-
-                using var strictChain = new X509Chain();
-                var policy = strictChain.ChainPolicy;
-                policy.TrustMode = X509ChainTrustMode.CustomRootTrust;
-                policy.RevocationMode = X509RevocationMode.NoCheck;
-                policy.VerificationFlags = X509VerificationFlags.NoFlag;
-                policy.DisableCertificateDownloads = true;
-                policy.ApplicationPolicy.Add(new Oid("1.3.6.1.5.5.7.3.1"));
-
-                foreach (var authorityBytes in trustedAuthorities)
-                {
-                    var authority = X509CertificateLoader.LoadCertificate(authorityBytes);
-                    ownedCertificates.Add(authority);
-                    policy.CustomTrustStore.Add(authority);
-                    policy.ExtraStore.Add(authority);
-                }
-
-                if (presentedChain is not null)
-                {
-                    foreach (var element in presentedChain.ChainElements.Cast<X509ChainElement>().Skip(1))
-                    {
-                        var intermediate = X509CertificateLoader.LoadCertificate(
-                            element.Certificate.Export(X509ContentType.Cert));
-                        ownedCertificates.Add(intermediate);
-                        policy.ExtraStore.Add(intermediate);
-                    }
-                }
-
-                if (!strictChain.Build(leaf) || strictChain.ChainElements.Count == 0)
-                    return false;
-
-                var terminal = strictChain.ChainElements[^1].Certificate.RawData;
-                return trustedAuthorities.Any(authority => authority.Length == terminal.Length &&
-                    CryptographicOperations.FixedTimeEquals(authority, terminal));
-            }
-            catch (Exception exception) when (
-                exception is CryptographicException or ArgumentException or InvalidOperationException)
+            var leaf = X509CertificateLoader.LoadCertificate(
+                certificate.Export(X509ContentType.Cert));
+            ownedCertificates.Add(leaf);
+            if (!leaf.MatchesHostname(
+                    expectedHost,
+                    allowWildcards: true,
+                    allowCommonName: false))
             {
                 return false;
             }
-            finally
+
+            using var strictChain = new X509Chain();
+            var policy = strictChain.ChainPolicy;
+            policy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+            policy.RevocationMode = X509RevocationMode.NoCheck;
+            policy.VerificationFlags = X509VerificationFlags.NoFlag;
+            policy.DisableCertificateDownloads = true;
+            policy.ApplicationPolicy.Add(new Oid("1.3.6.1.5.5.7.3.1"));
+
+            foreach (var authorityBytes in trustedAuthorities)
             {
-                foreach (var ownedCertificate in ownedCertificates)
-                    ownedCertificate.Dispose();
+                var authority = X509CertificateLoader.LoadCertificate(authorityBytes);
+                ownedCertificates.Add(authority);
+                policy.CustomTrustStore.Add(authority);
+                policy.ExtraStore.Add(authority);
             }
-        };
+
+            if (presentedChain is not null)
+            {
+                foreach (var element in presentedChain.ChainElements.Cast<X509ChainElement>().Skip(1))
+                {
+                    var intermediate = X509CertificateLoader.LoadCertificate(
+                        element.Certificate.Export(X509ContentType.Cert));
+                    ownedCertificates.Add(intermediate);
+                    policy.ExtraStore.Add(intermediate);
+                }
+            }
+
+            if (!strictChain.Build(leaf) || strictChain.ChainElements.Count == 0)
+                return false;
+
+            var terminal = strictChain.ChainElements[^1].Certificate.RawData;
+            return trustedAuthorities.Any(authority => authority.Length == terminal.Length &&
+                                                       CryptographicOperations.FixedTimeEquals(authority, terminal));
+        }
+        catch (Exception exception) when (
+            exception is CryptographicException or ArgumentException or InvalidOperationException)
+        {
+            return false;
+        }
+        finally
+        {
+            foreach (var ownedCertificate in ownedCertificates)
+                ownedCertificate.Dispose();
+        }
+    };
 }

@@ -19,6 +19,7 @@ internal sealed class MongoHostnameBindingCleanup(
 {
     private readonly IMongoCollection<TenantDomainZone> zones =
         database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
+
     private readonly IMongoCollection<HostnameBinding> bindings =
         database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
 
@@ -44,13 +45,13 @@ internal sealed class MongoHostnameBindingCleanup(
         if (persistedZones.Count != zoneIds.Length)
         {
             return new HostnameBindingCleanupError(
-                    new HostnameBindingCleanupZoneUnavailable(zoneIds));
+                new HostnameBindingCleanupZoneUnavailable(zoneIds));
         }
 
         if (!await TryAdvanceZoneRevisionsAsync(persistedZones, session, cancellationToken))
         {
             return new HostnameBindingCleanupError(
-                    new HostnameBindingCleanupZoneChanged(zoneIds));
+                new HostnameBindingCleanupZoneChanged(zoneIds));
         }
 
         var deleted = await bindings.DeleteManyAsync(
@@ -60,7 +61,7 @@ internal sealed class MongoHostnameBindingCleanup(
         if (!deleted.IsAcknowledged || deleted.DeletedCount != persistedBindings.Count)
         {
             return new HostnameBindingCleanupError(
-                    new HostnameBindingCleanupBindingsChanged());
+                new HostnameBindingCleanupBindingsChanged());
         }
 
         var result = await ReleaseGeneratedZonesWithoutBindingsAsync(
@@ -68,8 +69,12 @@ internal sealed class MongoHostnameBindingCleanup(
             session,
             cancellationToken);
         if (result is HostnameBindingsCleanedUp)
-            await outbox(session, persistedBindings.Select(binding => OutboxWrite.Create(WithAdvancedRevision(
-                persistedZones.Single(zone => zone.Id == binding.TenantDomainZoneId)).ToChangedEvent(binding.Id))).ToArray(), cancellationToken);
+            await outbox(session,
+                persistedBindings.Select(binding => OutboxWrite.Create(WithAdvancedRevision(
+                        persistedZones.Single(zone => zone.Id == binding.TenantDomainZoneId))
+                    .ToChangedEvent(binding.Id)))
+                    .ToArray(),
+                cancellationToken);
         return result;
     }
 
@@ -134,8 +139,8 @@ internal sealed class MongoHostnameBindingCleanup(
         if (deletion.DeletedCount != releasable.Length)
         {
             return new HostnameBindingCleanupError(
-                    new HostnameBindingCleanupZoneChanged(
-                        releasable.Select(zone => zone.Id).ToArray()));
+                new HostnameBindingCleanupZoneChanged(
+                    releasable.Select(zone => zone.Id).ToArray()));
         }
 
         foreach (var zone in releasable)
@@ -151,12 +156,15 @@ internal sealed class MongoHostnameBindingCleanup(
             if (unregistered is DeploymentTargetReferenceChangeRejected)
             {
                 return new HostnameBindingCleanupError(
-                        new HostnameBindingCleanupReferenceRemovalRejected(
-                            zone.Id,
-                            zone.DeploymentTargetId));
+                    new HostnameBindingCleanupReferenceRemovalRejected(
+                        zone.Id,
+                        zone.DeploymentTargetId));
             }
         }
-        await outbox(session, releasable.Select(zone => OutboxWrite.Create(zone.ToChangedEvent())).ToArray(), cancellationToken);
+
+        await outbox(session,
+            releasable.Select(zone => OutboxWrite.Create(zone.ToChangedEvent())).ToArray(),
+            cancellationToken);
 
         return new HostnameBindingsCleanedUp();
     }

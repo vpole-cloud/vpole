@@ -26,12 +26,14 @@ var mongoServer = builder.AddMongoDB("pole-mongo", userName: mongoUsername, pass
 if (!e2eEnabled)
 {
     mongoServer
-        .WithEndpoint("tcp", endpoint =>
-        {
-            endpoint.Port = 27017;
-            endpoint.TargetPort = 27017;
-            endpoint.IsProxied = false;
-        }, createIfNotExists: true)
+        .WithEndpoint("tcp",
+            endpoint =>
+            {
+                endpoint.Port = 27017;
+                endpoint.TargetPort = 27017;
+                endpoint.IsProxied = false;
+            },
+            createIfNotExists: true)
         .WithDataVolume("pole-mongo-data")
         .WithLifetime(ContainerLifetime.Persistent);
 }
@@ -59,12 +61,14 @@ else
 {
     if (e2eKeycloakPort is { } e2ePort)
     {
-        keycloak.WithEndpoint("http", endpoint =>
-        {
-            endpoint.Port = e2ePort;
-            endpoint.TargetPort = 8080;
-            endpoint.IsProxied = false;
-        }, createIfNotExists: true);
+        keycloak.WithEndpoint("http",
+            endpoint =>
+            {
+                endpoint.Port = e2ePort;
+                endpoint.TargetPort = 8080;
+                endpoint.IsProxied = false;
+            },
+            createIfNotExists: true);
     }
 
     keycloak.WithLifetime(ContainerLifetime.Session);
@@ -81,13 +85,14 @@ var retainedEnvelopeKeyParameterNames = new[]
     "envelope-encryption-retained-key-version",
     "envelope-encryption-retained-key-path"
 };
-var retainedEnvelopeKeyParametersPresent = retainedEnvelopeKeyParameterNames.Count(
-    name => !string.IsNullOrWhiteSpace(builder.Configuration[$"Parameters:{name}"]));
+var retainedEnvelopeKeyParametersPresent = retainedEnvelopeKeyParameterNames.Count(name =>
+    !string.IsNullOrWhiteSpace(builder.Configuration[$"Parameters:{name}"]));
 if (retainedEnvelopeKeyParametersPresent is > 0 and < 3)
 {
     throw new InvalidOperationException(
         "The retained envelope-encryption key ID, version, and path parameters must be configured together.");
 }
+
 var rabbitMq = builder.AddRabbitMQ("pole-rabbitmq", rabbitMqUsername, rabbitMqPassword)
     .WithManagementPlugin();
 if (!e2eEnabled)
@@ -125,6 +130,7 @@ if (retainedEnvelopeKeyParametersPresent == retainedEnvelopeKeyParameterNames.Le
         .WithEnvironment("EnvelopeEncryption__LocalKeyFile__Keys__1__Version", retainedKeyVersion)
         .WithEnvironment("EnvelopeEncryption__LocalKeyFile__Keys__1__Path", retainedKeyPath);
 }
+
 if (e2eEnabled)
 {
     api
@@ -146,6 +152,7 @@ else
         .WaitFor(mongoReplicaSet)
         .WaitFor(rabbitMq);
 }
+
 api.WithHttpHealthCheck("/health", endpointName: "http");
 
 if (bool.TryParse(builder.Configuration["LocalSourceBuilds:Enabled"], out var localSourceBuildsEnabled) &&
@@ -171,21 +178,24 @@ if (bool.TryParse(builder.Configuration["LocalSourceBuilds:Enabled"], out var lo
     var buildKit = builder.AddContainer("pole-buildkit", "moby/buildkit", "v0.31.2")
         .WithBindMount("BuildKit/buildkitd.toml", "/etc/buildkit/buildkitd.toml", isReadOnly: true)
         .WithArgs(
-            "--addr", "tcp://0.0.0.0:1234",
-            "--config", "/etc/buildkit/buildkitd.toml")
+            "--addr",
+            "tcp://0.0.0.0:1234",
+            "--config",
+            "/etc/buildkit/buildkitd.toml")
         .WithContainerRuntimeArgs("--privileged")
-        .WithEndpoint("grpc", endpoint =>
-        {
-            if (!e2eEnabled)
-                endpoint.Port = 1234;
-            else if (e2eBuildKitPort is { } buildKitPort)
-                endpoint.Port = buildKitPort;
-            endpoint.TargetPort = 1234;
-            // buildctl uses a streaming gRPC session; exposing the container endpoint directly
-            // avoids an Aspire proxy altering that connection in the isolated E2E graph.
-            endpoint.IsProxied = false;
-            endpoint.UriScheme = "tcp";
-        });
+        .WithEndpoint("grpc",
+            endpoint =>
+            {
+                if (!e2eEnabled)
+                    endpoint.Port = 1234;
+                else if (e2eBuildKitPort is { } buildKitPort)
+                    endpoint.Port = buildKitPort;
+                endpoint.TargetPort = 1234;
+                // buildctl uses a streaming gRPC session; exposing the container endpoint directly
+                // avoids an Aspire proxy altering that connection in the isolated E2E graph.
+                endpoint.IsProxied = false;
+                endpoint.UriScheme = "tcp";
+            });
     if (!e2eEnabled)
     {
         buildKit
@@ -196,6 +206,7 @@ if (bool.TryParse(builder.Configuration["LocalSourceBuilds:Enabled"], out var lo
     {
         buildKit.WithLifetime(ContainerLifetime.Session);
     }
+
     buildKit.WithExplicitStart();
 
     var harborAdminPassword = builder.AddParameter("harbor-admin-password", secret: true);
@@ -227,8 +238,8 @@ var githubParameterNames = new[]
     "github-app-private-key-path",
     "github-app-public-base-url"
 };
-var githubAppEnabled = githubParameterNames.All(
-    name => !string.IsNullOrWhiteSpace(builder.Configuration[$"Parameters:{name}"]));
+var githubAppEnabled =
+    githubParameterNames.All(name => !string.IsNullOrWhiteSpace(builder.Configuration[$"Parameters:{name}"]));
 if (githubAppEnabled)
 {
     var githubAppClientId = builder.AddParameter("github-app-client-id");
@@ -265,9 +276,11 @@ if (realtimeEnabled)
         {
             // Aspire wraps redis-server in a shell command for its publish model.
             if (context.Args.Count >= 2 && context.Args[0] is "-c")
-                context.Args[1] = $"{context.Args[1]} --appendonly yes --appendfsync everysec --maxmemory-policy noeviction";
+                context.Args[1] =
+                    $"{context.Args[1]} --appendonly yes --appendfsync everysec --maxmemory-policy noeviction";
             else
-                foreach (var argument in new[] { "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory-policy", "noeviction" })
+                foreach (var argument in new[]
+                             { "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory-policy", "noeviction" })
                     context.Args.Add(argument);
         });
     if (!e2eEnabled)
@@ -278,9 +291,11 @@ if (realtimeEnabled)
     if (string.IsNullOrWhiteSpace(certificatePath))
     {
         if (!builder.ExecutionContext.IsRunMode)
-            throw new InvalidOperationException("Publishing enabled realtime requires its key-protection certificate path.");
+            throw new InvalidOperationException(
+                "Publishing enabled realtime requires its key-protection certificate path.");
         certificatePath = RealtimeDevelopmentCertificate.GetOrCreate(builder.AppHostDirectory);
     }
+
     api.WithReference(realtime).WaitFor(realtime)
         .WithEnvironment("Realtime__Enabled", "true")
         .WithEnvironment("Realtime__KeyProtectionCertificatePath", certificatePath);
@@ -295,10 +310,11 @@ var blog = builder.AddProject<Projects.Blog>("blog")
     .WithExplicitStart();
 
 var frontend = builder.AddViteApp("frontend", "../frontend")
-    .WithEndpoint("http", (endpointAnnotation) =>
-    {
-        endpointAnnotation.Port = e2eEnabled ? null : 5173;
-    })
+    .WithEndpoint("http",
+        (endpointAnnotation) =>
+        {
+            endpointAnnotation.Port = e2eEnabled ? null : 5173;
+        })
     .WithReference(api)
     .WaitFor(api)
     .WithEnvironment("VITE_API_BASE_URL", api.GetEndpoint("http"))
@@ -317,6 +333,7 @@ if (e2eKeycloakPort is { } keycloakPort)
     api.WithEnvironment("Authentication__ValidIssuer", keycloakIssuer);
     api.WithEnvironment("Cli__Issuer", keycloakIssuer);
 }
+
 if (githubAppEnabled)
 {
     api.WithEnvironment("GitHubApp__FrontendBaseUrl", frontend.GetEndpoint("http"));

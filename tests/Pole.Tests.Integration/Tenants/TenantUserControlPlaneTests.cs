@@ -82,7 +82,14 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var defaultTenant = TenantFactory.Create("default");
         defaultTenant = defaultTenant with
         {
-            Members = [TenantFactory.CreateMember(defaultTenant.Id, "user-1", "user@example.com", TenantRole.Owner, isDefault: true)]
+            Members =
+            [
+                TenantFactory.CreateMember(defaultTenant.Id,
+                    "user-1",
+                    "user@example.com",
+                    TenantRole.Owner,
+                    isDefault: true)
+            ]
         };
         var otherTenant = TenantFactory.Create("other");
         otherTenant = otherTenant with
@@ -123,18 +130,20 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
             AddTenantMemberOutcome>("user-1");
         var nextCalled = false;
 
-        var result = await behavior.Handle(request, () =>
-        {
-            nextCalled = true;
-            return Task.FromResult<MediatorResult<AddTenantMemberOutcome>>(
-                new AddTenantMemberOutcome(
-                    new TenantMemberDto(
-                        "member-2",
-                        tenant.Id,
-                        "user-2",
-                        "other@example.com",
-                        TenantRole.Member)));
-        }, CancellationToken.None);
+        var result = await behavior.Handle(request,
+            () =>
+            {
+                nextCalled = true;
+                return Task.FromResult<MediatorResult<AddTenantMemberOutcome>>(
+                    new AddTenantMemberOutcome(
+                        new TenantMemberDto(
+                            "member-2",
+                            tenant.Id,
+                            "user-2",
+                            "other@example.com",
+                            TenantRole.Member)));
+            },
+            CancellationToken.None);
 
         var rejection = Assert.IsType<TenantRoleRequired>(
             AssertRejected(result));
@@ -154,18 +163,20 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
             AddTenantMemberOutcome>("user-1");
         var nextCalled = false;
 
-        var result = await behavior.Handle(request, () =>
-        {
-            nextCalled = true;
-            return Task.FromResult<MediatorResult<AddTenantMemberOutcome>>(
-                new AddTenantMemberOutcome(
-                    new TenantMemberDto(
-                        "member-2",
-                        tenant.Id,
-                        "user-2",
-                        "other@example.com",
-                        TenantRole.Member)));
-        }, CancellationToken.None);
+        var result = await behavior.Handle(request,
+            () =>
+            {
+                nextCalled = true;
+                return Task.FromResult<MediatorResult<AddTenantMemberOutcome>>(
+                    new AddTenantMemberOutcome(
+                        new TenantMemberDto(
+                            "member-2",
+                            tenant.Id,
+                            "user-2",
+                            "other@example.com",
+                            TenantRole.Member)));
+            },
+            CancellationToken.None);
 
         var member = AssertOutcome(result);
         Assert.True(member is TenantMemberDto);
@@ -183,15 +194,16 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
             AddTenantMemberRequest,
             AddTenantMemberOutcome>("user-1");
 
-        var result = await behavior.Handle(request, () =>
-            Task.FromResult<MediatorResult<AddTenantMemberOutcome>>(
-                new AddTenantMemberOutcome(
-                    new TenantMemberDto(
-                        "member-2",
-                        tenant.Id,
-                        "user-2",
-                        "other@example.com",
-                        TenantRole.Owner))),
+        var result = await behavior.Handle(request,
+            () =>
+                Task.FromResult<MediatorResult<AddTenantMemberOutcome>>(
+                    new AddTenantMemberOutcome(
+                        new TenantMemberDto(
+                            "member-2",
+                            tenant.Id,
+                            "user-2",
+                            "other@example.com",
+                            TenantRole.Owner))),
             CancellationToken.None);
 
         var rejection = Assert.IsType<TenantRoleRequired>(
@@ -384,7 +396,10 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
             "owner-2",
             "owner-2@example.com",
             TenantRole.Owner);
-        tenant = tenant with { Members = tenant.Members.Add(secondOwner) };
+        tenant = tenant with
+        {
+            Members = tenant.Members.Add(secondOwner)
+        };
         await fixture.DbContext.Tenants.ReplaceOneAsync(
             stored => stored.Id == tenant.Id,
             tenant);
@@ -429,7 +444,10 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
             "owner-2",
             "owner-2@example.com",
             TenantRole.Owner);
-        tenant = tenant with { Members = tenant.Members.Add(secondOwner) };
+        tenant = tenant with
+        {
+            Members = tenant.Members.Add(secondOwner)
+        };
         await fixture.DbContext.Tenants.ReplaceOneAsync(
             stored => stored.Id == tenant.Id,
             tenant);
@@ -457,8 +475,14 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var tenant = await InsertTenantAsync(TenantRole.Owner);
         var first = tenant.Members.Single();
         var second = TenantFactory.CreateMember(
-            tenant.Id, "owner-2", "owner-2@example.com", TenantRole.Owner);
-        tenant = tenant with { Members = tenant.Members.Add(second) };
+            tenant.Id,
+            "owner-2",
+            "owner-2@example.com",
+            TenantRole.Owner);
+        tenant = tenant with
+        {
+            Members = tenant.Members.Add(second)
+        };
         await fixture.DbContext.Tenants.ReplaceOneAsync(stored => stored.Id == tenant.Id, tenant);
         using var scope = Services.CreateScope();
         var update = scope.ServiceProvider.GetRequiredService<PersistUpdatedTenantMemberRole>();
@@ -518,7 +542,8 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         return tenant;
     }
 
-    private TenantMemberAuthorizationBehavior<TRequest, TResponse> CreateTenantMemberAuthorizationBehavior<TRequest, TResponse>(
+    private TenantMemberAuthorizationBehavior<TRequest, TResponse> CreateTenantMemberAuthorizationBehavior<TRequest,
+        TResponse>(
         string? userId,
         bool isAuthenticated = true,
         params string[] roles)
@@ -531,6 +556,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
             claims.Add(new Claim(Claims.UserId, userId));
             claims.Add(new Claim(Claims.Email, "user@example.com"));
         }
+
         claims.AddRange(roles.Select(role => new Claim(Claims.Roles, role)));
 
         var accessor = new HttpContextAccessor
@@ -556,7 +582,8 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
             .FirstOrDefaultAsync(cancellationToken);
 
     private IServiceProvider Services => _services
-        ?? throw new InvalidOperationException("Tenant test services are not initialized.");
+                                         ?? throw new InvalidOperationException(
+                                             "Tenant test services are not initialized.");
 
     private static IMediatorRejection AssertRejected<T>(
         MediatorResult<T> result)
@@ -584,8 +611,9 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
             context.User = new ClaimsPrincipal(new ClaimsIdentity(claims, "test"));
             return next(context);
         });
-        app.MapPost("/claims", (ClaimBoundRequest request) =>
-            new ClaimBoundResponse(request.CurrentUserId, request.CurrentUserEmail, request.Roles));
+        app.MapPost("/claims",
+            (ClaimBoundRequest request) =>
+                new ClaimBoundResponse(request.CurrentUserId, request.CurrentUserEmail, request.Roles));
         await app.StartAsync();
         return app;
     }
@@ -599,5 +627,4 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         string CurrentUserId,
         string CurrentUserEmail,
         IEnumerable<string> Roles);
-
 }

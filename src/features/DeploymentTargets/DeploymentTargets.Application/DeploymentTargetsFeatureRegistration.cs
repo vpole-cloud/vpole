@@ -52,8 +52,10 @@ public static class DeploymentTargetsFeatureRegistration
         // This is a genuine runtime protocol: consumers select it as a Kubernetes client
         // provider and it owns the lifecycle of cached, disposable clients.
         services.TryAddSingleton<KubernetesClientProvider>();
-        services.TryAddSingleton<IKubernetesClientProvider>(provider => provider.GetRequiredService<KubernetesClientProvider>());
-        services.TryAddSingleton<InvalidateDeploymentTargetKubernetesClient>(provider => provider.GetRequiredService<KubernetesClientProvider>().Invalidate);
+        services.TryAddSingleton<IKubernetesClientProvider>(provider =>
+            provider.GetRequiredService<KubernetesClientProvider>());
+        services.TryAddSingleton<InvalidateDeploymentTargetKubernetesClient>(provider =>
+            provider.GetRequiredService<KubernetesClientProvider>().Invalidate);
         services.TryAddSingleton<DeploymentTargetBootstrapper>();
         services.TryAddSingleton<BootstrapDeploymentTargets>(provider => provider
             .GetRequiredService<DeploymentTargetBootstrapper>()

@@ -104,10 +104,16 @@ internal static class KubernetesStorageDiscovery
         IDictionary<string, string>? annotations) =>
         new(
             StorageOwnerValueRules.MongoIdentity(GetMetadataValue(PoleStorageLabels.TenantId, labels, annotations)),
-            StorageOwnerValueRules.MongoIdentity(GetMetadataValue(PoleStorageLabels.ResourceGroupId, labels, annotations)),
-            StorageOwnerValueRules.OptionalText(GetMetadataValue(PoleStorageLabels.ResourceType, annotations, labels), 253),
-            StorageOwnerValueRules.ResourceIdentity(GetMetadataValue(PoleStorageLabels.ResourceId, labels, annotations)),
-            StorageOwnerValueRules.OptionalText(GetMetadataValue(PoleStorageLabels.ResourceName, labels, annotations), 253));
+            StorageOwnerValueRules.MongoIdentity(GetMetadataValue(PoleStorageLabels.ResourceGroupId,
+                labels,
+                annotations)),
+            StorageOwnerValueRules.OptionalText(GetMetadataValue(PoleStorageLabels.ResourceType, annotations, labels),
+                253),
+            StorageOwnerValueRules.ResourceIdentity(GetMetadataValue(PoleStorageLabels.ResourceId,
+                labels,
+                annotations)),
+            StorageOwnerValueRules.OptionalText(GetMetadataValue(PoleStorageLabels.ResourceName, labels, annotations),
+                253));
 
     private static string? GetMetadataValue(
         string key,
@@ -121,5 +127,4 @@ internal static class KubernetesStorageDiscovery
             ? fallbackValue
             : null;
     }
-
 }

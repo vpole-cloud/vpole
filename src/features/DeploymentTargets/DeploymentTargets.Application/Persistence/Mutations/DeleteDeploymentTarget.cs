@@ -61,22 +61,31 @@ internal sealed class MongoDeleteDeploymentTarget(
             var deletionRequested = target.RequestDeletion(
                 DeploymentTargetClock.UtcNowAfter(timeProvider, target.UpdatedAtUtc));
             var fenceOutcome = await runFenceTransaction(async (transaction, ct) =>
-            {
-                var persistedFence = await deploymentTargets.FindOneAndUpdateAsync(
-                    transaction.Session,
-                    DeploymentTargetFilters.AtReferenceFenceBeforeDeletion(target),
-                    Builders<DeploymentTarget>.Update.Combine(
-                        Builders<DeploymentTarget>.Update.Set(item => item.AcceptsWorkloads, deletionRequested.AcceptsWorkloads),
-                        Builders<DeploymentTarget>.Update.Set(item => item.DeletionRequestedAtUtc, deletionRequested.DeletionRequestedAtUtc),
-                        Builders<DeploymentTarget>.Update.Set(item => item.Revision, deletionRequested.Revision),
-                        Builders<DeploymentTarget>.Update.Set(item => item.UpdatedAtUtc, deletionRequested.UpdatedAtUtc)),
-                    new FindOneAndUpdateOptions<DeploymentTarget> { ReturnDocument = ReturnDocument.After }, ct);
-                if (persistedFence is null)
-                    return transaction.Abort(new DeploymentTargetRevisionConflict(target.Id));
-                await storeOutboxWrites(transaction.Session,
-                    [OutboxWrite.Create(new DeploymentTargetCatalogChangedEvent(persistedFence.Id, persistedFence.Revision))], ct);
-                return transaction.Commit(persistedFence);
-            }, cancellationToken);
+                {
+                    var persistedFence = await deploymentTargets.FindOneAndUpdateAsync(
+                        transaction.Session,
+                        DeploymentTargetFilters.AtReferenceFenceBeforeDeletion(target),
+                        Builders<DeploymentTarget>.Update.Combine(
+                            Builders<DeploymentTarget>.Update.Set(item => item.AcceptsWorkloads,
+                                deletionRequested.AcceptsWorkloads),
+                            Builders<DeploymentTarget>.Update.Set(item => item.DeletionRequestedAtUtc,
+                                deletionRequested.DeletionRequestedAtUtc),
+                            Builders<DeploymentTarget>.Update.Set(item => item.Revision, deletionRequested.Revision),
+                            Builders<DeploymentTarget>.Update.Set(item => item.UpdatedAtUtc,
+                                deletionRequested.UpdatedAtUtc)),
+                        new FindOneAndUpdateOptions<DeploymentTarget> { ReturnDocument = ReturnDocument.After },
+                        ct);
+                    if (persistedFence is null)
+                        return transaction.Abort(new DeploymentTargetRevisionConflict(target.Id));
+                    await storeOutboxWrites(transaction.Session,
+                        [
+                            OutboxWrite.Create(
+                                new DeploymentTargetCatalogChangedEvent(persistedFence.Id, persistedFence.Revision))
+                        ],
+                        ct);
+                    return transaction.Commit(persistedFence);
+                },
+                cancellationToken);
             if (fenceOutcome is DeploymentTargetRevisionConflict conflict)
                 return Error(conflict);
             fencedTarget = (DeploymentTarget)fenceOutcome.Value;
@@ -89,33 +98,35 @@ internal sealed class MongoDeleteDeploymentTarget(
             return Error(referenceError);
 
         return await runMongoTransaction(async (transaction, ct) =>
-        {
-            var current = await deploymentTargets
-                .Find(transaction.Session, DeploymentTargetFilters.AtDeletionFence(fencedTarget))
-                .FirstOrDefaultAsync(ct);
-            if (current is null)
-                return transaction.Abort(Error(new DeploymentTargetRevisionConflict(fencedTarget.Id)));
-
-            var currentDefaultId = await settings
-                .Find(transaction.Session, DeploymentTargetSettingsFilters.Singleton())
-                .Project(item => item.DefaultDeploymentTargetId)
-                .FirstOrDefaultAsync(ct);
-            if (current.Id == currentDefaultId)
             {
-                return transaction.Abort(
-                    Error(new DefaultDeploymentTargetDeletionRejected(current.Id)));
-            }
+                var current = await deploymentTargets
+                    .Find(transaction.Session, DeploymentTargetFilters.AtDeletionFence(fencedTarget))
+                    .FirstOrDefaultAsync(ct);
+                if (current is null)
+                    return transaction.Abort(Error(new DeploymentTargetRevisionConflict(fencedTarget.Id)));
 
-            var deletion = await deploymentTargets.DeleteOneAsync(
-                transaction.Session,
-                DeploymentTargetFilters.AtDeletionFence(current),
-                cancellationToken: ct);
-            if (deletion.DeletedCount != 1)
-                return transaction.Abort(Error(new DeploymentTargetRevisionConflict(current.Id)));
-            await storeOutboxWrites(transaction.Session,
-                [OutboxWrite.Create(new DeploymentTargetCatalogChangedEvent(current.Id, current.Revision))], ct);
-            return transaction.Commit(new DeploymentTargetDeleted(current.Id));
-        }, cancellationToken);
+                var currentDefaultId = await settings
+                    .Find(transaction.Session, DeploymentTargetSettingsFilters.Singleton())
+                    .Project(item => item.DefaultDeploymentTargetId)
+                    .FirstOrDefaultAsync(ct);
+                if (current.Id == currentDefaultId)
+                {
+                    return transaction.Abort(
+                        Error(new DefaultDeploymentTargetDeletionRejected(current.Id)));
+                }
+
+                var deletion = await deploymentTargets.DeleteOneAsync(
+                    transaction.Session,
+                    DeploymentTargetFilters.AtDeletionFence(current),
+                    cancellationToken: ct);
+                if (deletion.DeletedCount != 1)
+                    return transaction.Abort(Error(new DeploymentTargetRevisionConflict(current.Id)));
+                await storeOutboxWrites(transaction.Session,
+                    [OutboxWrite.Create(new DeploymentTargetCatalogChangedEvent(current.Id, current.Revision))],
+                    ct);
+                return transaction.Commit(new DeploymentTargetDeleted(current.Id));
+            },
+            cancellationToken);
     }
 
     private static DeleteDeploymentTargetPersistenceOutcome Error(DeleteDeploymentTargetError error) => new(error);

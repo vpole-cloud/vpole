@@ -38,24 +38,43 @@ public sealed class DomainMetadataOutboxTests(MongoReplicaSetFixture fixture) : 
             return tx.Abort(result);
         });
         Assert.IsType<TenantDomainZoneSnapshot>(aborted.Value);
-        Assert.Equal(0, await Fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones").CountDocumentsAsync(_ => true));
+        Assert.Equal(0,
+            await Fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones").CountDocumentsAsync(_ => true));
         Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(EventName));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => runner.InvokeOutcomeAsync<CreateManagedDomainZoneOutcome>(async (tx, ct) =>
-            tx.Commit(await Creator(fail: true).InvokeAsync(tenant, target, "failed", "example.test", 1, tx.Session, ct))));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            runner.InvokeOutcomeAsync<CreateManagedDomainZoneOutcome>(async (tx, ct) =>
+                tx.Commit(await Creator(fail: true)
+                    .InvokeAsync(tenant, target, "failed", "example.test", 1, tx.Session, ct))));
         Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(EventName));
-        Assert.Equal(0, await Fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones").CountDocumentsAsync(_ => true));
+        Assert.Equal(0,
+            await Fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones").CountDocumentsAsync(_ => true));
     }
 
     [Fact]
     public async Task BindingCleanupEmitsOnlyAcceptedIdsAndRetainsCallerTransaction()
     {
         var tenant = ObjectId.GenerateNewId().ToString();
-        var zone = TenantDomainZoneFactory.CreateManagedReservation(tenant, ObjectId.GenerateNewId().ToString(), "public", Pole.Dns.DnsName.Create("example.test"), new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow));
+        var zone = TenantDomainZoneFactory.CreateManagedReservation(tenant,
+            ObjectId.GenerateNewId().ToString(),
+            "public",
+            Pole.Dns.DnsName.Create("example.test"),
+            new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow));
         await Fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones").InsertOneAsync(zone);
-        var request = new CreateCustomHostnameBindingRequest(tenant, zone.Id, zone.DeploymentTargetId,
-            ResourceTypeId.Create("pole/web-service"), ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString(), "binding");
-        var cleanup = new MongoHostnameBindingCleanup(Fixture.Database, References, TimeProvider.System, Fixture.StoreOutboxWrites);
-        var create = new MongoCreateCustomHostnameBinding(Fixture.Database, cleanup, TimeProvider.System, Fixture.StoreOutboxWrites);
+        var request = new CreateCustomHostnameBindingRequest(tenant,
+            zone.Id,
+            zone.DeploymentTargetId,
+            ResourceTypeId.Create("pole/web-service"),
+            ObjectId.GenerateNewId().ToString(),
+            ObjectId.GenerateNewId().ToString(),
+            "binding");
+        var cleanup = new MongoHostnameBindingCleanup(Fixture.Database,
+            References,
+            TimeProvider.System,
+            Fixture.StoreOutboxWrites);
+        var create = new MongoCreateCustomHostnameBinding(Fixture.Database,
+            cleanup,
+            TimeProvider.System,
+            Fixture.StoreOutboxWrites);
         var delete = new MongoDeleteHostnameBindingsForResource(cleanup);
         using (var session = await Fixture.Client.StartSessionAsync())
         {
@@ -64,14 +83,18 @@ public sealed class DomainMetadataOutboxTests(MongoReplicaSetFixture fixture) : 
             Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(EventName));
             await session.CommitTransactionAsync();
         }
+
         using (var session = await Fixture.Client.StartSessionAsync())
         {
             session.StartTransaction();
-            Assert.IsType<HostnameBindingsCleanedUp>((await delete.InvokeAsync(tenant, request.ResourceType, request.ResourceId, session)).Value);
+            Assert.IsType<HostnameBindingsCleanedUp>(
+                (await delete.InvokeAsync(tenant, request.ResourceType, request.ResourceId, session)).Value);
             await session.AbortTransactionAsync();
         }
+
         Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(EventName));
-        Assert.Equal(1, await Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings").CountDocumentsAsync(_ => true));
+        Assert.Equal(1,
+            await Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings").CountDocumentsAsync(_ => true));
         using (var session = await Fixture.Client.StartSessionAsync())
         {
             session.StartTransaction();
@@ -79,6 +102,7 @@ public sealed class DomainMetadataOutboxTests(MongoReplicaSetFixture fixture) : 
             await delete.InvokeAsync(tenant, request.ResourceType, request.ResourceId, session);
             await session.CommitTransactionAsync();
         }
+
         Assert.Equal(2, await DbContext.CountOutboxMessagesAsync(EventName));
     }
 
@@ -86,22 +110,38 @@ public sealed class DomainMetadataOutboxTests(MongoReplicaSetFixture fixture) : 
     public async Task DomainConsumerIsTenantWideAndTopicRegistersOnce()
     {
         RealtimeChange? notice = null;
-        await new NotifyDomainMetadataChangedConsumer((change, _) => { notice = change; return Task.CompletedTask; })
-            .HandleAsync(new("zone", 2, "binding") { EventCore = EventCore.Create("tenant") });
+        await new NotifyDomainMetadataChangedConsumer((change, _) =>
+            {
+                notice = change;
+                return Task.CompletedTask;
+            })
+            .HandleAsync(new("zone", 2, "binding")
+            {
+                EventCore = EventCore.Create("tenant")
+            });
         Assert.Equal(new RealtimeChange("domains", "tenant"), notice);
         var services = new ServiceCollection().AddDomainsFeature();
-        Assert.Equal(new RealtimeTopic("domains", RealtimeScope.Tenant), Assert.Single(services, item => item.ServiceType == typeof(RealtimeTopic)).ImplementationInstance);
+        Assert.Equal(new RealtimeTopic("domains", RealtimeScope.Tenant),
+            Assert.Single(services, item => item.ServiceType == typeof(RealtimeTopic)).ImplementationInstance);
     }
 
-    private MongoCreateManagedDomainZoneReservation Creator(bool fail = false) => new(Fixture.Database, References,
-        (_, _, _) => Task.FromResult<FenceDeploymentTargetWorkloadConfigurationsOutcome>(new DeploymentTargetWorkloadConfigurationsFenced()),
-        TimeProvider.System, async (session, writes, ct) =>
+    private MongoCreateManagedDomainZoneReservation Creator(bool fail = false) => new(Fixture.Database,
+        References,
+        (_, _, _) =>
+            Task.FromResult<FenceDeploymentTargetWorkloadConfigurationsOutcome>(
+                new DeploymentTargetWorkloadConfigurationsFenced()),
+        TimeProvider.System,
+        async (session, writes, ct) =>
         {
             await Fixture.StoreOutboxWrites(session, writes, ct);
-            if (fail) throw new InvalidOperationException("Injected outbox failure.");
+            if (fail)
+                throw new InvalidOperationException("Injected outbox failure.");
         });
 
     private static Task<ApplyDeploymentTargetReferenceChangesOutcome> References(DeploymentTargetReferenceOwner owner,
-        IReadOnlyCollection<string> added, IReadOnlyCollection<string> removed, IClientSessionHandle session, CancellationToken ct = default) =>
+        IReadOnlyCollection<string> added,
+        IReadOnlyCollection<string> removed,
+        IClientSessionHandle session,
+        CancellationToken ct = default) =>
         Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(new DeploymentTargetReferencesChanged());
 }

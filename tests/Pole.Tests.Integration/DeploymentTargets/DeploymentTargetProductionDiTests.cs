@@ -59,66 +59,85 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
             .AddDeploymentTargetsFeature(configuration);
 
         Assert.DoesNotContain(services, descriptor => descriptor.ServiceType == typeof(IKubernetes));
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(IKubernetesClientProvider) &&
-            descriptor.Lifetime == ServiceLifetime.Singleton);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType ==
+        Assert.Contains(services,
+            descriptor =>
+                descriptor.ServiceType == typeof(IKubernetesClientProvider) &&
+                descriptor.Lifetime == ServiceLifetime.Singleton);
+        Assert.Contains(services,
+            descriptor =>
+                descriptor.ServiceType ==
                 typeof(AdmitDeploymentTargetPublicIngressForNewWorkload) &&
-            descriptor.Lifetime == ServiceLifetime.Scoped);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(AdmitDeploymentTargetForWorkload) &&
-            descriptor.Lifetime == ServiceLifetime.Scoped);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType ==
+                descriptor.Lifetime == ServiceLifetime.Scoped);
+        Assert.Contains(services,
+            descriptor =>
+                descriptor.ServiceType == typeof(AdmitDeploymentTargetForWorkload) &&
+                descriptor.Lifetime == ServiceLifetime.Scoped);
+        Assert.Contains(services,
+            descriptor =>
+                descriptor.ServiceType ==
                 typeof(AdmitDeploymentTargetPublicIngressForDomainReservation) &&
-            descriptor.Lifetime == ServiceLifetime.Scoped);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(ApplyDeploymentTargetReferenceChanges) &&
-            descriptor.Lifetime == ServiceLifetime.Scoped);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(LoadDeploymentTargetById) &&
-            descriptor.Lifetime == ServiceLifetime.Singleton);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(LoadDefaultDeploymentTargetId) &&
-            descriptor.Lifetime == ServiceLifetime.Singleton);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType ==
+                descriptor.Lifetime == ServiceLifetime.Scoped);
+        Assert.Contains(services,
+            descriptor =>
+                descriptor.ServiceType == typeof(ApplyDeploymentTargetReferenceChanges) &&
+                descriptor.Lifetime == ServiceLifetime.Scoped);
+        Assert.Contains(services,
+            descriptor =>
+                descriptor.ServiceType == typeof(LoadDeploymentTargetById) &&
+                descriptor.Lifetime == ServiceLifetime.Singleton);
+        Assert.Contains(services,
+            descriptor =>
+                descriptor.ServiceType == typeof(LoadDefaultDeploymentTargetId) &&
+                descriptor.Lifetime == ServiceLifetime.Singleton);
+        Assert.Contains(services,
+            descriptor =>
+                descriptor.ServiceType ==
                 typeof(EnsureNoOverlappingDeploymentTargetPublicBaseDomain) &&
-            descriptor.Lifetime == ServiceLifetime.Singleton);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType ==
+                descriptor.Lifetime == ServiceLifetime.Singleton);
+        Assert.Contains(services,
+            descriptor =>
+                descriptor.ServiceType ==
                 typeof(EnsureNoDeploymentTargetPublicBaseDomainReferences) &&
-            descriptor.Lifetime == ServiceLifetime.Scoped);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(LookupDeploymentTarget) &&
-            descriptor.Lifetime == ServiceLifetime.Singleton);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(LookupDefaultDeploymentTarget) &&
-            descriptor.Lifetime == ServiceLifetime.Scoped);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(AdmitDefaultDeploymentTargetForNewWorkload) &&
-            descriptor.Lifetime == ServiceLifetime.Scoped);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(FenceDeploymentTargetWorkloadConfigurations) &&
-            descriptor.Lifetime == ServiceLifetime.Scoped);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(PrepareDeploymentTargetConnection) &&
-            descriptor.Lifetime == ServiceLifetime.Singleton);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(CreateDeploymentTargetKubernetesClient) &&
-            descriptor.Lifetime == ServiceLifetime.Singleton);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(ProbeDeploymentTargetConnection) &&
-            descriptor.Lifetime == ServiceLifetime.Singleton);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(InvalidateDeploymentTargetKubernetesClient) &&
-            descriptor.Lifetime == ServiceLifetime.Singleton);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(BootstrapDeploymentTargets) &&
-            descriptor.Lifetime == ServiceLifetime.Singleton);
-        Assert.DoesNotContain(services, descriptor =>
-            descriptor.ServiceType.Name.Contains("DeploymentTargetDbContext", StringComparison.Ordinal));
+                descriptor.Lifetime == ServiceLifetime.Scoped);
+        Assert.Contains(services,
+            descriptor =>
+                descriptor.ServiceType == typeof(LookupDeploymentTarget) &&
+                descriptor.Lifetime == ServiceLifetime.Singleton);
+        Assert.Contains(services,
+            descriptor =>
+                descriptor.ServiceType == typeof(LookupDefaultDeploymentTarget) &&
+                descriptor.Lifetime == ServiceLifetime.Scoped);
+        Assert.Contains(services,
+            descriptor =>
+                descriptor.ServiceType == typeof(AdmitDefaultDeploymentTargetForNewWorkload) &&
+                descriptor.Lifetime == ServiceLifetime.Scoped);
+        Assert.Contains(services,
+            descriptor =>
+                descriptor.ServiceType == typeof(FenceDeploymentTargetWorkloadConfigurations) &&
+                descriptor.Lifetime == ServiceLifetime.Scoped);
+        Assert.Contains(services,
+            descriptor =>
+                descriptor.ServiceType == typeof(PrepareDeploymentTargetConnection) &&
+                descriptor.Lifetime == ServiceLifetime.Singleton);
+        Assert.Contains(services,
+            descriptor =>
+                descriptor.ServiceType == typeof(CreateDeploymentTargetKubernetesClient) &&
+                descriptor.Lifetime == ServiceLifetime.Singleton);
+        Assert.Contains(services,
+            descriptor =>
+                descriptor.ServiceType == typeof(ProbeDeploymentTargetConnection) &&
+                descriptor.Lifetime == ServiceLifetime.Singleton);
+        Assert.Contains(services,
+            descriptor =>
+                descriptor.ServiceType == typeof(InvalidateDeploymentTargetKubernetesClient) &&
+                descriptor.Lifetime == ServiceLifetime.Singleton);
+        Assert.Contains(services,
+            descriptor =>
+                descriptor.ServiceType == typeof(BootstrapDeploymentTargets) &&
+                descriptor.Lifetime == ServiceLifetime.Singleton);
+        Assert.DoesNotContain(services,
+            descriptor =>
+                descriptor.ServiceType.Name.Contains("DeploymentTargetDbContext", StringComparison.Ordinal));
 
         var consumerAssemblies = new[]
         {
@@ -145,7 +164,10 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
     {
         var expected = new TestProviderInfrastructureException();
         var provider = new ThrowingKubernetesClientProvider(expected);
-        var target = DeploymentTargetNetworkPolicyTests.Target().AttestForTests().ToLookupDto() with { Id = DeploymentTargetId };
+        var target = DeploymentTargetNetworkPolicyTests.Target().AttestForTests().ToLookupDto() with
+        {
+            Id = DeploymentTargetId
+        };
         var services = new ServiceCollection();
         services.AddSingleton<IMongoClient>(fixture.Client);
         services.AddSingleton<IMongoDatabase>(fixture.Database);
@@ -164,9 +186,8 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
         var discoverStorageClasses =
             scope.ServiceProvider.GetRequiredService<DiscoverKubernetesStorageClasses>();
 
-        var storageFailure = await Assert.ThrowsAsync<TestProviderInfrastructureException>(
-            () => discoverStorageClasses(
-                DeploymentTargetId));
+        var storageFailure = await Assert.ThrowsAsync<TestProviderInfrastructureException>(() => discoverStorageClasses(
+            DeploymentTargetId));
         var configuredTarget = target with
         {
             WorkloadConfiguration = target.WorkloadConfiguration with
@@ -174,12 +195,13 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
                 NetworkSources = target.WorkloadConfiguration.NetworkSources with
                 {
                     Entries = target.WorkloadConfiguration.NetworkSources.Entries.SetItem(
-                        "functions/gateway", new DeploymentTargetCidrNetworkSourceDto("192.0.2.9/32"))
+                        "functions/gateway",
+                        new DeploymentTargetCidrNetworkSourceDto("192.0.2.9/32"))
                 }
             }
         };
-        var functionFailure = await Assert.ThrowsAsync<TestProviderInfrastructureException>(
-            () => new FunctionRevisionKubernetesManager(
+        var functionFailure = await Assert.ThrowsAsync<TestProviderInfrastructureException>(() =>
+            new FunctionRevisionKubernetesManager(
                 provider,
                 (id, ct) => Task.FromResult<LookupDeploymentTargetOutcome>(
                     new LookupDeploymentTargetOutcome(configuredTarget)),
@@ -187,15 +209,15 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
                     Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
                         new RuntimeCellIngressBaselineReady()),
                 []).ApplyAsync(
-                    new FunctionRevisionInKubernetes(
-                        null!,
-                        null!,
-                        new FunctionResourcePlacement(
-                            "507f1f77bcf86cd799439091",
-                            "507f1f77bcf86cd799439092",
-                            DeploymentTargetId,
-                            "functions",
-                            "507f1f77bcf86cd799439044"))));
+                new FunctionRevisionInKubernetes(
+                    null!,
+                    null!,
+                    new FunctionResourcePlacement(
+                        "507f1f77bcf86cd799439091",
+                        "507f1f77bcf86cd799439092",
+                        DeploymentTargetId,
+                        "functions",
+                        "507f1f77bcf86cd799439044"))));
 
         Assert.Same(expected, storageFailure);
         Assert.Equal([DeploymentTargetId, DeploymentTargetId], provider.RequestedTargetIds);
@@ -271,7 +293,10 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
     private sealed class ThrowingKubernetesClientProvider(Exception exception)
         : IKubernetesClientProvider
     {
-        public List<string> RequestedTargetIds { get; } = [];
+        public List<string> RequestedTargetIds
+        {
+            get;
+        } = [];
 
         public Task<IKubernetes> GetAsync(
             string deploymentTargetId,
@@ -296,11 +321,29 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
 
     private sealed class FakeHostEnvironment : IHostEnvironment
     {
-        public string EnvironmentName { get; set; } = Environments.Development;
-        public string ApplicationName { get; set; } = "Pole.Tests.Integration";
-        public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
-        public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; } =
+        public string EnvironmentName
+        {
+            get;
+            set;
+        } = Environments.Development;
+
+        public string ApplicationName
+        {
+            get;
+            set;
+        } = "Pole.Tests.Integration";
+
+        public string ContentRootPath
+        {
+            get;
+            set;
+        } = AppContext.BaseDirectory;
+
+        public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider
+        {
+            get;
+            set;
+        } =
             new Microsoft.Extensions.FileProviders.NullFileProvider();
     }
-
 }

@@ -33,41 +33,49 @@ internal sealed class MongoClaimSecretProjection(
         }
     }
 
-    private async Task<SecretProjection?> ClaimAsync(SecretProjection desired, string claimId, DateTime now, CancellationToken ct)
+    private async Task<SecretProjection?> ClaimAsync(SecretProjection desired,
+        string claimId,
+        DateTime now,
+        CancellationToken ct)
     {
         var identity = SecretProjectionFilters.Identity(desired.TenantId, desired.Id);
         var outcome = await transactions.InvokeOutcomeAsync<SecretProjectionMutationOutcome>(async (tx, token) =>
-        {
-            var current = await projections.Find(tx.Session, identity).FirstOrDefaultAsync(token);
-            if (current is not null && (current.DesiredRevision > desired.DesiredRevision ||
-                current.Lease is ClaimedSecretProjection lease && lease.ExpiresAtUtc > now))
-                return tx.Commit(new SecretProjectionMutationSkipped());
-            var claimed = (desired with
             {
-                AppliedVersion = current?.AppliedVersion,
-                StorageRevision = current?.StorageRevision ?? desired.StorageRevision
-            }).Claim(claimId, now);
-            if (current is null)
-            {
-                try
+                var current = await projections.Find(tx.Session, identity).FirstOrDefaultAsync(token);
+                if (current is not null && (current.DesiredRevision > desired.DesiredRevision ||
+                                            current.Lease is ClaimedSecretProjection lease && lease.ExpiresAtUtc > now))
+                    return tx.Commit(new SecretProjectionMutationSkipped());
+                var claimed = (desired with
                 {
-                    await projections.InsertOneAsync(tx.Session, claimed, cancellationToken: token);
-                }
-                catch (MongoWriteException exception) when (exception.WriteError.Category == ServerErrorCategory.DuplicateKey)
+                    AppliedVersion = current?.AppliedVersion,
+                    StorageRevision = current?.StorageRevision ?? desired.StorageRevision
+                }).Claim(claimId, now);
+                if (current is null)
                 {
-                    throw new ProjectionDiscoveryRace(exception);
+                    try
+                    {
+                        await projections.InsertOneAsync(tx.Session, claimed, cancellationToken: token);
+                    }
+                    catch (MongoWriteException exception) when (exception.WriteError.Category ==
+                                                                ServerErrorCategory.DuplicateKey)
+                    {
+                        throw new ProjectionDiscoveryRace(exception);
+                    }
                 }
-            }
-            else
-            {
-                var updated = await projections.ReplaceOneAsync(tx.Session,
-                    identity & SecretProjectionFilters.Revision(current.StorageRevision), claimed, cancellationToken: token);
-                if (updated.ModifiedCount != 1)
-                    return tx.Abort(new SecretProjectionMutationSkipped());
-            }
-            await outbox(tx.Session, [OutboxWrite.Create(claimed.ToChangedEvent())], token);
-            return tx.Commit(new SecretProjectionMutationRecorded(claimed));
-        }, ct);
+                else
+                {
+                    var updated = await projections.ReplaceOneAsync(tx.Session,
+                        identity & SecretProjectionFilters.Revision(current.StorageRevision),
+                        claimed,
+                        cancellationToken: token);
+                    if (updated.ModifiedCount != 1)
+                        return tx.Abort(new SecretProjectionMutationSkipped());
+                }
+
+                await outbox(tx.Session, [OutboxWrite.Create(claimed.ToChangedEvent())], token);
+                return tx.Commit(new SecretProjectionMutationRecorded(claimed));
+            },
+            ct);
         return outcome.Value is SecretProjectionMutationRecorded recorded ? recorded.Projection : null;
     }
 

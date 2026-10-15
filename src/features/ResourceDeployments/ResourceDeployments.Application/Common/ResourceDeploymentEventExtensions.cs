@@ -97,8 +97,14 @@ internal static class ResourceDeploymentEventExtensions
         };
 
     public static ResourceDeploymentReconciliationStartedEvent ToStartedEvent(this ResourceDeployment deployment) =>
-        new(deployment.Id, deployment.ResourceType, deployment.ResourceId, deployment.ResourceGroupId,
-            deployment.RuntimeCellId, deployment.DesiredGeneration, deployment.DesiredOperation.ToString(), deployment.ResourceRevision)
+        new(deployment.Id,
+            deployment.ResourceType,
+            deployment.ResourceId,
+            deployment.ResourceGroupId,
+            deployment.RuntimeCellId,
+            deployment.DesiredGeneration,
+            deployment.DesiredOperation.ToString(),
+            deployment.ResourceRevision)
         {
             EventCore = EventCore.Create(deployment.TenantId)
         };

@@ -4,6 +4,7 @@ public enum RealtimeScope
 {
     Tenant,
     Platform,
+
     /// <summary>An authenticated subject's discovery data, independent of tenant membership.</summary>
     User
 }

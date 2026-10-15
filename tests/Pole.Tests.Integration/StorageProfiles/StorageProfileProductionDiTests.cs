@@ -33,16 +33,21 @@ public sealed class StorageProfileProductionDiTests(MongoReplicaSetFixture fixtu
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IKubernetesClientProvider>(
             new FixedKubernetesClientProvider(null!));
-        services.AddSingleton<LookupDeploymentTarget>((id, _) => Task.FromResult<LookupDeploymentTargetOutcome>(new DeploymentTargetLookupError(new DeploymentTargetNotFound(id))));
-        services.AddSingleton<FenceDeploymentTargetObservation>((_, _, _) => Task.FromResult<FenceDeploymentTargetObservationOutcome>(new DeploymentTargetObservationFenced()));
+        services.AddSingleton<LookupDeploymentTarget>((id, _) =>
+            Task.FromResult<LookupDeploymentTargetOutcome>(
+                new DeploymentTargetLookupError(new DeploymentTargetNotFound(id))));
+        services.AddSingleton<FenceDeploymentTargetObservation>((_, _, _) =>
+            Task.FromResult<FenceDeploymentTargetObservationOutcome>(new DeploymentTargetObservationFenced()));
         services.AddSingleton<IResourceDeploymentObservationReadBudget, ResourceDeploymentObservationReadBudget>();
         services.AddOutboxPersistence();
         services.AddStorageProfilesFeature();
 
-        Assert.DoesNotContain(services, descriptor =>
-            descriptor.ServiceType.Name.Contains("Legacy", StringComparison.Ordinal));
-        Assert.DoesNotContain(services, descriptor =>
-            descriptor.ServiceType.Name.Contains("StorageProfileDbContext", StringComparison.Ordinal));
+        Assert.DoesNotContain(services,
+            descriptor =>
+                descriptor.ServiceType.Name.Contains("Legacy", StringComparison.Ordinal));
+        Assert.DoesNotContain(services,
+            descriptor =>
+                descriptor.ServiceType.Name.Contains("StorageProfileDbContext", StringComparison.Ordinal));
 
         using var provider = services.BuildServiceProvider(validateScopes: true);
         using var scope = provider.CreateScope();
@@ -62,7 +67,8 @@ public sealed class StorageProfileProductionDiTests(MongoReplicaSetFixture fixtu
         AssertResolved<IStorageObservationSource>(scope.ServiceProvider);
         AssertResolved<StorageObservationReader>(scope.ServiceProvider);
         AssertResolved<StorageObservationNativeReader>(scope.ServiceProvider);
-        Assert.Same(provider.GetRequiredService<StorageObservationMetrics>(), scope.ServiceProvider.GetRequiredService<StorageObservationMetrics>());
+        Assert.Same(provider.GetRequiredService<StorageObservationMetrics>(),
+            scope.ServiceProvider.GetRequiredService<StorageObservationMetrics>());
     }
 
     private static void AssertResolved<T>(IServiceProvider provider)

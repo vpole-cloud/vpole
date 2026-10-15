@@ -32,8 +32,10 @@ public sealed class ResourceDeploymentTargetRoutingTests(
     private const string ResourceGroupId = "507f1f77bcf86cd799439063";
     private const string ScopeId = "507f1f77bcf86cd799439064";
     private const string RuntimeCellId = "507f1f77bcf86cd799439065";
+
     private static readonly ResourceTypeId TestResourceType =
         ResourceTypeId.Create("pole/test-resource");
+
     private const string TargetAId = "507f1f77bcf86cd799439066";
     private const string TargetBId = "507f1f77bcf86cd799439067";
     private const string DeploymentId = "507f1f77bcf86cd799439068";
@@ -149,7 +151,8 @@ public sealed class ResourceDeploymentTargetRoutingTests(
         if (!allowed)
         {
             Assert.Empty(provider.RequestedTargetIds);
-            var blocked = await fixture.DbContext.ResourceDeployments.Find(item => item.Id == DeploymentId).SingleAsync();
+            var blocked = await fixture.DbContext.ResourceDeployments.Find(item => item.Id == DeploymentId)
+                .SingleAsync();
             Assert.Equal(
                 !targetEnabled
                     ? "DeploymentTargetDisabled"
@@ -159,9 +162,11 @@ public sealed class ResourceDeploymentTargetRoutingTests(
                             ? "DeploymentTargetConnectionUnavailable"
                             : "IngressBaselineUnavailable",
                 Assert.IsType<FailedResourceDeploymentState>(blocked.State).FailureCode);
-            Assert.Equal(targetEnabled && readiness != NetworkPolicyReadiness.EnforcementRequired ? 1 : 0, baselineCalls);
+            Assert.Equal(targetEnabled && readiness != NetworkPolicyReadiness.EnforcementRequired ? 1 : 0,
+                baselineCalls);
             return;
         }
+
         Assert.Equal(1, baselineCalls);
         Assert.Equal([TargetBId], provider.RequestedTargetIds);
         Assert.Equal(0, provider.DefaultRequestCount);
@@ -318,7 +323,8 @@ public sealed class ResourceDeploymentTargetRoutingTests(
         PersistResourceDeploymentFailure PersistFailure);
 
     private IServiceProvider Services => serviceScope?.ServiceProvider ??
-        throw new InvalidOperationException("The test service scope was not initialized.");
+                                         throw new InvalidOperationException(
+                                             "The test service scope was not initialized.");
 
     private static Kubernetes CreateKubernetes(string host) =>
         new(new KubernetesClientConfiguration
@@ -330,8 +336,16 @@ public sealed class ResourceDeploymentTargetRoutingTests(
         IReadOnlyDictionary<string, IKubernetes> clients)
         : IKubernetesClientProvider
     {
-        public List<string> RequestedTargetIds { get; } = [];
-        public int DefaultRequestCount { get; private set; }
+        public List<string> RequestedTargetIds
+        {
+            get;
+        } = [];
+
+        public int DefaultRequestCount
+        {
+            get;
+            private set;
+        }
 
         public Task<IKubernetes> GetAsync(
             string deploymentTargetId,
@@ -358,8 +372,17 @@ public sealed class ResourceDeploymentTargetRoutingTests(
     private sealed class RecordingAdapter(IKubernetesClientProvider kubernetesClientProvider)
         : IResourceDeploymentAdapter
     {
-        public IKubernetes? Kubernetes { get; private set; }
-        public string? DeploymentTargetId { get; private set; }
+        public IKubernetes? Kubernetes
+        {
+            get;
+            private set;
+        }
+
+        public string? DeploymentTargetId
+        {
+            get;
+            private set;
+        }
 
         public async Task<ResourceDeploymentAdapterResult> ApplyAsync(
             ResourceDeploymentReconciliationContext context,

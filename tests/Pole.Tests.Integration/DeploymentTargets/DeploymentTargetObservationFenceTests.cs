@@ -18,7 +18,11 @@ public sealed class DeploymentTargetObservationFenceTests(MongoReplicaSetFixture
     [Fact]
     public async Task Observation_fence_preserves_admission_revision_references_and_metadata()
     {
-        var target = Create() with { AcceptsWorkloads = false, ReferenceFence = 17 };
+        var target = Create() with
+        {
+            AcceptsWorkloads = false,
+            ReferenceFence = 17
+        };
         await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         using var session = await fixture.Client.StartSessionAsync();
         session.StartTransaction();
@@ -28,9 +32,13 @@ public sealed class DeploymentTargetObservationFenceTests(MongoReplicaSetFixture
         Assert.Equal(0, beforeCommit.ObservationFence);
         await session.CommitTransactionAsync();
         var current = await fixture.DbContext.DeploymentTargets.Find(x => x.Id == target.Id).SingleAsync();
-        Assert.Equal((target with { ObservationFence = 1 }).ToBsonDocument(), current.ToBsonDocument());
+        Assert.Equal((target with
+        {
+            ObservationFence = 1
+        }).ToBsonDocument(), current.ToBsonDocument());
         // Observation must not spuriously reject a reference-aware mutation loaded earlier.
-        Assert.True(await fixture.DbContext.DeploymentTargets.Find(DeploymentTargetFilters.AtRevisionAndReferenceFence(target)).AnyAsync());
+        Assert.True(await fixture.DbContext.DeploymentTargets
+            .Find(DeploymentTargetFilters.AtRevisionAndReferenceFence(target)).AnyAsync());
     }
 
     [Theory]
@@ -48,15 +56,18 @@ public sealed class DeploymentTargetObservationFenceTests(MongoReplicaSetFixture
             "deleting" => target with { DeletionRequestedAtUtc = DateTime.UtcNow },
             _ => target
         };
-        if (state != "missing") await fixture.DbContext.DeploymentTargets.InsertOneAsync(stored);
+        if (state != "missing")
+            await fixture.DbContext.DeploymentTargets.InsertOneAsync(stored);
         using var session = await fixture.Client.StartSessionAsync();
         session.StartTransaction();
         var result = await Fence().InvokeAsync(new(target.Id, 1), session);
         Assert.IsType<DeploymentTargetObservationFenceRejected>(result.Value);
         await session.AbortTransactionAsync();
         var current = await fixture.DbContext.DeploymentTargets.Find(x => x.Id == target.Id).FirstOrDefaultAsync();
-        if (state == "missing") Assert.Null(current);
-        else Assert.Equal(stored.ToBsonDocument(), current!.ToBsonDocument());
+        if (state == "missing")
+            Assert.Null(current);
+        else
+            Assert.Equal(stored.ToBsonDocument(), current!.ToBsonDocument());
     }
 
     [Fact]
@@ -68,7 +79,8 @@ public sealed class DeploymentTargetObservationFenceTests(MongoReplicaSetFixture
         session.StartTransaction();
         Assert.IsType<DeploymentTargetObservationFenced>((await Fence().InvokeAsync(new(target.Id, 1), session)).Value);
         await session.AbortTransactionAsync();
-        Assert.Equal(target.ToBsonDocument(), (await fixture.DbContext.DeploymentTargets.Find(x => x.Id == target.Id).SingleAsync()).ToBsonDocument());
+        Assert.Equal(target.ToBsonDocument(),
+            (await fixture.DbContext.DeploymentTargets.Find(x => x.Id == target.Id).SingleAsync()).ToBsonDocument());
     }
 
     [Fact]
@@ -78,21 +90,32 @@ public sealed class DeploymentTargetObservationFenceTests(MongoReplicaSetFixture
         var request = new DeploymentTargetObservationFenceRequest(ObjectId.GenerateNewId().ToString(), 1);
         await Assert.ThrowsAsync<InvalidOperationException>(() => Fence().InvokeAsync(request, session));
         session.StartTransaction();
-        await Assert.ThrowsAsync<ArgumentException>(() => Fence().InvokeAsync(request with { ExpectedConnectionVersion = 0 }, session));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            Fence().InvokeAsync(request with
+            {
+                ExpectedConnectionVersion = 0
+            }, session));
         await session.AbortTransactionAsync();
     }
 
     private MongoFenceDeploymentTargetObservation Fence() => new(fixture.DbContext.DeploymentTargets);
+
     private static DeploymentTarget Create()
     {
         var id = ObjectId.GenerateNewId().ToString();
         var now = DateTime.UtcNow;
-        return DeploymentTargetFactory.Create("Observation target", $"kubernetes:kube-system:{id}",
-            DeploymentTargetConnectionFactory.CreateInCluster(1), DeploymentTargetHealth.Healthy(1, now),
-            DeploymentTargetCapabilities.Observed(1, now, "v1.35.0",
+        return DeploymentTargetFactory.Create("Observation target",
+            $"kubernetes:kube-system:{id}",
+            DeploymentTargetConnectionFactory.CreateInCluster(1),
+            DeploymentTargetHealth.Healthy(1, now),
+            DeploymentTargetCapabilities.Observed(1,
+                now,
+                "v1.35.0",
                 new DeploymentTargetNamespaceCapabilities(true, true, true, true, true),
                 new DeploymentTargetNetworkPolicyCapabilities(true, true, true, true, true)),
-            DeploymentTargetTestData.CreateWorkloadConfiguration(), true, true,
+            DeploymentTargetTestData.CreateWorkloadConfiguration(),
+            true,
+            true,
             new DeploymentTargetFactory.CreateOptions(id, now)).AttestForTests();
     }
 }

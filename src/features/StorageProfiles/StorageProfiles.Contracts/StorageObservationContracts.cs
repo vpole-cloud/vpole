@@ -56,7 +56,12 @@ public sealed record StorageObservationSnapshot(
     PersistentVolumeObservation[] PersistentVolumes,
     PersistentVolumeClaimObservation[] PersistentVolumeClaims);
 
-public enum StorageObservationChangeKind { Ready, Changed, Unavailable }
+public enum StorageObservationChangeKind
+{
+    Ready,
+    Changed,
+    Unavailable
+}
 
 public sealed record StorageObservationChange(
     StorageObservationChangeKind Kind,

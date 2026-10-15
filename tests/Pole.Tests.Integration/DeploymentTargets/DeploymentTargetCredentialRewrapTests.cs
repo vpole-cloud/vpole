@@ -45,17 +45,19 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
         var kubeconfigTargetId = ObjectId.GenerateNewId().ToString();
         var serviceAccountTargetId = ObjectId.GenerateNewId().ToString();
 
-        using var preparedKubeconfig = Assert.IsType<PreparedDeploymentTargetConnection>((await oldConnectionService.PrepareAsync(
-            kubeconfigTargetId,
-            connectionVersion: 1,
-            new KubeconfigConnectionInput(CreateKubeconfig()))).Value);
-        using var preparedServiceAccount = Assert.IsType<PreparedDeploymentTargetConnection>((await oldConnectionService.PrepareAsync(
-            serviceAccountTargetId,
-            connectionVersion: 1,
-            new ServiceAccountConnectionInput(
-                KubernetesServer,
-                CertificateAuthorityData.Value,
-                ServiceAccountToken))).Value);
+        using var preparedKubeconfig = Assert.IsType<PreparedDeploymentTargetConnection>(
+            (await oldConnectionService.PrepareAsync(
+                kubeconfigTargetId,
+                connectionVersion: 1,
+                new KubeconfigConnectionInput(CreateKubeconfig()))).Value);
+        using var preparedServiceAccount = Assert.IsType<PreparedDeploymentTargetConnection>(
+            (await oldConnectionService.PrepareAsync(
+                serviceAccountTargetId,
+                connectionVersion: 1,
+                new ServiceAccountConnectionInput(
+                    KubernetesServer,
+                    CertificateAuthorityData.Value,
+                    ServiceAccountToken))).Value);
 
         var kubeconfigConnection = Assert.IsType<KubeconfigDeploymentTargetConnection>(
             preparedKubeconfig.Connection);
@@ -74,7 +76,10 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
         var service = new MongoRewrapDeploymentTargetCredentials(
             fixture.DbContext.DeploymentTargets,
             encryption.RotatingService);
-        var wrongKey = encryption.RotatingService.ActiveKey with { KeyVersion = 99 };
+        var wrongKey = encryption.RotatingService.ActiveKey with
+        {
+            KeyVersion = 99
+        };
 
         var rejected = await service.InvokeAsync(wrongKey);
         Assert.IsType<DeploymentTargetCredentialRewrapConflict>(
@@ -101,12 +106,15 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
         using var resolvedKubeconfig = Assert.IsAssignableFrom<IKubernetes>((await newOnlyConnectionService.CreateAsync(
             kubeconfigTargetId,
             storedKubeconfig)).Value);
-        using var resolvedServiceAccount = Assert.IsAssignableFrom<IKubernetes>((await newOnlyConnectionService.CreateAsync(
-            serviceAccountTargetId,
-            storedServiceAccount)).Value);
+        using var resolvedServiceAccount = Assert.IsAssignableFrom<IKubernetes>(
+            (await newOnlyConnectionService.CreateAsync(
+                serviceAccountTargetId,
+                storedServiceAccount)).Value);
 
-        Assert.IsType<StoredDeploymentTargetConnectionUnavailable>((await oldConnectionService.CreateAsync(kubeconfigTargetId, storedKubeconfig)).Value);
-        Assert.IsType<StoredDeploymentTargetConnectionUnavailable>((await oldConnectionService.CreateAsync(serviceAccountTargetId, storedServiceAccount)).Value);
+        Assert.IsType<StoredDeploymentTargetConnectionUnavailable>(
+            (await oldConnectionService.CreateAsync(kubeconfigTargetId, storedKubeconfig)).Value);
+        Assert.IsType<StoredDeploymentTargetConnectionUnavailable>(
+            (await oldConnectionService.CreateAsync(serviceAccountTargetId, storedServiceAccount)).Value);
 
         var second = Assert.IsType<DeploymentTargetCredentialRewrapSummary>((await service.InvokeAsync(
             encryption.RotatingService.ActiveKey)).Value);
@@ -178,8 +186,9 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
             stored.Connection);
         Assert.Equal("new", storedConnection.EncryptedCredential.KeyEncryptionKeyId);
         Assert.Equal(2, storedConnection.EncryptedCredential.KeyEncryptionKeyVersion);
-        using var resolved = Assert.IsAssignableFrom<IKubernetes>((await CreateConnectionService(encryption.NewOnlyService)
-            .CreateAsync(targetId, storedConnection)).Value);
+        using var resolved = Assert.IsAssignableFrom<IKubernetes>(
+            (await CreateConnectionService(encryption.NewOnlyService)
+                .CreateAsync(targetId, storedConnection)).Value);
     }
 
     private static void AssertRewrapped(EncryptedValue oldEnvelope, EncryptedValue newEnvelope)
@@ -352,9 +361,20 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
             NewOnlyService = newOnlyService;
         }
 
-        public IEnvelopeEncryptionService OldService { get; }
-        public IEnvelopeEncryptionService RotatingService { get; }
-        public IEnvelopeEncryptionService NewOnlyService { get; }
+        public IEnvelopeEncryptionService OldService
+        {
+            get;
+        }
+
+        public IEnvelopeEncryptionService RotatingService
+        {
+            get;
+        }
+
+        public IEnvelopeEncryptionService NewOnlyService
+        {
+            get;
+        }
 
         public static RotationEncryptionScope Create()
         {

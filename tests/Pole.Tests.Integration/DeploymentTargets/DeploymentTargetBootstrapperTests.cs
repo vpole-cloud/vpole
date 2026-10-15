@@ -161,8 +161,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         var preparer = new RecordingConnectionPreparer();
         var bootstrapper = CreateBootstrapper(preparer, Environments.Production);
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => bootstrapper.InvokeAsync());
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => bootstrapper.InvokeAsync());
 
         Assert.Equal(
             "Deployment-target settings reference a target that does not exist.",
@@ -188,8 +187,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
             var preparer = new RecordingConnectionPreparer();
             var bootstrapper = CreateBootstrapper(preparer, Environments.Development);
 
-            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-                () => bootstrapper.InvokeAsync());
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => bootstrapper.InvokeAsync());
 
             Assert.Equal(
                 "Development bootstrap requires an absolute KUBECONFIG file path.",
@@ -237,7 +235,10 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
                         ["public-ingress"] = new()
                         {
                             Namespace = "ingress-system",
-                            PodLabels = new() { ["app"] = "nginx" }
+                            PodLabels = new()
+                            {
+                                ["app"] = "nginx"
+                            }
                         }
                     },
                     Cidrs = new()
@@ -263,8 +264,9 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
             target.WorkloadConfiguration.NetworkSources.Get("public-ingress"));
         Assert.Equal("ingress-system", ingressSource.Namespace);
         Assert.Equal("nginx", ingressSource.PodLabels["app"]);
-        Assert.Equal("192.0.2.9/32", Assert.IsType<DeploymentTargetCidrNetworkSource>(
-            target.WorkloadConfiguration.NetworkSources.Get("functions/gateway")).Cidr);
+        Assert.Equal("192.0.2.9/32",
+            Assert.IsType<DeploymentTargetCidrNetworkSource>(
+                target.WorkloadConfiguration.NetworkSources.Get("functions/gateway")).Cidr);
         Assert.Null(target.WorkloadConfiguration.NetworkSources.Get("postgres/operator"));
     }
 
@@ -311,8 +313,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
                 new MongoStoreOutboxWrites(fixture.Database).InvokeAsync).InvokeAsync,
             new NoOpClientCache().Invalidate);
 
-        var deletion = Task.Run(
-            () => deleteHandler.HandleAsync(new DeleteDeploymentTargetRequest(existing.Id)));
+        var deletion = Task.Run(() => deleteHandler.HandleAsync(new DeleteDeploymentTargetRequest(existing.Id)));
         var bootstrapper = CreateBootstrapper(
             new RecordingConnectionPreparer(),
             Environments.Production);
@@ -345,9 +346,9 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         var timeProvider = new FixedTimeProvider(Now);
         EnsureNoOverlappingDeploymentTargetPublicBaseDomain ensureNoOverlappingPublicBaseDomain =
             new MongoEnsureNoOverlappingDeploymentTargetPublicBaseDomain(
-            fixture.DbContext.DeploymentTargets,
-            fixture.Database.GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
-                DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName)).InvokeAsync;
+                fixture.DbContext.DeploymentTargets,
+                fixture.Database.GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
+                    DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName)).InvokeAsync;
         return new DeploymentTargetBootstrapper(
             new MongoLoadDeploymentTargetBootstrapState(
                 fixture.DbContext.DeploymentTargets,
@@ -484,10 +485,29 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
 
     private sealed class FakeHostEnvironment(string environmentName) : IHostEnvironment
     {
-        public string EnvironmentName { get; set; } = environmentName;
-        public string ApplicationName { get; set; } = "Pole.Tests.Integration";
-        public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
-        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+        public string EnvironmentName
+        {
+            get;
+            set;
+        } = environmentName;
+
+        public string ApplicationName
+        {
+            get;
+            set;
+        } = "Pole.Tests.Integration";
+
+        public string ContentRootPath
+        {
+            get;
+            set;
+        } = AppContext.BaseDirectory;
+
+        public IFileProvider ContentRootFileProvider
+        {
+            get;
+            set;
+        } = new NullFileProvider();
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
@@ -499,6 +519,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
     {
         private readonly TaskCompletionSource _read =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         private readonly TaskCompletionSource _release =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -526,6 +547,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
     {
         private readonly TaskCompletionSource _release =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         private int _remaining = participantCount;
 
         public Task ArriveAndWaitAsync()

@@ -200,7 +200,8 @@ public sealed class OutboxDispatchConcurrencyTests(
             TaskScheduler.Default).WaitAsync(TimeSpan.FromSeconds(5));
 
     private MongoStorage CreateStorage() =>
-        new(fixture.Client, fixture.Database.DatabaseNamespace.DatabaseName,
+        new(fixture.Client,
+            fixture.Database.DatabaseNamespace.DatabaseName,
             new MongoStorageOptions
             {
                 Prefix = "outbox-dispatch-tests",

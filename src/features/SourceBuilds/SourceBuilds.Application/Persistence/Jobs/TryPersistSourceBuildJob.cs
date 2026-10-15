@@ -29,20 +29,21 @@ internal sealed class MongoTryPersistSourceBuildJob(
         }
 
         return transactions.InvokeOutcomeAsync<bool>(async (transaction, ct) =>
-        {
-            var updated = await jobs.ReplaceOneAsync(
-                transaction.Session,
-                SourceBuildJobFilters.AtUpdatedAt(current),
-                next,
-                cancellationToken: ct);
-            if (updated.ModifiedCount != 1)
-                return transaction.Commit(false);
+            {
+                var updated = await jobs.ReplaceOneAsync(
+                    transaction.Session,
+                    SourceBuildJobFilters.AtUpdatedAt(current),
+                    next,
+                    cancellationToken: ct);
+                if (updated.ModifiedCount != 1)
+                    return transaction.Commit(false);
 
-            await storeOutboxWrites(
-                transaction.Session,
-                [OutboxWrite.Create(next.ToStateChangedEvent())],
-                ct);
-            return transaction.Commit(true);
-        }, cancellationToken);
+                await storeOutboxWrites(
+                    transaction.Session,
+                    [OutboxWrite.Create(next.ToStateChangedEvent())],
+                    ct);
+                return transaction.Commit(true);
+            },
+            cancellationToken);
     }
 }

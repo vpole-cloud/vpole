@@ -42,34 +42,32 @@ public static class GitProviderApplicationRegistration
             provider.GetRequiredService<SourceRepositoryArchiveDownloader>().InvokeAsync);
 
         services.AddCapability<GitHubAppJwtFactory, CreateGitHubAppJwt>(factory => factory.Invoke);
-        services.AddCapability<MongoCreateGitHubSetupAttempt, CreateGitHubSetupAttempt>(
-            persistence => persistence.InvokeAsync);
-        services.AddCapability<MongoLoadGitProviderConnection, LoadGitProviderConnection>(
-            persistence => persistence.InvokeAsync);
-        services.AddCapability<MongoLoadGitProviderConnections, LoadGitProviderConnections>(
-            persistence => persistence.InvokeAsync);
-        services.AddCapability<MongoDeleteGitProviderConnection, DeleteGitProviderConnection>(
-            persistence => persistence.InvokeAsync);
-        services.AddCapability<MongoLoadSourceRepository, LoadSourceRepository>(
-            persistence => persistence.InvokeAsync);
-        services.AddCapability<MongoLoadSourceRepositories, LoadSourceRepositories>(
-            persistence => persistence.InvokeAsync);
-        services.AddCapability<MongoPersistLinkedSourceRepository, PersistLinkedSourceRepository>(
-            persistence => persistence.InvokeAsync);
-        services.AddCapability<MongoPersistReanalyzedSourceRepository, PersistReanalyzedSourceRepository>(
-            persistence => persistence.InvokeAsync);
-        services.AddCapability<MongoDeleteSourceRepository, DeleteSourceRepository>(
-            persistence => persistence.InvokeAsync);
-        services.AddCapability<GitHubGetProviderRepositories, GetProviderRepositories>(
-            operation => operation.InvokeAsync);
-        services.AddCapability<GitHubGetProviderBranches, GetProviderBranches>(
-            operation => operation.InvokeAsync);
-        services.AddCapability<GitHubGetProviderRepositorySnapshot, GetProviderRepositorySnapshot>(
-            operation => operation.InvokeAsync);
-        services.AddCapability<GitHubDownloadProviderRepositoryArchive, DownloadProviderRepositoryArchive>(
-            operation => operation.InvokeAsync);
-        services.AddCapability<GitProviderRepositoryAnalyzer, AnalyzeProviderRepository>(
-            operation => operation.InvokeAsync);
+        services.AddCapability<MongoCreateGitHubSetupAttempt, CreateGitHubSetupAttempt>(persistence =>
+            persistence.InvokeAsync);
+        services.AddCapability<MongoLoadGitProviderConnection, LoadGitProviderConnection>(persistence =>
+            persistence.InvokeAsync);
+        services.AddCapability<MongoLoadGitProviderConnections, LoadGitProviderConnections>(persistence =>
+            persistence.InvokeAsync);
+        services.AddCapability<MongoDeleteGitProviderConnection, DeleteGitProviderConnection>(persistence =>
+            persistence.InvokeAsync);
+        services.AddCapability<MongoLoadSourceRepository, LoadSourceRepository>(persistence => persistence.InvokeAsync);
+        services.AddCapability<MongoLoadSourceRepositories, LoadSourceRepositories>(persistence =>
+            persistence.InvokeAsync);
+        services.AddCapability<MongoPersistLinkedSourceRepository, PersistLinkedSourceRepository>(persistence =>
+            persistence.InvokeAsync);
+        services.AddCapability<MongoPersistReanalyzedSourceRepository, PersistReanalyzedSourceRepository>(persistence =>
+            persistence.InvokeAsync);
+        services.AddCapability<MongoDeleteSourceRepository, DeleteSourceRepository>(persistence =>
+            persistence.InvokeAsync);
+        services.AddCapability<GitHubGetProviderRepositories, GetProviderRepositories>(operation =>
+            operation.InvokeAsync);
+        services.AddCapability<GitHubGetProviderBranches, GetProviderBranches>(operation => operation.InvokeAsync);
+        services.AddCapability<GitHubGetProviderRepositorySnapshot, GetProviderRepositorySnapshot>(operation =>
+            operation.InvokeAsync);
+        services.AddCapability<GitHubDownloadProviderRepositoryArchive, DownloadProviderRepositoryArchive>(operation =>
+            operation.InvokeAsync);
+        services.AddCapability<GitProviderRepositoryAnalyzer, AnalyzeProviderRepository>(operation =>
+            operation.InvokeAsync);
         services.AddHttpClient<IGitHubAppClient, GitHubAppClient>(client =>
         {
             client.DefaultRequestHeaders.UserAgent.ParseAdd("Pole/1.0");

@@ -31,22 +31,27 @@ internal sealed class MongoUpdateSourceBuildConfiguration(
             CancellationToken cancellationToken = default)
     {
         return await transactions.InvokeOutcomeAsync<PersistUpdatedSourceBuildConfigurationOutcome>(async (tx, ct) =>
-        {
-            var updated = await configurations.UpdateOneAsync(tx.Session,
-                SourceBuildConfigurationFilters.AtUpdatedAt(current),
-                Builders<SourceBuildConfiguration>.Update.Set(item => item.Recipe, recipe).Set(item => item.UpdatedAtUtc, updatedAtUtc),
-                cancellationToken: ct);
-            var stored = await configurations.Find(tx.Session, SourceBuildConfigurationFilters.ById(current.TenantId, current.Id)).FirstOrDefaultAsync(ct);
-            if (updated.MatchedCount == 1)
             {
-                if (updated.ModifiedCount == 1)
-                    await outbox(tx.Session, [OutboxWrite.Create(stored!.ToChangedEvent())], ct);
-                return tx.Commit(stored!);
-            }
-            PersistUpdatedSourceBuildConfigurationOutcome rejected = stored is not null
-                ? new SourceBuildConfigurationUpdateConflict(current.Id)
-                : new SourceBuildConfigurationNotFound(current.Id);
-            return tx.Abort(rejected);
-        }, cancellationToken);
+                var updated = await configurations.UpdateOneAsync(tx.Session,
+                    SourceBuildConfigurationFilters.AtUpdatedAt(current),
+                    Builders<SourceBuildConfiguration>.Update.Set(item => item.Recipe, recipe)
+                        .Set(item => item.UpdatedAtUtc, updatedAtUtc),
+                    cancellationToken: ct);
+                var stored = await configurations
+                    .Find(tx.Session, SourceBuildConfigurationFilters.ById(current.TenantId, current.Id))
+                    .FirstOrDefaultAsync(ct);
+                if (updated.MatchedCount == 1)
+                {
+                    if (updated.ModifiedCount == 1)
+                        await outbox(tx.Session, [OutboxWrite.Create(stored!.ToChangedEvent())], ct);
+                    return tx.Commit(stored!);
+                }
+
+                PersistUpdatedSourceBuildConfigurationOutcome rejected = stored is not null
+                    ? new SourceBuildConfigurationUpdateConflict(current.Id)
+                    : new SourceBuildConfigurationNotFound(current.Id);
+                return tx.Abort(rejected);
+            },
+            cancellationToken);
     }
 }

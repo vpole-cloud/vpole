@@ -46,8 +46,12 @@ internal sealed class MongoEnsureBootstrapDefaultDeploymentTarget(
             return await runMongoTransaction(
                 (transaction, ct) => request switch
                 {
-                    BindExistingDeploymentTargetAsDefault existing => BindExistingAsync(transaction, existing.DeploymentTargetId, ct),
-                    CreateFirstDeploymentTargetAsDefault created => CreateFirstAsync(transaction, created.DeploymentTarget, ct)
+                    BindExistingDeploymentTargetAsDefault existing => BindExistingAsync(transaction,
+                        existing.DeploymentTargetId,
+                        ct),
+                    CreateFirstDeploymentTargetAsDefault created => CreateFirstAsync(transaction,
+                        created.DeploymentTarget,
+                        ct)
                 },
                 cancellationToken);
         }
@@ -106,7 +110,11 @@ internal sealed class MongoEnsureBootstrapDefaultDeploymentTarget(
                 deploymentTarget.CreatedAtUtc),
             cancellationToken: cancellationToken);
         await storeOutboxWrites(transaction.Session,
-            [OutboxWrite.Create(new DeploymentTargetCatalogChangedEvent(deploymentTarget.Id, deploymentTarget.Revision))], cancellationToken);
+            [
+                OutboxWrite.Create(
+                    new DeploymentTargetCatalogChangedEvent(deploymentTarget.Id, deploymentTarget.Revision))
+            ],
+            cancellationToken);
         return transaction.Commit(new BootstrapDefaultDeploymentTargetEnsured());
     }
 
@@ -145,7 +153,8 @@ internal sealed class MongoEnsureBootstrapDefaultDeploymentTarget(
             DeploymentTargetSettings.Create(target.Id, updatedAtUtc),
             cancellationToken: cancellationToken);
         await storeOutboxWrites(transaction.Session,
-            [OutboxWrite.Create(new DeploymentTargetCatalogChangedEvent(target.Id, checked(target.Revision + 1)))], cancellationToken);
+            [OutboxWrite.Create(new DeploymentTargetCatalogChangedEvent(target.Id, checked(target.Revision + 1)))],
+            cancellationToken);
         return transaction.Commit(new BootstrapDefaultDeploymentTargetEnsured());
     }
 }
