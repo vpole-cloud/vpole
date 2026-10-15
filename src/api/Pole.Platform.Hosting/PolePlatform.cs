@@ -38,7 +38,6 @@ using Pole.Features.Users.Application;
 using Pole.Features.Users.Application.Common;
 using Pole.Observability;
 using Pole.Platform.Hosting;
-
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
@@ -48,26 +47,29 @@ namespace Pole.Platform.Hosting;
 
 public static class PolePlatform
 {
-    public static Assembly[] ApplicationAssemblies => [
+    public static Assembly[] ApplicationAssemblies =>
+    [
         typeof(RealtimeFeature).Assembly,
         typeof(SecretFeature).Assembly,
         typeof(PrivateAccessFeature).Assembly,
-    typeof(QuotaEndpoints).Assembly,
-    typeof(DomainZoneEndpoints).Assembly,
-    typeof(GitProviderEndpoints).Assembly,
-    typeof(ContainerRegistryFeature).Assembly,
-    typeof(ComputeProfileApplicationRegistration).Assembly,
-    typeof(DeploymentTargetFeature).Assembly,
-    typeof(SourceBuildFeature).Assembly,
-    typeof(OutboxFeatureRegistration).Assembly,
-    typeof(ResourceGroupEndpoints).Assembly,
-    typeof(ResourceDeploymentFeature).Assembly,
-    typeof(SearchEndpoints).Assembly,
-    typeof(StorageProfileEndpoints).Assembly,
-    typeof(TenantEndpoints).Assembly,
-    typeof(UserEndpoints).Assembly,
-];
-    public static Assembly[] EventAssemblies => [
+        typeof(QuotaEndpoints).Assembly,
+        typeof(DomainZoneEndpoints).Assembly,
+        typeof(GitProviderEndpoints).Assembly,
+        typeof(ContainerRegistryFeature).Assembly,
+        typeof(ComputeProfileApplicationRegistration).Assembly,
+        typeof(DeploymentTargetFeature).Assembly,
+        typeof(SourceBuildFeature).Assembly,
+        typeof(OutboxFeatureRegistration).Assembly,
+        typeof(ResourceGroupEndpoints).Assembly,
+        typeof(ResourceDeploymentFeature).Assembly,
+        typeof(SearchEndpoints).Assembly,
+        typeof(StorageProfileEndpoints).Assembly,
+        typeof(TenantEndpoints).Assembly,
+        typeof(UserEndpoints).Assembly,
+    ];
+
+    public static Assembly[] EventAssemblies =>
+    [
         typeof(Pole.Features.Domains.Events.DomainMetadataChangedEvent).Assembly,
         typeof(Pole.Features.GitProviders.Events.GitProviderConnectionChangedEvent).Assembly,
         typeof(Pole.Features.ComputeProfiles.Events.ComputeProfileCatalogChangedEvent).Assembly,
@@ -77,46 +79,51 @@ public static class PolePlatform
         typeof(Pole.Features.Tenants.Events.TenantMembershipChangedEvent).Assembly,
         typeof(Pole.Features.Secrets.Events.SecretChangedEvent).Assembly,
         typeof(Pole.Features.PrivateAccess.Events.PrivateAccessGrantCreatedEvent).Assembly,
-    typeof(Pole.Features.ResourceDeployments.Events.ResourceDeploymentAppliedEvent).Assembly,
-    typeof(Pole.Features.ResourceGroups.Events.ResourceGroupCreatedEvent).Assembly,
-    typeof(Pole.Features.SourceBuilds.Events.SourceBuildRequestedEvent).Assembly,
-    typeof(Pole.Features.Users.Events.UserCreatedEvent).Assembly
+        typeof(Pole.Features.ResourceDeployments.Events.ResourceDeploymentAppliedEvent).Assembly,
+        typeof(Pole.Features.ResourceGroups.Events.ResourceGroupCreatedEvent).Assembly,
+        typeof(Pole.Features.SourceBuilds.Events.SourceBuildRequestedEvent).Assembly,
+        typeof(Pole.Features.Users.Events.UserCreatedEvent).Assembly
     ];
 
-    public static IServiceCollection AddPolePlatform(this IServiceCollection services, IConfiguration configuration,
-        Assembly[] additionalApplicationAssemblies, Assembly[] additionalEventAssemblies,
+    public static IServiceCollection AddPolePlatform(this IServiceCollection services,
+        IConfiguration configuration,
+        Assembly[] additionalApplicationAssemblies,
+        Assembly[] additionalEventAssemblies,
         Assembly[]? additionalMigrationAssemblies = null,
         bool development = false)
     {
         var applications = ApplicationAssemblies.Concat(additionalApplicationAssemblies).Distinct()
-            .Where(assembly => configuration.GetValue<bool>("Realtime:Enabled") || assembly != typeof(RealtimeFeature).Assembly).ToArray();
+            .Where(assembly => configuration.GetValue<bool>("Realtime:Enabled") ||
+                               assembly != typeof(RealtimeFeature).Assembly).ToArray();
         var events = EventAssemblies.Concat(additionalEventAssemblies).Distinct().ToArray();
         services.AddKubernetes(configuration).AddDatabase()
             .AddRealtimeFeature(configuration, development).AddRealtimeRedis(configuration, development)
             .AddOutboxFeature(configuration, events)
-    .AddResourceGroupsFeature(configuration)
-    .AddResourceDeploymentsFeature(configuration)
-    .AddTenantsFeature()
-    .AddDomainsFeature()
-    .AddSecretsFeature()
-    .AddPrivateAccessFeature()
-    .AddComputeProfilesFeature()
-    .AddStorageProfilesFeature()
-    .AddQuotasFeature(configuration)
-    .AddEnvelopeEncryption(configuration)
-    .AddDeploymentTargetsFeature(configuration)
-    .AddSearchFeature()
-    .AddGitProvidersFeature(configuration)
-    .AddContainerRegistriesFeature(configuration)
-    .AddSourceBuildsFeature(configuration)
-    .AddUsersFeature(configuration)
-            .AddMigrations(ApplicationAssemblies.Concat(additionalMigrationAssemblies ?? additionalApplicationAssemblies).Distinct().ToArray())
+            .AddResourceGroupsFeature(configuration)
+            .AddResourceDeploymentsFeature(configuration)
+            .AddTenantsFeature()
+            .AddDomainsFeature()
+            .AddSecretsFeature()
+            .AddPrivateAccessFeature()
+            .AddComputeProfilesFeature()
+            .AddStorageProfilesFeature()
+            .AddQuotasFeature(configuration)
+            .AddEnvelopeEncryption(configuration)
+            .AddDeploymentTargetsFeature(configuration)
+            .AddSearchFeature()
+            .AddGitProvidersFeature(configuration)
+            .AddContainerRegistriesFeature(configuration)
+            .AddSourceBuildsFeature(configuration)
+            .AddUsersFeature(configuration)
+            .AddMigrations(ApplicationAssemblies
+                .Concat(additionalMigrationAssemblies ?? additionalApplicationAssemblies).Distinct().ToArray())
             .AddValidatorsFromAssemblies(applications)
             .AddPoleMediator(applications);
         return services;
     }
 
-    public static async Task InitializePolePlatformAsync(this IServiceProvider services, CancellationToken cancellationToken = default)
+    public static async Task InitializePolePlatformAsync(this IServiceProvider services,
+        CancellationToken cancellationToken = default)
     {
         _ = services.GetRequiredService<QuotaCatalog>();
         _ = services.GetRequiredService<RealtimeTopicRegistry>();

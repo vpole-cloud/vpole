@@ -10,10 +10,29 @@ public sealed record ResourceDeploymentReconciliationRequestedEvent(
     long Generation,
     long ResourceRevision = 1) : IPoleEvent
 {
-    public string? ResourceType { get; init; }
-    public string? ResourceId { get; init; }
-    public string? ResourceGroupId { get; init; }
-    public EventCore EventCore { get; init; } = EventCore.Create();
+    public string? ResourceType
+    {
+        get;
+        init;
+    }
+
+    public string? ResourceId
+    {
+        get;
+        init;
+    }
+
+    public string? ResourceGroupId
+    {
+        get;
+        init;
+    }
+
+    public EventCore EventCore
+    {
+        get;
+        init;
+    } = EventCore.Create();
 }
 
 [EntityName("pole.resource-deployments/v1/resource-deployment-deletion-requested")]
@@ -23,10 +42,29 @@ public sealed record ResourceDeploymentDeletionRequestedEvent(
     long Generation,
     long ResourceRevision = 1) : IPoleEvent
 {
-    public string? ResourceType { get; init; }
-    public string? ResourceId { get; init; }
-    public string? ResourceGroupId { get; init; }
-    public EventCore EventCore { get; init; } = EventCore.Create();
+    public string? ResourceType
+    {
+        get;
+        init;
+    }
+
+    public string? ResourceId
+    {
+        get;
+        init;
+    }
+
+    public string? ResourceGroupId
+    {
+        get;
+        init;
+    }
+
+    public EventCore EventCore
+    {
+        get;
+        init;
+    } = EventCore.Create();
 }
 
 [EntityName("pole.resource-deployments/v1/resource-deployment-applied")]
@@ -38,8 +76,17 @@ public sealed record ResourceDeploymentAppliedEvent(
     long Generation,
     long ResourceRevision = 1) : IPoleEvent
 {
-    public string? ResourceGroupId { get; init; }
-    public EventCore EventCore { get; init; } = EventCore.Create();
+    public string? ResourceGroupId
+    {
+        get;
+        init;
+    }
+
+    public EventCore EventCore
+    {
+        get;
+        init;
+    } = EventCore.Create();
 }
 
 [EntityName("pole.resource-deployments/v1/resource-deployment-failed")]
@@ -54,8 +101,17 @@ public sealed record ResourceDeploymentFailedEvent(
     bool Retryable,
     long ResourceRevision = 1) : IPoleEvent
 {
-    public string? ResourceGroupId { get; init; }
-    public EventCore EventCore { get; init; } = EventCore.Create();
+    public string? ResourceGroupId
+    {
+        get;
+        init;
+    }
+
+    public EventCore EventCore
+    {
+        get;
+        init;
+    } = EventCore.Create();
 }
 
 [EntityName("pole.resource-deployments/v1/resource-deployment-deleted")]
@@ -67,8 +123,17 @@ public sealed record ResourceDeploymentDeletedEvent(
     long Generation,
     long ResourceRevision = 1) : IPoleEvent
 {
-    public string? ResourceGroupId { get; init; }
-    public EventCore EventCore { get; init; } = EventCore.Create();
+    public string? ResourceGroupId
+    {
+        get;
+        init;
+    }
+
+    public EventCore EventCore
+    {
+        get;
+        init;
+    } = EventCore.Create();
 }
 
 [EntityName("pole.resource-deployments/v1/resource-deployment-reconciliation-started")]
@@ -82,7 +147,11 @@ public sealed record ResourceDeploymentReconciliationStartedEvent(
     string Operation,
     long ResourceRevision) : IPoleEvent
 {
-    public EventCore EventCore { get; init; } = EventCore.Create();
+    public EventCore EventCore
+    {
+        get;
+        init;
+    } = EventCore.Create();
 }
 
 public static class ResourceDeploymentPendingKey

@@ -65,9 +65,11 @@ internal sealed class MongoCreateManagedDomainZoneReservation(
                 timeProvider.GetUtcNow().UtcDateTime));
 
         var fence = await fenceDeploymentTargetWorkloadConfigurations(
-            [new DeploymentTargetWorkloadConfigurationFenceRequest(
-                deploymentTargetId,
-                expectedWorkloadConfigurationRevision)],
+            [
+                new DeploymentTargetWorkloadConfigurationFenceRequest(
+                    deploymentTargetId,
+                    expectedWorkloadConfigurationRevision)
+            ],
             session,
             cancellationToken);
         if (fence is DeploymentTargetWorkloadConfigurationFenceRejected)

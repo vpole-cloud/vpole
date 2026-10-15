@@ -50,38 +50,47 @@ internal sealed class MongoPersistUpdatedDeploymentTarget(
             replacement.WorkloadConfiguration.Ingress?.PublicBaseDomain,
             StringComparison.Ordinal);
         return await runMongoTransaction(async (transaction, ct) =>
-        {
-            if (publicBaseDomainChanged)
             {
-                var references = await ensureNoPublicBaseDomainReferences(
-                    current.Id, transaction.Session, ct);
-                if (references is DeploymentTargetPublicBaseDomainReferenced referenceError)
-                    return transaction.Abort(new PersistUpdatedDeploymentTargetError(referenceError));
-                var overlap = await ensureNoOverlappingPublicBaseDomain(
-                    current.Id, replacement.WorkloadConfiguration.Ingress?.PublicBaseDomain,
-                    transaction.Session, ct);
-                if (overlap is DeploymentTargetPublicBaseDomainConflict overlapError)
-                    return transaction.Abort(new PersistUpdatedDeploymentTargetError(overlapError));
-            }
+                if (publicBaseDomainChanged)
+                {
+                    var references = await ensureNoPublicBaseDomainReferences(
+                        current.Id,
+                        transaction.Session,
+                        ct);
+                    if (references is DeploymentTargetPublicBaseDomainReferenced referenceError)
+                        return transaction.Abort(new PersistUpdatedDeploymentTargetError(referenceError));
+                    var overlap = await ensureNoOverlappingPublicBaseDomain(
+                        current.Id,
+                        replacement.WorkloadConfiguration.Ingress?.PublicBaseDomain,
+                        transaction.Session,
+                        ct);
+                    if (overlap is DeploymentTargetPublicBaseDomainConflict overlapError)
+                        return transaction.Abort(new PersistUpdatedDeploymentTargetError(overlapError));
+                }
 
-            var filter = publicBaseDomainChanged
-                ? DeploymentTargetFilters.AtRevisionAndReferenceFence(current)
-                : DeploymentTargetFilters.AtRevision(current);
-            var before = await deploymentTargets.Find(transaction.Session, filter).FirstOrDefaultAsync(ct);
-            if (before is null)
-                return transaction.Abort(new PersistUpdatedDeploymentTargetError(new DeploymentTargetRevisionConflict(current.Id)));
-            var persisted = await deploymentTargets.FindOneAndUpdateAsync(
-                transaction.Session,
-                filter,
-                ReplacementUpdate(replacement),
-                new FindOneAndUpdateOptions<DeploymentTarget> { ReturnDocument = ReturnDocument.After }, ct);
-            if (persisted is null)
-                return transaction.Abort(new PersistUpdatedDeploymentTargetError(new DeploymentTargetRevisionConflict(current.Id)));
-            if (MetadataChanged(before, persisted))
-                await storeOutboxWrites(transaction.Session,
-                    [OutboxWrite.Create(new DeploymentTargetCatalogChangedEvent(persisted.Id, persisted.Revision))], ct);
-            return transaction.Commit(persisted);
-        }, cancellationToken);
+                var filter = publicBaseDomainChanged
+                    ? DeploymentTargetFilters.AtRevisionAndReferenceFence(current)
+                    : DeploymentTargetFilters.AtRevision(current);
+                var before = await deploymentTargets.Find(transaction.Session, filter).FirstOrDefaultAsync(ct);
+                if (before is null)
+                    return transaction.Abort(
+                        new PersistUpdatedDeploymentTargetError(new DeploymentTargetRevisionConflict(current.Id)));
+                var persisted = await deploymentTargets.FindOneAndUpdateAsync(
+                    transaction.Session,
+                    filter,
+                    ReplacementUpdate(replacement),
+                    new FindOneAndUpdateOptions<DeploymentTarget> { ReturnDocument = ReturnDocument.After },
+                    ct);
+                if (persisted is null)
+                    return transaction.Abort(
+                        new PersistUpdatedDeploymentTargetError(new DeploymentTargetRevisionConflict(current.Id)));
+                if (MetadataChanged(before, persisted))
+                    await storeOutboxWrites(transaction.Session,
+                        [OutboxWrite.Create(new DeploymentTargetCatalogChangedEvent(persisted.Id, persisted.Revision))],
+                        ct);
+                return transaction.Commit(persisted);
+            },
+            cancellationToken);
     }
 
     private static bool MetadataChanged(DeploymentTarget before, DeploymentTarget after) =>
@@ -92,14 +101,14 @@ internal sealed class MongoPersistUpdatedDeploymentTarget(
 
     private static UpdateDefinition<DeploymentTarget> ReplacementUpdate(
         DeploymentTarget replacement) => Builders<DeploymentTarget>.Update.Combine(
-            Builders<DeploymentTarget>.Update.Set(item => item.DisplayName, replacement.DisplayName),
-            Builders<DeploymentTarget>.Update.Set(item => item.Enabled, replacement.Enabled),
-            Builders<DeploymentTarget>.Update.Set(
-                item => item.AcceptsWorkloads,
-                replacement.AcceptsWorkloads),
-            Builders<DeploymentTarget>.Update.Set(
-                item => item.WorkloadConfiguration,
-                replacement.WorkloadConfiguration),
-            Builders<DeploymentTarget>.Update.Set(item => item.Revision, replacement.Revision),
-            Builders<DeploymentTarget>.Update.Set(item => item.UpdatedAtUtc, replacement.UpdatedAtUtc));
+        Builders<DeploymentTarget>.Update.Set(item => item.DisplayName, replacement.DisplayName),
+        Builders<DeploymentTarget>.Update.Set(item => item.Enabled, replacement.Enabled),
+        Builders<DeploymentTarget>.Update.Set(
+            item => item.AcceptsWorkloads,
+            replacement.AcceptsWorkloads),
+        Builders<DeploymentTarget>.Update.Set(
+            item => item.WorkloadConfiguration,
+            replacement.WorkloadConfiguration),
+        Builders<DeploymentTarget>.Update.Set(item => item.Revision, replacement.Revision),
+        Builders<DeploymentTarget>.Update.Set(item => item.UpdatedAtUtc, replacement.UpdatedAtUtc));
 }

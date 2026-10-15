@@ -30,29 +30,30 @@ internal sealed class MongoDeleteSourceBuildConfiguration(
         string configurationId,
         CancellationToken cancellationToken = default) =>
         transactions.InvokeOutcomeAsync<PersistDeletedSourceBuildConfigurationOutcome>(async (transaction, ct) =>
-        {
-            var hasActiveJobs = await jobs
-                .Find(transaction.Session,
-                    SourceBuildJobFilters.ActiveForConfiguration(tenantId, configurationId))
-                .AnyAsync(ct);
-            if (hasActiveJobs)
             {
-                PersistDeletedSourceBuildConfigurationOutcome rejected =
-                    new SourceBuildConfigurationHasActiveJobs(configurationId);
-                return transaction.Abort(rejected);
-            }
+                var hasActiveJobs = await jobs
+                    .Find(transaction.Session,
+                        SourceBuildJobFilters.ActiveForConfiguration(tenantId, configurationId))
+                    .AnyAsync(ct);
+                if (hasActiveJobs)
+                {
+                    PersistDeletedSourceBuildConfigurationOutcome rejected =
+                        new SourceBuildConfigurationHasActiveJobs(configurationId);
+                    return transaction.Abort(rejected);
+                }
 
-            var deleted = await configurations.FindOneAndDeleteAsync(
-                transaction.Session,
-                SourceBuildConfigurationFilters.ById(tenantId, configurationId),
-                cancellationToken: ct);
-            if (deleted is not null)
-                await outbox(transaction.Session, [OutboxWrite.Create(deleted.ToChangedEvent())], ct);
-            PersistDeletedSourceBuildConfigurationOutcome outcome = deleted is not null
-                ? new SourceBuildConfigurationRemovalRecorded()
-                : new SourceBuildConfigurationNotFound(configurationId);
-            return deleted is not null
-                ? transaction.Commit(outcome)
-                : transaction.Abort(outcome);
-        }, cancellationToken);
+                var deleted = await configurations.FindOneAndDeleteAsync(
+                    transaction.Session,
+                    SourceBuildConfigurationFilters.ById(tenantId, configurationId),
+                    cancellationToken: ct);
+                if (deleted is not null)
+                    await outbox(transaction.Session, [OutboxWrite.Create(deleted.ToChangedEvent())], ct);
+                PersistDeletedSourceBuildConfigurationOutcome outcome = deleted is not null
+                    ? new SourceBuildConfigurationRemovalRecorded()
+                    : new SourceBuildConfigurationNotFound(configurationId);
+                return deleted is not null
+                    ? transaction.Commit(outcome)
+                    : transaction.Abort(outcome);
+            },
+            cancellationToken);
 }

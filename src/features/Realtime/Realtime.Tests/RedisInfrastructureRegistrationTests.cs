@@ -43,7 +43,8 @@ public sealed class RedisInfrastructureRegistrationTests
         {
             ["Realtime:Enabled"] = "true"
         }).Build();
-        var error = Assert.Throws<InvalidOperationException>(() => new ServiceCollection().AddRealtimeRedis(configuration, development: false));
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            new ServiceCollection().AddRealtimeRedis(configuration, development: false));
         Assert.Contains("ConnectionStrings:realtime", error.Message);
     }
 
@@ -57,7 +58,8 @@ public sealed class RedisInfrastructureRegistrationTests
             ["Realtime:Enabled"] = "true",
             ["ConnectionStrings:realtime"] = "localhost:6379"
         }).Build();
-        var error = Assert.Throws<InvalidOperationException>(() => new ServiceCollection().AddRealtimeRedis(configuration, development));
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            new ServiceCollection().AddRealtimeRedis(configuration, development));
         Assert.Contains("certificate", error.Message, StringComparison.OrdinalIgnoreCase);
     }
 }

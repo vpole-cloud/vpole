@@ -10,8 +10,10 @@ public sealed class NotifyDeploymentTargetCatalogChangedConsumer(
 {
     public async Task HandleAsync(DeploymentTargetCatalogChangedEvent message, CancellationToken ct = default)
     {
-        await publish(new RealtimeChange("deployment-targets", ResourceId: message.DeploymentTargetId,
-            Revision: message.Revision), ct);
+        await publish(new RealtimeChange("deployment-targets",
+                ResourceId: message.DeploymentTargetId,
+                Revision: message.Revision),
+            ct);
         // A target's admission, health or credentials affect all three public choice lists.
         // Public hints contain only their authorized tenant, never private catalog metadata.
         await invalidateTenants("deployment-target-eligibility", ct);

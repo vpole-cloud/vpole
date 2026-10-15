@@ -19,8 +19,10 @@ internal sealed record ObservationContextPin(
     string KubernetesNamespace);
 
 internal sealed record ObservationControlDocument(
-    [property: BsonId, BsonRepresentation(BsonType.ObjectId)] string Id,
-    [property: BsonRepresentation(BsonType.ObjectId)] string TenantId,
+    [property: BsonId, BsonRepresentation(BsonType.ObjectId)]
+    string Id,
+    [property: BsonRepresentation(BsonType.ObjectId)]
+    string TenantId,
     ObservationContextPin Pin,
     long Epoch,
     long SourceControlVersion,
@@ -28,34 +30,45 @@ internal sealed record ObservationControlDocument(
     long DemandFence,
     string? InstanceId,
     string? Token,
-    [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)] DateTime LeaseExpiresAtUtc,
+    [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
+    DateTime LeaseExpiresAtUtc,
     bool SourceHealthy,
     string? BindingId,
-    [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)] DateTime? IdleSinceUtc,
-    [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)] DateTime UpdatedAtUtc);
+    [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
+    DateTime? IdleSinceUtc,
+    [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
+    DateTime UpdatedAtUtc);
 
 internal sealed record ObservationDemandDocument(
     [property: BsonId] string Id,
-    [property: BsonRepresentation(BsonType.ObjectId)] string TenantId,
-    [property: BsonRepresentation(BsonType.ObjectId)] string DeploymentId,
+    [property: BsonRepresentation(BsonType.ObjectId)]
+    string TenantId,
+    [property: BsonRepresentation(BsonType.ObjectId)]
+    string DeploymentId,
     string SubscriptionId,
     string ConnectionId,
     string SessionId,
-    [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)] DateTime OriginalExpiresAtUtc,
-    [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)] DateTime ExpiresAtUtc);
+    [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
+    DateTime OriginalExpiresAtUtc,
+    [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
+    DateTime ExpiresAtUtc);
 
 internal sealed record ObservationSnapshotDocument(
-    [property: BsonId, BsonRepresentation(BsonType.ObjectId)] string Id,
-    [property: BsonRepresentation(BsonType.ObjectId)] string TenantId,
+    [property: BsonId, BsonRepresentation(BsonType.ObjectId)]
+    string Id,
+    [property: BsonRepresentation(BsonType.ObjectId)]
+    string TenantId,
     ObservationContextPin Pin,
     string BindingId,
     long SourceControlVersion,
     long ObservationVersion,
-    [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)] DateTime CheckedAtUtc,
+    [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
+    DateTime CheckedAtUtc,
     StoredObservation Observation,
     StoredDiagnostics? Diagnostics,
     string Fingerprint,
-    [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)] DateTime? ExpiresAtUtc);
+    [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
+    DateTime? ExpiresAtUtc);
 
 internal sealed record StoredObservation(
     string Kind,
@@ -86,7 +99,8 @@ internal sealed record StoredPod(
 internal sealed record StoredEvent(
     string Reason,
     int Count,
-    [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)] DateTime? LastSeenAtUtc);
+    [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
+    DateTime? LastSeenAtUtc);
 
 internal sealed record StoredDiagnostics(
     string Kind,
@@ -121,4 +135,5 @@ internal sealed record StoredDiagnosticEvent(
     string ObjectName,
     string Reason,
     int Count,
-    [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)] DateTime? LastSeenAtUtc);
+    [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
+    DateTime? LastSeenAtUtc);

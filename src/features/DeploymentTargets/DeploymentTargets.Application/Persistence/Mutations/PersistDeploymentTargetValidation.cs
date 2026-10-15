@@ -37,31 +37,33 @@ internal sealed class MongoPersistDeploymentTargetValidation(
         }
 
         return await runMongoTransaction(async (transaction, ct) =>
-        {
-            // Two probes can start from the same configuration revision. Compare against the
-            // transaction's current observation so retrying an unchanged result stays quiet.
-            var observed = await deploymentTargets.Find(transaction.Session,
-                DeploymentTargetFilters.AtRevisionAndConnectionVersion(current)).FirstOrDefaultAsync(ct);
-            if (observed is null)
-                return transaction.Abort(new DeploymentTargetRevisionConflict(current.Id));
-            var persisted = await deploymentTargets.FindOneAndUpdateAsync(
-                transaction.Session,
-                DeploymentTargetFilters.AtRevisionAndConnectionVersion(current),
-                Builders<DeploymentTarget>.Update.Combine(
-                    Builders<DeploymentTarget>.Update.Set(item => item.Health, replacement.Health),
-                    Builders<DeploymentTarget>.Update.Set(item => item.Capabilities, replacement.Capabilities)),
-                new FindOneAndUpdateOptions<DeploymentTarget>
-                {
-                    ReturnDocument = ReturnDocument.After
-                },
-                ct);
-            if (persisted is null)
-                return transaction.Abort(new DeploymentTargetRevisionConflict(current.Id));
-            if (MeaningfulObservationChanged(observed, persisted))
-                await storeOutboxWrites(transaction.Session,
-                    [OutboxWrite.Create(new DeploymentTargetCatalogChangedEvent(persisted.Id, persisted.Revision))], ct);
-            return transaction.Commit(persisted);
-        }, cancellationToken);
+            {
+                // Two probes can start from the same configuration revision. Compare against the
+                // transaction's current observation so retrying an unchanged result stays quiet.
+                var observed = await deploymentTargets.Find(transaction.Session,
+                    DeploymentTargetFilters.AtRevisionAndConnectionVersion(current)).FirstOrDefaultAsync(ct);
+                if (observed is null)
+                    return transaction.Abort(new DeploymentTargetRevisionConflict(current.Id));
+                var persisted = await deploymentTargets.FindOneAndUpdateAsync(
+                    transaction.Session,
+                    DeploymentTargetFilters.AtRevisionAndConnectionVersion(current),
+                    Builders<DeploymentTarget>.Update.Combine(
+                        Builders<DeploymentTarget>.Update.Set(item => item.Health, replacement.Health),
+                        Builders<DeploymentTarget>.Update.Set(item => item.Capabilities, replacement.Capabilities)),
+                    new FindOneAndUpdateOptions<DeploymentTarget>
+                    {
+                        ReturnDocument = ReturnDocument.After
+                    },
+                    ct);
+                if (persisted is null)
+                    return transaction.Abort(new DeploymentTargetRevisionConflict(current.Id));
+                if (MeaningfulObservationChanged(observed, persisted))
+                    await storeOutboxWrites(transaction.Session,
+                        [OutboxWrite.Create(new DeploymentTargetCatalogChangedEvent(persisted.Id, persisted.Revision))],
+                        ct);
+                return transaction.Commit(persisted);
+            },
+            cancellationToken);
     }
 
     private static bool MeaningfulObservationChanged(DeploymentTarget before, DeploymentTarget after) =>

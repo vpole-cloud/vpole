@@ -133,29 +133,41 @@ public static class DeploymentTargetPersistenceRegistration
             .GetRequiredService<MongoEnsureBootstrapDefaultDeploymentTarget>()
             .InvokeAsync);
 
-        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistCreatedDeploymentTargetOutcome>>(serviceProvider => serviceProvider
+        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistCreatedDeploymentTargetOutcome>>(serviceProvider =>
+            serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
                 .InvokeOutcomeAsync<PersistCreatedDeploymentTargetOutcome>);
-        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistUpdatedDeploymentTargetOutcome>>(serviceProvider => serviceProvider
+        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistUpdatedDeploymentTargetOutcome>>(serviceProvider =>
+            serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
                 .InvokeOutcomeAsync<PersistUpdatedDeploymentTargetOutcome>);
-        services.TryAddSingleton<RunMongoOutcomeTransaction<DeleteDeploymentTargetPersistenceOutcome>>(
-            serviceProvider => serviceProvider
-                .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<DeleteDeploymentTargetPersistenceOutcome>);
-        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistDeploymentTargetDeletionFenceOutcome>>(serviceProvider => serviceProvider
-                .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<PersistDeploymentTargetDeletionFenceOutcome>);
-        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistRotatedDeploymentTargetConnectionOutcome>>(serviceProvider => serviceProvider
-                .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<PersistRotatedDeploymentTargetConnectionOutcome>);
-        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistDeploymentTargetValidationOutcome>>(serviceProvider => serviceProvider
-                .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<PersistDeploymentTargetValidationOutcome>);
-        services.TryAddSingleton<RunMongoOutcomeTransaction<EnsureBootstrapDefaultDeploymentTargetOutcome>>(
-            serviceProvider => serviceProvider
-                .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<EnsureBootstrapDefaultDeploymentTargetOutcome>);
+        services
+            .TryAddSingleton<RunMongoOutcomeTransaction<DeleteDeploymentTargetPersistenceOutcome>>(serviceProvider =>
+                serviceProvider
+                    .GetRequiredService<MongoRunTransaction>()
+                    .InvokeOutcomeAsync<DeleteDeploymentTargetPersistenceOutcome>);
+        services
+            .TryAddSingleton<RunMongoOutcomeTransaction<PersistDeploymentTargetDeletionFenceOutcome>>(serviceProvider =>
+                serviceProvider
+                    .GetRequiredService<MongoRunTransaction>()
+                    .InvokeOutcomeAsync<PersistDeploymentTargetDeletionFenceOutcome>);
+        services
+            .TryAddSingleton<
+                RunMongoOutcomeTransaction<PersistRotatedDeploymentTargetConnectionOutcome>>(serviceProvider =>
+                serviceProvider
+                    .GetRequiredService<MongoRunTransaction>()
+                    .InvokeOutcomeAsync<PersistRotatedDeploymentTargetConnectionOutcome>);
+        services
+            .TryAddSingleton<RunMongoOutcomeTransaction<PersistDeploymentTargetValidationOutcome>>(serviceProvider =>
+                serviceProvider
+                    .GetRequiredService<MongoRunTransaction>()
+                    .InvokeOutcomeAsync<PersistDeploymentTargetValidationOutcome>);
+        services
+            .TryAddSingleton<
+                RunMongoOutcomeTransaction<EnsureBootstrapDefaultDeploymentTargetOutcome>>(serviceProvider =>
+                serviceProvider
+                    .GetRequiredService<MongoRunTransaction>()
+                    .InvokeOutcomeAsync<EnsureBootstrapDefaultDeploymentTargetOutcome>);
         return services;
     }
 

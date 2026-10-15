@@ -51,8 +51,10 @@ internal sealed class MongoQueueSourceBuildJob(
                 await jobs.InsertOneAsync(transaction.Session, job, cancellationToken: ct);
                 await storeOutboxWrites(
                     transaction.Session,
-                    [OutboxWrite.Create(requestedEvent),
-                     OutboxWrite.Create(job.ToStateChangedEvent() with { EventCore = requestedEvent.EventCore })],
+                    [
+                        OutboxWrite.Create(requestedEvent),
+                        OutboxWrite.Create(job.ToStateChangedEvent() with { EventCore = requestedEvent.EventCore })
+                    ],
                     ct);
                 QueueSourceBuildJobOutcome accepted = job;
                 return transaction.Commit(accepted);

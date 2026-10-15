@@ -8,8 +8,12 @@ public sealed class NotifyStorageObservationChangedConsumer(PublishRealtimeChang
     : IConsumer<StorageObservationChangedEvent>
 {
     public Task HandleAsync(StorageObservationChangedEvent message, CancellationToken ct = default) =>
-        publish(new("storage-observations", ResourceId: message.DeploymentTargetId,
-            Revision: message.ConnectionVersion, ObservationVersion: message.ObservationVersion), ct);
+        publish(new("storage-observations",
+                ResourceId: message.DeploymentTargetId,
+                Revision: message.ConnectionVersion,
+                ObservationVersion: message.ObservationVersion),
+            ct);
 
-    public Task Consume(ConsumeContext<StorageObservationChangedEvent> context) => HandleAsync(context.Message, context.CancellationToken);
+    public Task Consume(ConsumeContext<StorageObservationChangedEvent> context) =>
+        HandleAsync(context.Message, context.CancellationToken);
 }

@@ -17,7 +17,9 @@ namespace Pole.Tests.Integration.Secrets;
 public sealed class SecretProjectionOutboxTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
 {
     private const string EventName = "pole.secrets/v1/secret-projection-changed";
-    private IMongoCollection<SecretProjection> Projections => Fixture.Database.GetCollection<SecretProjection>("SecretProjections");
+
+    private IMongoCollection<SecretProjection> Projections =>
+        Fixture.Database.GetCollection<SecretProjection>("SecretProjections");
 
     [Theory]
     [InlineData("Applied")]
@@ -35,28 +37,34 @@ public sealed class SecretProjectionOutboxTests(MongoReplicaSetFixture fixture) 
         };
         await Complete(completed);
         await Complete(claimed.Applied());
-        await Complete(claimed with { TenantId = ObjectId.GenerateNewId().ToString() });
+        await Complete(claimed with
+        {
+            TenantId = ObjectId.GenerateNewId().ToString()
+        });
 
         var envelopes = await DbContext.OutboxMessages.Find(row => row.EventType == EventName).ToListAsync();
         Assert.Equal(2, envelopes.Count);
         var messages = envelopes.Select(row => JsonSerializer.Deserialize<SecretProjectionChangedEvent>(
-            row.PayloadJson, EventExtensions.SerializerOptions)!).OrderBy(row => row.StorageRevision).ToArray();
+            row.PayloadJson,
+            EventExtensions.SerializerOptions)!).OrderBy(row => row.StorageRevision).ToArray();
         Assert.Equal([2L, 3L], messages.Select(message => message.StorageRevision).ToArray());
-        Assert.All(messages, message =>
-        {
-            Assert.Equal(desired.TenantId, message.EventCore.TenantId);
-            Assert.Equal(desired.SecretId, message.SecretId);
-            Assert.Equal(desired.ResourceGroupId, message.ResourceGroupId);
-            Assert.Equal(desired.DeploymentId, message.DeploymentId);
-        });
-        Assert.All(envelopes, row =>
-        {
-            Assert.Equal(desired.TenantId, row.TenantId);
-            Assert.DoesNotContain("private-failure-detail", row.PayloadJson);
-            Assert.DoesNotContain("private-namespace", row.PayloadJson);
-            Assert.DoesNotContain("private-kubernetes-name", row.PayloadJson);
-            Assert.DoesNotContain("owner", row.PayloadJson);
-        });
+        Assert.All(messages,
+            message =>
+            {
+                Assert.Equal(desired.TenantId, message.EventCore.TenantId);
+                Assert.Equal(desired.SecretId, message.SecretId);
+                Assert.Equal(desired.ResourceGroupId, message.ResourceGroupId);
+                Assert.Equal(desired.DeploymentId, message.DeploymentId);
+            });
+        Assert.All(envelopes,
+            row =>
+            {
+                Assert.Equal(desired.TenantId, row.TenantId);
+                Assert.DoesNotContain("private-failure-detail", row.PayloadJson);
+                Assert.DoesNotContain("private-namespace", row.PayloadJson);
+                Assert.DoesNotContain("private-kubernetes-name", row.PayloadJson);
+                Assert.DoesNotContain("owner", row.PayloadJson);
+            });
     }
 
     [Fact]
@@ -66,7 +74,12 @@ public sealed class SecretProjectionOutboxTests(MongoReplicaSetFixture fixture) 
         var now = DateTime.UtcNow;
         var old = Assert.IsType<SecretProjection>(await Claim(desired, "old", now));
         Assert.Null(await Claim(desired, "busy", now.AddSeconds(1)));
-        var current = Assert.IsType<SecretProjection>(await Claim(desired with { DesiredRevision = 2, DesiredVersion = 2 }, "current", now.AddMinutes(3)));
+        var current = Assert.IsType<SecretProjection>(
+            await Claim(desired with
+            {
+                DesiredRevision = 2,
+                DesiredVersion = 2
+            }, "current", now.AddMinutes(3)));
         await Complete(current.Applied());
         await Complete(old.Failed("stale"));
         Assert.Null(await Claim(desired, "older", now.AddMinutes(4)));
@@ -82,7 +95,8 @@ public sealed class SecretProjectionOutboxTests(MongoReplicaSetFixture fixture) 
     {
         var desired = Desired();
         var now = DateTime.UtcNow;
-        var results = await Task.WhenAll(Enumerable.Range(0, 8).Select(index => Claim(desired, $"worker-{index}", now)));
+        var results =
+            await Task.WhenAll(Enumerable.Range(0, 8).Select(index => Claim(desired, $"worker-{index}", now)));
         Assert.Single(results, result => result is not null);
         Assert.Equal(1, await Projections.CountDocumentsAsync(row => row.Id == desired.Id));
         Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(EventName));
@@ -106,11 +120,15 @@ public sealed class SecretProjectionOutboxTests(MongoReplicaSetFixture fixture) 
             await Projections.InsertOneAsync(before);
             before = await Projections.Find(row => row.Id == desired.Id).SingleAsync();
         }
+
         await using var provider = FailingOutboxProvider();
         await using var scope = provider.CreateAsyncScope();
         await Assert.ThrowsAsync<InvalidOperationException>(() => mutation == "completion"
             ? scope.ServiceProvider.GetRequiredService<CompleteSecretProjection>()(before!.Applied(), default)
-            : scope.ServiceProvider.GetRequiredService<ClaimSecretProjection>()(desired, "new-owner", DateTime.UtcNow, default));
+            : scope.ServiceProvider.GetRequiredService<ClaimSecretProjection>()(desired,
+                "new-owner",
+                DateTime.UtcNow,
+                default));
         var after = await Projections.Find(row => row.Id == desired.Id).SingleOrDefaultAsync();
         Assert.Equal(before, after);
         Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(EventName));
@@ -118,7 +136,9 @@ public sealed class SecretProjectionOutboxTests(MongoReplicaSetFixture fixture) 
 
     private Task<SecretProjection?> Claim(SecretProjection desired, string owner, DateTime now) =>
         Services.GetRequiredService<ClaimSecretProjection>()(desired, owner, now, default);
-    private Task Complete(SecretProjection projection) => Services.GetRequiredService<CompleteSecretProjection>()(projection, default);
+
+    private Task Complete(SecretProjection projection) =>
+        Services.GetRequiredService<CompleteSecretProjection>()(projection, default);
 
     private ServiceProvider FailingOutboxProvider()
     {
@@ -135,10 +155,22 @@ public sealed class SecretProjectionOutboxTests(MongoReplicaSetFixture fixture) 
 
     private static SecretProjection Desired()
     {
-        var secret = SecretFactory.Create(ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString(),
-            "group", "scope", "name", "purpose", ["key"], DateTime.UtcNow);
-        return SecretProjectionFactory.Create(secret, SecretBinding.Create("binding", "pole/postgresql", "consumer", new AllSecretDeployments(), []),
-            "deployment", "cell", "target", "private-namespace") with
-        { KubernetesName = "private-kubernetes-name" };
+        var secret = SecretFactory.Create(ObjectId.GenerateNewId().ToString(),
+            ObjectId.GenerateNewId().ToString(),
+            "group",
+            "scope",
+            "name",
+            "purpose",
+            ["key"],
+            DateTime.UtcNow);
+        return SecretProjectionFactory.Create(secret,
+                SecretBinding.Create("binding", "pole/postgresql", "consumer", new AllSecretDeployments(), []),
+                "deployment",
+                "cell",
+                "target",
+                "private-namespace") with
+        {
+            KubernetesName = "private-kubernetes-name"
+        };
     }
 }

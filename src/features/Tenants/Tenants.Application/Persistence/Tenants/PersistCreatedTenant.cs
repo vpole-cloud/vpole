@@ -21,11 +21,13 @@ internal sealed class MongoPersistCreatedTenant(
     public Task InvokeAsync(
         Tenant tenant,
         CancellationToken cancellationToken = default) => runTransaction(async (transaction, ct) =>
-    {
-        await _tenants.InsertOneAsync(transaction.Session, tenant, cancellationToken: ct);
-        await storeOutboxWrites(transaction.Session,
-            tenant.Members.Select(member => member.UserId).Distinct(StringComparer.Ordinal)
-                .Select(userId => TenantAccessEventExtensions.MembershipChanged(tenant.Id, userId)).ToArray(), ct);
-        return transaction.Commit(Unit.Value);
-    }, cancellationToken);
+        {
+            await _tenants.InsertOneAsync(transaction.Session, tenant, cancellationToken: ct);
+            await storeOutboxWrites(transaction.Session,
+                tenant.Members.Select(member => member.UserId).Distinct(StringComparer.Ordinal)
+                    .Select(userId => TenantAccessEventExtensions.MembershipChanged(tenant.Id, userId)).ToArray(),
+                ct);
+            return transaction.Commit(Unit.Value);
+        },
+        cancellationToken);
 }

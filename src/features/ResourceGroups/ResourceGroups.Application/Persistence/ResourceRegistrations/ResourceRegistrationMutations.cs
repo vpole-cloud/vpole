@@ -70,9 +70,13 @@ internal sealed class MongoResourceRegistrationMutations(
         {
             return Conflict(resource);
         }
+
         await storeOutboxWrites(session,
-            [OutboxWrite.Create(new ResourceRegisteredEvent(candidate.ResourceGroupId,
-                candidate.ResourceTypeId, candidate.ResourceId) { EventCore = EventCore.Create(candidate.TenantId) })],
+            [
+                OutboxWrite.Create(new ResourceRegisteredEvent(candidate.ResourceGroupId,
+                    candidate.ResourceTypeId,
+                    candidate.ResourceId) { EventCore = EventCore.Create(candidate.TenantId) })
+            ],
             cancellationToken);
         return ToContract(candidate);
     }
@@ -98,10 +102,11 @@ internal sealed class MongoResourceRegistrationMutations(
         if (current is null)
         {
             return new ResourceRegistrationMutationError(
-                    new ResourceRegistrationNotFound(
-                        resource.ResourceTypeId,
-                        resource.ResourceId));
+                new ResourceRegistrationNotFound(
+                    resource.ResourceTypeId,
+                    resource.ResourceId));
         }
+
         if (!string.Equals(current.ResourceGroupId, resourceGroupId, StringComparison.Ordinal) ||
             !string.Equals(current.OwningPluginId, owningPluginId, StringComparison.Ordinal))
         {
@@ -132,10 +137,14 @@ internal sealed class MongoResourceRegistrationMutations(
                 resource.ResourceId),
             replacement,
             cancellationToken: cancellationToken);
-        if (write.ModifiedCount != 1) return Conflict(resource);
+        if (write.ModifiedCount != 1)
+            return Conflict(resource);
         await storeOutboxWrites(session,
-            [OutboxWrite.Create(new ResourceRegistrationUpdatedEvent(replacement.ResourceGroupId,
-                replacement.ResourceTypeId, replacement.ResourceId) { EventCore = EventCore.Create(replacement.TenantId) })],
+            [
+                OutboxWrite.Create(new ResourceRegistrationUpdatedEvent(replacement.ResourceGroupId,
+                    replacement.ResourceTypeId,
+                    replacement.ResourceId) { EventCore = EventCore.Create(replacement.TenantId) })
+            ],
             cancellationToken);
         return ToContract(replacement);
     }
@@ -183,11 +192,13 @@ internal sealed class MongoResourceRegistrationMutations(
         if (deletion.DeletedCount == 1)
             await storeOutboxWrites(
                 session,
-                [OutboxWrite.Create(
-                    new ResourceUnregisteredEvent(resourceGroupId, resourceTypeId.Value, resourceId)
-                    {
-                        EventCore = EventCore.Create(tenantId)
-                    })],
+                [
+                    OutboxWrite.Create(
+                        new ResourceUnregisteredEvent(resourceGroupId, resourceTypeId.Value, resourceId)
+                        {
+                            EventCore = EventCore.Create(tenantId)
+                        })
+                ],
                 cancellationToken);
         return deletion.DeletedCount == 1
             ? new ResourceUnregistered()

@@ -30,7 +30,8 @@ public sealed class RealtimeSessionHttpTests
         await using var app = await StartAsync();
         using var client = app.GetTestClient();
         client.DefaultRequestHeaders.Add("Origin", "https://frontend.test");
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsync(RealtimeFeature.Route + "/session", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.PostAsync(RealtimeFeature.Route + "/session", null)).StatusCode);
         client.DefaultRequestHeaders.Authorization = new("Bearer", "viewer");
         var response = await client.PostAsync(RealtimeFeature.Route + "/session", null);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -43,7 +44,8 @@ public sealed class RealtimeSessionHttpTests
         Assert.DoesNotContain("viewer", cookie);
         var tickets = app.Services.GetRequiredService<MemoryTickets>();
         var ticket = Assert.Single(tickets.Tickets).Value;
-        Assert.All(ticket.Principal.Claims, claim => Assert.Contains(claim.Type, new[] { "sub", "iss", "sid", "roles", RealtimeFeature.SessionClaim }));
+        Assert.All(ticket.Principal.Claims,
+            claim => Assert.Contains(claim.Type, new[] { "sub", "iss", "sid", "roles", RealtimeFeature.SessionClaim }));
         Assert.Empty(ticket.Properties.GetTokens());
         client.DefaultRequestHeaders.Authorization = null;
         client.DefaultRequestHeaders.Add("Cookie", cookie.Split(';')[0]);
@@ -57,11 +59,15 @@ public sealed class RealtimeSessionHttpTests
         Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync(RealtimeFeature.Route + "/unknown")).StatusCode);
         client.DefaultRequestHeaders.Add("Origin", "https://frontend.test");
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/ordinary-api")).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsync(RealtimeFeature.Route + "/session", null)).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await client.PostAsync(RealtimeFeature.Route + "/hub/negotiate?negotiateVersion=1", null)).StatusCode);
-        Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync(RealtimeFeature.Route + "/session")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.PostAsync(RealtimeFeature.Route + "/session", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK,
+            (await client.PostAsync(RealtimeFeature.Route + "/hub/negotiate?negotiateVersion=1", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await client.DeleteAsync(RealtimeFeature.Route + "/session")).StatusCode);
         Assert.Empty(tickets.Tickets);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsync(RealtimeFeature.Route + "/hub/negotiate?negotiateVersion=1", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.PostAsync(RealtimeFeature.Route + "/hub/negotiate?negotiateVersion=1", null)).StatusCode);
     }
 
     [Fact]
@@ -70,19 +76,23 @@ public sealed class RealtimeSessionHttpTests
         await using var app = await StartAsync();
         using var client = app.GetTestClient();
         client.DefaultRequestHeaders.Authorization = new("Bearer", "viewer");
-        Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsync(RealtimeFeature.Route + "/session", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.PostAsync(RealtimeFeature.Route + "/session", null)).StatusCode);
         client.DefaultRequestHeaders.Add("Origin", "https://untrusted.test");
-        Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsync(RealtimeFeature.Route + "/session", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.PostAsync(RealtimeFeature.Route + "/session", null)).StatusCode);
         client.DefaultRequestHeaders.Remove("Origin");
         client.DefaultRequestHeaders.Add("Origin", "https://frontend.test");
         var response = await client.PostAsync(RealtimeFeature.Route + "/session", null);
         client.DefaultRequestHeaders.Add("Cookie", response.Headers.GetValues("Set-Cookie").Single().Split(';')[0]);
         client.DefaultRequestHeaders.Authorization = new("Bearer", "another-account");
-        Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsync(RealtimeFeature.Route + "/session", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict,
+            (await client.PostAsync(RealtimeFeature.Route + "/session", null)).StatusCode);
         Assert.Single(app.Services.GetRequiredService<MemoryTickets>().Tickets);
     }
 
-    private static async Task<WebApplication> StartAsync(ObservedSessionHandler? handler = null, CancellationToken? requestAborted = null)
+    private static async Task<WebApplication> StartAsync(ObservedSessionHandler? handler = null,
+        CancellationToken? requestAborted = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
@@ -92,20 +102,37 @@ public sealed class RealtimeSessionHttpTests
             ["Realtime:AllowedOrigins:0"] = "https://frontend.test"
         });
         builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-            .AddScheme<AuthenticationSchemeOptions, TestBearer>(JwtBearerDefaults.AuthenticationScheme, _ => { });
+            .AddScheme<AuthenticationSchemeOptions, TestBearer>(JwtBearerDefaults.AuthenticationScheme,
+                _ =>
+                {
+                });
         builder.Services.AddAuthorization();
         builder.Services.AddRealtimeFeature(builder.Configuration, development: true);
         builder.Services.AddSingleton<MemoryTickets>();
         builder.Services.AddSingleton<IRealtimeTicketStore>(provider => provider.GetRequiredService<MemoryTickets>());
         builder.Services.AddSingleton<IRealtimeSubscriptions, MemorySubscriptions>();
-        builder.Services.AddScoped<LoadTenantMember>(_ => (tenant, user, _, _) => Task.FromResult<LoadTenantMemberOutcome>(new TenantMemberMissing(tenant, user)));
-        builder.Services.AddScoped<LoadTenantIdentity>(_ => (tenant, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentityNotFound(tenant)));
+        builder.Services.AddScoped<LoadTenantMember>(_ => (tenant, user, _, _) =>
+            Task.FromResult<LoadTenantMemberOutcome>(new TenantMemberMissing(tenant, user)));
+        builder.Services.AddScoped<LoadTenantIdentity>(_ => (tenant, _) =>
+            Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentityNotFound(tenant)));
         builder.Services.AddScoped<IMediator, Pole.Mediator.Mediator>();
-        builder.Services.AddScoped<IMediatorOutcomeHandler<CreateRealtimeSessionRequest, CreateRealtimeSessionOutcome>, CreateRealtimeSessionHandler>();
-        builder.Services.AddScoped<IMediatorOutcomeHandler<DeleteRealtimeSessionRequest, DeleteRealtimeSessionOutcome>, DeleteRealtimeSessionHandler>();
-        if (handler is not null) builder.Services.AddSingleton<IMediatorOutcomeHandler<CreateRealtimeSessionRequest, CreateRealtimeSessionOutcome>>(handler);
+        builder.Services
+            .AddScoped<IMediatorOutcomeHandler<CreateRealtimeSessionRequest, CreateRealtimeSessionOutcome>,
+                CreateRealtimeSessionHandler>();
+        builder.Services
+            .AddScoped<IMediatorOutcomeHandler<DeleteRealtimeSessionRequest, DeleteRealtimeSessionOutcome>,
+                DeleteRealtimeSessionHandler>();
+        if (handler is not null)
+            builder.Services
+                .AddSingleton<IMediatorOutcomeHandler<CreateRealtimeSessionRequest, CreateRealtimeSessionOutcome>>(
+                    handler);
         var app = builder.Build();
-        if (requestAborted is { } token) app.Use(async (context, next) => { context.RequestAborted = token; await next(context); });
+        if (requestAborted is { } token)
+            app.Use(async (context, next) =>
+            {
+                context.RequestAborted = token;
+                await next(context);
+            });
         app.UseRealtimeOriginGuard();
         app.UseCors();
         app.UseAuthentication();
@@ -125,16 +152,27 @@ public sealed class RealtimeSessionHttpTests
         using var client = app.GetTestClient();
         client.DefaultRequestHeaders.Add("Origin", "https://frontend.test");
         client.DefaultRequestHeaders.Authorization = new("Bearer", "viewer");
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsync(RealtimeFeature.Route + "/session", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.PostAsync(RealtimeFeature.Route + "/session", null)).StatusCode);
         Assert.True(handler.Received.CanBeCanceled);
         Assert.Equal(cancellation.Token, handler.Received);
     }
 
-    private sealed class ObservedSessionHandler : IMediatorOutcomeHandler<CreateRealtimeSessionRequest, CreateRealtimeSessionOutcome>
+    private sealed class
+        ObservedSessionHandler : IMediatorOutcomeHandler<CreateRealtimeSessionRequest, CreateRealtimeSessionOutcome>
     {
-        public CancellationToken Received { get; private set; }
-        public Task<CreateRealtimeSessionOutcome> HandleAsync(CreateRealtimeSessionRequest request, CancellationToken cancellationToken = default)
-        { Received = cancellationToken; return Task.FromResult<CreateRealtimeSessionOutcome>(new RealtimeSessionIdentityUnavailable()); }
+        public CancellationToken Received
+        {
+            get;
+            private set;
+        }
+
+        public Task<CreateRealtimeSessionOutcome> HandleAsync(CreateRealtimeSessionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            Received = cancellationToken;
+            return Task.FromResult<CreateRealtimeSessionOutcome>(new RealtimeSessionIdentityUnavailable());
+        }
     }
 
     [Fact]
@@ -157,8 +195,15 @@ public sealed class RealtimeSessionHttpTests
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
-        builder.Host.UseDefaultServiceProvider(options => { options.ValidateOnBuild = true; options.ValidateScopes = true; });
-        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Realtime:AllowedOrigins:0"] = "https://frontend.test" });
+        builder.Host.UseDefaultServiceProvider(options =>
+        {
+            options.ValidateOnBuild = true;
+            options.ValidateScopes = true;
+        });
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Realtime:AllowedOrigins:0"] = "https://frontend.test"
+        });
         builder.Services.AddRealtimeFeature(builder.Configuration, development: true);
         await using var app = builder.Build();
         app.UseRealtimeOriginGuard();
@@ -174,19 +219,26 @@ public sealed class RealtimeSessionHttpTests
         Assert.Equal("true", Assert.Single(response.Headers.GetValues("Access-Control-Allow-Credentials")));
     }
 
-    private sealed class TestBearer(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
+    private sealed class TestBearer(
+        IOptionsMonitor<AuthenticationSchemeOptions> options,
+        ILoggerFactory logger,
+        UrlEncoder encoder)
         : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
     {
         protected override Task<AuthenticateResult> HandleAuthenticateAsync()
         {
             var header = Request.Headers.Authorization.ToString();
-            if (!header.StartsWith("Bearer ", StringComparison.Ordinal)) return Task.FromResult(AuthenticateResult.NoResult());
+            if (!header.StartsWith("Bearer ", StringComparison.Ordinal))
+                return Task.FromResult(AuthenticateResult.NoResult());
             var principal = new ClaimsPrincipal(new ClaimsIdentity(new[]
-            {
-                new Claim("sub", header[7..]), new Claim("iss", "https://issuer.test"),
-                new Claim("exp", Request.Headers["X-Test-Expiry"].FirstOrDefault() ?? DateTimeOffset.UtcNow.AddMinutes(10).ToUnixTimeSeconds().ToString()),
-                new Claim("name", "must-not-be-stored"), new Claim("credential", "must-not-be-stored")
-            }, Scheme.Name));
+                {
+                    new Claim("sub", header[7..]), new Claim("iss", "https://issuer.test"),
+                    new Claim("exp",
+                        Request.Headers["X-Test-Expiry"].FirstOrDefault() ??
+                        DateTimeOffset.UtcNow.AddMinutes(10).ToUnixTimeSeconds().ToString()),
+                    new Claim("name", "must-not-be-stored"), new Claim("credential", "must-not-be-stored")
+                },
+                Scheme.Name));
             return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(principal, Scheme.Name)));
         }
     }

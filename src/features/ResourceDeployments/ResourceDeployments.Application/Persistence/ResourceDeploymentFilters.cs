@@ -8,8 +8,10 @@ namespace Pole.Features.ResourceDeployments.Application.Persistence;
 
 internal static partial class ResourceDeploymentFilters
 {
-    public static FilterDefinition<ResourceDeployment> ForOperationState<TState>(FilterDefinition<ResourceDeployment> scope) where TState : ResourceDeploymentState =>
-        scope & Builders<ResourceDeployment>.Filter.OfType<ResourceDeploymentState, TState>(deployment => deployment.State);
+    public static FilterDefinition<ResourceDeployment> ForOperationState<TState>(
+        FilterDefinition<ResourceDeployment> scope) where TState : ResourceDeploymentState =>
+        scope & Builders<ResourceDeployment>.Filter.OfType<ResourceDeploymentState, TState>(deployment =>
+            deployment.State);
 
     public static FilterDefinition<ResourceDeployment> ForOperations(
         string tenantId,
@@ -18,9 +20,12 @@ internal static partial class ResourceDeploymentFilters
         string? resourceId)
     {
         var filter = VisibleToTenant(tenantId) & Builders<ResourceDeployment>.Filter.Not(IsDeleted());
-        if (groupId is not null) filter &= Builders<ResourceDeployment>.Filter.Eq(deployment => deployment.ResourceGroupId, groupId);
-        if (resourceType is not null) filter &= Builders<ResourceDeployment>.Filter.Eq(deployment => deployment.ResourceType, resourceType);
-        if (resourceId is not null) filter &= Builders<ResourceDeployment>.Filter.Eq(deployment => deployment.ResourceId, resourceId);
+        if (groupId is not null)
+            filter &= Builders<ResourceDeployment>.Filter.Eq(deployment => deployment.ResourceGroupId, groupId);
+        if (resourceType is not null)
+            filter &= Builders<ResourceDeployment>.Filter.Eq(deployment => deployment.ResourceType, resourceType);
+        if (resourceId is not null)
+            filter &= Builders<ResourceDeployment>.Filter.Eq(deployment => deployment.ResourceId, resourceId);
         return filter;
     }
 
@@ -157,8 +162,8 @@ internal static partial class ResourceDeploymentFilters
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(computeProfileId);
         return Builders<ResourceDeployment>.Filter.Eq(
-                deployment => deployment.ResolvedPlacement.Compute.ComputeProfileId,
-                computeProfileId);
+            deployment => deployment.ResolvedPlacement.Compute.ComputeProfileId,
+            computeProfileId);
     }
 
     public static FilterDefinition<ResourceDeployment> UnfinishedForResourceGroup(
@@ -238,10 +243,11 @@ internal static partial class ResourceDeploymentFilters
         DateTime stalePendingBefore) =>
         Builders<ResourceDeployment>.Filter.Or(
             Builders<ResourceDeployment>.Filter.And(
-                Builders<ResourceDeployment>.Filter.OfType<ResourceDeploymentState, AppliedResourceDeploymentState>(
-                    deployment => deployment.State),
+                Builders<ResourceDeployment>.Filter
+                    .OfType<ResourceDeploymentState, AppliedResourceDeploymentState>(deployment => deployment.State),
                 Builders<ResourceDeployment>.Filter.Eq(
-                    deployment => deployment.DesiredOperation, ResourceDeploymentOperation.Apply),
+                    deployment => deployment.DesiredOperation,
+                    ResourceDeploymentOperation.Apply),
                 Builders<ResourceDeployment>.Filter.Lte(
                     deployment => deployment.UpdatedAtUtc,
                     ResourceDeploymentVerificationSchedule.DueBefore(now))),
@@ -313,18 +319,15 @@ internal static partial class ResourceDeploymentFilters
 
     private static FilterDefinition<ResourceDeployment> IsPending() =>
         Builders<ResourceDeployment>.Filter
-            .OfType<ResourceDeploymentState, PendingResourceDeploymentState>(
-                deployment => deployment.State);
+            .OfType<ResourceDeploymentState, PendingResourceDeploymentState>(deployment => deployment.State);
 
     private static FilterDefinition<ResourceDeployment> IsReconciling() =>
         Builders<ResourceDeployment>.Filter
-            .OfType<ResourceDeploymentState, ReconcilingResourceDeploymentState>(
-                deployment => deployment.State);
+            .OfType<ResourceDeploymentState, ReconcilingResourceDeploymentState>(deployment => deployment.State);
 
     private static FilterDefinition<ResourceDeployment> IsFailed() =>
         Builders<ResourceDeployment>.Filter
-            .OfType<ResourceDeploymentState, FailedResourceDeploymentState>(
-                deployment => deployment.State);
+            .OfType<ResourceDeploymentState, FailedResourceDeploymentState>(deployment => deployment.State);
 
     private static FilterDefinition<ResourceDeployment> IsRetryableFailure() =>
         Builders<ResourceDeployment>.Filter.And(
@@ -335,21 +338,20 @@ internal static partial class ResourceDeploymentFilters
 
     private static FilterDefinition<ResourceDeployment> IsWaitingForRuntimeCell() =>
         Builders<ResourceDeployment>.Filter
-            .OfType<ResourceDeploymentState, WaitingForRuntimeCellResourceDeploymentState>(
-                deployment => deployment.State);
+            .OfType<ResourceDeploymentState, WaitingForRuntimeCellResourceDeploymentState>(deployment =>
+                deployment.State);
 
     private static FilterDefinition<ResourceDeployment> IsDeleted() =>
         Builders<ResourceDeployment>.Filter
-            .OfType<ResourceDeploymentState, DeletedResourceDeploymentState>(
-                deployment => deployment.State);
+            .OfType<ResourceDeploymentState, DeletedResourceDeploymentState>(deployment => deployment.State);
 
     private static FilterDefinition<ResourceDeployment> ForExpectedRecoveryState(
         ResourceDeploymentState state) =>
         state switch
         {
             AppliedResourceDeploymentState =>
-                Builders<ResourceDeployment>.Filter.OfType<ResourceDeploymentState, AppliedResourceDeploymentState>(
-                    deployment => deployment.State),
+                Builders<ResourceDeployment>.Filter
+                    .OfType<ResourceDeploymentState, AppliedResourceDeploymentState>(deployment => deployment.State),
             WaitingForRuntimeCellResourceDeploymentState => IsWaitingForRuntimeCell(),
             PendingResourceDeploymentState => IsPending(),
             ReconcilingResourceDeploymentState reconciling =>

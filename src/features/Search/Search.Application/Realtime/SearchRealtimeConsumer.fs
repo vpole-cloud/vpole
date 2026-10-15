@@ -5,9 +5,10 @@ open MassTransit
 open Pole.Features.Realtime.Contracts
 open Pole.Features.Search.Events
 
-type NotifySearchProjectionChangedConsumer(publish : PublishRealtimeChange) =
-    member _.HandleAsync(message : SearchProjectionChangedEvent, ct : CancellationToken) =
+type NotifySearchProjectionChangedConsumer(publish: PublishRealtimeChange) =
+    member _.HandleAsync(message: SearchProjectionChangedEvent, ct: CancellationToken) =
         publish.Invoke(RealtimeChange("search", message.EventCore.TenantId), ct)
 
     interface IConsumer<SearchProjectionChangedEvent> with
-        member this.Consume(context) = this.HandleAsync(context.Message, context.CancellationToken)
+        member this.Consume(context) =
+            this.HandleAsync(context.Message, context.CancellationToken)

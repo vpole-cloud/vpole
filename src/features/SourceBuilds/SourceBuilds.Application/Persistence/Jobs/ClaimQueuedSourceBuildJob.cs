@@ -11,6 +11,7 @@ public delegate Task<SourceBuildJob?> ClaimQueuedSourceBuildJob(
     CancellationToken cancellationToken = default);
 
 internal sealed record SourceBuildJobNotClaimed;
+
 internal union ClaimSourceBuildJobOutcome(
     SourceBuildJob,
     SourceBuildJobNotClaimed);
@@ -27,25 +28,26 @@ internal sealed class MongoClaimQueuedSourceBuildJob(
     {
         // The internal dispatcher supplies job IDs; the claimed document owns tenant context.
         var outcome = await transactions.InvokeOutcomeAsync<ClaimSourceBuildJobOutcome>(async (transaction, ct) =>
-        {
-            var claimed = await jobs.FindOneAndUpdateAsync(
-                transaction.Session,
-                SourceBuildJobFilters.ClaimQueued(buildJobId),
-                Builders<SourceBuildJob>.Update
-                    .Set(item => item.State, new CloningSourceBuild(claimedAtUtc))
-                    .Set(item => item.UpdatedAtUtc, claimedAtUtc),
-                new FindOneAndUpdateOptions<SourceBuildJob> { ReturnDocument = ReturnDocument.After },
-                ct);
-            if (claimed is null)
             {
-                ClaimSourceBuildJobOutcome rejected = new SourceBuildJobNotClaimed();
-                return transaction.Commit(rejected);
-            }
+                var claimed = await jobs.FindOneAndUpdateAsync(
+                    transaction.Session,
+                    SourceBuildJobFilters.ClaimQueued(buildJobId),
+                    Builders<SourceBuildJob>.Update
+                        .Set(item => item.State, new CloningSourceBuild(claimedAtUtc))
+                        .Set(item => item.UpdatedAtUtc, claimedAtUtc),
+                    new FindOneAndUpdateOptions<SourceBuildJob> { ReturnDocument = ReturnDocument.After },
+                    ct);
+                if (claimed is null)
+                {
+                    ClaimSourceBuildJobOutcome rejected = new SourceBuildJobNotClaimed();
+                    return transaction.Commit(rejected);
+                }
 
-            await storeOutboxWrites(transaction.Session, [OutboxWrite.Create(claimed.ToStateChangedEvent())], ct);
-            ClaimSourceBuildJobOutcome accepted = claimed;
-            return transaction.Commit(accepted);
-        }, cancellationToken);
+                await storeOutboxWrites(transaction.Session, [OutboxWrite.Create(claimed.ToStateChangedEvent())], ct);
+                ClaimSourceBuildJobOutcome accepted = claimed;
+                return transaction.Commit(accepted);
+            },
+            cancellationToken);
         return outcome switch
         {
             SourceBuildJob claimed => claimed,

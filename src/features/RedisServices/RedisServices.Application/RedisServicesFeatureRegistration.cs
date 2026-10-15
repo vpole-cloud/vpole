@@ -23,7 +23,8 @@ public static class RedisServicesFeatureRegistration
     {
         services.AddSingleton(new RealtimeTopic("redis", RealtimeScope.Tenant));
         services.AddSingleton<IMigration>(new FeatureScopedMigration(
-            "pole.redis", new RedisNameIndexesMigration()));
+            "pole.redis",
+            new RedisNameIndexesMigration()));
         services.AddSingleton<SearchSourceType>(RedisServiceSearchProjection.SourceType);
         services.AddRedisPersistence();
         services.AddSingleton(new ResourceConnectionSourceCapability(
@@ -41,7 +42,10 @@ public static class RedisServicesFeatureRegistration
         services.TryAddScoped<RedisResourceDeploymentAdapter>();
         services.TryAddScoped<RedisResourceDeploymentObserver>();
         services.TryAddScoped<RedisResourceDeploymentChangeSource>();
-        services.AddSingleton(ResourceDeploymentObserverDescriptor.Create<RedisResourceDeploymentObserver, RedisResourceDeploymentChangeSource>(RedisResourceDeployment.ResourceType));
+        services.AddSingleton(
+            ResourceDeploymentObserverDescriptor
+                .Create<RedisResourceDeploymentObserver, RedisResourceDeploymentChangeSource>(RedisResourceDeployment
+                    .ResourceType));
         services.AddSingleton(RedisResourceDeploymentAdapterRegistration.Descriptor);
         return services;
     }

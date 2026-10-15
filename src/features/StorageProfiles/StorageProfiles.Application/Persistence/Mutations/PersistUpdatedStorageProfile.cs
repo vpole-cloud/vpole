@@ -31,28 +31,30 @@ internal sealed class MongoPersistUpdatedStorageProfile(
     {
         EnsureSameIdentity(current, replacement);
         return runMongoTransaction(async (transaction, ct) =>
-        {
-            if (replacement.IsDefault)
             {
-                await StorageProfileDefaultPersistence.DemoteOtherDefaultsAsync(
-                    storageProfiles,
-                    transaction.Session,
-                    replacement.Id,
-                    replacement.UpdatedAtUtc,
-                    ct);
-            }
+                if (replacement.IsDefault)
+                {
+                    await StorageProfileDefaultPersistence.DemoteOtherDefaultsAsync(
+                        storageProfiles,
+                        transaction.Session,
+                        replacement.Id,
+                        replacement.UpdatedAtUtc,
+                        ct);
+                }
 
-            var replacementWrite = await storageProfiles.ReplaceOneAsync(
-                transaction.Session,
-                StorageProfileFilters.AtSnapshot(current),
-                replacement,
-                cancellationToken: ct);
-            if (replacementWrite.ModifiedCount != 1)
-                return transaction.Abort(new StorageProfileRevisionConflict(current.Id));
-            await storeOutboxWrites(transaction.Session,
-                [OutboxWrite.Create(new StorageProfileCatalogChangedEvent(replacement.Id, replacement.Revision))], ct);
-            return transaction.Commit(replacement);
-        }, cancellationToken);
+                var replacementWrite = await storageProfiles.ReplaceOneAsync(
+                    transaction.Session,
+                    StorageProfileFilters.AtSnapshot(current),
+                    replacement,
+                    cancellationToken: ct);
+                if (replacementWrite.ModifiedCount != 1)
+                    return transaction.Abort(new StorageProfileRevisionConflict(current.Id));
+                await storeOutboxWrites(transaction.Session,
+                    [OutboxWrite.Create(new StorageProfileCatalogChangedEvent(replacement.Id, replacement.Revision))],
+                    ct);
+                return transaction.Commit(replacement);
+            },
+            cancellationToken);
     }
 
     private static void EnsureSameIdentity(StorageProfile current, StorageProfile replacement)

@@ -24,7 +24,15 @@ internal sealed class KubernetesDiscoverStorageClasses(
     {
         return await reader.ReadLegacyAsync(deploymentTargetId, StorageInventoryKind.Classes, cancellationToken) switch
         {
-            StorageObservationSnapshot snapshot => snapshot.StorageClasses.Select(item => new KubernetesStorageClassDto(item.Name, item.Provisioner, item.IsDefault, item.ReclaimPolicy, item.VolumeBindingMode, item.AllowVolumeExpansion, new Dictionary<string, string>(), new Dictionary<string, string>())).ToArray(),
+            StorageObservationSnapshot snapshot => snapshot.StorageClasses.Select(item =>
+                new KubernetesStorageClassDto(item.Name,
+                    item.Provisioner,
+                    item.IsDefault,
+                    item.ReclaimPolicy,
+                    item.VolumeBindingMode,
+                    item.AllowVolumeExpansion,
+                    new Dictionary<string, string>(),
+                    new Dictionary<string, string>())).ToArray(),
             KubernetesStorageDiscoveryUnavailable unavailable => unavailable
         };
     }

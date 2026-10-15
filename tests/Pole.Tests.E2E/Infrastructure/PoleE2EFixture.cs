@@ -74,14 +74,54 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         _kubernetesNamespacePrefix = $"pole-{_identity.WorktreeId}";
     }
 
-    public E2eApiClient Api { get; private set; } = null!;
-    public HttpClient Stub { get; private set; } = null!;
-    public Uri FrontendBaseAddress { get; private set; } = null!;
-    public Uri ApiBaseAddress { get; private set; } = null!;
-    public TestUser Alpha { get; private set; } = null!;
-    public TestUser Beta { get; private set; } = null!;
-    public TestUser PlatformAdminUser { get; private set; } = null!;
-    public string PlatformAdminAccessToken { get; private set; } = null!;
+    public E2eApiClient Api
+    {
+        get;
+        private set;
+    } = null!;
+
+    public HttpClient Stub
+    {
+        get;
+        private set;
+    } = null!;
+
+    public Uri FrontendBaseAddress
+    {
+        get;
+        private set;
+    } = null!;
+
+    public Uri ApiBaseAddress
+    {
+        get;
+        private set;
+    } = null!;
+
+    public TestUser Alpha
+    {
+        get;
+        private set;
+    } = null!;
+
+    public TestUser Beta
+    {
+        get;
+        private set;
+    } = null!;
+
+    public TestUser PlatformAdminUser
+    {
+        get;
+        private set;
+    } = null!;
+
+    public string PlatformAdminAccessToken
+    {
+        get;
+        private set;
+    } = null!;
+
     public KubernetesLabState LabState => _lab.State;
     public TestRunIdentity Identity => _identity;
 
@@ -186,19 +226,25 @@ public sealed class PoleE2EFixture : IAsyncLifetime
                 {
                     // The original failure is reported below.
                 }
+
                 throw new InvalidOperationException(
                     $"Aspire startup failed. {DescribeStartupStates(startupResourceNames)}",
                     exception);
             }
         }
+
         await WaitForRequiredResourceHealthyAsync("frontend", _shutdown.Token);
         await WaitForRequiredResourceHealthyAsync("github-stub", _shutdown.Token);
 
         using var apiClient = _application.CreateHttpClient("pole-server", "http");
-        ApiBaseAddress = apiClient.BaseAddress ?? throw new InvalidOperationException("Aspire did not resolve the API endpoint.");
+        ApiBaseAddress = apiClient.BaseAddress ??
+                         throw new InvalidOperationException("Aspire did not resolve the API endpoint.");
         // Ordinary fixture HTTP authenticates each request with its user's bearer.
         // Hub scenarios own independent cookie jars, including different accounts.
-        Api = new E2eApiClient(new HttpClient(new HttpClientHandler { UseCookies = false }) { BaseAddress = ApiBaseAddress });
+        Api = new E2eApiClient(new HttpClient(new HttpClientHandler { UseCookies = false })
+        {
+            BaseAddress = ApiBaseAddress
+        });
         Stub = _application.CreateHttpClient("github-stub", "http");
         Stub.DefaultRequestHeaders.Add("X-Pole-E2E-Stub-Key", _stubControlKey);
         FrontendBaseAddress = _application.CreateHttpClient("frontend", "http").BaseAddress
@@ -227,7 +273,10 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             bootstrap.Password,
             _shutdown.Token);
         PlatformAdminAccessToken = bootstrapToken;
-        PlatformAdminUser = bootstrap with { AccessToken = bootstrapToken };
+        PlatformAdminUser = bootstrap with
+        {
+            AccessToken = bootstrapToken
+        };
         RegisterApiToken(bootstrapToken, bootstrap.Email, bootstrap.Password, directGrantClient);
         await AllowBootstrapTargetWithoutEnforcementAsync(_shutdown.Token);
 
@@ -238,7 +287,8 @@ public sealed class PoleE2EFixture : IAsyncLifetime
     public async Task DisposeAsync()
     {
         _keycloakPortReservation.Stop();
-        foreach (var reservation in _realtimeReplicaPortReservations) reservation.Stop();
+        foreach (var reservation in _realtimeReplicaPortReservations)
+            reservation.Stop();
         using var cleanupTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
         var cancellationToken = cleanupTimeout.Token;
         foreach (var action in _cleanup.AsEnumerable().Reverse())
@@ -292,7 +342,8 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         }
     }
 
-    private void ConfigureRealtimeReplica(IDistributedApplicationBuilder appHost, IResourceBuilder<ProjectResource> primary)
+    private void ConfigureRealtimeReplica(IDistributedApplicationBuilder appHost,
+        IResourceBuilder<ProjectResource> primary)
     {
         var ports = Enumerable.Range(0, 4).Select(_ =>
         {
@@ -301,14 +352,15 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             return ((IPEndPoint)reservation.LocalEndpoint).Port;
         }).ToArray();
         var projectDirectory = Path.GetDirectoryName(new Projects.Pole_Server().ProjectPath)
-            ?? throw new InvalidOperationException("The API project directory is unavailable.");
+                               ?? throw new InvalidOperationException("The API project directory is unavailable.");
         var testOutput = new FileInfo(typeof(PoleE2EFixture).Assembly.Location).Directory
-            ?? throw new InvalidOperationException("The E2E build output directory is unavailable.");
+                         ?? throw new InvalidOperationException("The E2E build output directory is unavailable.");
         var configuration = testOutput.Parent?.Name
-            ?? throw new InvalidOperationException("The E2E build configuration is unavailable.");
+                            ?? throw new InvalidOperationException("The E2E build configuration is unavailable.");
         var serverAssembly = Path.Combine(projectDirectory, "bin", configuration, testOutput.Name, "Pole.Server.dll");
         if (!File.Exists(serverAssembly))
-            throw new InvalidOperationException("The matching built API assembly is unavailable; build the E2E project before running it.");
+            throw new InvalidOperationException(
+                "The matching built API assembly is unavailable; build the E2E project before running it.");
         // The E2E build already includes the full API. Launch that same artifact directly
         // so DCP supervises the API process without a dotnet-run parent and its process tree.
         var replica = appHost.AddExecutable("pole-server-replica", "dotnet", projectDirectory, "exec", serverAssembly)
@@ -327,52 +379,74 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             // replica's graceful shutdown below that window; still require its real
             // terminal state, same-instance stop timestamp and accepted exit status.
             .WithEnvironment("DOTNET_SHUTDOWNTIMEOUTSECONDS", "10")
-            .WithEnvironment("ASPNETCORE_URLS", string.Join(';', ports.Take(3).Select(port => $"http://localhost:{port}")))
-            .WithEnvironment("Functions__Gateway__ControlPort", ports[0].ToString(System.Globalization.CultureInfo.InvariantCulture))
-            .WithEnvironment("Functions__Gateway__PublicPort", ports[1].ToString(System.Globalization.CultureInfo.InvariantCulture))
-            .WithEnvironment("Functions__Gateway__InternalPort", ports[2].ToString(System.Globalization.CultureInfo.InvariantCulture))
-            .WithEnvironment("Functions__Orleans__SiloPort", ports[3].ToString(System.Globalization.CultureInfo.InvariantCulture))
+            .WithEnvironment("ASPNETCORE_URLS",
+                string.Join(';', ports.Take(3).Select(port => $"http://localhost:{port}")))
+            .WithEnvironment("Functions__Gateway__ControlPort",
+                ports[0].ToString(System.Globalization.CultureInfo.InvariantCulture))
+            .WithEnvironment("Functions__Gateway__PublicPort",
+                ports[1].ToString(System.Globalization.CultureInfo.InvariantCulture))
+            .WithEnvironment("Functions__Gateway__InternalPort",
+                ports[2].ToString(System.Globalization.CultureInfo.InvariantCulture))
+            .WithEnvironment("Functions__Orleans__SiloPort",
+                ports[3].ToString(System.Globalization.CultureInfo.InvariantCulture))
             .WithEnvironment("Functions__Orleans__GatewayPort", "0");
     }
 
     public async Task<Uri> StartRealtimeReplicaAsync(CancellationToken cancellationToken)
     {
-        var application = _application ?? throw new InvalidOperationException("The E2E application is not initialized.");
-        foreach (var reservation in _realtimeReplicaPortReservations) reservation.Stop();
+        var application =
+            _application ?? throw new InvalidOperationException("The E2E application is not initialized.");
+        foreach (var reservation in _realtimeReplicaPortReservations)
+            reservation.Stop();
         using var command = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         command.CancelAfter(TimeSpan.FromSeconds(60));
         var intent = DateTimeOffset.UtcNow;
         var before = GetRealtimeReplicaLifecycleSnapshot();
         _realtimeReplicaStopped = false;
-        var result = await application.ResourceCommands.ExecuteCommandAsync("pole-server-replica", KnownResourceCommands.StartCommand, command.Token);
-        if (!result.Success) throw new InvalidOperationException($"The realtime API replica could not start: commandSucceeded={result.Success}, canceled={result.Canceled}, intentUtc={intent:O}. Before: {before}. Current: {GetRealtimeReplicaLifecycleSnapshot()}");
+        var result = await application.ResourceCommands.ExecuteCommandAsync("pole-server-replica",
+            KnownResourceCommands.StartCommand,
+            command.Token);
+        if (!result.Success)
+            throw new InvalidOperationException(
+                $"The realtime API replica could not start: commandSucceeded={result.Success}, canceled={result.Canceled}, intentUtc={intent:O}. Before: {before}. Current: {GetRealtimeReplicaLifecycleSnapshot()}");
         // Restart may initially expose the previous instance's terminal/health snapshot.
         try
         {
-            await application.ResourceNotifications.WaitForResourceAsync("pole-server-replica", KnownResourceStates.Running, command.Token);
+            await application.ResourceNotifications.WaitForResourceAsync("pole-server-replica",
+                KnownResourceStates.Running,
+                command.Token);
             await WaitForRequiredResourceHealthyAsync("pole-server-replica", command.Token);
         }
         catch (Exception exception)
         {
-            throw new InvalidOperationException($"The realtime API replica did not become running and healthy: commandSucceeded={result.Success}, canceled={result.Canceled}, budgetCanceled={cancellationToken.IsCancellationRequested}, intentUtc={intent:O}. Before: {before}. Current: {GetRealtimeReplicaLifecycleSnapshot()}", exception);
+            throw new InvalidOperationException(
+                $"The realtime API replica did not become running and healthy: commandSucceeded={result.Success}, canceled={result.Canceled}, budgetCanceled={cancellationToken.IsCancellationRequested}, intentUtc={intent:O}. Before: {before}. Current: {GetRealtimeReplicaLifecycleSnapshot()}",
+                exception);
         }
+
         _realtimeReplicaStarted = true;
         using var client = application.CreateHttpClient("pole-server-replica", "http");
-        return client.BaseAddress ?? throw new InvalidOperationException("Aspire did not resolve the realtime API replica endpoint.");
+        return client.BaseAddress ??
+               throw new InvalidOperationException("Aspire did not resolve the realtime API replica endpoint.");
     }
 
     public async Task StopRealtimeReplicaAsync(CancellationToken cancellationToken)
     {
-        if (_application is null || _realtimeReplicaStopped) return;
+        if (_application is null || _realtimeReplicaStopped)
+            return;
         const string name = "pole-server-replica";
         if (!_application.ResourceNotifications.TryGetCurrentState(name, out var before))
             throw new InvalidOperationException("The realtime API replica state is unavailable before cleanup.");
-        if (!_realtimeReplicaStarted && (before.Snapshot.State?.Text is "NotStarted" or "FailedToStart")) return;
+        if (!_realtimeReplicaStarted && (before.Snapshot.State?.Text is "NotStarted" or "FailedToStart"))
+            return;
         if (before.Snapshot.State?.Text is not "Running")
-            throw new InvalidOperationException($"The realtime API replica was not running before its owned stop. {GetRealtimeReplicaLifecycleSnapshot()}");
+            throw new InvalidOperationException(
+                $"The realtime API replica was not running before its owned stop. {GetRealtimeReplicaLifecycleSnapshot()}");
         var intent = DateTimeOffset.UtcNow;
         var beforeStop = GetRealtimeReplicaLifecycleSnapshot();
-        var result = await _application.ResourceCommands.ExecuteCommandAsync(before.Resource.Name, KnownResourceCommands.StopCommand, cancellationToken);
+        var result = await _application.ResourceCommands.ExecuteCommandAsync(before.Resource.Name,
+            KnownResourceCommands.StopCommand,
+            cancellationToken);
         var retryExhausted = result.Message?.Contains("Failed to stop resource", StringComparison.Ordinal) == true;
         using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         wait.CancelAfter(TimeSpan.FromSeconds(30));
@@ -381,21 +455,26 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             // DCP's stop command has a shorter retry window than a graceful Orleans shutdown.
             // A command result alone does not prove that the owned process actually exited.
             await _application.ResourceNotifications.WaitForResourceAsync(name,
-                [KnownResourceStates.Finished, KnownResourceStates.Exited, "Terminated"], wait.Token);
+                [KnownResourceStates.Finished, KnownResourceStates.Exited, "Terminated"],
+                wait.Token);
         }
         catch (OperationCanceledException exception)
         {
-            throw new InvalidOperationException($"The realtime API replica did not finish its owned stop: commandSucceeded={result.Success}, canceled={result.Canceled}, retryExhausted={retryExhausted}, budgetCanceled={cancellationToken.IsCancellationRequested}, intentUtc={intent:O}. Before: {beforeStop}. Current: {GetRealtimeReplicaLifecycleSnapshot()}", exception);
+            throw new InvalidOperationException(
+                $"The realtime API replica did not finish its owned stop: commandSucceeded={result.Success}, canceled={result.Canceled}, retryExhausted={retryExhausted}, budgetCanceled={cancellationToken.IsCancellationRequested}, intentUtc={intent:O}. Before: {beforeStop}. Current: {GetRealtimeReplicaLifecycleSnapshot()}",
+                exception);
         }
+
         if (!_application.ResourceNotifications.TryGetCurrentState(name, out var after))
             throw new InvalidOperationException("The realtime API replica state is unavailable after cleanup.");
         var controlledStop = after.Snapshot.StartTimeStamp == before.Snapshot.StartTimeStamp &&
-            after.Snapshot.StopTimeStamp is { } stoppedAt && stoppedAt >= intent;
+                             after.Snapshot.StopTimeStamp is { } stoppedAt && stoppedAt >= intent;
         // Aspire 13.5.4 uses -1 for an unavailable OS exit status. Accept that sentinel
         // only after a successful stop of this same instance; actual failure codes stay failures.
         var acceptedExit = after.Snapshot.ExitCode == 0 || result.Success && after.Snapshot.ExitCode == -1;
         if (!controlledStop || !acceptedExit || result.Canceled || !result.Success && !retryExhausted)
-            throw new InvalidOperationException($"The realtime API replica stop was not verified: commandSucceeded={result.Success}, canceled={result.Canceled}, retryExhausted={retryExhausted}, intentUtc={intent:O}. Before: {beforeStop}. Current: {GetRealtimeReplicaLifecycleSnapshot()}");
+            throw new InvalidOperationException(
+                $"The realtime API replica stop was not verified: commandSucceeded={result.Success}, canceled={result.Canceled}, retryExhausted={retryExhausted}, intentUtc={intent:O}. Before: {beforeStop}. Current: {GetRealtimeReplicaLifecycleSnapshot()}");
         _realtimeReplicaStopped = true;
     }
 
@@ -407,63 +486,92 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         try
         {
             if (_application is null || !_application.ResourceNotifications.TryGetCurrentState(name, out var resource))
-                return $"{name}: snapshot=unavailable, started={_realtimeReplicaStarted}, verifiedStop={_realtimeReplicaStopped}";
+                return
+                    $"{name}: snapshot=unavailable, started={_realtimeReplicaStarted}, verifiedStop={_realtimeReplicaStopped}";
             var snapshot = resource.Snapshot;
             var observedState = snapshot.State?.Text;
             var state = observedState switch
             {
                 "Starting" or "Running" or "FailedToStart" or "RuntimeUnhealthy" or "Waiting" or
-                "NotStarted" or "Building" or "Stopping" or "Exited" or "Finished" or "Terminated" or "Unknown" => observedState,
+                    "NotStarted" or "Building" or "Stopping" or "Exited" or "Finished" or "Terminated"
+                    or "Unknown" => observedState,
                 null => "none",
                 _ => "Other"
             };
-            var instance = resource.ResourceId is { } id && (id == name || id.StartsWith(name + "-", StringComparison.Ordinal)) &&
-                Regex.IsMatch(id, "^[A-Za-z0-9_-]{1,200}$") ? id : "unexpected";
-            return $"{name}: instance={instance}, sameLogicalResource={resource.Resource.Name == name}, state={state}, health={snapshot.HealthStatus?.ToString() ?? "none"}, startUtc={snapshot.StartTimeStamp?.ToString("O") ?? "none"}, stopUtc={snapshot.StopTimeStamp?.ToString("O") ?? "none"}, exit={snapshot.ExitCode?.ToString() ?? "none"}, started={_realtimeReplicaStarted}, verifiedStop={_realtimeReplicaStopped}";
+            var instance = resource.ResourceId is { } id &&
+                           (id == name || id.StartsWith(name + "-", StringComparison.Ordinal)) &&
+                           Regex.IsMatch(id, "^[A-Za-z0-9_-]{1,200}$")
+                ? id
+                : "unexpected";
+            return
+                $"{name}: instance={instance}, sameLogicalResource={resource.Resource.Name == name}, state={state}, health={snapshot.HealthStatus?.ToString() ?? "none"}, startUtc={snapshot.StartTimeStamp?.ToString("O") ?? "none"}, stopUtc={snapshot.StopTimeStamp?.ToString("O") ?? "none"}, exit={snapshot.ExitCode?.ToString() ?? "none"}, started={_realtimeReplicaStarted}, verifiedStop={_realtimeReplicaStopped}";
         }
-        catch { return $"{name}: snapshot=unavailable"; }
+        catch
+        {
+            return $"{name}: snapshot=unavailable";
+        }
     }
 
     public async Task StopRealtimeRedisAsync(CancellationToken cancellationToken)
     {
-        var application = _application ?? throw new InvalidOperationException("The E2E application is not initialized.");
+        var application =
+            _application ?? throw new InvalidOperationException("The E2E application is not initialized.");
         const string name = "realtime";
-        if (_realtimeRedisStopped) return;
+        if (_realtimeRedisStopped)
+            return;
         if (!application.ResourceNotifications.TryGetCurrentState(name, out var before) ||
             before.Resource is not ContainerResource || before.Snapshot.State?.Text != KnownResourceStates.Running)
-            throw new InvalidOperationException("The fixture-owned realtime Redis is not running before its controlled outage.");
+            throw new InvalidOperationException(
+                "The fixture-owned realtime Redis is not running before its controlled outage.");
         // Register caller cleanup first. Mark intent before the command so a partial stop also
         // gets restored. Only this fixture's session-scoped graph resource can be controlled.
         _realtimeRedisStopped = true;
         using var command = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         command.CancelAfter(TimeSpan.FromSeconds(30));
-        var result = await application.ResourceCommands.ExecuteCommandAsync(before.Resource.Name, KnownResourceCommands.StopCommand, command.Token);
-        if (!result.Success) throw new InvalidOperationException("The fixture-owned realtime Redis stop command failed.");
+        var result = await application.ResourceCommands.ExecuteCommandAsync(before.Resource.Name,
+            KnownResourceCommands.StopCommand,
+            command.Token);
+        if (!result.Success)
+            throw new InvalidOperationException("The fixture-owned realtime Redis stop command failed.");
         await application.ResourceNotifications.WaitForResourceAsync(name,
-            [KnownResourceStates.Finished, KnownResourceStates.Exited, "Terminated"], command.Token);
+            [KnownResourceStates.Finished, KnownResourceStates.Exited, "Terminated"],
+            command.Token);
         if (!application.ResourceNotifications.TryGetCurrentState(name, out var after) ||
-            !ReferenceEquals(after.Resource, before.Resource) || after.Snapshot.StartTimeStamp != before.Snapshot.StartTimeStamp)
-            throw new InvalidOperationException("The fixture-owned realtime Redis stop did not retain its controlled resource identity.");
+            !ReferenceEquals(after.Resource, before.Resource) ||
+            after.Snapshot.StartTimeStamp != before.Snapshot.StartTimeStamp)
+            throw new InvalidOperationException(
+                "The fixture-owned realtime Redis stop did not retain its controlled resource identity.");
     }
 
     public async Task StartRealtimeRedisAsync(CancellationToken cancellationToken)
     {
-        if (!_realtimeRedisStopped) return;
-        var application = _application ?? throw new InvalidOperationException("The E2E application is not initialized.");
+        if (!_realtimeRedisStopped)
+            return;
+        var application =
+            _application ?? throw new InvalidOperationException("The E2E application is not initialized.");
         const string name = "realtime";
         using var command = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         command.CancelAfter(TimeSpan.FromSeconds(45));
         if (!application.ResourceNotifications.TryGetCurrentState(name, out var current))
-            throw new InvalidOperationException("The fixture-owned realtime Redis state is unavailable during recovery.");
+            throw new InvalidOperationException(
+                "The fixture-owned realtime Redis state is unavailable during recovery.");
         if (current.Snapshot.State?.Text == "Stopping")
             await application.ResourceNotifications.WaitForResourceAsync(name,
-                [KnownResourceStates.Finished, KnownResourceStates.Exited, "Terminated"], command.Token);
+                [KnownResourceStates.Finished, KnownResourceStates.Exited, "Terminated"],
+                command.Token);
         if (current.Snapshot.State?.Text != KnownResourceStates.Running)
         {
-            var result = await application.ResourceCommands.ExecuteCommandAsync(name, KnownResourceCommands.StartCommand, command.Token);
-            if (!result.Success) throw new InvalidOperationException("The fixture-owned realtime Redis recovery command failed.");
-            await application.ResourceNotifications.WaitForResourceAsync(name, KnownResourceStates.Running, command.Token);
+            var result =
+                await application.ResourceCommands.ExecuteCommandAsync(name,
+                    KnownResourceCommands.StartCommand,
+                    command.Token);
+            if (!result.Success)
+                throw new InvalidOperationException("The fixture-owned realtime Redis recovery command failed.");
+            await application.ResourceNotifications.WaitForResourceAsync(name,
+                KnownResourceStates.Running,
+                command.Token);
         }
+
         await WaitForRequiredResourceHealthyAsync(name, command.Token);
         _realtimeRedisStopped = false;
     }
@@ -480,7 +588,10 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         }
     }
 
-    public HttpRequestMessage CreateAuthenticatedRequest(HttpMethod method, string path, TestUser user, string? tenantId = null)
+    public HttpRequestMessage CreateAuthenticatedRequest(HttpMethod method,
+        string path,
+        TestUser user,
+        string? tenantId = null)
     {
         var request = new HttpRequestMessage(method, path);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", user.AccessToken);
@@ -528,7 +639,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         var target = targets.EnumerateArray().Single(item => item.GetProperty("isDefault").GetBoolean());
         await AllowTargetWithoutEnforcementAsync(
             target.GetProperty("id").GetString()
-                ?? throw new InvalidOperationException("The bootstrap deployment target has no ID."),
+            ?? throw new InvalidOperationException("The bootstrap deployment target has no ID."),
             target.GetProperty("revision").GetInt64(),
             cancellationToken);
     }
@@ -591,7 +702,8 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             if (repositoriesResponse.StatusCode == System.Net.HttpStatusCode.NotFound)
                 return;
             repositoriesResponse.EnsureSuccessStatusCode();
-            using var repositories = JsonDocument.Parse(await repositoriesResponse.Content.ReadAsStreamAsync(cancellationToken));
+            using var repositories =
+                JsonDocument.Parse(await repositoriesResponse.Content.ReadAsStreamAsync(cancellationToken));
             var currentPage = repositories.RootElement.EnumerateArray().ToArray();
             repositoryNames.AddRange(currentPage
                 .Select(item => item.GetProperty("name").GetString())
@@ -603,9 +715,10 @@ public sealed class PoleE2EFixture : IAsyncLifetime
 
         foreach (var repositoryName in repositoryNames)
         {
-            var relativeRepositoryName = repositoryName.StartsWith($"{projectName}/", StringComparison.OrdinalIgnoreCase)
-                ? repositoryName[(projectName.Length + 1)..]
-                : repositoryName;
+            var relativeRepositoryName =
+                repositoryName.StartsWith($"{projectName}/", StringComparison.OrdinalIgnoreCase)
+                    ? repositoryName[(projectName.Length + 1)..]
+                    : repositoryName;
             // Harbor treats nested repository names as one route parameter. HttpClient/Uri
             // unescape the first level, so the embedded slash must be encoded twice.
             var encodedRepository = Uri.EscapeDataString(Uri.EscapeDataString(relativeRepositoryName));
@@ -623,8 +736,10 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         using var deleteProjectResponse = await client.DeleteAsync(
             $"/api/v2.0/projects/{Uri.EscapeDataString(projectName)}",
             cancellationToken);
-        if (!deleteProjectResponse.IsSuccessStatusCode && deleteProjectResponse.StatusCode != System.Net.HttpStatusCode.NotFound)
-            throw new HttpRequestException($"Harbor did not delete the E2E project: {(int)deleteProjectResponse.StatusCode}.");
+        if (!deleteProjectResponse.IsSuccessStatusCode &&
+            deleteProjectResponse.StatusCode != System.Net.HttpStatusCode.NotFound)
+            throw new HttpRequestException(
+                $"Harbor did not delete the E2E project: {(int)deleteProjectResponse.StatusCode}.");
     }
 
     public async Task<string> GetHarborArtifactDigestAsync(
@@ -668,10 +783,11 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             cancellationToken);
         if (exitCode != 0)
             throw new TimeoutException($"Kubernetes namespace '{recorded.Name}' was not deleted.");
-
     }
 
-    public async Task WaitForNamespaceCreationAsync(string resourceGroupId, CancellationToken cancellationToken, TestUser? owner = null)
+    public async Task WaitForNamespaceCreationAsync(string resourceGroupId,
+        CancellationToken cancellationToken,
+        TestUser? owner = null)
     {
         owner ??= Alpha;
         var deadline = DateTimeOffset.UtcNow.AddMinutes(2);
@@ -725,13 +841,17 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             cancellationToken) == 0;
 
     public async Task<string> CreateOwnedStorageObservationClassAsync(
-        TestResourceScope resources, string deploymentTargetId, string canary, CancellationToken ct)
+        TestResourceScope resources,
+        string deploymentTargetId,
+        string canary,
+        CancellationToken ct)
     {
         using var request = CreatePlatformAdminRequest(HttpMethod.Get, "/api/v1/platform/deployment-targets");
         using var response = await Api.SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
         using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(ct));
-        var target = document.RootElement.EnumerateArray().Single(item => item.GetProperty("id").GetString() == deploymentTargetId);
+        var target = document.RootElement.EnumerateArray()
+            .Single(item => item.GetProperty("id").GetString() == deploymentTargetId);
         if (!target.GetProperty("isDefault").GetBoolean() || !target.GetProperty("enabled").GetBoolean())
             throw new InvalidOperationException("Native observation fixtures require their enabled bootstrap target.");
 
@@ -745,98 +865,174 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             },
             // A Kubernetes qualified provisioner may contain a 253-character DNS
             // prefix and a 63-character suffix; it need not be a CSI driver in use.
-            Provisioner = string.Join('.', new[] { new string('a', 63), new string('b', 63), new string('c', 63), new string('d', 61) }) + "/" + new string('e', 63),
+            Provisioner =
+                    string.Join('.',
+                        new[] { new string('a', 63), new string('b', 63), new string('c', 63), new string('d', 61) }) +
+                    "/" + new string('e', 63),
             ReclaimPolicy = "Retain",
             VolumeBindingMode = "WaitForFirstConsumer",
             Parameters = new Dictionary<string, string> { ["fake.credentials"] = canary }
-        }, cancellationToken: ct);
+        },
+            cancellationToken: ct);
         var name = created.Metadata.Name;
         var uid = created.Metadata.Uid;
-        resources.Defer("delete exact fixture-owned observation StorageClass", async cleanup =>
-        {
-            V1StorageClass current;
-            try { current = await _kubernetes.StorageV1.ReadStorageClassAsync(name, cancellationToken: cleanup); }
-            catch (HttpOperationException exception) when (exception.Response?.StatusCode == HttpStatusCode.NotFound) { return; }
-            if (string.IsNullOrEmpty(uid) || current.Metadata.Uid != uid ||
-                _identity.NamespaceLabels.Any(pair => current.Metadata.Labels?.TryGetValue(pair.Key, out var value) != true || value != pair.Value))
-                throw new InvalidOperationException("The observation StorageClass no longer matches exact test ownership.");
-            await _kubernetes.StorageV1.DeleteStorageClassAsync(name,
-                body: new V1DeleteOptions { Preconditions = new V1Preconditions { Uid = uid } }, cancellationToken: cleanup);
-        });
+        resources.Defer("delete exact fixture-owned observation StorageClass",
+            async cleanup =>
+            {
+                V1StorageClass current;
+                try
+                {
+                    current = await _kubernetes.StorageV1.ReadStorageClassAsync(name, cancellationToken: cleanup);
+                }
+                catch (HttpOperationException exception) when
+                    (exception.Response?.StatusCode == HttpStatusCode.NotFound)
+                {
+                    return;
+                }
+
+                if (string.IsNullOrEmpty(uid) || current.Metadata.Uid != uid ||
+                    _identity.NamespaceLabels.Any(pair =>
+                        current.Metadata.Labels?.TryGetValue(pair.Key, out var value) != true || value != pair.Value))
+                    throw new InvalidOperationException(
+                        "The observation StorageClass no longer matches exact test ownership.");
+                await _kubernetes.StorageV1.DeleteStorageClassAsync(name,
+                    body: new V1DeleteOptions { Preconditions = new V1Preconditions { Uid = uid } },
+                    cancellationToken: cleanup);
+            });
         return name;
     }
 
     public async Task<IReadOnlyList<OwnedObservationPod>> ListOwnedObservationPodsAsync(
-        TestUser user, string tenantId, string serviceId, string deploymentId, CancellationToken cancellationToken)
+        TestUser user,
+        string tenantId,
+        string serviceId,
+        string deploymentId,
+        CancellationToken cancellationToken)
     {
         var context = await ObservationPodContextAsync(user, tenantId, serviceId, deploymentId, cancellationToken);
         return await OwnedObservationPodsAsync(context, cancellationToken);
     }
 
     public async Task DeleteOwnedObservationPodAsync(
-        TestUser user, string tenantId, string serviceId, string deploymentId, string podUid, CancellationToken cancellationToken)
+        TestUser user,
+        string tenantId,
+        string serviceId,
+        string deploymentId,
+        string podUid,
+        CancellationToken cancellationToken)
     {
         var context = await ObservationPodContextAsync(user, tenantId, serviceId, deploymentId, cancellationToken);
-        var pod = (await OwnedObservationPodsAsync(context, cancellationToken)).SingleOrDefault(item => item.Uid == podUid)
-            ?? throw new InvalidOperationException("The requested pod is not owned by the current test workload.");
-        await _kubernetes.CoreV1.DeleteNamespacedPodAsync(pod.Name, context.Namespace,
+        var pod = (await OwnedObservationPodsAsync(context, cancellationToken)).SingleOrDefault(item =>
+                      item.Uid == podUid)
+                  ?? throw new InvalidOperationException(
+                      "The requested pod is not owned by the current test workload.");
+        await _kubernetes.CoreV1.DeleteNamespacedPodAsync(pod.Name,
+            context.Namespace,
             body: new V1DeleteOptions { GracePeriodSeconds = 0, Preconditions = new V1Preconditions { Uid = pod.Uid } },
             cancellationToken: cancellationToken);
     }
 
     private async Task<ObservationPodContext> ObservationPodContextAsync(
-        TestUser user, string tenantId, string serviceId, string deploymentId, CancellationToken ct)
+        TestUser user,
+        string tenantId,
+        string serviceId,
+        string deploymentId,
+        CancellationToken ct)
     {
-        using var request = CreateAuthenticatedRequest(HttpMethod.Get, $"/api/v1/web-services/{serviceId}", user, tenantId);
+        using var request =
+            CreateAuthenticatedRequest(HttpMethod.Get, $"/api/v1/web-services/{serviceId}", user, tenantId);
         using var response = await Api.SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
         using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(ct));
         var service = document.RootElement;
-        if (service.GetProperty("id").GetString() != serviceId) throw new InvalidOperationException("The requested workload identity changed.");
-        var placement = service.GetProperty("deployments").EnumerateArray().Single(item => item.GetProperty("deploymentId").GetString() == deploymentId);
-        if (placement.GetProperty("desiredOperation").GetString() != "Apply") throw new InvalidOperationException("The test workload is no longer applied.");
+        if (service.GetProperty("id").GetString() != serviceId)
+            throw new InvalidOperationException("The requested workload identity changed.");
+        var placement = service.GetProperty("deployments").EnumerateArray()
+            .Single(item => item.GetProperty("deploymentId").GetString() == deploymentId);
+        if (placement.GetProperty("desiredOperation").GetString() != "Apply")
+            throw new InvalidOperationException("The test workload is no longer applied.");
         var groupId = service.GetProperty("resourceGroupId").GetString()!;
-        var recorded = _kubernetesNamespaces.TryGetValue(groupId, out var owned) ? owned :
-            throw new InvalidOperationException("No fixture-owned namespace was recorded for the requested workload.");
+        var recorded = _kubernetesNamespaces.TryGetValue(groupId, out var owned)
+            ? owned
+            : throw new InvalidOperationException(
+                "No fixture-owned namespace was recorded for the requested workload.");
         var nativeNamespace = await _kubernetes.CoreV1.ReadNamespaceAsync(recorded.Name, cancellationToken: ct);
         VerifyOwnedNamespace(nativeNamespace, recorded.Uid);
         // Namespace discovery remains an authenticated API read, independently of native labels.
-        using var cellsRequest = CreateAuthenticatedRequest(HttpMethod.Get, $"/api/v1/resource-groups/{groupId}/runtime-cells", user, tenantId);
+        using var cellsRequest = CreateAuthenticatedRequest(HttpMethod.Get,
+            $"/api/v1/resource-groups/{groupId}/runtime-cells",
+            user,
+            tenantId);
         using var cellsResponse = await Api.SendAsync(cellsRequest, ct);
         cellsResponse.EnsureSuccessStatusCode();
         using var cellsDocument = JsonDocument.Parse(await cellsResponse.Content.ReadAsStreamAsync(ct));
         var runtimeCellId = placement.GetProperty("runtimeCellId").GetString()!;
-        var cell = cellsDocument.RootElement.EnumerateArray().Single(item => item.GetProperty("id").GetString() == runtimeCellId);
+        var cell = cellsDocument.RootElement.EnumerateArray()
+            .Single(item => item.GetProperty("id").GetString() == runtimeCellId);
         if (cell.GetProperty("kubernetesNamespace").GetString() != recorded.Name ||
-            cell.GetProperty("deploymentTargetId").GetString() != placement.GetProperty("deploymentTargetId").GetString())
+            cell.GetProperty("deploymentTargetId").GetString() !=
+            placement.GetProperty("deploymentTargetId").GetString())
             throw new InvalidOperationException("The current runtime placement does not match the owned namespace.");
-        var identity = new WorkloadIdentityLabels(tenantId, groupId, placement.GetProperty("isolationScopeId").GetString()!, runtimeCellId,
-            placement.GetProperty("deploymentTargetId").GetString()!, "WebService", serviceId, deploymentId);
+        var identity = new WorkloadIdentityLabels(tenantId,
+            groupId,
+            placement.GetProperty("isolationScopeId").GetString()!,
+            runtimeCellId,
+            placement.GetProperty("deploymentTargetId").GetString()!,
+            "WebService",
+            serviceId,
+            deploymentId);
         return new(recorded.Name, recorded.Uid, service.GetProperty("name").GetString()!, identity);
     }
 
-    private async Task<IReadOnlyList<OwnedObservationPod>> OwnedObservationPodsAsync(ObservationPodContext context, CancellationToken ct)
+    private async Task<IReadOnlyList<OwnedObservationPod>> OwnedObservationPodsAsync(ObservationPodContext context,
+        CancellationToken ct)
     {
-        VerifyOwnedNamespace(await _kubernetes.CoreV1.ReadNamespaceAsync(context.Namespace, cancellationToken: ct), context.NamespaceUid);
-        var controller = await _kubernetes.AppsV1.ReadNamespacedDeploymentAsync(context.Name, context.Namespace, cancellationToken: ct);
-        if (!Owns(controller.Metadata)) throw new InvalidOperationException("The native controller no longer matches the test identity.");
+        VerifyOwnedNamespace(await _kubernetes.CoreV1.ReadNamespaceAsync(context.Namespace, cancellationToken: ct),
+            context.NamespaceUid);
+        var controller =
+            await _kubernetes.AppsV1.ReadNamespacedDeploymentAsync(context.Name,
+                context.Namespace,
+                cancellationToken: ct);
+        if (!Owns(controller.Metadata))
+            throw new InvalidOperationException("The native controller no longer matches the test identity.");
         var selector = string.Join(',', context.Identity.ToDictionary().Select(pair => $"{pair.Key}={pair.Value}"));
-        var replicas = await _kubernetes.AppsV1.ListNamespacedReplicaSetAsync(context.Namespace, labelSelector: selector, limit: 100, cancellationToken: ct);
-        if (!string.IsNullOrEmpty(replicas.Metadata.ContinueProperty)) throw new InvalidOperationException("The test workload replica-set discovery exceeded its bound.");
+        var replicas = await _kubernetes.AppsV1.ListNamespacedReplicaSetAsync(context.Namespace,
+            labelSelector: selector,
+            limit: 100,
+            cancellationToken: ct);
+        if (!string.IsNullOrEmpty(replicas.Metadata.ContinueProperty))
+            throw new InvalidOperationException("The test workload replica-set discovery exceeded its bound.");
         var replicaUids = replicas.Items.Where(replica => Owns(replica.Metadata) &&
-            replica.Metadata.OwnerReferences?.Any(owner => owner.Controller == true && owner.Kind == "Deployment" && owner.Uid == controller.Metadata.Uid) == true)
+                                                          replica.Metadata.OwnerReferences?.Any(owner =>
+                                                              owner.Controller == true && owner.Kind == "Deployment" &&
+                                                              owner.Uid == controller.Metadata.Uid) == true)
             .Select(replica => replica.Metadata.Uid).ToHashSet(StringComparer.Ordinal);
-        var pods = await _kubernetes.CoreV1.ListNamespacedPodAsync(context.Namespace, labelSelector: selector, limit: 100, cancellationToken: ct);
-        if (!string.IsNullOrEmpty(pods.Metadata.ContinueProperty)) throw new InvalidOperationException("The test workload pod discovery exceeded its bound.");
-        var result = pods.Items.Where(pod => Owns(pod.Metadata) && pod.Metadata.OwnerReferences?.Any(owner => owner.Controller == true &&
-            owner.Kind == "ReplicaSet" && replicaUids.Contains(owner.Uid)) == true)
-            .Select(pod => new OwnedObservationPod(pod.Metadata.Uid, pod.Metadata.Name, pod.Metadata.DeletionTimestamp is null &&
-                pod.Status?.Conditions?.Any(condition => condition.Type == "Ready" && condition.Status == "True") == true))
+        var pods = await _kubernetes.CoreV1.ListNamespacedPodAsync(context.Namespace,
+            labelSelector: selector,
+            limit: 100,
+            cancellationToken: ct);
+        if (!string.IsNullOrEmpty(pods.Metadata.ContinueProperty))
+            throw new InvalidOperationException("The test workload pod discovery exceeded its bound.");
+        var result = pods.Items.Where(pod => Owns(pod.Metadata) && pod.Metadata.OwnerReferences?.Any(owner =>
+                owner.Controller == true &&
+                owner.Kind == "ReplicaSet" && replicaUids.Contains(owner.Uid)) == true)
+            .Select(pod => new OwnedObservationPod(pod.Metadata.Uid,
+                pod.Metadata.Name,
+                pod.Metadata.DeletionTimestamp is null &&
+                pod.Status?.Conditions?.Any(condition => condition.Type == "Ready" && condition.Status == "True") ==
+                true))
             .OrderBy(pod => pod.Name, StringComparer.Ordinal).ToArray();
-        if (!await KubernetesWorkloadObservation.MatchesDeploymentBindingAsync(_kubernetes, context.Name, context.Namespace,
-            context.Identity, controller.Metadata.Uid, ct)) throw new InvalidOperationException("The native test controller changed during pod discovery.");
+        if (!await KubernetesWorkloadObservation.MatchesDeploymentBindingAsync(_kubernetes,
+                context.Name,
+                context.Namespace,
+                context.Identity,
+                controller.Metadata.Uid,
+                ct))
+            throw new InvalidOperationException("The native test controller changed during pod discovery.");
         return result;
-        bool Owns(V1ObjectMeta metadata) => metadata.NamespaceProperty == context.Namespace && KubernetesWorkloadObservation.Owns(metadata, context.Identity);
+
+        bool Owns(V1ObjectMeta metadata) => metadata.NamespaceProperty == context.Namespace &&
+                                            KubernetesWorkloadObservation.Owns(metadata, context.Identity);
     }
 
     private sealed record ObservationPodContext(
@@ -852,7 +1048,10 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         {
             try
             {
-                var deployment = await _kubernetes.AppsV1.ReadNamespacedDeploymentAsync(name, GetNamespaceName(groupId), cancellationToken: ct);
+                var deployment =
+                    await _kubernetes.AppsV1.ReadNamespacedDeploymentAsync(name,
+                        GetNamespaceName(groupId),
+                        cancellationToken: ct);
                 if (deployment.Status?.ReadyReplicas >= deployment.Spec.Replicas &&
                     deployment.Status.AvailableReplicas >= deployment.Spec.Replicas &&
                     deployment.Status.UpdatedReplicas >= deployment.Spec.Replicas &&
@@ -860,9 +1059,13 @@ public sealed class PoleE2EFixture : IAsyncLifetime
                     deployment.Status.ObservedGeneration >= deployment.Metadata.Generation)
                     return;
             }
-            catch (HttpOperationException exception) when (exception.Response?.StatusCode == HttpStatusCode.NotFound) { }
+            catch (HttpOperationException exception) when (exception.Response?.StatusCode == HttpStatusCode.NotFound)
+            {
+            }
+
             await Task.Delay(TimeSpan.FromSeconds(2), ct);
         }
+
         var pods = await _kubernetes.CoreV1.ListNamespacedPodAsync(GetNamespaceName(groupId), cancellationToken: ct);
         var reasons = pods.Items.Where(pod => pod.Metadata.Name.StartsWith(name + "-", StringComparison.Ordinal))
             .SelectMany(pod => pod.Status?.ContainerStatuses ?? [])
@@ -871,26 +1074,45 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             .Select(waiting =>
             {
                 var message = waiting!.Message ?? string.Empty;
-                var category = message.Contains("secret", StringComparison.OrdinalIgnoreCase) ? message.Contains("key", StringComparison.OrdinalIgnoreCase) ? "SecretKeyUnavailable" : "SecretUnavailable" :
-                    message.Contains("configmap", StringComparison.OrdinalIgnoreCase) ? "ConfigMapUnavailable" : "Other";
+                var category = message.Contains("secret", StringComparison.OrdinalIgnoreCase)
+                    ?
+                    message.Contains("key", StringComparison.OrdinalIgnoreCase)
+                        ? "SecretKeyUnavailable"
+                        : "SecretUnavailable"
+                    :
+                    message.Contains("configmap", StringComparison.OrdinalIgnoreCase)
+                        ? "ConfigMapUnavailable"
+                        : "Other";
                 return $"{waiting.Reason}:{category}";
             }).Distinct();
-        throw new TimeoutException("The application workload did not finish rollout within three minutes. Waiting categories: " + string.Join(", ", reasons));
+        throw new TimeoutException(
+            "The application workload did not finish rollout within three minutes. Waiting categories: " +
+            string.Join(", ", reasons));
     }
 
     /// <summary>Only forwards application HTTP. Database operations still originate inside the application and traverse its CNI policy.</summary>
-    public async Task<(string Postgres, string Redis)> ProbeApplicationDependenciesAsync(string groupId, string name, CancellationToken ct)
+    public async Task<(string Postgres, string Redis)> ProbeApplicationDependenciesAsync(string groupId,
+        string name,
+        CancellationToken ct)
     {
-        await using var forward = await KubernetesPortForwardSession.StartAsync(_kubernetesTarget, GetNamespaceName(groupId), $"deployment/{name}", 8080, ct);
+        await using var forward = await KubernetesPortForwardSession.StartAsync(_kubernetesTarget,
+            GetNamespaceName(groupId),
+            $"deployment/{name}",
+            8080,
+            ct);
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
         using var response = await client.GetAsync($"http://127.0.0.1:{forward.LocalPort}/dependencies", ct);
         response.EnsureSuccessStatusCode();
         var result = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+
         static string Outcome(JsonElement result, string field)
         {
             var value = result.GetProperty(field).GetString();
-            return value is "Succeeded" or "ConnectionRejected" or "MissingConfiguration" or "UnexpectedResult" ? value : throw new InvalidOperationException("The application probe returned an unsupported outcome.");
+            return value is "Succeeded" or "ConnectionRejected" or "MissingConfiguration" or "UnexpectedResult"
+                ? value
+                : throw new InvalidOperationException("The application probe returned an unsupported outcome.");
         }
+
         return (Outcome(result, "postgres"), Outcome(result, "redis"));
     }
 
@@ -905,7 +1127,8 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         diagnosticTimeout.CancelAfter(TimeSpan.FromSeconds(5));
         try
         {
-            await foreach (var batch in resourceLogger.GetAllAsync("pole-server").WithCancellation(diagnosticTimeout.Token))
+            await foreach (var batch in resourceLogger.GetAllAsync("pole-server")
+                               .WithCancellation(diagnosticTimeout.Token))
             {
                 foreach (var line in batch)
                 {
@@ -937,7 +1160,8 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         diagnosticTimeout.CancelAfter(TimeSpan.FromSeconds(5));
         try
         {
-            await foreach (var batch in resourceLogger.GetAllAsync("pole-server").WithCancellation(diagnosticTimeout.Token))
+            await foreach (var batch in resourceLogger.GetAllAsync("pole-server")
+                               .WithCancellation(diagnosticTimeout.Token))
             {
                 foreach (var line in batch)
                 {
@@ -982,12 +1206,23 @@ public sealed class PoleE2EFixture : IAsyncLifetime
                         frame.StartsWith("at Pole.Features.RedisServices.", StringComparison.Ordinal) ||
                         frame.StartsWith("at Pole.Features.ResourceDeployments.", StringComparison.Ordinal))
                         kinds.Add(frame.Split(" in ", StringSplitOptions.None)[0]);
-                    foreach (var message in new[] { "No ingress policy contribution", "Ingress policy revision or TCP port is invalid", "Ingress policy ports do not match the provider path", "Ingress pod source must have an exact DNS namespace and labels", "No service for type", "Unable to resolve service for type" })
-                        if (line.Content.Contains(message, StringComparison.Ordinal)) kinds.Add(message);
-                    if (kinds.Count >= 30) return string.Join(Environment.NewLine, kinds.Order());
+                    foreach (var message in new[]
+                             {
+                             "No ingress policy contribution", "Ingress policy revision or TCP port is invalid",
+                             "Ingress policy ports do not match the provider path",
+                             "Ingress pod source must have an exact DNS namespace and labels", "No service for type",
+                             "Unable to resolve service for type"
+                         })
+                        if (line.Content.Contains(message, StringComparison.Ordinal))
+                            kinds.Add(message);
+                    if (kinds.Count >= 30)
+                        return string.Join(Environment.NewLine, kinds.Order());
                 }
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+        }
+
         return string.Join(Environment.NewLine, kinds.Order());
     }
 
@@ -1132,22 +1367,24 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         // Never serialize resource snapshots: they can contain credentials, URLs and environment values.
         try
         {
-            return string.Join("; ", resourceNames.Select(name =>
-            {
-                if (!_application!.ResourceNotifications.TryGetCurrentState(name, out var resource))
-                    return $"{name}: no snapshot";
-                var snapshot = resource.Snapshot;
-                var observedState = snapshot.State?.Text;
-                var state = observedState switch
+            return string.Join("; ",
+                resourceNames.Select(name =>
                 {
-                    "Starting" or "Running" or "FailedToStart" or "RuntimeUnhealthy" or
-                    "Waiting" or "NotStarted" or "Building" or "Stopping" or "Exited" or
-                    "Finished" or "Terminated" or "Hidden" or "ValueMissing" or "Active" => observedState,
-                    null => "none",
-                    _ => "Other"
-                };
-                return $"{name}: state={state}, health={snapshot.HealthStatus?.ToString() ?? "none"}, exit={snapshot.ExitCode?.ToString() ?? "none"}";
-            }));
+                    if (!_application!.ResourceNotifications.TryGetCurrentState(name, out var resource))
+                        return $"{name}: no snapshot";
+                    var snapshot = resource.Snapshot;
+                    var observedState = snapshot.State?.Text;
+                    var state = observedState switch
+                    {
+                        "Starting" or "Running" or "FailedToStart" or "RuntimeUnhealthy" or
+                            "Waiting" or "NotStarted" or "Building" or "Stopping" or "Exited" or
+                            "Finished" or "Terminated" or "Hidden" or "ValueMissing" or "Active" => observedState,
+                        null => "none",
+                        _ => "Other"
+                    };
+                    return
+                        $"{name}: state={state}, health={snapshot.HealthStatus?.ToString() ?? "none"}, exit={snapshot.ExitCode?.ToString() ?? "none"}";
+                }));
         }
         catch
         {
@@ -1240,29 +1477,29 @@ public sealed class PoleE2EFixture : IAsyncLifetime
     {
         var arguments = new List<string>
         {
-        "E2E:Enabled=true",
-        "Realtime:Enabled=true",
-        "LocalSourceBuilds:Enabled=false",
-        $"E2E:KeycloakPort={keycloakPort}",
-        $"E2E:KubernetesNamespacePrefix={kubernetesNamespacePrefix}",
-        "Parameters:mongo-username=pole-e2e",
-        $"Parameters:mongo-password={mongoPassword}",
-        $"Parameters:keycloak-username={KeycloakAdminUsername}",
-        $"Parameters:keycloak-password={keycloakAdminPassword}",
-        "Parameters:rabbitmq-username=pole-e2e",
-        $"Parameters:rabbitmq-password={rabbitMqPassword}",
-        $"Parameters:github-app-client-id={githubClientId}",
-        $"Parameters:github-app-client-secret={githubClientSecret}",
-        "Parameters:github-app-slug=pole-e2e",
-        $"Parameters:github-app-private-key-path={privateKeyPath}",
-        "Parameters:github-app-public-base-url=http://placeholder.invalid",
-        "Parameters:envelope-encryption-active-key-id=pole-e2e",
-        "Parameters:envelope-encryption-active-key-version=1",
-        $"Parameters:envelope-encryption-active-key-path={envelopeEncryptionKeyPath}",
-        $"Parameters:e2e-harbor-admin-password={harborAdminPassword}",
-        "ResourceDeployments:InitialRetryDelaySeconds=3600",
-        "ResourceDeployments:MaximumRetryDelaySeconds=3600",
-        $"E2E:WorkspaceRoot={Path.Combine(scratchDirectory, "source-workspace")}"
+            "E2E:Enabled=true",
+            "Realtime:Enabled=true",
+            "LocalSourceBuilds:Enabled=false",
+            $"E2E:KeycloakPort={keycloakPort}",
+            $"E2E:KubernetesNamespacePrefix={kubernetesNamespacePrefix}",
+            "Parameters:mongo-username=pole-e2e",
+            $"Parameters:mongo-password={mongoPassword}",
+            $"Parameters:keycloak-username={KeycloakAdminUsername}",
+            $"Parameters:keycloak-password={keycloakAdminPassword}",
+            "Parameters:rabbitmq-username=pole-e2e",
+            $"Parameters:rabbitmq-password={rabbitMqPassword}",
+            $"Parameters:github-app-client-id={githubClientId}",
+            $"Parameters:github-app-client-secret={githubClientSecret}",
+            "Parameters:github-app-slug=pole-e2e",
+            $"Parameters:github-app-private-key-path={privateKeyPath}",
+            "Parameters:github-app-public-base-url=http://placeholder.invalid",
+            "Parameters:envelope-encryption-active-key-id=pole-e2e",
+            "Parameters:envelope-encryption-active-key-version=1",
+            $"Parameters:envelope-encryption-active-key-path={envelopeEncryptionKeyPath}",
+            $"Parameters:e2e-harbor-admin-password={harborAdminPassword}",
+            "ResourceDeployments:InitialRetryDelaySeconds=3600",
+            "ResourceDeployments:MaximumRetryDelaySeconds=3600",
+            $"E2E:WorkspaceRoot={Path.Combine(scratchDirectory, "source-workspace")}"
         };
 
         return arguments.ToArray();
@@ -1287,7 +1524,8 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         // Kestrel's localhost endpoints bind both address families. An IPv4-only
         // reservation leaves the same IPv6 port available to another Aspire resource.
         var listener = new TcpListener(Socket.OSSupportsIPv6 ? IPAddress.IPv6Any : IPAddress.Loopback, 0);
-        if (Socket.OSSupportsIPv6) listener.Server.DualMode = true;
+        if (Socket.OSSupportsIPv6)
+            listener.Server.DualMode = true;
         listener.ExclusiveAddressUse = true;
         listener.Start();
         return listener;
@@ -1317,14 +1555,16 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         var seconds = checked((int)lifespan.TotalSeconds);
         if (seconds <= 0)
             throw new ArgumentOutOfRangeException(nameof(lifespan), "The UI token lifespan must be positive.");
-        var keycloak = _keycloak ?? throw new InvalidOperationException("The E2E identity provider is not initialized.");
+        var keycloak = _keycloak ??
+                       throw new InvalidOperationException("The E2E identity provider is not initialized.");
         var client = await keycloak.GetClientAsync("pole.control-plane.ui", cancellationToken);
         var internalId = client["id"]?.GetValue<string>()
                          ?? throw new InvalidOperationException("Keycloak did not return the UI client id.");
         var original = client.DeepClone().AsObject();
         // Register restoration before updating. This is the UI client only; the realm and the
         // separate direct-grant client used by fixture API calls retain their normal lifespans.
-        resources.Defer("restore interactive client token lifespan", token => keycloak.UpdateClientAsync(internalId, original, token));
+        resources.Defer("restore interactive client token lifespan",
+            token => keycloak.UpdateClientAsync(internalId, original, token));
         var attributes = client["attributes"] as JsonObject ?? new JsonObject();
         client["attributes"] = attributes;
         attributes["access.token.lifespan"] = seconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -1362,6 +1602,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
                 null,
                 response.StatusCode);
         }
+
         using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
         var keycloakUserId = document.RootElement.GetProperty("id").GetString()
                              ?? throw new InvalidOperationException("Pole did not return the created user id.");
@@ -1383,8 +1624,13 @@ public sealed class PoleE2EFixture : IAsyncLifetime
     }
 
     private void RegisterApiToken(string token, string email, string password, DirectGrantClient directGrantClient) =>
-        Api.RegisterToken(token, ct => _keycloak!.GetPasswordGrantTokenAsync(
-            directGrantClient.ClientId, directGrantClient.Secret, email, password, ct));
+        Api.RegisterToken(token,
+            ct => _keycloak!.GetPasswordGrantTokenAsync(
+                directGrantClient.ClientId,
+                directGrantClient.Secret,
+                email,
+                password,
+                ct));
 
     private async Task<string> WaitForDefaultTenantAsync(string accessToken, CancellationToken cancellationToken)
     {
@@ -1402,7 +1648,8 @@ public sealed class PoleE2EFixture : IAsyncLifetime
                 lastResponseBody = await response.Content.ReadAsStringAsync(cancellationToken);
                 using var document = JsonDocument.Parse(lastResponseBody);
                 var tenant = document.RootElement.EnumerateArray()
-                    .FirstOrDefault(item => item.TryGetProperty("isDefault", out var isDefault) && isDefault.GetBoolean());
+                    .FirstOrDefault(item =>
+                        item.TryGetProperty("isDefault", out var isDefault) && isDefault.GetBoolean());
                 if (tenant.ValueKind != JsonValueKind.Undefined)
                     return tenant.GetProperty("id").GetString()
                            ?? throw new InvalidOperationException("Default tenant has no id.");
@@ -1623,7 +1870,6 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         using var document = JsonDocument.Parse(output);
         return document.RootElement.Clone();
     }
-
 }
 
 public sealed record TestUser(

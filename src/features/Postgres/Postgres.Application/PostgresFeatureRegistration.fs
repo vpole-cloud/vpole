@@ -23,65 +23,87 @@ open Pole.Features.Realtime.Contracts
 [<AbstractClass; Sealed>]
 type PostgresFeatureRegistration =
     [<System.Runtime.CompilerServices.Extension>]
-    static member AddPostgresFeature(
-        services : IServiceCollection,
-        configuration : IConfiguration) =
+    static member AddPostgresFeature(services: IServiceCollection, configuration: IConfiguration) =
         services.AddSingleton(RealtimeTopic("postgres", RealtimeScope.Tenant)) |> ignore
+
         services.AddSingleton<SearchSourceType>(PostgresSearchProjection.SourceType)
         |> ignore
+
         services.AddSingleton<IMigration>(FeatureScopedMigration("pole.postgres", PostgresNameIndexesMigration()))
         |> ignore
+
         services
             .AddOptions<PostgresSettings>()
             .Bind(configuration.GetSection(PostgresSettings.SectionName))
             .Validate(
                 Func<PostgresSettings, bool>(fun settings ->
-                    settings.SupportedVersions.From > 0 &&
-                    settings.SupportedVersions.``To`` >= settings.SupportedVersions.From &&
-                    Enum.IsDefined(typeof<PostgresDeploymentMode>, box settings.DefaultDeploymentMode) &&
-                    not (String.IsNullOrWhiteSpace(settings.OperatorImage.Server)) &&
-                    not (String.IsNullOrWhiteSpace(settings.OperatorImage.Name)) &&
-                    not (String.IsNullOrWhiteSpace(settings.StatefulSetImage.Server)) &&
-                    not (String.IsNullOrWhiteSpace(settings.StatefulSetImage.Name))),
-                "PostgreSQL requires a valid deployment mode, ordered positive version bounds, and nonblank image server/name values.")
+                    settings.SupportedVersions.From > 0
+                    && settings.SupportedVersions.``To`` >= settings.SupportedVersions.From
+                    && Enum.IsDefined(typeof<PostgresDeploymentMode>, box settings.DefaultDeploymentMode)
+                    && not (String.IsNullOrWhiteSpace(settings.OperatorImage.Server))
+                    && not (String.IsNullOrWhiteSpace(settings.OperatorImage.Name))
+                    && not (String.IsNullOrWhiteSpace(settings.StatefulSetImage.Server))
+                    && not (String.IsNullOrWhiteSpace(settings.StatefulSetImage.Name))),
+                "PostgreSQL requires a valid deployment mode, ordered positive version bounds, and nonblank image server/name values."
+            )
             .ValidateOnStart()
         |> ignore
+
         services.TryAddSingleton<PostgresSettings>(
             Func<IServiceProvider, PostgresSettings>(fun serviceProvider ->
-                serviceProvider.GetRequiredService<IOptions<PostgresSettings>>().Value))
+                serviceProvider.GetRequiredService<IOptions<PostgresSettings>>().Value)
+        )
         |> ignore
+
         services.TryAddSingleton<PostgresClusterCountQuota>() |> ignore
-        services.TryAddEnumerable(
-            ServiceDescriptor.Singleton<Quota, PostgresClusterCountQuota>())
+
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<Quota, PostgresClusterCountQuota>())
         |> ignore
-        services.TryAddEnumerable(
-            ServiceDescriptor.Singleton<IQuotaProfile, PostgresQuotaProfile>())
+
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IQuotaProfile, PostgresQuotaProfile>())
         |> ignore
+
         PostgresPersistenceRegistration.addPostgresPersistence services |> ignore
+
         services.AddSingleton<ResourceConnectionSourceCapability>(
-            ResourceConnectionSourceCapability(PostgresResourceDeployment.ResourceType))
+            ResourceConnectionSourceCapability(PostgresResourceDeployment.ResourceType)
+        )
         |> ignore
+
         services.TryAddScoped<RunMongoOutcomeTransaction<UpdatePostgresClusterPasswordOutcome>>(
             Func<IServiceProvider, RunMongoOutcomeTransaction<UpdatePostgresClusterPasswordOutcome>>(
                 fun serviceProvider ->
-                    RunMongoOutcomeTransaction<UpdatePostgresClusterPasswordOutcome>(
-                        fun operation cancellationToken ->
-                            serviceProvider
-                                .GetRequiredService<MongoRunTransaction>()
-                                .InvokeOutcomeAsync<UpdatePostgresClusterPasswordOutcome>(
-                                    operation,
-                                    cancellationToken))))
+                    RunMongoOutcomeTransaction<UpdatePostgresClusterPasswordOutcome>(fun operation cancellationToken ->
+                        serviceProvider
+                            .GetRequiredService<MongoRunTransaction>()
+                            .InvokeOutcomeAsync<UpdatePostgresClusterPasswordOutcome>(operation, cancellationToken)))
+        )
         |> ignore
+
         services.TryAddScoped<PostgresResourceDeploymentAdapter>() |> ignore
         services.TryAddScoped<PostgresResourceDeploymentObserver>() |> ignore
         services.TryAddScoped<PostgresResourceDeploymentChangeSource>() |> ignore
-        services.AddSingleton(ResourceDeploymentObserverDescriptor.Create<PostgresResourceDeploymentObserver, PostgresResourceDeploymentChangeSource>(PostgresResourceDeployment.ResourceType)) |> ignore
+
+        services.AddSingleton(
+            ResourceDeploymentObserverDescriptor.Create<
+                PostgresResourceDeploymentObserver,
+                PostgresResourceDeploymentChangeSource
+             >(
+                PostgresResourceDeployment.ResourceType
+            )
+        )
+        |> ignore
+
         services.TryAddSingleton<IPostgresClusterDeploymentManager, PostgresClusterDeploymentManager>()
         |> ignore
+
         services.AddSingleton(PostgresResourceDeploymentAdapterRegistration.Descriptor)
         |> ignore
+
         services.AddSingleton<ResourceIngressPolicyDefinition>(PostgresIngressPolicyDefinitions.Replication)
         |> ignore
+
         services.AddSingleton<ResourceIngressPolicyDefinition>(PostgresIngressPolicyDefinitions.Operator)
         |> ignore
+
         services

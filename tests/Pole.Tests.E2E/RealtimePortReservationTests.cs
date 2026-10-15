@@ -19,10 +19,19 @@ public sealed class RealtimePortReservationTests
                          : new[] { IPAddress.Loopback })
             {
                 var contender = new TcpListener(address, port);
-                try { Assert.Throws<SocketException>(() => contender.Start()); }
-                finally { contender.Stop(); }
+                try
+                {
+                    Assert.Throws<SocketException>(() => contender.Start());
+                }
+                finally
+                {
+                    contender.Stop();
+                }
             }
         }
-        finally { reservation.Stop(); }
+        finally
+        {
+            reservation.Stop();
+        }
     }
 }

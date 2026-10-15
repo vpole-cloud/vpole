@@ -10,7 +10,13 @@ public sealed class ResourceDeploymentObservationConsumer(PublishRealtimeChange 
     public Task Consume(ConsumeContext<ResourceDeploymentObservationChangedEvent> context)
     {
         var message = context.Message;
-        return publish(new("runtime-observations", message.EventCore.TenantId, message.DeploymentId,
-            message.ResourceGroupId, message.DeploymentRevision, message.DesiredGeneration, message.ObservationVersion), context.CancellationToken);
+        return publish(new("runtime-observations",
+                message.EventCore.TenantId,
+                message.DeploymentId,
+                message.ResourceGroupId,
+                message.DeploymentRevision,
+                message.DesiredGeneration,
+                message.ObservationVersion),
+            context.CancellationToken);
     }
 }

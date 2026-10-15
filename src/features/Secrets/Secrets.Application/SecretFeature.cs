@@ -20,17 +20,22 @@ public static class SecretFeature
         services.AddSingleton(new RealtimeTopic("secrets", RealtimeScope.Tenant));
         services.AddSecretPersistence();
         services.AddScoped<ConsumerSecretReferenceAdmission>();
-        services.AddScoped<AdmitConsumerSecretReferences>(sp => sp.GetRequiredService<ConsumerSecretReferenceAdmission>().InvokeAsync);
+        services.AddScoped<AdmitConsumerSecretReferences>(sp =>
+            sp.GetRequiredService<ConsumerSecretReferenceAdmission>().InvokeAsync);
         services.AddScoped<ConsumerSecretProjectionResolver>();
-        services.AddScoped<EnsureConsumerSecretProjections>(sp => sp.GetRequiredService<ConsumerSecretProjectionResolver>().InvokeAsync);
+        services.AddScoped<EnsureConsumerSecretProjections>(sp =>
+            sp.GetRequiredService<ConsumerSecretProjectionResolver>().InvokeAsync);
         services.AddScoped<EnvelopePrepareManagedSecret>();
-        services.AddScoped<PrepareManagedSecret>(sp => sp.GetRequiredService<EnvelopePrepareManagedSecret>().InvokeAsync);
+        services.AddScoped<PrepareManagedSecret>(sp =>
+            sp.GetRequiredService<EnvelopePrepareManagedSecret>().InvokeAsync);
         services.AddScoped<EnvelopeReadManagedSecretKey>();
-        services.AddScoped<ReadManagedSecretKey>(sp => sp.GetRequiredService<EnvelopeReadManagedSecretKey>().InvokeAsync);
+        services.AddScoped<ReadManagedSecretKey>(sp =>
+            sp.GetRequiredService<EnvelopeReadManagedSecretKey>().InvokeAsync);
         services.AddScoped<EnvelopeReadManagedSecret>();
         services.AddScoped<ReadManagedSecret>(sp => sp.GetRequiredService<EnvelopeReadManagedSecret>().InvokeAsync);
         services.AddScoped<ReconcileManagedSecretProjection>();
-        services.AddScoped<EnsureManagedSecretProjection>(sp => sp.GetRequiredService<ReconcileManagedSecretProjection>().InvokeAsync);
+        services.AddScoped<EnsureManagedSecretProjection>(sp =>
+            sp.GetRequiredService<ReconcileManagedSecretProjection>().InvokeAsync);
         services.AddScoped<SecretProjectionReconciler>();
         services.AddScoped<SecretProjectionRecoveryJob>();
         services.AddScoped<ISecretProjectionTarget, KubernetesSecretProjectionTarget>();

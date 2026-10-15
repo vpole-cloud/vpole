@@ -14,8 +14,14 @@ internal static class RealtimeRedisKeys
     public static string Connection(string connectionId) => Prefix + "connection:" + connectionId;
     public static string Session(string sessionId) => Prefix + "session:" + sessionId;
     public static string Revoked(string sessionId) => Prefix + "revoked:" + sessionId;
+
     public static string AllTopic(string topic) => Prefix + "all-topic:" +
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(topic)));
+                                                   Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(topic)));
+
     public static string Topic(string topic, string? tenantId) => Prefix + "topic:" +
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new[] { topic, tenantId }))));
+                                                                  Convert.ToHexString(
+                                                                      SHA256.HashData(
+                                                                          Encoding.UTF8.GetBytes(
+                                                                              JsonSerializer.Serialize(new[]
+                                                                                  { topic, tenantId }))));
 }

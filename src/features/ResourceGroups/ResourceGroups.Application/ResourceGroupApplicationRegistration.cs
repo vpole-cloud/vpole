@@ -55,8 +55,8 @@ public static class ResourceGroupApplicationRegistration
             .Value);
 
         services.AddResourceGroupPersistence();
-        services.AddCapability<MongoAdmitResourceScopeReference, AdmitResourceScopeReference>(
-            implementation => implementation.InvokeAsync);
+        services.AddCapability<MongoAdmitResourceScopeReference, AdmitResourceScopeReference>(implementation =>
+            implementation.InvokeAsync);
         services.AddCapability<RuntimeCellNamespaceNameGenerator,
             GenerateRuntimeCellNamespaceName>(implementation => implementation.Invoke);
         services.TryAddScoped<KubernetesRuntimeCellNamespaceManager>();
@@ -116,29 +116,27 @@ public static class ResourceGroupApplicationRegistration
 
         services.AddCapability<MongoGetResourceGroupOwnership,
             GetResourceGroupOwnership>(implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoLoadResourceGroup, LoadResourceGroup>(
-            implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoLoadResourceGroupPage, LoadResourceGroupPage>(
-            implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoLoadIsolationScope, LoadIsolationScope>(
-            implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoLoadIsolationScopes, LoadIsolationScopes>(
-            implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoLoadRuntimeCell, LoadRuntimeCell>(
-            implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoLoadRuntimeCells, LoadRuntimeCells>(
-            implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoPersistCreatedResourceGroup, PersistCreatedResourceGroup>(
-            implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoPersistUpdatedResourceGroup, PersistUpdatedResourceGroup>(
-            implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoPersistCreatedIsolationScope, PersistCreatedIsolationScope>(
-            implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoPersistRuntimeCellRetry, PersistRuntimeCellRetry>(
-            implementation => implementation.InvokeAsync);
+        services.AddCapability<MongoLoadResourceGroup, LoadResourceGroup>(implementation => implementation.InvokeAsync);
+        services.AddCapability<MongoLoadResourceGroupPage, LoadResourceGroupPage>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoLoadIsolationScope, LoadIsolationScope>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoLoadIsolationScopes, LoadIsolationScopes>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoLoadRuntimeCell, LoadRuntimeCell>(implementation => implementation.InvokeAsync);
+        services.AddCapability<MongoLoadRuntimeCells, LoadRuntimeCells>(implementation => implementation.InvokeAsync);
+        services.AddCapability<MongoPersistCreatedResourceGroup, PersistCreatedResourceGroup>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoPersistUpdatedResourceGroup, PersistUpdatedResourceGroup>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoPersistCreatedIsolationScope, PersistCreatedIsolationScope>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoPersistRuntimeCellRetry, PersistRuntimeCellRetry>(implementation =>
+            implementation.InvokeAsync);
         services.TryAddScoped<MongoResourceRegistrationMutations>();
         services.TryAddScoped<MongoResourceRegistrationReads>();
-        services.TryAddScoped<LoadRegisteredResource>(provider => provider.GetRequiredService<MongoResourceRegistrationReads>().LoadOneAsync);
+        services.TryAddScoped<LoadRegisteredResource>(provider =>
+            provider.GetRequiredService<MongoResourceRegistrationReads>().LoadOneAsync);
         services.AddCapability<MongoResourceRegistrationConnectionFence,
             FenceRegisteredResource>(implementation => implementation.InvokeAsync);
         services.TryAddScoped<IResourceRegistrar>(serviceProvider =>
@@ -151,14 +149,14 @@ public static class ResourceGroupApplicationRegistration
         services.TryAddScoped<LoadResourceRegistrationCount>(serviceProvider => serviceProvider
             .GetRequiredService<MongoResourceRegistrationReads>()
             .CountAsync);
-        services.AddCapability<MongoBeginResourceGroupDeletion, BeginResourceGroupDeletion>(
-            implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoBeginIsolationScopeDeletion, BeginIsolationScopeDeletion>(
-            implementation => implementation.InvokeAsync);
+        services.AddCapability<MongoBeginResourceGroupDeletion, BeginResourceGroupDeletion>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoBeginIsolationScopeDeletion, BeginIsolationScopeDeletion>(implementation =>
+            implementation.InvokeAsync);
         services.AddCapability<MongoFinalizeResourceGroupDeletion,
             FinalizeResourceGroupDeletion>(implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoLoadResourcePlacement, LoadResourcePlacement>(
-            implementation => implementation.InvokeAsync);
+        services.AddCapability<MongoLoadResourcePlacement, LoadResourcePlacement>(implementation =>
+            implementation.InvokeAsync);
         services.AddCapability<MongoLoadResourcePlacementInTransaction,
             LoadResourcePlacementInTransaction>(implementation => implementation.InvokeAsync);
         services.AddCapability<MongoLoadResourcePlacementsInTransaction,
@@ -172,26 +170,26 @@ public static class ResourceGroupApplicationRegistration
             .GetRequiredService<MongoResourcePlacementResolver>()
             .InvokeManyAsync);
 
-        services.TryAddSingleton<RunMongoOutcomeTransaction<ResourceGroup>>(
-            serviceProvider => serviceProvider
-                .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<ResourceGroup>);
-        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistUpdatedResourceGroupOutcome>>(serviceProvider => serviceProvider
+        services.TryAddSingleton<RunMongoOutcomeTransaction<ResourceGroup>>(serviceProvider => serviceProvider
+            .GetRequiredService<MongoRunTransaction>()
+            .InvokeOutcomeAsync<ResourceGroup>);
+        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistUpdatedResourceGroupOutcome>>(serviceProvider =>
+            serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
                 .InvokeOutcomeAsync<PersistUpdatedResourceGroupOutcome>);
-        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistCreatedIsolationScopeOutcome>>(serviceProvider => serviceProvider
+        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistCreatedIsolationScopeOutcome>>(serviceProvider =>
+            serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
                 .InvokeOutcomeAsync<PersistCreatedIsolationScopeOutcome>);
-        services.TryAddSingleton<RunMongoOutcomeTransaction<RetryRuntimeCellResult>>(
-            serviceProvider => serviceProvider
-                .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<RetryRuntimeCellResult>);
-        services.TryAddSingleton<RunMongoOutcomeTransaction<BeginResourceGroupDeletionOutcome>>(
-            serviceProvider => serviceProvider
+        services.TryAddSingleton<RunMongoOutcomeTransaction<RetryRuntimeCellResult>>(serviceProvider => serviceProvider
+            .GetRequiredService<MongoRunTransaction>()
+            .InvokeOutcomeAsync<RetryRuntimeCellResult>);
+        services.TryAddSingleton<RunMongoOutcomeTransaction<BeginResourceGroupDeletionOutcome>>(serviceProvider =>
+            serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
                 .InvokeOutcomeAsync<BeginResourceGroupDeletionOutcome>);
-        services.TryAddSingleton<RunMongoOutcomeTransaction<BeginIsolationScopeDeletionOutcome>>(
-            serviceProvider => serviceProvider
+        services.TryAddSingleton<RunMongoOutcomeTransaction<BeginIsolationScopeDeletionOutcome>>(serviceProvider =>
+            serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
                 .InvokeOutcomeAsync<BeginIsolationScopeDeletionOutcome>);
         services.TryAddSingleton<RunMongoOutcomeTransaction<Unit>>(serviceProvider => serviceProvider

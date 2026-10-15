@@ -31,7 +31,8 @@ public sealed class PostgresCustomResourceWatchTests
         Assert.Contains("labelSelector=pole.io/tenant-id=tenant", query);
         Assert.Contains("resourceVersion=collection/opaque", query);
         Assert.Contains("allowWatchBookmarks=true", query);
-        stream.Write("{\"type\":\"MODIFIED\",\"object\":{\"apiVersion\":\"postgresql.cnpg.io/v1\",\"kind\":\"Cluster\",\"metadata\":{\"name\":\"pg-owned\",\"uid\":\"controller\",\"resourceVersion\":\"item/opaque\"}}}\n");
+        stream.Write(
+            "{\"type\":\"MODIFIED\",\"object\":{\"apiVersion\":\"postgresql.cnpg.io/v1\",\"kind\":\"Cluster\",\"metadata\":{\"name\":\"pg-owned\",\"uid\":\"controller\",\"resourceVersion\":\"item/opaque\"}}}\n");
         Assert.True(await changes.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.Equal(KubernetesListWatchChangeKind.Changed, changes.Current.Kind);
         Assert.Equal("controller", changes.Current.Item.GetProperty("metadata").GetProperty("uid").GetString());
@@ -39,7 +40,10 @@ public sealed class PostgresCustomResourceWatchTests
         await changes.DisposeAsync();
         Assert.True(stream.Disposed);
         // The transport owns its response, never the cached target client.
-        await client.CustomObjects.ListNamespacedCustomObjectAsync<JsonElement>("postgresql.cnpg.io", "v1", "owned", "clusters");
+        await client.CustomObjects.ListNamespacedCustomObjectAsync<JsonElement>("postgresql.cnpg.io",
+            "v1",
+            "owned",
+            "clusters");
     }
 
     [Theory]
@@ -56,7 +60,9 @@ public sealed class PostgresCustomResourceWatchTests
         var changes = Changes(client, cancellation.Token).GetAsyncEnumerator();
         await changes.MoveNextAsync();
         await changes.MoveNextAsync();
-        first.Write(malformed ? "{invalid-json\n" : "{\"type\":\"ERROR\",\"object\":{\"apiVersion\":\"v1\",\"kind\":\"Status\",\"code\":410,\"message\":\"native-canary-secret\"}}\n");
+        first.Write(malformed
+            ? "{invalid-json\n"
+            : "{\"type\":\"ERROR\",\"object\":{\"apiVersion\":\"v1\",\"kind\":\"Status\",\"code\":410,\"message\":\"native-canary-secret\"}}\n");
         Assert.True(await changes.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.Equal(KubernetesListWatchChangeKind.Unavailable, changes.Current.Kind);
         Assert.True(first.Disposed);
@@ -92,30 +98,65 @@ public sealed class PostgresCustomResourceWatchTests
         await changes.DisposeAsync();
     }
 
-    private static IAsyncEnumerable<KubernetesListWatchChange<JsonElement>> Changes(IKubernetes client, CancellationToken ct) =>
+    private static IAsyncEnumerable<KubernetesListWatchChange<JsonElement>> Changes(IKubernetes client,
+        CancellationToken ct) =>
         KubernetesListWatch.WatchAsync<JsonElement>(async (continuation, token) =>
-        {
-            var page = await client.CustomObjects.ListNamespacedCustomObjectAsync<JsonElement>("postgresql.cnpg.io", "v1", "owned", "clusters",
-                continueParameter: continuation, fieldSelector: "metadata.name=pg-owned", labelSelector: "pole.io/tenant-id=tenant", limit: 100, cancellationToken: token);
-            var metadata = page.GetProperty("metadata");
-            return new(page.GetProperty("items").EnumerateArray().Select(item => item.Clone()).ToArray(),
-                metadata.GetProperty("resourceVersion").GetString(), metadata.TryGetProperty("continue", out var next) ? next.GetString() : null);
-        }, (version, error, token) => WatchAsync(client, version, error, token),
-            item => item.GetProperty("metadata").GetProperty("resourceVersion").GetString(), TimeProvider.System, cancellationToken: ct);
+            {
+                var page = await client.CustomObjects.ListNamespacedCustomObjectAsync<JsonElement>("postgresql.cnpg.io",
+                    "v1",
+                    "owned",
+                    "clusters",
+                    continueParameter: continuation,
+                    fieldSelector: "metadata.name=pg-owned",
+                    labelSelector: "pole.io/tenant-id=tenant",
+                    limit: 100,
+                    cancellationToken: token);
+                var metadata = page.GetProperty("metadata");
+                return new(page.GetProperty("items").EnumerateArray().Select(item => item.Clone()).ToArray(),
+                    metadata.GetProperty("resourceVersion").GetString(),
+                    metadata.TryGetProperty("continue", out var next) ? next.GetString() : null);
+            },
+            (version, error, token) => WatchAsync(client, version, error, token),
+            item => item.GetProperty("metadata").GetProperty("resourceVersion").GetString(),
+            TimeProvider.System,
+            cancellationToken: ct);
 
     private static async IAsyncEnumerable<(WatchEventType Type, JsonElement Item)> WatchAsync(
-        IKubernetes client, string version, Action<Exception> error, [EnumeratorCancellation] CancellationToken ct)
+        IKubernetes client,
+        string version,
+        Action<Exception> error,
+        [EnumeratorCancellation] CancellationToken ct)
     {
-        await foreach (var (type, item) in client.CustomObjects.WatchListNamespacedCustomObjectAsync("postgresql.cnpg.io", "v1", "owned", "clusters",
-            allowWatchBookmarks: true, fieldSelector: "metadata.name=pg-owned", labelSelector: "pole.io/tenant-id=tenant", resourceVersion: version,
-            timeoutSeconds: 300, onError: error, cancellationToken: ct))
+        await foreach (var (type, item) in client.CustomObjects.WatchListNamespacedCustomObjectAsync(
+                           "postgresql.cnpg.io",
+                           "v1",
+                           "owned",
+                           "clusters",
+                           allowWatchBookmarks: true,
+                           fieldSelector: "metadata.name=pg-owned",
+                           labelSelector: "pole.io/tenant-id=tenant",
+                           resourceVersion: version,
+                           timeoutSeconds: 300,
+                           onError: error,
+                           cancellationToken: ct))
             yield return (type, Assert.IsType<JsonElement>(item));
     }
+
     private static string List(string version) => JsonSerializer.Serialize(new
     {
         apiVersion = "postgresql.cnpg.io/v1",
         kind = "ClusterList",
-        metadata = new { resourceVersion = version },
-        items = new[] { new { apiVersion = "postgresql.cnpg.io/v1", kind = "Cluster", metadata = new { name = "pg-owned", uid = "controller", resourceVersion = "item" } } }
+        metadata = new
+        {
+            resourceVersion = version
+        },
+        items = new[]
+        {
+            new
+            {
+                apiVersion = "postgresql.cnpg.io/v1", kind = "Cluster",
+                metadata = new { name = "pg-owned", uid = "controller", resourceVersion = "item" }
+            }
+        }
     });
 }

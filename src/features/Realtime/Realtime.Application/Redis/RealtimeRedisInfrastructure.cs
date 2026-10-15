@@ -20,9 +20,12 @@ public sealed class RealtimeRedisConnection(IConnectionMultiplexer multiplexer) 
 
 public static class RealtimeRedisInfrastructure
 {
-    public static IServiceCollection AddRealtimeRedis(this IServiceCollection services, IConfiguration configuration, bool development)
+    public static IServiceCollection AddRealtimeRedis(this IServiceCollection services,
+        IConfiguration configuration,
+        bool development)
     {
-        if (!configuration.GetValue<bool>("Realtime:Enabled")) return services;
+        if (!configuration.GetValue<bool>("Realtime:Enabled"))
+            return services;
         var connectionString = configuration.GetConnectionString("realtime");
         if (string.IsNullOrWhiteSpace(connectionString))
             throw new InvalidOperationException("Enabled realtime requires ConnectionStrings:realtime.");
@@ -32,12 +35,15 @@ public static class RealtimeRedisInfrastructure
                 ? "Enabled realtime requires a key-protection certificate. Aspire creates an ignored development certificate."
                 : "Enabled realtime requires Realtime:KeyProtectionCertificatePath with a private key.");
         var certificate = X509CertificateLoader.LoadPkcs12FromFile(certificatePath,
-            configuration["Realtime:KeyProtectionCertificatePassword"], X509KeyStorageFlags.EphemeralKeySet);
+            configuration["Realtime:KeyProtectionCertificatePassword"],
+            X509KeyStorageFlags.EphemeralKeySet);
         if (!certificate.HasPrivateKey)
         {
             certificate.Dispose();
-            throw new InvalidOperationException("The realtime key-protection certificate must contain its private key.");
+            throw new InvalidOperationException(
+                "The realtime key-protection certificate must contain its private key.");
         }
+
         services.AddSingleton(_ => certificate);
         var redisOptions = ConfigurationOptions.Parse(connectionString);
         services.TryAddSingleton(provider =>
@@ -51,8 +57,9 @@ public static class RealtimeRedisInfrastructure
             return new RealtimeRedisConnection(ConnectionMultiplexer.Connect(redis));
         });
         services.AddDataProtection().SetApplicationName("Pole").ProtectKeysWithCertificate(certificate);
-        services.AddOptions<KeyManagementOptions>().Configure<RealtimeRedisConnection, X509Certificate2>((options, redis, _) =>
-            options.XmlRepository = new RedisXmlRepository(() => redis.Database, RealtimeRedisKeys.DataProtection));
+        services.AddOptions<KeyManagementOptions>()
+            .Configure<RealtimeRedisConnection, X509Certificate2>((options, redis, _) =>
+                options.XmlRepository = new RedisXmlRepository(() => redis.Database, RealtimeRedisKeys.DataProtection));
         services.AddSignalR().AddStackExchangeRedis();
         services.AddOptions<RedisOptions>().Configure<RealtimeRedisConnection>((options, redis) =>
         {

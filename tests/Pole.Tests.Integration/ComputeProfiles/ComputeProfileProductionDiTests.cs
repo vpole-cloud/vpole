@@ -32,34 +32,38 @@ public sealed class ComputeProfileProductionDiTests(MongoReplicaSetFixture fixtu
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IKubernetesClientProvider>(
             new FixedKubernetesClientProvider(null!));
-        services.AddSingleton<EnsureTenantsExist>(
-            (_, _) => Task.FromResult<EnsureTenantsExistOutcome>(
-                new TenantsExist()));
-        services.AddSingleton<AdmitDeploymentTargetForWorkload>(
-            (_, _) => Task.FromException<AdmitDeploymentTargetForWorkloadOutcome>(
+        services.AddSingleton<EnsureTenantsExist>((_, _) => Task.FromResult<EnsureTenantsExistOutcome>(
+            new TenantsExist()));
+        services.AddSingleton<AdmitDeploymentTargetForWorkload>((_, _) =>
+            Task.FromException<AdmitDeploymentTargetForWorkloadOutcome>(
                 new NotSupportedException("The DI graph test does not invoke admission.")));
-        services.AddSingleton<ApplyDeploymentTargetReferenceChanges>(
-            (_, _, _, _, _) => Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(new DeploymentTargetReferencesChanged()));
-        services.AddSingleton<EnsureComputeProfileUnreferenced>(
-            (_, _, _) => Task.FromResult<EnsureComputeProfileUnreferencedOutcome>(
+        services.AddSingleton<ApplyDeploymentTargetReferenceChanges>((_, _, _, _, _) =>
+            Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(new DeploymentTargetReferencesChanged()));
+        services.AddSingleton<EnsureComputeProfileUnreferenced>((_, _, _) =>
+            Task.FromResult<EnsureComputeProfileUnreferencedOutcome>(
                 new ComputeProfileUnreferenced()));
         services.AddOutboxPersistence();
         services.AddComputeProfilesFeature();
 
-        Assert.DoesNotContain(services, descriptor =>
-            descriptor.ServiceType.Name.Contains("Legacy", StringComparison.Ordinal));
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(ResolveComputeProfile) &&
-            descriptor.Lifetime == ServiceLifetime.Scoped);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(ResolveComputeProfiles) &&
-            descriptor.Lifetime == ServiceLifetime.Scoped);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(FenceResolvedComputeProfiles) &&
-            descriptor.Lifetime == ServiceLifetime.Scoped);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(BootstrapComputeProfiles) &&
-            descriptor.Lifetime == ServiceLifetime.Singleton);
+        Assert.DoesNotContain(services,
+            descriptor =>
+                descriptor.ServiceType.Name.Contains("Legacy", StringComparison.Ordinal));
+        Assert.Contains(services,
+            descriptor =>
+                descriptor.ServiceType == typeof(ResolveComputeProfile) &&
+                descriptor.Lifetime == ServiceLifetime.Scoped);
+        Assert.Contains(services,
+            descriptor =>
+                descriptor.ServiceType == typeof(ResolveComputeProfiles) &&
+                descriptor.Lifetime == ServiceLifetime.Scoped);
+        Assert.Contains(services,
+            descriptor =>
+                descriptor.ServiceType == typeof(FenceResolvedComputeProfiles) &&
+                descriptor.Lifetime == ServiceLifetime.Scoped);
+        Assert.Contains(services,
+            descriptor =>
+                descriptor.ServiceType == typeof(BootstrapComputeProfiles) &&
+                descriptor.Lifetime == ServiceLifetime.Singleton);
 
         using var provider = services.BuildServiceProvider(validateScopes: true);
         using var scope = provider.CreateScope();

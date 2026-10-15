@@ -59,8 +59,15 @@ internal sealed class MongoRecordResourceConnectionTarget(
         string reason,
         CancellationToken cancellationToken = default)
     {
-        await TryRecordAsync(tenantId, connectionId, expectedRevision, current => ApplyChange(current.RecordVerificationFailure(
-            targetId, expectedGeneration, reason, timeProvider.GetUtcNow().UtcDateTime)), cancellationToken);
+        await TryRecordAsync(tenantId,
+            connectionId,
+            expectedRevision,
+            current => ApplyChange(current.RecordVerificationFailure(
+                targetId,
+                expectedGeneration,
+                reason,
+                timeProvider.GetUtcNow().UtcDateTime)),
+            cancellationToken);
     }
 
     public async Task RecordCleanupVerificationFailureAsync(
@@ -72,8 +79,15 @@ internal sealed class MongoRecordResourceConnectionTarget(
         string reason,
         CancellationToken cancellationToken = default)
     {
-        await TryRecordAsync(tenantId, connectionId, expectedRevision, current => CleanupChange(current.RecordCleanupVerificationFailure(
-            location, expectedGeneration, reason, timeProvider.GetUtcNow().UtcDateTime)), cancellationToken);
+        await TryRecordAsync(tenantId,
+            connectionId,
+            expectedRevision,
+            current => CleanupChange(current.RecordCleanupVerificationFailure(
+                location,
+                expectedGeneration,
+                reason,
+                timeProvider.GetUtcNow().UtcDateTime)),
+            cancellationToken);
     }
 
     public Task RecordApplyAsync(
@@ -152,6 +166,7 @@ internal sealed class MongoRecordResourceConnectionTarget(
                 await purgeIfComplete(recorded.Connection, cancellationToken);
                 return;
             }
+
             if (outcome.Value is ResourceConnectionTargetUnchanged unchanged)
             {
                 if (unchanged.Connection is not null)
@@ -159,33 +174,43 @@ internal sealed class MongoRecordResourceConnectionTarget(
                 return;
             }
         }
+
         throw new InvalidOperationException(
             $"Connection '{connectionId}' changed repeatedly while recording target status.");
     }
 
-    private Task<ResourceConnectionTargetOutcome> TryRecordAsync(string tenantId, string connectionId, long? expectedRevision,
-        Func<ResourceConnection, ResourceConnection?> change, CancellationToken ct) =>
+    private Task<ResourceConnectionTargetOutcome> TryRecordAsync(string tenantId,
+        string connectionId,
+        long? expectedRevision,
+        Func<ResourceConnection, ResourceConnection?> change,
+        CancellationToken ct) =>
         transactions.InvokeOutcomeAsync<ResourceConnectionTargetOutcome>(async (tx, token) =>
-        {
-            var filter = expectedRevision is long revision
-                ? ResourceConnectionFilters.AtRevision(tenantId, connectionId, revision)
-                : ResourceConnectionFilters.ByTenantAndId(tenantId, connectionId);
-            var current = await connections.Find(tx.Session, filter).FirstOrDefaultAsync(token);
-            var changed = current is null ? null : change(current);
-            if (changed is null)
-                return tx.Commit(new ResourceConnectionTargetUnchanged(current));
-            var updated = await connections.ReplaceOneAsync(tx.Session,
-                ResourceConnectionFilters.AtRevision(tenantId, connectionId, current!.Revision), changed, cancellationToken: token);
-            if (updated.ModifiedCount != 1)
-                return tx.Abort(new ResourceConnectionTargetConflict());
-            await outbox(tx.Session, [OutboxWrite.Create(changed.ToChangedEvent())], token);
-            return tx.Commit(new ResourceConnectionTargetRecorded(changed));
-        }, ct);
+            {
+                var filter = expectedRevision is long revision
+                    ? ResourceConnectionFilters.AtRevision(tenantId, connectionId, revision)
+                    : ResourceConnectionFilters.ByTenantAndId(tenantId, connectionId);
+                var current = await connections.Find(tx.Session, filter).FirstOrDefaultAsync(token);
+                var changed = current is null ? null : change(current);
+                if (changed is null)
+                    return tx.Commit(new ResourceConnectionTargetUnchanged(current));
+                var updated = await connections.ReplaceOneAsync(tx.Session,
+                    ResourceConnectionFilters.AtRevision(tenantId, connectionId, current!.Revision),
+                    changed,
+                    cancellationToken: token);
+                if (updated.ModifiedCount != 1)
+                    return tx.Abort(new ResourceConnectionTargetConflict());
+                await outbox(tx.Session, [OutboxWrite.Create(changed.ToChangedEvent())], token);
+                return tx.Commit(new ResourceConnectionTargetRecorded(changed));
+            },
+            ct);
 }
 
 internal sealed record ResourceConnectionTargetRecorded(ResourceConnection Connection);
+
 internal sealed record ResourceConnectionTargetUnchanged(ResourceConnection? Connection);
+
 internal sealed record ResourceConnectionTargetConflict;
+
 internal union ResourceConnectionTargetOutcome(
     ResourceConnectionTargetRecorded,
     ResourceConnectionTargetUnchanged,

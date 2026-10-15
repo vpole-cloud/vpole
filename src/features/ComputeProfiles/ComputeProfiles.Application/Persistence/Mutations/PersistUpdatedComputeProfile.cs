@@ -19,9 +19,9 @@ public union PersistUpdatedComputeProfileOutcome(
 
 public delegate Task<PersistUpdatedComputeProfileOutcome>
     PersistUpdatedComputeProfile(
-    ComputeProfile current,
-    ComputeProfile replacement,
-    CancellationToken cancellationToken = default);
+        ComputeProfile current,
+        ComputeProfile replacement,
+        CancellationToken cancellationToken = default);
 
 internal sealed class MongoPersistUpdatedComputeProfile(
     IMongoCollection<ComputeProfile> computeProfiles,
@@ -49,42 +49,44 @@ internal sealed class MongoPersistUpdatedComputeProfile(
             .ToHashSet(StringComparer.Ordinal);
 
         return runMongoTransaction(async (transaction, ct) =>
-        {
-            var references = await ComputeProfileTargetReferences.ApplyChangesAsync(
-                applyTargetReferenceChanges,
-                replacement,
-                replacementTargetIds.Except(currentTargetIds, StringComparer.Ordinal),
-                currentTargetIds.Except(replacementTargetIds, StringComparer.Ordinal),
-                transaction.Session,
-                ct);
-            if (references is DeploymentTargetReferenceChangeRejected error)
             {
-                return transaction.Abort(error);
-            }
-
-            if (replacement.IsDefault)
-            {
-                await ComputeProfileDefaultPersistence.DemoteOtherDefaultsAsync(
-                    computeProfiles,
+                var references = await ComputeProfileTargetReferences.ApplyChangesAsync(
+                    applyTargetReferenceChanges,
+                    replacement,
+                    replacementTargetIds.Except(currentTargetIds, StringComparer.Ordinal),
+                    currentTargetIds.Except(replacementTargetIds, StringComparer.Ordinal),
                     transaction.Session,
-                    replacement.Id,
-                    replacement.UpdatedAtUtc,
                     ct);
-            }
+                if (references is DeploymentTargetReferenceChangeRejected error)
+                {
+                    return transaction.Abort(error);
+                }
 
-            var replaced = await computeProfiles.ReplaceOneAsync(
-                transaction.Session,
-                ComputeProfileFilters.AtSnapshot(current),
-                replacement,
-                cancellationToken: ct);
-            if (replaced.ModifiedCount != 1)
-            {
-                return transaction.Abort(new ComputeProfileRevisionConflict(current.Id));
-            }
+                if (replacement.IsDefault)
+                {
+                    await ComputeProfileDefaultPersistence.DemoteOtherDefaultsAsync(
+                        computeProfiles,
+                        transaction.Session,
+                        replacement.Id,
+                        replacement.UpdatedAtUtc,
+                        ct);
+                }
 
-            await storeOutboxWrites(transaction.Session,
-                [OutboxWrite.Create(new ComputeProfileCatalogChangedEvent(replacement.Id, replacement.Revision))], ct);
-            return transaction.Commit(replacement);
-        }, cancellationToken);
+                var replaced = await computeProfiles.ReplaceOneAsync(
+                    transaction.Session,
+                    ComputeProfileFilters.AtSnapshot(current),
+                    replacement,
+                    cancellationToken: ct);
+                if (replaced.ModifiedCount != 1)
+                {
+                    return transaction.Abort(new ComputeProfileRevisionConflict(current.Id));
+                }
+
+                await storeOutboxWrites(transaction.Session,
+                    [OutboxWrite.Create(new ComputeProfileCatalogChangedEvent(replacement.Id, replacement.Revision))],
+                    ct);
+                return transaction.Commit(replacement);
+            },
+            cancellationToken);
     }
 }

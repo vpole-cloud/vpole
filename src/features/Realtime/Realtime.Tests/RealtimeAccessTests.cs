@@ -16,8 +16,10 @@ public sealed class RealtimeAccessTests
     public async Task UserTopicsRequireExactlyTheAuthenticatedSubjectEvenForPlatformAdmins(bool admin)
     {
         var registry = new RealtimeTopicRegistry([new("user-discovery", RealtimeScope.User)], new());
-        var access = new RealtimeAccess((_, _, _, _) => throw new InvalidOperationException("User discovery must not require tenant membership."),
-            (_, _) => throw new InvalidOperationException("User discovery must not load a tenant."), registry);
+        var access = new RealtimeAccess((_, _, _, _) =>
+                throw new InvalidOperationException("User discovery must not require tenant membership."),
+            (_, _) => throw new InvalidOperationException("User discovery must not load a tenant."),
+            registry);
         var principal = IdentityFixture.User(admin: admin);
         Assert.True(await access.AllowsAsync(principal, new("user-discovery", ResourceId: "viewer"), default));
         Assert.False(await access.AllowsAsync(principal, new("user-discovery", ResourceId: "other"), default));
@@ -30,8 +32,11 @@ public sealed class RealtimeAccessTests
     {
         var registry = new RealtimeTopicRegistry([new("plugin.example", RealtimeScope.Tenant)], new());
         var access = new RealtimeAccess((tenant, user, _, _) => Task.FromResult<LoadTenantMemberOutcome>(
-            tenant == Alpha && user == "viewer" ? new TenantMemberSnapshot(tenant, user, TenantMembershipRole.Viewer) : new TenantMemberMissing(tenant, user)),
-            (tenant, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(tenant, "name")), registry);
+                tenant == Alpha && user == "viewer"
+                    ? new TenantMemberSnapshot(tenant, user, TenantMembershipRole.Viewer)
+                    : new TenantMemberMissing(tenant, user)),
+            (tenant, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(tenant, "name")),
+            registry);
         Assert.True(await access.AllowsAsync(IdentityFixture.User(), new("plugin.example", Alpha), default));
         Assert.False(await access.AllowsAsync(IdentityFixture.User(), new("plugin.example", Beta), default));
         Assert.False(await access.AllowsAsync(IdentityFixture.User(), new("plugin.example", "invalid"), default));
@@ -41,9 +46,15 @@ public sealed class RealtimeAccessTests
     [Fact]
     public async Task PlatformAdminStillNeedsAnExistingTenantAndPlatformScopeIsExplicit()
     {
-        var registry = new RealtimeTopicRegistry([new("catalog", RealtimeScope.Platform), new("resources", RealtimeScope.Tenant)], new());
-        var access = new RealtimeAccess((tenant, user, _, _) => Task.FromResult<LoadTenantMemberOutcome>(new TenantMemberMissing(tenant, user)),
-            (tenant, _) => Task.FromResult<LoadTenantIdentityOutcome>(tenant == Alpha ? new TenantIdentitySnapshot(tenant, "name") : new TenantIdentityNotFound(tenant)), registry);
+        var registry =
+            new RealtimeTopicRegistry([new("catalog", RealtimeScope.Platform), new("resources", RealtimeScope.Tenant)],
+                new());
+        var access = new RealtimeAccess((tenant, user, _, _) =>
+                Task.FromResult<LoadTenantMemberOutcome>(new TenantMemberMissing(tenant, user)),
+            (tenant, _) => Task.FromResult<LoadTenantIdentityOutcome>(tenant == Alpha
+                ? new TenantIdentitySnapshot(tenant, "name")
+                : new TenantIdentityNotFound(tenant)),
+            registry);
         Assert.True(await access.AllowsAsync(IdentityFixture.User(admin: true), new("catalog"), default));
         Assert.False(await access.AllowsAsync(IdentityFixture.User(), new("catalog"), default));
         Assert.False(await access.AllowsAsync(IdentityFixture.User(admin: true), new("catalog", Alpha), default));
@@ -54,26 +65,50 @@ public sealed class RealtimeAccessTests
     [Fact]
     public void DuplicateContributionsAndUnknownEnabledTopicsFailStartup()
     {
-        Assert.Throws<InvalidOperationException>(() => new RealtimeTopicRegistry([new("same", RealtimeScope.Tenant), new("same", RealtimeScope.Tenant)], new()));
-        Assert.Throws<InvalidOperationException>(() => new RealtimeTopicRegistry([], new() { Enabled = true, EnabledTopics = ["unknown"] }));
+        Assert.Throws<InvalidOperationException>(() =>
+            new RealtimeTopicRegistry([new("same", RealtimeScope.Tenant), new("same", RealtimeScope.Tenant)], new()));
+        Assert.Throws<InvalidOperationException>(() =>
+            new RealtimeTopicRegistry([], new()
+            {
+                Enabled = true,
+                EnabledTopics = ["unknown"]
+            }));
     }
 
     [Fact]
     public async Task AvailabilityDoesNotChangePermissionsAndDisabledStartupIgnoresStaleProviderConfiguration()
     {
-        var registry = new RealtimeTopicRegistry([new("enabled", RealtimeScope.Tenant), new("disabled", RealtimeScope.Tenant)],
-            new() { Enabled = true, EnabledTopics = ["enabled"] });
+        var registry = new RealtimeTopicRegistry(
+            [new("enabled", RealtimeScope.Tenant), new("disabled", RealtimeScope.Tenant)],
+            new()
+            {
+                Enabled = true,
+                EnabledTopics = ["enabled"]
+            });
         var access = new RealtimeAccess((tenant, user, _, _) => Task.FromResult<LoadTenantMemberOutcome>(
-            tenant == Alpha ? new TenantMemberSnapshot(tenant, user, TenantMembershipRole.Viewer) : new TenantMemberMissing(tenant, user)),
-            (tenant, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentityNotFound(tenant)), registry);
+                tenant == Alpha
+                    ? new TenantMemberSnapshot(tenant, user, TenantMembershipRole.Viewer)
+                    : new TenantMemberMissing(tenant, user)),
+            (tenant, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentityNotFound(tenant)),
+            registry);
         Assert.True(await access.AllowsAsync(IdentityFixture.User(), new("disabled", Alpha), default));
         Assert.False(await access.AllowsAsync(IdentityFixture.User(), new("disabled", Beta), default));
         Assert.False(access.IsAvailable("disabled"));
         Assert.False(access.IsAvailable("unknown"));
         Assert.True(access.IsAvailable("enabled"));
-        Assert.Null(new RealtimeTopicRegistry([], new() { Enabled = false, EnabledTopics = ["removed-provider"] }).Find("removed-provider"));
+        Assert.Null(
+            new RealtimeTopicRegistry([], new()
+            {
+                Enabled = false,
+                EnabledTopics = ["removed-provider"]
+            }).Find(
+                "removed-provider"));
         Assert.Throws<InvalidOperationException>(() => new RealtimeTopicRegistry(
             [new("same", RealtimeScope.Tenant), new("same", RealtimeScope.Tenant)],
-            new() { Enabled = false, EnabledTopics = ["removed-provider"] }));
+            new()
+            {
+                Enabled = false,
+                EnabledTopics = ["removed-provider"]
+            }));
     }
 }

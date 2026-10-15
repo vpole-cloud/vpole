@@ -22,24 +22,26 @@ internal sealed class MongoPersistCreatedStorageProfile(
     {
         ArgumentNullException.ThrowIfNull(profile);
         return runMongoTransaction(async (transaction, ct) =>
-        {
-            if (profile.IsDefault)
             {
-                await StorageProfileDefaultPersistence.DemoteOtherDefaultsAsync(
-                    storageProfiles,
-                    transaction.Session,
-                    exceptProfileId: null,
-                    profile.UpdatedAtUtc,
-                    ct);
-            }
+                if (profile.IsDefault)
+                {
+                    await StorageProfileDefaultPersistence.DemoteOtherDefaultsAsync(
+                        storageProfiles,
+                        transaction.Session,
+                        exceptProfileId: null,
+                        profile.UpdatedAtUtc,
+                        ct);
+                }
 
-            await storageProfiles.InsertOneAsync(
-                transaction.Session,
-                profile,
-                cancellationToken: ct);
-            await storeOutboxWrites(transaction.Session,
-                [OutboxWrite.Create(new StorageProfileCatalogChangedEvent(profile.Id, profile.Revision))], ct);
-            return transaction.Commit(profile);
-        }, cancellationToken);
+                await storageProfiles.InsertOneAsync(
+                    transaction.Session,
+                    profile,
+                    cancellationToken: ct);
+                await storeOutboxWrites(transaction.Session,
+                    [OutboxWrite.Create(new StorageProfileCatalogChangedEvent(profile.Id, profile.Revision))],
+                    ct);
+                return transaction.Commit(profile);
+            },
+            cancellationToken);
     }
 }

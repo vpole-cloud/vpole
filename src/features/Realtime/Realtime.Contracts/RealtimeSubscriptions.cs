@@ -24,9 +24,19 @@ public sealed record RealtimeSubscription(
 /// <summary>Provider-owned validation and interest lifecycle; generic transport knows no provider types.</summary>
 public interface IRealtimeTopicLifecycle
 {
-    string Topic { get; }
-    Task<bool> SubscribeAsync(RealtimeSubscription subscription, ClaimsPrincipal principal, CancellationToken cancellationToken);
+    string Topic
+    {
+        get;
+    }
+
+    Task<bool> SubscribeAsync(RealtimeSubscription subscription,
+        ClaimsPrincipal principal,
+        CancellationToken cancellationToken);
+
     /// <summary>Refreshes an interest without replacing its identity or extending its expiry.</summary>
-    Task<bool> RenewAsync(RealtimeSubscription subscription, ClaimsPrincipal principal, CancellationToken cancellationToken);
+    Task<bool> RenewAsync(RealtimeSubscription subscription,
+        ClaimsPrincipal principal,
+        CancellationToken cancellationToken);
+
     Task UnsubscribeAsync(RealtimeSubscription subscription, CancellationToken cancellationToken);
 }

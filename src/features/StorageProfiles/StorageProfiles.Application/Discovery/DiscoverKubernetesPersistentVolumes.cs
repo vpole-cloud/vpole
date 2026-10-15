@@ -24,9 +24,22 @@ internal sealed class KubernetesDiscoverPersistentVolumes(
     {
         return await reader.ReadLegacyAsync(deploymentTargetId, StorageInventoryKind.Volumes, cancellationToken) switch
         {
-            StorageObservationSnapshot snapshot => snapshot.PersistentVolumes.Select(item => new KubernetesPersistentVolumeDto(item.Name, item.Capacity, item.Status, item.StorageClassName, item.BoundClaimNamespace, item.BoundClaimName, item.ReclaimPolicy, Owner(item.Owner))).ToArray(),
+            StorageObservationSnapshot snapshot => snapshot.PersistentVolumes.Select(item =>
+                new KubernetesPersistentVolumeDto(item.Name,
+                    item.Capacity,
+                    item.Status,
+                    item.StorageClassName,
+                    item.BoundClaimNamespace,
+                    item.BoundClaimName,
+                    item.ReclaimPolicy,
+                    Owner(item.Owner))).ToArray(),
             KubernetesStorageDiscoveryUnavailable unavailable => unavailable
         };
     }
-    private static KubernetesStorageOwnerDto Owner(StorageOwnerObservation owner) => new(owner.TenantId, owner.ResourceGroupId, owner.ResourceType, owner.ResourceId, owner.ResourceName);
+
+    private static KubernetesStorageOwnerDto Owner(StorageOwnerObservation owner) => new(owner.TenantId,
+        owner.ResourceGroupId,
+        owner.ResourceType,
+        owner.ResourceId,
+        owner.ResourceName);
 }

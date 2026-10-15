@@ -17,17 +17,20 @@ internal sealed class MongoCleanupSourceBuildConfigurations(
         CancellationToken cancellationToken = default)
     {
         await transactions.InvokeOutcomeAsync<SourceBuildConfigurationCleanupRecorded>(async (tx, ct) =>
-        {
-            var filter = SourceBuildConfigurationFilters.ByWebService(tenantId, webServiceId);
-            var removed = await configurations.Find(tx.Session, filter).ToListAsync(ct);
-            if (removed.Count == 0)
-                return tx.Commit(new SourceBuildConfigurationCleanupRecorded(0));
-            var deleted = await configurations.DeleteManyAsync(tx.Session, filter, cancellationToken: ct);
-            if (deleted.DeletedCount != removed.Count)
-                throw new InvalidOperationException("Source build configuration cleanup changed concurrently.");
-            await outbox(tx.Session, removed.Select(configuration => OutboxWrite.Create(configuration.ToChangedEvent())).ToArray(), ct);
-            return tx.Commit(new SourceBuildConfigurationCleanupRecorded(removed.Count));
-        }, cancellationToken);
+            {
+                var filter = SourceBuildConfigurationFilters.ByWebService(tenantId, webServiceId);
+                var removed = await configurations.Find(tx.Session, filter).ToListAsync(ct);
+                if (removed.Count == 0)
+                    return tx.Commit(new SourceBuildConfigurationCleanupRecorded(0));
+                var deleted = await configurations.DeleteManyAsync(tx.Session, filter, cancellationToken: ct);
+                if (deleted.DeletedCount != removed.Count)
+                    throw new InvalidOperationException("Source build configuration cleanup changed concurrently.");
+                await outbox(tx.Session,
+                    removed.Select(configuration => OutboxWrite.Create(configuration.ToChangedEvent())).ToArray(),
+                    ct);
+                return tx.Commit(new SourceBuildConfigurationCleanupRecorded(removed.Count));
+            },
+            cancellationToken);
     }
 }
 

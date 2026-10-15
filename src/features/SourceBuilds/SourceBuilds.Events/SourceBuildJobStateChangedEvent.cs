@@ -10,5 +10,9 @@ public sealed record SourceBuildJobStateChangedEvent(
     string State,
     DateTime UpdatedAtUtc) : IPoleEvent
 {
-    public EventCore EventCore { get; init; } = EventCore.Create();
+    public EventCore EventCore
+    {
+        get;
+        init;
+    } = EventCore.Create();
 }

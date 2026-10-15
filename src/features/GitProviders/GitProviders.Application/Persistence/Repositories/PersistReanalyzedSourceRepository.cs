@@ -18,7 +18,10 @@ public delegate Task<PersistReanalyzedSourceRepositoryOutcome> PersistReanalyzed
     DateTime updatedAtUtc,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoPersistReanalyzedSourceRepository(IMongoDatabase database, MongoRunTransaction transactions, StoreOutboxWrites outbox)
+internal sealed class MongoPersistReanalyzedSourceRepository(
+    IMongoDatabase database,
+    MongoRunTransaction transactions,
+    StoreOutboxWrites outbox)
 {
     public async Task<PersistReanalyzedSourceRepositoryOutcome> InvokeAsync(
         SourceRepository repository,
@@ -29,10 +32,11 @@ internal sealed class MongoPersistReanalyzedSourceRepository(IMongoDatabase data
         CancellationToken cancellationToken = default)
     {
         return await transactions.InvokeOutcomeAsync<PersistReanalyzedSourceRepositoryOutcome>(async (tx, ct) =>
-        {
-            var repositories = database.GetCollection<SourceRepository>("SourceRepositories");
-            var filter = GitProviderFilters.SourceRepositoryByTenantAndId(repository.TenantId, repository.Id);
-            var updated = await repositories.UpdateOneAsync(tx.Session, filter,
+            {
+                var repositories = database.GetCollection<SourceRepository>("SourceRepositories");
+                var filter = GitProviderFilters.SourceRepositoryByTenantAndId(repository.TenantId, repository.Id);
+                var updated = await repositories.UpdateOneAsync(tx.Session,
+                    filter,
                     Builders<SourceRepository>.Update
                         .Set(item => item.RepositoryFullName, providerRepository.FullName)
                         .Set(item => item.RepositoryUrl, providerRepository.HtmlUrl)
@@ -40,13 +44,15 @@ internal sealed class MongoPersistReanalyzedSourceRepository(IMongoDatabase data
                         .Set(item => item.SelectedPlan, selectedPlan)
                         .Set(item => item.CommitSha, analysis.CommitSha)
                         .Set(item => item.AnalyzedAtUtc, analysis.AnalyzedAtUtc)
-                        .Set(item => item.UpdatedAtUtc, updatedAtUtc), cancellationToken: ct);
-            if (updated.MatchedCount == 0)
-                return tx.Abort(new SourceRepositoryNotFound(repository.Id));
-            var stored = await repositories.Find(tx.Session, filter).FirstAsync(ct);
-            if (updated.ModifiedCount == 1)
-                await outbox(tx.Session, [OutboxWrite.Create(stored.ToChangedEvent())], ct);
-            return tx.Commit(stored);
-        }, cancellationToken);
+                        .Set(item => item.UpdatedAtUtc, updatedAtUtc),
+                    cancellationToken: ct);
+                if (updated.MatchedCount == 0)
+                    return tx.Abort(new SourceRepositoryNotFound(repository.Id));
+                var stored = await repositories.Find(tx.Session, filter).FirstAsync(ct);
+                if (updated.ModifiedCount == 1)
+                    await outbox(tx.Session, [OutboxWrite.Create(stored.ToChangedEvent())], ct);
+                return tx.Commit(stored);
+            },
+            cancellationToken);
     }
 }

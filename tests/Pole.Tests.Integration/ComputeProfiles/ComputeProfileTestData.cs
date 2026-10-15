@@ -25,6 +25,7 @@ internal static class ComputeProfileTestData
 {
     public const string TenantId = "507f1f77bcf86cd799439098";
     public const string OtherTenantId = "507f1f77bcf86cd799439099";
+
     public static readonly DateTime CreatedAtUtc =
         new(2026, 8, 8, 12, 0, 0, DateTimeKind.Utc);
 
@@ -67,12 +68,14 @@ internal static class ComputeProfileTestData
             [ComputeProfileNodeSelector.Create("kubernetes.io/os", "linux")],
             [term],
             [ComputeProfilePreferredNodeAffinityTerm.Create(50, term)],
-            [ComputeProfileToleration.Create(
-                "workload",
-                ComputeTolerationOperator.Exists,
-                null,
-                ComputeTaintEffect.NoExecute,
-                60)],
+            [
+                ComputeProfileToleration.Create(
+                    "workload",
+                    ComputeTolerationOperator.Exists,
+                    null,
+                    ComputeTaintEffect.NoExecute,
+                    60)
+            ],
             "runc");
     }
 
@@ -81,15 +84,15 @@ internal static class ComputeProfileTestData
         id ??= ObjectId.GenerateNewId().ToString();
         const long connectionVersion = 1;
         return DeploymentTargetFactory.Create(
-            "Compute profile target",
-            $"kubernetes:kube-system:{id}",
-            DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),
-            DeploymentTargetHealth.Healthy(connectionVersion, CreatedAtUtc),
-            DeploymentTargetCapabilities.Unknown(connectionVersion),
-            DeploymentTargetTestData.CreateWorkloadConfiguration(),
-            enabled: true,
-            acceptsWorkloads: true,
-            new DeploymentTargetFactory.CreateOptions(id, CreatedAtUtc))
+                "Compute profile target",
+                $"kubernetes:kube-system:{id}",
+                DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),
+                DeploymentTargetHealth.Healthy(connectionVersion, CreatedAtUtc),
+                DeploymentTargetCapabilities.Unknown(connectionVersion),
+                DeploymentTargetTestData.CreateWorkloadConfiguration(),
+                enabled: true,
+                acceptsWorkloads: true,
+                new DeploymentTargetFactory.CreateOptions(id, CreatedAtUtc))
             .AttestForTests();
     }
 }
@@ -114,10 +117,9 @@ internal sealed class ComputeProfilePersistenceTestHost : IDisposable
                 .GetRequiredService<MongoEnsureComputeProfileUnreferenced>()
                 .InvokeAsync);
         services.AddSingleton<MongoRunTransaction>();
-        services.AddSingleton<RunMongoOutcomeTransaction<DeleteComputeProfileOutcome>>(
-            provider => provider
-                .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<DeleteComputeProfileOutcome>);
+        services.AddSingleton<RunMongoOutcomeTransaction<DeleteComputeProfileOutcome>>(provider => provider
+            .GetRequiredService<MongoRunTransaction>()
+            .InvokeOutcomeAsync<DeleteComputeProfileOutcome>);
         if (applyTargetReferenceChanges is null)
         {
             services.AddSingleton(new MongoApplyDeploymentTargetReferenceChanges(
@@ -132,8 +134,10 @@ internal sealed class ComputeProfilePersistenceTestHost : IDisposable
         {
             services.AddSingleton(applyTargetReferenceChanges);
         }
+
         services.AddOutboxPersistence();
-        if (storeOutboxWrites is not null) services.AddSingleton(storeOutboxWrites);
+        if (storeOutboxWrites is not null)
+            services.AddSingleton(storeOutboxWrites);
         services.AddComputeProfilePersistence();
         _provider = services.BuildServiceProvider(validateScopes: true);
         _scope = _provider.CreateScope();

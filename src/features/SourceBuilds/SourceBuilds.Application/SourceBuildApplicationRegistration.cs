@@ -33,17 +33,26 @@ public static class SourceBuildApplicationRegistration
             provider.GetRequiredService<IOptions<BuildKitOptions>>().Value);
         services.TryAddSingleton(TimeProvider.System);
         services.AddOptions<SourceBuildLogOptions>().Bind(configuration.GetSection(SourceBuildLogOptions.SectionName))
-            .Validate(options => options.Valid, "SourceBuildLogs limits are outside the supported bounds.").ValidateOnStart();
+            .Validate(options => options.Valid, "SourceBuildLogs limits are outside the supported bounds.")
+            .ValidateOnStart();
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<SourceBuildLogOptions>>().Value);
-        services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>().GetCollection<SourceBuildLog>("SourceBuildLogs"));
+        services.TryAddSingleton(provider =>
+            provider.GetRequiredService<IMongoDatabase>().GetCollection<SourceBuildLog>("SourceBuildLogs"));
         services.TryAddScoped<SourceBuildLogPersistence>();
-        services.AddCapability<MongoStartSourceBuildLog, StartSourceBuildLog>(implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoAppendSourceBuildLog, AppendSourceBuildLog>(implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoRenewSourceBuildLog, RenewSourceBuildLog>(implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoSealSourceBuildLog, SealSourceBuildLog>(implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoLoadSourceBuildLog, LoadSourceBuildLog>(implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoRecoverSourceBuildLogs, RecoverSourceBuildLogs>(implementation => implementation.InvokeAsync);
-        services.AddCapability<SourceBuildLogCaptureFactory, CreateSourceBuildLogCapture>(implementation => implementation.CreateAsync);
+        services.AddCapability<MongoStartSourceBuildLog, StartSourceBuildLog>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoAppendSourceBuildLog, AppendSourceBuildLog>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoRenewSourceBuildLog, RenewSourceBuildLog>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoSealSourceBuildLog, SealSourceBuildLog>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoLoadSourceBuildLog, LoadSourceBuildLog>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoRecoverSourceBuildLogs, RecoverSourceBuildLogs>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<SourceBuildLogCaptureFactory, CreateSourceBuildLogCapture>(implementation =>
+            implementation.CreateAsync);
 
         services.TryAddSingleton(provider => provider
             .GetRequiredService<IMongoDatabase>()
@@ -52,35 +61,37 @@ public static class SourceBuildApplicationRegistration
             .GetRequiredService<IMongoDatabase>()
             .GetCollection<SourceBuildJob>("SourceBuildJobs"));
 
-        services.AddCapability<MongoLoadSourceBuildConfiguration, LoadSourceBuildConfiguration>(
-            implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoLoadSourceBuildConfigurations, LoadSourceBuildConfigurations>(
-            implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoCreateSourceBuildConfiguration, CreateSourceBuildConfiguration>(
-            implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoUpdateSourceBuildConfiguration, UpdateSourceBuildConfiguration>(
-            implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoDeleteSourceBuildConfiguration, DeleteSourceBuildConfiguration>(
-            implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoLoadSourceBuildJob, LoadSourceBuildJob>(
-            implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoLoadSourceBuildJobForExecution, LoadSourceBuildJobForExecution>(
-            implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoLoadSourceBuildJobPage, LoadSourceBuildJobPage>(
-            implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoQueueSourceBuildJob, QueueSourceBuildJob>(
-            implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoClaimQueuedSourceBuildJob, ClaimQueuedSourceBuildJob>(
-            implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoTryPersistSourceBuildJob, TryPersistSourceBuildJob>(
-            implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoLoadStaleQueuedSourceBuildJobs, LoadStaleQueuedSourceBuildJobs>(
-            implementation => implementation.InvokeAsync);
-        services.AddCapability<MongoCompleteSourceBuildJobOnDeployment, CompleteSourceBuildJobOnDeployment>(
-            implementation => implementation.InvokeAsync);
+        services.AddCapability<MongoLoadSourceBuildConfiguration, LoadSourceBuildConfiguration>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoLoadSourceBuildConfigurations, LoadSourceBuildConfigurations>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoCreateSourceBuildConfiguration, CreateSourceBuildConfiguration>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoUpdateSourceBuildConfiguration, UpdateSourceBuildConfiguration>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoDeleteSourceBuildConfiguration, DeleteSourceBuildConfiguration>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoLoadSourceBuildJob, LoadSourceBuildJob>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoLoadSourceBuildJobForExecution, LoadSourceBuildJobForExecution>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoLoadSourceBuildJobPage, LoadSourceBuildJobPage>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoQueueSourceBuildJob, QueueSourceBuildJob>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoClaimQueuedSourceBuildJob, ClaimQueuedSourceBuildJob>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoTryPersistSourceBuildJob, TryPersistSourceBuildJob>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoLoadStaleQueuedSourceBuildJobs, LoadStaleQueuedSourceBuildJobs>(implementation =>
+            implementation.InvokeAsync);
+        services
+            .AddCapability<MongoCompleteSourceBuildJobOnDeployment,
+                CompleteSourceBuildJobOnDeployment>(implementation => implementation.InvokeAsync);
 
-        services.AddCapability<MongoCleanupSourceBuildConfigurations, CleanupSourceBuildConfigurations>(
-            implementation => implementation.InvokeAsync);
+        services
+            .AddCapability<MongoCleanupSourceBuildConfigurations, CleanupSourceBuildConfigurations>(implementation =>
+                implementation.InvokeAsync);
 
         services.TryAddScoped<MongoEnsureNoWebServiceActiveSourceBuilds>();
         services.TryAddScoped<EnsureNoWebServiceActiveSourceBuilds>(provider =>
@@ -95,6 +106,7 @@ public static class SourceBuildApplicationRegistration
             services.TryAddSingleton<DispatchSourceBuildJob>(provider =>
                 provider.GetRequiredService<HangfireSourceBuildJobDispatcher>().Invoke);
         }
+
         services.TryAddSingleton<RepositoryArchiveExtractor>();
         services.TryAddSingleton<ExtractRepositoryArchive>(provider =>
             provider.GetRequiredService<RepositoryArchiveExtractor>().InvokeAsync);
@@ -120,7 +132,9 @@ public static class SourceBuildApplicationRegistration
             "recover-source-build-queue",
             job => job.RecoverAsync(),
             Cron.Minutely);
-        RecurringJob.AddOrUpdate<SourceBuildLogRecoveryJob>("recover-source-build-logs", job => job.RecoverAsync(), Cron.Minutely);
+        RecurringJob.AddOrUpdate<SourceBuildLogRecoveryJob>("recover-source-build-logs",
+            job => job.RecoverAsync(),
+            Cron.Minutely);
         return services;
     }
 

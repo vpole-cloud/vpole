@@ -8,7 +8,8 @@ public sealed class NotifySourceBuildStateChangedConsumer(PublishRealtimeChange 
     : IConsumer<SourceBuildJobStateChangedEvent>
 {
     public Task HandleAsync(SourceBuildJobStateChangedEvent message, CancellationToken cancellationToken = default) =>
-        publish(new RealtimeChange("source-builds", message.EventCore.TenantId, message.WebServiceId), cancellationToken);
+        publish(new RealtimeChange("source-builds", message.EventCore.TenantId, message.WebServiceId),
+            cancellationToken);
 
     public Task Consume(ConsumeContext<SourceBuildJobStateChangedEvent> context) =>
         HandleAsync(context.Message, context.CancellationToken);

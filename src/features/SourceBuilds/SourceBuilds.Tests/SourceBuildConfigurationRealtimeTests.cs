@@ -12,8 +12,15 @@ public sealed class SourceBuildConfigurationRealtimeTests
     public async Task ConfigurationHintUsesTenantAndLogicalParentWebService()
     {
         RealtimeChange? notice = null;
-        var consumer = new NotifySourceBuildConfigurationChangedConsumer((change, _) => { notice = change; return Task.CompletedTask; });
-        await consumer.HandleAsync(new("configuration", "web-service") { EventCore = EventCore.Create("tenant") });
+        var consumer = new NotifySourceBuildConfigurationChangedConsumer((change, _) =>
+        {
+            notice = change;
+            return Task.CompletedTask;
+        });
+        await consumer.HandleAsync(new("configuration", "web-service")
+        {
+            EventCore = EventCore.Create("tenant")
+        });
         Assert.Equal(new RealtimeChange("source-builds", "tenant", "web-service"), notice);
     }
 }

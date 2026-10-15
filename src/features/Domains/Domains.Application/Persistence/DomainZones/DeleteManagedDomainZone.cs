@@ -42,6 +42,7 @@ internal sealed class MongoDeleteManagedDomainZone(
 {
     private readonly IMongoCollection<TenantDomainZone> zones =
         database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
+
     private readonly IMongoCollection<HostnameBinding> bindings =
         database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
 
@@ -61,10 +62,12 @@ internal sealed class MongoDeleteManagedDomainZone(
         {
             return new DomainZoneNotFound(zoneId);
         }
+
         if (zone.Kind == TenantDomainZoneKind.Generated)
         {
             return new GeneratedDomainZoneDeletionRejected(zoneId);
         }
+
         var bindingCount = await bindings.CountDocumentsAsync(
             session,
             DomainFilters.BindingsForZone(zoneId),
@@ -73,6 +76,7 @@ internal sealed class MongoDeleteManagedDomainZone(
         {
             return new DomainZoneHasHostnameBindings(zoneId, bindingCount);
         }
+
         var deleted = await zones.DeleteOneAsync(
             session,
             DomainFilters.ZoneAtRevision(tenantId, zone),
@@ -92,7 +96,9 @@ internal sealed class MongoDeleteManagedDomainZone(
             cancellationToken);
         if (unregistered is not DeploymentTargetReferencesChanged)
             return new ManagedDomainZoneReferenceRemovalRejected(zone.Id, zone.DeploymentTargetId);
-        await outbox(session, [OutboxWrite.Create((zone with { Revision = checked(zone.Revision + 1) }).ToChangedEvent())], cancellationToken);
+        await outbox(session,
+            [OutboxWrite.Create((zone with { Revision = checked(zone.Revision + 1) }).ToChangedEvent())],
+            cancellationToken);
         return new ManagedDomainZoneDeleted(zone.Id);
     }
 }

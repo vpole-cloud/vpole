@@ -29,33 +29,35 @@ internal sealed class MongoCreateSourceBuildConfiguration(
             CancellationToken cancellationToken = default)
     {
         return await transactions.InvokeOutcomeAsync<PersistCreatedSourceBuildConfigurationOutcome>(
-                async (transaction, ct) =>
+            async (transaction, ct) =>
+            {
+                var admitted = await admitWebService(
+                    configuration.TenantId,
+                    configuration.WebServiceId,
+                    transaction.Session,
+                    ct);
+                if (admitted is SourceBuildWebServiceNotFound)
                 {
-                    var admitted = await admitWebService(
-                        configuration.TenantId,
-                        configuration.WebServiceId,
-                        transaction.Session,
-                        ct);
-                    if (admitted is SourceBuildWebServiceNotFound)
-                    {
-                        PersistCreatedSourceBuildConfigurationOutcome rejected =
-                            new SourceBuildConfigurationWebServiceNotFound(configuration.WebServiceId);
-                        return transaction.Abort(rejected);
-                    }
+                    PersistCreatedSourceBuildConfigurationOutcome rejected =
+                        new SourceBuildConfigurationWebServiceNotFound(configuration.WebServiceId);
+                    return transaction.Abort(rejected);
+                }
 
-                    try
-                    {
-                        await configurations.InsertOneAsync(transaction.Session, configuration, cancellationToken: ct);
-                    }
-                    catch (MongoWriteException exception) when (exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
-                    {
-                        return transaction.Abort(new SourceBuildConfigurationAlreadyExists(configuration.WebServiceId));
-                    }
-                    await outbox(transaction.Session, [OutboxWrite.Create(configuration.ToChangedEvent())], ct);
+                try
+                {
+                    await configurations.InsertOneAsync(transaction.Session, configuration, cancellationToken: ct);
+                }
+                catch (MongoWriteException exception) when (exception.WriteError?.Category ==
+                                                            ServerErrorCategory.DuplicateKey)
+                {
+                    return transaction.Abort(new SourceBuildConfigurationAlreadyExists(configuration.WebServiceId));
+                }
 
-                    PersistCreatedSourceBuildConfigurationOutcome created = configuration;
-                    return transaction.Commit(created);
-                },
-                cancellationToken);
+                await outbox(transaction.Session, [OutboxWrite.Create(configuration.ToChangedEvent())], ct);
+
+                PersistCreatedSourceBuildConfigurationOutcome created = configuration;
+                return transaction.Commit(created);
+            },
+            cancellationToken);
     }
 }

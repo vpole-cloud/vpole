@@ -62,7 +62,9 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
 
         var overlap = await persistence.InvokeAsync(CreateTarget("api.example.test"));
 
-        Assert.True(Assert.IsType<PersistCreatedDeploymentTargetError>(overlap.Value).Value is DeploymentTargetPublicBaseDomainConflict);
+        Assert.True(
+            Assert.IsType<PersistCreatedDeploymentTargetError>(overlap.Value).Value is
+                DeploymentTargetPublicBaseDomainConflict);
     }
 
     [Fact]
@@ -82,7 +84,9 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
 
         var overlap = await persistence.InvokeAsync(CreateTarget("apps.example.test"));
 
-        Assert.True(Assert.IsType<PersistCreatedDeploymentTargetError>(overlap.Value).Value is DeploymentTargetPublicBaseDomainConflict);
+        Assert.True(
+            Assert.IsType<PersistCreatedDeploymentTargetError>(overlap.Value).Value is
+                DeploymentTargetPublicBaseDomainConflict);
     }
 
     [Fact]
@@ -114,13 +118,21 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         Assert.Equal("apps.example.test", target.WorkloadConfiguration.Ingress?.PublicBaseDomain);
 
         var privateAdmission = await admission(
-            request with { ExplicitDeploymentTargetId = privateTarget.Id });
+            request with
+            {
+                ExplicitDeploymentTargetId = privateTarget.Id
+            });
         Assert.True(
-            Assert.IsType<DeploymentTargetNewWorkloadAdmissionError>(privateAdmission.Value).Value is DeploymentTargetRequiredCapabilitiesUnavailable);
+            Assert.IsType<DeploymentTargetNewWorkloadAdmissionError>(privateAdmission.Value).Value is
+                DeploymentTargetRequiredCapabilitiesUnavailable);
         var missingSourceAdmission = await admission(
-            request with { ExplicitDeploymentTargetId = missingSource.Id });
+            request with
+            {
+                ExplicitDeploymentTargetId = missingSource.Id
+            });
         Assert.True(
-            Assert.IsType<DeploymentTargetNewWorkloadAdmissionError>(missingSourceAdmission.Value).Value is DeploymentTargetRequiredCapabilitiesUnavailable);
+            Assert.IsType<DeploymentTargetNewWorkloadAdmissionError>(missingSourceAdmission.Value).Value is
+                DeploymentTargetRequiredCapabilitiesUnavailable);
     }
 
     [Fact]
@@ -157,12 +169,19 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         var admitted = Assert.IsType<DeploymentTargetLookupDto>((await admission(request)).Value);
         Assert.Equal(inCluster.Id, admitted.Id);
 
-        var rejected = await admission(request with { ExplicitDeploymentTargetId = remote.Id });
+        var rejected = await admission(request with
+        {
+            ExplicitDeploymentTargetId = remote.Id
+        });
         Assert.True(
-            Assert.IsType<DeploymentTargetNewWorkloadAdmissionError>(rejected.Value).Value is DeploymentTargetRequiredCapabilitiesUnavailable);
+            Assert.IsType<DeploymentTargetNewWorkloadAdmissionError>(rejected.Value).Value is
+                DeploymentTargetRequiredCapabilitiesUnavailable);
 
         var serviceAccountAdmitted = await admission(
-            request with { ExplicitDeploymentTargetId = remoteServiceAccount.Id });
+            request with
+            {
+                ExplicitDeploymentTargetId = remoteServiceAccount.Id
+            });
         Assert.Equal(remoteServiceAccount.Id,
             Assert.IsType<DeploymentTargetLookupDto>(serviceAccountAdmitted.Value).Id);
     }
@@ -188,16 +207,22 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         };
         target = target with
         {
-            Capabilities = target.Capabilities with { NetworkPolicyCapabilities = capabilities }
+            Capabilities = target.Capabilities with
+            {
+                NetworkPolicyCapabilities = capabilities
+            }
         };
         await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
 
         Assert.Empty(await CreateEligibleLoader()(DeploymentTargetRequiredCapabilities.PublicIngress));
-        Assert.Equal(0, await fixture.DbContext.DeploymentTargets.CountDocumentsAsync(
-            DeploymentTargetFilters.FenceableWorkloadConfigurations(
-                [new DeploymentTargetWorkloadConfigurationFenceRequest(
-                    target.Id,
-                    target.WorkloadConfiguration.Revision)])));
+        Assert.Equal(0,
+            await fixture.DbContext.DeploymentTargets.CountDocumentsAsync(
+                DeploymentTargetFilters.FenceableWorkloadConfigurations(
+                [
+                    new DeploymentTargetWorkloadConfigurationFenceRequest(
+                        target.Id,
+                        target.WorkloadConfiguration.Revision)
+                ])));
     }
 
     [Fact]
@@ -264,7 +289,10 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
     [Fact]
     public async Task DefaultAdmission_ReturnsTheConfiguredTargetStateError()
     {
-        var target = CreateTarget("apps.example.test") with { Enabled = false };
+        var target = CreateTarget("apps.example.test") with
+        {
+            Enabled = false
+        };
         await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         await fixture.DbContext.DeploymentTargetSettings.InsertOneAsync(
             DeploymentTargetSettings.Create(target.Id, target.CreatedAtUtc));
@@ -290,10 +318,8 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
             DateTime.UtcNow);
         await fixture.DbContext.DeploymentTargetSettings.InsertOneAsync(invalidSettings);
 
-        await Assert.ThrowsAsync<ArgumentException>(
-            () => CreateLookup()("not-an-object-id"));
-        await Assert.ThrowsAsync<ArgumentException>(
-            () => CreateDefaultLookup()());
+        await Assert.ThrowsAsync<ArgumentException>(() => CreateLookup()("not-an-object-id"));
+        await Assert.ThrowsAsync<ArgumentException>(() => CreateDefaultLookup()());
     }
 
     [Fact]
@@ -306,17 +332,16 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
             fixture.DbContext.DeploymentTargetReferences,
             TimeProvider.System);
         var registered = await new MongoRunTransaction(fixture.Client)
-            .InvokeOutcomeAsync<ApplyDeploymentTargetReferenceChangesOutcome>(
-            async (transaction, cancellationToken) =>
+            .InvokeOutcomeAsync<ApplyDeploymentTargetReferenceChangesOutcome>(async (transaction, cancellationToken) =>
             {
                 var result = await references.InvokeAsync(
-                new DeploymentTargetReferenceOwner(
-                    DeploymentTargetReferenceOwnerTypes.DomainZone,
-                    ObjectId.GenerateNewId().ToString()),
-                [target.Id],
-                [],
-                transaction.Session,
-                cancellationToken);
+                    new DeploymentTargetReferenceOwner(
+                        DeploymentTargetReferenceOwnerTypes.DomainZone,
+                        ObjectId.GenerateNewId().ToString()),
+                    [target.Id],
+                    [],
+                    transaction.Session,
+                    cancellationToken);
                 return result is DeploymentTargetReferencesChanged
                     ? transaction.Commit(result)
                     : transaction.Abort(result);

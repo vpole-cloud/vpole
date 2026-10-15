@@ -31,11 +31,13 @@ public sealed class TenantFeatureProductionDiTests(MongoReplicaSetFixture fixtur
         services.AddSingleton<StoreOutboxWrites>(fixture.StoreOutboxWrites);
         services.AddTenantsFeature();
 
-        Assert.DoesNotContain(services, descriptor =>
-            descriptor.ServiceType.Name.Contains("DbContext", StringComparison.Ordinal));
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(LoadTenantIdentity) &&
-            descriptor.Lifetime == ServiceLifetime.Scoped);
+        Assert.DoesNotContain(services,
+            descriptor =>
+                descriptor.ServiceType.Name.Contains("DbContext", StringComparison.Ordinal));
+        Assert.Contains(services,
+            descriptor =>
+                descriptor.ServiceType == typeof(LoadTenantIdentity) &&
+                descriptor.Lifetime == ServiceLifetime.Scoped);
 
         using var provider = services.BuildServiceProvider(validateScopes: true);
         using var scope = provider.CreateScope();
@@ -82,8 +84,7 @@ public sealed class TenantFeatureProductionDiTests(MongoReplicaSetFixture fixtur
         using var scope = provider.CreateScope();
         var ensureTenantsExist = scope.ServiceProvider.GetRequiredService<EnsureTenantsExist>();
 
-        await Assert.ThrowsAsync<ArgumentException>(
-            () => ensureTenantsExist(["not-an-object-id"]));
+        await Assert.ThrowsAsync<ArgumentException>(() => ensureTenantsExist(["not-an-object-id"]));
     }
 
     [Fact]
@@ -112,7 +113,7 @@ public sealed class TenantFeatureProductionDiTests(MongoReplicaSetFixture fixtur
         Assert.Equal([missingTenantId], missingIds);
         Assert.True(await load(tenant.Id) is TenantIdentitySnapshot { DisplayName: "Contract lookup" });
         Assert.True(await load(missingTenantId) is TenantIdentityNotFound notFound &&
-            notFound.TenantId == missingTenantId);
+                    notFound.TenantId == missingTenantId);
     }
 
     [Fact]
@@ -124,8 +125,9 @@ public sealed class TenantFeatureProductionDiTests(MongoReplicaSetFixture fixtur
         var mappings = provider.GetServices<HttpProblemMapping>().ToArray();
 
         Assert.NotEmpty(mappings);
-        Assert.All(mappings, mapping =>
-            Assert.True(typeof(IMediatorRejection).IsAssignableFrom(mapping.MappedType)));
+        Assert.All(mappings,
+            mapping =>
+                Assert.True(typeof(IMediatorRejection).IsAssignableFrom(mapping.MappedType)));
         Assert.Contains(mappings, mapping => mapping.MappedType == typeof(TenantNotFound));
         Assert.Contains(mappings, mapping => mapping.MappedType == typeof(TenantMemberNotFound));
     }

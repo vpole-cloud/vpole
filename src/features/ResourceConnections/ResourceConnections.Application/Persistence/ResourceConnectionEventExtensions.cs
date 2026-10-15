@@ -7,5 +7,8 @@ namespace Pole.Features.ResourceConnections.Application.Persistence;
 internal static class ResourceConnectionEventExtensions
 {
     public static ResourceConnectionChangedEvent ToChangedEvent(this ResourceConnection connection) =>
-        new(connection.Id, connection.Revision, connection.Generation) { EventCore = EventCore.Create(connection.TenantId) };
+        new(connection.Id, connection.Revision, connection.Generation)
+        {
+            EventCore = EventCore.Create(connection.TenantId)
+        };
 }

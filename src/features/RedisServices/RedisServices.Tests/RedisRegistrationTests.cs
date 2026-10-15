@@ -15,7 +15,8 @@ public sealed class RedisRegistrationTests
     {
         var services = new ServiceCollection();
         var other = ResourceDeploymentAdapterDescriptor.Create<OtherAdapter>(
-            ResourceTypeId.Create("pole/test-provider"), ResourcePlacementCapability.SingleTarget);
+            ResourceTypeId.Create("pole/test-provider"),
+            ResourcePlacementCapability.SingleTarget);
         services.AddSingleton(other);
         services.AddRedisServicesFeature();
         using var provider = services.BuildServiceProvider();
@@ -33,8 +34,11 @@ public sealed class RedisRegistrationTests
     [Fact]
     public void Metadata_ReportsPersistedLifecycleAndRevisionWithoutPlacement()
     {
-        var redis = RedisFactory.Create("tenant", "cache", "group",
-            new RedisSpec(new Storage(1, "disk")), RedisFactory.DefaultCreateOptions);
+        var redis = RedisFactory.Create("tenant",
+            "cache",
+            "group",
+            new RedisSpec(new Storage(1, "disk")),
+            RedisFactory.DefaultCreateOptions);
         Assert.Equal("Active", redis.ToDto().Lifecycle);
         var deleting = redis.BeginDeletion(DateTime.UtcNow).ToDto();
         Assert.Equal("Deleting", deleting.Lifecycle);

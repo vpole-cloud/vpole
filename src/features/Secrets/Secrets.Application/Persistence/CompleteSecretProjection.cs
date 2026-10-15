@@ -21,20 +21,23 @@ internal sealed class MongoCompleteSecretProjection(
         if (projection.Lease is not ClaimedSecretProjection)
             throw new InvalidOperationException("Only a claimed projection can complete.");
         return transactions.InvokeOutcomeAsync<SecretProjectionMutationOutcome>(async (tx, token) =>
-        {
-            var completed = projection with
             {
-                Lease = new UnclaimedSecretProjection(),
-                StorageRevision = checked(projection.StorageRevision + 1)
-            };
-            var updated = await projections.ReplaceOneAsync(tx.Session,
-                SecretProjectionFilters.Identity(projection.TenantId, projection.Id) &
-                SecretProjectionFilters.Revision(projection.StorageRevision) &
-                SecretProjectionFilters.Lease(projection.Lease), completed, cancellationToken: token);
-            if (updated.ModifiedCount != 1)
-                return tx.Commit(new SecretProjectionMutationSkipped());
-            await outbox(tx.Session, [OutboxWrite.Create(completed.ToChangedEvent())], token);
-            return tx.Commit(new SecretProjectionMutationRecorded(completed));
-        }, ct);
+                var completed = projection with
+                {
+                    Lease = new UnclaimedSecretProjection(),
+                    StorageRevision = checked(projection.StorageRevision + 1)
+                };
+                var updated = await projections.ReplaceOneAsync(tx.Session,
+                    SecretProjectionFilters.Identity(projection.TenantId, projection.Id) &
+                    SecretProjectionFilters.Revision(projection.StorageRevision) &
+                    SecretProjectionFilters.Lease(projection.Lease),
+                    completed,
+                    cancellationToken: token);
+                if (updated.ModifiedCount != 1)
+                    return tx.Commit(new SecretProjectionMutationSkipped());
+                await outbox(tx.Session, [OutboxWrite.Create(completed.ToChangedEvent())], token);
+                return tx.Commit(new SecretProjectionMutationRecorded(completed));
+            },
+            ct);
     }
 }

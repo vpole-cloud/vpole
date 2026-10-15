@@ -123,8 +123,8 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
         tenantId ??= ObjectId.GenerateNewId().ToString();
         targetId ??= ObjectId.GenerateNewId().ToString();
 
-        return await transaction.InvokeOutcomeAsync<CreateManagedDomainZoneOutcome>(
-            async (context, cancellationToken) =>
+        return await
+            transaction.InvokeOutcomeAsync<CreateManagedDomainZoneOutcome>(async (context, cancellationToken) =>
             {
                 var result = await reservation.InvokeAsync(
                     tenantId,
@@ -143,9 +143,23 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
 
     private sealed class TargetCoordinator
     {
-        public bool RejectFence { get; init; }
-        public bool RejectReference { get; init; }
-        public int RegistrationCalls { get; private set; }
+        public bool RejectFence
+        {
+            get;
+            init;
+        }
+
+        public bool RejectReference
+        {
+            get;
+            init;
+        }
+
+        public int RegistrationCalls
+        {
+            get;
+            private set;
+        }
 
         public Task<ApplyDeploymentTargetReferenceChangesOutcome> ApplyChangesOutcomeAsync(
             DeploymentTargetReferenceOwner owner,
@@ -174,5 +188,4 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
                         new DeploymentTargetWorkloadConfigurationFenceRejected(requests))
                     : new DeploymentTargetWorkloadConfigurationsFenced());
     }
-
 }

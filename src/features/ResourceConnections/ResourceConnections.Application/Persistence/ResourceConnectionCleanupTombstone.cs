@@ -78,38 +78,41 @@ internal sealed class MongoResourceConnectionTombstonePersistence(
         ResourceConnection observed,
         CancellationToken cancellationToken = default) =>
         transactions(async (transaction, ct) =>
-        {
-            var current = await connections.Find(
+            {
+                var current = await connections.Find(
+                        transaction.Session,
+                        ResourceConnectionFilters.AtRevision(
+                            observed.TenantId,
+                            observed.Id,
+                            observed.Revision))
+                    .FirstOrDefaultAsync(ct);
+                if (current is null || !current.IsCleanupComplete)
+                    return transaction.Commit(false);
+
+                var deleting = (DeletingResourceConnection)current.Lifecycle;
+                var tombstone = new ResourceConnectionCleanupTombstone(
+                    current.Id,
+                    current.TenantId,
+                    current.Generation,
+                    deleting.Targets.Select(target => target.Snapshot).ToImmutableList(),
+                    timeProvider.GetUtcNow().UtcDateTime);
+                await tombstones.InsertOneAsync(
+                    transaction.Session,
+                    tombstone,
+                    cancellationToken: ct);
+                var removed = await connections.DeleteOneAsync(
                     transaction.Session,
                     ResourceConnectionFilters.AtRevision(
-                        observed.TenantId,
-                        observed.Id,
-                        observed.Revision))
-                .FirstOrDefaultAsync(ct);
-            if (current is null || !current.IsCleanupComplete)
-                return transaction.Commit(false);
-
-            var deleting = (DeletingResourceConnection)current.Lifecycle;
-            var tombstone = new ResourceConnectionCleanupTombstone(
-                current.Id,
-                current.TenantId,
-                current.Generation,
-                deleting.Targets.Select(target => target.Snapshot).ToImmutableList(),
-                timeProvider.GetUtcNow().UtcDateTime);
-            await tombstones.InsertOneAsync(
-                transaction.Session,
-                tombstone,
-                cancellationToken: ct);
-            var removed = await connections.DeleteOneAsync(
-                transaction.Session,
-                ResourceConnectionFilters.AtRevision(
-                    current.TenantId,
-                    current.Id,
-                    current.Revision),
-                cancellationToken: ct);
-            if (removed.DeletedCount != 1)
-                return transaction.Abort(false);
-            await outbox(transaction.Session, [OutboxWrite.Create((current with { Revision = checked(current.Revision + 1) }).ToChangedEvent())], ct);
-            return transaction.Commit(true);
-        }, cancellationToken);
+                        current.TenantId,
+                        current.Id,
+                        current.Revision),
+                    cancellationToken: ct);
+                if (removed.DeletedCount != 1)
+                    return transaction.Abort(false);
+                await outbox(transaction.Session,
+                    [OutboxWrite.Create((current with { Revision = checked(current.Revision + 1) }).ToChangedEvent())],
+                    ct);
+                return transaction.Commit(true);
+            },
+            cancellationToken);
 }

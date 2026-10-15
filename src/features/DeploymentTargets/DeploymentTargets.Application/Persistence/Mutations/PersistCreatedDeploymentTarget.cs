@@ -35,33 +35,38 @@ internal sealed class MongoPersistCreatedDeploymentTarget(
         try
         {
             return await runMongoTransaction(async (transaction, ct) =>
-            {
-                var admitted = await ensureNoOverlappingPublicBaseDomain(
-                    deploymentTarget.Id,
-                    deploymentTarget.WorkloadConfiguration.Ingress?.PublicBaseDomain,
-                    transaction.Session,
-                    ct);
-                if (admitted is DeploymentTargetPublicBaseDomainConflict admissionError)
                 {
-                    return transaction.Abort(
-                        new PersistCreatedDeploymentTargetError(
-                            admissionError));
-                }
+                    var admitted = await ensureNoOverlappingPublicBaseDomain(
+                        deploymentTarget.Id,
+                        deploymentTarget.WorkloadConfiguration.Ingress?.PublicBaseDomain,
+                        transaction.Session,
+                        ct);
+                    if (admitted is DeploymentTargetPublicBaseDomainConflict admissionError)
+                    {
+                        return transaction.Abort(
+                            new PersistCreatedDeploymentTargetError(
+                                admissionError));
+                    }
 
-                await deploymentTargets.InsertOneAsync(
-                    transaction.Session,
-                    deploymentTarget,
-                    cancellationToken: ct);
-                await storeOutboxWrites(transaction.Session,
-                    [OutboxWrite.Create(new DeploymentTargetCatalogChangedEvent(deploymentTarget.Id, deploymentTarget.Revision))], ct);
-                return transaction.Commit(deploymentTarget);
-            }, cancellationToken);
+                    await deploymentTargets.InsertOneAsync(
+                        transaction.Session,
+                        deploymentTarget,
+                        cancellationToken: ct);
+                    await storeOutboxWrites(transaction.Session,
+                        [
+                            OutboxWrite.Create(
+                                new DeploymentTargetCatalogChangedEvent(deploymentTarget.Id, deploymentTarget.Revision))
+                        ],
+                        ct);
+                    return transaction.Commit(deploymentTarget);
+                },
+                cancellationToken);
         }
         catch (MongoWriteException exception) when (
             exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
         {
             return new PersistCreatedDeploymentTargetError(
-                    new DeploymentTargetIdentityConflict());
+                new DeploymentTargetIdentityConflict());
         }
     }
 }

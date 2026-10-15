@@ -14,7 +14,8 @@ public sealed class PostgresRegistrationTests
     {
         var services = new ServiceCollection();
         var other = ResourceDeploymentAdapterDescriptor.Create<OtherAdapter>(
-            ResourceTypeId.Create("pole/test-provider"), ResourcePlacementCapability.SingleTarget);
+            ResourceTypeId.Create("pole/test-provider"),
+            ResourcePlacementCapability.SingleTarget);
         services.AddSingleton(other);
         services.AddPostgresFeature(new ConfigurationBuilder().Build());
         using var provider = services.BuildServiceProvider();
@@ -33,11 +34,13 @@ public sealed class PostgresRegistrationTests
     private sealed class OtherAdapter : IResourceDeploymentAdapter
     {
         public Task<ResourceDeploymentAdapterResult> ApplyAsync(
-            ResourceDeploymentReconciliationContext context, CancellationToken cancellationToken = default) =>
+            ResourceDeploymentReconciliationContext context,
+            CancellationToken cancellationToken = default) =>
             Task.FromResult<ResourceDeploymentAdapterResult>(ResourceDeploymentAdapterResult.Succeeded.Create());
 
         public Task<ResourceDeploymentAdapterResult> DeleteAsync(
-            ResourceDeploymentReconciliationContext context, CancellationToken cancellationToken = default) =>
+            ResourceDeploymentReconciliationContext context,
+            CancellationToken cancellationToken = default) =>
             Task.FromResult<ResourceDeploymentAdapterResult>(ResourceDeploymentAdapterResult.Succeeded.Create());
     }
 }

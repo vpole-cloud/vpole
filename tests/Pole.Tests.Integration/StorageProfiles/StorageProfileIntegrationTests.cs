@@ -55,7 +55,8 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
 
         var responseOutcome = await Mediator.Send(
             new GetStorageProfilesRequest());
-        var response = Assert.IsAssignableFrom<IReadOnlyCollection<StorageProfileDto>>(responseOutcome.AssertSuccess().Value);
+        var response =
+            Assert.IsAssignableFrom<IReadOnlyCollection<StorageProfileDto>>(responseOutcome.AssertSuccess().Value);
 
         Assert.Equal(
             [defaultId, archiveId, bulkId],
@@ -91,10 +92,11 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
     public async Task Create_ReturnsDiscoveryUnavailableWithoutPersistingProfile()
     {
         var result = await Mediator.Send(new CreateStorageProfileRequest(
-            ValidCreateBody(displayName: "Unavailable target", targetMappings:
-            [
-                new StorageProfileTargetMappingRequestBody(SecondDeploymentTargetId, "standard")
-            ])));
+            ValidCreateBody(displayName: "Unavailable target",
+                targetMappings:
+                [
+                    new StorageProfileTargetMappingRequestBody(SecondDeploymentTargetId, "standard")
+                ])));
 
         var error = Assert.IsType<KubernetesStorageDiscoveryUnavailable>(result.AssertSuccess().Value);
         Assert.Equal(SecondDeploymentTargetId, error.DeploymentTargetId);
@@ -362,15 +364,21 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
         var classesOutcome = await Mediator.Send(
             new GetKubernetesStorageClassesRequest(
                 TestData.DefaultDeploymentTargetId));
-        var classes = Assert.IsAssignableFrom<IReadOnlyCollection<KubernetesStorageClassDto>>(classesOutcome.AssertSuccess().Value);
+        var classes =
+            Assert.IsAssignableFrom<IReadOnlyCollection<KubernetesStorageClassDto>>(
+                classesOutcome.AssertSuccess().Value);
         var volumesOutcome = await Mediator.Send(
             new GetKubernetesPersistentVolumesRequest(
                 TestData.DefaultDeploymentTargetId));
-        var volumes = Assert.IsAssignableFrom<IReadOnlyCollection<KubernetesPersistentVolumeDto>>(volumesOutcome.AssertSuccess().Value);
+        var volumes =
+            Assert.IsAssignableFrom<IReadOnlyCollection<KubernetesPersistentVolumeDto>>(volumesOutcome.AssertSuccess()
+                .Value);
         var claimsOutcome = await Mediator.Send(
             new GetKubernetesPersistentVolumeClaimsRequest(
                 TestData.DefaultDeploymentTargetId));
-        var claims = Assert.IsAssignableFrom<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>>(claimsOutcome.AssertSuccess().Value);
+        var claims =
+            Assert.IsAssignableFrom<IReadOnlyCollection<KubernetesPersistentVolumeClaimDto>>(claimsOutcome
+                .AssertSuccess().Value);
 
         Assert.Equal(["bulk", "fast", "standard"], classes.Select(item => item.Name).ToArray());
         Assert.Equal("pv-standard-1", Assert.Single(volumes).Name);
@@ -485,7 +493,8 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
             ResourceTypeId.Create("third-party/widget"),
             SizeGb: 5));
 
-        Assert.IsType<StorageProfileTenantAccessDenied>(Assert.IsType<StorageProfileResolutionError>(result.Value).Value);
+        Assert.IsType<StorageProfileTenantAccessDenied>(
+            Assert.IsType<StorageProfileResolutionError>(result.Value).Value);
     }
 
     [Fact]
@@ -550,7 +559,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
             ],
             AllowedResourceTypes: allowedResourceTypes ?? ["third-party/widget", "pole/postgresql"],
             TenantAccess: tenantAccess ??
-                new StorageProfileTenantAccessDto("AllTenants", []),
+                          new StorageProfileTenantAccessDto("AllTenants", []),
             SizeLimits: sizeLimits ?? new StorageProfileSizeLimitsDto(1, 100));
 
     private static UpdateStorageProfileRequestBody ValidUpdateBody(
@@ -576,7 +585,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
             ],
             AllowedResourceTypes: allowedResourceTypes ?? ["third-party/widget", "pole/postgresql"],
             TenantAccess: tenantAccess ??
-                new StorageProfileTenantAccessDto("AllTenants", []),
+                          new StorageProfileTenantAccessDto("AllTenants", []),
             SizeLimits: sizeLimits ?? new StorageProfileSizeLimitsDto(1, 100),
             Revision: revision);
 

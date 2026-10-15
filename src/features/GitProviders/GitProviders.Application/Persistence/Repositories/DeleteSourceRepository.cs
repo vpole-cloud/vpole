@@ -17,7 +17,10 @@ public delegate Task<PersistDeletedSourceRepositoryOutcome> DeleteSourceReposito
     string sourceRepositoryId,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoDeleteSourceRepository(IMongoDatabase database, MongoRunTransaction transactions, StoreOutboxWrites outbox)
+internal sealed class MongoDeleteSourceRepository(
+    IMongoDatabase database,
+    MongoRunTransaction transactions,
+    StoreOutboxWrites outbox)
 {
     public async Task<PersistDeletedSourceRepositoryOutcome> InvokeAsync(
         string tenantId,
@@ -25,16 +28,17 @@ internal sealed class MongoDeleteSourceRepository(IMongoDatabase database, Mongo
         CancellationToken cancellationToken = default)
     {
         return await transactions.InvokeOutcomeAsync<PersistDeletedSourceRepositoryOutcome>(async (tx, ct) =>
-        {
-            var deleted = await database
-                .GetCollection<SourceRepository>("SourceRepositories")
-                .FindOneAndDeleteAsync(tx.Session,
-                    GitProviderFilters.SourceRepositoryByTenantAndId(tenantId, sourceRepositoryId),
-                    cancellationToken: ct);
-            if (deleted is null)
-                return tx.Abort(new SourceRepositoryNotFound(sourceRepositoryId));
-            await outbox(tx.Session, [OutboxWrite.Create(deleted.ToChangedEvent())], ct);
-            return tx.Commit(new SourceRepositoryDeleted());
-        }, cancellationToken);
+            {
+                var deleted = await database
+                    .GetCollection<SourceRepository>("SourceRepositories")
+                    .FindOneAndDeleteAsync(tx.Session,
+                        GitProviderFilters.SourceRepositoryByTenantAndId(tenantId, sourceRepositoryId),
+                        cancellationToken: ct);
+                if (deleted is null)
+                    return tx.Abort(new SourceRepositoryNotFound(sourceRepositoryId));
+                await outbox(tx.Session, [OutboxWrite.Create(deleted.ToChangedEvent())], ct);
+                return tx.Commit(new SourceRepositoryDeleted());
+            },
+            cancellationToken);
     }
 }

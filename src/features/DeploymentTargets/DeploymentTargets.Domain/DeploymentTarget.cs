@@ -22,10 +22,13 @@ public sealed record DeploymentTarget(
     DateTime UpdatedAtUtc)
 {
     // Observation writes need a document conflict without changing reference-admission semantics.
-    public long ObservationFence { get; init; }
+    public long ObservationFence
+    {
+        get;
+        init;
+    }
 
-    [BsonIgnore]
-    public long NextConnectionVersion => checked(Connection.Version + 1);
+    [BsonIgnore] public long NextConnectionVersion => checked(Connection.Version + 1);
 
     public DeploymentTarget UpdateMetadata(string displayName, DateTime updatedAtUtc)
     {
@@ -229,6 +232,7 @@ public sealed record DeploymentTarget(
             throw new InvalidOperationException(
                 "The deployment target changed while its connection was being validated.");
         }
+
         if (health.ConnectionVersion != expectedConnectionVersion ||
             capabilities.ConnectionVersion != expectedConnectionVersion)
         {
@@ -339,6 +343,7 @@ public static class DeploymentTargetFactory
                 "A disabled deployment target cannot accept new workloads.",
                 nameof(acceptsWorkloads));
         }
+
         if (health.ConnectionVersion != connection.Version ||
             capabilities.ConnectionVersion != connection.Version)
         {

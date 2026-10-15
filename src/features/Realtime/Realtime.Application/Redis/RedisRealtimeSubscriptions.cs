@@ -118,37 +118,59 @@ public sealed class RedisRealtimeSubscriptions(
         return result
         """;
 
-    public async Task ReplaceAsync(string connectionId, IReadOnlyList<RealtimeSubscription> subscriptions, CancellationToken cancellationToken)
+    public async Task ReplaceAsync(string connectionId,
+        IReadOnlyList<RealtimeSubscription> subscriptions,
+        CancellationToken cancellationToken)
     {
         if (subscriptions.Any(item => item.ConnectionId != connectionId || string.IsNullOrWhiteSpace(item.SessionId)) ||
             subscriptions.Select(item => item.Id).Distinct(StringComparer.Ordinal).Count() != subscriptions.Count)
-            throw new InvalidOperationException("Realtime subscriptions must have distinct identities and belong to their connection.");
+            throw new InvalidOperationException(
+                "Realtime subscriptions must have distinct identities and belong to their connection.");
         var entries = subscriptions.Select(subscription => new Entry(subscription,
             RealtimeRedisKeys.Topic(subscription.Request.Topic, subscription.Request.TenantId),
-            RealtimeRedisKeys.Connection(connectionId), RealtimeRedisKeys.Session(subscription.SessionId),
-            RealtimeRedisKeys.Revoked(subscription.SessionId), subscription.ExpiresAtUtc.ToUnixTimeMilliseconds(),
+            RealtimeRedisKeys.Connection(connectionId),
+            RealtimeRedisKeys.Session(subscription.SessionId),
+            RealtimeRedisKeys.Revoked(subscription.SessionId),
+            subscription.ExpiresAtUtc.ToUnixTimeMilliseconds(),
             RealtimeRedisKeys.AllTopic(subscription.Request.Topic)));
-        var result = await EvaluateAsync(ReplaceScript, [RealtimeRedisKeys.Connection(connectionId)],
-            [clock.GetUtcNow().ToUnixTimeMilliseconds(), RealtimeRedisKeys.SubscriptionPrefix,
-                JsonSerializer.Serialize(entries, JsonOptions)], cancellationToken);
-        if ((long)result != 1) throw new RealtimeSessionUnavailableException();
+        var result = await EvaluateAsync(ReplaceScript,
+            [RealtimeRedisKeys.Connection(connectionId)],
+            [
+                clock.GetUtcNow().ToUnixTimeMilliseconds(), RealtimeRedisKeys.SubscriptionPrefix,
+                JsonSerializer.Serialize(entries, JsonOptions)
+            ],
+            cancellationToken);
+        if ((long)result != 1)
+            throw new RealtimeSessionUnavailableException();
     }
 
-    public async Task RemoveAsync(string connectionId, IReadOnlyCollection<string>? subscriptionIds, CancellationToken cancellationToken) =>
-        await EvaluateAsync(RemoveScript, [RealtimeRedisKeys.Connection(connectionId)],
-            [clock.GetUtcNow().ToUnixTimeMilliseconds(), RealtimeRedisKeys.SubscriptionPrefix,
-                subscriptionIds is null ? "" : JsonSerializer.Serialize(subscriptionIds, JsonOptions)], cancellationToken);
+    public async Task RemoveAsync(string connectionId,
+        IReadOnlyCollection<string>? subscriptionIds,
+        CancellationToken cancellationToken) =>
+        await EvaluateAsync(RemoveScript,
+            [RealtimeRedisKeys.Connection(connectionId)],
+            [
+                clock.GetUtcNow().ToUnixTimeMilliseconds(), RealtimeRedisKeys.SubscriptionPrefix,
+                subscriptionIds is null ? "" : JsonSerializer.Serialize(subscriptionIds, JsonOptions)
+            ],
+            cancellationToken);
 
-    public async Task<IReadOnlyList<RealtimeSubscription>> FindAsync(string topic, string? tenantId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<RealtimeSubscription>> FindAsync(string topic,
+        string? tenantId,
+        CancellationToken cancellationToken)
         => await FindByIndexAsync(RealtimeRedisKeys.Topic(topic, tenantId), cancellationToken);
 
-    public async Task<IReadOnlyList<RealtimeSubscription>> FindAllAsync(string topic, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<RealtimeSubscription>> FindAllAsync(string topic,
+        CancellationToken cancellationToken)
         => await FindByIndexAsync(RealtimeRedisKeys.AllTopic(topic), cancellationToken);
 
-    private async Task<IReadOnlyList<RealtimeSubscription>> FindByIndexAsync(RedisKey key, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<RealtimeSubscription>> FindByIndexAsync(RedisKey key,
+        CancellationToken cancellationToken)
     {
-        var result = await EvaluateAsync(FindScript, [key],
-            [clock.GetUtcNow().ToUnixTimeMilliseconds(), RealtimeRedisKeys.SubscriptionPrefix], cancellationToken);
+        var result = await EvaluateAsync(FindScript,
+            [key],
+            [clock.GetUtcNow().ToUnixTimeMilliseconds(), RealtimeRedisKeys.SubscriptionPrefix],
+            cancellationToken);
         return ((RedisResult[])result!).Select(value =>
             JsonSerializer.Deserialize<Entry>((string)value!, JsonOptions)!.Subscription).ToArray();
     }
@@ -157,7 +179,8 @@ public sealed class RedisRealtimeSubscriptions(
     {
         var result = await EvaluateAsync(RevokeScript,
             [RealtimeRedisKeys.Session(sessionId), RealtimeRedisKeys.Revoked(sessionId)],
-            [clock.GetUtcNow().ToUnixTimeMilliseconds(), RealtimeRedisKeys.SubscriptionPrefix], cancellationToken);
+            [clock.GetUtcNow().ToUnixTimeMilliseconds(), RealtimeRedisKeys.SubscriptionPrefix],
+            cancellationToken);
         return ((RedisResult[])result!).Select(value => (string)value!).ToArray();
     }
 
@@ -167,7 +190,10 @@ public sealed class RedisRealtimeSubscriptions(
         return connection.Database.KeyExistsAsync(RealtimeRedisKeys.Revoked(sessionId)).WaitAsync(cancellationToken);
     }
 
-    private Task<RedisResult> EvaluateAsync(string script, RedisKey[] keys, RedisValue[] values, CancellationToken cancellationToken)
+    private Task<RedisResult> EvaluateAsync(string script,
+        RedisKey[] keys,
+        RedisValue[] values,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         return connection.Database.ScriptEvaluateAsync(script, keys, values).WaitAsync(cancellationToken);

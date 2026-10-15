@@ -7,7 +7,9 @@ public sealed record DeploymentTargetObservationFenceRequest(
     long ExpectedConnectionVersion);
 
 public sealed record DeploymentTargetObservationFenced;
+
 public sealed record DeploymentTargetObservationFenceRejected;
+
 public union FenceDeploymentTargetObservationOutcome(
     DeploymentTargetObservationFenced,
     DeploymentTargetObservationFenceRejected);

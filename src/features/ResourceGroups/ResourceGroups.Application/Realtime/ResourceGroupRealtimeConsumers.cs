@@ -7,10 +7,12 @@ namespace Pole.Features.ResourceGroups.Application.Realtime;
 
 public sealed class NotifyResourceGroupChangedConsumer(PublishRealtimeChange publish)
     : IConsumer<ResourceGroupCreatedEvent>, IConsumer<ResourceGroupUpdatedEvent>, IConsumer<ResourceGroupDeletedEvent>,
-      IConsumer<ResourceRegisteredEvent>, IConsumer<ResourceRegistrationUpdatedEvent>, IConsumer<ResourceUnregisteredEvent>,
-      IConsumer<IsolationScopeCreatedEvent>, IConsumer<IsolationScopeDeletionRequestedEvent>,
-      IConsumer<RuntimeCellReconciliationRequestedEvent>, IConsumer<RuntimeCellReadyEvent>, IConsumer<RuntimeCellReconciliationFailedEvent>,
-      IConsumer<RuntimeCellDeletionRequestedEvent>, IConsumer<RuntimeCellDeletedEvent>
+        IConsumer<ResourceRegisteredEvent>, IConsumer<ResourceRegistrationUpdatedEvent>,
+        IConsumer<ResourceUnregisteredEvent>,
+        IConsumer<IsolationScopeCreatedEvent>, IConsumer<IsolationScopeDeletionRequestedEvent>,
+        IConsumer<RuntimeCellReconciliationRequestedEvent>, IConsumer<RuntimeCellReadyEvent>,
+        IConsumer<RuntimeCellReconciliationFailedEvent>,
+        IConsumer<RuntimeCellDeletionRequestedEvent>, IConsumer<RuntimeCellDeletedEvent>
 {
     public Task HandleAsync(ResourceGroupCreatedEvent message, CancellationToken ct = default) =>
         NotifyGroupAsync(message.EventCore, message.ResourceGroupId, message.ResourceRevision, ct);
@@ -32,16 +34,22 @@ public sealed class NotifyResourceGroupChangedConsumer(PublishRealtimeChange pub
 
     public Task HandleAsync(IsolationScopeCreatedEvent message, CancellationToken ct = default) =>
         NotifyGroupAsync(message.EventCore, message.ResourceGroupId, null, ct);
+
     public Task HandleAsync(IsolationScopeDeletionRequestedEvent message, CancellationToken ct = default) =>
         NotifyGroupAsync(message.EventCore, message.ResourceGroupId, null, ct);
+
     public Task HandleAsync(RuntimeCellReconciliationRequestedEvent message, CancellationToken ct = default) =>
         NotifyCellAsync(message.EventCore, message.Generation, ct);
+
     public Task HandleAsync(RuntimeCellReadyEvent message, CancellationToken ct = default) =>
         NotifyCellAsync(message.EventCore, message.Generation, ct);
+
     public Task HandleAsync(RuntimeCellReconciliationFailedEvent message, CancellationToken ct = default) =>
         NotifyCellAsync(message.EventCore, message.Generation, ct);
+
     public Task HandleAsync(RuntimeCellDeletionRequestedEvent message, CancellationToken ct = default) =>
         NotifyCellAsync(message.EventCore, message.Generation, ct);
+
     public Task HandleAsync(RuntimeCellDeletedEvent message, CancellationToken ct = default) =>
         NotifyCellAsync(message.EventCore, message.Generation, ct);
 
@@ -66,17 +74,42 @@ public sealed class NotifyResourceGroupChangedConsumer(PublishRealtimeChange pub
         await publish(new("workspace-inventory", core.TenantId, resourceId, groupId), ct);
     }
 
-    public Task Consume(ConsumeContext<ResourceGroupCreatedEvent> context) => HandleAsync(context.Message, context.CancellationToken);
-    public Task Consume(ConsumeContext<ResourceGroupUpdatedEvent> context) => HandleAsync(context.Message, context.CancellationToken);
-    public Task Consume(ConsumeContext<ResourceGroupDeletedEvent> context) => HandleAsync(context.Message, context.CancellationToken);
-    public Task Consume(ConsumeContext<ResourceRegisteredEvent> context) => HandleAsync(context.Message, context.CancellationToken);
-    public Task Consume(ConsumeContext<ResourceRegistrationUpdatedEvent> context) => HandleAsync(context.Message, context.CancellationToken);
-    public Task Consume(ConsumeContext<ResourceUnregisteredEvent> context) => HandleAsync(context.Message, context.CancellationToken);
-    public Task Consume(ConsumeContext<IsolationScopeCreatedEvent> context) => HandleAsync(context.Message, context.CancellationToken);
-    public Task Consume(ConsumeContext<IsolationScopeDeletionRequestedEvent> context) => HandleAsync(context.Message, context.CancellationToken);
-    public Task Consume(ConsumeContext<RuntimeCellReconciliationRequestedEvent> context) => HandleAsync(context.Message, context.CancellationToken);
-    public Task Consume(ConsumeContext<RuntimeCellReadyEvent> context) => HandleAsync(context.Message, context.CancellationToken);
-    public Task Consume(ConsumeContext<RuntimeCellReconciliationFailedEvent> context) => HandleAsync(context.Message, context.CancellationToken);
-    public Task Consume(ConsumeContext<RuntimeCellDeletionRequestedEvent> context) => HandleAsync(context.Message, context.CancellationToken);
-    public Task Consume(ConsumeContext<RuntimeCellDeletedEvent> context) => HandleAsync(context.Message, context.CancellationToken);
+    public Task Consume(ConsumeContext<ResourceGroupCreatedEvent> context) =>
+        HandleAsync(context.Message, context.CancellationToken);
+
+    public Task Consume(ConsumeContext<ResourceGroupUpdatedEvent> context) =>
+        HandleAsync(context.Message, context.CancellationToken);
+
+    public Task Consume(ConsumeContext<ResourceGroupDeletedEvent> context) =>
+        HandleAsync(context.Message, context.CancellationToken);
+
+    public Task Consume(ConsumeContext<ResourceRegisteredEvent> context) =>
+        HandleAsync(context.Message, context.CancellationToken);
+
+    public Task Consume(ConsumeContext<ResourceRegistrationUpdatedEvent> context) =>
+        HandleAsync(context.Message, context.CancellationToken);
+
+    public Task Consume(ConsumeContext<ResourceUnregisteredEvent> context) =>
+        HandleAsync(context.Message, context.CancellationToken);
+
+    public Task Consume(ConsumeContext<IsolationScopeCreatedEvent> context) =>
+        HandleAsync(context.Message, context.CancellationToken);
+
+    public Task Consume(ConsumeContext<IsolationScopeDeletionRequestedEvent> context) =>
+        HandleAsync(context.Message, context.CancellationToken);
+
+    public Task Consume(ConsumeContext<RuntimeCellReconciliationRequestedEvent> context) =>
+        HandleAsync(context.Message, context.CancellationToken);
+
+    public Task Consume(ConsumeContext<RuntimeCellReadyEvent> context) =>
+        HandleAsync(context.Message, context.CancellationToken);
+
+    public Task Consume(ConsumeContext<RuntimeCellReconciliationFailedEvent> context) =>
+        HandleAsync(context.Message, context.CancellationToken);
+
+    public Task Consume(ConsumeContext<RuntimeCellDeletionRequestedEvent> context) =>
+        HandleAsync(context.Message, context.CancellationToken);
+
+    public Task Consume(ConsumeContext<RuntimeCellDeletedEvent> context) =>
+        HandleAsync(context.Message, context.CancellationToken);
 }
