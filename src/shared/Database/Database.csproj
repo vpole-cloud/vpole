@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>net11.0</TargetFramework>
@@ -9,6 +9,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <ProjectReference Include="../Observation/Observation.csproj" />
       <ProjectReference Include="..\Multitenancy\Multitenancy.csproj" />
       <ProjectReference Include="..\Events\Events.csproj" />
       <ProjectReference Include="..\Observability\Observability.csproj" />

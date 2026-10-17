@@ -1,17 +1,19 @@
 using MongoDB.Bson;
+using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Database.Observation;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.Outbox.Contracts;
 using Pole.Features.ResourceDeployments.Application.Observation;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Events;
-using static Pole.Features.ResourceDeployments.Application.Persistence.Observation.ObservationStoreFilters;
+using Pole.Features.ResourceDeployments.Domain;
 
 namespace Pole.Features.ResourceDeployments.Application.Persistence.Observation;
 
-/// <summary>Durable demand, ownership and sanitized snapshots shared by API replicas.</summary>
+/// <summary>Feature boundary: context fences, sanitized payloads and event shape; shared store owns the protocol.</summary>
 internal sealed class MongoResourceDeploymentObservationStore(
     IMongoDatabase database,
     MongoRunTransaction transactions,
@@ -22,29 +24,24 @@ internal sealed class MongoResourceDeploymentObservationStore(
     internal const string DemandsCollection = "ResourceDeploymentObservationDemands";
     internal const string SnapshotsCollection = "ResourceDeploymentObservationSnapshots";
 
-    private readonly IMongoCollection<ObservationControlDocument> controls =
-        database.GetCollection<ObservationControlDocument>(ControlsCollection);
-
-    private readonly IMongoCollection<ObservationDemandDocument> demands =
-        database.GetCollection<ObservationDemandDocument>(DemandsCollection);
-
-    private readonly IMongoCollection<ObservationSnapshotDocument> snapshots =
-        database.GetCollection<ObservationSnapshotDocument>(SnapshotsCollection);
-
-    private readonly IMongoCollection<ResourceDeployment> deployments =
-        database.GetCollection<ResourceDeployment>("ResourceDeployments");
+    private readonly MongoObservationStore<ResourceDeploymentObservationContext> core = new(database,
+        transactions,
+        ControlsCollection,
+        DemandsCollection,
+        SnapshotsCollection,
+        "DeploymentId",
+        "BindingId",
+        new Definition(database, fenceTarget, storeOutboxWrites));
 
     public Task<ObservationMutationOutcome> PutDemandAsync(ObservationDemand demand,
         ResourceDeploymentObservationContext context,
-        CancellationToken ct = default) =>
-        PutOrRenewDemandAsync(demand, context, ct);
+        CancellationToken ct = default) => PutOrRenewAsync(demand, context, ct);
 
     public Task<ObservationMutationOutcome> RenewDemandAsync(ObservationDemand demand,
         ResourceDeploymentObservationContext context,
-        CancellationToken ct = default) =>
-        PutOrRenewDemandAsync(demand, context, ct);
+        CancellationToken ct = default) => PutOrRenewAsync(demand, context, ct);
 
-    private Task<ObservationMutationOutcome> PutOrRenewDemandAsync(ObservationDemand demand,
+    private async Task<ObservationMutationOutcome> PutOrRenewAsync(ObservationDemand demand,
         ResourceDeploymentObservationContext context,
         CancellationToken ct)
     {
@@ -52,87 +49,15 @@ internal sealed class MongoResourceDeploymentObservationStore(
         Validate(demand.Identity);
         if (demand.Identity.TenantId != context.Deployment.TenantId ||
             demand.Identity.DeploymentId != context.Deployment.Id)
-            throw new ArgumentException("Observation demand must belong to its deployment context.", nameof(demand));
-        return RunAsync<ObservationMutationOutcome>(async (transaction, token) =>
-            {
-                var rejection = await FenceContextAsync(context, transaction.Session, token);
-                if (rejection is not null)
-                    return transaction.Abort(rejection);
-                var control = await GetOrCreateControlAsync(context, transaction.Session, token);
-                await TouchControlAsync(control, transaction.Session, token);
-                var key = DemandKey(demand.Identity);
-                var previous = await demands.Find(transaction.Session, DemandByKey(key)).FirstOrDefaultAsync(token);
-                if (previous is not null && (previous.ConnectionId != demand.Identity.ConnectionId ||
-                                             previous.SessionId != demand.Identity.SessionId))
-                    return transaction.Abort(Rejected(ObservationStoreRejection.Superseded));
-
-                var originalBound = new BsonDocument("$min",
-                    new BsonArray
-                    {
-                        new BsonDocument("$ifNull",
-                            new BsonArray { "$OriginalExpiresAtUtc", Literal(demand.ExpiresAtUtc.UtcDateTime) }),
-                        Literal(demand.ExpiresAtUtc.UtcDateTime)
-                    });
-                await demands.UpdateOneAsync(transaction.Session,
-                    DemandByKey(key),
-                    DemandPipeline(new BsonDocument
-                    {
-                        { "TenantId", Literal(new BsonObjectId(ObjectId.Parse(demand.Identity.TenantId))) },
-                        { "DeploymentId", Literal(new BsonObjectId(ObjectId.Parse(demand.Identity.DeploymentId))) },
-                        { "SubscriptionId", Literal(demand.Identity.SubscriptionId) },
-                        { "ConnectionId", Literal(demand.Identity.ConnectionId) },
-                        { "SessionId", Literal(demand.Identity.SessionId) },
-                        { "OriginalExpiresAtUtc", originalBound },
-                        { "ExpiresAtUtc", new BsonDocument("$min", new BsonArray { originalBound, ServerAfter(60) }) }
-                    }),
-                    new UpdateOptions { IsUpsert = true },
-                    token);
-                if (!await demands.Find(transaction.Session, DemandByKey(key) & ServerExpiry("ExpiresAtUtc", "$gt"))
-                        .AnyAsync(token))
-                    return transaction.Abort(Rejected(ObservationStoreRejection.NoDemand));
-
-                var fields = new BsonDocument { { "IdleSinceUtc", BsonNull.Value } };
-                var pin = ObservationValueMappings.Pin(context);
-                if (control.Pin != pin)
-                {
-                    AddInvalidation(fields);
-                    fields.Add("ObservationVersion", Increment("ObservationVersion"));
-                    fields.Add("Pin", Literal(pin.ToBsonDocument()));
-                }
-
-                var updated = await controls.FindOneAndUpdateAsync(transaction.Session,
-                    ControlIdentity(control.TenantId, control.Id),
-                    ControlPipeline(fields),
-                    new FindOneAndUpdateOptions<ObservationControlDocument> { ReturnDocument = ReturnDocument.After },
-                    token);
-                if (control.Pin != pin)
-                    await PublishControlChangeAsync(updated, transaction.Session, token);
-                await snapshots.UpdateOneAsync(transaction.Session,
-                    SnapshotIdentity(control.TenantId, control.Id),
-                    Builders<ObservationSnapshotDocument>.Update.Set(item => item.ExpiresAtUtc, null),
-                    cancellationToken: token);
-                return transaction.Commit(new ObservationMutationAccepted());
-            },
-            ct);
+            throw new ArgumentException("Observation demand must belong to its context.", nameof(demand));
+        return Mutation(await core.PutDemandAsync(Demand(demand.Identity, demand.ExpiresAtUtc), context, ct));
     }
 
-    public Task<ObservationMutationOutcome> RemoveDemandAsync(ObservationDemandIdentity identity,
+    public async Task<ObservationMutationOutcome> RemoveDemandAsync(ObservationDemandIdentity identity,
         CancellationToken ct = default)
     {
         Validate(identity);
-        return RunAsync<ObservationMutationOutcome>(async (transaction, token) =>
-            {
-                var control = await controls
-                    .Find(transaction.Session, ControlIdentity(identity.TenantId, identity.DeploymentId))
-                    .FirstOrDefaultAsync(token);
-                if (control is null)
-                    return transaction.Commit(new ObservationMutationAccepted());
-                await TouchControlAsync(control, transaction.Session, token);
-                await demands.DeleteOneAsync(transaction.Session, DemandIdentity(identity), cancellationToken: token);
-                await MarkIdleIfNoDemandAsync(control, transaction.Session, token);
-                return transaction.Commit(new ObservationMutationAccepted());
-            },
-            ct);
+        return Mutation(await core.RemoveDemandAsync(DemandIdentity(identity), ct));
     }
 
     public async Task<ObservationDemandPage> ScanDemandsAsync(string? after, int limit, CancellationToken ct = default)
@@ -140,135 +65,52 @@ internal sealed class MongoResourceDeploymentObservationStore(
         ValidateLimit(limit);
         if (after is not null)
             ValidateObjectId(after);
-        var rows = await demands.Aggregate().Match(ActiveDemandsAfter(after)).Group(new BsonDocument
-        {
-            { "_id", "$DeploymentId" }, { "TenantId", new BsonDocument("$first", "$TenantId") }
-        }).Sort(new BsonDocument("_id", 1)).Limit(limit + 1).ToListAsync(ct);
-        var selected = rows.Take(limit).Select(row =>
-            new ObservationIdentity(row["TenantId"].AsObjectId.ToString(), row["_id"].AsObjectId.ToString())).ToArray();
-        return new(selected, rows.Count > limit ? selected[^1].DeploymentId : null);
+        var page = await core.ScanAsync(after, limit, ct);
+        return new(page.Items.Select(item => new ObservationIdentity(item.TenantId!, item.Id)).ToArray(),
+            page.NextCursor);
     }
 
-    public async Task ReapExpiredDemandsAsync(int limit, CancellationToken ct = default)
+    public Task ReapExpiredDemandsAsync(int limit, CancellationToken ct = default)
     {
         ValidateLimit(limit);
-        // TTL can delete a demand before this pass. Retained non-idle controls are the authoritative scan.
-        var candidates = await controls.Find(NonIdleControls()).SortBy(item => item.UpdatedAtUtc).Limit(limit)
-            .ToListAsync(ct);
-        foreach (var candidate in candidates)
-            await RunAsync<ObservationMutationOutcome>(async (transaction, token) =>
-                {
-                    var control = await controls
-                        .Find(transaction.Session, ControlIdentity(candidate.TenantId, candidate.Id))
-                        .FirstOrDefaultAsync(token);
-                    if (control is null || control.IdleSinceUtc is not null)
-                        return transaction.Commit(new ObservationMutationAccepted());
-                    await TouchControlAsync(control, transaction.Session, token);
-                    await demands.DeleteManyAsync(transaction.Session,
-                        DemandScope(control.TenantId, control.Id) & ServerExpiry("ExpiresAtUtc", "$lte"),
-                        cancellationToken: token);
-                    await MarkIdleIfNoDemandAsync(control, transaction.Session, token);
-                    return transaction.Commit(new ObservationMutationAccepted());
-                },
-                ct);
+        return core.ReapAsync(limit, ct);
     }
 
-    public Task<ObservationLeaseOutcome> ClaimLeaseAsync(ResourceDeploymentObservationContext context,
+    public async Task<ObservationLeaseOutcome> ClaimLeaseAsync(ResourceDeploymentObservationContext context,
         string instanceId,
         CancellationToken ct = default)
     {
         Validate(context);
         ValidateOpaque(instanceId);
-        return RunAsync<ObservationLeaseOutcome>(async (transaction, token) =>
-            {
-                var rejection = await FenceContextAsync(context, transaction.Session, token);
-                if (rejection is not null)
-                    return transaction.Abort(rejection);
-                var identity = new ObservationIdentity(context.Deployment.TenantId, context.Deployment.Id);
-                if (!await HasDemandAsync(identity, transaction.Session, token))
-                    return transaction.Abort(Rejected(ObservationStoreRejection.NoDemand));
-                var control = await GetOrCreateControlAsync(context, transaction.Session, token);
-                var pin = ObservationValueMappings.Pin(context);
-                if (control.Pin == pin &&
-                    await controls.Find(transaction.Session, ActiveOwner(control.TenantId, control.Id)).AnyAsync(token))
-                    return transaction.Abort(Rejected(ObservationStoreRejection.Busy));
-                var leaseToken = Guid.NewGuid().ToString("N");
-                var claimFields = new BsonDocument
-                {
-                    { "Pin", Literal(pin.ToBsonDocument()) }, { "InstanceId", Literal(instanceId) },
-                    { "Token", Literal(leaseToken) },
-                    { "Epoch", Increment("Epoch") }, { "SourceControlVersion", Increment("SourceControlVersion") },
-                    { "LeaseExpiresAtUtc", ServerAfter(30) }, { "SourceHealthy", false },
-                    { "BindingId", BsonNull.Value },
-                    { "IdleSinceUtc", BsonNull.Value }
-                };
-                var withdrawCoverage = control.SourceHealthy || control.BindingId is not null;
-                if (withdrawCoverage)
-                    claimFields.Add("ObservationVersion", Increment("ObservationVersion"));
-                var claimed = await controls.FindOneAndUpdateAsync(transaction.Session,
-                    ControlAtEpoch(control),
-                    ControlPipeline(claimFields),
-                    new FindOneAndUpdateOptions<ObservationControlDocument> { ReturnDocument = ReturnDocument.After },
-                    token);
-                if (claimed is null)
-                    return transaction.Abort(Rejected(ObservationStoreRejection.LeaseLost));
-                if (withdrawCoverage)
-                    await PublishControlChangeAsync(claimed, transaction.Session, token);
-                var lease = new ObservationLease(claimed.TenantId, claimed.Id, instanceId, leaseToken, claimed.Epoch);
-                var deadline = await FenceCommitDeadlineAsync(lease, context, claimed, transaction.Session, token);
-                if (deadline is not null)
-                    return transaction.Abort(deadline);
-                return transaction.Commit(new ObservationOwnership(lease, claimed.SourceControlVersion));
-            },
-            ct);
+        return (await core.ClaimAsync(context, instanceId, ct)) switch
+        {
+            BsonDocument control => new ObservationOwnership(
+                new(context.Deployment.TenantId,
+                    context.Deployment.Id,
+                    instanceId,
+                    control["Token"].AsString,
+                    control["Epoch"].ToInt64()),
+                control["SourceControlVersion"].ToInt64()),
+            MongoObservationRejected rejection => Map(rejection)
+        };
     }
 
-    public Task<ObservationMutationOutcome> RenewLeaseAsync(ObservationLease lease,
+    public async Task<ObservationMutationOutcome> RenewLeaseAsync(ObservationLease lease,
         ResourceDeploymentObservationContext context,
         CancellationToken ct = default)
     {
         Validate(lease, context);
-        return RunAsync<ObservationMutationOutcome>(async (transaction, token) =>
-            {
-                var rejection = await FenceContextAsync(context, transaction.Session, token);
-                if (rejection is not null)
-                    return transaction.Abort(rejection);
-                if (!await HasDemandAsync(new(lease.TenantId, lease.DeploymentId), transaction.Session, token))
-                    return transaction.Abort(Rejected(ObservationStoreRejection.NoDemand));
-                var updated = await controls.UpdateOneAsync(transaction.Session,
-                    ActiveLease(lease) & PinFilter(context),
-                    ControlPipeline(new BsonDocument("LeaseExpiresAtUtc", ServerAfter(30))),
-                    cancellationToken: token);
-                return updated.MatchedCount == 1
-                    ? transaction.Commit(new ObservationMutationAccepted())
-                    : transaction.Abort(Rejected(ObservationStoreRejection.LeaseLost));
-            },
-            ct);
+        return Mutation(await core.RenewAsync(Lease(lease), context, ct));
     }
 
-    public Task<ObservationMutationOutcome> ReleaseLeaseAsync(ObservationLease lease, CancellationToken ct = default)
+    public async Task<ObservationMutationOutcome> ReleaseLeaseAsync(ObservationLease lease,
+        CancellationToken ct = default)
     {
         Validate(lease);
-        return RunAsync<ObservationMutationOutcome>(async (transaction, token) =>
-            {
-                var fields = new BsonDocument();
-                AddInvalidation(fields);
-                fields.Add("ObservationVersion", Increment("ObservationVersion"));
-                var updated = await controls.FindOneAndUpdateAsync(transaction.Session,
-                    LeaseIdentity(lease),
-                    ControlPipeline(fields),
-                    new FindOneAndUpdateOptions<ObservationControlDocument> { ReturnDocument = ReturnDocument.After },
-                    token);
-                if (updated is null)
-                    return transaction.Abort(Rejected(ObservationStoreRejection.LeaseLost));
-                await PublishControlChangeAsync(updated, transaction.Session, token);
-                await MarkIdleIfNoDemandAsync(updated, transaction.Session, token);
-                return transaction.Commit(new ObservationMutationAccepted());
-            },
-            ct);
+        return Mutation(await core.ReleaseAsync(Lease(lease), ct));
     }
 
-    public Task<ObservationSourceStateOutcome> SetSourceStateAsync(ObservationLease lease,
+    public async Task<ObservationSourceStateOutcome> SetSourceStateAsync(ObservationLease lease,
         ResourceDeploymentObservationContext context,
         long expectedSourceControlVersion,
         bool healthy,
@@ -277,68 +119,21 @@ internal sealed class MongoResourceDeploymentObservationStore(
     {
         Validate(lease, context);
         if (healthy && string.IsNullOrWhiteSpace(bindingId))
-            throw new ArgumentException("A healthy source requires its native binding.", nameof(bindingId));
+            throw new ArgumentException("Healthy coverage requires a source identity.");
         if (bindingId is not null)
             ValidateOpaque(bindingId);
-        return RunAsync<ObservationSourceStateOutcome>(async (transaction, token) =>
-            {
-                // Loss of native coverage must remain fenceable after credentials/placement become unavailable.
-                // Exact retained lease and pin authorize only withdrawal of this owner's existing coverage.
-                if (healthy)
-                {
-                    var rejection = await FenceContextAsync(context, transaction.Session, token);
-                    if (rejection is not null)
-                        return transaction.Abort(rejection);
-                }
-
-                if (!await HasDemandAsync(new(lease.TenantId, lease.DeploymentId), transaction.Session, token))
-                    return transaction.Abort(Rejected(ObservationStoreRejection.NoDemand));
-                var control = await controls.Find(transaction.Session, ActiveLease(lease) & PinFilter(context))
-                    .FirstOrDefaultAsync(token);
-                if (control is null)
-                    return transaction.Abort(Rejected(ObservationStoreRejection.LeaseLost));
-                if (control.SourceControlVersion != expectedSourceControlVersion)
-                    return transaction.Abort(Rejected(ObservationStoreRejection.BindingChanged));
-                if (control.SourceHealthy == healthy && control.BindingId == bindingId)
-                {
-                    await TouchControlAsync(control, transaction.Session, token);
-                    if (healthy)
-                    {
-                        var deadline =
-                            await FenceCommitDeadlineAsync(lease, context, control, transaction.Session, token);
-                        if (deadline is not null)
-                            return transaction.Abort(deadline);
-                    }
-
-                    return transaction.Commit(new ObservationSourceState(control.SourceControlVersion));
-                }
-
-                var updated = await controls.FindOneAndUpdateAsync(transaction.Session,
-                    SourceAtVersion(lease, context, expectedSourceControlVersion),
-                    ControlPipeline(new BsonDocument
-                    {
-                        { "SourceControlVersion", Increment("SourceControlVersion") },
-                        { "ObservationVersion", Increment("ObservationVersion") }, { "SourceHealthy", healthy },
-                        { "BindingId", bindingId is null ? BsonNull.Value : Literal(bindingId) }
-                    }),
-                    new FindOneAndUpdateOptions<ObservationControlDocument> { ReturnDocument = ReturnDocument.After },
-                    token);
-                if (updated is null)
-                    return transaction.Abort(Rejected(ObservationStoreRejection.LeaseLost));
-                await PublishControlChangeAsync(updated, transaction.Session, token);
-                if (healthy)
-                {
-                    var deadline = await FenceCommitDeadlineAsync(lease, context, updated, transaction.Session, token);
-                    if (deadline is not null)
-                        return transaction.Abort(deadline);
-                }
-
-                return transaction.Commit(new ObservationSourceState(updated.SourceControlVersion));
-            },
-            ct);
+        return (await core.SetSourceAsync(Lease(lease),
+                context,
+                expectedSourceControlVersion,
+                healthy ? bindingId : null,
+                ct)) switch
+        {
+            BsonDocument control => new ObservationSourceState(control["SourceControlVersion"].ToInt64()),
+            MongoObservationRejected rejection => Map(rejection)
+        };
     }
 
-    public Task<ObservationSnapshotOutcome> TryCommitSnapshotAsync(ObservationLease lease,
+    public async Task<ObservationSnapshotOutcome> TryCommitSnapshotAsync(ObservationLease lease,
         ResourceDeploymentObservationContext context,
         long sourceControlVersion,
         string bindingId,
@@ -348,57 +143,32 @@ internal sealed class MongoResourceDeploymentObservationStore(
         Validate(lease, context);
         ValidateOpaque(bindingId);
         if (bindingId != observation.BindingId)
-            return Task.FromResult<ObservationSnapshotOutcome>(Rejected(ObservationStoreRejection.BindingChanged));
-        var storedObservation = ObservationValueMappings.Store(observation.Observation);
-        var storedDiagnostics = ObservationValueMappings.Store(observation.Diagnostics);
-        long? expectedObservationVersion = null;
-        return RunAsync<ObservationSnapshotOutcome>(async (transaction, token) =>
-            {
-                var rejection = await FenceContextAsync(context, transaction.Session, token);
-                if (rejection is not null)
-                    return transaction.Abort(rejection);
-                if (!await HasDemandAsync(new(lease.TenantId, lease.DeploymentId), transaction.Session, token))
-                    return transaction.Abort(Rejected(ObservationStoreRejection.NoDemand));
-                var control = await controls.Find(transaction.Session, ActiveLease(lease) & PinFilter(context))
-                    .FirstOrDefaultAsync(token);
-                if (control is null)
-                    return transaction.Abort(Rejected(ObservationStoreRejection.LeaseLost));
-                if (!control.SourceHealthy || control.SourceControlVersion != sourceControlVersion ||
-                    control.BindingId != bindingId)
-                    return transaction.Abort(Rejected(ObservationStoreRejection.BindingChanged));
-                expectedObservationVersion ??= control.ObservationVersion;
-                if (control.ObservationVersion != expectedObservationVersion)
-                    return transaction.Abort(Rejected(ObservationStoreRejection.Superseded));
-                var updated = await controls.FindOneAndUpdateAsync(transaction.Session,
-                    SnapshotCommit(lease, context, sourceControlVersion, bindingId, expectedObservationVersion.Value),
-                    ControlPipeline(new BsonDocument("ObservationVersion", Increment("ObservationVersion"))),
-                    new FindOneAndUpdateOptions<ObservationControlDocument> { ReturnDocument = ReturnDocument.After },
-                    token);
-                if (updated is null)
-                    return transaction.Abort(Rejected(ObservationStoreRejection.LeaseLost));
-                var snapshot = new ObservationSnapshotDocument(lease.DeploymentId,
-                    lease.TenantId,
-                    ObservationValueMappings.Pin(context),
-                    bindingId,
-                    sourceControlVersion,
-                    updated.ObservationVersion,
-                    updated.UpdatedAtUtc,
-                    storedObservation,
-                    storedDiagnostics,
-                    ObservationValueMappings.Fingerprint(storedObservation, storedDiagnostics),
-                    null);
-                await snapshots.ReplaceOneAsync(transaction.Session,
-                    SnapshotIdentity(lease.TenantId, lease.DeploymentId),
-                    snapshot,
-                    new ReplaceOptions { IsUpsert = true },
-                    token);
-                await PublishControlChangeAsync(updated, transaction.Session, token);
-                var deadline = await FenceCommitDeadlineAsync(lease, context, updated, transaction.Session, token);
-                if (deadline is not null)
-                    return transaction.Abort(deadline);
-                return transaction.Commit(ObservationValueMappings.Load(snapshot, context));
-            },
-            ct);
+            return new ObservationStoreRejected(ObservationStoreRejection.BindingChanged);
+        var stored = ObservationValueMappings.Store(observation.Observation);
+        var diagnostics = ObservationValueMappings.Store(observation.Diagnostics);
+        return (await core.CommitSnapshotAsync(Lease(lease),
+                context,
+                sourceControlVersion,
+                bindingId,
+                control =>
+                    new ObservationSnapshotDocument(lease.DeploymentId,
+                        lease.TenantId,
+                        ObservationValueMappings.Pin(context),
+                        bindingId,
+                        sourceControlVersion,
+                        control["ObservationVersion"].ToInt64(),
+                        control["UpdatedAtUtc"].ToUniversalTime(),
+                        stored,
+                        diagnostics,
+                        ObservationValueMappings.Fingerprint(stored, diagnostics),
+                        null).ToBsonDocument(),
+                ct)) switch
+        {
+            BsonDocument document => ObservationValueMappings.Load(
+                BsonSerializer.Deserialize<ObservationSnapshotDocument>(document),
+                context),
+            MongoObservationRejected rejection => Map(rejection)
+        };
     }
 
     public async Task<ObservationControlState?> LoadControlAsync(ObservationIdentity identity,
@@ -406,16 +176,16 @@ internal sealed class MongoResourceDeploymentObservationStore(
     {
         ValidateObjectId(identity.TenantId);
         ValidateObjectId(identity.DeploymentId);
-        var control = await controls.Find(ControlIdentity(identity.TenantId, identity.DeploymentId))
-            .FirstOrDefaultAsync(ct);
-        return control is null
-            ? null
-            : new(control.Epoch,
-                control.SourceControlVersion,
-                control.ObservationVersion,
-                control.SourceHealthy,
-                control.BindingId,
-                control.Token is null ? null : control.LeaseExpiresAtUtc);
+        var document = await core.LoadControlAsync(new(identity.DeploymentId, identity.TenantId, "DeploymentId"), ct);
+        if (document is null)
+            return null;
+        var control = BsonSerializer.Deserialize<ObservationControlDocument>(document);
+        return new(control.Epoch,
+            control.SourceControlVersion,
+            control.ObservationVersion,
+            control.SourceHealthy,
+            control.BindingId,
+            control.Token is null ? null : control.LeaseExpiresAtUtc);
     }
 
     public async Task<ResourceDeploymentSharedObservation?> LoadFreshSnapshotAsync(
@@ -423,214 +193,93 @@ internal sealed class MongoResourceDeploymentObservationStore(
         CancellationToken ct = default)
     {
         Validate(context);
-        var result = await RunAsync<ObservationSnapshotOutcome>(async (transaction, token) =>
-            {
-                var rejection = await FenceContextAsync(context, transaction.Session, token);
-                if (rejection is not null)
-                    return transaction.Abort(rejection);
-                if (!await HasDemandAsync(new(context.Deployment.TenantId, context.Deployment.Id),
-                        transaction.Session,
-                        token))
-                    return transaction.Abort(Rejected(ObservationStoreRejection.NoDemand));
-                var control = await controls.Find(transaction.Session, HealthyOwner(context))
-                    .FirstOrDefaultAsync(token);
-                if (control is null)
-                    return transaction.Abort(Rejected(ObservationStoreRejection.LeaseLost));
-                var snapshot = await snapshots.Find(transaction.Session, CurrentFreshSnapshot(control))
-                    .FirstOrDefaultAsync(token);
-                if (snapshot is null || snapshot.Pin != ObservationValueMappings.Pin(context))
-                    return transaction.Abort(Rejected(ObservationStoreRejection.Superseded));
-                var deadline = await FenceCommitDeadlineAsync(
-                    new(control.TenantId, control.Id, control.InstanceId!, control.Token!, control.Epoch),
-                    context,
-                    control,
-                    transaction.Session,
-                    token);
-                if (deadline is not null)
-                    return transaction.Abort(deadline);
-                return transaction.Commit(ObservationValueMappings.Load(snapshot, context));
-            },
-            ct);
-        return result switch
-        {
-            ResourceDeploymentSharedObservation snapshot => snapshot,
-            ObservationStoreRejected => null
-        };
+        var document = await core.LoadFreshAsync(context, ct);
+        return document is null
+            ? null
+            : ObservationValueMappings.Load(BsonSerializer.Deserialize<ObservationSnapshotDocument>(document), context);
     }
 
-    private async Task<ObservationStoreRejected?> FenceContextAsync(ResourceDeploymentObservationContext context,
-        IClientSessionHandle session,
-        CancellationToken ct)
+    private static MongoObservationDemand Demand(ObservationDemandIdentity identity, DateTimeOffset expires) =>
+        new(DemandIdentity(identity), expires);
+
+    private static MongoObservationDemandIdentity DemandIdentity(ObservationDemandIdentity identity) =>
+        new(new(identity.DeploymentId, identity.TenantId, "DeploymentId"),
+            identity.SubscriptionId,
+            identity.ConnectionId,
+            identity.SessionId);
+
+    private static MongoObservationLease Lease(ObservationLease lease) => new(
+        new(lease.DeploymentId, lease.TenantId, "DeploymentId"),
+        lease.InstanceId,
+        lease.Token,
+        lease.Epoch);
+
+    private static ObservationMutationOutcome Mutation(MongoObservationOutcome outcome) => outcome switch
     {
-        var target =
-            await fenceTarget(new(context.Deployment.Placement.DeploymentTargetId, context.TargetConnectionVersion),
-                session,
+        BsonDocument => new ObservationMutationAccepted(),
+        MongoObservationRejected rejection => Map(rejection)
+    };
+
+    private static ObservationStoreRejected Map(MongoObservationRejected rejection) => new(rejection.Reason switch
+    {
+        MongoObservationRejection.Busy => ObservationStoreRejection.Busy,
+        MongoObservationRejection.NoDemand => ObservationStoreRejection.NoDemand,
+        MongoObservationRejection.LeaseLost => ObservationStoreRejection.LeaseLost,
+        MongoObservationRejection.Superseded => ObservationStoreRejection.Superseded,
+        MongoObservationRejection.SourceChanged => ObservationStoreRejection.BindingChanged,
+        MongoObservationRejection.TargetUnavailable => ObservationStoreRejection.TargetUnavailable,
+        _ => throw new ArgumentOutOfRangeException(nameof(rejection))
+    });
+
+    private sealed class Definition(
+        IMongoDatabase database,
+        FenceDeploymentTargetObservation fenceTarget,
+        StoreOutboxWrites storeOutboxWrites) : IMongoObservationDefinition<ResourceDeploymentObservationContext>
+    {
+        public MongoObservationScope Scope(ResourceDeploymentObservationContext context) =>
+            new(context.Deployment.Id, context.Deployment.TenantId, "DeploymentId");
+
+        public BsonDocument Pin(ResourceDeploymentObservationContext context) =>
+            new("Pin", ObservationValueMappings.Pin(context).ToBsonDocument());
+
+        private readonly IMongoCollection<ResourceDeployment> deployments =
+            database.GetCollection<ResourceDeployment>("ResourceDeployments");
+
+        public async Task<MongoObservationRejected?> FenceAsync(ResourceDeploymentObservationContext context,
+            IClientSessionHandle session,
+            CancellationToken ct)
+        {
+            var target =
+                await fenceTarget(new(context.Deployment.Placement.DeploymentTargetId, context.TargetConnectionVersion),
+                    session,
+                    ct);
+            if (target is DeploymentTargetObservationFenceRejected)
+                return new(MongoObservationRejection.TargetUnavailable);
+            var fenced = await deployments.UpdateOneAsync(session,
+                ResourceDeploymentFilters.ForCurrentObservation(context),
+                Builders<ResourceDeployment>.Update.Inc(item => item.ReferenceFence, 1),
+                cancellationToken: ct);
+            return fenced.ModifiedCount == 1 ? null : new(MongoObservationRejection.Superseded);
+        }
+
+        public Task PublishAsync(BsonDocument document, IClientSessionHandle session, CancellationToken ct) =>
+            PublishControlAsync(BsonSerializer.Deserialize<ObservationControlDocument>(document), session, ct);
+
+        private Task PublishControlAsync(ObservationControlDocument control,
+            IClientSessionHandle session,
+            CancellationToken ct) =>
+            storeOutboxWrites(session,
+                [
+                    OutboxWrite.Create(new ResourceDeploymentObservationChangedEvent(
+                            control.Id,
+                            control.Pin.ResourceId,
+                            control.Pin.ResourceGroupId,
+                            control.Pin.DeploymentRevision,
+                            control.Pin.DesiredGeneration,
+                            control.ObservationVersion)
+                        { EventCore = EventCore.Create(control.TenantId) })
+                ],
                 ct);
-        if (target is DeploymentTargetObservationFenceRejected)
-            return Rejected(ObservationStoreRejection.TargetUnavailable);
-        var fenced = await deployments.UpdateOneAsync(session,
-            ResourceDeploymentFilters.ForCurrentObservation(context),
-            Builders<ResourceDeployment>.Update.Inc(item => item.ReferenceFence, 1),
-            cancellationToken: ct);
-        return fenced.ModifiedCount == 1 ? null : Rejected(ObservationStoreRejection.Superseded);
-    }
-
-    private async Task<ObservationControlDocument> GetOrCreateControlAsync(ResourceDeploymentObservationContext context,
-        IClientSessionHandle session,
-        CancellationToken ct)
-    {
-        var existing = await controls.Find(session, ControlIdentity(context.Deployment.TenantId, context.Deployment.Id))
-            .FirstOrDefaultAsync(ct);
-        if (existing is not null)
-            return existing;
-        var created = new ObservationControlDocument(context.Deployment.Id,
-            context.Deployment.TenantId,
-            ObservationValueMappings.Pin(context),
-            0,
-            0,
-            0,
-            0,
-            null,
-            null,
-            DateTime.UnixEpoch,
-            false,
-            null,
-            null,
-            DateTime.UnixEpoch);
-        try
-        {
-            await controls.InsertOneAsync(session, created, cancellationToken: ct);
-        }
-        catch (MongoWriteException exception) when (exception.WriteError.Category == ServerErrorCategory.DuplicateKey)
-        {
-            throw new ControlCreationRaceException();
-        }
-
-        return created;
-    }
-
-    private Task TouchControlAsync(ObservationControlDocument control,
-        IClientSessionHandle session,
-        CancellationToken ct) =>
-        controls.UpdateOneAsync(session,
-            ControlIdentity(control.TenantId, control.Id),
-            ControlPipeline(new BsonDocument()),
-            cancellationToken: ct);
-
-    private async Task<bool> HasDemandAsync(ObservationIdentity identity,
-        IClientSessionHandle session,
-        CancellationToken ct) =>
-        await demands.Find(session,
-            DemandScope(identity.TenantId, identity.DeploymentId) & ServerExpiry("ExpiresAtUtc", "$gt")).AnyAsync(ct);
-
-    private async Task MarkIdleIfNoDemandAsync(ObservationControlDocument control,
-        IClientSessionHandle session,
-        CancellationToken ct)
-    {
-        if (await HasDemandAsync(new(control.TenantId, control.Id), session, ct))
-            return;
-        var fields = new BsonDocument { { "IdleSinceUtc", "$$NOW" } };
-        AddInvalidation(fields);
-        fields.Add("ObservationVersion", Increment("ObservationVersion"));
-        await controls.UpdateOneAsync(session,
-            NonIdleControl(control),
-            ControlPipeline(fields),
-            cancellationToken: ct);
-        await snapshots.UpdateOneAsync(session,
-            SnapshotIdentity(control.TenantId, control.Id),
-            SnapshotPipeline(new BsonDocument
-            {
-                { "ExpiresAtUtc", new BsonDocument("$ifNull", new BsonArray { "$ExpiresAtUtc", ServerAfter(300) }) }
-            }),
-            cancellationToken: ct);
-    }
-
-    private Task PublishControlChangeAsync(ObservationControlDocument control,
-        IClientSessionHandle session,
-        CancellationToken ct) =>
-        storeOutboxWrites(session,
-            [
-                OutboxWrite.Create(new ResourceDeploymentObservationChangedEvent(
-                        control.Id,
-                        control.Pin.ResourceId,
-                        control.Pin.ResourceGroupId,
-                        control.Pin.DeploymentRevision,
-                        control.Pin.DesiredGeneration,
-                        control.ObservationVersion)
-                    { EventCore = EventCore.Create(control.TenantId) })
-            ],
-            ct);
-
-    private async Task<ObservationStoreRejected?> FenceCommitDeadlineAsync(ObservationLease lease,
-        ResourceDeploymentObservationContext context,
-        ObservationControlDocument expected,
-        IClientSessionHandle session,
-        CancellationToken ct)
-    {
-        // An outbox/storage await can cross a clock deadline without any competing writer.
-        // Recheck the server clock at the final control write before returning a commit decision.
-        if (!await HasDemandAsync(new(lease.TenantId, lease.DeploymentId), session, ct))
-            return Rejected(ObservationStoreRejection.NoDemand);
-        var fenced = await controls.UpdateOneAsync(session,
-            CommitDeadline(lease, context, expected),
-            ControlPipeline(new BsonDocument()),
-            cancellationToken: ct);
-        return fenced.MatchedCount == 1 ? null : Rejected(ObservationStoreRejection.LeaseLost);
-    }
-
-    private async Task<T> RunAsync<T>(
-        Func<MongoTransactionContext<T>, CancellationToken, Task<MongoTransactionDecision<T>>> action,
-        CancellationToken ct) where T : notnull
-    {
-        for (var attempt = 0; ; attempt++)
-            try
-            {
-                return await transactions.InvokeOutcomeAsync(action, ct);
-            }
-            catch (ControlCreationRaceException) when (attempt < 3)
-            {
-            }
-    }
-
-    private sealed class ControlCreationRaceException : Exception;
-
-    private static ObservationStoreRejected Rejected(ObservationStoreRejection reason) => new(reason);
-    private static BsonDocument Literal(BsonValue value) => new("$literal", value);
-    private static BsonDocument Literal(string value) => Literal(new BsonString(value));
-    private static BsonDocument Literal(DateTime value) => Literal(new BsonDateTime(value));
-    private static BsonDocument Increment(string field) => new("$add", new BsonArray { "$" + field, 1L });
-
-    private static UpdateDefinition<ObservationControlDocument> ControlPipeline(BsonDocument fields)
-    {
-        fields.Add("DemandFence", Increment("DemandFence"));
-        fields.Add("UpdatedAtUtc", "$$NOW");
-        return Builders<ObservationControlDocument>.Update.Pipeline(
-            PipelineDefinition<ObservationControlDocument, ObservationControlDocument>.Create([
-                new BsonDocument("$set", fields)
-            ]));
-    }
-
-    private static UpdateDefinition<ObservationDemandDocument> DemandPipeline(BsonDocument fields) =>
-        Builders<ObservationDemandDocument>.Update.Pipeline(
-            PipelineDefinition<ObservationDemandDocument, ObservationDemandDocument>.Create([
-                new BsonDocument("$set", fields)
-            ]));
-
-    private static UpdateDefinition<ObservationSnapshotDocument> SnapshotPipeline(BsonDocument fields) =>
-        Builders<ObservationSnapshotDocument>.Update.Pipeline(
-            PipelineDefinition<ObservationSnapshotDocument, ObservationSnapshotDocument>.Create([
-                new BsonDocument("$set", fields)
-            ]));
-
-    private static void AddInvalidation(BsonDocument fields)
-    {
-        fields.Add("Epoch", Increment("Epoch"));
-        fields.Add("SourceControlVersion", Increment("SourceControlVersion"));
-        fields.Add("InstanceId", BsonNull.Value);
-        fields.Add("Token", BsonNull.Value);
-        fields.Add("LeaseExpiresAtUtc", Literal(DateTime.UnixEpoch));
-        fields.Add("SourceHealthy", false);
-        fields.Add("BindingId", BsonNull.Value);
     }
 
     private static void Validate(ResourceDeploymentObservationContext context)
