@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -55,12 +56,18 @@ public sealed class RealtimeRedisFixture : IAsyncLifetime
         await File.WriteAllBytesAsync(CertificatePath, certificate.Export(X509ContentType.Pfx));
         if (!OperatingSystem.IsWindows())
             File.SetUnixFileMode(CertificatePath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        // Docker may assign a different ephemeral host port when a stopped container restarts.
+        // Existing application multiplexers must reconnect to the same endpoint.
+        using var portReservation = new TcpListener(IPAddress.Loopback, 0);
+        portReservation.Start();
+        var hostPort = ((IPEndPoint)portReservation.LocalEndpoint).Port;
         Container = new ContainerBuilder("redis:7.4-alpine")
             .WithTestOwnership(TestRunIdentity.Create())
-            .WithPortBinding(6379, true)
+            .WithPortBinding(hostPort, 6379)
             .WithCommand("--appendonly", "yes", "--appendfsync", "always", "--maxmemory-policy", "noeviction")
             .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(6379))
             .Build();
+        portReservation.Stop();
         await Container.StartAsync();
     }
 
@@ -386,6 +393,7 @@ public sealed class RealtimeRedisTests(RealtimeRedisFixture fixture) : IClassFix
         var registry = second.Services.GetRequiredService<IRealtimeSubscriptions>();
         var active = Assert.Single(await registry.FindAsync(topic, null, CancellationToken.None));
         var tickets = second.Services.GetRequiredService<IRealtimeTicketStore>();
+        var endpointBeforeRestart = fixture.ConnectionString;
         await fixture.Container.StopAsync();
         try
         {
@@ -400,6 +408,10 @@ public sealed class RealtimeRedisTests(RealtimeRedisFixture fixture) : IClassFix
             await fixture.Container.StartAsync();
         }
 
+        Assert.Equal(endpointBeforeRestart, fixture.ConnectionString);
+        using (var probe = await ConnectionMultiplexer.ConnectAsync(
+                   endpointBeforeRestart + ",connectRetry=0,connectTimeout=5000,asyncTimeout=3000"))
+            await probe.GetDatabase().PingAsync();
         await EventuallyAsync(async () => Assert.NotNull(await tickets.RetrieveAsync(active.SessionId)));
         Assert.Equal(HttpStatusCode.OK,
             (await browser.PostAsync(Address(second) + RealtimeFeature.Route + "/hub/negotiate?negotiateVersion=1",
