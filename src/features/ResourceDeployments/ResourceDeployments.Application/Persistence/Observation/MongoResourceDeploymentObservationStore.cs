@@ -251,6 +251,22 @@ internal sealed class MongoResourceDeploymentObservationStore(
         public Expression<Func<ObservationControlDocument, string?>> Source => item => item.BindingId;
         public Expression<Func<ObservationSnapshotDocument, string>> SnapshotSource => item => item.BindingId;
 
+        public FilterDefinition<ObservationControlDocument> ControlScope(MongoObservationScope scope) =>
+            ObservationStoreFilters.ForControlScope(scope);
+
+        public FilterDefinition<ObservationDemandDocument> DemandScope(MongoObservationScope scope) =>
+            ObservationStoreFilters.ForDemandScope(scope);
+
+        public FilterDefinition<ObservationSnapshotDocument> SnapshotScope(MongoObservationScope scope) =>
+            ObservationStoreFilters.ForSnapshotScope(scope);
+
+        public FilterDefinition<ObservationControlDocument> ControlPin(ResourceDeploymentObservationContext context) =>
+            ObservationStoreFilters.ForControlContext(context);
+
+        public UpdateDefinition<ObservationDemandDocument> DemandIdentityUpdate(MongoObservationScope scope) =>
+            Builders<ObservationDemandDocument>.Update.Set(item => item.DeploymentId, scope.Id)
+                .Set(item => item.TenantId, scope.TenantId!);
+
         public ObservationControlDocument CreateControl(ResourceDeploymentObservationContext context) => new(
             context.Deployment.Id,
             context.Deployment.TenantId,
