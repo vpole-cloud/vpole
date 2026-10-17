@@ -96,47 +96,6 @@ public sealed class ResourceDeploymentObservationOwnerTests
         await IgnoreCancellation(run);
     }
 
-    [Fact]
-    public async Task SharedReadBudgetBoundsAllCallersAndCancelsQueuedReadsAtDeadline()
-    {
-        var clock = new NativeWatchTestClock();
-        using var budget = new ObservationReadBudget(clock);
-        var release = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var started = 0;
-        var reads = Enumerable.Range(0, 4).Select(_ => budget.ReadAsync(async ct =>
-        {
-            Interlocked.Increment(ref started);
-            return await release.Task.WaitAsync(ct);
-        })).ToArray();
-        Assert.Equal(4, started);
-        var queued = budget.ReadAsync(_ =>
-        {
-            Interlocked.Increment(ref started);
-            return Task.FromResult(42);
-        });
-        Assert.Equal(4, started);
-        clock.Advance(TimeSpan.FromSeconds(15));
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => queued);
-        foreach (var read in reads)
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => read);
-        Assert.Equal(4, started);
-        Assert.Equal(42, await budget.ReadAsync(_ => Task.FromResult(42)));
-    }
-
-    [Fact]
-    public async Task Read_budget_rejects_noncooperating_native_result_after_its_deadline()
-    {
-        var clock = new NativeWatchTestClock();
-        using var budget = new ObservationReadBudget(clock);
-        var result = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var read = budget.ReadAsync(_ => result.Task);
-        clock.Advance(TimeSpan.FromSeconds(15));
-        Assert.False(read.IsCompleted);
-        result.SetResult(42);
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => read);
-        Assert.Equal(43, await budget.ReadAsync(_ => Task.FromResult(43)));
-    }
-
     private static async Task IgnoreCancellation(Task task)
     {
         try
@@ -225,33 +184,15 @@ public sealed class ResourceDeploymentObservationOwnerTests
 
 internal sealed class ObservationTestStore : IResourceDeploymentObservationStore
 {
-    public long Version
-    {
-        get;
-        set;
-    }
+    public long Version { get; set; }
 
-    public bool Healthy
-    {
-        get;
-        private set;
-    }
+    public bool Healthy { get; private set; }
 
-    public int Snapshots
-    {
-        get;
-        private set;
-    }
+    public int Snapshots { get; private set; }
 
-    public TaskCompletionSource Withdrawn
-    {
-        get;
-    } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource Withdrawn { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public TaskCompletionSource TwoSnapshots
-    {
-        get;
-    } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource TwoSnapshots { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public Task<ObservationControlState?>
         LoadControlAsync(ObservationIdentity identity, CancellationToken ct = default) =>

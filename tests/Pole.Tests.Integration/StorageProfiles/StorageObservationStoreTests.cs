@@ -46,6 +46,33 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
+    public async Task PlatformDemandScanIsDistinctCursorBoundedAndExcludesExpiredInterests()
+    {
+        var first = await SeedAsync();
+        var second = await SeedAsync();
+        var store = Store();
+        await store.PutDemandAsync(first.Demand, first.Context);
+        await store.PutDemandAsync(second.Demand, second.Context);
+        await store.PutDemandAsync(second.Demand with
+        {
+            Identity = second.Demand.Identity with { SubscriptionId = "other-interest" }
+        },
+            second.Context);
+        var page = await store.ScanDemandsAsync(null, 1);
+        Assert.Equal(first.Context.DeploymentTargetId, Assert.Single(page.DeploymentTargetIds));
+        Assert.Equal(first.Context.DeploymentTargetId, page.NextCursor);
+        var next = await store.ScanDemandsAsync(page.NextCursor, 1);
+        Assert.Equal(second.Context.DeploymentTargetId, Assert.Single(next.DeploymentTargetIds));
+        Assert.Null(next.NextCursor);
+        await fixture.Database.GetCollection<BsonDocument>(MongoStorageObservationStore.DemandsCollection)
+            .UpdateManyAsync(new BsonDocument("DeploymentTargetId", ObjectId.Parse(first.Context.DeploymentTargetId)),
+                Builders<BsonDocument>.Update.Set("ExpiresAtUtc", DateTime.UnixEpoch));
+        var active = await store.ScanDemandsAsync(null, 10);
+        Assert.Equal(second.Context.DeploymentTargetId, Assert.Single(active.DeploymentTargetIds));
+        Assert.Null(active.NextCursor);
+    }
+
+    [Fact]
     public async Task LeaseTakeoverFencesLateOldOwnerSamplesRenewalsAndReleases()
     {
         var seeded = await SeedAsync();
@@ -210,7 +237,8 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
         await lifecycle.UnsubscribeAsync(subscription with
         {
             ConnectionId = "wrong"
-        }, default);
+        },
+            default);
         Assert.Equal(1, await Demands.CountDocumentsAsync(FilterDefinition<StorageObservationDemandDocument>.Empty));
         Assert.False(await lifecycle.RenewAsync(subscription,
             new ClaimsPrincipal(new ClaimsIdentity([], "test")),
@@ -482,18 +510,21 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
         await Store().PutDemandAsync(seeded.Demand with
         {
             ExpiresAtUtc = DateTimeOffset.MaxValue
-        }, seeded.Context);
+        },
+            seeded.Context);
         var demand = await Demands.Find(FilterDefinition<StorageObservationDemandDocument>.Empty).SingleAsync();
         Assert.InRange(demand.ExpiresAtUtc, now.AddSeconds(60), (await ServerNowAsync()).AddSeconds(60));
         var bound = (await ServerNowAsync()).AddSeconds(10);
         await Store().RenewDemandAsync(seeded.Demand with
         {
             ExpiresAtUtc = bound
-        }, seeded.Context);
+        },
+            seeded.Context);
         await Store().RenewDemandAsync(seeded.Demand with
         {
             ExpiresAtUtc = DateTimeOffset.MaxValue
-        }, seeded.Context);
+        },
+            seeded.Context);
         demand = await Demands.Find(FilterDefinition<StorageObservationDemandDocument>.Empty).SingleAsync();
         Assert.InRange(Math.Abs((demand.OriginalExpiresAtUtc - bound).TotalMilliseconds), 0, 1);
         Assert.True(demand.ExpiresAtUtc <= demand.OriginalExpiresAtUtc);
