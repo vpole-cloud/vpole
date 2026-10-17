@@ -1,8 +1,10 @@
 using Pole.Features.Core.Kubernetes;
 using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Net;
 using k8s;
 using k8s.Autorest;
+using k8s.Models;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Application.Kubernetes;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -103,11 +105,39 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
         await RedisKubernetesResourceManager.DeleteAsync(Kubernetes, redis.Name, NamespaceName);
 
         await Task.WhenAll(
-            AssertResourceDeletedAsync(() => Kubernetes.AppsV1.ReadNamespacedStatefulSetAsync(redis.Name, NamespaceName)),
-            AssertResourceDeletedAsync(() => Kubernetes.CoreV1.ReadNamespacedPersistentVolumeClaimAsync($"redis-data-{redis.Name}-0", NamespaceName)),
-            AssertResourceDeletedAsync(() => Kubernetes.CoreV1.ReadNamespacedServiceAsync(
+            AssertResourceDeletedAsync($"StatefulSet/{redis.Name}", () => Kubernetes.AppsV1.ReadNamespacedStatefulSetAsync(redis.Name, NamespaceName)),
+            AssertResourceDeletedAsync($"PersistentVolumeClaim/redis-data-{redis.Name}-0", () => Kubernetes.CoreV1.ReadNamespacedPersistentVolumeClaimAsync($"redis-data-{redis.Name}-0", NamespaceName)),
+            AssertResourceDeletedAsync($"Service/{RedisInKubernetes.BuildServiceName(redis.Name)}", () => Kubernetes.CoreV1.ReadNamespacedServiceAsync(
                 RedisInKubernetes.BuildServiceName(redis.Name),
                 NamespaceName)));
+    }
+
+    [KubernetesFact]
+    public async Task Deletion_releases_the_claim_after_a_graceful_Pod_shutdown_longer_than_thirty_seconds()
+    {
+        var (redis, storage, compute) = BuildTestRedis("redis-graceful-delete");
+        var manifest = redis.ToKubernetes(NamespaceName, storage, compute,
+            new WorkloadIdentityLabels(redis.TenantId, redis.ResourceGroupId,
+                "scope-44", "cell-44", "target-44", "Redis", redis.Id, "deployment-44"));
+        var statefulSet = manifest.ToStatefulSet();
+        statefulSet.Spec.Template.Spec.TerminationGracePeriodSeconds = 45;
+        statefulSet.Spec.Template.Spec.Containers.Single().Lifecycle = new V1Lifecycle
+        {
+            PreStop = new V1LifecycleHandler
+            {
+                Exec = new V1ExecAction { Command = ["sh", "-c", "sleep 35"] }
+            }
+        };
+        await Kubernetes.AppsV1.CreateNamespacedStatefulSetAsync(statefulSet, NamespaceName);
+        await Kubernetes.CoreV1.CreateNamespacedServiceAsync(manifest.ToService(), NamespaceName);
+        await WaitForStatefulSetReadyAsync(redis.Name);
+
+        await RedisKubernetesResourceManager.DeleteAsync(Kubernetes, redis.Name, NamespaceName);
+
+        await AssertResourceDeletedAsync($"PersistentVolumeClaim/redis-data-{redis.Name}-0", () => Kubernetes.CoreV1.ReadNamespacedPersistentVolumeClaimAsync(
+            $"redis-data-{redis.Name}-0", NamespaceName));
+        await AssertResourceDeletedAsync($"Pod/{redis.Name}-0", () => Kubernetes.CoreV1.ReadNamespacedPodAsync(
+            $"{redis.Name}-0", NamespaceName));
     }
 
     private (
@@ -170,11 +200,12 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
             $"StatefulSet '{statefulSetName}' did not become ready in namespace '{NamespaceName}'.");
     }
 
-    private static async Task AssertResourceDeletedAsync<T>(Func<Task<T>> readCall, int timeoutSeconds = 30)
+    private async Task AssertResourceDeletedAsync<T>(string resource, Func<Task<T>> readCall, int timeoutSeconds = 90)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(timeoutSeconds);
+        // Pod shutdown may consume the default 30-second grace period before PVC protection and GC complete.
+        var elapsed = Stopwatch.StartNew();
 
-        while (DateTime.UtcNow < deadline)
+        while (elapsed.Elapsed < TimeSpan.FromSeconds(timeoutSeconds))
         {
             try
             {
@@ -188,7 +219,7 @@ public sealed class RedisKubernetesTests(KubernetesClusterFixture fixture)
             await Task.Delay(TimeSpan.FromSeconds(1));
         }
 
-        throw new TimeoutException("Resource was not deleted before the timeout elapsed.");
+        throw await CreateTimeoutExceptionAsync($"{resource} was not deleted within {timeoutSeconds} seconds.");
     }
 
 }
