@@ -243,6 +243,21 @@ internal sealed class MongoStorageObservationStore(
         public Expression<Func<StorageObservationControlDocument, string?>> Source => item => item.SourceId;
         public Expression<Func<StorageObservationSnapshotDocument, string>> SnapshotSource => item => item.SourceId;
 
+        public FilterDefinition<StorageObservationControlDocument> ControlScope(MongoObservationScope scope) =>
+            StorageObservationFilters.ForControlScope(scope);
+
+        public FilterDefinition<StorageObservationDemandDocument> DemandScope(MongoObservationScope scope) =>
+            StorageObservationFilters.ForDemandScope(scope);
+
+        public FilterDefinition<StorageObservationSnapshotDocument> SnapshotScope(MongoObservationScope scope) =>
+            StorageObservationFilters.ForSnapshotScope(scope);
+
+        public FilterDefinition<StorageObservationControlDocument> ControlPin(StorageObservationContext context) =>
+            StorageObservationFilters.ForControlContext(context);
+
+        public UpdateDefinition<StorageObservationDemandDocument> DemandIdentityUpdate(MongoObservationScope scope) =>
+            Builders<StorageObservationDemandDocument>.Update.Set(item => item.DeploymentTargetId, scope.Id);
+
         public StorageObservationControlDocument CreateControl(StorageObservationContext context) => new(
             context.DeploymentTargetId,
             context.ConnectionVersion,

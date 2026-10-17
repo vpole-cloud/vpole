@@ -32,8 +32,13 @@ indexes, validation, sanitized payload mapping and integration event identities.
 
 Common document interfaces describe metadata without BSON inheritance or discriminators.
 Collections, operation results, snapshot factories and outbox callbacks are typed; BSON documents
-are confined to Mongo filters, expressions and update pipelines. Feature field expressions and typed
-pin updates are rendered with the concrete document serializers. Historical BSON round-trip and
+are confined to `MongoObservationExpressions` and `MongoObservationPipelines`. The store describes
+transaction steps using named typed filters and updates; `MongoObservationFilters` composes typed
+builders with server-clock predicates. Feature-owned `*Filters` retain tenant/platform scope and
+context pins. Each control transition is one server-side pipeline stage including version/fence
+increments and `$$NOW`; extraction must never split it into separate writes. Literal assignments
+are escaped with `$literal` before insertion into pipelines. Feature field expressions and typed
+assignments are rendered with the concrete document serializers. Historical BSON round-trip and
 raw-document persistence tests protect existing ObjectId, UTC, null and field-name representations.
 
 `IMongoObservationDefinition` supplies a scope, pinned context, transactional context fence,

@@ -42,6 +42,35 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
+    public async Task DemandAndSourceDollarPrefixedValuesAreStoredAsLiterals()
+    {
+        var seeded = await SeedAsync();
+        var demand = seeded.Demand with
+        {
+            Identity = seeded.Demand.Identity with
+            {
+                SubscriptionId = "$interest",
+                ConnectionId = "$$NOW",
+                SessionId = "$SessionId"
+            }
+        };
+        var store = Store();
+        Assert.IsType<ObservationMutationAccepted>((await store.PutDemandAsync(demand, seeded.Context)).Value);
+        var persisted = await Demands.Find(item => item.SubscriptionId == "$interest").SingleAsync();
+        Assert.Equal("$$NOW", persisted.ConnectionId);
+        Assert.Equal("$SessionId", persisted.SessionId);
+        var owner = Assert.IsType<ObservationOwnership>((await store.ClaimLeaseAsync(seeded.Context, "replica")).Value);
+        const string binding = "$ObservationVersion";
+        var source = Assert.IsType<ObservationSourceState>((await store.SetSourceStateAsync(owner.Lease,
+            seeded.Context, owner.SourceControlVersion, true, binding)).Value);
+        Assert.IsType<ResourceDeploymentSharedObservation>((await store.TryCommitSnapshotAsync(owner.Lease,
+            seeded.Context, source.SourceControlVersion, binding, Sample() with { BindingId = binding })).Value);
+        var control = await store.LoadControlAsync(new(owner.Lease.TenantId, owner.Lease.DeploymentId));
+        Assert.Equal(binding, control!.BindingId);
+        Assert.NotNull(await store.LoadFreshSnapshotAsync(seeded.Context));
+    }
+
+    [Fact]
     public async Task HistoricalRawDocumentsRemainReadableRenewableAndWritableWithoutMigration()
     {
         var seeded = await SeedAsync();

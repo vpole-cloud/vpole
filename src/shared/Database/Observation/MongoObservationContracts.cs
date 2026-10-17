@@ -98,6 +98,11 @@ public interface IMongoObservationDefinition<TContext, TControl, TDemand, TSnaps
     Expression<Func<TDemand, string>> DemandSubject { get; }
     Expression<Func<TControl, string?>> Source { get; }
     Expression<Func<TSnapshot, string>> SnapshotSource { get; }
+    FilterDefinition<TControl> ControlScope(MongoObservationScope scope);
+    FilterDefinition<TDemand> DemandScope(MongoObservationScope scope);
+    FilterDefinition<TSnapshot> SnapshotScope(MongoObservationScope scope);
+    FilterDefinition<TControl> ControlPin(TContext context);
+    UpdateDefinition<TDemand> DemandIdentityUpdate(MongoObservationScope scope);
     TControl CreateControl(TContext context);
     bool HasPin(TControl control, TContext context);
     UpdateDefinition<TControl> PinUpdate(TContext context);
