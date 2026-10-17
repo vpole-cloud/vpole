@@ -18,10 +18,20 @@ export async function fetchProtectedGreeting(
 }
 
 export async function searchResources(
-  apiBaseUrl: string, query: string, token?: string, tenantId?: string, signal?: AbortSignal, pageNumber = 1,
+  apiBaseUrl: string,
+  query: string,
+  token?: string,
+  tenantId?: string,
+  signal?: AbortSignal,
+  pageNumber = 1,
 ) {
-  const params = new URLSearchParams({ query: query.trim(), pageNumber: String(pageNumber), pageSize: '20' })
+  const params = new URLSearchParams({
+    query: query.trim(),
+    pageNumber: String(pageNumber),
+    pageSize: '20',
+  })
   return fetchJson<PaginatedResponse<SearchHit>>(`${apiBaseUrl}/api/v1/search?${params}`, {
-    headers: buildHeaders(token, tenantId), signal,
+    headers: buildHeaders(token, tenantId),
+    signal,
   })
 }

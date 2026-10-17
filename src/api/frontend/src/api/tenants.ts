@@ -21,11 +21,7 @@ export function normalizeTenantRole(role: TenantRole | number): TenantRole {
   throw new Error(`Unknown tenant role value: ${role}`)
 }
 
-export async function fetchTenants(
-  apiBaseUrl: string,
-  token?: string,
-  signal?: AbortSignal,
-) {
+export async function fetchTenants(apiBaseUrl: string, token?: string, signal?: AbortSignal) {
   const tenants = await fetchJson<TenantResponse[]>(`${apiBaseUrl}/api/v1/tenants`, {
     headers: buildHeaders(token),
     signal,

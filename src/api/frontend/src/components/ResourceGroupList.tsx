@@ -6,11 +6,7 @@ interface ResourceGroupListProps {
   error?: string
 }
 
-export function ResourceGroupList({
-  items,
-  status,
-  error,
-}: ResourceGroupListProps) {
+export function ResourceGroupList({ items, status, error }: ResourceGroupListProps) {
   return (
     <section className="panel">
       <div className="panel__header">
@@ -21,9 +17,7 @@ export function ResourceGroupList({
         <span className="panel__meta">{items.length} visible</span>
       </div>
 
-      {status === 'loading' && (
-        <div className="empty-state">Loading resource groups...</div>
-      )}
+      {status === 'loading' && <div className="empty-state">Loading resource groups...</div>}
 
       {status === 'error' && (
         <div className="empty-state empty-state--error">
@@ -33,8 +27,7 @@ export function ResourceGroupList({
 
       {status === 'success' && items.length === 0 && (
         <div className="empty-state">
-          No resource groups yet. This section is ready for your first
-          environment boundary.
+          No resource groups yet. This section is ready for your first environment boundary.
         </div>
       )}
 

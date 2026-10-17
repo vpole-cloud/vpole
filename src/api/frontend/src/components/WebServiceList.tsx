@@ -7,17 +7,10 @@ interface WebServiceListProps {
   error?: string
 }
 
-const resolveResourceGroupName = (
-  webService: WebService,
-  groups: ResourceGroup[],
-) => groups.find((group) => group.id === webService.resourceGroupId)?.name
+const resolveResourceGroupName = (webService: WebService, groups: ResourceGroup[]) =>
+  groups.find((group) => group.id === webService.resourceGroupId)?.name
 
-export function WebServiceList({
-  items,
-  groups,
-  status,
-  error,
-}: WebServiceListProps) {
+export function WebServiceList({ items, groups, status, error }: WebServiceListProps) {
   return (
     <section className="panel">
       <div className="panel__header">
@@ -28,9 +21,7 @@ export function WebServiceList({
         <span className="panel__meta">{items.length} visible</span>
       </div>
 
-      {status === 'loading' && (
-        <div className="empty-state">Loading deployed services...</div>
-      )}
+      {status === 'loading' && <div className="empty-state">Loading deployed services...</div>}
 
       {status === 'error' && (
         <div className="empty-state empty-state--error">
@@ -40,8 +31,7 @@ export function WebServiceList({
 
       {status === 'success' && items.length === 0 && (
         <div className="empty-state">
-          No web services yet. The shell is ready for deployments once the API
-          returns them.
+          No web services yet. The shell is ready for deployments once the API returns them.
         </div>
       )}
 
@@ -55,7 +45,11 @@ export function WebServiceList({
               <article className="list-row" key={item.id}>
                 <div className="list-row__primary">
                   <h3>{item.name}</h3>
-                  <p>{item.deployments.flatMap((deployment) => deployment.ingress?.hostnames ?? []).join(', ') || 'No public hostname reported yet.'}</p>
+                  <p>
+                    {item.deployments
+                      .flatMap((deployment) => deployment.ingress?.hostnames ?? [])
+                      .join(', ') || 'No public hostname reported yet.'}
+                  </p>
                 </div>
                 <div className="list-row__secondary">
                   <span className="status-pill status-pill--accent">

@@ -13,7 +13,11 @@ export interface PostgresConfigurationState {
 
 export function postgresConfiguration(cluster: PostgresCluster): PostgresConfigurationState {
   const { instances, storage } = cluster.spec
-  return { baseline: { revision: cluster.revision, instances, storage }, draft: { instances, storage, computeProfileId: '' }, accepted: false }
+  return {
+    baseline: { revision: cluster.revision, instances, storage },
+    draft: { instances, storage, computeProfileId: '' },
+    accepted: false,
+  }
 }
 
 export function postgresChanges(state: PostgresConfigurationState): PostgresUpdateInput {
@@ -30,18 +34,33 @@ export function isPostgresDirty(state: PostgresConfigurationState) {
   return Object.keys(postgresChanges(state)).length > 1
 }
 
-export function reapplyPostgresChanges(state: PostgresConfigurationState, cluster: PostgresCluster): PostgresConfigurationState {
+export function reapplyPostgresChanges(
+  state: PostgresConfigurationState,
+  cluster: PostgresCluster,
+): PostgresConfigurationState {
   const changes = postgresChanges(state)
   const next = postgresConfiguration(cluster)
-  return { ...next, draft: {
-    instances: changes.instances ?? next.draft.instances,
-    storage: changes.storage ?? next.draft.storage,
-    computeProfileId: changes.computeProfileId ?? '',
-  } }
+  return {
+    ...next,
+    draft: {
+      instances: changes.instances ?? next.draft.instances,
+      storage: changes.storage ?? next.draft.storage,
+      computeProfileId: changes.computeProfileId ?? '',
+    },
+  }
 }
 
 // An accepted command awaits a newer server revision before this form can submit again.
-export function acceptedPostgresChanges(state: PostgresConfigurationState): PostgresConfigurationState {
-  return { baseline: { revision: state.baseline.revision, instances: state.draft.instances, storage: state.draft.storage },
-    draft: { ...state.draft, computeProfileId: '' }, accepted: true }
+export function acceptedPostgresChanges(
+  state: PostgresConfigurationState,
+): PostgresConfigurationState {
+  return {
+    baseline: {
+      revision: state.baseline.revision,
+      instances: state.draft.instances,
+      storage: state.draft.storage,
+    },
+    draft: { ...state.draft, computeProfileId: '' },
+    accepted: true,
+  }
 }

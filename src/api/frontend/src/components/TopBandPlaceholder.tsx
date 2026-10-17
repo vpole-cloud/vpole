@@ -25,9 +25,15 @@ export function TopBandPlaceholder({
           value={activeTenantId}
           onChange={(event) => onSelectTenant(event.target.value)}
         >
-          {tenants.length > 0 && !activeTenantId && <option value="" disabled>Select a tenant</option>}
+          {tenants.length > 0 && !activeTenantId && (
+            <option value="" disabled>
+              Select a tenant
+            </option>
+          )}
           {tenants.length === 0 ? (
-            <option value="">{status === 'loading' ? 'Loading tenants…' : 'No tenants available'}</option>
+            <option value="">
+              {status === 'loading' ? 'Loading tenants…' : 'No tenants available'}
+            </option>
           ) : (
             tenants.map((tenant) => (
               <option key={tenant.id} value={tenant.id}>
@@ -37,7 +43,11 @@ export function TopBandPlaceholder({
           )}
         </select>
       </label>
-      {status === 'error' && <p className="top-band__error" role="alert">{error || 'Tenant list unavailable.'}</p>}
+      {status === 'error' && (
+        <p className="top-band__error" role="alert">
+          {error || 'Tenant list unavailable.'}
+        </p>
+      )}
     </div>
   )
 }

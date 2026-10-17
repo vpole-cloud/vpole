@@ -1,4 +1,9 @@
-import { deploymentConfiguration, fieldsFor, parseEnvironmentVariables, type SelectedDeploymentInput } from '../modules/web-services/formModel'
+import {
+  deploymentConfiguration,
+  fieldsFor,
+  parseEnvironmentVariables,
+  type SelectedDeploymentInput,
+} from '../modules/web-services/formModel'
 import { useEffect, useId, useState } from 'react'
 import { validationMessage } from '../api'
 import { Button, Notice } from '../ui/components'
@@ -24,7 +29,11 @@ interface WebServiceFormProps {
   computeProfilesStatusByTarget?: Record<string, 'idle' | 'loading' | 'success' | 'error'>
   submitStatus: 'idle' | 'loading' | 'success' | 'error'
   submitError?: string
-  onLoadTargets: (isolationScopeId?: string, requiresPublicIngress?: boolean, signal?: AbortSignal) => Promise<AvailableDeploymentTarget[]>
+  onLoadTargets: (
+    isolationScopeId?: string,
+    requiresPublicIngress?: boolean,
+    signal?: AbortSignal,
+  ) => Promise<AvailableDeploymentTarget[]>
   onLoadComputeProfiles: (deploymentTargetId: string) => Promise<AvailableComputeProfile[]>
   scopeChoices?: { items: IsolationScope[]; status: LoadStatus; error: string; retry: () => void }
   onGroupChange?: (groupId: string) => void
@@ -65,8 +74,12 @@ export function WebServiceForm({
   const [isolationScopeId, setIsolationScopeId] = useState(initialValue?.isolationScopeId ?? '')
   const scopes = scopeChoices ?? { items: [], status: 'idle', error: '', retry: () => {} }
   const resolvedScopeId = isolationScopeId || scopes.items.find((scope) => scope.isDefault)?.id
-  const unavailableScope = Boolean(isolationScopeId && !scopes.items.some((scope) => scope.id === isolationScopeId))
-  const [exposure, setExposure] = useState<'Private' | 'Public'>(initialValue?.exposure.mode ?? 'Private')
+  const unavailableScope = Boolean(
+    isolationScopeId && !scopes.items.some((scope) => scope.id === isolationScopeId),
+  )
+  const [exposure, setExposure] = useState<'Private' | 'Public'>(
+    initialValue?.exposure.mode ?? 'Private',
+  )
   const [imageServer, setImageServer] = useState(initialValue?.spec.image.server ?? '')
   const [imageName, setImageName] = useState(initialValue?.spec.image.name ?? '')
   const [imageTag, setImageTag] = useState(initialValue?.spec.image.tag ?? 'latest')
@@ -88,23 +101,49 @@ export function WebServiceForm({
   )
   const [selectedTargets, setTargets] = useState<SelectedDeploymentInput[] | undefined>()
   const eligibleTargets = targetsStatus === 'success' ? availableTargets : []
-  const defaultTargetId = mode === 'create' && eligibleTargets.length === 1 ? eligibleTargets[0].id : undefined
-  const targets = (selectedTargets ?? (defaultTargetId ? [deploymentConfiguration(defaultTargetId)] : [])).map((target) => {
+  const defaultTargetId =
+    mode === 'create' && eligibleTargets.length === 1 ? eligibleTargets[0].id : undefined
+  const targets = (
+    selectedTargets ?? (defaultTargetId ? [deploymentConfiguration(defaultTargetId)] : [])
+  ).map((target) => {
     const profiles = computeProfilesByTarget[target.deploymentTargetId] ?? []
-    return !target.computeProfileId && profiles.length === 1 && !profiles[0].isDefault ? { ...target, computeProfileId: profiles[0].id } : target
+    return !target.computeProfileId && profiles.length === 1 && !profiles[0].isDefault
+      ? { ...target, computeProfileId: profiles[0].id }
+      : target
   })
-  const profileBlockers = mode === 'create' && computeProfilesStatusByTarget ? targets.filter((target) => {
-    const profiles = computeProfilesByTarget[target.deploymentTargetId] ?? []
-    return computeProfilesStatusByTarget[target.deploymentTargetId] !== 'success' ||
-      (target.computeProfileId ? !profiles.some((profile) => profile.id === target.computeProfileId) : !profiles.some((profile) => profile.isDefault))
-  }) : []
+  const profileBlockers =
+    mode === 'create' && computeProfilesStatusByTarget
+      ? targets.filter((target) => {
+          const profiles = computeProfilesByTarget[target.deploymentTargetId] ?? []
+          return (
+            computeProfilesStatusByTarget[target.deploymentTargetId] !== 'success' ||
+            (target.computeProfileId
+              ? !profiles.some((profile) => profile.id === target.computeProfileId)
+              : !profiles.some((profile) => profile.isDefault))
+          )
+        })
+      : []
   const [showAdvancedTargets, setShowAdvancedTargets] = useState(false)
   const [validationError, setValidationError] = useState('')
   const [failure, setFailure] = useState<unknown>(null)
   const fieldId = useId()
   const fieldError = (field: string) => validationMessage(failure, field)
-  const snapshot = JSON.stringify({ name, resourceGroupId, isolationScopeId, exposure, imageServer,
-    imageName, imageTag, probePath, probePort, servicePort, targetPort, portName, environmentText, selectedTargets })
+  const snapshot = JSON.stringify({
+    name,
+    resourceGroupId,
+    isolationScopeId,
+    exposure,
+    imageServer,
+    imageName,
+    imageTag,
+    probePath,
+    probePort,
+    servicePort,
+    targetPort,
+    portName,
+    environmentText,
+    selectedTargets,
+  })
   const [savedSnapshot, setSavedSnapshot] = useState(snapshot)
   const dirty = snapshot !== savedSnapshot
   const [loadedRevision, setLoadedRevision] = useState(initialValue?.activeRevision)
@@ -130,7 +169,10 @@ export function WebServiceForm({
     setFailure(null)
     setSavedSnapshot(JSON.stringify(fields))
   }
-  useEffect(() => { onDirtyChange?.(dirty); return () => onDirtyChange?.(false) }, [dirty, onDirtyChange])
+  useEffect(() => {
+    onDirtyChange?.(dirty)
+    return () => onDirtyChange?.(false)
+  }, [dirty, onDirtyChange])
 
   useEffect(() => {
     if (selectedTargets === undefined && defaultTargetId) {
@@ -143,11 +185,7 @@ export function WebServiceForm({
       return
     }
     const controller = new AbortController()
-    void onLoadTargets(
-      resolvedScopeId,
-      exposure === 'Public',
-      controller.signal,
-    )
+    void onLoadTargets(resolvedScopeId, exposure === 'Public', controller.signal)
     return () => controller.abort()
   }, [exposure, resolvedScopeId, resourceGroupId, scopes.status, mode, onLoadTargets])
 
@@ -162,10 +200,15 @@ export function WebServiceForm({
     })
   }
 
-  const updateTarget = (targetId: string, change: Partial<Pick<WebServiceDeploymentInput, 'computeProfileId' | 'fixedReplicas'>>) => {
-    setTargets((current) => (current ?? targets).map((target) =>
-      target.deploymentTargetId === targetId ? { ...target, ...change } : target,
-    ))
+  const updateTarget = (
+    targetId: string,
+    change: Partial<Pick<WebServiceDeploymentInput, 'computeProfileId' | 'fixedReplicas'>>,
+  ) => {
+    setTargets((current) =>
+      (current ?? targets).map((target) =>
+        target.deploymentTargetId === targetId ? { ...target, ...change } : target,
+      ),
+    )
   }
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -188,7 +231,9 @@ export function WebServiceForm({
       return
     }
     if (mode === 'create' && targetsStatus !== 'success') {
-      setValidationError('Wait for eligible deployment targets to load before creating the service.')
+      setValidationError(
+        'Wait for eligible deployment targets to load before creating the service.',
+      )
       return
     }
     if (mode === 'create' && targets.length === 0) {
@@ -196,10 +241,14 @@ export function WebServiceForm({
       return
     }
     if (profileBlockers.length) {
-      setValidationError('Each selected target needs an available compute profile. Check Placement options or ask a platform administrator to configure profiles.')
+      setValidationError(
+        'Each selected target needs an available compute profile. Check Placement options or ask a platform administrator to configure profiles.',
+      )
       return
     }
-    if (targets.some((target) => !Number.isInteger(target.fixedReplicas) || target.fixedReplicas < 1)) {
+    if (
+      targets.some((target) => !Number.isInteger(target.fixedReplicas) || target.fixedReplicas < 1)
+    ) {
       setValidationError('Each target needs at least one fixed replica.')
       return
     }
@@ -222,7 +271,8 @@ export function WebServiceForm({
         targetPort: targetPort.trim(),
         portName: portName.trim(),
         environmentVariables: parseEnvironmentVariables(environmentText),
-        connectionEnvironmentReferences: initialValue?.spec.config.connectionEnvironmentReferences ?? {},
+        connectionEnvironmentReferences:
+          initialValue?.spec.config.connectionEnvironmentReferences ?? {},
         secretEnvironmentReferences: initialValue?.spec.config.secretEnvironmentReferences ?? {},
         tags: initialValue?.tags ?? [],
         autoscaling: initialValue?.spec.autoscaling ?? null,
@@ -242,133 +292,391 @@ export function WebServiceForm({
       <div className="panel__header">
         <div>
           <p className="panel__eyebrow">{mode === 'create' ? 'Create' : 'Edit'}</p>
-          <h2 className="panel__title">{mode === 'create' ? 'New web service' : 'Service configuration'}</h2>
+          <h2 className="panel__title">
+            {mode === 'create' ? 'New web service' : 'Service configuration'}
+          </h2>
         </div>
       </div>
 
       <form className="resource-group-form" onSubmit={(event) => void handleSubmit(event)}>
         {mode === 'edit' && dirty && initialValue?.activeRevision !== loadedRevision && (
-          <div className="form-message" role="status">The service changed while this draft was open. Your draft is kept. Discard changes to load the latest configuration.</div>
-        )}
-        <fieldset className="web-service-form__fields" disabled={submitStatus === 'loading' || submitDisabled}>
-        <label className="field">
-          <span className="field__label">Name</span>
-          <input className="field__control" disabled={mode === 'edit'} value={name} onChange={(event) => setName(event.target.value)} placeholder="pole-api"
-            aria-invalid={Boolean(fieldError('name'))} aria-describedby={fieldError('name') ? `${fieldId}-name-error` : undefined} />
-          {fieldError('name') && <span id={`${fieldId}-name-error`} className="field-error">{fieldError('name')}</span>}
-          {mode === 'edit' && <span className="field__hint">Web service names are fixed after creation.</span>}
-        </label>
-
-        <label className="field">
-          <span className="field__label">Resource group</span>
-          <select className="field__control" disabled={mode === 'edit'} value={resourceGroupId} onChange={(event) => {
-            setResourceGroupId(event.target.value)
-            onGroupChange?.(event.target.value)
-            setIsolationScopeId('')
-            setTargets(undefined)
-          }}>
-            <option value="">Select a group</option>
-            {resourceGroups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
-          </select>
-          {fieldError('resourceGroupId') && <span className="field-error">{fieldError('resourceGroupId')}</span>}
-        </label>
-
-        {mode === 'create' && (
-          <div className="field">
-            <label className="field__label" htmlFor="new-web-service-isolation-scope">Isolation scope</label>
-            <select id="new-web-service-isolation-scope" className="field__control" value={isolationScopeId}
-              disabled={!resourceGroupId || scopes.status === 'loading' || !scopeChoices} onChange={(event) => {
-              setIsolationScopeId(event.target.value)
-              setTargets(undefined)
-            }}>
-              <option value="">{scopes.status === 'loading' ? 'Loading isolation scopes…' : 'Group default'}</option>
-              {scopes.items.filter((scope) => !scope.isDefault).map((scope) => <option key={scope.id} value={scope.id}>{scope.name}</option>)}
-              {unavailableScope && <option value={isolationScopeId} disabled>Selected scope unavailable</option>}
-            </select>
-            <span className="field__hint">Use the group's default isolation, or choose another scope by name.</span>
-            {scopes.status === 'error' && <Notice tone="error">{scopes.error} You can use the group default.
-              <Button onClick={scopes.retry}>Retry scopes</Button></Notice>}
+          <div className="form-message" role="status">
+            The service changed while this draft was open. Your draft is kept. Discard changes to
+            load the latest configuration.
           </div>
         )}
-
-        <div className="form-grid">
-          <label className="field"><span className="field__label">Image registry</span><input className="field__control" value={imageServer} onChange={(event) => setImageServer(event.target.value)} placeholder="docker.io" aria-invalid={Boolean(fieldError('spec.image.server'))} aria-describedby={fieldError('spec.image') ? `${fieldId}-image-error` : undefined} /></label>
-          <label className="field"><span className="field__label">Image name</span><input className="field__control" value={imageName} onChange={(event) => setImageName(event.target.value)} placeholder="library/nginx" aria-invalid={Boolean(fieldError('spec.image.name'))} aria-describedby={fieldError('spec.image') ? `${fieldId}-image-error` : undefined} /></label>
-          <label className="field"><span className="field__label">Tag</span><input className="field__control" value={imageTag} onChange={(event) => setImageTag(event.target.value)} placeholder="latest" aria-invalid={Boolean(fieldError('spec.image.tag'))} aria-describedby={fieldError('spec.image') ? `${fieldId}-image-error` : undefined} /></label>
-        </div>
-        {imageHint && <p className="field__hint">{imageHint}</p>}
-        {fieldError('spec.image') && <p id={`${fieldId}-image-error`} className="field-error">{fieldError('spec.image')}</p>}
-
-        <label className="field">
-          <span className="field__label">Exposure</span>
-          <select className="field__control" value={exposure} onChange={(event) => {
-            setExposure(event.target.value as 'Private' | 'Public')
-            setTargets(undefined)
-          }}>
-            <option value="Private">Private</option>
-            <option value="Public">Public</option>
-          </select>
-          <span className="field__hint">Private services have no public ingress; resource-to-resource access requires declared connections. Public services receive generated hostnames.</span>
-          {fieldError('exposure') && <span className="field-error">{fieldError('exposure')}</span>}
-        </label>
-
-        {mode === 'create' && (
-          <section className="form-message" aria-label="Deployment placement">
-            <strong>Deployment targets</strong>
-            {fieldError('placement') && <p className="field-error">{fieldError('placement')}</p>}
-            {targetsStatus === 'loading' && <p>Loading eligible deployment targets…</p>}
-            {targetsStatus === 'error' && <p>{targetsError || 'Unable to load eligible targets.'}</p>}
-            {targetsStatus === 'success' && availableTargets.length === 0 && <p>No eligible target is available. A target needs workload admission{exposure === 'Public' ? ' and a public ingress base domain' : ''}.</p>}
-            {profileBlockers.map((target) => <p role="status" key={target.deploymentTargetId}>
-              {availableTargets.find((item) => item.id === target.deploymentTargetId)?.displayName}: {computeProfilesStatusByTarget?.[target.deploymentTargetId] === 'loading' ? 'Loading compute profiles…' :
-                computeProfilesStatusByTarget?.[target.deploymentTargetId] === 'error' ? 'Compute profiles are unavailable. Retry loading them.' :
-                !(computeProfilesByTarget[target.deploymentTargetId]?.length) ? 'No eligible compute profile is available. Ask a platform administrator to configure one.' : 'Choose an available compute profile in Placement options.'}
-              {computeProfilesStatusByTarget?.[target.deploymentTargetId] === 'error' && <Button onClick={() => void onLoadComputeProfiles(target.deploymentTargetId)}>Retry profiles</Button>}
-            </p>)}
-            {exactlyOneTarget && eligibleTargets[0] && (
-              <p>{eligibleTargets[0].displayName} is selected automatically. <button className="button" type="button" onClick={() => setShowAdvancedTargets((current) => !current)}>Placement options</button></p>
+        <fieldset
+          className="web-service-form__fields"
+          disabled={submitStatus === 'loading' || submitDisabled}
+        >
+          <label className="field">
+            <span className="field__label">Name</span>
+            <input
+              className="field__control"
+              disabled={mode === 'edit'}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="pole-api"
+              aria-invalid={Boolean(fieldError('name'))}
+              aria-describedby={fieldError('name') ? `${fieldId}-name-error` : undefined}
+            />
+            {fieldError('name') && (
+              <span id={`${fieldId}-name-error`} className="field-error">
+                {fieldError('name')}
+              </span>
             )}
-            {(!exactlyOneTarget || showAdvancedTargets) && eligibleTargets.map((target) => {
-              const selected = targets.find((item) => item.deploymentTargetId === target.id)
-              const profiles = computeProfilesByTarget[target.id] ?? []
-              return (
-                <div className="form-grid" key={target.id}>
-                  <label className="field">
-                    <span className="field__label"><input type="checkbox" checked={Boolean(selected)} onChange={(event) => setTargetSelected(target.id, event.target.checked)} /> {target.displayName}</span>
-                    {exposure === 'Public' && <span className="field__hint">Generated hostname: ….{target.publicBaseDomain ?? 'no base domain'}</span>}
-                  </label>
-                  {selected && <>
-                    <label className="field"><span className="field__label">Fixed replicas</span><input className="field__control" type="number" min="1" max="1000" value={selected.fixedReplicas} onChange={(event) => updateTarget(target.id, { fixedReplicas: Number(event.target.value) })} /></label>
-                    <label className="field"><span className="field__label">Compute profile</span><select className="field__control" value={selected.computeProfileId ?? ''} onChange={(event) => updateTarget(target.id, { computeProfileId: event.target.value || undefined })}><option value="">Target default</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.displayName}{profile.isDefault ? ' (default)' : ''}</option>)}</select></label>
-                  </>}
-                </div>
-              )
-            })}
-            {initialValue?.spec.autoscaling && <p>Autoscaling is shared. Its maximum capacity is charged for each selected target; fixed replicas remain the initial and fallback value.</p>}
-          </section>
-        )}
+            {mode === 'edit' && (
+              <span className="field__hint">Web service names are fixed after creation.</span>
+            )}
+          </label>
 
-        <div className="form-grid form-grid--three">
-          <label className="field"><span className="field__label">Probe path</span><input className="field__control" value={probePath} onChange={(event) => setProbePath(event.target.value)} /></label>
-          <label className="field"><span className="field__label">Probe port</span><input className="field__control" value={probePort} onChange={(event) => setProbePort(event.target.value)} /></label>
-        </div>
-        <div className="form-grid form-grid--three">
-          <label className="field"><span className="field__label">Service port</span><input className="field__control" type="number" min="1" max="65535" value={servicePort} onChange={(event) => setServicePort(event.target.value)} /></label>
-          <label className="field"><span className="field__label">Target port</span><input className="field__control" value={targetPort} onChange={(event) => setTargetPort(event.target.value)} /></label>
-          <label className="field"><span className="field__label">Port name</span><input className="field__control" value={portName} onChange={(event) => setPortName(event.target.value)} /></label>
-        </div>
+          <label className="field">
+            <span className="field__label">Resource group</span>
+            <select
+              className="field__control"
+              disabled={mode === 'edit'}
+              value={resourceGroupId}
+              onChange={(event) => {
+                setResourceGroupId(event.target.value)
+                onGroupChange?.(event.target.value)
+                setIsolationScopeId('')
+                setTargets(undefined)
+              }}
+            >
+              <option value="">Select a group</option>
+              {resourceGroups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))}
+            </select>
+            {fieldError('resourceGroupId') && (
+              <span className="field-error">{fieldError('resourceGroupId')}</span>
+            )}
+          </label>
 
-        <label className="field"><span className="field__label">Environment variables</span><textarea className="field__control field__control--textarea" value={environmentText} onChange={(event) => setEnvironmentText(event.target.value)} placeholder={'ASPNETCORE_ENVIRONMENT=Production\nLOG_LEVEL=Information'} /><span className="field__hint">One `KEY=value` per line.</span></label>
+          {mode === 'create' && (
+            <div className="field">
+              <label className="field__label" htmlFor="new-web-service-isolation-scope">
+                Isolation scope
+              </label>
+              <select
+                id="new-web-service-isolation-scope"
+                className="field__control"
+                value={isolationScopeId}
+                disabled={!resourceGroupId || scopes.status === 'loading' || !scopeChoices}
+                onChange={(event) => {
+                  setIsolationScopeId(event.target.value)
+                  setTargets(undefined)
+                }}
+              >
+                <option value="">
+                  {scopes.status === 'loading' ? 'Loading isolation scopes…' : 'Group default'}
+                </option>
+                {scopes.items
+                  .filter((scope) => !scope.isDefault)
+                  .map((scope) => (
+                    <option key={scope.id} value={scope.id}>
+                      {scope.name}
+                    </option>
+                  ))}
+                {unavailableScope && (
+                  <option value={isolationScopeId} disabled>
+                    Selected scope unavailable
+                  </option>
+                )}
+              </select>
+              <span className="field__hint">
+                Use the group's default isolation, or choose another scope by name.
+              </span>
+              {scopes.status === 'error' && (
+                <Notice tone="error">
+                  {scopes.error} You can use the group default.
+                  <Button onClick={scopes.retry}>Retry scopes</Button>
+                </Notice>
+              )}
+            </div>
+          )}
 
-        {fieldError('spec.config') && <p className="field-error">{fieldError('spec.config')}</p>}
-        {fieldError('spec.probes') && <p className="field-error">{fieldError('spec.probes')}</p>}
-        {(validationError || submitError) && <Notice tone="error">{validationError || submitError}</Notice>}
-        {mode === 'edit' && <div className="form-message">Shared runtime changes apply to every active deployment. Manage placement in the Deployments tab.</div>}
+          <div className="form-grid">
+            <label className="field">
+              <span className="field__label">Image registry</span>
+              <input
+                className="field__control"
+                value={imageServer}
+                onChange={(event) => setImageServer(event.target.value)}
+                placeholder="docker.io"
+                aria-invalid={Boolean(fieldError('spec.image.server'))}
+                aria-describedby={fieldError('spec.image') ? `${fieldId}-image-error` : undefined}
+              />
+            </label>
+            <label className="field">
+              <span className="field__label">Image name</span>
+              <input
+                className="field__control"
+                value={imageName}
+                onChange={(event) => setImageName(event.target.value)}
+                placeholder="library/nginx"
+                aria-invalid={Boolean(fieldError('spec.image.name'))}
+                aria-describedby={fieldError('spec.image') ? `${fieldId}-image-error` : undefined}
+              />
+            </label>
+            <label className="field">
+              <span className="field__label">Tag</span>
+              <input
+                className="field__control"
+                value={imageTag}
+                onChange={(event) => setImageTag(event.target.value)}
+                placeholder="latest"
+                aria-invalid={Boolean(fieldError('spec.image.tag'))}
+                aria-describedby={fieldError('spec.image') ? `${fieldId}-image-error` : undefined}
+              />
+            </label>
+          </div>
+          {imageHint && <p className="field__hint">{imageHint}</p>}
+          {fieldError('spec.image') && (
+            <p id={`${fieldId}-image-error`} className="field-error">
+              {fieldError('spec.image')}
+            </p>
+          )}
 
-        <div className="resource-group-form__actions">
-          <Button variant="primary" disabled={submitDisabled || profileBlockers.length > 0 || submitStatus === 'loading' || (mode === 'create' && (targetsStatus !== 'success' || targets.length === 0 || scopes.status === 'loading' || unavailableScope))} type="submit">{submitStatus === 'loading' ? 'Saving…' : submitLabel ?? (mode === 'create' ? 'Create service' : 'Save changes')}</Button>
-          {mode === 'edit' && onCancelEdit && <button className="button" disabled={!dirty} onClick={onCancelEdit} type="button">Discard changes</button>}
-        </div>
+          <label className="field">
+            <span className="field__label">Exposure</span>
+            <select
+              className="field__control"
+              value={exposure}
+              onChange={(event) => {
+                setExposure(event.target.value as 'Private' | 'Public')
+                setTargets(undefined)
+              }}
+            >
+              <option value="Private">Private</option>
+              <option value="Public">Public</option>
+            </select>
+            <span className="field__hint">
+              Private services have no public ingress; resource-to-resource access requires declared
+              connections. Public services receive generated hostnames.
+            </span>
+            {fieldError('exposure') && (
+              <span className="field-error">{fieldError('exposure')}</span>
+            )}
+          </label>
+
+          {mode === 'create' && (
+            <section className="form-message" aria-label="Deployment placement">
+              <strong>Deployment targets</strong>
+              {fieldError('placement') && <p className="field-error">{fieldError('placement')}</p>}
+              {targetsStatus === 'loading' && <p>Loading eligible deployment targets…</p>}
+              {targetsStatus === 'error' && (
+                <p>{targetsError || 'Unable to load eligible targets.'}</p>
+              )}
+              {targetsStatus === 'success' && availableTargets.length === 0 && (
+                <p>
+                  No eligible target is available. A target needs workload admission
+                  {exposure === 'Public' ? ' and a public ingress base domain' : ''}.
+                </p>
+              )}
+              {profileBlockers.map((target) => (
+                <p role="status" key={target.deploymentTargetId}>
+                  {
+                    availableTargets.find((item) => item.id === target.deploymentTargetId)
+                      ?.displayName
+                  }
+                  :{' '}
+                  {computeProfilesStatusByTarget?.[target.deploymentTargetId] === 'loading'
+                    ? 'Loading compute profiles…'
+                    : computeProfilesStatusByTarget?.[target.deploymentTargetId] === 'error'
+                      ? 'Compute profiles are unavailable. Retry loading them.'
+                      : !computeProfilesByTarget[target.deploymentTargetId]?.length
+                        ? 'No eligible compute profile is available. Ask a platform administrator to configure one.'
+                        : 'Choose an available compute profile in Placement options.'}
+                  {computeProfilesStatusByTarget?.[target.deploymentTargetId] === 'error' && (
+                    <Button onClick={() => void onLoadComputeProfiles(target.deploymentTargetId)}>
+                      Retry profiles
+                    </Button>
+                  )}
+                </p>
+              ))}
+              {exactlyOneTarget && eligibleTargets[0] && (
+                <p>
+                  {eligibleTargets[0].displayName} is selected automatically.{' '}
+                  <button
+                    className="button"
+                    type="button"
+                    onClick={() => setShowAdvancedTargets((current) => !current)}
+                  >
+                    Placement options
+                  </button>
+                </p>
+              )}
+              {(!exactlyOneTarget || showAdvancedTargets) &&
+                eligibleTargets.map((target) => {
+                  const selected = targets.find((item) => item.deploymentTargetId === target.id)
+                  const profiles = computeProfilesByTarget[target.id] ?? []
+                  return (
+                    <div className="form-grid" key={target.id}>
+                      <label className="field">
+                        <span className="field__label">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(selected)}
+                            onChange={(event) => setTargetSelected(target.id, event.target.checked)}
+                          />{' '}
+                          {target.displayName}
+                        </span>
+                        {exposure === 'Public' && (
+                          <span className="field__hint">
+                            Generated hostname: ….{target.publicBaseDomain ?? 'no base domain'}
+                          </span>
+                        )}
+                      </label>
+                      {selected && (
+                        <>
+                          <label className="field">
+                            <span className="field__label">Fixed replicas</span>
+                            <input
+                              className="field__control"
+                              type="number"
+                              min="1"
+                              max="1000"
+                              value={selected.fixedReplicas}
+                              onChange={(event) =>
+                                updateTarget(target.id, {
+                                  fixedReplicas: Number(event.target.value),
+                                })
+                              }
+                            />
+                          </label>
+                          <label className="field">
+                            <span className="field__label">Compute profile</span>
+                            <select
+                              className="field__control"
+                              value={selected.computeProfileId ?? ''}
+                              onChange={(event) =>
+                                updateTarget(target.id, {
+                                  computeProfileId: event.target.value || undefined,
+                                })
+                              }
+                            >
+                              <option value="">Target default</option>
+                              {profiles.map((profile) => (
+                                <option key={profile.id} value={profile.id}>
+                                  {profile.displayName}
+                                  {profile.isDefault ? ' (default)' : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </>
+                      )}
+                    </div>
+                  )
+                })}
+              {initialValue?.spec.autoscaling && (
+                <p>
+                  Autoscaling is shared. Its maximum capacity is charged for each selected target;
+                  fixed replicas remain the initial and fallback value.
+                </p>
+              )}
+            </section>
+          )}
+
+          <div className="form-grid form-grid--three">
+            <label className="field">
+              <span className="field__label">Probe path</span>
+              <input
+                className="field__control"
+                value={probePath}
+                onChange={(event) => setProbePath(event.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span className="field__label">Probe port</span>
+              <input
+                className="field__control"
+                value={probePort}
+                onChange={(event) => setProbePort(event.target.value)}
+              />
+            </label>
+          </div>
+          <div className="form-grid form-grid--three">
+            <label className="field">
+              <span className="field__label">Service port</span>
+              <input
+                className="field__control"
+                type="number"
+                min="1"
+                max="65535"
+                value={servicePort}
+                onChange={(event) => setServicePort(event.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span className="field__label">Target port</span>
+              <input
+                className="field__control"
+                value={targetPort}
+                onChange={(event) => setTargetPort(event.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span className="field__label">Port name</span>
+              <input
+                className="field__control"
+                value={portName}
+                onChange={(event) => setPortName(event.target.value)}
+              />
+            </label>
+          </div>
+
+          <label className="field">
+            <span className="field__label">Environment variables</span>
+            <textarea
+              className="field__control field__control--textarea"
+              value={environmentText}
+              onChange={(event) => setEnvironmentText(event.target.value)}
+              placeholder={'ASPNETCORE_ENVIRONMENT=Production\nLOG_LEVEL=Information'}
+            />
+            <span className="field__hint">One `KEY=value` per line.</span>
+          </label>
+
+          {fieldError('spec.config') && <p className="field-error">{fieldError('spec.config')}</p>}
+          {fieldError('spec.probes') && <p className="field-error">{fieldError('spec.probes')}</p>}
+          {(validationError || submitError) && (
+            <Notice tone="error">{validationError || submitError}</Notice>
+          )}
+          {mode === 'edit' && (
+            <div className="form-message">
+              Shared runtime changes apply to every active deployment. Manage placement in the
+              Deployments tab.
+            </div>
+          )}
+
+          <div className="resource-group-form__actions">
+            <Button
+              variant="primary"
+              disabled={
+                submitDisabled ||
+                profileBlockers.length > 0 ||
+                submitStatus === 'loading' ||
+                (mode === 'create' &&
+                  (targetsStatus !== 'success' ||
+                    targets.length === 0 ||
+                    scopes.status === 'loading' ||
+                    unavailableScope))
+              }
+              type="submit"
+            >
+              {submitStatus === 'loading'
+                ? 'Saving…'
+                : (submitLabel ?? (mode === 'create' ? 'Create service' : 'Save changes'))}
+            </Button>
+            {mode === 'edit' && onCancelEdit && (
+              <button className="button" disabled={!dirty} onClick={onCancelEdit} type="button">
+                Discard changes
+              </button>
+            )}
+          </div>
         </fieldset>
       </form>
     </section>

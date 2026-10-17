@@ -3,20 +3,34 @@ import type { ScopedQueryData } from './querySession'
 import { QueryObserver } from '@tanstack/react-query'
 
 // Imperative reads share the declarative query's cache contract and cancellation.
-export async function fetchScopedQuery<T>(origin: ReturnType<typeof useApiScope>, parts: readonly unknown[], load: (signal: AbortSignal) => Promise<T>) {
+export async function fetchScopedQuery<T>(
+  origin: ReturnType<typeof useApiScope>,
+  parts: readonly unknown[],
+  load: (signal: AbortSignal) => Promise<T>,
+) {
   if (!origin.isCurrent()) throw new DOMException('Aborted', 'AbortError')
   const queryKey = origin.key(parts)
   const identity = JSON.stringify(queryKey)
   const client = origin.session.client
-  const query = { queryKey, meta: { privileged: origin.privileged }, queryFn: async ({ signal }: { signal: AbortSignal }): Promise<ScopedQueryData<T>> => {
-    if (!origin.session.isActive()) throw new DOMException('Aborted', 'AbortError')
-    const value = await load(signal)
-    if (signal.aborted || !origin.session.isActive()) throw new DOMException('Aborted', 'AbortError')
-    return { value, identity }
-  } }
+  const query = {
+    queryKey,
+    meta: { privileged: origin.privileged },
+    queryFn: async ({ signal }: { signal: AbortSignal }): Promise<ScopedQueryData<T>> => {
+      if (!origin.session.isActive()) throw new DOMException('Aborted', 'AbortError')
+      const value = await load(signal)
+      if (signal.aborted || !origin.session.isActive())
+        throw new DOMException('Aborted', 'AbortError')
+      return { value, identity }
+    },
+  }
   // An imperative reader is an active owner until it completes or its scope exits.
-  const observer = new QueryObserver(client, { ...query, enabled: true,
-    refetchOnMount: false, refetchOnReconnect: false, refetchOnWindowFocus: false })
+  const observer = new QueryObserver(client, {
+    ...query,
+    enabled: true,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
+  })
   const unsubscribe = observer.subscribe(() => {})
   let released = false
   const release = () => {
@@ -32,5 +46,8 @@ export async function fetchScopedQuery<T>(origin: ReturnType<typeof useApiScope>
     const result = await client.fetchQuery(query)
     if (!origin.isCurrent()) throw new DOMException('Aborted', 'AbortError')
     return result.value
-  } finally { detach(); release() }
+  } finally {
+    detach()
+    release()
+  }
 }

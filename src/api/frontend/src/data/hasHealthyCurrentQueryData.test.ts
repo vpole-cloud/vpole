@@ -6,15 +6,23 @@ const loaded = { resource: [], isCurrent: true, status: 'success' as const, erro
 it('keeps loaded empty and nonempty metadata eligible while its same-scope background read runs', () => {
   expect(hasHealthyCurrentQueryData(loaded)).toBe(true)
   expect(hasHealthyCurrentQueryData({ ...loaded, status: 'loading' })).toBe(true)
-  expect(hasHealthyCurrentQueryData({ ...loaded, resource: [{ id: 'current' }], status: 'loading' })).toBe(true)
+  expect(
+    hasHealthyCurrentQueryData({ ...loaded, resource: [{ id: 'current' }], status: 'loading' }),
+  ).toBe(true)
 })
 
 it.each([
   { label: 'initial loading', query: { ...loaded, resource: null, status: 'loading' as const } },
-  { label: 'disabled or unauthorized data', query: { ...loaded, resource: null, status: 'idle' as const } },
+  {
+    label: 'disabled or unauthorized data',
+    query: { ...loaded, resource: null, status: 'idle' as const },
+  },
   { label: 'another query identity', query: { ...loaded, isCurrent: false } },
   { label: 'completed failure', query: { ...loaded, status: 'error' as const } },
-  { label: 'failed data retained during a retry', query: { ...loaded, status: 'loading' as const, error: 'Prior read failed.' } },
+  {
+    label: 'failed data retained during a retry',
+    query: { ...loaded, status: 'loading' as const, error: 'Prior read failed.' },
+  },
 ])('rejects $label without treating retained data as healthy evidence', ({ query }) => {
   expect(hasHealthyCurrentQueryData(query)).toBe(false)
 })

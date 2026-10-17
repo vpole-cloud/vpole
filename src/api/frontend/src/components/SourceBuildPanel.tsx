@@ -19,8 +19,7 @@ interface SourceBuildPanelProps {
 const shortSha = (value: string) => value.slice(0, 10)
 const recipeKinds = ['Dockerfile', '.NET', 'Node.js'] as const
 const buildPhases = ['Queued', 'Cloning', 'Analyzing', 'Building', 'Pushing', 'Deploying'] as const
-const shortDigest = (value?: string | null) =>
-  value ? `${value.slice(0, 19)}...` : null
+const shortDigest = (value?: string | null) => (value ? `${value.slice(0, 19)}...` : null)
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat(undefined, {
     dateStyle: 'medium',
@@ -45,13 +44,20 @@ export function SourceBuildPanel({
   active = true,
 }: SourceBuildPanelProps) {
   const { navigation } = useAppServices()
-  const deploymentResource = { resourceTypeId: 'pole/web-service', resourceId: webService.id, section: 'deployments' }
+  const deploymentResource = {
+    resourceTypeId: 'pole/web-service',
+    resourceId: webService.id,
+    section: 'deployments',
+  }
   const [selectedSource, setSelectedSource] = useState<SourceRepository | null>(null)
   const [removing, setRemoving] = useState(false)
   const [recipeDirty, setRecipeDirty] = useState(false)
-  const [logJobId, setLogJobId] = useState<string | null>(() => /^#build-([a-f0-9]{24})$/i.exec(window.location.hash)?.[1] ?? null)
+  const [logJobId, setLogJobId] = useState<string | null>(
+    () => /^#build-([a-f0-9]{24})$/i.exec(window.location.hash)?.[1] ?? null,
+  )
   useEffect(() => {
-    const changed = () => setLogJobId(/^#build-([a-f0-9]{24})$/i.exec(window.location.hash)?.[1] ?? null)
+    const changed = () =>
+      setLogJobId(/^#build-([a-f0-9]{24})$/i.exec(window.location.hash)?.[1] ?? null)
     window.addEventListener('hashchange', changed)
     return () => window.removeEventListener('hashchange', changed)
   }, [])
@@ -62,15 +68,15 @@ export function SourceBuildPanel({
     else if (url.hash.startsWith('#build-')) url.hash = ''
     window.history.replaceState(window.history.state, '', url)
   }
-  const configuration = manager.configurations.find(
-    (item) => item.webServiceId === webService.id,
-  )
+  const configuration = manager.configurations.find((item) => item.webServiceId === webService.id)
   const source = manager.sourceRepositories.find(
     (item) => item.id === configuration?.sourceRepositoryId,
   )
   const busy = manager.actionStatus === 'loading'
   const dirty = (!configuration && Boolean(selectedSource)) || recipeDirty
-  useEffect(() => { onDirtyChange?.(dirty) }, [dirty, onDirtyChange])
+  useEffect(() => {
+    onDirtyChange?.(dirty)
+  }, [dirty, onDirtyChange])
 
   return (
     <section className="panel source-build-panel">
@@ -110,8 +116,16 @@ export function SourceBuildPanel({
             </span>
           </div>
           <div className="row-actions">
-            {source && <button className="button" disabled={!canManage || busy || manager.hasActiveBuild}
-              onClick={() => void manager.reanalyze(source.id).catch(() => {})} type="button">Analyze latest commit</button>}
+            {source && (
+              <button
+                className="button"
+                disabled={!canManage || busy || manager.hasActiveBuild}
+                onClick={() => void manager.reanalyze(source.id).catch(() => {})}
+                type="button"
+              >
+                Analyze latest commit
+              </button>
+            )}
             <button
               className="button button--primary"
               disabled={!canManage || busy || manager.hasActiveBuild}
@@ -129,17 +143,31 @@ export function SourceBuildPanel({
               Remove configuration
             </button>
           </div>
-          <BuildRecipeForm key={configuration.id} configuration={configuration} canManage={canManage} busy={busy}
-            onSave={(recipe) => manager.updateRecipe(configuration.id, recipe)} onDirtyChange={setRecipeDirty} />
+          <BuildRecipeForm
+            key={configuration.id}
+            configuration={configuration}
+            canManage={canManage}
+            busy={busy}
+            onSave={(recipe) => manager.updateRecipe(configuration.id, recipe)}
+            onDirtyChange={setRecipeDirty}
+          />
         </div>
       ) : (
         <div className="source-build-setup">
-          {canManage ? <GitSourcePicker source={selectedSource} onSelect={setSelectedSource} disabled={busy} /> :
-            <p>No source is configured. Tenant viewer access is read-only.</p>}
+          {canManage ? (
+            <GitSourcePicker source={selectedSource} onSelect={setSelectedSource} disabled={busy} />
+          ) : (
+            <p>No source is configured. Tenant viewer access is read-only.</p>
+          )}
           <button
             className="button button--primary"
             disabled={!canManage || busy || !selectedSource}
-            onClick={() => void manager.create(selectedSource!.id, webService.id).then(() => setSelectedSource(null)).catch(() => {})}
+            onClick={() =>
+              void manager
+                .create(selectedSource!.id, webService.id)
+                .then(() => setSelectedSource(null))
+                .catch(() => {})
+            }
             type="button"
           >
             Configure source builds
@@ -148,9 +176,23 @@ export function SourceBuildPanel({
       )}
 
       <div className="source-build-history">
-        <p className="field__hint">Build progress and deployment reconciliation are separate. A successful build does not establish application readiness.</p>
-        <ResourceLink href={navigation.resourceHref(deploymentResource)} onNavigate={() => navigation.openResource(deploymentResource)}>Inspect deployment results</ResourceLink>
-        {active && logJobId && <SourceBuildLogViewer jobId={logJobId} webServiceId={webService.id} onClose={() => selectLog(null)} />}
+        <p className="field__hint">
+          Build progress and deployment reconciliation are separate. A successful build does not
+          establish application readiness.
+        </p>
+        <ResourceLink
+          href={navigation.resourceHref(deploymentResource)}
+          onNavigate={() => navigation.openResource(deploymentResource)}
+        >
+          Inspect deployment results
+        </ResourceLink>
+        {active && logJobId && (
+          <SourceBuildLogViewer
+            jobId={logJobId}
+            webServiceId={webService.id}
+            onClose={() => selectLog(null)}
+          />
+        )}
         <div className="source-build-history__header">
           <strong>Recent builds</strong>
           <span>{manager.jobs.length}</span>
@@ -163,7 +205,12 @@ export function SourceBuildPanel({
         )}
         <div className="source-build-list">
           {manager.jobs.map((job) => (
-            <article className="source-build-row" key={job.id} data-testid={`build-row-${job.id}`} id={`build-${job.id}`}>
+            <article
+              className="source-build-row"
+              key={job.id}
+              data-testid={`build-row-${job.id}`}
+              id={`build-${job.id}`}
+            >
               <div>
                 <strong>{job.state.status}</strong>
                 <span>{formatDate(job.createdAtUtc)}</span>
@@ -173,23 +220,51 @@ export function SourceBuildPanel({
                 <span>{job.branch}</span>
               </div>
               <div className="source-build-row__result">
-                <span data-testid="build-status" className={`build-status build-status--${job.state.status}`}>
+                <span
+                  data-testid="build-status"
+                  className={`build-status build-status--${job.state.status}`}
+                >
                   {job.state.status}
                 </span>
                 <small title={job.state.failureMessage ?? job.state.imageDigest ?? undefined}>
                   {buildDetail(job)}
                 </small>
                 {job.state.failureCode && <code>{job.state.failureCode}</code>}
-                <button className="button" type="button" aria-label={`View logs for build ${job.id}`} onClick={() => selectLog(job.id)}>View logs</button>
-                {job.state.status === 'failed' && <span className="field__hint">Check the source recipe and reported failure. Correct the cause, then use Build and deploy to retry.</span>}
+                <button
+                  className="button"
+                  type="button"
+                  aria-label={`View logs for build ${job.id}`}
+                  onClick={() => selectLog(job.id)}
+                >
+                  View logs
+                </button>
+                {job.state.status === 'failed' && (
+                  <span className="field__hint">
+                    Check the source recipe and reported failure. Correct the cause, then use Build
+                    and deploy to retry.
+                  </span>
+                )}
               </div>
             </article>
           ))}
         </div>
       </div>
-      {removing && configuration && <ConfirmationDialog title="Remove source configuration?" confirmLabel="Remove configuration" busy={busy}
-        onCancel={() => setRemoving(false)} onConfirm={() => void manager.remove(configuration.id).then(() => setRemoving(false)).catch(() => {})}>
-        <p>{webService.name} keeps its current image and build history.</p></ConfirmationDialog>}
+      {removing && configuration && (
+        <ConfirmationDialog
+          title="Remove source configuration?"
+          confirmLabel="Remove configuration"
+          busy={busy}
+          onCancel={() => setRemoving(false)}
+          onConfirm={() =>
+            void manager
+              .remove(configuration.id)
+              .then(() => setRemoving(false))
+              .catch(() => {})
+          }
+        >
+          <p>{webService.name} keeps its current image and build history.</p>
+        </ConfirmationDialog>
+      )}
     </section>
   )
 }

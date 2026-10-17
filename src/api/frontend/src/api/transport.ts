@@ -21,7 +21,12 @@ export class ApiError extends Error {
   readonly status: number
   readonly code: string
   fieldErrors: Record<string, string[]>
-  constructor(message: string, status: number, fieldErrors: Record<string, string[]> = {}, code = '') {
+  constructor(
+    message: string,
+    status: number,
+    fieldErrors: Record<string, string[]> = {},
+    code = '',
+  ) {
     super(message)
     this.name = 'ApiError'
     this.code = code
@@ -32,10 +37,16 @@ export class ApiError extends Error {
 
 export function validationMessage(error: unknown, field: string): string {
   if (!(error instanceof ApiError)) return ''
-  return Object.entries(error.fieldErrors).filter(([path]) => {
-    const normalized = path.replace(/^body\./i, '').replace(/\[\d+\]/g, '').toLowerCase()
-    return normalized === field.toLowerCase() || normalized.startsWith(`${field.toLowerCase()}.`)
-  }).flatMap(([, messages]) => messages).join(' ')
+  return Object.entries(error.fieldErrors)
+    .filter(([path]) => {
+      const normalized = path
+        .replace(/^body\./i, '')
+        .replace(/\[\d+\]/g, '')
+        .toLowerCase()
+      return normalized === field.toLowerCase() || normalized.startsWith(`${field.toLowerCase()}.`)
+    })
+    .flatMap(([, messages]) => messages)
+    .join(' ')
 }
 
 export async function responseError(response: Response): Promise<ApiError> {
@@ -48,19 +59,29 @@ export async function responseError(response: Response): Promise<ApiError> {
     const fields: Record<string, string[]> = {}
     if (value.errors && typeof value.errors === 'object') {
       for (const [key, messages] of Object.entries(value.errors)) {
-        if (Array.isArray(messages)) fields[key] = messages.filter((message): message is string => typeof message === 'string')
+        if (Array.isArray(messages))
+          fields[key] = messages.filter((message): message is string => typeof message === 'string')
       }
     }
-    const description = typeof value.detail === 'string' ? value.detail : typeof value.title === 'string' ? value.title : ''
+    const description =
+      typeof value.detail === 'string'
+        ? value.detail
+        : typeof value.title === 'string'
+          ? value.title
+          : ''
     const messages = Object.values(fields).flat().join(' ')
-    return new ApiError([description, messages].filter(Boolean).join(' ') || fallback, response.status, fields, typeof value.code === 'string' ? value.code : '')
-  } catch { return new ApiError(fallback, response.status) }
+    return new ApiError(
+      [description, messages].filter(Boolean).join(' ') || fallback,
+      response.status,
+      fields,
+      typeof value.code === 'string' ? value.code : '',
+    )
+  } catch {
+    return new ApiError(fallback, response.status)
+  }
 }
 
-export async function fetchJson<T>(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<T> {
+export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   const response = await request(input, init)
 
   if (!response.ok) {
@@ -70,10 +91,7 @@ export async function fetchJson<T>(
   return (await response.json()) as T
 }
 
-export async function sendJson<T>(
-  input: RequestInfo | URL,
-  init: RequestInit,
-): Promise<T> {
+export async function sendJson<T>(input: RequestInfo | URL, init: RequestInit): Promise<T> {
   return fetchJson<T>(input, {
     ...init,
     headers: {

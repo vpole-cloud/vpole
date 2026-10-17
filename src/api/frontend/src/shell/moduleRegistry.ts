@@ -20,9 +20,17 @@ export function createAppRegistry(modules: readonly AppModule[]): AppRegistry {
   const viewIds = new Set(views.map((view) => view.id))
   for (const contribution of [...resourceTypes, ...commands]) {
     if (!viewIds.has(contribution.viewId)) {
-      throw new Error(`App registration ${contribution.id} references missing view ${contribution.viewId}.`)
+      throw new Error(
+        `App registration ${contribution.id} references missing view ${contribution.viewId}.`,
+      )
     }
   }
-  return { views, resourceTypes, commands, navigationPanels: modules.flatMap((module) =>
-    module.navigationPanel ? [{ id: module.id, component: module.navigationPanel }] : []) }
+  return {
+    views,
+    resourceTypes,
+    commands,
+    navigationPanels: modules.flatMap((module) =>
+      module.navigationPanel ? [{ id: module.id, component: module.navigationPanel }] : [],
+    ),
+  }
 }

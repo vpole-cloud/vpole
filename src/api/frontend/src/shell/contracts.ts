@@ -2,7 +2,12 @@ import type { ComponentType } from 'react'
 import type { Tenant } from '../types'
 
 export type Theme = 'light' | 'dark'
-export interface ResourceIdentity { resourceTypeId: string; resourceId: string; section?: string; fragment?: string }
+export interface ResourceIdentity {
+  resourceTypeId: string
+  resourceId: string
+  section?: string
+  fragment?: string
+}
 
 export interface AppServices {
   auth: {
@@ -48,9 +53,11 @@ export interface AppCommand {
   label: string
   viewId: string
   surface?: 'palette' | 'both'
-  available?: (context: Pick<AppServices, 'auth' | 'tenant' | 'resourceTypes'> & {
-    location: Pick<AppServices['navigation'], 'viewId' | 'search'>
-  }) => boolean
+  available?: (
+    context: Pick<AppServices, 'auth' | 'tenant' | 'resourceTypes'> & {
+      location: Pick<AppServices['navigation'], 'viewId' | 'search'>
+    },
+  ) => boolean
   run: (services: AppServices) => void
 }
 

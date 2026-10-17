@@ -34,9 +34,7 @@ const analysis = (...candidates: SourceBuildPlan[]): RepositoryAnalysis => ({
 describe('integration callback navigation', () => {
   it('opens integrations and captures a successful callback', () => {
     expect(
-      readIntegrationNavigation(
-        '?view=integrations&github=connected&connectionId=connection-1',
-      ),
+      readIntegrationNavigation('?view=integrations&github=connected&connectionId=connection-1'),
     ).toEqual({
       view: 'integrations',
       githubNotice: { status: 'connected', connectionId: 'connection-1' },

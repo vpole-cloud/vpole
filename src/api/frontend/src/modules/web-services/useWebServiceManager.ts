@@ -58,52 +58,71 @@ export function useWebServicesManager({
   const scope = useApiScope({ baseUrl: apiBaseUrl, token, tenantId })
   const { credential, isCurrent } = scope
   const mutation = useScopedMutation(`${scope.identity}:web-service-write:${tenant.canManage}`)
-  const { items, page, isCurrentPage, status, error, refresh, removeItem } = useWebServiceInventory({ apiBaseUrl, token, tenantId, enabled, pageNumber, pageSize, search })
+  const { items, page, isCurrentPage, status, error, refresh, removeItem } = useWebServiceInventory(
+    { apiBaseUrl, token, tenantId, enabled, pageNumber, pageSize, search },
+  )
   const [submitStatus, setSubmitStatus] = useState<LoadStatus>('idle')
   const [submitError, setSubmitError] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const eligibility = useWebServiceEligibility({ baseUrl: apiBaseUrl, token, tenantId }, active && tenant.canManage, resourceGroupId)
+  const eligibility = useWebServiceEligibility(
+    { baseUrl: apiBaseUrl, token, tenantId },
+    active && tenant.canManage,
+    resourceGroupId,
+  )
   const [hostnameBindingsByDeployment, setHostnameBindingsByDeployment] = useState<
     Record<string, HostnameBinding[]>
   >({})
 
-  const loadHostnameBindings = useCallback(async (webServiceId: string, deploymentId: string) => {
-    try {
-      const bindings = await fetchScopedQuery(scope, ['web-services', 'hostnames', webServiceId, deploymentId], (signal) => fetchWebServiceHostnameBindings(
-        apiBaseUrl,
-        webServiceId,
-        deploymentId,
-        credential(),
-        tenantId,
-        signal,
-      ))
-      if (!isCurrent()) return []
-      setHostnameBindingsByDeployment((current) => ({ ...current, [deploymentId]: bindings }))
-      return bindings
-    } catch (loadError) {
-      if (!isCurrent()) return []
-      setSubmitError(errorMessage(loadError, 'Unable to load hostname bindings.'))
-      return []
-    }
-  }, [apiBaseUrl, tenantId, credential, scope, isCurrent])
+  const loadHostnameBindings = useCallback(
+    async (webServiceId: string, deploymentId: string) => {
+      try {
+        const bindings = await fetchScopedQuery(
+          scope,
+          ['web-services', 'hostnames', webServiceId, deploymentId],
+          (signal) =>
+            fetchWebServiceHostnameBindings(
+              apiBaseUrl,
+              webServiceId,
+              deploymentId,
+              credential(),
+              tenantId,
+              signal,
+            ),
+        )
+        if (!isCurrent()) return []
+        setHostnameBindingsByDeployment((current) => ({ ...current, [deploymentId]: bindings }))
+        return bindings
+      } catch (loadError) {
+        if (!isCurrent()) return []
+        setSubmitError(errorMessage(loadError, 'Unable to load hostname bindings.'))
+        return []
+      }
+    },
+    [apiBaseUrl, tenantId, credential, scope, isCurrent],
+  )
 
-  const submit = async <T,>(action: () => Promise<T>, fallback: string) => {
+  const submit = async <T>(action: () => Promise<T>, fallback: string) => {
     if (!tenant.canManage) throw new Error('Tenant viewer access is read-only.')
     try {
-      const accepted = await mutation.run(async () => {
-        setSubmitStatus('loading'); setSubmitError('')
-        return { value: await action() }
-      }, async () => {
-        setSubmitStatus('success')
-        await invalidateWebServiceState(scope)
-        if (refreshAfterMutation && isCurrent()) await refresh()
-      })
+      const accepted = await mutation.run(
+        async () => {
+          setSubmitStatus('loading')
+          setSubmitError('')
+          return { value: await action() }
+        },
+        async () => {
+          setSubmitStatus('success')
+          await invalidateWebServiceState(scope)
+          if (refreshAfterMutation && isCurrent()) await refresh()
+        },
+      )
       if (!accepted || !isCurrent()) throw new DOMException('Aborted', 'AbortError')
       return accepted.value
     } catch (failure) {
       if (!isCurrent()) throw new DOMException('Aborted', 'AbortError')
       if (!(failure instanceof DOMException && failure.name === 'AbortError')) {
-        setSubmitStatus('error'); setSubmitError(errorMessage(failure, fallback))
+        setSubmitStatus('error')
+        setSubmitError(errorMessage(failure, fallback))
       }
       throw failure
     }
@@ -152,10 +171,18 @@ export function useWebServicesManager({
     expectedOperation: 'Apply' | 'Delete' = 'Apply',
   ) =>
     submit(
-      () => retryWebServiceDeployment(apiBaseUrl, id, deploymentId, {
-        expectedDeploymentRevision,
-        expectedOperation,
-      }, credential(), tenantId),
+      () =>
+        retryWebServiceDeployment(
+          apiBaseUrl,
+          id,
+          deploymentId,
+          {
+            expectedDeploymentRevision,
+            expectedOperation,
+          },
+          credential(),
+          tenantId,
+        ),
       'Unable to retry the deployment.',
     )
 
@@ -165,19 +192,31 @@ export function useWebServicesManager({
     input: { tenantDomainZoneId: string; relativeName: string },
   ) => {
     await submit(
-      () => addWebServiceHostnameBinding(apiBaseUrl, webServiceId, deploymentId, input, credential(), tenantId),
+      () =>
+        addWebServiceHostnameBinding(
+          apiBaseUrl,
+          webServiceId,
+          deploymentId,
+          input,
+          credential(),
+          tenantId,
+        ),
       'Unable to add the hostname alias.',
     )
     await loadHostnameBindings(webServiceId, deploymentId)
   }
 
-  const removeHostname = async (
-    webServiceId: string,
-    deploymentId: string,
-    bindingId: string,
-  ) => {
+  const removeHostname = async (webServiceId: string, deploymentId: string, bindingId: string) => {
     await submit(
-      () => deleteWebServiceHostnameBinding(apiBaseUrl, webServiceId, deploymentId, bindingId, credential(), tenantId),
+      () =>
+        deleteWebServiceHostnameBinding(
+          apiBaseUrl,
+          webServiceId,
+          deploymentId,
+          bindingId,
+          credential(),
+          tenantId,
+        ),
       'Unable to remove the hostname alias.',
     )
     await loadHostnameBindings(webServiceId, deploymentId)
@@ -187,7 +226,10 @@ export function useWebServicesManager({
     setDeletingId(id)
     setSubmitError('')
     try {
-      await submit(() => deleteWebService(apiBaseUrl, id, credential(), tenantId), 'Unable to delete the web service.')
+      await submit(
+        () => deleteWebService(apiBaseUrl, id, credential(), tenantId),
+        'Unable to delete the web service.',
+      )
       if (!isCurrent()) throw new DOMException('Aborted', 'AbortError')
       removeItem(id)
     } catch (submitErrorValue) {
@@ -205,7 +247,11 @@ export function useWebServicesManager({
     isCurrentPage,
     status,
     error,
-    submitStatus: mutation.busy ? 'loading' as const : submitStatus === 'loading' ? 'idle' as const : submitStatus,
+    submitStatus: mutation.busy
+      ? ('loading' as const)
+      : submitStatus === 'loading'
+        ? ('idle' as const)
+        : submitStatus,
     submitError,
     deletingId,
     ...eligibility,

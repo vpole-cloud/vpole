@@ -1,12 +1,46 @@
-import { ApiError, buildHeaders, fetchJson, request, responseError, sendJson, sendWithoutResponse } from '../../api/transport'
+import {
+  ApiError,
+  buildHeaders,
+  fetchJson,
+  request,
+  responseError,
+  sendJson,
+  sendWithoutResponse,
+} from '../../api/transport'
 import type { PaginatedResponse } from '../../types'
-import type { WebService, WebServiceInput, WebServiceSpec, WebServiceDeployment, WebServiceDeploymentInput, WebServiceDeploymentUpdateInput, WebServiceReleaseHistory, WebServiceRecoveryResponse } from './types'
+import type {
+  WebService,
+  WebServiceInput,
+  WebServiceSpec,
+  WebServiceDeployment,
+  WebServiceDeploymentInput,
+  WebServiceDeploymentUpdateInput,
+  WebServiceReleaseHistory,
+  WebServiceRecoveryResponse,
+} from './types'
 
-export function updateWebServiceDependencies(base: string, service: WebService, config: WebServiceSpec['config'], token?: string, tenantId?: string, signal?: AbortSignal) {
-  return sendJson<{ id: string; resourceRevision: number }>(`${base}/api/v1/web-services/${encodeURIComponent(service.id)}`, {
-    method: 'PUT', headers: buildHeaders(token, tenantId), signal,
-    body: JSON.stringify({ spec: { ...service.spec, config }, exposure: service.exposure.mode, tags: service.tags ?? [], expectedRevision: service.activeRevision }),
-  })
+export function updateWebServiceDependencies(
+  base: string,
+  service: WebService,
+  config: WebServiceSpec['config'],
+  token?: string,
+  tenantId?: string,
+  signal?: AbortSignal,
+) {
+  return sendJson<{ id: string; resourceRevision: number }>(
+    `${base}/api/v1/web-services/${encodeURIComponent(service.id)}`,
+    {
+      method: 'PUT',
+      headers: buildHeaders(token, tenantId),
+      signal,
+      body: JSON.stringify({
+        spec: { ...service.spec, config },
+        exposure: service.exposure.mode,
+        tags: service.tags ?? [],
+        expectedRevision: service.activeRevision,
+      }),
+    },
+  )
 }
 
 export async function fetchWebServices(
@@ -16,15 +50,15 @@ export async function fetchWebServices(
   signal?: AbortSignal,
   inventory: { pageNumber?: number; pageSize?: number; search?: string } = {},
 ) {
-  const query = new URLSearchParams({ pageNumber: String(inventory.pageNumber ?? 1), pageSize: String(inventory.pageSize ?? 8) })
+  const query = new URLSearchParams({
+    pageNumber: String(inventory.pageNumber ?? 1),
+    pageSize: String(inventory.pageSize ?? 8),
+  })
   if (inventory.search?.trim()) query.set('search', inventory.search.trim())
-  return fetchJson<PaginatedResponse<WebService>>(
-    `${apiBaseUrl}/api/v1/web-services?${query}`,
-    {
-      headers: buildHeaders(token, tenantId),
-      signal,
-    },
-  )
+  return fetchJson<PaginatedResponse<WebService>>(`${apiBaseUrl}/api/v1/web-services?${query}`, {
+    headers: buildHeaders(token, tenantId),
+    signal,
+  })
 }
 
 export async function fetchWebService(
@@ -129,16 +163,19 @@ export async function updateWebService(
   token?: string,
   tenantId?: string,
 ) {
-  return sendJson<{ id: string; resourceRevision: number }>(`${apiBaseUrl}/api/v1/web-services/${id}`, {
-    method: 'PUT',
-    headers: buildHeaders(token, tenantId),
-    body: JSON.stringify({
-      expectedRevision: input.expectedRevision,
-      spec: buildWebServiceSpec(input),
-      exposure: input.exposure,
-      tags: input.tags ?? [],
-    }),
-  })
+  return sendJson<{ id: string; resourceRevision: number }>(
+    `${apiBaseUrl}/api/v1/web-services/${id}`,
+    {
+      method: 'PUT',
+      headers: buildHeaders(token, tenantId),
+      body: JSON.stringify({
+        expectedRevision: input.expectedRevision,
+        spec: buildWebServiceSpec(input),
+        exposure: input.exposure,
+        tags: input.tags ?? [],
+      }),
+    },
+  )
 }
 
 export async function fetchWebServiceDeployments(
@@ -225,27 +262,92 @@ export async function fetchWebServiceReleases(
   signal?: AbortSignal,
   pagination: { pageNumber?: number; pageSize?: number } = {},
 ) {
-  const query = new URLSearchParams({ pageNumber: String(pagination.pageNumber ?? 1), pageSize: String(pagination.pageSize ?? 10) })
-  return releaseRequest<WebServiceReleaseHistory>(apiBaseUrl, id, `/releases?${query}`, token, tenantId, signal)
+  const query = new URLSearchParams({
+    pageNumber: String(pagination.pageNumber ?? 1),
+    pageSize: String(pagination.pageSize ?? 10),
+  })
+  return releaseRequest<WebServiceReleaseHistory>(
+    apiBaseUrl,
+    id,
+    `/releases?${query}`,
+    token,
+    tenantId,
+    signal,
+  )
 }
 
-async function releaseRequest<T>(base: string, id: string, path: string, token?: string, tenantId?: string, signal?: AbortSignal, method = 'GET', body?: unknown): Promise<T> {
+async function releaseRequest<T>(
+  base: string,
+  id: string,
+  path: string,
+  token?: string,
+  tenantId?: string,
+  signal?: AbortSignal,
+  method = 'GET',
+  body?: unknown,
+): Promise<T> {
   const response = await request(`${base}/api/v1/web-services/${encodeURIComponent(id)}${path}`, {
-    method, headers: { ...buildHeaders(token, tenantId), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, signal, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    method,
+    headers: {
+      ...buildHeaders(token, tenantId),
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+    },
+    signal,
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
-  if (!response.ok) throw new ApiError(response.status === 409 ? 'Release state changed or recovery is no longer eligible. Refresh and review the selection again.'
-    : response.status === 403 ? 'Your role cannot perform release recovery.' : response.status === 404 ? 'The service or succeeded release is unavailable in this tenant.'
-    : response.status === 422 ? 'Recovery was rejected by current quota, exposure or dependency requirements. Review the current configuration.'
-    : 'Release history or recovery is unavailable. Refresh to reconnect.', response.status)
+  if (!response.ok)
+    throw new ApiError(
+      response.status === 409
+        ? 'Release state changed or recovery is no longer eligible. Refresh and review the selection again.'
+        : response.status === 403
+          ? 'Your role cannot perform release recovery.'
+          : response.status === 404
+            ? 'The service or succeeded release is unavailable in this tenant.'
+            : response.status === 422
+              ? 'Recovery was rejected by current quota, exposure or dependency requirements. Review the current configuration.'
+              : 'Release history or recovery is unavailable. Refresh to reconnect.',
+      response.status,
+    )
   return response.json() as Promise<T>
 }
 
-export function redeployWebService(base: string, id: string, expectedRevision: number, token?: string, tenantId?: string, signal?: AbortSignal) {
-  return releaseRequest<WebServiceRecoveryResponse>(base, id, `/redeploy?${new URLSearchParams({ expectedRevision: String(expectedRevision) })}`, token, tenantId, signal, 'POST')
+export function redeployWebService(
+  base: string,
+  id: string,
+  expectedRevision: number,
+  token?: string,
+  tenantId?: string,
+  signal?: AbortSignal,
+) {
+  return releaseRequest<WebServiceRecoveryResponse>(
+    base,
+    id,
+    `/redeploy?${new URLSearchParams({ expectedRevision: String(expectedRevision) })}`,
+    token,
+    tenantId,
+    signal,
+    'POST',
+  )
 }
 
-export function rollbackWebService(base: string, id: string, input: { targetRevision: number; expectedRevision: number }, token?: string, tenantId?: string, signal?: AbortSignal) {
-  return releaseRequest<WebServiceRecoveryResponse>(base, id, '/rollback', token, tenantId, signal, 'POST', input)
+export function rollbackWebService(
+  base: string,
+  id: string,
+  input: { targetRevision: number; expectedRevision: number },
+  token?: string,
+  tenantId?: string,
+  signal?: AbortSignal,
+) {
+  return releaseRequest<WebServiceRecoveryResponse>(
+    base,
+    id,
+    '/rollback',
+    token,
+    tenantId,
+    signal,
+    'POST',
+    input,
+  )
 }
 
 export async function deleteWebService(

@@ -1,5 +1,13 @@
 import { buildHeaders, fetchJson, sendJson, sendWithoutResponse } from '../../api/transport'
-import type { BeginGitHubInstallationResponse, GitProviderConnection, GitProviderPage, ProviderBranch, ProviderRepository, RepositoryAnalysis, SourceRepository } from './gitTypes'
+import type {
+  BeginGitHubInstallationResponse,
+  GitProviderConnection,
+  GitProviderPage,
+  ProviderBranch,
+  ProviderRepository,
+  RepositoryAnalysis,
+  SourceRepository,
+} from './gitTypes'
 
 export async function fetchGitProviderConnections(
   apiBaseUrl: string,
@@ -7,13 +15,10 @@ export async function fetchGitProviderConnections(
   tenantId?: string,
   signal?: AbortSignal,
 ) {
-  return fetchJson<GitProviderConnection[]>(
-    `${apiBaseUrl}/api/v1/git-provider-connections`,
-    {
-      headers: buildHeaders(token, tenantId),
-      signal,
-    },
-  )
+  return fetchJson<GitProviderConnection[]>(`${apiBaseUrl}/api/v1/git-provider-connections`, {
+    headers: buildHeaders(token, tenantId),
+    signal,
+  })
 }
 
 export async function beginGitHubInstallation(

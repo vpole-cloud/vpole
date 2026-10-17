@@ -4,14 +4,33 @@ import { createQueryClient, QuerySessionContext, type QuerySession } from './que
 
 function OwnedSession({ identity, children }: { identity: string; children: ReactNode }) {
   const active = useRef(true)
-  const [session] = useState<QuerySession>(() => ({ identity, id: crypto.randomUUID(), client: createQueryClient(), isActive: () => active.current }))
+  const [session] = useState<QuerySession>(() => ({
+    identity,
+    id: crypto.randomUUID(),
+    client: createQueryClient(),
+    isActive: () => active.current,
+  }))
   useLayoutEffect(() => {
     active.current = true
-    return () => { active.current = false; void session.client.cancelQueries(); session.client.clear() }
+    return () => {
+      active.current = false
+      void session.client.cancelQueries()
+      session.client.clear()
+    }
   }, [session])
-  return <QuerySessionContext.Provider value={session}><QueryClientProvider client={session.client}>{children}</QueryClientProvider></QuerySessionContext.Provider>
+  return (
+    <QuerySessionContext.Provider value={session}>
+      <QueryClientProvider client={session.client}>{children}</QueryClientProvider>
+    </QuerySessionContext.Provider>
+  )
 }
 export function SessionQueries({ identity, children }: { identity: string; children: ReactNode }) {
   const parent = useContext(QuerySessionContext)
-  return parent?.identity === identity ? children : <OwnedSession key={identity} identity={identity}>{children}</OwnedSession>
+  return parent?.identity === identity ? (
+    children
+  ) : (
+    <OwnedSession key={identity} identity={identity}>
+      {children}
+    </OwnedSession>
+  )
 }

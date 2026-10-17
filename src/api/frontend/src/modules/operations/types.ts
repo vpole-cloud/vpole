@@ -33,15 +33,42 @@ export interface ResourcePlacement {
 }
 
 export interface RuntimeDiagnosticInstance {
-  uid: string; name: string; phase: string; ready: boolean; currentGeneration: boolean; restartCount: number; reasons: string[]
-  containers: { name: string; kind: 'Application' | 'Init'; previousAvailable: boolean }[]; containersTruncated: boolean
+  uid: string
+  name: string
+  phase: string
+  ready: boolean
+  currentGeneration: boolean
+  restartCount: number
+  reasons: string[]
+  containers: { name: string; kind: 'Application' | 'Init'; previousAvailable: boolean }[]
+  containersTruncated: boolean
 }
 
 export interface ResourceDeploymentDiagnostics {
   observationVersion?: number | null
-  deploymentId: string; resourceType: string; resourceId: string; targetId: string; deploymentRevision: number; desiredGeneration: number; checkedAtUtc: string
-  diagnostics: { kind: 'Unavailable'; reason: string } | { kind: 'Available'; instances: RuntimeDiagnosticInstance[]; instancesTruncated: boolean
-    events: { objectKind: string; objectName: string; reason: string; count: number; lastSeenAtUtc?: string | null }[]; eventsTruncated: boolean; eventsUnavailableReason?: string | null }
+  deploymentId: string
+  resourceType: string
+  resourceId: string
+  targetId: string
+  deploymentRevision: number
+  desiredGeneration: number
+  checkedAtUtc: string
+  diagnostics:
+    | { kind: 'Unavailable'; reason: string }
+    | {
+        kind: 'Available'
+        instances: RuntimeDiagnosticInstance[]
+        instancesTruncated: boolean
+        events: {
+          objectKind: string
+          objectName: string
+          reason: string
+          count: number
+          lastSeenAtUtc?: string | null
+        }[]
+        eventsTruncated: boolean
+        eventsUnavailableReason?: string | null
+      }
 }
 
 export interface ResourceEndpointDiscovery {
@@ -49,12 +76,27 @@ export interface ResourceEndpointDiscovery {
   resourceId: string
   displayName: string
   availability: 'Supported' | 'Unsupported'
-  endpoints: { id: string; displayName: string; protocol: string; transport: string; port: number; configuration: { key: string; displayName: string; value: string }[] }[]
+  endpoints: {
+    id: string
+    displayName: string
+    protocol: string
+    transport: string
+    port: number
+    configuration: { key: string; displayName: string; value: string }[]
+  }[]
   topology: { status: 'NotEvaluated' | 'Eligible' | 'Ineligible'; reasonCode: string | null }
 }
 
 export interface ResourceDeploymentOperation {
-  deployment: { id: string; resourceType: string; resourceId: string; resourceGroupId: string; placement: ResourcePlacement; createdAtUtc: string; updatedAtUtc: string }
+  deployment: {
+    id: string
+    resourceType: string
+    resourceId: string
+    resourceGroupId: string
+    placement: ResourcePlacement
+    createdAtUtc: string
+    updatedAtUtc: string
+  }
   resourceDisplayName: string | null
   phase: 'Waiting' | 'Accepted' | 'Running' | 'Applied' | 'Failed' | 'Deleted'
   attemptCount: number
@@ -70,18 +112,52 @@ export interface ResourceDeploymentOperationsPage extends PaginatedResponse<Reso
   checkedAtUtc: string
 }
 
-export interface ObservedWorkloadPod { name: string; phase: string; ready: boolean; currentGeneration: boolean; restartCount: number; reasons: string[] }
-
-export type WorkloadObservation = { kind: 'Unavailable'; reason: string } | {
-  kind: 'Observed'; ready: boolean; rolloutCurrent: boolean; desiredReplicas: number; currentReplicas: number;
-  updatedReplicas: number; readyReplicas: number; availableReplicas: number; podsTruncated: boolean;
-  pods: ObservedWorkloadPod[]; events: { reason: string; count: number; lastSeenAtUtc: string | null }[]; eventsUnavailableReason: string | null
+export interface ObservedWorkloadPod {
+  name: string
+  phase: string
+  ready: boolean
+  currentGeneration: boolean
+  restartCount: number
+  reasons: string[]
 }
+
+export type WorkloadObservation =
+  | { kind: 'Unavailable'; reason: string }
+  | {
+      kind: 'Observed'
+      ready: boolean
+      rolloutCurrent: boolean
+      desiredReplicas: number
+      currentReplicas: number
+      updatedReplicas: number
+      readyReplicas: number
+      availableReplicas: number
+      podsTruncated: boolean
+      pods: ObservedWorkloadPod[]
+      events: { reason: string; count: number; lastSeenAtUtc: string | null }[]
+      eventsUnavailableReason: string | null
+    }
 
 export interface ResourceDeploymentObservation {
   observationVersion?: number | null
-  deploymentId: string; deploymentRevision: number; desiredGeneration: number; checkedAtUtc: string; observation: WorkloadObservation
+  deploymentId: string
+  deploymentRevision: number
+  desiredGeneration: number
+  checkedAtUtc: string
+  observation: WorkloadObservation
 }
 
-export interface RuntimeLogSelection { instanceUid: string; container: string; expectedRevision: number; follow: boolean; previous: boolean; tailLines: number }
-export interface RuntimeLogFrame { kind: 'Opened' | 'Output' | 'Ended'; text: string | null; reason: string | null; outputBytes: number }
+export interface RuntimeLogSelection {
+  instanceUid: string
+  container: string
+  expectedRevision: number
+  follow: boolean
+  previous: boolean
+  tailLines: number
+}
+export interface RuntimeLogFrame {
+  kind: 'Opened' | 'Output' | 'Ended'
+  text: string | null
+  reason: string | null
+  outputBytes: number
+}

@@ -1,8 +1,7 @@
 import type { RepositoryAnalysis } from './gitTypes'
 
 export type GitHubConnectionNotice =
-  | { status: 'connected'; connectionId?: string }
-  | { status: 'error'; reason: string }
+  { status: 'connected'; connectionId?: string } | { status: 'error'; reason: string }
 
 export interface IntegrationNavigation {
   view: string
@@ -87,7 +86,7 @@ export function integrationSelectionReducer(
       const connectionId =
         state.connectionId && action.connectionIds.includes(state.connectionId)
           ? state.connectionId
-          : action.connectionIds[0] ?? null
+          : (action.connectionIds[0] ?? null)
       return connectionId === state.connectionId
         ? state
         : { ...initialIntegrationSelection, connectionId }

@@ -9,10 +9,13 @@ export async function fetchIsolationScopes(
   tenantId?: string,
   signal?: AbortSignal,
 ) {
-  return fetchJson<IsolationScope[]>(`${apiBaseUrl}/api/v1/resource-groups/${encodeURIComponent(resourceGroupId)}/isolation-scopes`, {
-    headers: buildHeaders(token, tenantId),
-    signal,
-  })
+  return fetchJson<IsolationScope[]>(
+    `${apiBaseUrl}/api/v1/resource-groups/${encodeURIComponent(resourceGroupId)}/isolation-scopes`,
+    {
+      headers: buildHeaders(token, tenantId),
+      signal,
+    },
+  )
 }
 
 export async function fetchResourceGroups(
@@ -22,7 +25,10 @@ export async function fetchResourceGroups(
   signal?: AbortSignal,
   inventory: { pageNumber?: number; pageSize?: number; search?: string } = {},
 ) {
-  const query = new URLSearchParams({ pageNumber: String(inventory.pageNumber ?? 1), pageSize: String(inventory.pageSize ?? 6) })
+  const query = new URLSearchParams({
+    pageNumber: String(inventory.pageNumber ?? 1),
+    pageSize: String(inventory.pageSize ?? 6),
+  })
   if (inventory.search?.trim()) query.set('search', inventory.search.trim())
   return fetchJson<PaginatedResponse<ResourceGroup>>(
     `${apiBaseUrl}/api/v1/resource-groups?${query}`,
@@ -33,10 +39,20 @@ export async function fetchResourceGroups(
   )
 }
 
-export async function fetchResourceGroup(apiBaseUrl: string, id: string, token?: string, tenantId?: string, signal?: AbortSignal) {
-  return fetchJson<ResourceGroup>(`${apiBaseUrl}/api/v1/resource-groups/${encodeURIComponent(id)}`, {
-    headers: buildHeaders(token, tenantId), signal,
-  })
+export async function fetchResourceGroup(
+  apiBaseUrl: string,
+  id: string,
+  token?: string,
+  tenantId?: string,
+  signal?: AbortSignal,
+) {
+  return fetchJson<ResourceGroup>(
+    `${apiBaseUrl}/api/v1/resource-groups/${encodeURIComponent(id)}`,
+    {
+      headers: buildHeaders(token, tenantId),
+      signal,
+    },
+  )
 }
 
 export async function fetchResourceGroupResources(
