@@ -1,5 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Database.Observation;
 
 namespace Pole.Features.ResourceDeployments.Application.Persistence.Observation;
 
@@ -37,7 +38,7 @@ internal sealed record ObservationControlDocument(
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
     DateTime? IdleSinceUtc,
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc) : IMongoObservationControl;
 
 internal sealed record ObservationDemandDocument(
     [property: BsonId] string Id,
@@ -51,7 +52,7 @@ internal sealed record ObservationDemandDocument(
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
     DateTime OriginalExpiresAtUtc,
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
-    DateTime ExpiresAtUtc);
+    DateTime ExpiresAtUtc) : IMongoObservationDemand;
 
 internal sealed record ObservationSnapshotDocument(
     [property: BsonId, BsonRepresentation(BsonType.ObjectId)]
@@ -68,7 +69,7 @@ internal sealed record ObservationSnapshotDocument(
     StoredDiagnostics? Diagnostics,
     string Fingerprint,
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
-    DateTime? ExpiresAtUtc);
+    DateTime? ExpiresAtUtc) : IMongoObservationSnapshot;
 
 internal sealed record StoredObservation(
     string Kind,

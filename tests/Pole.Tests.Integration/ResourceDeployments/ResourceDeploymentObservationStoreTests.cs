@@ -13,6 +13,7 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Events;
 using Pole.Observability;
+using Pole.Tests.Integration.Observation;
 using Pole.Tests.Integration.Infrastructure;
 using Pole.Workloads;
 using Xunit;
@@ -39,6 +40,57 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
     private IMongoCollection<BsonDocument> Targets => fixture.Database.GetCollection<BsonDocument>("DeploymentTargets");
     public Task InitializeAsync() => fixture.ResetDatabaseAsync();
     public Task DisposeAsync() => Task.CompletedTask;
+
+    [Fact]
+    public async Task HistoricalRawDocumentsRemainReadableRenewableAndWritableWithoutMigration()
+    {
+        var seeded = await SeedAsync();
+        var context = seeded.Context;
+        var now = await ServerNowAsync();
+        var (_, control) = ObservationDocumentCompatibilityTests.Legacy("runtime-control");
+        var (_, demand) = ObservationDocumentCompatibilityTests.Legacy("runtime-demand");
+        var (_, snapshot) = ObservationDocumentCompatibilityTests.Legacy("runtime-snapshot");
+        foreach (var document in new[] { control, snapshot })
+        {
+            document["_id"] = ObjectId.Parse(context.Deployment.Id);
+            document["TenantId"] = ObjectId.Parse(context.Deployment.TenantId);
+            document["Pin"] = ObservationValueMappings.Pin(context).ToBsonDocument();
+            document["BindingId"] = "owned-controller";
+        }
+        control["LeaseExpiresAtUtc"] = now.AddSeconds(30);
+        control["UpdatedAtUtc"] = now;
+        snapshot["CheckedAtUtc"] = now;
+        demand["_id"] = $"{context.Deployment.TenantId}/{context.Deployment.Id}/interest";
+        demand["TenantId"] = ObjectId.Parse(context.Deployment.TenantId);
+        demand["DeploymentId"] = ObjectId.Parse(context.Deployment.Id);
+        demand["OriginalExpiresAtUtc"] = now.AddMinutes(5);
+        demand["ExpiresAtUtc"] = now.AddMinutes(1);
+        await fixture.Database.GetCollection<BsonDocument>(MongoResourceDeploymentObservationStore.ControlsCollection)
+            .InsertOneAsync(control);
+        await fixture.Database.GetCollection<BsonDocument>(MongoResourceDeploymentObservationStore.DemandsCollection)
+            .InsertOneAsync(demand);
+        await fixture.Database.GetCollection<BsonDocument>(MongoResourceDeploymentObservationStore.SnapshotsCollection)
+            .InsertOneAsync(snapshot);
+
+        var store = Store();
+        var loaded = await store.LoadControlAsync(new(context.Deployment.TenantId, context.Deployment.Id));
+        Assert.Equal(8, loaded!.ObservationVersion);
+        Assert.Equal(8, (await store.LoadFreshSnapshotAsync(context))!.ObservationVersion);
+        var lease = new ObservationLease(context.Deployment.TenantId, context.Deployment.Id, "replica", "lease-token", 6);
+        Assert.IsType<ObservationMutationAccepted>((await store.RenewLeaseAsync(lease, context)).Value);
+        Assert.IsType<ObservationMutationAccepted>((await store.RenewDemandAsync(
+            new(new(context.Deployment.TenantId, context.Deployment.Id, "interest", "connection", "session"),
+                now.AddMinutes(10)), context)).Value);
+        var committed = Assert.IsType<ResourceDeploymentSharedObservation>((await store.TryCommitSnapshotAsync(
+            lease, context, 7, "owned-controller", Sample())).Value);
+        Assert.Equal(9, committed.ObservationVersion);
+        var written = await fixture.Database
+            .GetCollection<BsonDocument>(MongoResourceDeploymentObservationStore.SnapshotsCollection)
+            .Find(new BsonDocument("_id", ObjectId.Parse(context.Deployment.Id))).SingleAsync();
+        Assert.Equal(snapshot.Names, written.Names);
+        Assert.Equal(snapshot["Pin"], written["Pin"]);
+        Assert.Equal(9, written["ObservationVersion"].AsInt64);
+    }
 
     [Fact]
     public async Task Representative_LeaseSourceAndSnapshotCommitTogetherWithMinimalTenantOutbox()

@@ -1,21 +1,12 @@
-using MongoDB.Bson;
+using System.Linq.Expressions;
 using MongoDB.Driver;
 
 namespace Pole.Database.Observation;
 
 public sealed record MongoObservationScope(
     string Id,
-    string? TenantId,
-    string DemandSubjectField)
+    string? TenantId)
 {
-    public BsonDocument Control => TenantId is null
-        ? new("_id", ObjectId.Parse(Id))
-        : new() { { "_id", ObjectId.Parse(Id) }, { "TenantId", ObjectId.Parse(TenantId) } };
-
-    public BsonDocument Demands => TenantId is null
-        ? new(DemandSubjectField, ObjectId.Parse(Id))
-        : new() { { DemandSubjectField, ObjectId.Parse(Id) }, { "TenantId", ObjectId.Parse(TenantId) } };
-
     public string DemandKey(string subscription) =>
         TenantId is null ? $"{Id}/{subscription}" : $"{TenantId}/{Id}/{subscription}";
 }
@@ -52,16 +43,66 @@ public enum MongoObservationRejection
 
 public sealed record MongoObservationRejected(MongoObservationRejection Reason);
 
-public union MongoObservationOutcome(
-    BsonDocument,
-    MongoObservationRejected);
+public sealed record MongoObservationAccepted;
+
+public sealed record MongoObservationSuccess<T>(T Value) where T : notnull;
+
+public union MongoObservationOutcome<T>(
+    MongoObservationSuccess<T>,
+    MongoObservationRejected)
+    where T : notnull;
+
+// Interfaces describe common fields without introducing a BSON base class or discriminator.
+public interface IMongoObservationControl
+{
+    string Id { get; }
+    long Epoch { get; }
+    long SourceControlVersion { get; }
+    long ObservationVersion { get; }
+    long DemandFence { get; }
+    string? InstanceId { get; }
+    string? Token { get; }
+    DateTime LeaseExpiresAtUtc { get; }
+    bool SourceHealthy { get; }
+    DateTime? IdleSinceUtc { get; }
+    DateTime UpdatedAtUtc { get; }
+}
+
+public interface IMongoObservationDemand
+{
+    string Id { get; }
+    string SubscriptionId { get; }
+    string ConnectionId { get; }
+    string SessionId { get; }
+    DateTime OriginalExpiresAtUtc { get; }
+    DateTime ExpiresAtUtc { get; }
+}
+
+public interface IMongoObservationSnapshot
+{
+    string Id { get; }
+    long SourceControlVersion { get; }
+    long ObservationVersion { get; }
+    DateTime CheckedAtUtc { get; }
+    DateTime? ExpiresAtUtc { get; }
+}
 
 /// <summary>Feature-owned context fencing and event creation participate in the SAME Mongo transaction.</summary>
-public interface IMongoObservationDefinition<TContext>
+public interface IMongoObservationDefinition<TContext, TControl, TDemand, TSnapshot>
+    where TControl : IMongoObservationControl
+    where TDemand : IMongoObservationDemand
+    where TSnapshot : IMongoObservationSnapshot
 {
     MongoObservationScope Scope(TContext context);
-    BsonDocument Pin(TContext context);
+    MongoObservationScope ScopeOf(TControl control);
+    Expression<Func<TDemand, string>> DemandSubject { get; }
+    Expression<Func<TControl, string?>> Source { get; }
+    Expression<Func<TSnapshot, string>> SnapshotSource { get; }
+    TControl CreateControl(TContext context);
+    bool HasPin(TControl control, TContext context);
+    UpdateDefinition<TControl> PinUpdate(TContext context);
+    FilterDefinition<TSnapshot> SnapshotPin(TContext context);
     Task<MongoObservationRejected?> FenceAsync(TContext context, IClientSessionHandle session, CancellationToken ct);
-    Task PublishAsync(BsonDocument control, IClientSessionHandle session, CancellationToken ct);
-    bool AcceptSnapshot(BsonDocument document) => true;
+    Task PublishAsync(TControl control, IClientSessionHandle session, CancellationToken ct);
+    bool AcceptSnapshot(TSnapshot document) => true;
 }

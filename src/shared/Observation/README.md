@@ -25,9 +25,16 @@ is platform-admin scoped and covers the target inventory, including PVCs across 
 
 ## Transactional adapter
 
-`Pole.Database.Observation.MongoObservationStore<TContext>` implements the shared Mongo protocol.
+`Pole.Database.Observation.MongoObservationStore<TContext,TControl,TDemand,TSnapshot>` implements the
+shared Mongo protocol using concrete feature-owned document types.
 Feature-local stores remain the public typed boundaries and retain collection names, BSON documents,
 indexes, validation, sanitized payload mapping and integration event identities.
+
+Common document interfaces describe metadata without BSON inheritance or discriminators.
+Collections, operation results, snapshot factories and outbox callbacks are typed; BSON documents
+are confined to Mongo filters, expressions and update pipelines. Feature field expressions and typed
+pin updates are rendered with the concrete document serializers. Historical BSON round-trip and
+raw-document persistence tests protect existing ObjectId, UTC, null and field-name representations.
 
 `IMongoObservationDefinition` supplies a scope, pinned context, transactional context fence,
 snapshot acceptance rule, and outbox callback. Tenant workload scopes include BOTH tenant and
