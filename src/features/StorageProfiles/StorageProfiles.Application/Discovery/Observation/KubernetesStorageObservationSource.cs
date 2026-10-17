@@ -50,22 +50,11 @@ public sealed class KubernetesStorageObservationSource(
 
     private sealed class StreamState
     {
-        public bool Listed
-        {
-            get;
-            set;
-        }
+        public bool Listed { get; set; }
 
-        public bool Ready
-        {
-            get;
-            set;
-        }
+        public bool Ready { get; set; }
 
-        public Dictionary<string, NativeItem> Items
-        {
-            get;
-        } = new(StringComparer.Ordinal);
+        public Dictionary<string, NativeItem> Items { get; } = new(StringComparer.Ordinal);
     }
 
     private sealed class SourceUnavailableException : Exception;

@@ -60,22 +60,11 @@ public sealed class RealtimeHubTests
     {
         public string Topic => topic;
 
-        public HashSet<string> Interests
-        {
-            get;
-        } = [];
+        public HashSet<string> Interests { get; } = [];
 
-        public bool FailSubscribe
-        {
-            get;
-            set;
-        }
+        public bool FailSubscribe { get; set; }
 
-        public bool FailUnsubscribe
-        {
-            get;
-            set;
-        }
+        public bool FailUnsubscribe { get; set; }
 
         public Task<bool> SubscribeAsync(RealtimeSubscription subscription,
             ClaimsPrincipal principal,
@@ -107,15 +96,9 @@ public sealed class RealtimeHubTests
         public override string UserIdentifier => "viewer";
         public override ClaimsPrincipal User => IdentityFixture.User();
 
-        public override IDictionary<object, object?> Items
-        {
-            get;
-        } = new Dictionary<object, object?>();
+        public override IDictionary<object, object?> Items { get; } = new Dictionary<object, object?>();
 
-        public override IFeatureCollection Features
-        {
-            get;
-        } = new FeatureCollection();
+        public override IFeatureCollection Features { get; } = new FeatureCollection();
 
         public override CancellationToken ConnectionAborted => CancellationToken.None;
 

@@ -238,11 +238,7 @@ public sealed class RealtimeMetricsTests
 
     private sealed class Clock : TimeProvider
     {
-        public DateTimeOffset Now
-        {
-            get;
-            set;
-        } = new(2026, 10, 13, 12, 0, 0, TimeSpan.Zero);
+        public DateTimeOffset Now { get; set; } = new(2026, 10, 13, 12, 0, 0, TimeSpan.Zero);
 
         public override DateTimeOffset GetUtcNow() => Now;
     }
@@ -253,15 +249,9 @@ public sealed class RealtimeMetricsTests
         public override string UserIdentifier => "viewer";
         public override ClaimsPrincipal User => IdentityFixture.User();
 
-        public override IDictionary<object, object?> Items
-        {
-            get;
-        } = new Dictionary<object, object?>();
+        public override IDictionary<object, object?> Items { get; } = new Dictionary<object, object?>();
 
-        public override IFeatureCollection Features
-        {
-            get;
-        } = new FeatureCollection();
+        public override IFeatureCollection Features { get; } = new FeatureCollection();
 
         public override CancellationToken ConnectionAborted => CancellationToken.None;
 
@@ -272,11 +262,7 @@ public sealed class RealtimeMetricsTests
 
     private sealed class Client : IRealtimeClient
     {
-        public Exception? SendFailure
-        {
-            get;
-            init;
-        }
+        public Exception? SendFailure { get; init; }
 
         public Task Changed(RealtimeChange change) =>
             SendFailure is { } failure ? Task.FromException(failure) : Task.CompletedTask;
@@ -290,10 +276,7 @@ public sealed class RealtimeMetricsTests
 
     private sealed class HubContext(Client client) : IHubContext<RealtimeHub, IRealtimeClient>
     {
-        public IHubClients<IRealtimeClient> Clients
-        {
-            get;
-        } = new RecordingClients(client);
+        public IHubClients<IRealtimeClient> Clients { get; } = new RecordingClients(client);
 
         public IGroupManager Groups => throw new NotSupportedException();
     }
@@ -321,10 +304,7 @@ public sealed class RealtimeMetricsTests
 
     private sealed class MetricCapture : IDisposable
     {
-        public ConcurrentQueue<Measurement> Measurements
-        {
-            get;
-        } = new();
+        public ConcurrentQueue<Measurement> Measurements { get; } = new();
 
         private readonly MeterListener listener = new();
 

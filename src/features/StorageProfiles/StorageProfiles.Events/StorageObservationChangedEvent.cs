@@ -9,9 +9,5 @@ public sealed record StorageObservationChangedEvent(
     long ConnectionVersion,
     long ObservationVersion) : IPoleEvent
 {
-    public EventCore EventCore
-    {
-        get;
-        init;
-    } = EventCore.Create();
+    public EventCore EventCore { get; init; } = EventCore.Create();
 }

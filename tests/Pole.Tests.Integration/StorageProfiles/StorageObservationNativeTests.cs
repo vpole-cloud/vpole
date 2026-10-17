@@ -172,29 +172,15 @@ internal sealed class StorageNativeApi : IDisposable
 {
     private readonly bool empty;
 
-    public NativeWatchTestHandler Handler
-    {
-        get;
-    }
+    public NativeWatchTestHandler Handler { get; }
 
-    public ConcurrentDictionary<string, NativeWatchTestStream> Streams
-    {
-        get;
-    } = new(StringComparer.Ordinal);
+    public ConcurrentDictionary<string, NativeWatchTestStream> Streams { get; } = new(StringComparer.Ordinal);
 
     public ConcurrentQueue<Uri> Requests => Handler.Requests;
 
-    public bool ExtraClass
-    {
-        get;
-        init;
-    }
+    public bool ExtraClass { get; init; }
 
-    public string Provisioner
-    {
-        get;
-        init;
-    } = "driver.example";
+    public string Provisioner { get; init; } = "driver.example";
 
     internal static string MaximumQualifiedProvisioner =>
         string.Join('.', new string('a', 63), new string('b', 63), new string('c', 63), new string('d', 61)) + "/" +

@@ -9,9 +9,5 @@ public sealed record ResourceConnectionChangedEvent(
     long Revision,
     long Generation) : IPoleEvent
 {
-    public EventCore EventCore
-    {
-        get;
-        init;
-    } = EventCore.Create();
+    public EventCore EventCore { get; init; } = EventCore.Create();
 }

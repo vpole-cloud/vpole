@@ -604,54 +604,25 @@ public sealed class RealtimeHeartbeatTests
 
     private sealed class Scenario
     {
-        public MemoryTickets Tickets
-        {
-            get;
-        } = new();
+        public MemoryTickets Tickets { get; } = new();
 
-        public MemorySubscriptions Subscriptions
-        {
-            get;
-        } = new();
+        public MemorySubscriptions Subscriptions { get; } = new();
 
-        public RenewalLifecycle Owner
-        {
-            get;
-        } = new();
+        public RenewalLifecycle Owner { get; } = new();
 
-        public RenewalLifecycle DisabledOwner
-        {
-            get;
-        } = new("disabled");
+        public RenewalLifecycle DisabledOwner { get; } = new("disabled");
 
-        public RenewalLifecycle UnknownOwner
-        {
-            get;
-        } = new("unknown");
+        public RenewalLifecycle UnknownOwner { get; } = new("unknown");
 
-        public RecordingClient Client
-        {
-            get;
-        } = new();
+        public RecordingClient Client { get; } = new();
 
-        public FixedClock Clock
-        {
-            get;
-        } = new();
+        public FixedClock Clock { get; } = new();
 
         public AuthenticationTicket Ticket => Tickets.Tickets["viewer"];
 
-        public RealtimeHub Hub
-        {
-            get;
-            private set;
-        } = null!;
+        public RealtimeHub Hub { get; private set; } = null!;
 
-        public Func<string, string, LoadTenantMemberOutcome> Membership
-        {
-            get;
-            set;
-        } =
+        public Func<string, string, LoadTenantMemberOutcome> Membership { get; set; } =
             (tenant, user) => new TenantMemberSnapshot(tenant, user, TenantMembershipRole.Viewer);
 
         public static async Task<Scenario> CreateAsync(bool admin = false, string[]? enabledTopics = null)
@@ -691,40 +662,17 @@ public sealed class RealtimeHeartbeatTests
     {
         public string Topic => topic;
 
-        public HashSet<string> Interests
-        {
-            get;
-        } = [];
+        public HashSet<string> Interests { get; } = [];
 
-        public int SubscribeCalls
-        {
-            get;
-            private set;
-        }
+        public int SubscribeCalls { get; private set; }
 
-        public int RenewCalls
-        {
-            get;
-            private set;
-        }
+        public int RenewCalls { get; private set; }
 
-        public int UnsubscribeCalls
-        {
-            get;
-            private set;
-        }
+        public int UnsubscribeCalls { get; private set; }
 
-        public bool Covered
-        {
-            get;
-            set;
-        } = true;
+        public bool Covered { get; set; } = true;
 
-        public Action? OnRenew
-        {
-            get;
-            set;
-        }
+        public Action? OnRenew { get; set; }
 
         public Task<bool> SubscribeAsync(RealtimeSubscription subscription,
             ClaimsPrincipal principal,
@@ -752,11 +700,7 @@ public sealed class RealtimeHeartbeatTests
 
     private sealed class FixedClock : TimeProvider
     {
-        public DateTimeOffset Now
-        {
-            get;
-            set;
-        } = new(2026, 10, 12, 12, 0, 0, TimeSpan.Zero);
+        public DateTimeOffset Now { get; set; } = new(2026, 10, 12, 12, 0, 0, TimeSpan.Zero);
 
         public override DateTimeOffset GetUtcNow() => Now;
     }
@@ -767,15 +711,9 @@ public sealed class RealtimeHeartbeatTests
         public override string UserIdentifier => "viewer";
         public override ClaimsPrincipal User => principal;
 
-        public override IDictionary<object, object?> Items
-        {
-            get;
-        } = new Dictionary<object, object?>();
+        public override IDictionary<object, object?> Items { get; } = new Dictionary<object, object?>();
 
-        public override IFeatureCollection Features
-        {
-            get;
-        } = new FeatureCollection();
+        public override IFeatureCollection Features { get; } = new FeatureCollection();
 
         public override CancellationToken ConnectionAborted => CancellationToken.None;
 
@@ -786,21 +724,11 @@ public sealed class RealtimeHeartbeatTests
 
     private sealed class RecordingClient : IRealtimeClient
     {
-        public List<RealtimeChange> Changes
-        {
-            get;
-        } = [];
+        public List<RealtimeChange> Changes { get; } = [];
 
-        public List<string?> AccessRevocations
-        {
-            get;
-        } = [];
+        public List<string?> AccessRevocations { get; } = [];
 
-        public int SessionRevocations
-        {
-            get;
-            private set;
-        }
+        public int SessionRevocations { get; private set; }
 
         public Task Changed(RealtimeChange change)
         {

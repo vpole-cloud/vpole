@@ -10,9 +10,5 @@ public sealed record SearchProjectionChangedEvent(
     long ResourceRevision,
     long? ObservedGeneration = null) : IPoleEvent
 {
-    public EventCore EventCore
-    {
-        get;
-        init;
-    } = EventCore.Create();
+    public EventCore EventCore { get; init; } = EventCore.Create();
 }

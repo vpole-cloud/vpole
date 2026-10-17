@@ -9,9 +9,5 @@ public sealed record DomainMetadataChangedEvent(
     long ZoneRevision,
     string? BindingId = null) : IPoleEvent
 {
-    public EventCore EventCore
-    {
-        get;
-        init;
-    } = EventCore.Create();
+    public EventCore EventCore { get; init; } = EventCore.Create();
 }

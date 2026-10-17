@@ -251,11 +251,7 @@ public sealed class KubernetesNativeWatchTests
 
     private sealed class TrackingContent(bool throws = false) : StringContent("{}")
     {
-        public bool Disposed
-        {
-            get;
-            private set;
-        }
+        public bool Disposed { get; private set; }
 
         protected override void Dispose(bool disposing)
         {
@@ -274,15 +270,9 @@ public sealed class KubernetesNativeWatchTests
 
     private sealed class NoWatchHeadersHandler : DelegatingHandler
     {
-        public TaskCompletionSource Entered
-        {
-            get;
-        } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public TaskCompletionSource<bool> CancellationObserved
-        {
-            get;
-        } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<bool> CancellationObserved { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
             CancellationToken cancellationToken)
@@ -353,10 +343,7 @@ internal sealed class NativeWatchTestHandler(
     Func<HttpRequestMessage, string> list,
     Func<HttpRequestMessage, NativeWatchTestStream> watch) : DelegatingHandler
 {
-    public ConcurrentQueue<Uri> Requests
-    {
-        get;
-    } = new();
+    public ConcurrentQueue<Uri> Requests { get; } = new();
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
         CancellationToken cancellationToken)
@@ -378,17 +365,9 @@ internal sealed class NativeWatchTestStream : Stream
     private byte[]? _current;
     private int _position;
 
-    public int FramesWritten
-    {
-        get;
-        private set;
-    }
+    public int FramesWritten { get; private set; }
 
-    public bool Disposed
-    {
-        get;
-        private set;
-    }
+    public bool Disposed { get; private set; }
 
     private readonly TaskCompletionSource _nextReadAfterFrame = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public Task NextReadAfterFrame => _nextReadAfterFrame.Task;
@@ -489,11 +468,7 @@ internal sealed class NativeWatchTestClock : TimeProvider
 
     private sealed class ManualTimer(NativeWatchTestClock owner, TimerCallback callback, object? state) : ITimer
     {
-        public DateTimeOffset Due
-        {
-            get;
-            set;
-        } = DateTimeOffset.MaxValue;
+        public DateTimeOffset Due { get; set; } = DateTimeOffset.MaxValue;
 
         public void Fire() => callback(state);
 

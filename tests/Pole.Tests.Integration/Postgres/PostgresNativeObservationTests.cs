@@ -465,26 +465,16 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
 {
     private readonly ConcurrentDictionary<string, NativeWatchTestStream> _streams = new(StringComparer.Ordinal);
 
-    public ConcurrentQueue<Uri> Requests
-    {
-        get;
-    } = new();
+    public ConcurrentQueue<Uri> Requests { get; } = new();
 
     public IEnumerable<NativeWatchTestStream> Streams => _streams.Values;
     private readonly PostgresCluster _resource;
 
-    public PostgresNativeTestApi? ResourceIdentity
-    {
-        get;
-        set;
-    }
+    public PostgresNativeTestApi? ResourceIdentity { get; set; }
 
     public PostgresCluster Resource => ResourceIdentity?.Resource ?? _resource;
 
-    public ResourceDeploymentObservationContext Context
-    {
-        get;
-    }
+    public ResourceDeploymentObservationContext Context { get; }
 
     private readonly WorkloadIdentityLabels _identity;
     public WorkloadIdentityLabels Identity => ResourceIdentity?.Identity ?? _identity;
@@ -492,71 +482,27 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
     public bool Operator => Resource.Spec.DeploymentMode == PostgresDeploymentMode.Operator;
     public string ControllerKind => Operator ? "clusters" : "statefulsets";
 
-    public bool ControllerPresent
-    {
-        get;
-        set;
-    } = true;
+    public bool ControllerPresent { get; set; } = true;
 
-    public string? ControllerMismatch
-    {
-        get;
-        set;
-    }
+    public string? ControllerMismatch { get; set; }
 
-    public string ServiceVersion
-    {
-        get;
-        set;
-    } = "service";
+    public string ServiceVersion { get; set; } = "service";
 
-    public int PodCount
-    {
-        get;
-        set;
-    } = 1;
+    public int PodCount { get; set; } = 1;
 
-    public bool IncludeBootstrapPod
-    {
-        get;
-        set;
-    }
+    public bool IncludeBootstrapPod { get; set; }
 
-    public int? ReplaceAtRead
-    {
-        get;
-        set;
-    }
+    public int? ReplaceAtRead { get; set; }
 
-    public int ControllerReads
-    {
-        get;
-        private set;
-    }
+    public int ControllerReads { get; private set; }
 
-    public bool CurrentCondition
-    {
-        get;
-        set;
-    } = true;
+    public bool CurrentCondition { get; set; } = true;
 
-    public string? Malformed
-    {
-        get;
-        set;
-    }
+    public string? Malformed { get; set; }
 
-    public string? UnversionedCondition
-    {
-        get;
-        set;
-    }
+    public string? UnversionedCondition { get; set; }
 
-    public string? IntentMismatch
-    {
-        get;
-        set;
-    }
+    public string? IntentMismatch { get; set; }
 
     public PostgresNativeTestApi(PostgresDeploymentMode mode)
     {

@@ -361,20 +361,11 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
             NewOnlyService = newOnlyService;
         }
 
-        public IEnvelopeEncryptionService OldService
-        {
-            get;
-        }
+        public IEnvelopeEncryptionService OldService { get; }
 
-        public IEnvelopeEncryptionService RotatingService
-        {
-            get;
-        }
+        public IEnvelopeEncryptionService RotatingService { get; }
 
-        public IEnvelopeEncryptionService NewOnlyService
-        {
-            get;
-        }
+        public IEnvelopeEncryptionService NewOnlyService { get; }
 
         public static RotationEncryptionScope Create()
         {

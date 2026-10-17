@@ -14,9 +14,5 @@ public sealed record SecretProjectionChangedEvent(
     long DesiredRevision,
     long StorageRevision) : IPoleEvent
 {
-    public EventCore EventCore
-    {
-        get;
-        init;
-    } = EventCore.Create();
+    public EventCore EventCore { get; init; } = EventCore.Create();
 }

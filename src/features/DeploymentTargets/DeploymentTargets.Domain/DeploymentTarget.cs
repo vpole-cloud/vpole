@@ -22,11 +22,7 @@ public sealed record DeploymentTarget(
     DateTime UpdatedAtUtc)
 {
     // Observation writes need a document conflict without changing reference-admission semantics.
-    public long ObservationFence
-    {
-        get;
-        init;
-    }
+    public long ObservationFence { get; init; }
 
     [BsonIgnore] public long NextConnectionVersion => checked(Connection.Version + 1);
 

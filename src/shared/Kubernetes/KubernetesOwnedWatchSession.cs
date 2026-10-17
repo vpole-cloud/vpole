@@ -87,49 +87,21 @@ public sealed class KubernetesOwnedWatchSession(
         long sequence,
         CancellationTokenSource cancellation)
     {
-        public KubernetesOwnedWatchInterest Interest
-        {
-            get;
-        } = interest;
+        public KubernetesOwnedWatchInterest Interest { get; } = interest;
 
-        public long Sequence
-        {
-            get;
-        } = sequence;
+        public long Sequence { get; } = sequence;
 
-        public CancellationTokenSource Cancellation
-        {
-            get;
-        } = cancellation;
+        public CancellationTokenSource Cancellation { get; } = cancellation;
 
-        public Task Pump
-        {
-            get;
-            set;
-        } = Task.CompletedTask;
+        public Task Pump { get; set; } = Task.CompletedTask;
 
-        public bool Listed
-        {
-            get;
-            set;
-        }
+        public bool Listed { get; set; }
 
-        public bool Ready
-        {
-            get;
-            set;
-        }
+        public bool Ready { get; set; }
 
-        public bool Retired
-        {
-            get;
-            set;
-        }
+        public bool Retired { get; set; }
 
-        public Dictionary<string, KubernetesOwnedWatchItem> Items
-        {
-            get;
-        } = new(StringComparer.Ordinal);
+        public Dictionary<string, KubernetesOwnedWatchItem> Items { get; } = new(StringComparer.Ordinal);
     }
 
     private sealed record Message(

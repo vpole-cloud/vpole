@@ -8,28 +8,13 @@ namespace Pole.Features.Realtime.Tests;
 
 internal sealed class MemoryTickets : IRealtimeTicketStore
 {
-    public ConcurrentDictionary<string, AuthenticationTicket> Tickets
-    {
-        get;
-    } = new();
+    public ConcurrentDictionary<string, AuthenticationTicket> Tickets { get; } = new();
 
-    public Exception? RetrieveFailure
-    {
-        get;
-        set;
-    }
+    public Exception? RetrieveFailure { get; set; }
 
-    public bool ReadAsUnavailable
-    {
-        get;
-        set;
-    }
+    public bool ReadAsUnavailable { get; set; }
 
-    public int RenewCalls
-    {
-        get;
-        private set;
-    }
+    public int RenewCalls { get; private set; }
 
     public Task<string> StoreAsync(AuthenticationTicket ticket)
     {
@@ -63,50 +48,21 @@ internal sealed class MemoryTickets : IRealtimeTicketStore
 
 internal sealed class MemorySubscriptions : IRealtimeSubscriptions
 {
-    public Dictionary<string, RealtimeSubscription[]> Connections
-    {
-        get;
-    } = new();
+    public Dictionary<string, RealtimeSubscription[]> Connections { get; } = new();
 
-    public Exception? ReplaceFailure
-    {
-        get;
-        set;
-    }
+    public Exception? ReplaceFailure { get; set; }
 
-    public Exception? RevocationCheckFailure
-    {
-        get;
-        set;
-    }
+    public Exception? RevocationCheckFailure { get; set; }
 
-    public Action? OnRevocationCheck
-    {
-        get;
-        set;
-    }
+    public Action? OnRevocationCheck { get; set; }
 
-    public HashSet<string> Revoked
-    {
-        get;
-    } = new(StringComparer.Ordinal);
+    public HashSet<string> Revoked { get; } = new(StringComparer.Ordinal);
 
-    public List<string> RevocationChecks
-    {
-        get;
-    } = [];
+    public List<string> RevocationChecks { get; } = [];
 
-    public int ReplaceCalls
-    {
-        get;
-        private set;
-    }
+    public int ReplaceCalls { get; private set; }
 
-    public int RemoveCalls
-    {
-        get;
-        private set;
-    }
+    public int RemoveCalls { get; private set; }
 
     public Task ReplaceAsync(string connectionId,
         IReadOnlyList<RealtimeSubscription> subscriptions,

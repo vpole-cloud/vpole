@@ -28,16 +28,9 @@ public sealed class RealtimeHub(
 
     private sealed class ClientReportState
     {
-        public SemaphoreSlim Gate
-        {
-            get;
-        } = new(1);
+        public SemaphoreSlim Gate { get; } = new(1);
 
-        public DateTimeOffset? LastAcceptedAtUtc
-        {
-            get;
-            set;
-        }
+        public DateTimeOffset? LastAcceptedAtUtc { get; set; }
     }
 
     /// <summary>Optional aggregate diagnostics. False means coalesced by the ten-second limit.</summary>

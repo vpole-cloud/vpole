@@ -24,10 +24,7 @@ public sealed record RealtimeSubscription(
 /// <summary>Provider-owned validation and interest lifecycle; generic transport knows no provider types.</summary>
 public interface IRealtimeTopicLifecycle
 {
-    string Topic
-    {
-        get;
-    }
+    string Topic { get; }
 
     Task<bool> SubscribeAsync(RealtimeSubscription subscription,
         ClaimsPrincipal principal,

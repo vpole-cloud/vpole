@@ -6,41 +6,17 @@ public sealed class RealtimeOptions
 {
     public const string Section = "Realtime";
 
-    public bool Enabled
-    {
-        get;
-        set;
-    }
+    public bool Enabled { get; set; }
 
-    public string[] AllowedOrigins
-    {
-        get;
-        set;
-    } = [];
+    public string[] AllowedOrigins { get; set; } = [];
 
-    public string[] EnabledTopics
-    {
-        get;
-        set;
-    } = [];
+    public string[] EnabledTopics { get; set; } = [];
 
-    public TimeSpan SessionLifetime
-    {
-        get;
-        set;
-    } = TimeSpan.FromMinutes(5);
+    public TimeSpan SessionLifetime { get; set; } = TimeSpan.FromMinutes(5);
 
-    public string? KeyProtectionCertificatePath
-    {
-        get;
-        set;
-    }
+    public string? KeyProtectionCertificatePath { get; set; }
 
-    public string? KeyProtectionCertificatePassword
-    {
-        get;
-        set;
-    }
+    public string? KeyProtectionCertificatePassword { get; set; }
 }
 
 public sealed class RealtimeOptionsValidator : IValidateOptions<RealtimeOptions>

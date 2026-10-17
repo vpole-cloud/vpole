@@ -8,9 +8,5 @@ public sealed record SourceRepositoryChangedEvent(
     string SourceRepositoryId,
     string ConnectionId) : IPoleEvent
 {
-    public EventCore EventCore
-    {
-        get;
-        init;
-    } = EventCore.Create();
+    public EventCore EventCore { get; init; } = EventCore.Create();
 }

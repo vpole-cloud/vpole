@@ -446,67 +446,29 @@ public sealed class RealtimeFinalExpiryFenceTests
 
     private sealed class Scenario
     {
-        public Clock Clock
-        {
-            get;
-        } = new();
+        public Clock Clock { get; } = new();
 
-        public ControlledTickets Tickets
-        {
-            get;
-        } = new();
+        public ControlledTickets Tickets { get; } = new();
 
-        public ControlledSubscriptions Subscriptions
-        {
-            get;
-        } = new();
+        public ControlledSubscriptions Subscriptions { get; } = new();
 
-        public Owner Owner
-        {
-            get;
-        } = new();
+        public Owner Owner { get; } = new();
 
-        public RecordingClient Client
-        {
-            get;
-        } = new();
+        public RecordingClient Client { get; } = new();
 
-        public CancellationTokenSource Cancellation
-        {
-            get;
-        } = new();
+        public CancellationTokenSource Cancellation { get; } = new();
 
         public DateTimeOffset Deadline => Clock.Initial.AddMinutes(1);
 
-        public RealtimeHub Hub
-        {
-            get;
-            private set;
-        } = null!;
+        public RealtimeHub Hub { get; private set; } = null!;
 
-        public RealtimePublisher Publisher
-        {
-            get;
-            private set;
-        } = null!;
+        public RealtimePublisher Publisher { get; private set; } = null!;
 
-        public bool MemberAllowed
-        {
-            get;
-            set;
-        } = true;
+        public bool MemberAllowed { get; set; } = true;
 
-        public Func<Task>? BeforeMember
-        {
-            get;
-            set;
-        }
+        public Func<Task>? BeforeMember { get; set; }
 
-        public Func<string, Task>? BeforeMemberForUser
-        {
-            get;
-            set;
-        }
+        public Func<string, Task>? BeforeMemberForUser { get; set; }
 
         public static async Task<Scenario> CreateAsync(bool admin = false)
         {
@@ -573,15 +535,9 @@ public sealed class RealtimeFinalExpiryFenceTests
 
     private sealed class Pause
     {
-        public TaskCompletionSource Entered
-        {
-            get;
-        } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public TaskCompletionSource Release
-        {
-            get;
-        } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Task WaitAsync()
         {
@@ -592,16 +548,9 @@ public sealed class RealtimeFinalExpiryFenceTests
 
     private sealed class Clock : TimeProvider
     {
-        public DateTimeOffset Initial
-        {
-            get;
-        } = new(2026, 10, 13, 12, 0, 0, TimeSpan.Zero);
+        public DateTimeOffset Initial { get; } = new(2026, 10, 13, 12, 0, 0, TimeSpan.Zero);
 
-        public DateTimeOffset Now
-        {
-            get;
-            set;
-        } = new(2026, 10, 13, 12, 0, 0, TimeSpan.Zero);
+        public DateTimeOffset Now { get; set; } = new(2026, 10, 13, 12, 0, 0, TimeSpan.Zero);
 
         public override DateTimeOffset GetUtcNow() => Now;
     }
@@ -610,11 +559,7 @@ public sealed class RealtimeFinalExpiryFenceTests
     {
         private readonly MemoryTickets inner = new();
 
-        public Func<string, Task>? BeforeRetrieve
-        {
-            get;
-            set;
-        }
+        public Func<string, Task>? BeforeRetrieve { get; set; }
 
         public Task<string> StoreAsync(AuthenticationTicket ticket) => inner.StoreAsync(ticket);
         public Task RenewAsync(string key, AuthenticationTicket ticket) => inner.RenewAsync(key, ticket);
@@ -631,16 +576,9 @@ public sealed class RealtimeFinalExpiryFenceTests
 
     private sealed class ControlledSubscriptions : IRealtimeSubscriptions
     {
-        public MemorySubscriptions Inner
-        {
-            get;
-        } = new();
+        public MemorySubscriptions Inner { get; } = new();
 
-        public Func<Task>? AfterReplace
-        {
-            get;
-            set;
-        }
+        public Func<Task>? AfterReplace { get; set; }
 
         public async Task ReplaceAsync(string connection,
             IReadOnlyList<RealtimeSubscription> values,
@@ -671,28 +609,13 @@ public sealed class RealtimeFinalExpiryFenceTests
     {
         public string Topic => "fake";
 
-        public HashSet<string> Interests
-        {
-            get;
-        } = [];
+        public HashSet<string> Interests { get; } = [];
 
-        public Func<Task>? BeforeSubscribe
-        {
-            get;
-            set;
-        }
+        public Func<Task>? BeforeSubscribe { get; set; }
 
-        public Func<Task>? BeforeRenew
-        {
-            get;
-            set;
-        }
+        public Func<Task>? BeforeRenew { get; set; }
 
-        public Func<Task>? AfterSubscribe
-        {
-            get;
-            set;
-        }
+        public Func<Task>? AfterSubscribe { get; set; }
 
         public async Task<bool> SubscribeAsync(RealtimeSubscription value,
             ClaimsPrincipal principal,
@@ -732,15 +655,9 @@ public sealed class RealtimeFinalExpiryFenceTests
         public override string UserIdentifier => "viewer";
         public override ClaimsPrincipal User => principal;
 
-        public override IDictionary<object, object?> Items
-        {
-            get;
-        } = new Dictionary<object, object?>();
+        public override IDictionary<object, object?> Items { get; } = new Dictionary<object, object?>();
 
-        public override IFeatureCollection Features
-        {
-            get;
-        } = new FeatureCollection();
+        public override IFeatureCollection Features { get; } = new FeatureCollection();
 
         public override CancellationToken ConnectionAborted => cancellation;
 
@@ -751,21 +668,11 @@ public sealed class RealtimeFinalExpiryFenceTests
 
     private sealed class RecordingClient : IRealtimeClient
     {
-        public List<string> Notices
-        {
-            get;
-        } = [];
+        public List<string> Notices { get; } = [];
 
-        public int SessionRevocations
-        {
-            get;
-            private set;
-        }
+        public int SessionRevocations { get; private set; }
 
-        public List<string?> AccessRevocations
-        {
-            get;
-        } = [];
+        public List<string?> AccessRevocations { get; } = [];
 
         public Task Changed(RealtimeChange change)
         {
@@ -824,29 +731,13 @@ public sealed class RealtimeFinalExpiryFenceTests
 
     private sealed class ControlledAuthentication(Pause pause) : IAuthenticationService
     {
-        public int SignIns
-        {
-            get;
-            private set;
-        }
+        public int SignIns { get; private set; }
 
-        public int SignOuts
-        {
-            get;
-            private set;
-        }
+        public int SignOuts { get; private set; }
 
-        public AuthenticateResult? AuthenticationResult
-        {
-            get;
-            init;
-        }
+        public AuthenticateResult? AuthenticationResult { get; init; }
 
-        public Func<Task>? AfterSignIn
-        {
-            get;
-            set;
-        }
+        public Func<Task>? AfterSignIn { get; set; }
 
         public async Task<AuthenticateResult> AuthenticateAsync(HttpContext context, string? scheme)
         {

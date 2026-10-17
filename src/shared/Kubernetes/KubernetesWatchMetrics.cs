@@ -20,10 +20,7 @@ public sealed class KubernetesWatchMetrics : IDisposable
 {
     public const string MeterName = "Pole.KubernetesWatch";
 
-    internal static KubernetesWatchMetrics Shared
-    {
-        get;
-    } = new();
+    internal static KubernetesWatchMetrics Shared { get; } = new();
 
     private readonly Meter meter;
     private readonly bool ownsMeter;

@@ -395,11 +395,7 @@ public sealed class WebServiceNativeChangeSourceTests
 
     private sealed class ClientProvider(Func<IKubernetes> client) : IKubernetesClientProvider
     {
-        public int Reads
-        {
-            get;
-            private set;
-        }
+        public int Reads { get; private set; }
 
         public Task<IKubernetes> GetAsync(string id, CancellationToken ct = default)
         {
@@ -425,64 +421,27 @@ internal sealed class NativeObservationTestApi : DelegatingHandler
 {
     private readonly ConcurrentDictionary<string, NativeWatchTestStream> _streams = new(StringComparer.Ordinal);
 
-    public ConcurrentQueue<Uri> Requests
-    {
-        get;
-    } = new();
+    public ConcurrentQueue<Uri> Requests { get; } = new();
 
     public IEnumerable<NativeWatchTestStream> Streams => _streams.Values;
 
-    public bool ControllerPresent
-    {
-        get;
-        set;
-    } = true;
+    public bool ControllerPresent { get; set; } = true;
 
-    public string ControllerUid
-    {
-        get;
-        set;
-    } = "controller";
+    public string ControllerUid { get; set; } = "controller";
 
-    public int PodCount
-    {
-        get;
-        set;
-    } = 1;
+    public int PodCount { get; set; } = 1;
 
-    public int ReplicaCount
-    {
-        get;
-        set;
-    } = 1;
+    public int ReplicaCount { get; set; } = 1;
 
-    public int EventCount
-    {
-        get;
-        set;
-    }
+    public int EventCount { get; set; }
 
-    public bool IncludeForeignOwner
-    {
-        get;
-        set;
-    }
+    public bool IncludeForeignOwner { get; set; }
 
-    public bool DelayServiceHeaders
-    {
-        get;
-        set;
-    }
+    public bool DelayServiceHeaders { get; set; }
 
-    public TaskCompletionSource ServiceHeadersEntered
-    {
-        get;
-    } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource ServiceHeadersEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public TaskCompletionSource ReleaseServiceHeaders
-    {
-        get;
-    } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource ReleaseServiceHeaders { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public NativeWatchTestStream Stream(string kind, string? uid = null) => _streams[Key(kind, uid)];
     private static string Key(string kind, string? uid) => kind + ":" + uid;

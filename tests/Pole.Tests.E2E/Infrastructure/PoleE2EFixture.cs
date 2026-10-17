@@ -74,53 +74,21 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         _kubernetesNamespacePrefix = $"pole-{_identity.WorktreeId}";
     }
 
-    public E2eApiClient Api
-    {
-        get;
-        private set;
-    } = null!;
+    public E2eApiClient Api { get; private set; } = null!;
 
-    public HttpClient Stub
-    {
-        get;
-        private set;
-    } = null!;
+    public HttpClient Stub { get; private set; } = null!;
 
-    public Uri FrontendBaseAddress
-    {
-        get;
-        private set;
-    } = null!;
+    public Uri FrontendBaseAddress { get; private set; } = null!;
 
-    public Uri ApiBaseAddress
-    {
-        get;
-        private set;
-    } = null!;
+    public Uri ApiBaseAddress { get; private set; } = null!;
 
-    public TestUser Alpha
-    {
-        get;
-        private set;
-    } = null!;
+    public TestUser Alpha { get; private set; } = null!;
 
-    public TestUser Beta
-    {
-        get;
-        private set;
-    } = null!;
+    public TestUser Beta { get; private set; } = null!;
 
-    public TestUser PlatformAdminUser
-    {
-        get;
-        private set;
-    } = null!;
+    public TestUser PlatformAdminUser { get; private set; } = null!;
 
-    public string PlatformAdminAccessToken
-    {
-        get;
-        private set;
-    } = null!;
+    public string PlatformAdminAccessToken { get; private set; } = null!;
 
     public KubernetesLabState LabState => _lab.State;
     public TestRunIdentity Identity => _identity;
