@@ -84,6 +84,12 @@ characters, reports discarded output and clears it when the view closes or scope
 
 ## Shared observation lifecycle
 
+The shared [observation infrastructure](../../shared/Observation/README.md) owns coordination,
+source/sampling lifecycle, timing and the Mongo demand/lease/snapshot protocol. This feature retains
+its provider catalog, tenant/placement/context fences, sanitized workload BSON mapping and events.
+StorageProfiles uses the same execution/storage mechanisms through its own target-scoped adapters.
+
+
 Realtime interest creates expiring durable demand for a tenant-owned physical deployment.
 Registered provider change sources establish bounded native LIST/WATCH ownership before the
 server acknowledges coverage. An opaque controller binding, source-control version, deployment

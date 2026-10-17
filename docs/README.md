@@ -49,6 +49,7 @@ requirement when adding or changing one feature.
 - [Tenant quotas](quotas.md)
 - [Workload placement](workload-placement.md)
 - [Deployment targets](deployment-targets.md)
+- [Demand-driven observation lifecycle](../src/shared/Observation/README.md)
 - [Observability](observability.md)
 
 ## Feature documentation
