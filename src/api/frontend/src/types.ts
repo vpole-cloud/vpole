@@ -1,14 +1,113 @@
-export type { DeploymentEndpoint, DeploymentIngress, ResourcePlacement, RuntimeDiagnosticInstance, ResourceDeploymentDiagnostics, ResourceEndpointDiscovery, ResourceDeploymentOperation, ResourceDeploymentOperationsPage, ObservedWorkloadPod, WorkloadObservation, ResourceDeploymentObservation } from './modules/operations/types'
-export type { StorageObservation, PlatformDeploymentTarget, StorageMediaType, StoragePerformanceTier, StorageProfileTenantAccessMode, StorageProfileTenantAccess, StorageProfileSizeLimits, ResolvedStorageProfile, StorageProfile, StorageProfileInput, KubernetesStorageClass, KubernetesStorageOwner, KubernetesPersistentVolume, KubernetesPersistentVolumeClaim } from './modules/platform/storageTypes'
-export type { GitProviderKind, GitProviderAccountType, GitProviderRepositorySelection, SourceBuildPlanKind, SourceBuildPlanConfidence, GitProviderConnection, BeginGitHubInstallationResponse, ProviderRepository, ProviderBranch, GitProviderPage, SourceBuildPlan, RepositoryAnalysis, SourceRepository } from './modules/platform/gitTypes'
+export type {
+  DeploymentEndpoint,
+  DeploymentIngress,
+  ResourcePlacement,
+  RuntimeDiagnosticInstance,
+  ResourceDeploymentDiagnostics,
+  ResourceEndpointDiscovery,
+  ResourceDeploymentOperation,
+  ResourceDeploymentOperationsPage,
+  ObservedWorkloadPod,
+  WorkloadObservation,
+  ResourceDeploymentObservation,
+} from './modules/operations/types'
+export type {
+  StorageObservation,
+  PlatformDeploymentTarget,
+  StorageMediaType,
+  StoragePerformanceTier,
+  StorageProfileTenantAccessMode,
+  StorageProfileTenantAccess,
+  StorageProfileSizeLimits,
+  ResolvedStorageProfile,
+  StorageProfile,
+  StorageProfileInput,
+  KubernetesStorageClass,
+  KubernetesStorageOwner,
+  KubernetesPersistentVolume,
+  KubernetesPersistentVolumeClaim,
+} from './modules/platform/storageTypes'
+export type {
+  GitProviderKind,
+  GitProviderAccountType,
+  GitProviderRepositorySelection,
+  SourceBuildPlanKind,
+  SourceBuildPlanConfidence,
+  GitProviderConnection,
+  BeginGitHubInstallationResponse,
+  ProviderRepository,
+  ProviderBranch,
+  GitProviderPage,
+  SourceBuildPlan,
+  RepositoryAnalysis,
+  SourceRepository,
+} from './modules/platform/gitTypes'
 export type { SearchHit, OverviewData } from './modules/platform/overviewTypes'
-export type { SecretMetadata, SecretInput, SecretBindingInput, SecretUsage, SecretProjection } from './modules/secrets/types'
-export type { TenantDomainZone, HostnameBinding, DomainZoneBindingUsage } from './modules/domains/types'
-export type { ResourceGroup, IsolationScope, ResourceGroupInput } from './modules/resource-groups/types'
+export type {
+  SecretMetadata,
+  SecretInput,
+  SecretBindingInput,
+  SecretUsage,
+  SecretProjection,
+} from './modules/secrets/types'
+export type {
+  TenantDomainZone,
+  HostnameBinding,
+  DomainZoneBindingUsage,
+} from './modules/domains/types'
+export type {
+  ResourceGroup,
+  IsolationScope,
+  ResourceGroupInput,
+} from './modules/resource-groups/types'
 export type { RedisService, RedisInput, RedisUpdateInput } from './modules/redis/types'
-export type { PostgresCluster, PostgresCapabilities, PostgresInput, PostgresUpdateInput } from './modules/postgres/types'
-export type { ImageInfo, ProbeConfig, PortMapping, WebService, WebServiceExposure, WebServiceSpec, ConnectionEnvironmentReference, SecretEnvironmentReference, WebServiceDeploymentEndpoint, WebServiceDeploymentIngress, WebServiceDeployment, WebServiceReleaseDeployment, WebServiceRelease, WebServiceRecoveryResponse, WebServiceReleaseHistory, WebServiceInput, WebServiceDeploymentInput, WebServiceDeploymentUpdateInput } from './modules/web-services/types'
-export type { SourceBuildLogEntry, SourceBuildLogs, SourceBuildRecipeKind, SourceBuildPhase, SourceBuildRecipe, SourceBuildConfiguration, SourceBuildJobState, SourceBuildJob } from './modules/web-services/buildTypes'
-export type { AuthViewState, LoadStatus, TenantRole, Tenant, ResourceRegistration, ComputeProfileSummary, AvailableDeploymentTarget, AvailableComputeProfile, PaginatedResponse, PoleResourceType } from './api/types'
+export type {
+  PostgresCluster,
+  PostgresCapabilities,
+  PostgresInput,
+  PostgresUpdateInput,
+} from './modules/postgres/types'
+export type {
+  ImageInfo,
+  ProbeConfig,
+  PortMapping,
+  WebService,
+  WebServiceExposure,
+  WebServiceSpec,
+  ConnectionEnvironmentReference,
+  SecretEnvironmentReference,
+  WebServiceDeploymentEndpoint,
+  WebServiceDeploymentIngress,
+  WebServiceDeployment,
+  WebServiceReleaseDeployment,
+  WebServiceRelease,
+  WebServiceRecoveryResponse,
+  WebServiceReleaseHistory,
+  WebServiceInput,
+  WebServiceDeploymentInput,
+  WebServiceDeploymentUpdateInput,
+} from './modules/web-services/types'
+export type {
+  SourceBuildLogEntry,
+  SourceBuildLogs,
+  SourceBuildRecipeKind,
+  SourceBuildPhase,
+  SourceBuildRecipe,
+  SourceBuildConfiguration,
+  SourceBuildJobState,
+  SourceBuildJob,
+} from './modules/web-services/buildTypes'
+export type {
+  AuthViewState,
+  LoadStatus,
+  TenantRole,
+  Tenant,
+  ResourceRegistration,
+  ComputeProfileSummary,
+  AvailableDeploymentTarget,
+  AvailableComputeProfile,
+  PaginatedResponse,
+  PoleResourceType,
+} from './api/types'
 export type { RuntimeLogSelection, RuntimeLogFrame } from './modules/operations/types'
 export type { ResourceConnection } from './modules/web-services/connectionTypes'

@@ -1,5 +1,10 @@
 import { buildHeaders, fetchJson } from './transport'
-import type { AvailableComputeProfile, AvailableDeploymentTarget, StorageProfile, PoleResourceType } from '../types'
+import type {
+  AvailableComputeProfile,
+  AvailableDeploymentTarget,
+  StorageProfile,
+  PoleResourceType,
+} from '../types'
 
 export async function fetchAvailableStorageProfiles(
   apiBaseUrl: string,
@@ -11,13 +16,10 @@ export async function fetchAvailableStorageProfiles(
 ) {
   const query = new URLSearchParams({ resourceType, deploymentTargetId })
 
-  return fetchJson<StorageProfile[]>(
-    `${apiBaseUrl}/api/v1/storage-profiles?${query.toString()}`,
-    {
-      headers: buildHeaders(token, tenantId),
-      signal,
-    },
-  )
+  return fetchJson<StorageProfile[]>(`${apiBaseUrl}/api/v1/storage-profiles?${query.toString()}`, {
+    headers: buildHeaders(token, tenantId),
+    signal,
+  })
 }
 
 const webServiceResourceType = 'pole/web-service'

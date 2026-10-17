@@ -13,7 +13,15 @@ export interface WebServiceInventoryOptions {
   search?: string
 }
 
-export function useWebServiceInventory({ apiBaseUrl, token, tenantId, enabled, pageNumber = 1, pageSize = 8, search = '' }: WebServiceInventoryOptions) {
+export function useWebServiceInventory({
+  apiBaseUrl,
+  token,
+  tenantId,
+  enabled,
+  pageNumber = 1,
+  pageSize = 8,
+  search = '',
+}: WebServiceInventoryOptions) {
   const session = useQuerySession()
   const { credential } = useApiScope({ baseUrl: apiBaseUrl, token, tenantId })
   const query = useScopedQuery({
@@ -22,12 +30,36 @@ export function useWebServiceInventory({ apiBaseUrl, token, tenantId, enabled, p
     keepPrevious: true,
     enabled: enabled && Boolean(tenantId),
     realtime: [{ topic: 'web-services', tenantId }],
-    load: (signal) => fetchWebServices(apiBaseUrl, credential(), tenantId, signal, { pageNumber, pageSize, search }),
+    load: (signal) =>
+      fetchWebServices(apiBaseUrl, credential(), tenantId, signal, {
+        pageNumber,
+        pageSize,
+        search,
+      }),
   })
-  return { items: query.resource?.items ?? [], page: query.resource, status: query.status, error: query.error,
-    refresh: query.refresh, isCurrentPage: query.isCurrent,
-    removeItem: (id: string) => session.client.setQueryData(query.queryKey, (previous: { value: NonNullable<typeof query.resource>; identity: string } | undefined) =>
-      previous ? { ...previous, value: { ...previous.value, items: previous.value.items.filter((item) => item.id !== id),
-        totalCount: previous.value.totalCount - (previous.value.items.some((item) => item.id === id) ? 1 : 0) } } : previous),
+  return {
+    items: query.resource?.items ?? [],
+    page: query.resource,
+    status: query.status,
+    error: query.error,
+    refresh: query.refresh,
+    isCurrentPage: query.isCurrent,
+    removeItem: (id: string) =>
+      session.client.setQueryData(
+        query.queryKey,
+        (previous: { value: NonNullable<typeof query.resource>; identity: string } | undefined) =>
+          previous
+            ? {
+                ...previous,
+                value: {
+                  ...previous.value,
+                  items: previous.value.items.filter((item) => item.id !== id),
+                  totalCount:
+                    previous.value.totalCount -
+                    (previous.value.items.some((item) => item.id === id) ? 1 : 0),
+                },
+              }
+            : previous,
+      ),
   }
 }

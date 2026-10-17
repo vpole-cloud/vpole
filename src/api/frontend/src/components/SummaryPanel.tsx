@@ -5,12 +5,7 @@ interface SummaryPanelProps {
   helper: string
 }
 
-export function SummaryPanel({
-  label,
-  value,
-  tone = 'default',
-  helper,
-}: SummaryPanelProps) {
+export function SummaryPanel({ label, value, tone = 'default', helper }: SummaryPanelProps) {
   return (
     <article className={`summary-panel summary-panel--${tone}`}>
       <p className="summary-panel__label">{label}</p>

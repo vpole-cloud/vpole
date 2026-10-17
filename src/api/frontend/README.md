@@ -365,3 +365,12 @@ Visibility releases observation interests and suspends native/query work. Bearer
 ordinary drafts and authorized log reads; tenant/session/permission loss clears sensitive ownership.
 Passwords, credentials and runtime/build output remain outside notification payloads, query/mutation
 caches, URLs and persisted workspace references. Runtime logs remain short-lived bounded HTTP streams.
+
+## Formatting
+
+Prettier is pinned as a development dependency. Run `npm run format` to format frontend
+source, styles and configuration, or `npm run format:check` to verify them. `npm run lint`
+also checks formatting. Generated output, lockfiles and public assets are excluded.
+
+The frontend uses two-space indentation, single quotes, no optional semicolons and a
+100-column print width. Keep semantic lint rules in ESLint; Prettier owns layout.

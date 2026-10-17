@@ -46,13 +46,13 @@ export function IntegrationsPage({
   )
   const isLinked = Boolean(
     selectedPlan &&
-      manager.sourceRepositories.some(
-        (source) =>
-          source.connectionId === manager.selection.connectionId &&
-          source.externalRepositoryId === manager.selection.repositoryId &&
-          source.branch === manager.selection.branch &&
-          source.selectedPlan.candidateKey === selectedPlan.candidateKey,
-      ),
+    manager.sourceRepositories.some(
+      (source) =>
+        source.connectionId === manager.selection.connectionId &&
+        source.externalRepositoryId === manager.selection.repositoryId &&
+        source.branch === manager.selection.branch &&
+        source.selectedPlan.candidateKey === selectedPlan.candidateKey,
+    ),
   )
 
   const disconnect = async (connectionId: string) => {
@@ -101,7 +101,7 @@ export function IntegrationsPage({
           <span>
             {notice.status === 'connected'
               ? 'GitHub installation connected.'
-              : callbackErrors[notice.reason] ?? 'GitHub connection failed.'}
+              : (callbackErrors[notice.reason] ?? 'GitHub connection failed.')}
           </span>
           <button onClick={onDismissNotice} type="button">
             Dismiss
@@ -110,12 +110,40 @@ export function IntegrationsPage({
       )}
 
       <div className="row-actions" aria-label="GitHub repository pages">
-        <button className="button" disabled={manager.repositoryPage === 1 || manager.repositoryStatus === 'loading'} onClick={() => manager.selectRepositoryPage(manager.repositoryPage - 1)} type="button">Previous repositories</button>
+        <button
+          className="button"
+          disabled={manager.repositoryPage === 1 || manager.repositoryStatus === 'loading'}
+          onClick={() => manager.selectRepositoryPage(manager.repositoryPage - 1)}
+          type="button"
+        >
+          Previous repositories
+        </button>
         <span>Repositories page {manager.repositoryPage}</span>
-        <button className="button" disabled={!manager.hasMoreRepositories || manager.repositoryStatus !== 'success'} onClick={() => manager.selectRepositoryPage(manager.repositoryPage + 1)} type="button">Next repositories</button>
-        <button className="button" disabled={manager.branchPage === 1 || manager.branchStatus === 'loading'} onClick={() => manager.selectBranchPage(manager.branchPage - 1)} type="button">Previous branches</button>
+        <button
+          className="button"
+          disabled={!manager.hasMoreRepositories || manager.repositoryStatus !== 'success'}
+          onClick={() => manager.selectRepositoryPage(manager.repositoryPage + 1)}
+          type="button"
+        >
+          Next repositories
+        </button>
+        <button
+          className="button"
+          disabled={manager.branchPage === 1 || manager.branchStatus === 'loading'}
+          onClick={() => manager.selectBranchPage(manager.branchPage - 1)}
+          type="button"
+        >
+          Previous branches
+        </button>
         <span>Branches page {manager.branchPage}</span>
-        <button className="button" disabled={!manager.hasMoreBranches || manager.branchStatus !== 'success'} onClick={() => manager.selectBranchPage(manager.branchPage + 1)} type="button">Next branches</button>
+        <button
+          className="button"
+          disabled={!manager.hasMoreBranches || manager.branchStatus !== 'success'}
+          onClick={() => manager.selectBranchPage(manager.branchPage + 1)}
+          type="button"
+        >
+          Next branches
+        </button>
       </div>
       {(manager.error || manager.actionError) && (
         <div className="integration-notice integration-notice--error" role="alert">
@@ -280,7 +308,9 @@ export function IntegrationsPage({
               value={manager.selection.repositoryId ?? ''}
             >
               <option value="">
-                {manager.repositoryStatus === 'loading' ? 'Loading repositories...' : 'Select a repository'}
+                {manager.repositoryStatus === 'loading'
+                  ? 'Loading repositories...'
+                  : 'Select a repository'}
               </option>
               {manager.repositories.map((repository) => (
                 <option key={repository.id} value={repository.id}>
@@ -299,10 +329,14 @@ export function IntegrationsPage({
               value={manager.selection.branch}
             >
               {!manager.selection.branch && <option value="">Select a branch</option>}
-              {manager.selection.branch && !manager.branches.some((branch) => branch.name === manager.selection.branch) && <option value={manager.selection.branch}>{manager.selection.branch}</option>}
+              {manager.selection.branch &&
+                !manager.branches.some((branch) => branch.name === manager.selection.branch) && (
+                  <option value={manager.selection.branch}>{manager.selection.branch}</option>
+                )}
               {manager.branches.map((branch) => (
                 <option key={branch.name} value={branch.name}>
-                  {branch.name}{branch.isProtected ? ' · protected' : ''}
+                  {branch.name}
+                  {branch.isProtected ? ' · protected' : ''}
                 </option>
               ))}
             </select>
@@ -325,7 +359,9 @@ export function IntegrationsPage({
         {manager.repositoryStatus === 'success' &&
           manager.selection.connectionId &&
           manager.repositories.length === 0 && (
-            <div className="integration-compact-state">No repositories available to this installation.</div>
+            <div className="integration-compact-state">
+              No repositories available to this installation.
+            </div>
           )}
 
         {manager.selection.analysis && (
@@ -352,7 +388,9 @@ export function IntegrationsPage({
                   <span className="analysis-candidate__body">
                     <span className="analysis-candidate__title">
                       <strong>{candidate.displayName}</strong>
-                      <small className={`confidence confidence--${candidate.confidence.toLowerCase()}`}>
+                      <small
+                        className={`confidence confidence--${candidate.confidence.toLowerCase()}`}
+                      >
                         {candidate.confidence}
                       </small>
                     </span>
@@ -383,7 +421,9 @@ export function IntegrationsPage({
                         Commands
                       </button>
                     </div>
-                    <span>{selectedPlan.kind} · {selectedPlan.sourceRoot}</span>
+                    <span>
+                      {selectedPlan.kind} · {selectedPlan.sourceRoot}
+                    </span>
                   </div>
 
                   {selectedPlan.warnings.length > 0 && (
@@ -412,13 +452,23 @@ export function IntegrationsPage({
                     </span>
                     <button
                       className="button button--primary"
-                      disabled={!canManage || isLinked || manager.analysisStale || manager.actionStatus === 'loading'}
+                      disabled={
+                        !canManage ||
+                        isLinked ||
+                        manager.analysisStale ||
+                        manager.actionStatus === 'loading'
+                      }
                       onClick={() => void manager.link()}
                       type="button"
                     >
                       {isLinked ? 'Linked' : 'Link repository'}
                     </button>
-                    {manager.analysisStale && <p role="status">The branch changed after analysis. Analyze it again before linking this plan.</p>}
+                    {manager.analysisStale && (
+                      <p role="status">
+                        The branch changed after analysis. Analyze it again before linking this
+                        plan.
+                      </p>
+                    )}
                   </div>
                 </>
               ) : (

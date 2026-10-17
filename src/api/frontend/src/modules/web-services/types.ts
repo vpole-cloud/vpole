@@ -58,9 +58,16 @@ export interface WebServiceSpec {
   } | null
 }
 
-export interface ConnectionEnvironmentReference { connectionId: string; valueKind: 'Host' | 'Port' | 'Configuration'; configurationKey?: string | null }
+export interface ConnectionEnvironmentReference {
+  connectionId: string
+  valueKind: 'Host' | 'Port' | 'Configuration'
+  configurationKey?: string | null
+}
 
-export interface SecretEnvironmentReference { secretId: string; key: string }
+export interface SecretEnvironmentReference {
+  secretId: string
+  key: string
+}
 
 export interface WebServiceReleaseDeployment {
   resourceDeploymentId: string
@@ -89,13 +96,26 @@ export interface WebServiceRelease {
   actorEmail: string | null
   spec: WebServiceSpec
   provenance: {
-    source: string; commitSha: string | null; buildUrl: string | null; imageDigest: string | null;
-    previousImageTag: string; newImageTag: string; actorType: string; deploymentTokenId: string | null;
-    deploymentTokenName: string | null; buildJobId: string | null; sourceRepositoryId: string | null
+    source: string
+    commitSha: string | null
+    buildUrl: string | null
+    imageDigest: string | null
+    previousImageTag: string
+    newImageTag: string
+    actorType: string
+    deploymentTokenId: string | null
+    deploymentTokenName: string | null
+    buildJobId: string | null
+    sourceRepositoryId: string | null
   } | null
 }
 
-export interface WebServiceRecoveryResponse { id: string; resourceRevision: number; releaseId: string; deployments: ResourcePlacement[] }
+export interface WebServiceRecoveryResponse {
+  id: string
+  resourceRevision: number
+  releaseId: string
+  deployments: ResourcePlacement[]
+}
 
 export interface WebServiceReleaseHistory {
   activeRevision: number
@@ -138,4 +158,7 @@ export interface WebServiceDeploymentUpdateInput {
   computeProfileId?: string
 }
 export type WebServiceDeployment = ResourcePlacement
-export type { DeploymentEndpoint as WebServiceDeploymentEndpoint, DeploymentIngress as WebServiceDeploymentIngress } from '../operations/types'
+export type {
+  DeploymentEndpoint as WebServiceDeploymentEndpoint,
+  DeploymentIngress as WebServiceDeploymentIngress,
+} from '../operations/types'

@@ -79,4 +79,8 @@ export interface PaginatedResponse<T> {
 
 export type PoleResourceType = string
 
-export interface AuthViewState { initialized: boolean; authenticated: boolean; userName?: string }
+export interface AuthViewState {
+  initialized: boolean
+  authenticated: boolean
+  userName?: string
+}

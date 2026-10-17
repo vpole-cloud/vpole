@@ -42,11 +42,7 @@ const getSessionStatus = (
   }
 }
 
-export function OverviewPage({
-  authState,
-  onValidateIdentity,
-  overview,
-}: OverviewPageProps) {
+export function OverviewPage({ authState, onValidateIdentity, overview }: OverviewPageProps) {
   const health = getSessionStatus(overview.status, authState.authenticated)
   const totalResources = overview.data.resourceGroups.reduce(
     (total, group) => total + group.resourceCount,
@@ -60,8 +56,8 @@ export function OverviewPage({
           <p className="hero-panel__eyebrow">Overview</p>
           <h1 className="hero-panel__title">Control plane</h1>
           <p className="hero-panel__description">
-            Inspect resources in the active tenant and open their configuration
-            and deployment details.
+            Inspect resources in the active tenant and open their configuration and deployment
+            details.
           </p>
         </div>
 
@@ -73,7 +69,7 @@ export function OverviewPage({
                 {!authState.initialized
                   ? 'Initializing access'
                   : authState.authenticated
-                    ? authState.userName ?? 'Authenticated operator'
+                    ? (authState.userName ?? 'Authenticated operator')
                     : 'Guest mode'}
               </p>
             </div>

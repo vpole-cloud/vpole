@@ -1,5 +1,10 @@
 import { expect, it } from 'vitest'
-import { gitInterests, matchesGitQuery, sourceSelectionCurrent, staleGitAnalysis } from './gitRealtime'
+import {
+  gitInterests,
+  matchesGitQuery,
+  sourceSelectionCurrent,
+  staleGitAnalysis,
+} from './gitRealtime'
 import type { RepositoryAnalysis, SourceRepository } from '../../types'
 
 it('registers committed metadata only and invalidates both discovery shapes without claiming external coverage', () => {
@@ -12,13 +17,34 @@ it('registers committed metadata only and invalidates both discovery shapes with
 })
 it('flags newer authoritative branch evidence without replacing a saved analysis or inferring removal from partial pagination', () => {
   const analysis = { branch: 'main', commitSha: 'old' } as RepositoryAnalysis
-  expect(staleGitAnalysis(analysis, [{ name: 'main', commitSha: 'new', isProtected: false }], true, false)).toBe(false)
-  expect(staleGitAnalysis(analysis, [{ name: 'main', commitSha: 'new', isProtected: false }], true, true)).toBe(true)
+  expect(
+    staleGitAnalysis(
+      analysis,
+      [{ name: 'main', commitSha: 'new', isProtected: false }],
+      true,
+      false,
+    ),
+  ).toBe(false)
+  expect(
+    staleGitAnalysis(
+      analysis,
+      [{ name: 'main', commitSha: 'new', isProtected: false }],
+      true,
+      true,
+    ),
+  ).toBe(true)
   expect(staleGitAnalysis(analysis, [], false, true)).toBe(false)
   expect(staleGitAnalysis(analysis, [], true, true)).toBe(true)
 })
 it('preserves the selected source snapshot and requires review after removal or changed commit/build plan', () => {
-  const source = { id: 'source', connectionId: 'connection', externalRepositoryId: 'repo', branch: 'main', commitSha: 'old', selectedPlan: { candidateKey: 'plan' } } as SourceRepository
+  const source = {
+    id: 'source',
+    connectionId: 'connection',
+    externalRepositoryId: 'repo',
+    branch: 'main',
+    commitSha: 'old',
+    selectedPlan: { candidateKey: 'plan' },
+  } as SourceRepository
   expect(sourceSelectionCurrent(source, [source])).toBe(true)
   expect(sourceSelectionCurrent(source, [])).toBe(false)
   expect(sourceSelectionCurrent(source, [{ ...source, commitSha: 'new' }])).toBe(false)

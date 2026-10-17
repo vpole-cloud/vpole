@@ -9,7 +9,9 @@ it('uses stable native SHA-256 identity without returning the bearer and extract
   expect(first).toMatch(/^[a-f0-9]{64}$/)
   expect(await fingerprintCredential('fictional-first')).toBe(first)
   expect(await fingerprintCredential('fictional-second')).not.toBe(first)
-  expect(credentialExpiresAt(`header.${btoa(JSON.stringify({ exp: 12345 }))}.signature`)).toBe(12345000)
+  expect(credentialExpiresAt(`header.${btoa(JSON.stringify({ exp: 12345 }))}.signature`)).toBe(
+    12345000,
+  )
   expect(credentialExpiresAt('opaque-invalid-credential')).toBeUndefined()
 })
 it('declines recovery identity when native hashing is unavailable', async () => {

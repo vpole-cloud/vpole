@@ -1,6 +1,6 @@
 /* Shared UI tokens also style the existing feature screens during migration. */
 :root {
-  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
   line-height: 1.5;
   font-weight: 400;
   color: var(--color-text-strong);
@@ -37,7 +37,7 @@
   --color-code-text: #e2e8f0;
   --shadow-soft: 0 1px 2px rgb(20 30 45 / 4%);
 }
-:root[data-theme="dark"] {
+:root[data-theme='dark'] {
   color-scheme: dark;
   --color-app-bg-top: #14171c;
   --color-app-bg-bottom: #14171c;
@@ -64,15 +64,40 @@
   --color-code-bg: #12151b;
   --color-code-text: #e2e8f0;
 }
-* { box-sizing: border-box; }
-html, body { min-width: 320px; }
-body { margin: 0; min-height: 100vh; }
-body, button, input, textarea, select { font: inherit; }
-button, a { -webkit-tap-highlight-color: transparent; }
-#root { min-height: 100vh; }
-button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible,
-textarea:focus-visible, [tabindex]:focus-visible {
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  min-width: 320px;
+}
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+body,
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+#root {
+  min-height: 100vh;
+}
+button:focus-visible,
+a:focus-visible,
+select:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 3px;
 }
-a { color: var(--color-accent); }
+a {
+  color: var(--color-accent);
+}

@@ -1,5 +1,6 @@
 import js from '@eslint/js'
 import globals from 'globals'
+import prettier from 'eslint-config-prettier/flat'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
@@ -22,7 +23,9 @@ export default defineConfig([
   },
   {
     files: ['src/**/*.{ts,tsx}'],
-    languageOptions: { parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname } },
+    languageOptions: {
+      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+    },
     rules: {
       '@typescript-eslint/no-floating-promises': 'error',
       '@typescript-eslint/switch-exhaustiveness-check': 'error',
@@ -30,11 +33,32 @@ export default defineConfig([
   },
   {
     files: ['src/data/**/*.{ts,tsx}'],
-    rules: { 'no-restricted-imports': ['error', { patterns: [{ group: ['**/modules/**'], message: 'Shared data adapters accept loaders; concrete modules own their queries.' }] }] },
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/modules/**'],
+              message: 'Shared data adapters accept loaders; concrete modules own their queries.',
+            },
+          ],
+        },
+      ],
+    },
   },
   {
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/api/transport.ts'],
-    rules: { 'no-restricted-globals': ['error', { name: 'fetch', message: 'Route HTTP through api/transport; feature clients own endpoints.' }] },
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        {
+          name: 'fetch',
+          message: 'Route HTTP through api/transport; feature clients own endpoints.',
+        },
+      ],
+    },
   },
+  prettier,
 ])

@@ -1,9 +1,22 @@
-export interface SourceBuildLogEntry { sequence: number; stream: 'system' | 'stdout' | 'stderr'; text: string; recordedAtUtc: string }
+export interface SourceBuildLogEntry {
+  sequence: number
+  stream: 'system' | 'stdout' | 'stderr'
+  text: string
+  recordedAtUtc: string
+}
 
 export interface SourceBuildLogs {
-  buildJobId: string; webServiceId: string; captureState: 'Open' | 'Completed' | 'Interrupted' | 'Expired' | 'Unavailable';
-  entries: SourceBuildLogEntry[]; nextSequence: number; lastSequence: number; hasMore: boolean; truncated: boolean;
-  expiresAtUtc: string | null; capturedBytes: number; maximumBytes: number | null
+  buildJobId: string
+  webServiceId: string
+  captureState: 'Open' | 'Completed' | 'Interrupted' | 'Expired' | 'Unavailable'
+  entries: SourceBuildLogEntry[]
+  nextSequence: number
+  lastSequence: number
+  hasMore: boolean
+  truncated: boolean
+  expiresAtUtc: string | null
+  capturedBytes: number
+  maximumBytes: number | null
 }
 
 export type SourceBuildRecipeKind = 0 | 1 | 2

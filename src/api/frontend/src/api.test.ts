@@ -22,18 +22,36 @@ import { retryOperationForStatus } from './components/webServiceDeploymentStatus
 
 describe('shared inventory API', () => {
   it.each([
-    JSON.stringify({ code: 'secrets.version-conflict', detail: 'private-canary', errors: { 'Body.Values': ['private-canary'] } }),
+    JSON.stringify({
+      code: 'secrets.version-conflict',
+      detail: 'private-canary',
+      errors: { 'Body.Values': ['private-canary'] },
+    }),
     JSON.stringify({ code: 'private-canary', title: 'private-canary' }),
     'private-canary',
   ])('never surfaces Secret values or arbitrary problem details: case %#', async (body) => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(body, { status: 409 }))
     vi.stubGlobal('fetch', fetchMock)
-    const failure = await createSecret('https://pole.test', { name: 'app', purpose: '', resourceGroupId: 'group', isolationScopeId: 'scope', values: { token: 'private-canary' } }, 'bearer', 'tenant').catch((error: unknown) => error)
+    const failure = await createSecret(
+      'https://pole.test',
+      {
+        name: 'app',
+        purpose: '',
+        resourceGroupId: 'group',
+        isolationScopeId: 'scope',
+        values: { token: 'private-canary' },
+      },
+      'bearer',
+      'tenant',
+    ).catch((error: unknown) => error)
     expect(failure).toBeInstanceOf(SecretApiError)
     expect(JSON.stringify(failure)).not.toContain('private-canary')
     expect((failure as Error).message).not.toContain('private-canary')
     expect((failure as SecretApiError).fieldErrors).toEqual({})
-    expect(fetchMock.mock.calls[0][1]).toMatchObject({ cache: 'no-store', headers: { Authorization: 'Bearer bearer', 'X-Pole-Tenant-ID': 'tenant' } })
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({
+      cache: 'no-store',
+      headers: { Authorization: 'Bearer bearer', 'X-Pole-Tenant-ID': 'tenant' },
+    })
     vi.unstubAllGlobals()
   })
   it('redacts Secret read and network errors as well as write errors', async () => {
@@ -49,26 +67,76 @@ describe('shared inventory API', () => {
     const signal = new AbortController().signal
     await searchResources('https://pole.test', ' app & worker ', 'token', 'tenant', signal, 2)
     await fetchProviderRepositories('https://pole.test', 'account/id', 'token', 'tenant', signal, 3)
-    await fetchProviderBranches('https://pole.test', 'account', 'repository/id', 'token', 'tenant', signal, 2)
+    await fetchProviderBranches(
+      'https://pole.test',
+      'account',
+      'repository/id',
+      'token',
+      'tenant',
+      signal,
+      2,
+    )
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       'https://pole.test/api/v1/search?query=app+%26+worker&pageNumber=2&pageSize=20',
       'https://pole.test/api/v1/git-provider-connections/account%2Fid/repositories?page=3&pageSize=100',
       'https://pole.test/api/v1/git-provider-connections/account/repositories/repository%2Fid/branches?page=2&pageSize=100',
     ])
-    for (const call of fetchMock.mock.calls) expect(call[1]).toEqual(expect.objectContaining({ signal, headers: expect.objectContaining({ Authorization: 'Bearer token', 'X-Pole-Tenant-ID': 'tenant' }) }))
+    for (const call of fetchMock.mock.calls)
+      expect(call[1]).toEqual(
+        expect.objectContaining({
+          signal,
+          headers: expect.objectContaining({
+            Authorization: 'Bearer token',
+            'X-Pole-Tenant-ID': 'tenant',
+          }),
+        }),
+      )
   })
   it('sends requested group pages and encoded direct identities with scoped headers and cancellation', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [] }) })
     vi.stubGlobal('fetch', fetchMock)
     const signal = new AbortController().signal
-    await fetchResourceGroups('https://pole.test', 'token', 'tenant', signal, { pageNumber: 3, pageSize: 20, search: ' prod ' })
+    await fetchResourceGroups('https://pole.test', 'token', 'tenant', signal, {
+      pageNumber: 3,
+      pageSize: 20,
+      search: ' prod ',
+    })
     await fetchResourceGroup('https://pole.test', 'group/identity', 'token', 'tenant', signal)
-    expect(fetchMock.mock.calls[0]).toEqual(['https://pole.test/api/v1/resource-groups?pageNumber=3&pageSize=20&search=prod', expect.objectContaining({ signal, headers: expect.objectContaining({ Authorization: 'Bearer token', 'X-Pole-Tenant-ID': 'tenant' }) })])
-    expect(fetchMock.mock.calls[1][0]).toBe('https://pole.test/api/v1/resource-groups/group%2Fidentity')
+    expect(fetchMock.mock.calls[0]).toEqual([
+      'https://pole.test/api/v1/resource-groups?pageNumber=3&pageSize=20&search=prod',
+      expect.objectContaining({
+        signal,
+        headers: expect.objectContaining({
+          Authorization: 'Bearer token',
+          'X-Pole-Tenant-ID': 'tenant',
+        }),
+      }),
+    ])
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      'https://pole.test/api/v1/resource-groups/group%2Fidentity',
+    )
   })
   it('parses problem details and associates nested validation messages with their fields', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ title: 'Validation failed', code: 'validation.failed', errors: { 'Body.Name': ['Name already exists.'], 'Body.Spec.Image.Name': ['Choose an image.'], 'Body.Tags[0]': ['Tag too long.'] } }), { status: 400 })))
-    const failure = await fetchResourceGroup('https://pole.test', 'group').catch((error: unknown) => error)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            title: 'Validation failed',
+            code: 'validation.failed',
+            errors: {
+              'Body.Name': ['Name already exists.'],
+              'Body.Spec.Image.Name': ['Choose an image.'],
+              'Body.Tags[0]': ['Tag too long.'],
+            },
+          }),
+          { status: 400 },
+        ),
+      ),
+    )
+    const failure = await fetchResourceGroup('https://pole.test', 'group').catch(
+      (error: unknown) => error,
+    )
     expect(failure).toBeInstanceOf(ApiError)
     expect((failure as ApiError).status).toBe(400)
     expect((failure as ApiError).code).toBe('validation.failed')
@@ -80,7 +148,9 @@ describe('shared inventory API', () => {
   })
   it.each(['Upstream unavailable', ''])('keeps non-problem failures readable', async (body) => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, { status: 503 })))
-    await expect(fetchResourceGroup('https://pole.test', 'group')).rejects.toThrow(body || 'Request failed with status 503')
+    await expect(fetchResourceGroup('https://pole.test', 'group')).rejects.toThrow(
+      body || 'Request failed with status 503',
+    )
   })
 })
 
@@ -171,7 +241,13 @@ describe('web service placement API', () => {
     const body = JSON.parse(String(request.body))
     expect(body.placement).toEqual({
       isolationScopeId: '507f1f77bcf86cd799439015',
-      targets: [{ deploymentTargetId: '507f1f77bcf86cd799439016', fixedReplicas: 2, computeProfileId: null }],
+      targets: [
+        {
+          deploymentTargetId: '507f1f77bcf86cd799439016',
+          fixedReplicas: 2,
+          computeProfileId: null,
+        },
+      ],
     })
     expect(body.exposure).toBe('Private')
     expect(body).not.toHaveProperty('expectedRevision')
@@ -218,13 +294,16 @@ describe('web service placement API', () => {
       deploymentRevision: 5,
       desiredOperation: 'Apply',
     }
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => [{
-          id: '507f1f77bcf86cd799439019',
-          resourceType: 'pole/web-service',
-        }],
+        json: async () => [
+          {
+            id: '507f1f77bcf86cd799439019',
+            resourceType: 'pole/web-service',
+          },
+        ],
       })
       .mockResolvedValueOnce({ ok: true, json: async () => placement })
       .mockResolvedValueOnce({ ok: true, json: async () => placement })
@@ -255,15 +334,19 @@ describe('web service placement API', () => {
       '507f1f77bcf86cd799439019',
     )
     expect(removed).toEqual(placement)
-    expect(fetchMock.mock.calls[1]?.[1]).toEqual(expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({
-        tenantDomainZoneId: '507f1f77bcf86cd799439020',
-        relativeName: 'api',
+    expect(fetchMock.mock.calls[1]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          tenantDomainZoneId: '507f1f77bcf86cd799439020',
+          relativeName: 'api',
+        }),
       }),
-    }))
-    expect(fetchMock.mock.calls[2]?.[1]).toEqual(expect.objectContaining({
-      method: 'DELETE',
-    }))
+    )
+    expect(fetchMock.mock.calls[2]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'DELETE',
+      }),
+    )
   })
 })
