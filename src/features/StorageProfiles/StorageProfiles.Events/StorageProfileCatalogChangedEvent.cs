@@ -8,9 +8,5 @@ public sealed record StorageProfileCatalogChangedEvent(
     string StorageProfileId,
     long Revision) : IPoleEvent
 {
-    public EventCore EventCore
-    {
-        get;
-        init;
-    } = EventCore.Create();
+    public EventCore EventCore { get; init; } = EventCore.Create();
 }

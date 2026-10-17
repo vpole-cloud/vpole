@@ -37,11 +37,7 @@ public sealed class RealtimeRedisFixture : IAsyncLifetime
         "tests",
         Guid.NewGuid().ToString("N")));
 
-    public IContainer Container
-    {
-        get;
-        private set;
-    } = null!;
+    public IContainer Container { get; private set; } = null!;
 
     public string CertificatePath => Path.Combine(_directory, "key-protection.pfx");
     public string ConnectionString => Container.Hostname + ":" + Container.GetMappedPublicPort(6379);

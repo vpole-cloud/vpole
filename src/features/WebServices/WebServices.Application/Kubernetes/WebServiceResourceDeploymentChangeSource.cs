@@ -90,44 +90,19 @@ public sealed class WebServiceResourceDeploymentChangeSource(
 
     private sealed class StreamState(long sequence, CancellationTokenSource cancellation)
     {
-        public long Sequence
-        {
-            get;
-        } = sequence;
+        public long Sequence { get; } = sequence;
 
-        public CancellationTokenSource Cancellation
-        {
-            get;
-        } = cancellation;
+        public CancellationTokenSource Cancellation { get; } = cancellation;
 
-        public Task Pump
-        {
-            get;
-            set;
-        } = Task.CompletedTask;
+        public Task Pump { get; set; } = Task.CompletedTask;
 
-        public bool Listed
-        {
-            get;
-            set;
-        }
+        public bool Listed { get; set; }
 
-        public bool Ready
-        {
-            get;
-            set;
-        }
+        public bool Ready { get; set; }
 
-        public bool Retired
-        {
-            get;
-            set;
-        }
+        public bool Retired { get; set; }
 
-        public Dictionary<string, NativeObject> Items
-        {
-            get;
-        } = new(StringComparer.Ordinal);
+        public Dictionary<string, NativeObject> Items { get; } = new(StringComparer.Ordinal);
     }
 
     /// <summary>Per-interest UID graphs and transports. Native specs never enter its bounded message queue.</summary>

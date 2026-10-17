@@ -9,9 +9,5 @@ public sealed record ResourceRegistrationUpdatedEvent(
     string ResourceType,
     string ResourceId) : IPoleEvent
 {
-    public EventCore EventCore
-    {
-        get;
-        init;
-    } = EventCore.Create();
+    public EventCore EventCore { get; init; } = EventCore.Create();
 }

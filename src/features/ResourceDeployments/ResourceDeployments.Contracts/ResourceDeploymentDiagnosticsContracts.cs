@@ -22,9 +22,5 @@ public sealed record ResourceDeploymentDiagnosticsDto(
     DateTime CheckedAtUtc,
     WorkloadDiagnostics Diagnostics)
 {
-    public long? ObservationVersion
-    {
-        get;
-        init;
-    }
+    public long? ObservationVersion { get; init; }
 }

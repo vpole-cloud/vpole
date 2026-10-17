@@ -7,9 +7,5 @@ namespace Pole.Features.Tenants.Events;
 [EntityName("pole.tenants/v1/membership-changed")]
 public sealed record TenantMembershipChangedEvent(string UserId) : IPoleEvent
 {
-    public EventCore EventCore
-    {
-        get;
-        init;
-    } = EventCore.Create();
+    public EventCore EventCore { get; init; } = EventCore.Create();
 }

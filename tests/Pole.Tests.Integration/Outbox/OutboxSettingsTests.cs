@@ -176,10 +176,7 @@ public sealed class OutboxSettingsTests
 
         public int Count => Volatile.Read(ref _count);
 
-        public TaskCompletionSource FirstTrigger
-        {
-            get;
-        } =
+        public TaskCompletionSource FirstTrigger { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Task TriggerAsync(CancellationToken cancellationToken)

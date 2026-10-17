@@ -143,23 +143,11 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
 
     private sealed class TargetCoordinator
     {
-        public bool RejectFence
-        {
-            get;
-            init;
-        }
+        public bool RejectFence { get; init; }
 
-        public bool RejectReference
-        {
-            get;
-            init;
-        }
+        public bool RejectReference { get; init; }
 
-        public int RegistrationCalls
-        {
-            get;
-            private set;
-        }
+        public int RegistrationCalls { get; private set; }
 
         public Task<ApplyDeploymentTargetReferenceChangesOutcome> ApplyChangesOutcomeAsync(
             DeploymentTargetReferenceOwner owner,

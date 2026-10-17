@@ -229,10 +229,7 @@ public sealed class ObservationMetricsTests
 
     private sealed class StalledHeadersHandler : DelegatingHandler
     {
-        public TaskCompletionSource Entered
-        {
-            get;
-        } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
             CancellationToken cancellationToken)
@@ -284,17 +281,9 @@ public sealed class ObservationMetricsTests
     {
         private readonly ObservationTestStore inner = new();
 
-        public bool RejectSample
-        {
-            get;
-            set;
-        }
+        public bool RejectSample { get; set; }
 
-        public ResourceDeploymentSharedObservation? Snapshot
-        {
-            get;
-            set;
-        }
+        public ResourceDeploymentSharedObservation? Snapshot { get; set; }
 
         public Task<ObservationControlState?> LoadControlAsync(ObservationIdentity identity,
             CancellationToken ct = default) => inner.LoadControlAsync(identity, ct);
@@ -356,10 +345,7 @@ public sealed class ObservationMetricsTests
 
     private sealed class Capture : IDisposable
     {
-        public ConcurrentQueue<Measurement> Measurements
-        {
-            get;
-        } = new();
+        public ConcurrentQueue<Measurement> Measurements { get; } = new();
 
         private readonly MeterListener listener = new();
 

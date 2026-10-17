@@ -462,32 +462,15 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
 
     private sealed class RecordingTargetCoordinator
     {
-        public int FenceBatchCalls
-        {
-            get;
-            private set;
-        }
+        public int FenceBatchCalls { get; private set; }
 
-        public bool RejectReferenceRemoval
-        {
-            get;
-            set;
-        }
+        public bool RejectReferenceRemoval { get; set; }
 
-        public List<DeploymentTargetWorkloadConfigurationFenceRequest> Fences
-        {
-            get;
-        } = [];
+        public List<DeploymentTargetWorkloadConfigurationFenceRequest> Fences { get; } = [];
 
-        public List<(string TargetId, DeploymentTargetReferenceOwner Owner)> Registrations
-        {
-            get;
-        } = [];
+        public List<(string TargetId, DeploymentTargetReferenceOwner Owner)> Registrations { get; } = [];
 
-        public List<(string TargetId, DeploymentTargetReferenceOwner Owner)> Unregistrations
-        {
-            get;
-        } = [];
+        public List<(string TargetId, DeploymentTargetReferenceOwner Owner)> Unregistrations { get; } = [];
 
         public Task<FenceDeploymentTargetWorkloadConfigurationsOutcome> FenceManyOutcomeAsync(
             IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> requests,

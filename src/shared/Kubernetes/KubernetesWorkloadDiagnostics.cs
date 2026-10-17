@@ -18,60 +18,27 @@ public sealed class OwnedKubernetesWorkload(
     string generationKey,
     bool generationLabel)
 {
-    public IKubernetes Client
-    {
-        get;
-    } = client;
+    public IKubernetes Client { get; } = client;
 
-    public string Namespace
-    {
-        get;
-    } = namespaceName;
+    public string Namespace { get; } = namespaceName;
 
-    public WorkloadIdentityLabels Identity
-    {
-        get;
-    } = identity;
+    public WorkloadIdentityLabels Identity { get; } = identity;
 
-    public V1ObjectMeta Controller
-    {
-        get;
-    } = controller;
+    public V1ObjectMeta Controller { get; } = controller;
 
-    public string ControllerKind
-    {
-        get;
-    } = controllerKind;
+    public string ControllerKind { get; } = controllerKind;
 
-    public IReadOnlyList<V1ObjectMeta> ReplicaSets
-    {
-        get;
-    } = replicaSets;
+    public IReadOnlyList<V1ObjectMeta> ReplicaSets { get; } = replicaSets;
 
-    public IReadOnlySet<string> PodOwnerUids
-    {
-        get;
-    } = podOwnerUids;
+    public IReadOnlySet<string> PodOwnerUids { get; } = podOwnerUids;
 
-    public bool ControllersTruncated
-    {
-        get;
-    } = controllersTruncated;
+    public bool ControllersTruncated { get; } = controllersTruncated;
 
-    public long Generation
-    {
-        get;
-    } = generation;
+    public long Generation { get; } = generation;
 
-    public string GenerationKey
-    {
-        get;
-    } = generationKey;
+    public string GenerationKey { get; } = generationKey;
 
-    public bool GenerationLabel
-    {
-        get;
-    } = generationLabel;
+    public bool GenerationLabel { get; } = generationLabel;
 }
 
 public static class KubernetesWorkloadDiagnostics

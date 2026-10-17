@@ -333,35 +333,17 @@ public sealed class StorageObservationOwnerTests(MongoReplicaSetFixture fixture)
 
     private sealed class ValidationHandler : DelegatingHandler
     {
-        public int BlockReadAt
-        {
-            get;
-            init;
-        }
+        public int BlockReadAt { get; init; }
 
-        public string ClassName
-        {
-            get;
-            set;
-        } = "class-a";
+        public string ClassName { get; set; } = "class-a";
 
-        public bool? Expansion
-        {
-            get;
-            set;
-        }
+        public bool? Expansion { get; set; }
 
         public int Reads;
 
-        public TaskCompletionSource Entered
-        {
-            get;
-        } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public TaskCompletionSource Release
-        {
-            get;
-        } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
             CancellationToken cancellationToken)

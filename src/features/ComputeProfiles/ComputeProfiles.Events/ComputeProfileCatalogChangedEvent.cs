@@ -8,9 +8,5 @@ public sealed record ComputeProfileCatalogChangedEvent(
     string ComputeProfileId,
     long Revision) : IPoleEvent
 {
-    public EventCore EventCore
-    {
-        get;
-        init;
-    } = EventCore.Create();
+    public EventCore EventCore { get; init; } = EventCore.Create();
 }

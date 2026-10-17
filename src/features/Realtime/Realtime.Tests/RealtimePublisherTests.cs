@@ -221,10 +221,7 @@ public sealed class RealtimePublisherTests
 
     private sealed class RecordingHubContext : IHubContext<RealtimeHub, IRealtimeClient>
     {
-        public RecordingClient Client
-        {
-            get;
-        } = new();
+        public RecordingClient Client { get; } = new();
 
         public IHubClients<IRealtimeClient> Clients => new RecordingClients(Client);
         public IGroupManager Groups => throw new NotSupportedException();
@@ -232,16 +229,9 @@ public sealed class RealtimePublisherTests
 
     private sealed class RecordingClient : IRealtimeClient
     {
-        public List<RealtimeChange> Notices
-        {
-            get;
-        } = [];
+        public List<RealtimeChange> Notices { get; } = [];
 
-        public int Revocations
-        {
-            get;
-            private set;
-        }
+        public int Revocations { get; private set; }
 
         public Task Changed(RealtimeChange change)
         {

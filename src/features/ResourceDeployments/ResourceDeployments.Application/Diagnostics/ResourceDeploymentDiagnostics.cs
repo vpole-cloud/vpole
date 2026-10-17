@@ -17,23 +17,11 @@ public sealed class RuntimeDiagnosticsOptions
 {
     public const string SectionName = "RuntimeDiagnostics";
 
-    public int MaximumBytes
-    {
-        get;
-        init;
-    } = 1024 * 1024;
+    public int MaximumBytes { get; init; } = 1024 * 1024;
 
-    public int LifetimeSeconds
-    {
-        get;
-        init;
-    } = 120;
+    public int LifetimeSeconds { get; init; } = 120;
 
-    public int OwnershipCheckSeconds
-    {
-        get;
-        init;
-    } = 5;
+    public int OwnershipCheckSeconds { get; init; } = 5;
 
     public bool Valid => MaximumBytes is >= 4096 and <= 4 * 1024 * 1024 && LifetimeSeconds is >= 10 and <= 300 &&
                          OwnershipCheckSeconds is >= 1 and <= 10;
@@ -41,10 +29,7 @@ public sealed class RuntimeDiagnosticsOptions
 
 public sealed class RuntimeLogCapacity
 {
-    internal SemaphoreSlim Slots
-    {
-        get;
-    } = new(4);
+    internal SemaphoreSlim Slots { get; } = new(4);
 }
 
 public sealed class PreparedRuntimeLogSession(
@@ -54,25 +39,13 @@ public sealed class PreparedRuntimeLogSession(
     bool follow,
     Action release) : IAsyncDisposable
 {
-    public ResourceDeployment Deployment
-    {
-        get;
-    } = deployment;
+    public ResourceDeployment Deployment { get; } = deployment;
 
-    public RuntimeLogSource Source
-    {
-        get;
-    } = source;
+    public RuntimeLogSource Source { get; } = source;
 
-    public CancellationTokenSource Lifetime
-    {
-        get;
-    } = lifetime;
+    public CancellationTokenSource Lifetime { get; } = lifetime;
 
-    public bool Follow
-    {
-        get;
-    } = follow;
+    public bool Follow { get; } = follow;
 
     public async ValueTask DisposeAsync()
     {

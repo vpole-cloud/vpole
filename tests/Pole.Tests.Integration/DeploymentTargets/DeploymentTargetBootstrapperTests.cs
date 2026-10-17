@@ -485,29 +485,13 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
 
     private sealed class FakeHostEnvironment(string environmentName) : IHostEnvironment
     {
-        public string EnvironmentName
-        {
-            get;
-            set;
-        } = environmentName;
+        public string EnvironmentName { get; set; } = environmentName;
 
-        public string ApplicationName
-        {
-            get;
-            set;
-        } = "Pole.Tests.Integration";
+        public string ApplicationName { get; set; } = "Pole.Tests.Integration";
 
-        public string ContentRootPath
-        {
-            get;
-            set;
-        } = AppContext.BaseDirectory;
+        public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
 
-        public IFileProvider ContentRootFileProvider
-        {
-            get;
-            set;
-        } = new NullFileProvider();
+        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider

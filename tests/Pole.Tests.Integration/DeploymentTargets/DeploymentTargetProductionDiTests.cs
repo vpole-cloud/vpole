@@ -294,10 +294,7 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
     private sealed class ThrowingKubernetesClientProvider(Exception exception)
         : IKubernetesClientProvider
     {
-        public List<string> RequestedTargetIds
-        {
-            get;
-        } = [];
+        public List<string> RequestedTargetIds { get; } = [];
 
         public Task<IKubernetes> GetAsync(
             string deploymentTargetId,
@@ -322,29 +319,13 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
 
     private sealed class FakeHostEnvironment : IHostEnvironment
     {
-        public string EnvironmentName
-        {
-            get;
-            set;
-        } = Environments.Development;
+        public string EnvironmentName { get; set; } = Environments.Development;
 
-        public string ApplicationName
-        {
-            get;
-            set;
-        } = "Pole.Tests.Integration";
+        public string ApplicationName { get; set; } = "Pole.Tests.Integration";
 
-        public string ContentRootPath
-        {
-            get;
-            set;
-        } = AppContext.BaseDirectory;
+        public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
 
-        public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider
-        {
-            get;
-            set;
-        } =
+        public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; } =
             new Microsoft.Extensions.FileProviders.NullFileProvider();
     }
 }

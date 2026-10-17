@@ -161,11 +161,7 @@ public sealed class RealtimeSessionHttpTests
     private sealed class
         ObservedSessionHandler : IMediatorOutcomeHandler<CreateRealtimeSessionRequest, CreateRealtimeSessionOutcome>
     {
-        public CancellationToken Received
-        {
-            get;
-            private set;
-        }
+        public CancellationToken Received { get; private set; }
 
         public Task<CreateRealtimeSessionOutcome> HandleAsync(CreateRealtimeSessionRequest request,
             CancellationToken cancellationToken = default)

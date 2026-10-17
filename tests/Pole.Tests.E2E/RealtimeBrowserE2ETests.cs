@@ -1260,10 +1260,7 @@ public sealed class RealtimeBrowserE2ETests(
         private long lastRefreshTimestamp;
         private long documentStartedAt;
 
-        public ConcurrentQueue<BootstrapMetadata> Bootstraps
-        {
-            get;
-        } = new();
+        public ConcurrentQueue<BootstrapMetadata> Bootstraps { get; } = new();
 
         public int RefreshResponses => Volatile.Read(ref refreshResponses);
         public long LastRefreshTimestamp => Interlocked.Read(ref lastRefreshTimestamp);

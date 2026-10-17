@@ -13,6 +13,10 @@ indent_size = 4
 [*.cs]
 max_line_length = 120
 csharp_new_line_before_open_brace = all
+csharp_preserve_single_line_blocks = true
+csharp_preserve_single_line_statements = true
+resharper_csharp_keep_existing_declaration_block_arrangement = false
+resharper_csharp_place_abstract_accessorholder_on_single_line = true
 resharper_csharp_keep_existing_embedded_arrangement = false
 resharper_csharp_keep_existing_embedded_block_arrangement = false
 resharper_csharp_place_simple_embedded_statement_on_same_line = false

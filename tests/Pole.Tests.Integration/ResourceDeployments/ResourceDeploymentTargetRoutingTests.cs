@@ -336,16 +336,9 @@ public sealed class ResourceDeploymentTargetRoutingTests(
         IReadOnlyDictionary<string, IKubernetes> clients)
         : IKubernetesClientProvider
     {
-        public List<string> RequestedTargetIds
-        {
-            get;
-        } = [];
+        public List<string> RequestedTargetIds { get; } = [];
 
-        public int DefaultRequestCount
-        {
-            get;
-            private set;
-        }
+        public int DefaultRequestCount { get; private set; }
 
         public Task<IKubernetes> GetAsync(
             string deploymentTargetId,
@@ -372,17 +365,9 @@ public sealed class ResourceDeploymentTargetRoutingTests(
     private sealed class RecordingAdapter(IKubernetesClientProvider kubernetesClientProvider)
         : IResourceDeploymentAdapter
     {
-        public IKubernetes? Kubernetes
-        {
-            get;
-            private set;
-        }
+        public IKubernetes? Kubernetes { get; private set; }
 
-        public string? DeploymentTargetId
-        {
-            get;
-            private set;
-        }
+        public string? DeploymentTargetId { get; private set; }
 
         public async Task<ResourceDeploymentAdapterResult> ApplyAsync(
             ResourceDeploymentReconciliationContext context,

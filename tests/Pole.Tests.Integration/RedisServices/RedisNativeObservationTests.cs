@@ -381,11 +381,7 @@ public sealed class RedisNativeObservationTests
 
     private sealed class ClientProvider(Func<IKubernetes> client) : IKubernetesClientProvider
     {
-        public int Reads
-        {
-            get;
-            private set;
-        }
+        public int Reads { get; private set; }
 
         public Task<IKubernetes> GetAsync(string id, CancellationToken ct = default)
         {
@@ -429,66 +425,27 @@ internal sealed class RedisNativeTestApi : DelegatingHandler
 {
     private readonly ConcurrentDictionary<string, NativeWatchTestStream> _streams = new(StringComparer.Ordinal);
 
-    public ConcurrentQueue<Uri> Requests
-    {
-        get;
-    } = new();
+    public ConcurrentQueue<Uri> Requests { get; } = new();
 
     public IEnumerable<NativeWatchTestStream> Streams => _streams.Values;
 
-    public bool ControllerPresent
-    {
-        get;
-        set;
-    } = true;
+    public bool ControllerPresent { get; set; } = true;
 
-    public string? ControllerMismatch
-    {
-        get;
-        set;
-    }
+    public string? ControllerMismatch { get; set; }
 
-    public string ControllerUid
-    {
-        get;
-        set;
-    } = "controller";
+    public string ControllerUid { get; set; } = "controller";
 
-    public string ServiceUid
-    {
-        get;
-        set;
-    } = "service";
+    public string ServiceUid { get; set; } = "service";
 
-    public int PodCount
-    {
-        get;
-        set;
-    } = 1;
+    public int PodCount { get; set; } = 1;
 
-    public int SliceCount
-    {
-        get;
-        set;
-    } = 1;
+    public int SliceCount { get; set; } = 1;
 
-    public bool IncludeForeignPod
-    {
-        get;
-        set;
-    }
+    public bool IncludeForeignPod { get; set; }
 
-    public int? ReplaceAtRead
-    {
-        get;
-        set;
-    }
+    public int? ReplaceAtRead { get; set; }
 
-    public int ControllerReads
-    {
-        get;
-        private set;
-    }
+    public int ControllerReads { get; private set; }
 
     public NativeWatchTestStream Stream(string kind, string? uid = null) => _streams[kind + ":" + uid];
 

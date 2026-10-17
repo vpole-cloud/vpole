@@ -396,21 +396,11 @@ internal sealed class StorageMetricHandler : DelegatingHandler
 {
     private int reads;
 
-    public bool NativeUnavailable
-    {
-        get;
-        init;
-    }
+    public bool NativeUnavailable { get; init; }
 
-    public TaskCompletionSource Entered
-    {
-        get;
-    } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public TaskCompletionSource Release
-    {
-        get;
-    } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
         CancellationToken cancellationToken)
@@ -450,10 +440,7 @@ internal sealed record StorageMetricMeasurement(
 
 internal sealed class StorageMetricCapture : IDisposable
 {
-    internal ConcurrentQueue<StorageMetricMeasurement> Measurements
-    {
-        get;
-    } = new();
+    internal ConcurrentQueue<StorageMetricMeasurement> Measurements { get; } = new();
 
     private readonly MeterListener listener = new();
 

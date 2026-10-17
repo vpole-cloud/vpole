@@ -314,17 +314,9 @@ public sealed class WebServiceNativeObservationTests
 
     private sealed class ReadBudget : IObservationReadBudget
     {
-        public int Reads
-        {
-            get;
-            private set;
-        }
+        public int Reads { get; private set; }
 
-        public int Active
-        {
-            get;
-            private set;
-        }
+        public int Active { get; private set; }
 
         public async Task<T> ReadAsync<T>(Func<CancellationToken, Task<T>> read, CancellationToken ct = default)
         {
