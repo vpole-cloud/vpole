@@ -19,6 +19,7 @@ using Pole.Features.StorageProfiles.Application.Persistence.Observation;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Events;
 using Pole.Observability;
+using Pole.Tests.Integration.Observation;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -44,6 +45,52 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
     private IMongoCollection<BsonDocument> Targets => fixture.Database.GetCollection<BsonDocument>("DeploymentTargets");
     public Task InitializeAsync() => fixture.ResetDatabaseAsync();
     public Task DisposeAsync() => Task.CompletedTask;
+
+    [Fact]
+    public async Task HistoricalRawDocumentsRemainReadableRenewableAndWritableWithoutMigration()
+    {
+        var seeded = await SeedAsync();
+        var context = seeded.Context;
+        var now = await ServerNowAsync();
+        var (_, control) = ObservationDocumentCompatibilityTests.Legacy("storage-control");
+        var (_, demand) = ObservationDocumentCompatibilityTests.Legacy("storage-demand");
+        var (_, snapshot) = ObservationDocumentCompatibilityTests.Legacy("storage-snapshot");
+        foreach (var document in new[] { control, snapshot })
+        {
+            document["_id"] = ObjectId.Parse(context.DeploymentTargetId);
+            document["ConnectionVersion"] = context.ConnectionVersion;
+        }
+        control["LeaseExpiresAtUtc"] = now.AddSeconds(30);
+        control["UpdatedAtUtc"] = now;
+        snapshot["CheckedAtUtc"] = now;
+        demand["_id"] = $"{context.DeploymentTargetId}/interest";
+        demand["DeploymentTargetId"] = ObjectId.Parse(context.DeploymentTargetId);
+        demand["OriginalExpiresAtUtc"] = now.AddMinutes(5);
+        demand["ExpiresAtUtc"] = now.AddMinutes(1);
+        await fixture.Database.GetCollection<BsonDocument>(MongoStorageObservationStore.ControlsCollection)
+            .InsertOneAsync(control);
+        await fixture.Database.GetCollection<BsonDocument>(MongoStorageObservationStore.DemandsCollection)
+            .InsertOneAsync(demand);
+        await fixture.Database.GetCollection<BsonDocument>(MongoStorageObservationStore.SnapshotsCollection)
+            .InsertOneAsync(snapshot);
+
+        var store = Store();
+        Assert.Equal(8, (await store.LoadControlAsync(context.DeploymentTargetId))!.ObservationVersion);
+        Assert.Equal(8, (await store.LoadFreshSnapshotAsync(context))!.ObservationVersion);
+        var lease = new StorageObservationLease(context.DeploymentTargetId, "replica", "lease-token", 6);
+        Assert.IsType<StorageObservationMutationAccepted>((await store.RenewLeaseAsync(lease, context)).Value);
+        Assert.IsType<StorageObservationMutationAccepted>((await store.RenewDemandAsync(
+            new(new(context.DeploymentTargetId, "interest", "connection", "session"), now.AddMinutes(10)), context)).Value);
+        var committed = Assert.IsType<StorageObservationSnapshot>((await store.TryCommitSnapshotAsync(
+            lease, context, 7, "source", Inventory())).Value);
+        Assert.Equal(9, committed.ObservationVersion);
+        var written = await fixture.Database
+            .GetCollection<BsonDocument>(MongoStorageObservationStore.SnapshotsCollection)
+            .Find(new BsonDocument("_id", ObjectId.Parse(context.DeploymentTargetId))).SingleAsync();
+        Assert.Equal(snapshot.Names, written.Names);
+        Assert.Equal(9, written["ObservationVersion"].AsInt64);
+        Assert.DoesNotContain("TenantId", written.Names);
+    }
 
     [Fact]
     public async Task PlatformDemandScanIsDistinctCursorBoundedAndExcludesExpiredInterests()

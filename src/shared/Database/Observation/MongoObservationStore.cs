@@ -1,41 +1,50 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Observation;
+using Control = Pole.Database.Observation.IMongoObservationControl;
+using Demand = Pole.Database.Observation.IMongoObservationDemand;
+using Snapshot = Pole.Database.Observation.IMongoObservationSnapshot;
 
 namespace Pole.Database.Observation;
 
 /// <summary>Storage protocol only. No Kubernetes models, resource types, authorization or event dependencies.</summary>
-public sealed class MongoObservationStore<TContext>(
+public sealed class MongoObservationStore<TContext, TControl, TDemand, TSnapshot>(
     IMongoDatabase database,
     MongoRunTransaction transactions,
     string controlsCollection,
     string demandsCollection,
     string snapshotsCollection,
-    string demandSubjectField,
-    string sourceField,
-    IMongoObservationDefinition<TContext> definition)
+    IMongoObservationDefinition<TContext, TControl, TDemand, TSnapshot> definition)
+    where TControl : class, IMongoObservationControl
+    where TDemand : class, IMongoObservationDemand
+    where TSnapshot : class, IMongoObservationSnapshot
 {
-    private readonly IMongoCollection<BsonDocument> controls = database.GetCollection<BsonDocument>(controlsCollection);
-    private readonly IMongoCollection<BsonDocument> demands = database.GetCollection<BsonDocument>(demandsCollection);
+    private readonly IMongoCollection<TControl> controls = database.GetCollection<TControl>(controlsCollection);
+    private readonly IMongoCollection<TDemand> demands = database.GetCollection<TDemand>(demandsCollection);
 
-    private readonly IMongoCollection<BsonDocument> snapshots =
-        database.GetCollection<BsonDocument>(snapshotsCollection);
+    private readonly IMongoCollection<TSnapshot> snapshots =
+        database.GetCollection<TSnapshot>(snapshotsCollection);
 
-    public Task<MongoObservationOutcome> PutDemandAsync(MongoObservationDemand demand,
+    private readonly string demandSubjectField = FieldName(definition.DemandSubject);
+    private readonly string sourceField = FieldName(definition.Source);
+    private readonly string snapshotSourceField = FieldName(definition.SnapshotSource);
+    private readonly Func<TControl, string?> sourceOf = definition.Source.Compile();
+
+    public Task<MongoObservationOutcome<TControl>> PutDemandAsync(MongoObservationDemand demand,
         TContext context,
         CancellationToken ct) =>
-        RunAsync(async (tx, token) =>
+        RunAsync<TControl>(async (tx, token) =>
             {
                 if (await definition.FenceAsync(context, tx.Session, token) is { } rejection)
                     return tx.Abort(rejection);
                 var scope = definition.Scope(context);
-                var pin = definition.Pin(context);
-                var control = await GetOrCreateAsync(scope, pin, tx.Session, token);
+                var pin = PinFields(context);
+                var control = await GetOrCreateAsync(context, scope, tx.Session, token);
                 await TouchAsync(scope, tx.Session, token);
                 var key = new BsonDocument("_id", demand.Identity.Scope.DemandKey(demand.Identity.SubscriptionId));
                 var previous = await demands.Find(tx.Session, key).FirstOrDefaultAsync(token);
-                if (previous is not null && (previous["ConnectionId"] != demand.Identity.ConnectionId ||
-                                             previous["SessionId"] != demand.Identity.SessionId))
+                if (previous is not null && (previous.ConnectionId != demand.Identity.ConnectionId ||
+                                             previous.SessionId != demand.Identity.SessionId))
                     return tx.Abort(Rejected(MongoObservationRejection.Superseded));
                 var bound = new BsonDocument("$min",
                     new BsonArray
@@ -45,135 +54,143 @@ public sealed class MongoObservationStore<TContext>(
                         Literal(demand.ExpiresAtUtc.UtcDateTime)
                     });
                 var fields = new BsonDocument();
-                foreach (var element in scope.Demands)
+                foreach (var element in DemandFilter(scope))
                     fields.Add(element.Name, Literal(element.Value));
-                fields.Add("SubscriptionId", Literal(demand.Identity.SubscriptionId));
-                fields.Add("ConnectionId", Literal(demand.Identity.ConnectionId));
-                fields.Add("SessionId", Literal(demand.Identity.SessionId));
-                fields.Add("OriginalExpiresAtUtc", bound);
-                fields.Add("ExpiresAtUtc",
+                fields.Add(nameof(Demand.SubscriptionId), Literal(demand.Identity.SubscriptionId));
+                fields.Add(nameof(Demand.ConnectionId), Literal(demand.Identity.ConnectionId));
+                fields.Add(nameof(Demand.SessionId), Literal(demand.Identity.SessionId));
+                fields.Add(nameof(Demand.OriginalExpiresAtUtc), bound);
+                fields.Add(nameof(Demand.ExpiresAtUtc),
                     new BsonDocument("$min", new BsonArray { bound, After(ObservationPolicy.DemandDuration) }));
                 await demands.UpdateOneAsync(tx.Session,
                     key,
-                    Pipeline(fields),
+                    Pipeline<TDemand>(fields),
                     new UpdateOptions { IsUpsert = true },
                     token);
-                if (!await demands.Find(tx.Session, And(key, Expiry("ExpiresAtUtc", "$gt"))).AnyAsync(token))
+                if (!await demands.Find(tx.Session,
+                        And(key, Expiry(nameof(Demand.ExpiresAtUtc), "$gt"))).AnyAsync(token))
                     return tx.Abort(Rejected(MongoObservationRejection.NoDemand));
-                var changed = !HasPin(control, pin);
-                fields = new() { { "IdleSinceUtc", BsonNull.Value } };
+                var changed = !definition.HasPin(control, context);
+                fields = new() { { nameof(Control.IdleSinceUtc), BsonNull.Value } };
                 if (changed)
                 {
                     Invalidate(fields);
-                    fields.Add("ObservationVersion", Increment("ObservationVersion"));
+                    fields.Add(nameof(Control.ObservationVersion), Increment(nameof(Control.ObservationVersion)));
                     foreach (var element in pin)
                         fields.Add(element.Name, Literal(element.Value));
                 }
 
                 var updated = await controls.FindOneAndUpdateAsync(tx.Session,
-                    scope.Control,
+                    ControlFilter(scope),
                     ControlPipeline(fields),
                     AfterControl(),
                     token);
                 if (changed)
                     await definition.PublishAsync(updated, tx.Session, token);
                 await snapshots.UpdateOneAsync(tx.Session,
-                    scope.Control,
-                    Builders<BsonDocument>.Update.Set("ExpiresAtUtc", BsonNull.Value),
+                    ControlFilter(scope),
+                    Builders<TSnapshot>.Update.Set(item => item.ExpiresAtUtc, null),
                     cancellationToken: token);
                 // Check the exact interest again after the final awaited storage/outbox operations.
-                if (!await demands.Find(tx.Session, And(key, Expiry("ExpiresAtUtc", "$gt"))).AnyAsync(token))
+                if (!await demands.Find(tx.Session,
+                        And(key, Expiry(nameof(Demand.ExpiresAtUtc), "$gt"))).AnyAsync(token))
                     return tx.Abort(Rejected(MongoObservationRejection.NoDemand));
                 await TouchAsync(scope, tx.Session, token);
-                return tx.Commit(updated);
+                return tx.Commit(Success(updated));
             },
             ct);
 
-    public Task<MongoObservationOutcome>
+    public Task<MongoObservationOutcome<MongoObservationAccepted>>
         RemoveDemandAsync(MongoObservationDemandIdentity demand, CancellationToken ct) =>
-        RunAsync(async (tx, token) =>
+        RunAsync<MongoObservationAccepted>(async (tx, token) =>
             {
-                var control = await controls.Find(tx.Session, demand.Scope.Control).FirstOrDefaultAsync(token);
+                var control = await controls.Find(tx.Session, ControlFilter(demand.Scope)).FirstOrDefaultAsync(token);
                 if (control is null)
-                    return tx.Commit(new BsonDocument());
+                    return tx.Commit(Success(new MongoObservationAccepted()));
                 await TouchAsync(demand.Scope, tx.Session, token);
                 var identity = new BsonDocument
                 {
                     { "_id", demand.Scope.DemandKey(demand.SubscriptionId) },
-                    { "ConnectionId", demand.ConnectionId }, { "SessionId", demand.SessionId }
+                    { nameof(Demand.ConnectionId), demand.ConnectionId }, { nameof(Demand.SessionId), demand.SessionId }
                 };
-                await demands.DeleteOneAsync(tx.Session, And(identity, demand.Scope.Demands), cancellationToken: token);
+                await demands.DeleteOneAsync(tx.Session,
+                    And(identity, DemandFilter(demand.Scope)),
+                    cancellationToken: token);
                 await MarkIdleAsync(demand.Scope, tx.Session, token);
-                return tx.Commit(control);
+                return tx.Commit(Success(new MongoObservationAccepted()));
             },
             ct);
 
     public async Task<MongoObservationPage> ScanAsync(string? after, int limit, CancellationToken ct)
     {
-        var filter = Expiry("ExpiresAtUtc", "$gt");
+        var filter = Expiry(nameof(Demand.ExpiresAtUtc), "$gt");
         if (after is not null)
             filter = And(filter, new(demandSubjectField, new BsonDocument("$gt", ObjectId.Parse(after))));
-        var rows = await demands.Aggregate().Match(filter).Group(new BsonDocument
+        var rows = await demands.Aggregate().Match(filter).Group<ObservationDemandGroup>(new BsonDocument
         {
             { "_id", "$" + demandSubjectField }, { "TenantId", new BsonDocument("$first", "$TenantId") }
         }).Sort(new BsonDocument("_id", 1)).Limit(limit + 1).ToListAsync(ct);
-        var selected = rows.Take(limit).Select(row => new MongoObservationScope(row["_id"].AsObjectId.ToString(),
-            row["TenantId"].IsBsonNull ? null : row["TenantId"].AsObjectId.ToString(),
-            demandSubjectField)).ToArray();
+        var selected = rows.Take(limit)
+            .Select(row => new MongoObservationScope(row.Id.ToString(), row.TenantId?.ToString())).ToArray();
         return new(selected, rows.Count > limit ? selected[^1].Id : null);
     }
 
     public async Task ReapAsync(int limit, CancellationToken ct)
     {
-        var candidates = await controls.Find(new BsonDocument("IdleSinceUtc", BsonNull.Value))
-            .Sort(new BsonDocument("UpdatedAtUtc", 1)).Limit(limit).ToListAsync(ct);
+        var candidates = await controls.Find(Builders<TControl>.Filter.Eq(item => item.IdleSinceUtc, null))
+            .SortBy(item => item.UpdatedAtUtc).Limit(limit).ToListAsync(ct);
         foreach (var candidate in candidates)
-            await RunAsync(async (tx, token) =>
+            await RunAsync<MongoObservationAccepted>(async (tx, token) =>
                 {
-                    var scope = ScopeOf(candidate);
-                    var control = await controls.Find(tx.Session, scope.Control).FirstOrDefaultAsync(token);
-                    if (control is null || !control["IdleSinceUtc"].IsBsonNull)
-                        return tx.Commit(new BsonDocument());
+                    var scope = definition.ScopeOf(candidate);
+                    var control = await controls.Find(tx.Session, ControlFilter(scope)).FirstOrDefaultAsync(token);
+                    if (control is null || control.IdleSinceUtc is not null)
+                        return tx.Commit(Success(new MongoObservationAccepted()));
                     await TouchAsync(scope, tx.Session, token);
                     await demands.DeleteManyAsync(tx.Session,
-                        And(scope.Demands, Expiry("ExpiresAtUtc", "$lte")),
+                        And(DemandFilter(scope), Expiry(nameof(Demand.ExpiresAtUtc), "$lte")),
                         cancellationToken: token);
                     await MarkIdleAsync(scope, tx.Session, token);
-                    return tx.Commit(control);
+                    return tx.Commit(Success(new MongoObservationAccepted()));
                 },
                 ct);
     }
 
-    public Task<MongoObservationOutcome> ClaimAsync(TContext context, string instanceId, CancellationToken ct) =>
-        RunAsync(async (tx, token) =>
+    public Task<MongoObservationOutcome<TControl>> ClaimAsync(TContext context,
+        string instanceId,
+        CancellationToken ct) =>
+        RunAsync<TControl>(async (tx, token) =>
             {
                 if (await definition.FenceAsync(context, tx.Session, token) is { } rejection)
                     return tx.Abort(rejection);
                 var scope = definition.Scope(context);
-                var pin = definition.Pin(context);
+                var pin = PinFields(context);
                 if (!await HasDemandAsync(scope, tx.Session, token))
                     return tx.Abort(Rejected(MongoObservationRejection.NoDemand));
-                var control = await GetOrCreateAsync(scope, pin, tx.Session, token);
-                if (HasPin(control, pin) && await controls.Find(tx.Session,
-                        And(scope.Control,
-                            new("Token", new BsonDocument("$ne", BsonNull.Value)),
-                            Expiry("LeaseExpiresAtUtc", "$gt"))).AnyAsync(token))
+                var control = await GetOrCreateAsync(context, scope, tx.Session, token);
+                if (definition.HasPin(control, context) && await controls.Find(tx.Session,
+                        And(ControlFilter(scope),
+                            new(nameof(Control.Token), new BsonDocument("$ne", BsonNull.Value)),
+                            Expiry(nameof(Control.LeaseExpiresAtUtc), "$gt"))).AnyAsync(token))
                     return tx.Abort(Rejected(MongoObservationRejection.Busy));
                 var fields = new BsonDocument
                 {
-                    { "InstanceId", Literal(instanceId) }, { "Token", Literal(Guid.NewGuid().ToString("N")) },
-                    { "Epoch", Increment("Epoch") }, { "SourceControlVersion", Increment("SourceControlVersion") },
-                    { "LeaseExpiresAtUtc", After(ObservationPolicy.LeaseDuration) }, { "SourceHealthy", false },
-                    { sourceField, BsonNull.Value }, { "IdleSinceUtc", BsonNull.Value }
+                    { nameof(Control.InstanceId), Literal(instanceId) },
+                    { nameof(Control.Token), Literal(Guid.NewGuid().ToString("N")) },
+                    { nameof(Control.Epoch), Increment(nameof(Control.Epoch)) },
+                    { nameof(Control.SourceControlVersion), Increment(nameof(Control.SourceControlVersion)) },
+                    { nameof(Control.LeaseExpiresAtUtc), After(ObservationPolicy.LeaseDuration) },
+                    { nameof(Control.SourceHealthy), false },
+                    { sourceField, BsonNull.Value }, { nameof(Control.IdleSinceUtc), BsonNull.Value }
                 };
                 foreach (var element in pin)
                     fields.Add(element.Name, Literal(element.Value));
-                var changed = control["SourceHealthy"].AsBoolean || !control[sourceField].IsBsonNull ||
-                              !HasPin(control, pin);
+                var changed = control.SourceHealthy || sourceOf(control) is not null ||
+                              !definition.HasPin(control, context);
                 if (changed)
-                    fields.Add("ObservationVersion", Increment("ObservationVersion"));
+                    fields.Add(nameof(Control.ObservationVersion), Increment(nameof(Control.ObservationVersion)));
                 var updated = await controls.FindOneAndUpdateAsync(tx.Session,
-                    And(scope.Control, new("Epoch", control["Epoch"])),
+                    And(ControlFilter(scope), new(nameof(Control.Epoch), control.Epoch)),
                     ControlPipeline(fields),
                     AfterControl(),
                     token);
@@ -183,35 +200,38 @@ public sealed class MongoObservationStore<TContext>(
                     await definition.PublishAsync(updated, tx.Session, token);
                 if (await DeadlineAsync(LeaseOf(updated), context, updated, tx.Session, token) is { } deadline)
                     return tx.Abort(deadline);
-                return tx.Commit(updated);
+                return tx.Commit(Success(updated));
             },
             ct);
 
-    public Task<MongoObservationOutcome>
+    public Task<MongoObservationOutcome<TControl>>
         RenewAsync(MongoObservationLease lease, TContext context, CancellationToken ct) =>
-        RunAsync(async (tx, token) =>
+        RunAsync<TControl>(async (tx, token) =>
             {
                 if (await definition.FenceAsync(context, tx.Session, token) is { } rejection)
                     return tx.Abort(rejection);
                 if (!await HasDemandAsync(lease.Scope, tx.Session, token))
                     return tx.Abort(Rejected(MongoObservationRejection.NoDemand));
                 var updated = await controls.FindOneAndUpdateAsync(tx.Session,
-                    And(ActiveLease(lease), definition.Pin(context)),
-                    ControlPipeline(new("LeaseExpiresAtUtc", After(ObservationPolicy.LeaseDuration))),
+                    And(ActiveLease(lease), PinFields(context)),
+                    ControlPipeline(new(nameof(Control.LeaseExpiresAtUtc), After(ObservationPolicy.LeaseDuration))),
                     AfterControl(),
                     token);
                 if (updated is null)
                     return tx.Abort(Rejected(MongoObservationRejection.LeaseLost));
                 if (await DeadlineAsync(lease, context, updated, tx.Session, token) is { } deadline)
                     return tx.Abort(deadline);
-                return tx.Commit(updated);
+                return tx.Commit(Success(updated));
             },
             ct);
 
-    public Task<MongoObservationOutcome> ReleaseAsync(MongoObservationLease lease, CancellationToken ct) =>
-        RunAsync(async (tx, token) =>
+    public Task<MongoObservationOutcome<TControl>> ReleaseAsync(MongoObservationLease lease, CancellationToken ct) =>
+        RunAsync<TControl>(async (tx, token) =>
             {
-                var fields = new BsonDocument { { "ObservationVersion", Increment("ObservationVersion") } };
+                var fields = new BsonDocument
+                {
+                    { nameof(Control.ObservationVersion), Increment(nameof(Control.ObservationVersion)) }
+                };
                 Invalidate(fields);
                 var updated = await controls.FindOneAndUpdateAsync(tx.Session,
                     LeaseIdentity(lease),
@@ -222,44 +242,43 @@ public sealed class MongoObservationStore<TContext>(
                     return tx.Abort(Rejected(MongoObservationRejection.LeaseLost));
                 await definition.PublishAsync(updated, tx.Session, token);
                 await MarkIdleAsync(lease.Scope, tx.Session, token);
-                return tx.Commit(updated);
+                return tx.Commit(Success(updated));
             },
             ct);
 
-    public Task<MongoObservationOutcome> SetSourceAsync(MongoObservationLease lease,
+    public Task<MongoObservationOutcome<TControl>> SetSourceAsync(MongoObservationLease lease,
         TContext context,
         long version,
         string? sourceId,
         CancellationToken ct) =>
-        RunAsync(async (tx, token) =>
+        RunAsync<TControl>(async (tx, token) =>
             {
                 if (sourceId is not null && await definition.FenceAsync(context, tx.Session, token) is { } rejection)
                     return tx.Abort(rejection);
                 if (!await HasDemandAsync(lease.Scope, tx.Session, token))
                     return tx.Abort(Rejected(MongoObservationRejection.NoDemand));
-                var control = await controls.Find(tx.Session, And(ActiveLease(lease), definition.Pin(context)))
+                var control = await controls.Find(tx.Session, And(ActiveLease(lease), PinFields(context)))
                     .FirstOrDefaultAsync(token);
                 if (control is null)
                     return tx.Abort(Rejected(MongoObservationRejection.LeaseLost));
-                if (control["SourceControlVersion"].ToInt64() != version)
+                if (control.SourceControlVersion != version)
                     return tx.Abort(Rejected(MongoObservationRejection.SourceChanged));
-                if (control["SourceHealthy"].AsBoolean == (sourceId is not null) && control[sourceField] ==
-                    (sourceId is null ? BsonNull.Value : new BsonString(sourceId)))
+                if (control.SourceHealthy == (sourceId is not null) && sourceOf(control) == sourceId)
                 {
                     await TouchAsync(lease.Scope, tx.Session, token);
                     if (sourceId is not null && await DeadlineAsync(lease, context, control, tx.Session, token) is
                         { } quietDeadline)
                         return tx.Abort(quietDeadline);
-                    return tx.Commit(control);
+                    return tx.Commit(Success(control));
                 }
 
                 var updated = await controls.FindOneAndUpdateAsync(tx.Session,
-                    And(ActiveLease(lease), definition.Pin(context), new("SourceControlVersion", version)),
+                    And(ActiveLease(lease), PinFields(context), new(nameof(Control.SourceControlVersion), version)),
                     ControlPipeline(new BsonDocument
                     {
-                        { "SourceControlVersion", Increment("SourceControlVersion") },
-                        { "ObservationVersion", Increment("ObservationVersion") },
-                        { "SourceHealthy", sourceId is not null },
+                        { nameof(Control.SourceControlVersion), Increment(nameof(Control.SourceControlVersion)) },
+                        { nameof(Control.ObservationVersion), Increment(nameof(Control.ObservationVersion)) },
+                        { nameof(Control.SourceHealthy), sourceId is not null },
                         { sourceField, sourceId is null ? BsonNull.Value : Literal(sourceId) }
                     }),
                     AfterControl(),
@@ -270,66 +289,67 @@ public sealed class MongoObservationStore<TContext>(
                 if (sourceId is not null && await DeadlineAsync(lease, context, updated, tx.Session, token) is
                     { } deadline)
                     return tx.Abort(deadline);
-                return tx.Commit(updated);
+                return tx.Commit(Success(updated));
             },
             ct);
 
-    public Task<MongoObservationOutcome> CommitSnapshotAsync(MongoObservationLease lease,
+    public Task<MongoObservationOutcome<TSnapshot>> CommitSnapshotAsync(MongoObservationLease lease,
         TContext context,
         long sourceVersion,
         string sourceId,
-        Func<BsonDocument, BsonDocument> buildSnapshot,
+        Func<TControl, TSnapshot> buildSnapshot,
         CancellationToken ct)
     {
         long? expectedVersion = null; // Retain the originally submitted cut across Mongo transaction retries.
-        return RunAsync(async (tx, token) =>
+        return RunAsync<TSnapshot>(async (tx, token) =>
             {
                 if (await definition.FenceAsync(context, tx.Session, token) is { } rejection)
                     return tx.Abort(rejection);
                 if (!await HasDemandAsync(lease.Scope, tx.Session, token))
                     return tx.Abort(Rejected(MongoObservationRejection.NoDemand));
-                var control = await controls.Find(tx.Session, And(ActiveLease(lease), definition.Pin(context)))
+                var control = await controls.Find(tx.Session, And(ActiveLease(lease), PinFields(context)))
                     .FirstOrDefaultAsync(token);
                 if (control is null)
                     return tx.Abort(Rejected(MongoObservationRejection.LeaseLost));
-                if (!control["SourceHealthy"].AsBoolean || control["SourceControlVersion"].ToInt64() != sourceVersion ||
-                    control[sourceField] != sourceId)
+                if (!control.SourceHealthy || control.SourceControlVersion != sourceVersion ||
+                    sourceOf(control) != sourceId)
                     return tx.Abort(Rejected(MongoObservationRejection.SourceChanged));
-                expectedVersion ??= control["ObservationVersion"].ToInt64();
-                if (control["ObservationVersion"].ToInt64() != expectedVersion)
+                expectedVersion ??= control.ObservationVersion;
+                if (control.ObservationVersion != expectedVersion)
                     return tx.Abort(Rejected(MongoObservationRejection.Superseded));
                 var updated = await controls.FindOneAndUpdateAsync(tx.Session,
                     And(ActiveLease(lease),
-                        definition.Pin(context),
-                        new("SourceControlVersion", sourceVersion),
+                        PinFields(context),
+                        new(nameof(Control.SourceControlVersion), sourceVersion),
                         new(sourceField, sourceId),
-                        new("SourceHealthy", true),
-                        new("ObservationVersion", expectedVersion.Value)),
-                    ControlPipeline(new("ObservationVersion", Increment("ObservationVersion"))),
+                        new(nameof(Control.SourceHealthy), true),
+                        new(nameof(Control.ObservationVersion), expectedVersion.Value)),
+                    ControlPipeline(new(nameof(Control.ObservationVersion),
+                        Increment(nameof(Control.ObservationVersion)))),
                     AfterControl(),
                     token);
                 if (updated is null)
                     return tx.Abort(Rejected(MongoObservationRejection.LeaseLost));
                 var snapshot = buildSnapshot(updated);
                 await snapshots.ReplaceOneAsync(tx.Session,
-                    lease.Scope.Control,
+                    ControlFilter(lease.Scope),
                     snapshot,
                     new ReplaceOptions { IsUpsert = true },
                     token);
                 await definition.PublishAsync(updated, tx.Session, token);
                 if (await DeadlineAsync(lease, context, updated, tx.Session, token) is { } deadline)
                     return tx.Abort(deadline);
-                return tx.Commit(snapshot);
+                return tx.Commit(Success(snapshot));
             },
             ct);
     }
 
-    public async Task<BsonDocument?> LoadControlAsync(MongoObservationScope scope, CancellationToken ct) =>
-        await controls.Find(scope.Control).FirstOrDefaultAsync(ct);
+    public async Task<TControl?> LoadControlAsync(MongoObservationScope scope, CancellationToken ct) =>
+        await controls.Find(ControlFilter(scope)).FirstOrDefaultAsync(ct);
 
-    public async Task<BsonDocument?> LoadFreshAsync(TContext context, CancellationToken ct)
+    public async Task<TSnapshot?> LoadFreshAsync(TContext context, CancellationToken ct)
     {
-        var result = await RunAsync(async (tx, token) =>
+        var result = await RunAsync<TSnapshot>(async (tx, token) =>
             {
                 if (await definition.FenceAsync(context, tx.Session, token) is { } rejection)
                     return tx.Abort(rejection);
@@ -337,54 +357,49 @@ public sealed class MongoObservationStore<TContext>(
                 if (!await HasDemandAsync(scope, tx.Session, token))
                     return tx.Abort(Rejected(MongoObservationRejection.NoDemand));
                 var control = await controls.Find(tx.Session,
-                    And(scope.Control,
-                        definition.Pin(context),
-                        new("Token", new BsonDocument("$ne", BsonNull.Value)),
-                        new("SourceHealthy", true),
-                        Expiry("LeaseExpiresAtUtc", "$gt"))).FirstOrDefaultAsync(token);
+                    And(ControlFilter(scope),
+                        PinFields(context),
+                        new(nameof(Control.Token), new BsonDocument("$ne", BsonNull.Value)),
+                        new(nameof(Control.SourceHealthy), true),
+                        Expiry(nameof(Control.LeaseExpiresAtUtc), "$gt"))).FirstOrDefaultAsync(token);
                 if (control is null)
                     return tx.Abort(Rejected(MongoObservationRejection.LeaseLost));
+                var snapshotCut = And(ControlFilter(scope),
+                    new(nameof(Snapshot.SourceControlVersion), control.SourceControlVersion),
+                    new(nameof(Snapshot.ObservationVersion), control.ObservationVersion),
+                    new(snapshotSourceField, sourceOf(control)),
+                    new("$expr", new BsonDocument("$and", new BsonArray
+                    {
+                        new BsonDocument("$gt",
+                            new BsonArray { "$" + nameof(Snapshot.CheckedAtUtc), After(-ObservationPolicy.Freshness) }),
+                        new BsonDocument("$lte", new BsonArray { "$" + nameof(Snapshot.CheckedAtUtc), "$$NOW" })
+                    })));
                 var snapshot = await snapshots.Find(tx.Session,
-                    And(scope.Control,
-                        definition.Pin(context),
-                        new("SourceControlVersion", control["SourceControlVersion"]),
-                        new("ObservationVersion", control["ObservationVersion"]),
-                        new(sourceField, control[sourceField]),
-                        new("$expr",
-                            new BsonDocument("$and",
-                                new BsonArray
-                                {
-                                    new BsonDocument("$gt",
-                                        new BsonArray { "$CheckedAtUtc", After(-ObservationPolicy.Freshness) }),
-                                    new BsonDocument("$lte", new BsonArray { "$CheckedAtUtc", "$$NOW" })
-                                })))).FirstOrDefaultAsync(token);
+                    Builders<TSnapshot>.Filter.And(definition.SnapshotPin(context), snapshotCut))
+                    .FirstOrDefaultAsync(token);
                 if (snapshot is null || !definition.AcceptSnapshot(snapshot))
                     return tx.Abort(Rejected(MongoObservationRejection.Superseded));
                 if (await DeadlineAsync(LeaseOf(control), context, control, tx.Session, token) is { } deadline)
                     return tx.Abort(deadline);
-                return tx.Commit(snapshot);
+                return tx.Commit(Success(snapshot));
             },
             ct);
-        return result.Value as BsonDocument;
+        return result switch
+        {
+            MongoObservationSuccess<TSnapshot> success => success.Value,
+            MongoObservationRejected => null
+        };
     }
 
-    private async Task<BsonDocument> GetOrCreateAsync(MongoObservationScope scope,
-        BsonDocument pin,
+    private async Task<TControl> GetOrCreateAsync(TContext context,
+        MongoObservationScope scope,
         IClientSessionHandle session,
         CancellationToken ct)
     {
-        var control = await controls.Find(session, scope.Control).FirstOrDefaultAsync(ct);
+        var control = await controls.Find(session, ControlFilter(scope)).FirstOrDefaultAsync(ct);
         if (control is not null)
             return control;
-        control = scope.Control;
-        control.AddRange(pin);
-        control.AddRange(new BsonDocument
-        {
-            { "Epoch", 0L }, { "SourceControlVersion", 0L }, { "ObservationVersion", 0L }, { "DemandFence", 0L },
-            { "InstanceId", BsonNull.Value }, { "Token", BsonNull.Value }, { "LeaseExpiresAtUtc", DateTime.UnixEpoch },
-            { "SourceHealthy", false }, { sourceField, BsonNull.Value }, { "IdleSinceUtc", BsonNull.Value },
-            { "UpdatedAtUtc", DateTime.UnixEpoch }
-        });
+        control = definition.CreateControl(context);
         try
         {
             await controls.InsertOneAsync(session, control, cancellationToken: ct);
@@ -397,48 +412,49 @@ public sealed class MongoObservationStore<TContext>(
         return control;
     }
 
-    private MongoObservationScope ScopeOf(BsonDocument control) => new(control["_id"].AsObjectId.ToString(),
-        control.TryGetValue("TenantId", out var tenant) ? tenant.AsObjectId.ToString() : null,
-        demandSubjectField);
+    private MongoObservationLease LeaseOf(TControl control) => new(definition.ScopeOf(control),
+        control.InstanceId!,
+        control.Token!,
+        control.Epoch);
 
-    private MongoObservationLease LeaseOf(BsonDocument control) => new(ScopeOf(control),
-        control["InstanceId"].AsString,
-        control["Token"].AsString,
-        control["Epoch"].ToInt64());
-
-    private static bool HasPin(BsonDocument control, BsonDocument pin) => pin.All(element =>
-        control.TryGetValue(element.Name, out var value) && value == element.Value);
+    // Render only the feature-owned assignment expression. The stored document stays typed.
+    private BsonDocument PinFields(TContext context) => definition.PinUpdate(context)
+        .Render(new(controls.DocumentSerializer,
+            MongoDB.Bson.Serialization.BsonSerializer.SerializerRegistry))["$set"].AsBsonDocument;
 
     private Task TouchAsync(MongoObservationScope scope, IClientSessionHandle session, CancellationToken ct) =>
-        controls.UpdateOneAsync(session, scope.Control, ControlPipeline(new()), cancellationToken: ct);
+        controls.UpdateOneAsync(session, ControlFilter(scope), ControlPipeline(new()), cancellationToken: ct);
 
     private Task<bool> HasDemandAsync(MongoObservationScope scope,
         IClientSessionHandle session,
         CancellationToken ct) =>
-        demands.Find(session, And(scope.Demands, Expiry("ExpiresAtUtc", "$gt"))).AnyAsync(ct);
+        demands.Find(session, And(DemandFilter(scope), Expiry(nameof(Demand.ExpiresAtUtc), "$gt"))).AnyAsync(ct);
 
     private async Task MarkIdleAsync(MongoObservationScope scope, IClientSessionHandle session, CancellationToken ct)
     {
         if (await HasDemandAsync(scope, session, ct))
             return;
         var fields = new BsonDocument
-            { { "IdleSinceUtc", "$$NOW" }, { "ObservationVersion", Increment("ObservationVersion") } };
+        {
+            { nameof(Control.IdleSinceUtc), "$$NOW" },
+            { nameof(Control.ObservationVersion), Increment(nameof(Control.ObservationVersion)) }
+        };
         Invalidate(fields);
         await controls.UpdateOneAsync(session,
-            And(scope.Control, new("IdleSinceUtc", BsonNull.Value)),
+            And(ControlFilter(scope), new(nameof(Control.IdleSinceUtc), BsonNull.Value)),
             ControlPipeline(fields),
             cancellationToken: ct);
         await snapshots.UpdateOneAsync(session,
-            scope.Control,
-            Pipeline(new("ExpiresAtUtc",
+            ControlFilter(scope),
+            Pipeline<TSnapshot>(new(nameof(Snapshot.ExpiresAtUtc),
                 new BsonDocument("$ifNull",
-                    new BsonArray { "$ExpiresAtUtc", After(ObservationPolicy.IdleRetention) }))),
+                    new BsonArray { "$" + nameof(Snapshot.ExpiresAtUtc), After(ObservationPolicy.IdleRetention) }))),
             cancellationToken: ct);
     }
 
     private async Task<MongoObservationRejected?> DeadlineAsync(MongoObservationLease lease,
         TContext context,
-        BsonDocument expected,
+        TControl expected,
         IClientSessionHandle session,
         CancellationToken ct)
     {
@@ -446,18 +462,19 @@ public sealed class MongoObservationStore<TContext>(
             return Rejected(MongoObservationRejection.NoDemand);
         var result = await controls.UpdateOneAsync(session,
             And(ActiveLease(lease),
-                definition.Pin(context),
-                new("SourceControlVersion", expected["SourceControlVersion"]),
-                new("ObservationVersion", expected["ObservationVersion"])),
+                PinFields(context),
+                new(nameof(Control.SourceControlVersion), expected.SourceControlVersion),
+                new(nameof(Control.ObservationVersion), expected.ObservationVersion)),
             ControlPipeline(new()),
             cancellationToken: ct);
         return result.MatchedCount == 1 ? null : Rejected(MongoObservationRejection.LeaseLost);
     }
 
-    private async Task<MongoObservationOutcome> RunAsync(
-        Func<MongoTransactionContext<MongoObservationOutcome>, CancellationToken,
-            Task<MongoTransactionDecision<MongoObservationOutcome>>> action,
+    private async Task<MongoObservationOutcome<T>> RunAsync<T>(
+        Func<MongoTransactionContext<MongoObservationOutcome<T>>, CancellationToken,
+            Task<MongoTransactionDecision<MongoObservationOutcome<T>>>> action,
         CancellationToken ct)
+        where T : notnull
     {
         for (var attempt = 0; ; attempt++)
             try
@@ -469,8 +486,19 @@ public sealed class MongoObservationStore<TContext>(
             }
     }
 
+    private sealed record ObservationDemandGroup(
+        [property: MongoDB.Bson.Serialization.Attributes.BsonId] ObjectId Id,
+        ObjectId? TenantId);
+
+    private static string FieldName<T, TValue>(
+        System.Linq.Expressions.Expression<Func<T, TValue>> expression) =>
+        new ExpressionFieldDefinition<T, TValue>(expression).Render(
+            new(MongoDB.Bson.Serialization.BsonSerializer.SerializerRegistry.GetSerializer<T>(),
+                MongoDB.Bson.Serialization.BsonSerializer.SerializerRegistry)).FieldName;
+
     private sealed class ControlCreationRaceException : Exception;
 
+    private static MongoObservationSuccess<T> Success<T>(T value) where T : notnull => new(value);
     private static MongoObservationRejected Rejected(MongoObservationRejection reason) => new(reason);
     private static BsonDocument And(params BsonDocument[] filters) => new("$and", new BsonArray(filters));
     private static BsonDocument Literal(BsonValue value) => new("$literal", value);
@@ -483,35 +511,43 @@ public sealed class MongoObservationStore<TContext>(
     private static BsonDocument Expiry(string field, string comparison) => new("$expr",
         new BsonDocument(comparison, new BsonArray { "$" + field, "$$NOW" }));
 
-    private static FindOneAndUpdateOptions<BsonDocument> AfterControl() =>
+    private static FindOneAndUpdateOptions<TControl> AfterControl() =>
         new() { ReturnDocument = ReturnDocument.After };
 
-    private static UpdateDefinition<BsonDocument> Pipeline(BsonDocument fields) =>
-        Builders<BsonDocument>.Update.Pipeline(new[] { new BsonDocument("$set", fields) });
+    private static UpdateDefinition<T> Pipeline<T>(BsonDocument fields) =>
+        Builders<T>.Update.Pipeline(new[] { new BsonDocument("$set", fields) });
 
-    private static UpdateDefinition<BsonDocument> ControlPipeline(BsonDocument fields)
+    private static UpdateDefinition<TControl> ControlPipeline(BsonDocument fields)
     {
-        fields.Add("DemandFence", Increment("DemandFence"));
-        fields.Add("UpdatedAtUtc", "$$NOW");
-        return Pipeline(fields);
+        fields.Add(nameof(Control.DemandFence), Increment(nameof(Control.DemandFence)));
+        fields.Add(nameof(Control.UpdatedAtUtc), "$$NOW");
+        return Pipeline<TControl>(fields);
     }
 
-    private BsonDocument LeaseIdentity(MongoObservationLease lease) => And(lease.Scope.Control,
-        new("InstanceId", lease.InstanceId),
-        new("Token", lease.Token),
-        new("Epoch", lease.Epoch));
+    private static BsonDocument ControlFilter(MongoObservationScope scope) => scope.TenantId is null
+        ? new("_id", ObjectId.Parse(scope.Id))
+        : new() { { "_id", ObjectId.Parse(scope.Id) }, { "TenantId", ObjectId.Parse(scope.TenantId) } };
+
+    private BsonDocument DemandFilter(MongoObservationScope scope) => scope.TenantId is null
+        ? new(demandSubjectField, ObjectId.Parse(scope.Id))
+        : new() { { demandSubjectField, ObjectId.Parse(scope.Id) }, { "TenantId", ObjectId.Parse(scope.TenantId) } };
+
+    private BsonDocument LeaseIdentity(MongoObservationLease lease) => And(ControlFilter(lease.Scope),
+        new(nameof(Control.InstanceId), lease.InstanceId),
+        new(nameof(Control.Token), lease.Token),
+        new(nameof(Control.Epoch), lease.Epoch));
 
     private BsonDocument ActiveLease(MongoObservationLease lease) =>
-        And(LeaseIdentity(lease), Expiry("LeaseExpiresAtUtc", "$gt"));
+        And(LeaseIdentity(lease), Expiry(nameof(Control.LeaseExpiresAtUtc), "$gt"));
 
     private void Invalidate(BsonDocument fields)
     {
-        fields.Add("Epoch", Increment("Epoch"));
-        fields.Add("SourceControlVersion", Increment("SourceControlVersion"));
-        fields.Add("InstanceId", BsonNull.Value);
-        fields.Add("Token", BsonNull.Value);
-        fields.Add("LeaseExpiresAtUtc", Literal(DateTime.UnixEpoch));
-        fields.Add("SourceHealthy", false);
+        fields.Add(nameof(Control.Epoch), Increment(nameof(Control.Epoch)));
+        fields.Add(nameof(Control.SourceControlVersion), Increment(nameof(Control.SourceControlVersion)));
+        fields.Add(nameof(Control.InstanceId), BsonNull.Value);
+        fields.Add(nameof(Control.Token), BsonNull.Value);
+        fields.Add(nameof(Control.LeaseExpiresAtUtc), Literal(DateTime.UnixEpoch));
+        fields.Add(nameof(Control.SourceHealthy), false);
         fields.Add(sourceField, BsonNull.Value);
     }
 }

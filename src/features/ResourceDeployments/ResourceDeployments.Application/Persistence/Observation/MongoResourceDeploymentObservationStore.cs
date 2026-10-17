@@ -1,5 +1,5 @@
 using MongoDB.Bson;
-using MongoDB.Bson.Serialization;
+using System.Linq.Expressions;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Database.Observation;
@@ -13,7 +13,7 @@ using Pole.Features.ResourceDeployments.Domain;
 
 namespace Pole.Features.ResourceDeployments.Application.Persistence.Observation;
 
-/// <summary>Feature boundary: context fences, sanitized payloads and event shape; shared store owns the protocol.</summary>
+/// <summary>Feature-owned context fences, sanitized payloads and events; shared store owns the protocol.</summary>
 internal sealed class MongoResourceDeploymentObservationStore(
     IMongoDatabase database,
     MongoRunTransaction transactions,
@@ -24,13 +24,15 @@ internal sealed class MongoResourceDeploymentObservationStore(
     internal const string DemandsCollection = "ResourceDeploymentObservationDemands";
     internal const string SnapshotsCollection = "ResourceDeploymentObservationSnapshots";
 
-    private readonly MongoObservationStore<ResourceDeploymentObservationContext> core = new(database,
+    private readonly MongoObservationStore<
+        ResourceDeploymentObservationContext,
+        ObservationControlDocument,
+        ObservationDemandDocument,
+        ObservationSnapshotDocument> core = new(database,
         transactions,
         ControlsCollection,
         DemandsCollection,
         SnapshotsCollection,
-        "DeploymentId",
-        "BindingId",
         new Definition(database, fenceTarget, storeOutboxWrites));
 
     public Task<ObservationMutationOutcome> PutDemandAsync(ObservationDemand demand,
@@ -84,13 +86,14 @@ internal sealed class MongoResourceDeploymentObservationStore(
         ValidateOpaque(instanceId);
         return (await core.ClaimAsync(context, instanceId, ct)) switch
         {
-            BsonDocument control => new ObservationOwnership(
+            MongoObservationSuccess<ObservationControlDocument> { Value: var control } =>
+                new ObservationOwnership(
                 new(context.Deployment.TenantId,
                     context.Deployment.Id,
                     instanceId,
-                    control["Token"].AsString,
-                    control["Epoch"].ToInt64()),
-                control["SourceControlVersion"].ToInt64()),
+                    control.Token!,
+                    control.Epoch),
+                control.SourceControlVersion),
             MongoObservationRejected rejection => Map(rejection)
         };
     }
@@ -128,7 +131,8 @@ internal sealed class MongoResourceDeploymentObservationStore(
                 healthy ? bindingId : null,
                 ct)) switch
         {
-            BsonDocument control => new ObservationSourceState(control["SourceControlVersion"].ToInt64()),
+            MongoObservationSuccess<ObservationControlDocument> { Value: var control } =>
+                new ObservationSourceState(control.SourceControlVersion),
             MongoObservationRejected rejection => Map(rejection)
         };
     }
@@ -156,17 +160,16 @@ internal sealed class MongoResourceDeploymentObservationStore(
                         ObservationValueMappings.Pin(context),
                         bindingId,
                         sourceControlVersion,
-                        control["ObservationVersion"].ToInt64(),
-                        control["UpdatedAtUtc"].ToUniversalTime(),
+                        control.ObservationVersion,
+                        control.UpdatedAtUtc,
                         stored,
                         diagnostics,
                         ObservationValueMappings.Fingerprint(stored, diagnostics),
-                        null).ToBsonDocument(),
+                        null),
                 ct)) switch
         {
-            BsonDocument document => ObservationValueMappings.Load(
-                BsonSerializer.Deserialize<ObservationSnapshotDocument>(document),
-                context),
+            MongoObservationSuccess<ObservationSnapshotDocument> { Value: var document } =>
+                ObservationValueMappings.Load(document, context),
             MongoObservationRejected rejection => Map(rejection)
         };
     }
@@ -176,10 +179,9 @@ internal sealed class MongoResourceDeploymentObservationStore(
     {
         ValidateObjectId(identity.TenantId);
         ValidateObjectId(identity.DeploymentId);
-        var document = await core.LoadControlAsync(new(identity.DeploymentId, identity.TenantId, "DeploymentId"), ct);
-        if (document is null)
+        var control = await core.LoadControlAsync(new(identity.DeploymentId, identity.TenantId), ct);
+        if (control is null)
             return null;
-        var control = BsonSerializer.Deserialize<ObservationControlDocument>(document);
         return new(control.Epoch,
             control.SourceControlVersion,
             control.ObservationVersion,
@@ -196,29 +198,30 @@ internal sealed class MongoResourceDeploymentObservationStore(
         var document = await core.LoadFreshAsync(context, ct);
         return document is null
             ? null
-            : ObservationValueMappings.Load(BsonSerializer.Deserialize<ObservationSnapshotDocument>(document), context);
+            : ObservationValueMappings.Load(document, context);
     }
 
     private static MongoObservationDemand Demand(ObservationDemandIdentity identity, DateTimeOffset expires) =>
         new(DemandIdentity(identity), expires);
 
     private static MongoObservationDemandIdentity DemandIdentity(ObservationDemandIdentity identity) =>
-        new(new(identity.DeploymentId, identity.TenantId, "DeploymentId"),
+        new(new(identity.DeploymentId, identity.TenantId),
             identity.SubscriptionId,
             identity.ConnectionId,
             identity.SessionId);
 
     private static MongoObservationLease Lease(ObservationLease lease) => new(
-        new(lease.DeploymentId, lease.TenantId, "DeploymentId"),
+        new(lease.DeploymentId, lease.TenantId),
         lease.InstanceId,
         lease.Token,
         lease.Epoch);
 
-    private static ObservationMutationOutcome Mutation(MongoObservationOutcome outcome) => outcome switch
-    {
-        BsonDocument => new ObservationMutationAccepted(),
-        MongoObservationRejected rejection => Map(rejection)
-    };
+    private static ObservationMutationOutcome Mutation<T>(MongoObservationOutcome<T> outcome)
+        where T : notnull => outcome switch
+        {
+            MongoObservationSuccess<T> => new ObservationMutationAccepted(),
+            MongoObservationRejected rejection => Map(rejection)
+        };
 
     private static ObservationStoreRejected Map(MongoObservationRejected rejection) => new(rejection.Reason switch
     {
@@ -234,13 +237,45 @@ internal sealed class MongoResourceDeploymentObservationStore(
     private sealed class Definition(
         IMongoDatabase database,
         FenceDeploymentTargetObservation fenceTarget,
-        StoreOutboxWrites storeOutboxWrites) : IMongoObservationDefinition<ResourceDeploymentObservationContext>
+        StoreOutboxWrites storeOutboxWrites) : IMongoObservationDefinition<
+            ResourceDeploymentObservationContext,
+            ObservationControlDocument,
+            ObservationDemandDocument,
+            ObservationSnapshotDocument>
     {
         public MongoObservationScope Scope(ResourceDeploymentObservationContext context) =>
-            new(context.Deployment.Id, context.Deployment.TenantId, "DeploymentId");
+            new(context.Deployment.Id, context.Deployment.TenantId);
 
-        public BsonDocument Pin(ResourceDeploymentObservationContext context) =>
-            new("Pin", ObservationValueMappings.Pin(context).ToBsonDocument());
+        public MongoObservationScope ScopeOf(ObservationControlDocument control) => new(control.Id, control.TenantId);
+        public Expression<Func<ObservationDemandDocument, string>> DemandSubject => item => item.DeploymentId;
+        public Expression<Func<ObservationControlDocument, string?>> Source => item => item.BindingId;
+        public Expression<Func<ObservationSnapshotDocument, string>> SnapshotSource => item => item.BindingId;
+
+        public ObservationControlDocument CreateControl(ResourceDeploymentObservationContext context) => new(
+            context.Deployment.Id,
+            context.Deployment.TenantId,
+            ObservationValueMappings.Pin(context),
+            Epoch: 0,
+            SourceControlVersion: 0,
+            ObservationVersion: 0,
+            DemandFence: 0,
+            InstanceId: null,
+            Token: null,
+            LeaseExpiresAtUtc: DateTime.UnixEpoch,
+            SourceHealthy: false,
+            BindingId: null,
+            IdleSinceUtc: null,
+            UpdatedAtUtc: DateTime.UnixEpoch);
+
+        public bool HasPin(ObservationControlDocument control, ResourceDeploymentObservationContext context) =>
+            control.Pin == ObservationValueMappings.Pin(context);
+
+        public UpdateDefinition<ObservationControlDocument> PinUpdate(ResourceDeploymentObservationContext context) =>
+            Builders<ObservationControlDocument>.Update.Set(item => item.Pin, ObservationValueMappings.Pin(context));
+
+        public FilterDefinition<ObservationSnapshotDocument> SnapshotPin(
+            ResourceDeploymentObservationContext context) =>
+            ObservationStoreFilters.ForSnapshotContext(context);
 
         private readonly IMongoCollection<ResourceDeployment> deployments =
             database.GetCollection<ResourceDeployment>("ResourceDeployments");
@@ -262,10 +297,7 @@ internal sealed class MongoResourceDeploymentObservationStore(
             return fenced.ModifiedCount == 1 ? null : new(MongoObservationRejection.Superseded);
         }
 
-        public Task PublishAsync(BsonDocument document, IClientSessionHandle session, CancellationToken ct) =>
-            PublishControlAsync(BsonSerializer.Deserialize<ObservationControlDocument>(document), session, ct);
-
-        private Task PublishControlAsync(ObservationControlDocument control,
+        public Task PublishAsync(ObservationControlDocument control,
             IClientSessionHandle session,
             CancellationToken ct) =>
             storeOutboxWrites(session,

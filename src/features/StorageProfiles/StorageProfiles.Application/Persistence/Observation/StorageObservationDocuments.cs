@@ -1,5 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Database.Observation;
 using Pole.Features.StorageProfiles.Contracts;
 
 namespace Pole.Features.StorageProfiles.Application.Persistence.Observation;
@@ -21,7 +22,7 @@ internal sealed record StorageObservationControlDocument(
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
     DateTime? IdleSinceUtc,
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc) : IMongoObservationControl;
 
 internal sealed record StorageObservationDemandDocument(
     [property: BsonId] string Id,
@@ -33,7 +34,7 @@ internal sealed record StorageObservationDemandDocument(
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
     DateTime OriginalExpiresAtUtc,
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
-    DateTime ExpiresAtUtc);
+    DateTime ExpiresAtUtc) : IMongoObservationDemand;
 
 // Only closed concrete metadata arrays are serialized; no Kubernetes model is stored.
 internal sealed record StorageObservationSnapshotDocument(
@@ -47,4 +48,4 @@ internal sealed record StorageObservationSnapshotDocument(
     DateTime CheckedAtUtc,
     StorageInventoryObservation Inventory,
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
-    DateTime? ExpiresAtUtc);
+    DateTime? ExpiresAtUtc) : IMongoObservationSnapshot;
