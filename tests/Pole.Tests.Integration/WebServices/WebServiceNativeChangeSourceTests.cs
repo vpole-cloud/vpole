@@ -1,3 +1,4 @@
+using Pole.Observation;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Net;
@@ -414,7 +415,7 @@ public sealed class WebServiceNativeChangeSourceTests
             throw new InvalidOperationException();
     }
 
-    private sealed class ReadBudget : IResourceDeploymentObservationReadBudget
+    private sealed class ReadBudget : IObservationReadBudget
     {
         public Task<T> ReadAsync<T>(Func<CancellationToken, Task<T>> read, CancellationToken ct = default) => read(ct);
     }

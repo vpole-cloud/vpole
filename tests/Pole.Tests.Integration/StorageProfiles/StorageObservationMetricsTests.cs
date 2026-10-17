@@ -1,3 +1,4 @@
+using Pole.Observation;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Diagnostics.Metrics;
@@ -170,7 +171,7 @@ public sealed class StorageObservationOwnerMetricsTests(MongoReplicaSetFixture f
         var source = new StorageMetricSource();
         using var handler = new StorageMetricHandler { NativeUnavailable = mode == "native_unavailable" };
         using var client = KubernetesNativeWatchTests.Client(handler);
-        using var budget = new ResourceDeploymentObservationReadBudget(TimeProvider.System);
+        using var budget = new ObservationReadBudget(TimeProvider.System);
         using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var running =
             new StorageObservationOwner(store,
@@ -261,7 +262,7 @@ public sealed class StorageObservationOwnerMetricsTests(MongoReplicaSetFixture f
         using var handler = new StorageMetricHandler();
         handler.Release.TrySetResult();
         using var client = KubernetesNativeWatchTests.Client(handler);
-        using var budget = new ResourceDeploymentObservationReadBudget(TimeProvider.System);
+        using var budget = new ObservationReadBudget(TimeProvider.System);
         using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var running =
             new StorageObservationOwner(store,
@@ -352,7 +353,7 @@ internal static class StorageMetricFixtures
         new());
 
     internal static StorageObservationNativeReader Native(IKubernetes client,
-        ResourceDeploymentObservationReadBudget budget) => new(new FixedKubernetesClientProvider(client),
+        ObservationReadBudget budget) => new(new FixedKubernetesClientProvider(client),
         new StorageObservationContextLoader((id, _) => Task.FromResult<LookupDeploymentTargetOutcome>(Target(id))),
         budget,
         new());

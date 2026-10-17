@@ -1,3 +1,4 @@
+using Pole.Observation;
 using System.Collections.Immutable;
 using System.Text.Json;
 using k8s;
@@ -311,7 +312,7 @@ public sealed class WebServiceNativeObservationTests
             throw new InvalidOperationException();
     }
 
-    private sealed class ReadBudget : IResourceDeploymentObservationReadBudget
+    private sealed class ReadBudget : IObservationReadBudget
     {
         public int Reads
         {

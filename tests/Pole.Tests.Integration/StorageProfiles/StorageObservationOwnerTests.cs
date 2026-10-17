@@ -1,3 +1,4 @@
+using Pole.Observation;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Net;
@@ -37,7 +38,7 @@ public sealed class StorageObservationOwnerTests(MongoReplicaSetFixture fixture)
         var source = new TestSource();
         using var handler = new ValidationHandler { BlockReadAt = 1 };
         using var client = KubernetesNativeWatchTests.Client(handler);
-        using var budget = new ResourceDeploymentObservationReadBudget(clock);
+        using var budget = new ObservationReadBudget(clock);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var run = new StorageObservationOwner(store, source, Native(client, clock, budget), clock)
             .RunAsync(context, ownership, cancellation.Token);
@@ -78,7 +79,7 @@ public sealed class StorageObservationOwnerTests(MongoReplicaSetFixture fixture)
         var source = new TestSource();
         using var handler = new ValidationHandler();
         using var client = KubernetesNativeWatchTests.Client(handler);
-        using var budget = new ResourceDeploymentObservationReadBudget(clock);
+        using var budget = new ObservationReadBudget(clock);
         var native = Native(client, clock, budget);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var run = new StorageObservationOwner(store, source, native, clock).RunAsync(context,
@@ -127,7 +128,7 @@ public sealed class StorageObservationOwnerTests(MongoReplicaSetFixture fixture)
         var source = new TestSource();
         using var handler = new ValidationHandler { BlockReadAt = 4 };
         using var client = KubernetesNativeWatchTests.Client(handler);
-        using var budget = new ResourceDeploymentObservationReadBudget(clock);
+        using var budget = new ObservationReadBudget(clock);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var run = new StorageObservationOwner(store, source, Native(client, clock, budget), clock).RunAsync(context,
             ownership,
@@ -183,7 +184,7 @@ public sealed class StorageObservationOwnerTests(MongoReplicaSetFixture fixture)
         var source = new TestSource();
         using var handler = new ValidationHandler();
         using var client = KubernetesNativeWatchTests.Client(handler);
-        using var budget = new ResourceDeploymentObservationReadBudget(clock);
+        using var budget = new ObservationReadBudget(clock);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var run = new StorageObservationOwner(store, source, Native(client, clock, budget), clock).RunAsync(context,
             ownership,
@@ -242,7 +243,7 @@ public sealed class StorageObservationOwnerTests(MongoReplicaSetFixture fixture)
             Inventory("old-class"));
         using var handler = new ValidationHandler();
         using var client = KubernetesNativeWatchTests.Client(handler);
-        using var budget = new ResourceDeploymentObservationReadBudget(TimeProvider.System);
+        using var budget = new ObservationReadBudget(TimeProvider.System);
         var names = await Native(client, TimeProvider.System, budget).ReadNamesAsync(context, default);
         Assert.Equal(["class-a"], names!.ToArray());
         Assert.Equal(1, handler.Reads);
@@ -275,7 +276,7 @@ public sealed class StorageObservationOwnerTests(MongoReplicaSetFixture fixture)
 
     private static StorageObservationNativeReader Native(IKubernetes client,
         TimeProvider clock,
-        ResourceDeploymentObservationReadBudget budget) => new(new FixedKubernetesClientProvider(client),
+        ObservationReadBudget budget) => new(new FixedKubernetesClientProvider(client),
         new StorageObservationContextLoader((id, _) =>
             Task.FromResult<LookupDeploymentTargetOutcome>(new DeploymentTargetLookupDto(id,
                 "Target",

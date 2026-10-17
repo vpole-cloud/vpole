@@ -1,3 +1,4 @@
+using Pole.Observation;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Text.Json;
@@ -286,7 +287,7 @@ public sealed class RedisNativeObservationKubernetesTests(KubernetesClusterFixtu
             throw new InvalidOperationException();
     }
 
-    private sealed class Budget : IResourceDeploymentObservationReadBudget
+    private sealed class Budget : IObservationReadBudget
     {
         public Task<T> ReadAsync<T>(Func<CancellationToken, Task<T>> read, CancellationToken ct = default) => read(ct);
     }

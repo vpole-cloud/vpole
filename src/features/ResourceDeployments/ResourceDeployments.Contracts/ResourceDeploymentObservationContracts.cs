@@ -55,14 +55,6 @@ public interface IResourceDeploymentBoundObserver
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>One bounded read budget shared by HTTP sampling, snapshots and initial LISTs.</summary>
-public interface IResourceDeploymentObservationReadBudget
-{
-    Task<T> ReadAsync<T>(
-        Func<CancellationToken, Task<T>> read,
-        CancellationToken cancellationToken = default);
-}
-
 public sealed record ResourceDeploymentObserverDescriptor(
     ResourceTypeId ResourceType,
     Type ObserverType)

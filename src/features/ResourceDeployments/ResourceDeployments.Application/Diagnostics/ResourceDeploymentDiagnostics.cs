@@ -1,3 +1,4 @@
+using Pole.Observation;
 using System.Net;
 using k8s.Autorest;
 using Microsoft.Extensions.DependencyInjection;
@@ -119,7 +120,7 @@ public sealed class ResourceDeploymentDiagnostics(
     RuntimeLogCapacity capacity,
     RuntimeDiagnosticsOptions options,
     ResourceDeploymentSharedObservationReader shared,
-    IResourceDeploymentObservationReadBudget reads)
+    IObservationReadBudget reads)
 {
     public RuntimeDiagnosticsOptions Options => options;
     public CancellationToken Shutdown => host.ApplicationStopping;

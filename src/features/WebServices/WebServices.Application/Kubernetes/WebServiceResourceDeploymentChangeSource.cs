@@ -1,3 +1,4 @@
+using Pole.Observation;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using k8s;
@@ -15,7 +16,7 @@ public sealed class WebServiceResourceDeploymentChangeSource(
     LoadWebServiceById loadResource,
     IKubernetesClientProvider clients,
     LookupDeploymentTarget lookupTarget,
-    IResourceDeploymentObservationReadBudget budget,
+    IObservationReadBudget budget,
     TimeProvider clock) : IResourceDeploymentObservationChangeSource
 {
     public async IAsyncEnumerable<ResourceDeploymentObservationChange> WatchAsync(

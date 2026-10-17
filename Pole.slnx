@@ -10,6 +10,7 @@
     <Project Path="src/examples/Blog/Blog.csproj" />
   </Folder>
   <Folder Name="/shared/">
+    <Project Path="src/shared/Observation/Observation.csproj" />
     <Project Path="src/shared/Mediator/Mediator.csproj" />
     <Project Path="src/shared/Mediator.Runtime/Mediator.Runtime.csproj" />
     <Project Path="src/shared/Mediator.Logging/Mediator.Logging.csproj" />

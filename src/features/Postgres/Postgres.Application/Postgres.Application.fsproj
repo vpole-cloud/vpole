@@ -8,6 +8,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+    <ProjectReference Include="../../../shared/Observation/Observation.csproj" />
         <PackageReference Include="FSharp.Core" />
     </ItemGroup>
 

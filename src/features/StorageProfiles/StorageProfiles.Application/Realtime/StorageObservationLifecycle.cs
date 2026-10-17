@@ -1,5 +1,5 @@
 using System.Security.Claims;
-using System.Threading.Channels;
+using Pole.Observation;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Realtime.Contracts;
@@ -7,32 +7,7 @@ using Pole.Features.StorageProfiles.Application.Observation;
 
 namespace Pole.Features.StorageProfiles.Application.Realtime;
 
-public sealed class StorageObservationWakeup
-{
-    private readonly Channel<bool> channel = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
-    {
-        FullMode = BoundedChannelFullMode.DropWrite,
-        SingleReader = true
-    });
-
-    public void Notify() => channel.Writer.TryWrite(true);
-
-    internal async Task WaitAsync(TimeProvider clock, CancellationToken ct)
-    {
-        using var turn = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        var read = channel.Reader.ReadAsync(turn.Token).AsTask();
-        var timer = Task.Delay(TimeSpan.FromSeconds(1), clock, turn.Token);
-        await Task.WhenAny(read, timer);
-        await turn.CancelAsync();
-        try
-        {
-            await Task.WhenAll(read, timer);
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-        }
-    }
-}
+public sealed class StorageObservationWakeup : ObservationWakeup;
 
 public sealed class StorageObservationLifecycle(
     StorageObservationOptions options,

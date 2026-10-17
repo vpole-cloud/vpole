@@ -1,3 +1,4 @@
+using Pole.Observation;
 using System.Collections.Concurrent;
 using System.Diagnostics.Metrics;
 using System.Runtime.CompilerServices;
@@ -81,7 +82,7 @@ public sealed class ObservationMetricsTests
         targetAvailable = false;
         Assert.IsType<UnavailableObservationRead>(await reader.BeginAsync(deployment, default));
         using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        using var budget = new ResourceDeploymentObservationReadBudget(TimeProvider.System);
+        using var budget = new ObservationReadBudget(TimeProvider.System);
         var ownership =
             new ObservationOwnership(new(deployment.TenantId, deployment.Id, "replica-private", "lease-private", 1), 0);
         var running =

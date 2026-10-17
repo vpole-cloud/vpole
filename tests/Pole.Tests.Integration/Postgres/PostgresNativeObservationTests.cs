@@ -1,3 +1,4 @@
+using Pole.Observation;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Net;
@@ -454,7 +455,7 @@ public sealed class PostgresNativeObservationTests
             throw new InvalidOperationException();
     }
 
-    private sealed class Budget : IResourceDeploymentObservationReadBudget
+    private sealed class Budget : IObservationReadBudget
     {
         public Task<T> ReadAsync<T>(Func<CancellationToken, Task<T>> read, CancellationToken ct = default) => read(ct);
     }

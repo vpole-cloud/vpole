@@ -108,8 +108,7 @@ public sealed class ResourceDeploymentBoundaryArchitectureTests
         [
             typeof(IResourceDeploymentAdapter), typeof(IResourceDeploymentObserver),
             typeof(IResourceDeploymentDiagnosticsProvider),
-            typeof(IResourceDeploymentObservationChangeSource), typeof(IResourceDeploymentBoundObserver),
-            typeof(IResourceDeploymentObservationReadBudget)
+            typeof(IResourceDeploymentObservationChangeSource), typeof(IResourceDeploymentBoundObserver)
         ];
         Assert.Equal(providerStrategies.OrderBy(type => type.FullName), interfaces.OrderBy(type => type.FullName));
     }
