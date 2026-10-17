@@ -27,6 +27,47 @@ public sealed class StorageObservationOwnerTests(MongoReplicaSetFixture fixture)
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
+    public async Task BurstWhileNativeReadIsBlockedProducesOneTrailingSnapshotWithoutOverlappingReads()
+    {
+        var context = await SeedAsync();
+        var store = Store();
+        var ownership = Assert.IsType<StorageObservationOwnership>(
+            (await store.ClaimLeaseAsync(context, "replica-a")).Value);
+        var clock = new NativeWatchTestClock();
+        var source = new TestSource();
+        using var handler = new ValidationHandler { BlockReadAt = 1 };
+        using var client = KubernetesNativeWatchTests.Client(handler);
+        using var budget = new ResourceDeploymentObservationReadBudget(clock);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var run = new StorageObservationOwner(store, source, Native(client, clock, budget), clock)
+            .RunAsync(context, ownership, cancellation.Token);
+        try
+        {
+            source.Send(new(StorageObservationChangeKind.Ready, "source-a", Inventory("class-a")));
+            await UntilAsync(() => Task.FromResult(handler.Entered.Task.IsCompleted), clock);
+            for (var i = 0; i < 200; i++)
+                source.Send(new(StorageObservationChangeKind.Changed, "source-a", Inventory("class-a")));
+            await UntilAsync(() => Task.FromResult(source.Pending == 0), clock);
+            Assert.Equal(1, handler.Reads);
+            Assert.Null(await store.LoadFreshSnapshotAsync(context));
+            handler.Release.TrySetResult();
+            await UntilAsync(async () =>
+                (await store.LoadControlAsync(context.DeploymentTargetId))?.ObservationVersion == 3, clock);
+            clock.Advance(TimeSpan.FromSeconds(1));
+            await Task.Delay(50, cancellation.Token);
+            Assert.Equal(6, handler.Reads); // Two complete samples, each reading classes, PVs and PVCs.
+            Assert.Equal(3, (await store.LoadFreshSnapshotAsync(context))!.ObservationVersion);
+        }
+        finally
+        {
+            handler.Release.TrySetResult();
+            await cancellation.CancelAsync();
+            try { await run; }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        }
+    }
+
+    [Fact]
     public async Task QuietThirtySecondValidationUsesNativeReadsAndAdvancesVersionWithoutSourceChurn()
     {
         var context = await SeedAsync();
@@ -267,16 +308,25 @@ public sealed class StorageObservationOwnerTests(MongoReplicaSetFixture fixture)
 
     private sealed class TestSource : IStorageObservationSource
     {
+        private int pending;
+        internal int Pending => Volatile.Read(ref pending);
         private readonly Channel<StorageObservationChange>
             changes = Channel.CreateUnbounded<StorageObservationChange>();
 
-        internal void Send(StorageObservationChange change) => changes.Writer.TryWrite(change);
+        internal void Send(StorageObservationChange change)
+        {
+            Interlocked.Increment(ref pending);
+            changes.Writer.TryWrite(change);
+        }
 
         public async IAsyncEnumerable<StorageObservationChange> WatchAsync(StorageObservationContext context,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             await foreach (var change in changes.Reader.ReadAllAsync(cancellationToken))
+            {
                 yield return change;
+                Interlocked.Decrement(ref pending);
+            }
         }
     }
 
