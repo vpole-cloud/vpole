@@ -1,3 +1,4 @@
+using Pole.Observation;
 using System.Collections.Immutable;
 using System.Collections.Concurrent;
 using System.Text.Json;
@@ -26,7 +27,7 @@ public sealed class StorageObservationNativeTests
         using var api = new StorageNativeApi(empty);
         using var client = KubernetesNativeWatchTests.Client(api.Handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        using var budget = new ResourceDeploymentObservationReadBudget(TimeProvider.System);
+        using var budget = new ObservationReadBudget(TimeProvider.System);
         var changes = Source(client, budget).WatchAsync(Context, cancellation.Token).GetAsyncEnumerator();
         var ready = await NextAsync(changes, StorageObservationChangeKind.Ready);
         Assert.True(ready.Inventory!.Complete);
@@ -52,7 +53,7 @@ public sealed class StorageObservationNativeTests
         using var api = new StorageNativeApi(false) { Provisioner = StorageNativeApi.MaximumQualifiedProvisioner };
         using var client = KubernetesNativeWatchTests.Client(api.Handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        using var budget = new ResourceDeploymentObservationReadBudget(TimeProvider.System);
+        using var budget = new ObservationReadBudget(TimeProvider.System);
         await using var changes = Source(client, budget).WatchAsync(Context, cancellation.Token).GetAsyncEnumerator();
         var ready = await NextAsync(changes, StorageObservationChangeKind.Ready);
         Assert.True(ready.Inventory!.Complete);
@@ -69,7 +70,7 @@ public sealed class StorageObservationNativeTests
         using var api = new StorageNativeApi(false);
         using var client = KubernetesNativeWatchTests.Client(api.Handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        using var budget = new ResourceDeploymentObservationReadBudget(TimeProvider.System);
+        using var budget = new ObservationReadBudget(TimeProvider.System);
         var changes = Source(client, budget).WatchAsync(Context, cancellation.Token).GetAsyncEnumerator();
         var first = await NextAsync(changes, StorageObservationChangeKind.Ready);
         api.Streams["classes"].Write(StorageNativeApi.ClassFrame("ADDED", "replacement", "replace-version"));
@@ -94,7 +95,7 @@ public sealed class StorageObservationNativeTests
         using var api = new StorageNativeApi(false);
         using var client = KubernetesNativeWatchTests.Client(api.Handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        using var budget = new ResourceDeploymentObservationReadBudget(TimeProvider.System);
+        using var budget = new ObservationReadBudget(TimeProvider.System);
         var changes = Source(client, budget).WatchAsync(Context, cancellation.Token).GetAsyncEnumerator();
         var before = await NextAsync(changes, StorageObservationChangeKind.Ready);
         api.Streams["claims"].Write(malformed
@@ -114,7 +115,7 @@ public sealed class StorageObservationNativeTests
         using var api = new StorageNativeApi(false) { ExtraClass = true };
         using var client = KubernetesNativeWatchTests.Client(api.Handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        using var budget = new ResourceDeploymentObservationReadBudget(TimeProvider.System);
+        using var budget = new ObservationReadBudget(TimeProvider.System);
         var changes = Source(client, budget, new()
         {
             MaximumItemsPerKind = 1
@@ -129,7 +130,7 @@ public sealed class StorageObservationNativeTests
     }
 
     private static KubernetesStorageObservationSource Source(IKubernetes client,
-        IResourceDeploymentObservationReadBudget budget,
+        IObservationReadBudget budget,
         StorageObservationOptions? options = null)
     {
         var contexts = new StorageObservationContextLoader((id, _) => Task.FromResult<LookupDeploymentTargetOutcome>(

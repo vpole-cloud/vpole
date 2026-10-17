@@ -1,3 +1,4 @@
+using Pole.Observation;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Net;
@@ -400,7 +401,7 @@ public sealed class RedisNativeObservationTests
             throw new InvalidOperationException();
     }
 
-    private sealed class Budget : IResourceDeploymentObservationReadBudget
+    private sealed class Budget : IObservationReadBudget
     {
         public int Reads => Volatile.Read(ref _reads);
         public int Active => Volatile.Read(ref _active);

@@ -1,3 +1,4 @@
+using Pole.Observation;
 using Microsoft.Extensions.Configuration;
 using Hangfire;
 using Microsoft.Extensions.DependencyInjection;
@@ -46,7 +47,7 @@ public static class ResourceDeploymentFeature
         services.AddResourceDeploymentPersistence();
         services.TryAddScoped<ResourceDeploymentOperationsPersistence>();
         services.TryAddSingleton<ResourceDeploymentObserverCatalog>();
-        services.TryAddSingleton<IResourceDeploymentObservationReadBudget, ResourceDeploymentObservationReadBudget>();
+        services.TryAddSingleton<IObservationReadBudget, ObservationReadBudget>();
         services.AddOptions<ResourceDeploymentObservationOptions>()
             .Bind(configuration.GetSection(ResourceDeploymentObservationOptions.SectionName))
             .Configure(options => options.Enabled = options.Enabled && configuration.GetValue<bool>("Realtime:Enabled"))

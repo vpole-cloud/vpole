@@ -1,3 +1,4 @@
+using Pole.Observation;
 using System.Runtime.CompilerServices;
 using k8s;
 using k8s.Models;
@@ -13,7 +14,7 @@ public sealed class RedisResourceDeploymentChangeSource(
     LoadRedisById loadResource,
     IKubernetesClientProvider clients,
     LookupDeploymentTarget lookupTarget,
-    IResourceDeploymentObservationReadBudget budget,
+    IObservationReadBudget budget,
     TimeProvider clock) : IResourceDeploymentObservationChangeSource
 {
     public async IAsyncEnumerable<ResourceDeploymentObservationChange> WatchAsync(

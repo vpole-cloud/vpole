@@ -10,6 +10,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <ProjectReference Include="../../../shared/Observation/Observation.csproj" />
       <InternalsVisibleTo Include="Pole.Tests.Integration" />
     </ItemGroup>
 

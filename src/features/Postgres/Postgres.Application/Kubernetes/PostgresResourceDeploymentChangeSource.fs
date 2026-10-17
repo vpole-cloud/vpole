@@ -15,13 +15,14 @@ open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application.Persistence.Reads
 open Pole.Features.Postgres.Domain
 open Pole.Features.ResourceDeployments.Contracts
+open Pole.Observation
 
 type PostgresResourceDeploymentChangeSource
     (
         loadCluster: LoadPostgresClusterById,
         clients: IKubernetesClientProvider,
         lookupTarget: LookupDeploymentTarget,
-        budget: IResourceDeploymentObservationReadBudget,
+        budget: IObservationReadBudget,
         clock: TimeProvider
     ) =
 

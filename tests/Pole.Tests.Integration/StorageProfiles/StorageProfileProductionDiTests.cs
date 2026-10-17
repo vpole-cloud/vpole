@@ -1,3 +1,4 @@
+using Pole.Observation;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Database;
@@ -38,7 +39,7 @@ public sealed class StorageProfileProductionDiTests(MongoReplicaSetFixture fixtu
                 new DeploymentTargetLookupError(new DeploymentTargetNotFound(id))));
         services.AddSingleton<FenceDeploymentTargetObservation>((_, _, _) =>
             Task.FromResult<FenceDeploymentTargetObservationOutcome>(new DeploymentTargetObservationFenced()));
-        services.AddSingleton<IResourceDeploymentObservationReadBudget, ResourceDeploymentObservationReadBudget>();
+        services.AddSingleton<IObservationReadBudget, ObservationReadBudget>();
         services.AddOutboxPersistence();
         services.AddStorageProfilesFeature();
 

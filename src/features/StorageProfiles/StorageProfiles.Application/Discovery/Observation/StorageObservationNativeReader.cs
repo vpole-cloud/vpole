@@ -1,3 +1,4 @@
+using Pole.Observation;
 using k8s;
 using k8s.Autorest;
 using Pole.Features.DeploymentTargets.Contracts;
@@ -18,7 +19,7 @@ internal enum StorageInventoryKind
 public sealed class StorageObservationNativeReader(
     IKubernetesClientProvider clients,
     StorageObservationContextLoader contexts,
-    IResourceDeploymentObservationReadBudget budget,
+    IObservationReadBudget budget,
     StorageObservationOptions options)
 {
     internal async Task<IKubernetes> CurrentClientAsync(StorageObservationContext context, CancellationToken ct)

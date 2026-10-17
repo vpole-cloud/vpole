@@ -1,3 +1,4 @@
+using Pole.Observation;
 using Pole.ResultType;
 using k8s;
 using Microsoft.Extensions.Configuration;
@@ -177,7 +178,7 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
             Task.FromResult<LookupDeploymentTargetOutcome>(new(target)));
         services.AddSingleton<FenceDeploymentTargetObservation>((_, _, _) =>
             Task.FromResult<FenceDeploymentTargetObservationOutcome>(new(new DeploymentTargetObservationFenced())));
-        services.AddSingleton<IResourceDeploymentObservationReadBudget, ResourceDeploymentObservationReadBudget>();
+        services.AddSingleton<IObservationReadBudget, ObservationReadBudget>();
         services.AddOutboxPersistence();
         services.AddSingleton<IKubernetesClientProvider>(provider);
         services.AddStorageProfilesFeature();

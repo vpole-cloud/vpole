@@ -1,3 +1,4 @@
+using Pole.Observation;
 using System.Net;
 using k8s.Autorest;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,7 +16,7 @@ public sealed class ObserveResourceDeployment(
     IServiceProvider services,
     TimeProvider clock,
     ResourceDeploymentSharedObservationReader shared,
-    IResourceDeploymentObservationReadBudget reads)
+    IObservationReadBudget reads)
 {
     public async Task<ResourceDeploymentObservationDto> InvokeAsync(ResourceDeployment deployment,
         CancellationToken cancellationToken)

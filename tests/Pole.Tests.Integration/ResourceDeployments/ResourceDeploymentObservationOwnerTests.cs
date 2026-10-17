@@ -1,3 +1,4 @@
+using Pole.Observation;
 using System.Threading.Channels;
 using Pole.Features.ResourceDeployments.Application.Observation;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -23,7 +24,7 @@ public sealed class ResourceDeploymentObservationOwnerTests
             return sample.Task;
         });
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        using var budget = new ResourceDeploymentObservationReadBudget(TimeProvider.System);
+        using var budget = new ObservationReadBudget(TimeProvider.System);
         var run =
             new ResourceDeploymentObservationOwner(store, source, observer, budget, TimeProvider.System).RunAsync(
                 Context(),
@@ -73,7 +74,7 @@ public sealed class ResourceDeploymentObservationOwnerTests
             }
         });
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        using var budget = new ResourceDeploymentObservationReadBudget(TimeProvider.System);
+        using var budget = new ObservationReadBudget(TimeProvider.System);
         var run =
             new ResourceDeploymentObservationOwner(store, source, observer, budget, TimeProvider.System).RunAsync(
                 Context(),
@@ -99,7 +100,7 @@ public sealed class ResourceDeploymentObservationOwnerTests
     public async Task SharedReadBudgetBoundsAllCallersAndCancelsQueuedReadsAtDeadline()
     {
         var clock = new NativeWatchTestClock();
-        using var budget = new ResourceDeploymentObservationReadBudget(clock);
+        using var budget = new ObservationReadBudget(clock);
         var release = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
         var started = 0;
         var reads = Enumerable.Range(0, 4).Select(_ => budget.ReadAsync(async ct =>
@@ -126,7 +127,7 @@ public sealed class ResourceDeploymentObservationOwnerTests
     public async Task Read_budget_rejects_noncooperating_native_result_after_its_deadline()
     {
         var clock = new NativeWatchTestClock();
-        using var budget = new ResourceDeploymentObservationReadBudget(clock);
+        using var budget = new ObservationReadBudget(clock);
         var result = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
         var read = budget.ReadAsync(_ => result.Task);
         clock.Advance(TimeSpan.FromSeconds(15));

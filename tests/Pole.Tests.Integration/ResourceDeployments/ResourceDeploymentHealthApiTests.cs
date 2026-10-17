@@ -1,3 +1,4 @@
+using Pole.Observation;
 using Pole.Features.Core.Multitenancy;
 using System.Collections.Immutable;
 using System.Net;
@@ -151,7 +152,7 @@ public sealed class ResourceDeploymentHealthApiTests(MongoReplicaSetFixture fixt
                 {
                     Enabled = false
                 });
-        using var reads = new ResourceDeploymentObservationReadBudget(TimeProvider.System);
+        using var reads = new ObservationReadBudget(TimeProvider.System);
         var result =
             await new ObserveResourceDeployment(catalog, services, TimeProvider.System, shared, reads).InvokeAsync(
                 deployment,
@@ -199,7 +200,7 @@ public sealed class ResourceDeploymentHealthApiTests(MongoReplicaSetFixture fixt
         {
             Enabled = false
         });
-        using var reads = new ResourceDeploymentObservationReadBudget(TimeProvider.System);
+        using var reads = new ObservationReadBudget(TimeProvider.System);
         var result =
             await new ObserveResourceDeployment(catalog, services, TimeProvider.System, shared, reads).InvokeAsync(
                 deployment,
