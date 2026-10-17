@@ -173,22 +173,22 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         _keycloakPortReservation.Stop();
         using (var startup = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token))
         {
+            using var mongoWatch = CancellationTokenSource.CreateLinkedTokenSource(startup.Token);
             var starting = _application.StartAsync(startup.Token);
+            var mongoExited = _application.ResourceNotifications.WaitForResourceAsync("pole-mongo",
+                KnownResourceStates.TerminalStates, mongoWatch.Token);
             var serverReady = WaitForRequiredResourceHealthyAsync("pole-server", startup.Token);
             try
             {
-                var first = await Task.WhenAny(starting, serverReady);
-                await first;
-                await starting;
-                await serverReady;
+                await WaitForStartupAsync(starting, serverReady, mongoExited);
             }
             catch (Exception exception)
             {
                 await startup.CancelAsync();
-                // Observe both tasks after cancellation before disposing the application.
+                // Observe all tasks after cancellation before disposing the application.
                 try
                 {
-                    await Task.WhenAll(starting, serverReady);
+                    await Task.WhenAll(starting, mongoExited, serverReady);
                 }
                 catch
                 {
@@ -196,8 +196,20 @@ public sealed class PoleE2EFixture : IAsyncLifetime
                 }
 
                 throw new InvalidOperationException(
-                    $"Aspire startup failed. {DescribeStartupStates(startupResourceNames)}",
+                    $"Aspire startup failed. {DescribeStartupStates(startupResourceNames)} " +
+                    await GetMongoStartupErrorsAsync(),
                     exception);
+            }
+            finally
+            {
+                await mongoWatch.CancelAsync();
+                try
+                {
+                    await mongoExited;
+                }
+                catch (OperationCanceledException) when (mongoWatch.IsCancellationRequested)
+                {
+                }
             }
         }
 
@@ -1328,6 +1340,47 @@ public sealed class PoleE2EFixture : IAsyncLifetime
             .WithEnvironment(
                 $"DeploymentTargets__Bootstrap__WorkloadConfiguration__NetworkSources__Pods__{DeploymentTargetNetworkSourcesDto.PublicIngressName}__PodLabels__app.kubernetes.io/instance",
                 "traefik-kube-system");
+    }
+
+    internal static async Task WaitForStartupAsync(Task starting, Task apiReady, Task mongoExited)
+    {
+        // Running is not Mongo readiness. Keep observing its process while replica-set/API startup is pending.
+        var pending = new List<Task> { starting, apiReady };
+        while (pending.Count > 0)
+        {
+            var completed = await Task.WhenAny(pending.Append(mongoExited));
+            await completed;
+            if (completed == mongoExited)
+                throw new InvalidOperationException("MongoDB exited before the API was ready.");
+            pending.Remove(completed);
+        }
+    }
+
+    private async Task<string> GetMongoStartupErrorsAsync()
+    {
+        var errors = new List<MongoStartupError>();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        try
+        {
+            var logger = _application!.Services.GetRequiredService<ResourceLoggerService>();
+            var inspected = 0;
+            await foreach (var batch in logger.GetAllAsync("pole-mongo").WithCancellation(timeout.Token))
+            {
+                foreach (var line in batch)
+                {
+                    if (MongoStartupError.Parse(line.Content) is { } error)
+                        errors.Add(error);
+                    if (++inspected >= 2_000 || errors.Count >= 8)
+                        return string.Join("; ", errors);
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Diagnostic failure must neither hide the startup error nor expose exception payloads.
+        }
+
+        return errors.Count == 0 ? "MongoDB native error details unavailable." : string.Join("; ", errors);
     }
 
     private string DescribeStartupStates(IEnumerable<string> resourceNames)
