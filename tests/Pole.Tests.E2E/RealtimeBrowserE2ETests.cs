@@ -254,6 +254,7 @@ public sealed class RealtimeBrowserE2ETests(
         var page = await context.NewPageAsync();
         var journal = new BrowserJournal(page, fixture.Alpha.DefaultTenantId);
         await LoginAsync(page);
+        await WaitForInitialBootstrapAsync(journal, ct);
         await page.GotoAsync(ResourceUrl(owned.Id, "configuration"));
         await Assertions.Expect(page.GetByRole(AriaRole.Heading,
             new PageGetByRoleOptions { Name = "Service configuration", Exact = true })).ToBeVisibleAsync();
@@ -303,7 +304,7 @@ public sealed class RealtimeBrowserE2ETests(
         Assert.True(journal.HandshakeHeadersSafe,
             "Realtime bootstrap and hub requests must not contain a tenant header or hub bearer authentication.");
         await journal.DrainAsync();
-        Assert.Equal(0, journal.ParseFailures);
+        Assert.True(journal.ParseFailures == 0, journal.DescribeParseFailures());
     }
 
     [Fact]
@@ -329,6 +330,7 @@ public sealed class RealtimeBrowserE2ETests(
         var page = await context.NewPageAsync();
         var journal = new BrowserJournal(page, fixture.Alpha.DefaultTenantId);
         await LoginAsync(page);
+        await WaitForInitialBootstrapAsync(journal, ct);
         await page.GotoAsync(ResourceUrl(owned.Id, "configuration"));
         await Assertions.Expect(page.GetByRole(AriaRole.Heading,
             new PageGetByRoleOptions { Name = "Service configuration", Exact = true })).ToBeVisibleAsync();
@@ -411,7 +413,7 @@ public sealed class RealtimeBrowserE2ETests(
         await AssertNoReadableCredentialsAsync(page, journal);
         Assert.True(journal.HandshakeHeadersSafe);
         await journal.DrainAsync();
-        Assert.Equal(0, journal.ParseFailures);
+        Assert.True(journal.ParseFailures == 0, journal.DescribeParseFailures());
     }
 
     [Fact]
@@ -454,6 +456,7 @@ public sealed class RealtimeBrowserE2ETests(
         var alphaPage = await context.NewPageAsync();
         var alphaJournal = new BrowserJournal(alphaPage, alphaTenant);
         await LoginAsync(alphaPage, fixture.Beta);
+        await WaitForInitialBootstrapAsync(alphaJournal, ct);
         await alphaPage.GotoAsync(ResourceUrl(alpha.Id, "configuration", alphaTenant));
         await Assertions.Expect(alphaPage.GetByLabel("Environment variables")).ToBeVisibleAsync();
         await WaitUntilAsync(() => alphaJournal.HasCoverage(alpha.Id),
@@ -544,7 +547,7 @@ public sealed class RealtimeBrowserE2ETests(
             await AssertNoReadableCredentialsAsync(page, journal);
             Assert.True(journal.HandshakeHeadersSafe);
             await journal.DrainAsync();
-            Assert.Equal(0, journal.ParseFailures);
+            Assert.True(journal.ParseFailures == 0, journal.DescribeParseFailures());
         }
     }
 
@@ -633,6 +636,7 @@ public sealed class RealtimeBrowserE2ETests(
         var page = await context.NewPageAsync();
         var journal = new BrowserJournal(page, fixture.Alpha.DefaultTenantId);
         await LoginAsync(page);
+        await WaitForInitialBootstrapAsync(journal, ct);
         await page.GotoAsync(ResourceUrl(owned.Id, "overview"));
         var visibleRevision = page.Locator(".web-service-overview dl div")
             .Filter(new LocatorFilterOptions { HasText = "Active revision" }).Locator("dd");
@@ -755,7 +759,7 @@ public sealed class RealtimeBrowserE2ETests(
             "The sampled metadata commit-to-visible-revision p95 upper bound must be at most three seconds.");
         await AssertNoReadableCredentialsAsync(page, journal);
         await journal.DrainAsync();
-        Assert.Equal(0, journal.ParseFailures);
+        Assert.True(journal.ParseFailures == 0, journal.DescribeParseFailures());
     }
 
     private async Task<int> MeasurePendingReadsAsync(IBrowser browser,
@@ -774,6 +778,8 @@ public sealed class RealtimeBrowserE2ETests(
             await page.RouteAsync("**/api/v1/realtime/**", route => route.AbortAsync("failed"));
         var journal = new BrowserJournal(page, fixture.Alpha.DefaultTenantId);
         await LoginAsync(page);
+        if (!disconnected)
+            await WaitForInitialBootstrapAsync(journal, ct);
         await page.GotoAsync(ResourceUrl(owned.Id, "releases"));
         var pendingRelease = page.Locator("[aria-label='Release revision 2']").GetByTestId("release-status");
         await Assertions.Expect(pendingRelease).ToHaveTextAsync("Pending");
@@ -824,7 +830,7 @@ public sealed class RealtimeBrowserE2ETests(
         Assert.Equal(0, journal.MetadataReadFailures);
         await AssertNoReadableCredentialsAsync(page, journal);
         await journal.DrainAsync();
-        Assert.Equal(0, journal.ParseFailures);
+        Assert.True(journal.ParseFailures == 0, journal.DescribeParseFailures());
         return count;
     }
 
@@ -1064,6 +1070,17 @@ public sealed class RealtimeBrowserE2ETests(
         await page.GetByLabel("Tenant").SelectOptionAsync(owner.DefaultTenantId);
     }
 
+    private static async Task WaitForInitialBootstrapAsync(BrowserJournal journal, CancellationToken ct)
+    {
+        // Playwright can lose the preceding document's response body after a full navigation.
+        await WaitUntilAsync(() => !journal.Bootstraps.IsEmpty || journal.ParseFailures > 0,
+            TimeSpan.FromSeconds(30),
+            "The login bootstrap response was not recorded before navigation.",
+            ct);
+        await journal.DrainAsync();
+        Assert.True(journal.ParseFailures == 0, journal.DescribeParseFailures());
+    }
+
     private string ResourceUrl(string id, string section, string? tenantId = null) => new Uri(
             fixture.FrontendBaseAddress,
             $"?view=web-services&resource={id}&section={section}&tenant={tenantId ?? fixture.Alpha.DefaultTenantId}")
@@ -1252,6 +1269,7 @@ public sealed class RealtimeBrowserE2ETests(
         private int foreignTenantHints;
         private int refreshResponses;
         private int parseFailures;
+        private readonly ConcurrentDictionary<ParseFailureKind, int> parseFailureCauses = new();
         private int unsafeUrls;
         private int unsafeHeaders;
         private int metadataReadFailures;
@@ -1398,21 +1416,52 @@ public sealed class RealtimeBrowserE2ETests(
                 Interlocked.Increment(ref unsafeUrls);
         }
 
+        public string DescribeParseFailures() => "Realtime journal parse failures: " + string.Join(
+            "; ", parseFailureCauses.OrderBy(value => value.Key).Select(value => $"{value.Key}={value.Value}"));
+
+        private void RecordParseFailure(ParseFailureKind kind)
+        {
+            parseFailureCauses.AddOrUpdate(kind, 1, (_, count) => count + 1);
+            Interlocked.Increment(ref parseFailures);
+        }
+
+        private enum ParseFailureKind
+        {
+            BootstrapRequestFailed,
+            BootstrapTransportAfterNavigation,
+            BootstrapTransport,
+            BootstrapJson,
+            BootstrapSchema,
+            HubBinary,
+            HubJson,
+            HubSchema,
+            HintShape
+        }
+
         private async Task RecordBootstrapAsync(IResponse response, long timestamp)
         {
+            var responseDocument = DocumentNavigations;
             try
             {
                 var value = await response.JsonAsync();
                 if (value is { } session && session.TryGetProperty("expiresAtUtc", out var expires))
                     Bootstraps.Enqueue(new BootstrapMetadata(timestamp, expires.GetDateTimeOffset()));
                 else
-                    Interlocked.Increment(ref parseFailures);
+                    RecordParseFailure(ParseFailureKind.BootstrapSchema);
             }
             catch (Exception failure) when
                 (failure is PlaywrightException or JsonException or InvalidOperationException)
             {
-                // Fixed counters keep response/header/credential text out of diagnostics.
-                Interlocked.Increment(ref parseFailures);
+                // Fixed categories keep response/header/credential text out of diagnostics.
+                RecordParseFailure(failure switch
+                {
+                    PlaywrightException when response.Request.Failure is not null => ParseFailureKind.BootstrapRequestFailed,
+                    PlaywrightException when DocumentNavigations > responseDocument =>
+                        ParseFailureKind.BootstrapTransportAfterNavigation,
+                    PlaywrightException => ParseFailureKind.BootstrapTransport,
+                    JsonException => ParseFailureKind.BootstrapJson,
+                    _ => ParseFailureKind.BootstrapSchema
+                });
             }
         }
 
@@ -1420,7 +1469,7 @@ public sealed class RealtimeBrowserE2ETests(
         {
             if (text is null)
             {
-                Interlocked.Increment(ref parseFailures);
+                RecordParseFailure(ParseFailureKind.HubBinary);
                 return;
             }
 
@@ -1440,7 +1489,7 @@ public sealed class RealtimeBrowserE2ETests(
                         };
                         if (hint.EnumerateObject().Any(property => !allowed.Contains(property.Name)) ||
                             hint.GetProperty("version").GetInt32() != 1)
-                            Interlocked.Increment(ref parseFailures);
+                            RecordParseFailure(ParseFailureKind.HintShape);
                         if (Volatile.Read(ref enforceTenantReads) != 0 &&
                             openedAt > Interlocked.Read(ref documentStartedAt) &&
                             hint.TryGetProperty("tenantId", out var hintedTenant) &&
@@ -1484,7 +1533,7 @@ public sealed class RealtimeBrowserE2ETests(
                 catch (Exception failure) when (failure is JsonException or InvalidOperationException or FormatException
                                                     or KeyNotFoundException)
                 {
-                    Interlocked.Increment(ref parseFailures);
+                    RecordParseFailure(failure is JsonException ? ParseFailureKind.HubJson : ParseFailureKind.HubSchema);
                 }
             }
         }
