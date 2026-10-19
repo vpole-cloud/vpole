@@ -61,6 +61,7 @@ export function ResourceHealthTarget({
   resourceType?: string
 }) {
   const details = useRuntimeObservation({ placement, active, resourceType })
+  const [podsExpanded, setPodsExpanded] = useState(false)
   const [now, setNow] = useState(Date.now)
   useEffect(() => {
     if (!active) return
@@ -163,8 +164,18 @@ export function ResourceHealthTarget({
               Pod results are limited. Complete rollout readiness has not been established.
             </Notice>
           )}
-          <details>
-            <summary>Pods and warnings · {observed.pods.length} observed</summary>
+          <details
+            open={podsExpanded}
+            onToggle={(event) => setPodsExpanded(event.currentTarget.open)}
+          >
+            <summary
+              onClick={(event) => {
+                event.preventDefault()
+                setPodsExpanded((expanded) => !expanded)
+              }}
+            >
+              Pods and warnings · {observed.pods.length} observed
+            </summary>
             <DataTable
               items={observed.pods}
               itemKey={(pod) => pod.name}
