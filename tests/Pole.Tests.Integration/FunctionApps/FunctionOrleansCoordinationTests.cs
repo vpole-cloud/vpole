@@ -171,8 +171,11 @@ public sealed class FunctionOrleansCoordinationTests(MongoReplicaSetFixture fixt
         var databaseName = $"pole_orleans_{suffix}";
         var collectionPrefix = $"Functions_{suffix}_";
         var clusterId = $"functions-{suffix}";
-        var first = CreateSilo(databaseName, collectionPrefix, clusterId, "silo-1");
-        var second = CreateSilo(databaseName, collectionPrefix, clusterId, "silo-2");
+        var trafficClock = new ManualTrafficTimeProvider();
+        var first = CreateSilo(databaseName, collectionPrefix, clusterId, "silo-1",
+            trafficTimeProvider: trafficClock);
+        var second = CreateSilo(databaseName, collectionPrefix, clusterId, "silo-2",
+            trafficTimeProvider: trafficClock);
         try
         {
             await first.StartAsync();
@@ -233,6 +236,12 @@ public sealed class FunctionOrleansCoordinationTests(MongoReplicaSetFixture fixt
             Assert.Single(
                 traffic,
                 decision => decision.Rejection == FunctionTrafficRejection.RateLimitExceeded);
+
+            trafficClock.Advance(TimeSpan.FromSeconds(1));
+            Assert.Equal(FunctionTrafficDecisionKind.Granted,
+                (await secondTraffic.TryAcquireAsync(new FunctionTrafficRequest("request-3", "webhook"))).Kind);
+            Assert.Equal(FunctionTrafficRejection.RateLimitExceeded,
+                (await firstTraffic.TryAcquireAsync(new FunctionTrafficRequest("request-4", "webhook"))).Rejection);
 
             var admissionToken = Assert.IsType<FunctionAdmissionToken>(grantedAdmission.Token);
             Assert.InRange(
@@ -372,7 +381,8 @@ public sealed class FunctionOrleansCoordinationTests(MongoReplicaSetFixture fixt
         string clusterId,
         string siloName,
         FunctionGatewayOptions? gatewayOptions = null,
-        FunctionCoordinationOptions? coordinationOptions = null)
+        FunctionCoordinationOptions? coordinationOptions = null,
+        TimeProvider? trafficTimeProvider = null)
     {
         var siloPort = GetFreePort();
         var builder = Host.CreateApplicationBuilder();
@@ -390,7 +400,9 @@ public sealed class FunctionOrleansCoordinationTests(MongoReplicaSetFixture fixt
             [$"{FunctionOrleansOptions.SectionName}:ResponseTimeoutSeconds"] = "10"
         });
         builder.Services.AddSingleton(fixture.Client);
-        builder.Services.AddSingleton(TimeProvider.System);
+        builder.Services.AddSingleton(trafficTimeProvider ?? TimeProvider.System);
+        // Orleans subsystem timers stay real; only the application's monotonic budget is controlled.
+        builder.Services.AddKeyedSingleton<TimeProvider>(KeyedService.AnyKey, TimeProvider.System);
         builder.Services.AddSingleton(gatewayOptions ?? new FunctionGatewayOptions
         {
             MaxPendingRequestsPerRevision = 1,
@@ -405,6 +417,14 @@ public sealed class FunctionOrleansCoordinationTests(MongoReplicaSetFixture fixt
         builder.Services.Configure<SiloOptions>(options => options.SiloName = siloName);
         builder.AddFunctionOrleansHosting();
         return builder.Build();
+    }
+
+    private sealed class ManualTrafficTimeProvider : TimeProvider
+    {
+        private long _timestamp;
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+        public override long GetTimestamp() => Interlocked.Read(ref _timestamp);
+        public void Advance(TimeSpan elapsed) => Interlocked.Add(ref _timestamp, elapsed.Ticks);
     }
 
     private static int GetFreePort()
