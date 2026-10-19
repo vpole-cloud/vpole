@@ -46,18 +46,62 @@ public sealed class StorageBrowserE2ETests(PoleE2EFixture fixture)
         var mapping = Assert.Single(profile.GetProperty("targetMappings").EnumerateArray());
         Assert.Equal(targetId, Text(mapping, "deploymentTargetId"));
         Assert.Equal(storageClass, Text(mapping, "storageClassName"));
+        // A successful HTTP response precedes the UI's accepted-write refresh and form reset.
+        await Assertions.Expect(page.GetByLabel("Display name", new PageGetByLabelOptions { Exact = true })).ToHaveValueAsync("");
         var row = page.GetByTestId($"storage-profile-row-{id}");
         await row.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Edit", Exact = true }).ClickAsync();
+        await Assertions.Expect(page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Edit storage profile", Exact = true })).ToBeVisibleAsync();
         await page.GetByLabel("Description", new PageGetByLabelOptions { Exact = true }).FillAsync("Verified against target inventory");
-        var updated = await page.RunAndWaitForResponseAsync(
-            () => page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Save changes", Exact = true }).ClickAsync(),
-            response => response.Request.Method == "PUT" && new Uri(response.Url).AbsolutePath == $"/api/v1/platform/storage/profiles/{id}");
+        var updated = await SaveProfileAsync(page, id);
         Assert.True(updated.Ok, $"Storage profile update returned HTTP {updated.Status}.");
         using var body = JsonDocument.Parse(updated.Request.PostData!);
         Assert.Equal(profile.GetProperty("revision").GetInt64(), body.RootElement.GetProperty("revision").GetInt64());
         Assert.False(body.RootElement.TryGetProperty("storageClassNames", out _));
         await Assertions.Expect(page.GetByLabel("Description", new PageGetByLabelOptions { Exact = true })).ToHaveValueAsync("Verified against target inventory");
         await CaptureAsync(page);
+    }
+
+    private static async Task<IResponse> SaveProfileAsync(IPage page, string id)
+    {
+        var requests = 0;
+        var failures = 0;
+        bool IsUpdate(IRequest request) => request.Method == "PUT" &&
+                                           new Uri(request.Url).AbsolutePath == $"/api/v1/platform/storage/profiles/{id}";
+        page.Request += (_, request) =>
+        {
+            if (IsUpdate(request)) Interlocked.Increment(ref requests);
+        };
+        page.RequestFailed += (_, request) =>
+        {
+            if (IsUpdate(request)) Interlocked.Increment(ref failures);
+        };
+        try
+        {
+            return await page.RunAndWaitForResponseAsync(
+                () => page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Save changes", Exact = true }).ClickAsync(),
+                response => IsUpdate(response.Request));
+        }
+        catch (TimeoutException failure)
+        {
+            // Only fixed labels/counts leave diagnostics: never DOM text, request bodies, or credentials.
+            var diagnostic = $"requests={Volatile.Read(ref requests)}; requestFailures={Volatile.Read(ref failures)}";
+            try
+            {
+                var save = page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Save changes", Exact = true });
+                var form = page.Locator("form.resource-group-form");
+                var invalid = await form.CountAsync() == 1
+                    ? await form.EvaluateAsync<int>("form => Array.from(form.elements).filter(field => field.validity && !field.validity.valid).length").WaitAsync(TimeSpan.FromSeconds(5))
+                    : -1;
+                var buttons = await save.CountAsync();
+                var enabled = buttons == 1 && await save.IsEnabledAsync(new LocatorIsEnabledOptions { Timeout = 5000 });
+                diagnostic += $"; saveButtons={buttons}; saveEnabled={enabled}; invalidControls={invalid}; dialogs={await page.GetByRole(AriaRole.Dialog).CountAsync()}";
+            }
+            catch (Exception)
+            {
+                diagnostic += "; formState=unavailable";
+            }
+            throw new TimeoutException($"Storage profile update response timeout: {diagnostic}.", failure);
+        }
     }
 
     private async Task DisableProfileAsync(string id, CancellationToken ct)
