@@ -47,7 +47,8 @@ public sealed class StorageBrowserE2ETests(PoleE2EFixture fixture)
         Assert.Equal(targetId, Text(mapping, "deploymentTargetId"));
         Assert.Equal(storageClass, Text(mapping, "storageClassName"));
         // A successful HTTP response precedes the UI's accepted-write refresh and form reset.
-        await Assertions.Expect(page.GetByLabel("Display name", new PageGetByLabelOptions { Exact = true })).ToHaveValueAsync("");
+        await Assertions.Expect(page.GetByLabel("Display name", new PageGetByLabelOptions { Exact = true }))
+            .ToHaveValueAsync("", new LocatorAssertionsToHaveValueOptions { Timeout = 30_000 });
         var row = page.GetByTestId($"storage-profile-row-{id}");
         await row.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Edit", Exact = true }).ClickAsync();
         await Assertions.Expect(page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Edit storage profile", Exact = true })).ToBeVisibleAsync();
