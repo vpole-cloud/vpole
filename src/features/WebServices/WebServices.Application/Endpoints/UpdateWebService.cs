@@ -167,7 +167,7 @@ public sealed class UpdateWebServiceHandler(
             quotaError => Error(quotaError),
             async (transaction, ct) =>
             {
-                var physicalChanges = !Equals(webService.Spec, nextSpec) ||
+                var physicalChanges = !webService.Spec.HasSameConfiguration(nextSpec) ||
                     webService.Exposure.Mode != nextWebService.Exposure.Mode;
                 IReadOnlyList<PlacementSummaryDto> updatedDeployments;
                 if (physicalChanges)

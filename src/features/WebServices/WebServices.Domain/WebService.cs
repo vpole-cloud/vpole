@@ -34,7 +34,7 @@ public sealed record WebService(
         ArgumentNullException.ThrowIfNull(exposure);
 
         var normalizedTags = WebServiceFactory.NormalizeTags(tags);
-        return Equals(Spec, spec) && Tags.SetEquals(normalizedTags) && Equals(Exposure, exposure)
+        return Spec.HasSameConfiguration(spec) && Tags.SetEquals(normalizedTags) && Equals(Exposure, exposure)
             ? this
             : this with
             {
@@ -107,7 +107,23 @@ public sealed record WebServiceSpec(
     ImageInfo Image,
     WebServiceConfig Config,
     AutoscalingSpec? Autoscaling,
-    ProbeSpec Probes);
+    ProbeSpec Probes)
+{
+    // Immutable collection instances change at HTTP and persistence boundaries.
+    public bool HasSameConfiguration(WebServiceSpec other) =>
+        Image == other.Image &&
+        Autoscaling == other.Autoscaling &&
+        Probes == other.Probes &&
+        Config.PortMappings.SequenceEqual(other.Config.PortMappings) &&
+        SameEntries(Config.EnvironmentVariables, other.Config.EnvironmentVariables) &&
+        SameEntries(Config.ConnectionEnvironmentReferences, other.Config.ConnectionEnvironmentReferences) &&
+        SameEntries(Config.SecretEnvironmentReferences, other.Config.SecretEnvironmentReferences);
+
+    private static bool SameEntries<T>(ImmutableDictionary<string, T> left, ImmutableDictionary<string, T> right) =>
+        left.Count == right.Count &&
+        left.OrderBy(pair => pair.Key, StringComparer.Ordinal)
+            .SequenceEqual(right.OrderBy(pair => pair.Key, StringComparer.Ordinal));
+}
 
 /// <summary>
 /// Logical exposure policy, deliberately not a concrete hostname. Deployment hostname ownership

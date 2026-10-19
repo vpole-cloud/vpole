@@ -49,6 +49,10 @@ conflict keeps the selected context until an explicit refresh and new confirmati
 Shared desired-state changes advance one logical resource revision and transactionally fan out to
 the desired deployment set. Update, rollback, redeploy, image-tag and source-build releases exclude
 targets already being removed; inventory and finalization still retain those targets for cleanup.
+Configuration comparisons use values across serialization boundaries, including literal and logical
+environment references. Tags-only updates advance the logical revision without restarting physical
+reconciliation or replacing its current claim. Identical configuration, tags and exposure are a no-op
+and create neither a revision nor a release; redeploy remains the explicit request to reapply them.
 Reconciliation then proceeds independently per physical generation.
 Release entries identify the exact deployment, resource revision, generation, and operation they
 track, allowing an aggregate release to report success, failure, or partial failure without a

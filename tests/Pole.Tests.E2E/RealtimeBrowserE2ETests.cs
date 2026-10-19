@@ -966,6 +966,7 @@ public sealed class RealtimeBrowserE2ETests(
         TestUser? owner = null)
     {
         var path = $"/api/v1/web-services/{id}";
+        output.WriteLine($"Metadata update: expectedRevision={expectedRevision}, step={marker}.");
         var accepted = await SendAsync(HttpMethod.Put,
             apiAddress is null ? path : new Uri(apiAddress, path).ToString(),
             new
@@ -1132,8 +1133,11 @@ public sealed class RealtimeBrowserE2ETests(
         if (body is not null)
             request.Content = JsonContent.Create(body);
         using var response = await fixture.Api.SendAsync(request, ct);
-        Assert.True(response.IsSuccessStatusCode,
-            $"Realtime browser API {method} returned HTTP {(int)response.StatusCode}.");
+        if (!response.IsSuccessStatusCode)
+        {
+            var code = await ApiProblemCode.ReadAsync(response, ct);
+            Assert.Fail($"Realtime browser API {method} returned HTTP {(int)response.StatusCode}, code={code}.");
+        }
         return await response.Content.ReadFromJsonAsync<JsonElement>(ct);
     }
 
