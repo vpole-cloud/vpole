@@ -53,8 +53,17 @@ public sealed class HealthBrowserE2ETests(PoleE2EFixture fixture)
         var content = page.Locator("#app-content");
         await Assertions.Expect(content.GetByTestId("readiness-status")).ToHaveTextAsync("Not ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
         await Assertions.Expect(content.Locator("[data-testid='operation-status']:visible")).ToHaveTextAsync("Applied");
-        await content.Locator("[data-testid^='health-target-']:visible").GetByText("Pods and warnings").ClickAsync();
-        await Assertions.Expect(content.GetByText("Unhealthy", new LocatorGetByTextOptions { Exact = false }).First).ToBeVisibleAsync();
+        var healthTarget = content.Locator("[data-testid^='health-target-']:visible");
+        var warnings = healthTarget.Locator("details");
+        var warningsToggle = healthTarget.GetByText("Pods and warnings");
+        await warningsToggle.ClickAsync();
+        await Assertions.Expect(warnings).ToHaveAttributeAsync("open", "");
+        await warningsToggle.PressAsync("Enter");
+        await Assertions.Expect(warnings).ToHaveJSPropertyAsync("open", false);
+        await warningsToggle.PressAsync("Space");
+        await Assertions.Expect(warnings).ToHaveAttributeAsync("open", "");
+        await Assertions.Expect(warnings.GetByText("Unhealthy", new LocatorGetByTextOptions { Exact = false }).First)
+            .ToBeVisibleAsync(new LocatorAssertionsToBeVisibleOptions { Timeout = 30_000 });
         await CaptureAsync(page, "not-ready");
         var current = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{id}", null, ct);
         var accepted = await SendAsync(HttpMethod.Put, $"/api/v1/web-services/{id}", new { spec = Spec(true), tags = new[] { "e2e" }, exposure = "Private", expectedRevision = current.GetProperty("activeRevision").GetInt64() }, ct);

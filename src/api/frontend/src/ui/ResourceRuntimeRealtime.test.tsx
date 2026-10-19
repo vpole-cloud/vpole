@@ -321,6 +321,45 @@ const hint = async (version: number, generation = 2, tenantId = 'alpha', id = 'd
   )
 }
 
+it('preserves expanded pod warnings across a fenced observation refresh without showing stale evidence', async () => {
+  if (health.observation.kind !== 'Observed') throw new Error('Expected complete native fixture')
+  health = {
+    ...health,
+    observation: {
+      ...health.observation,
+      ready: false,
+      events: [{ reason: 'Unhealthy', count: 1, lastSeenAtUtc: null }],
+    },
+  }
+  await render()
+  await tick(1000)
+  const target = () => container.querySelector('[data-testid=health-target-deployment]')!
+  const warnings = () => target().querySelector('details')!
+  await act(async () => warnings().querySelector('summary')!.click())
+  expect(warnings().open).toBe(true)
+
+  const held = deferred<Response>()
+  heldHealth = held.promise
+  health = { ...health, observationVersion: 2 }
+  await hint(2)
+  await tick(250)
+  expect(readiness()).toBe('Stale observation')
+  expect(target().textContent).not.toContain('Unhealthy')
+  heldHealth = undefined
+  await act(async () => held.resolve(new Response(JSON.stringify(health))))
+  await tick(500)
+  expect(readiness()).toBe('Not ready')
+  expect(warnings().open).toBe(true)
+  expect(warnings().textContent).toContain('Unhealthy')
+
+  await act(async () => warnings().querySelector('summary')!.click())
+  expect(warnings().open).toBe(false)
+  health = { ...health, observationVersion: 3 }
+  await hint(3)
+  await tick(500)
+  expect(warnings().open).toBe(false)
+})
+
 it('coalesces exact deployment snapshot hints, keeps held HTTP alive and fences old versions before cache acceptance', async () => {
   await open()
   const healthKey = scopedQueryKey(session, ['/api', 'alpha'], ['health', 'deployment', 7, 2])
