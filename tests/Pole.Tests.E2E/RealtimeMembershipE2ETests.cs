@@ -19,232 +19,235 @@ public sealed class RealtimeMembershipE2ETests(PoleE2EFixture fixture)
     {
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
-        await using var resources = new TestResourceScope("realtime membership browser E2E");
-        var tenantId = fixture.Alpha.DefaultTenantId;
-        var subject = fixture.Beta.KeycloakUserId;
-        string? memberId = Text(await ManageMemberAsync(HttpMethod.Post, tenantId, null, TenantRole.Member, ct), "id");
-        resources.Defer("remove temporary realtime member",
-            cleanup => memberId is null
-                ? Task.CompletedTask
-                : DeleteMemberAsync(tenantId, memberId, cleanup));
-        var owned = await CreateOwnedServiceAsync(resources, tenantId, ct);
-        await fixture.WaitForNamespaceCreationAsync(owned.GroupId, ct);
-        await fixture.WaitForWebServiceReadyAsync(owned.GroupId, owned.Name, ct);
-
-        await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
-        await browserContainer.StartAsync(ct);
-        using var playwright = await Playwright.CreateAsync();
-        await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
-            new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
-        await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+        var resources = new TestResourceScope("realtime membership browser E2E");
+        await resources.RunAsync(async () =>
         {
-            ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
-            IgnoreHTTPSErrors = true
-        });
-        var page = await context.NewPageAsync();
-        var journal = new MembershipJournal(page, subject, tenantId);
-        await LoginAsync(page);
-        await page.GotoAsync(new Uri(fixture.FrontendBaseAddress,
-            $"?view=web-services&resource={owned.Id}&section=configuration&tenant={tenantId}").ToString());
-        await Assertions.Expect(page.GetByRole(AriaRole.Heading,
-            new PageGetByRoleOptions { Name = "Service configuration", Exact = true })).ToBeVisibleAsync();
-        await WaitUntilAsync(() => journal.HasOwnCoverage(),
-            TimeSpan.FromSeconds(30),
-            "The real browser did not acknowledge its own-user tenant-access subscription.",
-            ct);
-        var tenant = page.GetByLabel("Tenant");
-        Assert.Equal(tenantId, await tenant.InputValueAsync());
-        const string draft = "REALTIME_MEMBERSHIP_DRAFT=unsaved";
-        await page.GetByLabel("Environment variables").FillAsync(draft);
-        await Assertions.Expect(page.GetByRole(AriaRole.Button,
-            new PageGetByRoleOptions { Name = "Save changes", Exact = true })).ToBeEnabledAsync();
-        var content = page.Locator("#app-content");
-        var configuration = content.GetByRole(AriaRole.Tab,
-            new LocatorGetByRoleOptions { Name = "Configuration", Exact = true });
-        await Assertions.Expect(configuration).ToHaveAttributeAsync("aria-selected", "true");
-        var navigationCount = journal.DocumentNavigations;
-        var refreshCount = journal.RefreshGrants;
+            var tenantId = fixture.Alpha.DefaultTenantId;
+            var subject = fixture.Beta.KeycloakUserId;
+            string? memberId = Text(await ManageMemberAsync(HttpMethod.Post, tenantId, null, TenantRole.Member, ct), "id");
+            resources.Defer("remove temporary realtime member",
+                cleanup => memberId is null
+                    ? Task.CompletedTask
+                    : DeleteMemberAsync(tenantId, memberId, cleanup));
+            var owned = await CreateOwnedServiceAsync(resources, tenantId, ct);
+            await fixture.WaitForNamespaceCreationAsync(owned.GroupId, ct);
+            await fixture.WaitForWebServiceReadyAsync(owned.GroupId, owned.Name, ct);
 
-        // Capture a real Member discovery response before committing the demotion. The
-        // subsequent own-user hint must fence its GET-start epoch, even while it is held.
-        const string discoveryRoute = "**/api/v1/tenants";
-        var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var delivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        IRequest? heldRequest = null;
-        var intercepted = 0;
-        var canceled = 0;
-        page.RequestFailed += (_, request) =>
-        {
-            if (ReferenceEquals(request, heldRequest))
-                Interlocked.Increment(ref canceled);
-        };
-        await page.RouteAsync(discoveryRoute,
-            async route =>
+            await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            await browserContainer.StartAsync(ct);
+            using var playwright = await Playwright.CreateAsync();
+            await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
+                new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
+            await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
             {
-                if (route.Request.Method != "GET" || Interlocked.CompareExchange(ref intercepted, 1, 0) != 0)
-                {
-                    await route.ContinueAsync();
-                    return;
-                }
+                ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
+                IgnoreHTTPSErrors = true
+            });
+            var page = await context.NewPageAsync();
+            var journal = new MembershipJournal(page, subject, tenantId);
+            await LoginAsync(page);
+            await page.GotoAsync(new Uri(fixture.FrontendBaseAddress,
+                $"?view=web-services&resource={owned.Id}&section=configuration&tenant={tenantId}").ToString());
+            await Assertions.Expect(page.GetByRole(AriaRole.Heading,
+                new PageGetByRoleOptions { Name = "Service configuration", Exact = true })).ToBeVisibleAsync();
+            await WaitUntilAsync(() => journal.HasOwnCoverage(),
+                TimeSpan.FromSeconds(30),
+                "The real browser did not acknowledge its own-user tenant-access subscription.",
+                ct);
+            var tenant = page.GetByLabel("Tenant");
+            Assert.Equal(tenantId, await tenant.InputValueAsync());
+            const string draft = "REALTIME_MEMBERSHIP_DRAFT=unsaved";
+            await page.GetByLabel("Environment variables").FillAsync(draft);
+            await Assertions.Expect(page.GetByRole(AriaRole.Button,
+                new PageGetByRoleOptions { Name = "Save changes", Exact = true })).ToBeEnabledAsync();
+            var content = page.Locator("#app-content");
+            var configuration = content.GetByRole(AriaRole.Tab,
+                new LocatorGetByRoleOptions { Name = "Configuration", Exact = true });
+            await Assertions.Expect(configuration).ToHaveAttributeAsync("aria-selected", "true");
+            var navigationCount = journal.DocumentNavigations;
+            var refreshCount = journal.RefreshGrants;
 
-                heldRequest = route.Request;
-                try
+            // Capture a real Member discovery response before committing the demotion. The
+            // subsequent own-user hint must fence its GET-start epoch, even while it is held.
+            const string discoveryRoute = "**/api/v1/tenants";
+            var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var delivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            IRequest? heldRequest = null;
+            var intercepted = 0;
+            var canceled = 0;
+            page.RequestFailed += (_, request) =>
+            {
+                if (ReferenceEquals(request, heldRequest))
+                    Interlocked.Increment(ref canceled);
+            };
+            await page.RouteAsync(discoveryRoute,
+                async route =>
                 {
-                    var response = await route.FetchAsync();
+                    if (route.Request.Method != "GET" || Interlocked.CompareExchange(ref intercepted, 1, 0) != 0)
+                    {
+                        await route.ContinueAsync();
+                        return;
+                    }
+
+                    heldRequest = route.Request;
                     try
                     {
-                        Assert.True(response.Ok,
-                            "The delayed discovery response must come from the authenticated API.");
-                        using var body = JsonDocument.Parse(await response.TextAsync());
-                        Assert.True(HasRole(body.RootElement, tenantId, TenantRole.Member),
-                            "The delayed response must have been fetched before demotion.");
-                        held.TrySetResult();
-                        await release.Task.WaitAsync(ct);
-                        await route.FulfillAsync(new RouteFulfillOptions { Response = response });
-                        delivered.TrySetResult();
+                        var response = await route.FetchAsync();
+                        try
+                        {
+                            Assert.True(response.Ok,
+                                "The delayed discovery response must come from the authenticated API.");
+                            using var body = JsonDocument.Parse(await response.TextAsync());
+                            Assert.True(HasRole(body.RootElement, tenantId, TenantRole.Member),
+                                "The delayed response must have been fetched before demotion.");
+                            held.TrySetResult();
+                            await release.Task.WaitAsync(ct);
+                            await route.FulfillAsync(new RouteFulfillOptions { Response = response });
+                            delivered.TrySetResult();
+                        }
+                        finally
+                        {
+                            await response.DisposeAsync();
+                        }
                     }
-                    finally
+                    catch (PlaywrightException)
                     {
-                        await response.DisposeAsync();
+                        // Fetch diagnostics can contain bearer headers; keep a failing, fixed-message
+                        // result instead of exporting credential-bearing transport diagnostics.
+                        var failure =
+                            new InvalidOperationException("The controlled authenticated discovery request failed.");
+                        held.TrySetException(failure);
+                        delivered.TrySetException(failure);
                     }
-                }
-                catch (PlaywrightException)
-                {
-                    // Fetch diagnostics can contain bearer headers; keep a failing, fixed-message
-                    // result instead of exporting credential-bearing transport diagnostics.
-                    var failure =
-                        new InvalidOperationException("The controlled authenticated discovery request failed.");
-                    held.TrySetException(failure);
-                    delivered.TrySetException(failure);
-                }
-                catch (Exception failure)
-                {
-                    held.TrySetException(failure);
-                    delivered.TrySetException(failure);
-                }
-            });
-        try
-        {
-            await page.EvaluateAsync("window.dispatchEvent(new Event('online'))");
-            await held.Task.WaitAsync(TimeSpan.FromSeconds(30), ct);
-            var previousHints = journal.OwnHints;
-            await ManageMemberAsync(HttpMethod.Put, tenantId, memberId, TenantRole.Viewer, ct);
-            await WaitUntilAsync(() => journal.OwnHints > previousHints,
+                    catch (Exception failure)
+                    {
+                        held.TrySetException(failure);
+                        delivered.TrySetException(failure);
+                    }
+                });
+            try
+            {
+                await page.EvaluateAsync("window.dispatchEvent(new Event('online'))");
+                await held.Task.WaitAsync(TimeSpan.FromSeconds(30), ct);
+                var previousHints = journal.OwnHints;
+                await ManageMemberAsync(HttpMethod.Put, tenantId, memberId, TenantRole.Viewer, ct);
+                await WaitUntilAsync(() => journal.OwnHints > previousHints,
+                    TimeSpan.FromSeconds(15),
+                    "The committed Viewer role did not deliver an own-user change hint.",
+                    ct);
+                var roleHint = journal.LastOwnHint;
+                release.TrySetResult();
+                await delivered.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
+                await WaitUntilAsync(() => journal.HasFreshRole(TenantRole.Viewer, roleHint),
+                    TimeSpan.FromSeconds(15),
+                    "A post-hint authoritative discovery read did not confirm Viewer access.",
+                    ct);
+                await Assertions.Expect(content.GetByText("Tenant viewer access is read-only.",
+                    new LocatorGetByTextOptions { Exact = true })).ToBeVisibleAsync();
+                Assert.Equal(0, await page.GetByLabel("Environment variables").CountAsync());
+                Assert.Equal(tenantId, await tenant.InputValueAsync());
+                await Assertions.Expect(configuration).ToHaveAttributeAsync("aria-selected", "true");
+                Assert.Equal(0, Volatile.Read(ref canceled));
+            }
+            finally
+            {
+                release.TrySetResult();
+                await page.UnrouteAsync(discoveryRoute);
+            }
+
+            await content.GetByRole(AriaRole.Tab,
+                new LocatorGetByRoleOptions { Name = "All services", Exact = true }).ClickAsync();
+            await Assertions.Expect(content.GetByTestId($"resource-row-{owned.Id}")).ToBeVisibleAsync();
+            await Assertions.Expect(content.GetByRole(AriaRole.Button,
+                new LocatorGetByRoleOptions { Name = "New service", Exact = true })).ToBeDisabledAsync();
+            await Assertions.Expect(content.GetByRole(AriaRole.Button,
+                new LocatorGetByRoleOptions { Name = $"Delete {owned.Name}", Exact = true })).ToBeDisabledAsync();
+            using (var forbidden = fixture.CreateAuthenticatedRequest(HttpMethod.Delete,
+                       $"/api/v1/web-services/{owned.Id}",
+                       fixture.Beta,
+                       tenantId))
+            using (var result = await fixture.Api.SendAsync(forbidden, ct))
+                Assert.Equal(HttpStatusCode.Forbidden, result.StatusCode);
+
+            var hintsBeforeRemoval = journal.OwnHints;
+            await DeleteMemberAsync(tenantId, memberId!, ct);
+            memberId = null;
+            await WaitUntilAsync(() => journal.OwnHints > hintsBeforeRemoval,
                 TimeSpan.FromSeconds(15),
-                "The committed Viewer role did not deliver an own-user change hint.",
+                "Membership removal did not reach the user's independent notification subscription.",
                 ct);
-            var roleHint = journal.LastOwnHint;
-            release.TrySetResult();
-            await delivered.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
-            await WaitUntilAsync(() => journal.HasFreshRole(TenantRole.Viewer, roleHint),
+            var removalHint = journal.LastOwnHint;
+            await WaitUntilAsync(() => journal.HasFreshAbsence(removalHint),
                 TimeSpan.FromSeconds(15),
-                "A post-hint authoritative discovery read did not confirm Viewer access.",
+                "A post-removal discovery read did not remove the inaccessible tenant.",
                 ct);
-            await Assertions.Expect(content.GetByText("Tenant viewer access is read-only.",
+            // An explicit URL for the removed tenant must require a new selection rather
+            // than silently reinterpret the resource link in another tenant.
+            await Assertions.Expect(tenant).ToHaveValueAsync("");
+            await Assertions.Expect(content.GetByText(
+                "This tenant is unavailable to your account. Select an available tenant.",
                 new LocatorGetByTextOptions { Exact = true })).ToBeVisibleAsync();
-            Assert.Equal(0, await page.GetByLabel("Environment variables").CountAsync());
-            Assert.Equal(tenantId, await tenant.InputValueAsync());
-            await Assertions.Expect(configuration).ToHaveAttributeAsync("aria-selected", "true");
-            Assert.Equal(0, Volatile.Read(ref canceled));
-        }
-        finally
-        {
-            release.TrySetResult();
-            await page.UnrouteAsync(discoveryRoute);
-        }
-
-        await content.GetByRole(AriaRole.Tab,
-            new LocatorGetByRoleOptions { Name = "All services", Exact = true }).ClickAsync();
-        await Assertions.Expect(content.GetByTestId($"resource-row-{owned.Id}")).ToBeVisibleAsync();
-        await Assertions.Expect(content.GetByRole(AriaRole.Button,
-            new LocatorGetByRoleOptions { Name = "New service", Exact = true })).ToBeDisabledAsync();
-        await Assertions.Expect(content.GetByRole(AriaRole.Button,
-            new LocatorGetByRoleOptions { Name = $"Delete {owned.Name}", Exact = true })).ToBeDisabledAsync();
-        using (var forbidden = fixture.CreateAuthenticatedRequest(HttpMethod.Delete,
-                   $"/api/v1/web-services/{owned.Id}",
-                   fixture.Beta,
-                   tenantId))
-        using (var result = await fixture.Api.SendAsync(forbidden, ct))
-            Assert.Equal(HttpStatusCode.Forbidden, result.StatusCode);
-
-        var hintsBeforeRemoval = journal.OwnHints;
-        await DeleteMemberAsync(tenantId, memberId!, ct);
-        memberId = null;
-        await WaitUntilAsync(() => journal.OwnHints > hintsBeforeRemoval,
-            TimeSpan.FromSeconds(15),
-            "Membership removal did not reach the user's independent notification subscription.",
-            ct);
-        var removalHint = journal.LastOwnHint;
-        await WaitUntilAsync(() => journal.HasFreshAbsence(removalHint),
-            TimeSpan.FromSeconds(15),
-            "A post-removal discovery read did not remove the inaccessible tenant.",
-            ct);
-        // An explicit URL for the removed tenant must require a new selection rather
-        // than silently reinterpret the resource link in another tenant.
-        await Assertions.Expect(tenant).ToHaveValueAsync("");
-        await Assertions.Expect(content.GetByText(
-            "This tenant is unavailable to your account. Select an available tenant.",
-            new LocatorGetByTextOptions { Exact = true })).ToBeVisibleAsync();
-        await Assertions.Expect(tenant.Locator($"option[value='{tenantId}']")).ToHaveCountAsync(0);
-        await Assertions.Expect(content.GetByTestId($"resource-row-{owned.Id}")).ToHaveCountAsync(0);
-        Assert.False((await content.InnerTextAsync()).Contains(owned.Name, StringComparison.Ordinal),
-            "Removed tenant data must leave the visible workspace.");
-        await WaitUntilAsync(() => journal.HasOwnCoverage(removalHint),
-            TimeSpan.FromSeconds(20),
-            "Removing tenant access must preserve the own-user subscription.",
-            ct);
-        using (var rejected = fixture.CreateAuthenticatedRequest(HttpMethod.Get,
-                   $"/api/v1/web-services/{owned.Id}",
-                   fixture.Beta,
-                   tenantId))
-        using (var result = await fixture.Api.SendAsync(rejected, ct))
-            Assert.Equal(HttpStatusCode.Forbidden, result.StatusCode);
-        await tenant.SelectOptionAsync(fixture.Beta.DefaultTenantId);
-        await Assertions.Expect(tenant).ToHaveValueAsync(fixture.Beta.DefaultTenantId);
-        var safeWorkspace = await page.EvaluateAsync<bool>("""
+            await Assertions.Expect(tenant.Locator($"option[value='{tenantId}']")).ToHaveCountAsync(0);
+            await Assertions.Expect(content.GetByTestId($"resource-row-{owned.Id}")).ToHaveCountAsync(0);
+            Assert.False((await content.InnerTextAsync()).Contains(owned.Name, StringComparison.Ordinal),
+                "Removed tenant data must leave the visible workspace.");
+            await WaitUntilAsync(() => journal.HasOwnCoverage(removalHint),
+                TimeSpan.FromSeconds(20),
+                "Removing tenant access must preserve the own-user subscription.",
+                ct);
+            using (var rejected = fixture.CreateAuthenticatedRequest(HttpMethod.Get,
+                       $"/api/v1/web-services/{owned.Id}",
+                       fixture.Beta,
+                       tenantId))
+            using (var result = await fixture.Api.SendAsync(rejected, ct))
+                Assert.Equal(HttpStatusCode.Forbidden, result.StatusCode);
+            await tenant.SelectOptionAsync(fixture.Beta.DefaultTenantId);
+            await Assertions.Expect(tenant).ToHaveValueAsync(fixture.Beta.DefaultTenantId);
+            var safeWorkspace = await page.EvaluateAsync<bool>("""
             ([tenant, resource]) => {
               const records = Object.entries(localStorage).filter(([key]) => key.endsWith('.' + tenant));
               return records.length > 0 && records.every(([, value]) => !value.includes(resource));
             }
             """,
-            new[] { fixture.Beta.DefaultTenantId, owned.Id });
-        Assert.True(safeWorkspace,
-            "The selected tenant's persisted workspace must exclude the removed tenant's resource.");
+                new[] { fixture.Beta.DefaultTenantId, owned.Id });
+            Assert.True(safeWorkspace,
+                "The selected tenant's persisted workspace must exclude the removed tenant's resource.");
 
-        // Beta has no access to Alpha here. Its account-scoped subscription must still learn
-        // that membership was restored; only the subsequent HTTP read can restore write access.
-        var hintsBeforeRestore = journal.OwnHints;
-        memberId = Text(await ManageMemberAsync(HttpMethod.Post, tenantId, null, TenantRole.Member, ct), "id");
-        await WaitUntilAsync(() => journal.OwnHints > hintsBeforeRestore,
-            TimeSpan.FromSeconds(15),
-            "Restored membership did not reach the own-user subscription without tenant access.",
-            ct);
-        var restoredHint = journal.LastOwnHint;
-        await WaitUntilAsync(() => journal.HasFreshRole(TenantRole.Member, restoredHint),
-            TimeSpan.FromSeconds(15),
-            "Write access must return through a fresh authoritative membership read.",
-            ct);
-        await Assertions.Expect(tenant.Locator($"option[value='{tenantId}']")).ToHaveCountAsync(1);
-        await tenant.SelectOptionAsync(tenantId);
-        await Assertions.Expect(content.GetByRole(AriaRole.Button,
-            new LocatorGetByRoleOptions { Name = "New service", Exact = true })).ToBeEnabledAsync();
-        await content.GetByRole(AriaRole.Link,
-            new LocatorGetByRoleOptions { Name = owned.Name, Exact = true }).ClickAsync();
-        await content.GetByRole(AriaRole.Tab,
-            new LocatorGetByRoleOptions { Name = "Configuration", Exact = true }).ClickAsync();
-        await Assertions.Expect(page.GetByLabel("Environment variables")).ToBeEnabledAsync();
-        Assert.DoesNotContain("REALTIME_MEMBERSHIP_DRAFT",
-            await page.GetByLabel("Environment variables").InputValueAsync());
-        Assert.Equal(tenantId, await tenant.InputValueAsync());
-        Assert.Equal(navigationCount, journal.DocumentNavigations);
-        Assert.Equal(refreshCount, journal.RefreshGrants);
-        Assert.Equal(0, journal.SessionRevocations);
-        Assert.Equal(0, journal.ForeignUserHints);
-        await journal.DrainAsync();
-        Assert.Equal(0, journal.ParseFailures);
-        Assert.Equal(0, journal.DiscoveryReadFailures);
-        Assert.Equal(0, journal.TenantHeadersOnDiscovery);
+            // Beta has no access to Alpha here. Its account-scoped subscription must still learn
+            // that membership was restored; only the subsequent HTTP read can restore write access.
+            var hintsBeforeRestore = journal.OwnHints;
+            memberId = Text(await ManageMemberAsync(HttpMethod.Post, tenantId, null, TenantRole.Member, ct), "id");
+            await WaitUntilAsync(() => journal.OwnHints > hintsBeforeRestore,
+                TimeSpan.FromSeconds(15),
+                "Restored membership did not reach the own-user subscription without tenant access.",
+                ct);
+            var restoredHint = journal.LastOwnHint;
+            await WaitUntilAsync(() => journal.HasFreshRole(TenantRole.Member, restoredHint),
+                TimeSpan.FromSeconds(15),
+                "Write access must return through a fresh authoritative membership read.",
+                ct);
+            await Assertions.Expect(tenant.Locator($"option[value='{tenantId}']")).ToHaveCountAsync(1);
+            await tenant.SelectOptionAsync(tenantId);
+            await Assertions.Expect(content.GetByRole(AriaRole.Button,
+                new LocatorGetByRoleOptions { Name = "New service", Exact = true })).ToBeEnabledAsync();
+            await content.GetByRole(AriaRole.Link,
+                new LocatorGetByRoleOptions { Name = owned.Name, Exact = true }).ClickAsync();
+            await content.GetByRole(AriaRole.Tab,
+                new LocatorGetByRoleOptions { Name = "Configuration", Exact = true }).ClickAsync();
+            await Assertions.Expect(page.GetByLabel("Environment variables")).ToBeEnabledAsync();
+            Assert.DoesNotContain("REALTIME_MEMBERSHIP_DRAFT",
+                await page.GetByLabel("Environment variables").InputValueAsync());
+            Assert.Equal(tenantId, await tenant.InputValueAsync());
+            Assert.Equal(navigationCount, journal.DocumentNavigations);
+            Assert.Equal(refreshCount, journal.RefreshGrants);
+            Assert.Equal(0, journal.SessionRevocations);
+            Assert.Equal(0, journal.ForeignUserHints);
+            await journal.DrainAsync();
+            Assert.Equal(0, journal.ParseFailures);
+            Assert.Equal(0, journal.DiscoveryReadFailures);
+            Assert.Equal(0, journal.TenantHeadersOnDiscovery);
+        });
     }
 
     private async Task LoginAsync(IPage page)
@@ -365,14 +368,14 @@ public sealed class RealtimeMembershipE2ETests(PoleE2EFixture fixture)
             async cleanup =>
             {
                 await DeleteAsync($"/api/v1/web-services/{id}", tenantId, cleanup);
-                await WaitUntilAsync(async () =>
+                await WaitUntilAsync(async probeCancellation =>
                     {
                         using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Get,
                             $"/api/v1/web-services/{id}",
                             fixture.Alpha,
                             tenantId);
-                        using var response = await fixture.Api.SendAsync(request, cleanup);
-                        return response.StatusCode == HttpStatusCode.NotFound;
+                        using var response = await fixture.Api.SendAsync(request, probeCancellation);
+                        return TestDeletion.IsComplete(response.StatusCode);
                     },
                     TimeSpan.FromMinutes(3),
                     "The owned membership service did not finish cleanup.",
@@ -414,24 +417,12 @@ public sealed class RealtimeMembershipE2ETests(PoleE2EFixture fixture)
                                                    : Text(tenant, "role") == role.ToString()));
 
     private static Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout, string message, CancellationToken ct) =>
-        WaitUntilAsync(() => Task.FromResult(condition()), timeout, message, ct);
+        TestWait.UntilAsync(_ => Task.FromResult(condition()), timeout, message, ct);
 
-    private static async Task WaitUntilAsync(Func<Task<bool>> condition,
+    private static Task WaitUntilAsync(Func<CancellationToken, Task<bool>> condition,
         TimeSpan timeout,
         string message,
-        CancellationToken ct)
-    {
-        var deadline = Stopwatch.GetTimestamp() + (long)(timeout.TotalSeconds * Stopwatch.Frequency);
-        while (Stopwatch.GetTimestamp() < deadline)
-        {
-            ct.ThrowIfCancellationRequested();
-            if (await condition())
-                return;
-            await Task.Delay(100, ct);
-        }
-
-        throw new TimeoutException(message);
-    }
+        CancellationToken ct) => TestWait.UntilAsync(condition, timeout, message, ct);
 
     private sealed record OwnedService(
         string Id,
@@ -472,6 +463,7 @@ public sealed class RealtimeMembershipE2ETests(PoleE2EFixture fixture)
                     Interlocked.Increment(ref documentNavigations);
                     discoveryStarts.Clear();
                     coverage.Navigate();
+                    discoveryReads.Navigate();
                 }
 
                 if (request.Method == "GET" && new Uri(request.Url).AbsolutePath == "/api/v1/tenants")

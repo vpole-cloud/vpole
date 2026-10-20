@@ -17,11 +17,19 @@ internal sealed class HttpReadJournal<TKey> where TKey : notnull
         long StartedAt,
         string Path,
         HttpReadOutcome Outcome,
-        int? Status = null);
+        int? Status = null,
+        long Document = 0);
 
     private readonly object sync = new();
     private readonly Dictionary<TKey, int> active = new();
     private readonly List<Read> reads = [];
+    private long document;
+
+    public void Navigate()
+    {
+        lock (sync)
+            document++;
+    }
 
     public IReadOnlyList<Read> Snapshot()
     {
@@ -34,7 +42,7 @@ internal sealed class HttpReadJournal<TKey> where TKey : notnull
         lock (sync)
         {
             active[key] = reads.Count;
-            reads.Add(new Read(startedAt, path, HttpReadOutcome.Pending));
+            reads.Add(new Read(startedAt, path, HttpReadOutcome.Pending, Document: document));
         }
     }
 
@@ -65,11 +73,12 @@ internal sealed class HttpReadJournal<TKey> where TKey : notnull
     {
         lock (sync)
         {
-            var latest = reads.Where(read => matches(read.Path)).GroupBy(read => read.Path)
+            var latest = reads.Where(read => read.Document == document && matches(read.Path))
+                .GroupBy(read => read.Path)
                 .Select(group => group.Last()).ToArray();
             return latest.Length > 0 && latest.All(read => read.Outcome == HttpReadOutcome.Succeeded &&
                 Stopwatch.GetElapsedTime(read.StartedAt) >= duration) &&
-                !active.Values.Any(index => matches(reads[index].Path));
+                !active.Values.Any(index => reads[index].Document == document && matches(reads[index].Path));
         }
     }
 }

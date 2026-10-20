@@ -18,125 +18,127 @@ public sealed class RealtimeProviderBrowserE2ETests(PoleE2EFixture fixture)
     {
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(8));
         var ct = budget.Token;
-        await using var resources = new TestResourceScope("storage observation browser E2E");
-        using var request = fixture.CreatePlatformAdminRequest(HttpMethod.Get, "/api/v1/platform/deployment-targets");
-        using var response = await fixture.Api.SendAsync(request, ct);
-        Assert.True(response.IsSuccessStatusCode, "The administrator deployment-target read failed.");
-        var targets = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
-        var target = targets.EnumerateArray().Single(item =>
-            item.GetProperty("isDefault").GetBoolean() && item.GetProperty("enabled").GetBoolean());
-        var targetId = target.GetProperty("id").GetString()!;
-        var connectionVersion = target.GetProperty("connection").GetProperty("version").GetInt64();
-        var canary = $"native-sensitive-{Guid.NewGuid():N}";
-
-        await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
-        await browserContainer.StartAsync(ct);
-        using var playwright = await Playwright.CreateAsync();
-        await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
-            new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
-        await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+        var resources = new TestResourceScope("storage observation browser E2E");
+        await resources.RunAsync(async () =>
         {
-            ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
-            IgnoreHTTPSErrors = true
-        });
-        var page = await context.NewPageAsync();
-        var journal = new StorageJournal(page, targetId, connectionVersion, canary);
-        await page.GotoAsync(fixture.FrontendBaseAddress.ToString());
-        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in", Exact = true }).ClickAsync();
-        await page.GetByLabel("Username or email").FillAsync(fixture.PlatformAdminUser.Email);
-        await page.GetByRole(AriaRole.Textbox, new PageGetByRoleOptions { Name = "Password", Exact = true })
-            .FillAsync(fixture.PlatformAdminUser.Password);
-        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Sign In", Exact = true }).ClickAsync();
-        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Storage", Exact = true }).ClickAsync();
-        var displayName = page.GetByLabel("Display name", new PageGetByLabelOptions { Exact = true });
-        var selectedTarget = page.GetByLabel("Deployment target", new PageGetByLabelOptions { Exact = true });
-        var create = page.GetByRole(AriaRole.Button,
-            new PageGetByRoleOptions { Name = "Create profile", Exact = true });
-        await Assertions.Expect(displayName)
-            .ToBeVisibleAsync(new LocatorAssertionsToBeVisibleOptions { Timeout = 30_000 });
-        await Assertions.Expect(selectedTarget).ToHaveValueAsync(targetId);
-        await WaitUntilAsync(() =>
-                journal.Covered && journal.Latest is { Version: > 0 } && journal.ReadsQuiet(TimeSpan.FromSeconds(1)),
-            TimeSpan.FromSeconds(30),
-            "A complete native storage subscription and initial coherent read were not acknowledged.",
-            ct);
-        const string draft = "Retained native storage draft";
-        await displayName.FillAsync(draft);
-        await Assertions.Expect(create).ToBeEnabledAsync();
-        var originalInput = await displayName.ElementHandleAsync() ??
-                            throw new InvalidOperationException("The visible storage input was absent.");
-        // Semantic heading anchors the native HTML section; no CSS class or frontend test ID is required.
-        var inventory = page
-            .GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Storage classes", Exact = true })
-            .Locator("xpath=ancestor::section[1]");
-        var documentNavigations = journal.DocumentNavigations;
-        var baselineHint = journal.HintVersion;
-        var captured = new TaskCompletionSource<CapturedRead>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var delivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        IRequest? heldRequest = null;
-        var intercepted = 0;
-        const string observationRoute = "**/api/v1/platform/storage/observation?*";
-        await page.RouteAsync(observationRoute,
-            async route =>
-            {
-                if (!journal.IsObservation(route.Request) || journal.HintVersion <= baselineHint ||
-                    Interlocked.CompareExchange(ref intercepted, 1, 0) != 0)
-                {
-                    await route.ContinueAsync();
-                    return;
-                }
+            using var request = fixture.CreatePlatformAdminRequest(HttpMethod.Get, "/api/v1/platform/deployment-targets");
+            using var response = await fixture.Api.SendAsync(request, ct);
+            Assert.True(response.IsSuccessStatusCode, "The administrator deployment-target read failed.");
+            var targets = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+            var target = targets.EnumerateArray().Single(item =>
+                item.GetProperty("isDefault").GetBoolean() && item.GetProperty("enabled").GetBoolean());
+            var targetId = target.GetProperty("id").GetString()!;
+            var connectionVersion = target.GetProperty("connection").GetProperty("version").GetInt64();
+            var canary = $"native-sensitive-{Guid.NewGuid():N}";
 
-                heldRequest = route.Request;
-                try
+            await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            await browserContainer.StartAsync(ct);
+            using var playwright = await Playwright.CreateAsync();
+            await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
+                new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
+            await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+            {
+                ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
+                IgnoreHTTPSErrors = true
+            });
+            var page = await context.NewPageAsync();
+            var journal = new StorageJournal(page, targetId, connectionVersion, canary);
+            await page.GotoAsync(fixture.FrontendBaseAddress.ToString());
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in", Exact = true }).ClickAsync();
+            await page.GetByLabel("Username or email").FillAsync(fixture.PlatformAdminUser.Email);
+            await page.GetByRole(AriaRole.Textbox, new PageGetByRoleOptions { Name = "Password", Exact = true })
+                .FillAsync(fixture.PlatformAdminUser.Password);
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Sign In", Exact = true }).ClickAsync();
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Storage", Exact = true }).ClickAsync();
+            var displayName = page.GetByLabel("Display name", new PageGetByLabelOptions { Exact = true });
+            var selectedTarget = page.GetByLabel("Deployment target", new PageGetByLabelOptions { Exact = true });
+            var create = page.GetByRole(AriaRole.Button,
+                new PageGetByRoleOptions { Name = "Create profile", Exact = true });
+            await Assertions.Expect(displayName)
+                .ToBeVisibleAsync(new LocatorAssertionsToBeVisibleOptions { Timeout = 30_000 });
+            await Assertions.Expect(selectedTarget).ToHaveValueAsync(targetId);
+            await WaitUntilAsync(() =>
+                    journal.Covered && journal.Latest is { Version: > 0 } && journal.ReadsQuiet(TimeSpan.FromSeconds(1)),
+                TimeSpan.FromSeconds(30),
+                "A complete native storage subscription and initial coherent read were not acknowledged.",
+                ct);
+            const string draft = "Retained native storage draft";
+            await displayName.FillAsync(draft);
+            await Assertions.Expect(create).ToBeEnabledAsync();
+            var originalInput = await displayName.ElementHandleAsync() ??
+                                throw new InvalidOperationException("The visible storage input was absent.");
+            // Semantic heading anchors the native HTML section; no CSS class or frontend test ID is required.
+            var inventory = page
+                .GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Storage classes", Exact = true })
+                .Locator("xpath=ancestor::section[1]");
+            var documentNavigations = journal.DocumentNavigations;
+            var baselineHint = journal.HintVersion;
+            var captured = new TaskCompletionSource<CapturedRead>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var delivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            IRequest? heldRequest = null;
+            var intercepted = 0;
+            const string observationRoute = "**/api/v1/platform/storage/observation?*";
+            await page.RouteAsync(observationRoute,
+                async route =>
                 {
-                    var fetched = await route.FetchAsync();
+                    if (!journal.IsObservation(route.Request) || journal.HintVersion <= baselineHint ||
+                        Interlocked.CompareExchange(ref intercepted, 1, 0) != 0)
+                    {
+                        await route.ContinueAsync();
+                        return;
+                    }
+
+                    heldRequest = route.Request;
                     try
                     {
-                        Assert.True(fetched.Ok,
-                            "The delayed coherent inventory must be a successful real API response.");
-                        using var document = JsonDocument.Parse(await fetched.TextAsync());
-                        var snapshot = journal.Metadata(document.RootElement);
-                        Assert.True(snapshot.Version > 0,
-                            "The delayed coherent snapshot must have an actual retained observation version.");
-                        captured.TrySetResult(new CapturedRead(route.Request, Stopwatch.GetTimestamp(), snapshot));
-                        await release.Task.WaitAsync(ct);
-                        await route.FulfillAsync(new RouteFulfillOptions { Response = fetched });
-                        delivered.TrySetResult();
+                        var fetched = await route.FetchAsync();
+                        try
+                        {
+                            Assert.True(fetched.Ok,
+                                "The delayed coherent inventory must be a successful real API response.");
+                            using var document = JsonDocument.Parse(await fetched.TextAsync());
+                            var snapshot = journal.Metadata(document.RootElement);
+                            Assert.True(snapshot.Version > 0,
+                                "The delayed coherent snapshot must have an actual retained observation version.");
+                            captured.TrySetResult(new CapturedRead(route.Request, Stopwatch.GetTimestamp(), snapshot));
+                            await release.Task.WaitAsync(ct);
+                            await route.FulfillAsync(new RouteFulfillOptions { Response = fetched });
+                            delivered.TrySetResult();
+                        }
+                        finally
+                        {
+                            await fetched.DisposeAsync();
+                        }
                     }
-                    finally
+                    catch (PlaywrightException)
                     {
-                        await fetched.DisposeAsync();
+                        // Transport diagnostics may contain credentials. Keep a failing fixed message.
+                        var failure = new InvalidOperationException("The controlled authenticated storage read failed.");
+                        captured.TrySetException(failure);
+                        delivered.TrySetException(failure);
                     }
-                }
-                catch (PlaywrightException)
-                {
-                    // Transport diagnostics may contain credentials. Keep a failing fixed message.
-                    var failure = new InvalidOperationException("The controlled authenticated storage read failed.");
-                    captured.TrySetException(failure);
-                    delivered.TrySetException(failure);
-                }
-                catch (Exception failure)
-                {
-                    captured.TrySetException(failure);
-                    delivered.TrySetException(failure);
-                }
-            });
-        try
-        {
-            var firstName = await fixture.CreateOwnedStorageObservationClassAsync(resources, targetId, canary, ct);
-            var held = await captured.Task.WaitAsync(TimeSpan.FromSeconds(30), ct);
-            Assert.Same(heldRequest, held.Request);
-            Assert.Contains(firstName, held.Snapshot.ClassNames);
-            var secondName = await fixture.CreateOwnedStorageObservationClassAsync(resources, targetId, canary, ct);
-            await WaitUntilAsync(() => journal.HintVersion > held.Snapshot.Version,
-                TimeSpan.FromSeconds(15),
-                "The second native class change did not deliver a newer observation hint.",
-                ct);
-            Assert.DoesNotContain(secondName, held.Snapshot.ClassNames);
-            // Record every DOM commit: accepting the held old snapshot would briefly show only
-            // the first class. A trailing authoritative read adds both classes in one render.
-            await inventory.EvaluateAsync("""
+                    catch (Exception failure)
+                    {
+                        captured.TrySetException(failure);
+                        delivered.TrySetException(failure);
+                    }
+                });
+            try
+            {
+                var firstName = await fixture.CreateOwnedStorageObservationClassAsync(resources, targetId, canary, ct);
+                var held = await captured.Task.WaitAsync(TimeSpan.FromSeconds(30), ct);
+                Assert.Same(heldRequest, held.Request);
+                Assert.Contains(firstName, held.Snapshot.ClassNames);
+                var secondName = await fixture.CreateOwnedStorageObservationClassAsync(resources, targetId, canary, ct);
+                await WaitUntilAsync(() => journal.HintVersion > held.Snapshot.Version,
+                    TimeSpan.FromSeconds(15),
+                    "The second native class change did not deliver a newer observation hint.",
+                    ct);
+                Assert.DoesNotContain(secondName, held.Snapshot.ClassNames);
+                // Record every DOM commit: accepting the held old snapshot would briefly show only
+                // the first class. A trailing authoritative read adds both classes in one render.
+                await inventory.EvaluateAsync("""
                 (section, names) => {
                   const state = { stale: false, observer: null };
                   state.observer = new MutationObserver(() => {
@@ -147,74 +149,75 @@ public sealed class RealtimeProviderBrowserE2ETests(PoleE2EFixture fixture)
                   section.__poleStorageRegression = state;
                 }
                 """,
-                new[] { firstName, secondName });
-            var afterSecondHint = journal.HintVersion;
-            var remaining = TimeSpan.FromSeconds(35) - Stopwatch.GetElapsedTime(held.CapturedAt);
-            if (remaining > TimeSpan.Zero)
-                await Task.Delay(remaining, ct);
-            Assert.True(journal.Covered, "Native coverage must remain acknowledged during the slow inventory read.");
-            Assert.True(journal.HintVersion > afterSecondHint,
-                "Unchanged native inventory must still deliver its thirty-second validation hint during the held read.");
-            Assert.False(journal.Failed(held.Request),
-                "Hints and the covered polling interval must not abort the slow HTTP read.");
-            Assert.Equal(1, journal.ReadsSince(held.Request));
-            release.TrySetResult();
-            await delivered.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
-            await WaitUntilAsync(() => journal.Finished(held.Request) && journal.Latest is { } current &&
-                                       current.Version >= journal.HintVersion &&
-                                       current.Version > held.Snapshot.Version &&
-                                       current.ClassNames.Contains(firstName) &&
-                                       current.ClassNames.Contains(secondName) &&
-                                       journal.ReadsQuiet(TimeSpan.FromMilliseconds(500)),
-                TimeSpan.FromSeconds(15),
-                "One coalesced trailing read did not replace the overtaken coherent snapshot.",
-                ct);
-            Assert.Equal(2, journal.ReadsSince(held.Request));
-            Assert.False(journal.Failed(held.Request));
-            await Assertions.Expect(inventory.GetByText(firstName, new LocatorGetByTextOptions { Exact = true }))
-                .ToBeVisibleAsync();
-            await Assertions.Expect(inventory.GetByText(secondName, new LocatorGetByTextOptions { Exact = true }))
-                .ToBeVisibleAsync();
-            Assert.True(await inventory.EvaluateAsync<bool>("section => !section.__poleStorageRegression.stale"),
-                "An overtaken response must never render inventory below the latest observation floor.");
-            await AssertDraftAsync();
+                    new[] { firstName, secondName });
+                var afterSecondHint = journal.HintVersion;
+                var remaining = TimeSpan.FromSeconds(35) - Stopwatch.GetElapsedTime(held.CapturedAt);
+                if (remaining > TimeSpan.Zero)
+                    await Task.Delay(remaining, ct);
+                Assert.True(journal.Covered, "Native coverage must remain acknowledged during the slow inventory read.");
+                Assert.True(journal.HintVersion > afterSecondHint,
+                    "Unchanged native inventory must still deliver its thirty-second validation hint during the held read.");
+                Assert.False(journal.Failed(held.Request),
+                    "Hints and the covered polling interval must not abort the slow HTTP read.");
+                Assert.Equal(1, journal.ReadsSince(held.Request));
+                release.TrySetResult();
+                await delivered.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
+                await WaitUntilAsync(() => journal.Finished(held.Request) && journal.Latest is { } current &&
+                                           current.Version >= journal.HintVersion &&
+                                           current.Version > held.Snapshot.Version &&
+                                           current.ClassNames.Contains(firstName) &&
+                                           current.ClassNames.Contains(secondName) &&
+                                           journal.ReadsQuiet(TimeSpan.FromMilliseconds(500)),
+                    TimeSpan.FromSeconds(15),
+                    "One coalesced trailing read did not replace the overtaken coherent snapshot.",
+                    ct);
+                Assert.Equal(2, journal.ReadsSince(held.Request));
+                Assert.False(journal.Failed(held.Request));
+                await Assertions.Expect(inventory.GetByText(firstName, new LocatorGetByTextOptions { Exact = true }))
+                    .ToBeVisibleAsync();
+                await Assertions.Expect(inventory.GetByText(secondName, new LocatorGetByTextOptions { Exact = true }))
+                    .ToBeVisibleAsync();
+                Assert.True(await inventory.EvaluateAsync<bool>("section => !section.__poleStorageRegression.stale"),
+                    "An overtaken response must never render inventory below the latest observation floor.");
+                await AssertDraftAsync();
 
-            var quietBaseline = journal.Latest!;
-            // Stay beyond the forty-five-second freshness window without another native write
-            // or a manual refresh. Real periodic validation must keep the accepted UI writable.
-            await Task.Delay(TimeSpan.FromSeconds(46), ct);
-            await WaitUntilAsync(async () => journal.Covered && journal.Latest is { } current &&
-                                             current.Version > quietBaseline.Version &&
-                                             current.CheckedAt > quietBaseline.CheckedAt &&
-                                             await create.IsEnabledAsync(),
-                TimeSpan.FromSeconds(15),
-                "Healthy unchanged native inventory became stale instead of accepting periodic validation.",
-                ct);
-            await AssertDraftAsync();
-            Assert.Equal(documentNavigations, journal.DocumentNavigations);
-            await journal.DrainAsync();
-            Assert.Equal(0, journal.ParseFailures);
-            Assert.Equal(0, journal.ObservationReadFailures);
-            Assert.True(journal.TransportSafe,
-                "Realtime transport URLs and hub authentication headers must not expose bearer credentials.");
-            await AssertNoReadableCredentialsAsync(page);
-        }
-        finally
-        {
-            release.TrySetResult();
-            await page.UnrouteAsync(observationRoute);
-            await inventory.EvaluateAsync("section => section.__poleStorageRegression?.observer?.disconnect()");
-            await originalInput.DisposeAsync();
-        }
+                var quietBaseline = journal.Latest!;
+                // Stay beyond the forty-five-second freshness window without another native write
+                // or a manual refresh. Real periodic validation must keep the accepted UI writable.
+                await Task.Delay(TimeSpan.FromSeconds(46), ct);
+                await WaitUntilAsync(async probeCancellation => journal.Covered && journal.Latest is { } current &&
+                                                 current.Version > quietBaseline.Version &&
+                                                 current.CheckedAt > quietBaseline.CheckedAt &&
+                                                 await create.IsEnabledAsync().WaitAsync(probeCancellation),
+                    TimeSpan.FromSeconds(15),
+                    "Healthy unchanged native inventory became stale instead of accepting periodic validation.",
+                    ct);
+                await AssertDraftAsync();
+                Assert.Equal(documentNavigations, journal.DocumentNavigations);
+                await journal.DrainAsync();
+                Assert.Equal(0, journal.ParseFailures);
+                Assert.Equal(0, journal.ObservationReadFailures);
+                Assert.True(journal.TransportSafe,
+                    "Realtime transport URLs and hub authentication headers must not expose bearer credentials.");
+                await AssertNoReadableCredentialsAsync(page);
+            }
+            finally
+            {
+                release.TrySetResult();
+                await page.UnrouteAsync(observationRoute);
+                await inventory.EvaluateAsync("section => section.__poleStorageRegression?.observer?.disconnect()");
+                await originalInput.DisposeAsync();
+            }
 
-        async Task AssertDraftAsync()
-        {
-            await Assertions.Expect(displayName).ToHaveValueAsync(draft);
-            await Assertions.Expect(selectedTarget).ToHaveValueAsync(targetId);
-            await Assertions.Expect(create).ToBeEnabledAsync();
-            Assert.True(await originalInput.EvaluateAsync<bool>("input => input.isConnected"),
-                "Native inventory updates must not remount the dirty form.");
-        }
+            async Task AssertDraftAsync()
+            {
+                await Assertions.Expect(displayName).ToHaveValueAsync(draft);
+                await Assertions.Expect(selectedTarget).ToHaveValueAsync(targetId);
+                await Assertions.Expect(create).ToBeEnabledAsync();
+                Assert.True(await originalInput.EvaluateAsync<bool>("input => input.isConnected"),
+                    "Native inventory updates must not remount the dirty form.");
+            }
+        });
     }
 
     private static async Task AssertNoReadableCredentialsAsync(IPage page)
@@ -236,25 +239,13 @@ public sealed class RealtimeProviderBrowserE2ETests(PoleE2EFixture fixture)
             "JWT and realtime cookies must remain absent from readable cookies, URLs and browser storage.");
     }
 
-    private static async Task
-        WaitUntilAsync(Func<bool> ready, TimeSpan timeout, string message, CancellationToken ct) =>
-        await WaitUntilAsync(() => Task.FromResult(ready()), timeout, message, ct);
+    private static Task WaitUntilAsync(Func<bool> ready, TimeSpan timeout, string message, CancellationToken ct) =>
+        TestWait.UntilAsync(_ => Task.FromResult(ready()), timeout, message, ct);
 
-    private static async Task WaitUntilAsync(Func<Task<bool>> ready,
+    private static Task WaitUntilAsync(Func<CancellationToken, Task<bool>> ready,
         TimeSpan timeout,
         string message,
-        CancellationToken ct)
-    {
-        var started = Stopwatch.GetTimestamp();
-        while (Stopwatch.GetElapsedTime(started) < timeout)
-        {
-            if (await ready())
-                return;
-            await Task.Delay(100, ct);
-        }
-
-        Assert.Fail(message);
-    }
+        CancellationToken ct) => TestWait.UntilAsync(ready, timeout, message, ct);
 
     private sealed record Snapshot(
         long Version,
@@ -312,6 +303,7 @@ public sealed class RealtimeProviderBrowserE2ETests(PoleE2EFixture fixture)
                 {
                     Interlocked.Increment(ref documentNavigations);
                     coverage.Navigate();
+                    outcomes.Navigate();
                     Interlocked.Exchange(ref hintVersion, 0);
                     Interlocked.Exchange(ref latest, null);
                 }

@@ -17,106 +17,112 @@ public sealed class SecretBrowserE2ETests(PoleE2EFixture fixture, ITestOutputHel
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var token = timeout.Token;
-        await using var resources = new TestResourceScope("Secret browser E2E");
-        var name = $"keys-{Guid.NewGuid():N}"[..18];
-        var group = (await SendAsync(HttpMethod.Post, "/api/v1/resource-groups", new { name, description = "Secret browser test", tags = new[] { "e2e" } }, token)).GetProperty("id").GetString()!;
-        resources.Defer("delete Secret browser group", cleanup => DeleteGroupAsync(group, cleanup));
-        var consumerName = $"app-{Guid.NewGuid():N}"[..18];
-        var consumer = (await SendAsync(HttpMethod.Post, "/api/v1/web-services", new
+        var resources = new TestResourceScope("Secret browser E2E");
+        await resources.RunAsync(async () =>
         {
-            name = consumerName,
-            resourceGroupId = group,
-            exposure = "Public",
-            tags = new[] { "e2e" },
-            spec = new
+            var name = $"keys-{Guid.NewGuid():N}"[..18];
+            var group = (await SendAsync(HttpMethod.Post, "/api/v1/resource-groups", new { name, description = "Secret browser test", tags = new[] { "e2e" } }, token)).GetProperty("id").GetString()!;
+            resources.Defer("delete Secret browser group", cleanup => DeleteGroupAsync(group, cleanup));
+            var consumerName = $"app-{Guid.NewGuid():N}"[..18];
+            var consumer = (await SendAsync(HttpMethod.Post, "/api/v1/web-services", new
             {
-                image = new { server = "docker.io", name = "library/nginx", tag = "1.27" },
-                config = new { environmentVariables = new Dictionary<string, string>(), portMappings = new[] { new { servicePort = 80, targetPort = "80", protocol = "TCP", name = "http" } } },
-                autoscaling = (object?)null,
-                probes = new { startup = Probe(), liveness = Probe(), readiness = Probe() }
-            },
-            placement = new { isolationScopeId = (string?)null, targets = new[] { new { deploymentTargetId = (string?)null, fixedReplicas = 1, computeProfileId = (string?)null } } }
-        }, token)).GetProperty("webServiceId").GetString()!;
-        resources.Defer("delete Secret consumer", cleanup => DeleteResourceAsync("web-services", consumer, cleanup));
-        await fixture.WaitForNamespaceCreationAsync(group, token);
-        var endpointPath = $"/api/v1/resource-connections/endpoints?resourceType=pole%2Fweb-service&resourceId={consumer}";
-        var discovery = await SendAsync(HttpMethod.Get, endpointPath, null, token);
-        var endpoint = Assert.Single(discovery.GetProperty("endpoints").EnumerateArray());
-        Assert.Equal("http", endpoint.GetProperty("id").GetString());
-        Assert.Equal("tcp", endpoint.GetProperty("protocol").GetString());
-        Assert.Equal(80, endpoint.GetProperty("port").GetInt32());
-        using (var unauthenticated = await fixture.Api.GetAsync(endpointPath, token))
-            Assert.Equal(HttpStatusCode.Unauthorized, unauthenticated.StatusCode);
-        using (var foreignRequest = fixture.CreateAuthenticatedRequest(HttpMethod.Get, endpointPath, fixture.Beta, fixture.Beta.DefaultTenantId))
-        using (var foreignResponse = await fixture.Api.SendAsync(foreignRequest, token))
-            Assert.Equal(HttpStatusCode.NotFound, foreignResponse.StatusCode);
-        await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
-        await browserContainer.StartAsync(token);
-        using var playwright = await Playwright.CreateAsync();
-        await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint, new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
-        await using var context = await browser.NewContextAsync(new BrowserNewContextOptions { ViewportSize = new ViewportSize { Width = 1440, Height = 900 }, IgnoreHTTPSErrors = true });
-        var page = await context.NewPageAsync();
-        await page.GotoAsync(fixture.FrontendBaseAddress.ToString());
-        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in", Exact = true }).ClickAsync();
-        await page.GetByLabel("Username or email").FillAsync(fixture.Alpha.Email);
-        await page.GetByRole(AriaRole.Textbox, new PageGetByRoleOptions { Name = "Password", Exact = true }).FillAsync(fixture.Alpha.Password);
-        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Sign In", Exact = true }).ClickAsync();
-        await page.GetByLabel("Tenant").SelectOptionAsync(fixture.Alpha.DefaultTenantId);
-        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Secrets", Exact = true }).ClickAsync();
-        var content = page.Locator("#app-content");
-        await content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = "Secrets", Exact = true }).WaitForAsync();
-        await CaptureAsync(page, "catalog");
-        await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "New Secret", Exact = true }).ClickAsync();
-        await content.GetByLabel("Resource group").SelectOptionAsync(group);
-        await content.GetByLabel("Name", new LocatorGetByLabelOptions { Exact = true }).FillAsync(name);
-        await content.GetByLabel("Purpose", new LocatorGetByLabelOptions { Exact = true }).FillAsync("Application credential projection");
-        await content.GetByLabel("Key 1", new LocatorGetByLabelOptions { Exact = true }).FillAsync("password");
-        var create = content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Create Secret", Exact = true });
-        await Assertions.Expect(create).ToBeEnabledAsync(new LocatorAssertionsToBeEnabledOptions { Timeout = 20_000 });
-        // All screenshots are captured before values are entered, or after the sensitive form unmounts.
-        await CaptureAsync(page, "create");
-        var initialValue = $"test-{Guid.NewGuid():N}";
-        await content.GetByLabel("Value 1").FillAsync(initialValue);
-        var accepted = await page.RunAndWaitForResponseAsync(() => create.ClickAsync(), response => response.Request.Method == "POST" && new Uri(response.Url).AbsolutePath.TrimEnd('/') == "/api/v1/secrets");
-        Assert.Equal(201, accepted.Status);
-        var requestHeaders = await accepted.Request.AllHeadersAsync();
-        Assert.True(requestHeaders.TryGetValue("authorization", out var authorization) && authorization.StartsWith("Bearer ", StringComparison.Ordinal), "The browser write must use its real Keycloak bearer token.");
-        var browserToken = authorization!["Bearer ".Length..];
-        var secret = (await accepted.JsonAsync())!.Value.GetProperty("id").GetString()!;
-        resources.Defer("detach and delete browser Secret", cleanup => CleanupSecretAsync(secret, cleanup));
-        await content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = name, Exact = true }).WaitForAsync();
-        await AssertCaptureExcludesCredentialsAsync(page, secret, [initialValue, browserToken], token);
-        await CaptureAsync(page, "overview");
-        await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Bindings", Exact = true }).ClickAsync();
-        await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Add binding", Exact = true }).ClickAsync();
-        await content.GetByLabel("Consuming resource").SelectOptionAsync(new SelectOptionValue { Label = $"{consumerName} · Web service" });
-        var bind = content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Create binding", Exact = true });
-        await Assertions.Expect(bind).ToBeEnabledAsync(new LocatorAssertionsToBeEnabledOptions { Timeout = 20_000 });
-        await bind.ClickAsync();
-        var deployment = await WaitForProjectionAsync(secret, 1, "Ready", token);
-        Assert.True(await fixture.KubernetesSecretExistsAsync(group, $"pole-secret-{secret}-{deployment}", token));
-        await CaptureAsync(page, "bindings");
-        await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Projections", Exact = true }).ClickAsync();
-        await Assertions.Expect(content.GetByText("Projected to target", new LocatorGetByTextOptions { Exact = true })).ToBeVisibleAsync();
-        await CaptureAsync(page, "projections");
-        await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Rotate values", Exact = true }).ClickAsync();
-        await CaptureAsync(page, "rotate");
-        var replacementValue = $"test-{Guid.NewGuid():N}";
-        await content.GetByLabel("Value 1").FillAsync(replacementValue);
-        await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Review replacement", Exact = true }).ClickAsync();
-        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Rotate Secret", Exact = true }).ClickAsync();
-        await WaitForProjectionAsync(secret, 2, "Ready", token);
-        await page.ReloadAsync();
-        await Assertions.Expect(content.GetByLabel("Value 1")).ToHaveValueAsync("");
-        await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Bindings", Exact = true }).ClickAsync();
-        await AssertCaptureExcludesCredentialsAsync(page, secret, [initialValue, replacementValue, browserToken], token);
-        await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Detach binding", Exact = true }).ClickAsync();
-        await page.GetByRole(AriaRole.Dialog).GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Detach binding", Exact = true }).ClickAsync();
-        await WaitForProjectionAsync(secret, 2, "Deleted", token);
-        Assert.False(await fixture.KubernetesSecretExistsAsync(group, $"pole-secret-{secret}-{deployment}", token));
-        await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Delete Secret", Exact = true }).ClickAsync();
-        await page.GetByRole(AriaRole.Dialog).GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Delete Secret", Exact = true }).ClickAsync();
-        await content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = "Secrets", Exact = true }).WaitForAsync();
+                name = consumerName,
+                resourceGroupId = group,
+                exposure = "Public",
+                tags = new[] { "e2e" },
+                spec = new
+                {
+                    image = new { server = "docker.io", name = "library/nginx", tag = "1.27" },
+                    config = new { environmentVariables = new Dictionary<string, string>(), portMappings = new[] { new { servicePort = 80, targetPort = "80", protocol = "TCP", name = "http" } } },
+                    autoscaling = (object?)null,
+                    probes = new { startup = Probe(), liveness = Probe(), readiness = Probe() }
+                },
+                placement = new { isolationScopeId = (string?)null, targets = new[] { new { deploymentTargetId = (string?)null, fixedReplicas = 1, computeProfileId = (string?)null } } }
+            }, token)).GetProperty("webServiceId").GetString()!;
+            resources.Defer("delete Secret consumer", cleanup => DeleteResourceAsync("web-services", consumer, cleanup));
+            await fixture.WaitForNamespaceCreationAsync(group, token);
+            var endpointPath = $"/api/v1/resource-connections/endpoints?resourceType=pole%2Fweb-service&resourceId={consumer}";
+            var discovery = await SendAsync(HttpMethod.Get, endpointPath, null, token);
+            var endpoint = Assert.Single(discovery.GetProperty("endpoints").EnumerateArray());
+            Assert.Equal("http", endpoint.GetProperty("id").GetString());
+            Assert.Equal("tcp", endpoint.GetProperty("protocol").GetString());
+            Assert.Equal(80, endpoint.GetProperty("port").GetInt32());
+            using (var unauthenticated = await fixture.Api.GetAsync(endpointPath, token))
+                Assert.Equal(HttpStatusCode.Unauthorized, unauthenticated.StatusCode);
+            using (var foreignRequest = fixture.CreateAuthenticatedRequest(HttpMethod.Get, endpointPath, fixture.Beta, fixture.Beta.DefaultTenantId))
+            using (var foreignResponse = await fixture.Api.SendAsync(foreignRequest, token))
+                Assert.Equal(HttpStatusCode.NotFound, foreignResponse.StatusCode);
+            await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            await browserContainer.StartAsync(token);
+            using var playwright = await Playwright.CreateAsync();
+            await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint, new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
+            await using var context = await browser.NewContextAsync(new BrowserNewContextOptions { ViewportSize = new ViewportSize { Width = 1440, Height = 900 }, IgnoreHTTPSErrors = true });
+            var page = await context.NewPageAsync();
+            await page.GotoAsync(fixture.FrontendBaseAddress.ToString());
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in", Exact = true }).ClickAsync();
+            await page.GetByLabel("Username or email").FillAsync(fixture.Alpha.Email);
+            await page.GetByRole(AriaRole.Textbox, new PageGetByRoleOptions { Name = "Password", Exact = true }).FillAsync(fixture.Alpha.Password);
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Sign In", Exact = true }).ClickAsync();
+            await page.GetByLabel("Tenant").SelectOptionAsync(fixture.Alpha.DefaultTenantId);
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Secrets", Exact = true }).ClickAsync();
+            var content = page.Locator("#app-content");
+            await content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = "Secrets", Exact = true }).WaitForAsync();
+            await CaptureAsync(page, "catalog", "catalog", "Secrets");
+            await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "New Secret", Exact = true }).ClickAsync();
+            await content.GetByLabel("Resource group").SelectOptionAsync(group);
+            await content.GetByLabel("Name", new LocatorGetByLabelOptions { Exact = true }).FillAsync(name);
+            await content.GetByLabel("Purpose", new LocatorGetByLabelOptions { Exact = true }).FillAsync("Application credential projection");
+            await content.GetByLabel("Key 1", new LocatorGetByLabelOptions { Exact = true }).FillAsync("password");
+            var create = content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Create Secret", Exact = true });
+            await Assertions.Expect(create).ToBeEnabledAsync(new LocatorAssertionsToBeEnabledOptions { Timeout = 20_000 });
+            // All screenshots are captured before values are entered, or after the sensitive form unmounts.
+            await CaptureAsync(page, "create", "create", "Create Secret");
+            var initialValue = $"test-{Guid.NewGuid():N}";
+            await content.GetByLabel("Value 1").FillAsync(initialValue);
+            var accepted = await page.RunAndWaitForResponseAsync(() => create.ClickAsync(), response => response.Request.Method == "POST" && new Uri(response.Url).AbsolutePath.TrimEnd('/') == "/api/v1/secrets");
+            Assert.Equal(201, accepted.Status);
+            var requestHeaders = await accepted.Request.AllHeadersAsync();
+            Assert.True(requestHeaders.TryGetValue("authorization", out var authorization) && authorization.StartsWith("Bearer ", StringComparison.Ordinal), "The browser write must use its real Keycloak bearer token.");
+            var browserToken = authorization!["Bearer ".Length..];
+            var secret = (await accepted.JsonAsync())!.Value.GetProperty("id").GetString()!;
+            resources.Defer("detach and delete browser Secret", cleanup => CleanupSecretAsync(secret, cleanup));
+            await content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = name, Exact = true }).WaitForAsync();
+            await AssertCaptureExcludesCredentialsAsync(page, secret, [initialValue, browserToken], token);
+            await CaptureAsync(page, "overview", secret, name);
+            await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Bindings", Exact = true }).ClickAsync();
+            await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Add binding", Exact = true }).ClickAsync();
+            var groupInventory = await SendAsync(HttpMethod.Get, $"/api/v1/resource-groups/{group}/resources?pageNumber=1&pageSize=50", null, token);
+            var consumerRegistration = groupInventory.GetProperty("items").EnumerateArray().Single(item =>
+                item.GetProperty("resourceId").GetString() == consumer && item.GetProperty("resourceTypeId").GetString() == "pole/web-service");
+            await content.GetByLabel("Consuming resource").SelectOptionAsync(consumerRegistration.GetProperty("registrationId").GetString()!);
+            var bind = content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Create binding", Exact = true });
+            await Assertions.Expect(bind).ToBeEnabledAsync(new LocatorAssertionsToBeEnabledOptions { Timeout = 20_000 });
+            await bind.ClickAsync();
+            var deployment = await WaitForProjectionAsync(secret, 1, "Ready", token);
+            Assert.True(await fixture.KubernetesSecretExistsAsync(group, $"pole-secret-{secret}-{deployment}", token));
+            await CaptureAsync(page, "bindings", secret, name);
+            await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Projections", Exact = true }).ClickAsync();
+            await Assertions.Expect(content.GetByText("Projected to target", new LocatorGetByTextOptions { Exact = true })).ToBeVisibleAsync();
+            await CaptureAsync(page, "projections", secret, name);
+            await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Rotate values", Exact = true }).ClickAsync();
+            await CaptureAsync(page, "rotate", secret, name);
+            var replacementValue = $"test-{Guid.NewGuid():N}";
+            await content.GetByLabel("Value 1").FillAsync(replacementValue);
+            await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Review replacement", Exact = true }).ClickAsync();
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Rotate Secret", Exact = true }).ClickAsync();
+            await WaitForProjectionAsync(secret, 2, "Ready", token);
+            await page.ReloadAsync();
+            await Assertions.Expect(content.GetByLabel("Value 1")).ToHaveValueAsync("");
+            await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Bindings", Exact = true }).ClickAsync();
+            await AssertCaptureExcludesCredentialsAsync(page, secret, [initialValue, replacementValue, browserToken], token);
+            await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Detach binding", Exact = true }).ClickAsync();
+            await page.GetByRole(AriaRole.Dialog).GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Detach binding", Exact = true }).ClickAsync();
+            await WaitForProjectionAsync(secret, 2, "Deleted", token);
+            Assert.False(await fixture.KubernetesSecretExistsAsync(group, $"pole-secret-{secret}-{deployment}", token));
+            await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Delete Secret", Exact = true }).ClickAsync();
+            await page.GetByRole(AriaRole.Dialog).GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Delete Secret", Exact = true }).ClickAsync();
+            await content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = "Secrets", Exact = true }).WaitForAsync();
+        });
     }
 
     private async Task AssertCaptureExcludesCredentialsAsync(IPage page, string id, string[] values, CancellationToken token)
@@ -145,15 +151,19 @@ public sealed class SecretBrowserE2ETests(PoleE2EFixture fixture, ITestOutputHel
 
     private async Task<string> WaitForProjectionAsync(string id, int version, string health, CancellationToken token)
     {
-        using var bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
-        bounded.CancelAfter(TimeSpan.FromMinutes(3));
-        while (true)
+        string? deploymentId = null;
+        await TestWait.UntilAsync(async probeToken =>
         {
-            var projections = await SendAsync(HttpMethod.Get, $"/api/v1/secrets/{id}/projections", null, bounded.Token);
+            var projections = await SendAsync(HttpMethod.Get, $"/api/v1/secrets/{id}/projections", null, probeToken);
             foreach (var row in projections.EnumerateArray())
-                if (row.GetProperty("health").GetString() == health && row.GetProperty("desiredVersion").GetInt64() == version && (health == "Deleted" || row.GetProperty("appliedVersion").GetInt64() == version)) return row.GetProperty("resourceDeploymentId").GetString()!;
-            await Task.Delay(1000, bounded.Token);
-        }
+                if (row.GetProperty("health").GetString() == health && row.GetProperty("desiredVersion").GetInt64() == version && (health == "Deleted" || row.GetProperty("appliedVersion").GetInt64() == version))
+                {
+                    deploymentId = row.GetProperty("resourceDeploymentId").GetString()!;
+                    return true;
+                }
+            return false;
+        }, TimeSpan.FromMinutes(3), "The Secret projection did not reach its expected version and health.", token, pollInterval: TimeSpan.FromSeconds(1));
+        return deploymentId!;
     }
 
     private async Task CleanupSecretAsync(string id, CancellationToken token)
@@ -173,15 +183,13 @@ public sealed class SecretBrowserE2ETests(PoleE2EFixture fixture, ITestOutputHel
         bounded.CancelAfter(TimeSpan.FromMinutes(1));
         using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Delete, $"/api/v1/{route}/{id}", fixture.Alpha, fixture.Alpha.DefaultTenantId);
         using var response = await fixture.Api.SendAsync(request, bounded.Token);
-        Assert.True(response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound);
-        while (true)
+        if (TestDeletion.IsComplete(response.StatusCode)) return;
+        await TestWait.UntilAsync(async probeToken =>
         {
             using var read = fixture.CreateAuthenticatedRequest(HttpMethod.Get, $"/api/v1/{route}/{id}", fixture.Alpha, fixture.Alpha.DefaultTenantId);
-            using var remaining = await fixture.Api.SendAsync(read, bounded.Token);
-            if (remaining.StatusCode == HttpStatusCode.NotFound) return;
-            remaining.EnsureSuccessStatusCode();
-            await Task.Delay(1000, bounded.Token);
-        }
+            using var remaining = await fixture.Api.SendAsync(read, probeToken);
+            return TestDeletion.IsComplete(remaining.StatusCode);
+        }, TimeSpan.FromMinutes(1), "The Secret scenario resource did not finish deletion.", bounded.Token, pollInterval: TimeSpan.FromSeconds(1));
     }
 
     private async Task DeleteGroupAsync(string group, CancellationToken token)
@@ -192,8 +200,9 @@ public sealed class SecretBrowserE2ETests(PoleE2EFixture fixture, ITestOutputHel
         await fixture.WaitForNamespaceDeletionAsync(group, token);
     }
 
-    private async Task CaptureAsync(IPage page, string section)
+    private async Task CaptureAsync(IPage page, string section, string resourceId, string heading)
     {
+        await BrowserWorkspaceReadiness.AssertAsync(page, resourceId, heading);
         var directory = Path.GetFullPath(Path.Combine(".artifacts", "frontend-secrets"));
         Directory.CreateDirectory(directory);
         foreach (var (viewport, width, height) in new[] { ("desktop", 1440, 900), ("mobile", 390, 844) })

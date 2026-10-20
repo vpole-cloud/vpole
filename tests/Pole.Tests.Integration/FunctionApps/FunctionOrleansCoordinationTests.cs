@@ -11,6 +11,7 @@ using Orleans.Configuration;
 using Pole.Features.Functions.Runtime.Coordination;
 using Pole.Features.Functions.Runtime.Gateway;
 using Pole.Server.Extensions;
+using TestResourceScope = Pole.Testing.TestResourceScope;
 using Pole.Platform.Hosting;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -26,20 +27,23 @@ public sealed class FunctionOrleansCoordinationTests(MongoReplicaSetFixture fixt
         var suffix = Guid.NewGuid().ToString("N");
         var databaseName = $"pole_orleans_fence_{suffix}";
         var collectionPrefix = $"FunctionsFence_{suffix}_";
-        var silo = CreateSilo(
-            databaseName,
-            collectionPrefix,
-            $"functions-fence-{suffix}",
-            "fence-silo",
-            new FunctionGatewayOptions { MaxPendingRequestsPerRevision = 2 },
-            new FunctionCoordinationOptions
-            {
-                RecoveryGraceSeconds = 0,
-                ScaleTransitionLeaseSeconds = 1,
-                ScalerOwnershipLeaseSeconds = 60
-            });
-        try
+        var resources = new TestResourceScope("Orleans coordination");
+        resources.Defer("drop owned Orleans database", token => fixture.Client.DropDatabaseAsync(databaseName, token));
+        await resources.RunAsync(async () =>
         {
+            var silo = CreateSilo(
+                databaseName,
+                collectionPrefix,
+                $"functions-fence-{suffix}",
+                "fence-silo",
+                new FunctionGatewayOptions { MaxPendingRequestsPerRevision = 2 },
+                new FunctionCoordinationOptions
+                {
+                    RecoveryGraceSeconds = 0,
+                    ScaleTransitionLeaseSeconds = 1,
+                    ScalerOwnershipLeaseSeconds = 60
+                });
+            RegisterSiloCleanup(resources, silo);
             await silo.StartAsync();
             var key = new FunctionRevisionCoordinationKey("tenant", "app", "revision");
             var grain = silo.Services.GetRequiredService<IGrainFactory>()
@@ -91,13 +95,7 @@ public sealed class FunctionOrleansCoordinationTests(MongoReplicaSetFixture fixt
             var afterFence = await grain.AcquireAdmissionAsync(new FunctionAdmissionRequest(
                 "third", "third", "handler", FunctionAdmissionTriggerKind.Http, 0));
             Assert.False(afterFence.RequiresActivationFence);
-        }
-        finally
-        {
-            await silo.StopAsync();
-            silo.Dispose();
-            await fixture.Client.DropDatabaseAsync(databaseName);
-        }
+        });
     }
 
     [Fact]
@@ -106,19 +104,22 @@ public sealed class FunctionOrleansCoordinationTests(MongoReplicaSetFixture fixt
         var suffix = Guid.NewGuid().ToString("N");
         var databaseName = $"pole_orleans_scale_owner_{suffix}";
         var collectionPrefix = $"FunctionsScaleOwner_{suffix}_";
-        var silo = CreateSilo(
-            databaseName,
-            collectionPrefix,
-            $"functions-scale-owner-{suffix}",
-            "scale-owner-silo",
-            coordinationOptions: new FunctionCoordinationOptions
-            {
-                RecoveryGraceSeconds = 0,
-                ScaleTransitionLeaseSeconds = 60,
-                ScalerOwnershipLeaseSeconds = 1
-            });
-        try
+        var resources = new TestResourceScope("Orleans coordination");
+        resources.Defer("drop owned Orleans database", token => fixture.Client.DropDatabaseAsync(databaseName, token));
+        await resources.RunAsync(async () =>
         {
+            var silo = CreateSilo(
+                databaseName,
+                collectionPrefix,
+                $"functions-scale-owner-{suffix}",
+                "scale-owner-silo",
+                coordinationOptions: new FunctionCoordinationOptions
+                {
+                    RecoveryGraceSeconds = 0,
+                    ScaleTransitionLeaseSeconds = 60,
+                    ScalerOwnershipLeaseSeconds = 1
+                });
+            RegisterSiloCleanup(resources, silo);
             await silo.StartAsync();
             var key = new FunctionRevisionCoordinationKey("tenant", "app", "revision");
             var grain = silo.Services.GetRequiredService<IGrainFactory>()
@@ -155,13 +156,7 @@ public sealed class FunctionOrleansCoordinationTests(MongoReplicaSetFixture fixt
                     scaleLease.Generation,
                     FunctionCoordinationCompletionOutcome.Applied,
                     recoveredToken)));
-        }
-        finally
-        {
-            await silo.StopAsync();
-            silo.Dispose();
-            await fixture.Client.DropDatabaseAsync(databaseName);
-        }
+        });
     }
 
     [Fact]
@@ -172,12 +167,16 @@ public sealed class FunctionOrleansCoordinationTests(MongoReplicaSetFixture fixt
         var collectionPrefix = $"Functions_{suffix}_";
         var clusterId = $"functions-{suffix}";
         var trafficClock = new ManualTrafficTimeProvider();
-        var first = CreateSilo(databaseName, collectionPrefix, clusterId, "silo-1",
-            trafficTimeProvider: trafficClock);
-        var second = CreateSilo(databaseName, collectionPrefix, clusterId, "silo-2",
-            trafficTimeProvider: trafficClock);
-        try
+        var resources = new TestResourceScope("two Orleans silos");
+        resources.Defer("drop owned Orleans database", token => fixture.Client.DropDatabaseAsync(databaseName, token));
+        await resources.RunAsync(async () =>
         {
+            var first = CreateSilo(databaseName, collectionPrefix, clusterId, "silo-1",
+                trafficTimeProvider: trafficClock);
+            RegisterSiloCleanup(resources, first);
+            var second = CreateSilo(databaseName, collectionPrefix, clusterId, "silo-2",
+                trafficTimeProvider: trafficClock);
+            RegisterSiloCleanup(resources, second);
             await first.StartAsync();
             await second.StartAsync();
 
@@ -209,6 +208,17 @@ public sealed class FunctionOrleansCoordinationTests(MongoReplicaSetFixture fixt
             Assert.Single(
                 admissions,
                 decision => decision.Rejection == FunctionAdmissionRejection.RequestLimitExceeded);
+
+            var admissionToken = Assert.IsType<FunctionAdmissionToken>(grantedAdmission.Token);
+            Assert.InRange(
+                admissionToken.ExpiresAtUtc - DateTimeOffset.UtcNow,
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromSeconds(16));
+            var renewal = await firstRevision.RenewAdmissionAsync(
+                new FunctionAdmissionRenewalRequest(admissionToken));
+            Assert.Equal(FunctionAdmissionRenewalDecisionKind.Renewed, renewal.Kind);
+            var renewedAdmissionToken = Assert.IsType<FunctionAdmissionToken>(renewal.Token);
+            Assert.True(renewedAdmissionToken.ExpiresAtUtc > admissionToken.ExpiresAtUtc.AddMinutes(2));
 
             var activationResults = await Task.WhenAll(
                 firstRevision.BeginActivationAsync(new FunctionActivationBeginRequest("activate-1", 1)),
@@ -243,16 +253,6 @@ public sealed class FunctionOrleansCoordinationTests(MongoReplicaSetFixture fixt
             Assert.Equal(FunctionTrafficRejection.RateLimitExceeded,
                 (await firstTraffic.TryAcquireAsync(new FunctionTrafficRequest("request-4", "webhook"))).Rejection);
 
-            var admissionToken = Assert.IsType<FunctionAdmissionToken>(grantedAdmission.Token);
-            Assert.InRange(
-                admissionToken.ExpiresAtUtc - DateTimeOffset.UtcNow,
-                TimeSpan.FromSeconds(5),
-                TimeSpan.FromSeconds(16));
-            var renewal = await firstRevision.RenewAdmissionAsync(
-                new FunctionAdmissionRenewalRequest(admissionToken));
-            Assert.Equal(FunctionAdmissionRenewalDecisionKind.Renewed, renewal.Kind);
-            var renewedAdmissionToken = Assert.IsType<FunctionAdmissionToken>(renewal.Token);
-            Assert.True(renewedAdmissionToken.ExpiresAtUtc > admissionToken.ExpiresAtUtc.AddMinutes(2));
             Assert.Equal(
                 FunctionAdmissionReleaseDecision.Released,
                 await secondRevision.ReleaseAdmissionAsync(new FunctionAdmissionReleaseRequest(
@@ -306,73 +306,65 @@ public sealed class FunctionOrleansCoordinationTests(MongoReplicaSetFixture fixt
             await first.StopAsync();
 
             var restarted = CreateSilo(databaseName, collectionPrefix, clusterId, "silo-3");
-            try
-            {
-                await restarted.StartAsync();
-                var recovered = await restarted.Services.GetRequiredService<IGrainFactory>()
-                    .GetGrain<IFunctionRevisionCoordinatorGrain>(revisionKey.ToGrainKey())
-                    .GetSnapshotAsync();
-                Assert.Equal(2, recovered.DesiredReplicas);
-                Assert.Equal(beforeRestart.Generation, recovered.Generation);
-                Assert.NotEqual(beforeRestart.CoordinatorIncarnation, recovered.CoordinatorIncarnation);
-                Assert.Equal(pendingScaleLease.Generation, recovered.PendingScaleIntent?.Generation);
+            RegisterSiloCleanup(resources, restarted);
+            await restarted.StartAsync();
+            var recovered = await restarted.Services.GetRequiredService<IGrainFactory>()
+                .GetGrain<IFunctionRevisionCoordinatorGrain>(revisionKey.ToGrainKey())
+                .GetSnapshotAsync();
+            Assert.Equal(2, recovered.DesiredReplicas);
+            Assert.Equal(beforeRestart.Generation, recovered.Generation);
+            Assert.NotEqual(beforeRestart.CoordinatorIncarnation, recovered.CoordinatorIncarnation);
+            Assert.Equal(pendingScaleLease.Generation, recovered.PendingScaleIntent?.Generation);
 
-                var restartedRevision = restarted.Services.GetRequiredService<IGrainFactory>()
-                    .GetGrain<IFunctionRevisionCoordinatorGrain>(revisionKey.ToGrainKey());
-                var staleOwner = await restartedRevision.BeginScaleAsync(new FunctionScaleBeginRequest(
-                    "scale-to-two",
-                    ownershipToken,
-                    DesiredReplicas: 2,
-                    QuiescingEpoch: null,
-                    ObservedReplicas: 1));
-                Assert.Equal(FunctionScaleBeginDecisionKind.Stale, staleOwner.Kind);
+            var restartedRevision = restarted.Services.GetRequiredService<IGrainFactory>()
+                .GetGrain<IFunctionRevisionCoordinatorGrain>(revisionKey.ToGrainKey());
+            var staleOwner = await restartedRevision.BeginScaleAsync(new FunctionScaleBeginRequest(
+                "scale-to-two",
+                ownershipToken,
+                DesiredReplicas: 2,
+                QuiescingEpoch: null,
+                ObservedReplicas: 1));
+            Assert.Equal(FunctionScaleBeginDecisionKind.Stale, staleOwner.Kind);
 
-                var recoveredOwnership = await restartedRevision.TryAcquireScalerOwnershipAsync(
-                    new FunctionScalerOwnershipRequest("scale-owner-2", "silo-3"));
-                var recoveredOwnershipToken = Assert.IsType<FunctionScalerOwnershipToken>(
-                    recoveredOwnership.Token);
-                Assert.Equal(
-                    FunctionScaleCompleteDecision.Stale,
-                    await restartedRevision.CompleteScaleAsync(new FunctionScaleCompleteRequest(
-                        pendingScaleLease.IntentId,
-                        pendingScaleLease.Generation,
-                        FunctionCoordinationCompletionOutcome.Applied,
-                        ownershipToken)));
-                Assert.NotNull((await restartedRevision.GetSnapshotAsync()).PendingScaleIntent);
+            var recoveredOwnership = await restartedRevision.TryAcquireScalerOwnershipAsync(
+                new FunctionScalerOwnershipRequest("scale-owner-2", "silo-3"));
+            var recoveredOwnershipToken = Assert.IsType<FunctionScalerOwnershipToken>(
+                recoveredOwnership.Token);
+            Assert.Equal(
+                FunctionScaleCompleteDecision.Stale,
+                await restartedRevision.CompleteScaleAsync(new FunctionScaleCompleteRequest(
+                    pendingScaleLease.IntentId,
+                    pendingScaleLease.Generation,
+                    FunctionCoordinationCompletionOutcome.Applied,
+                    ownershipToken)));
+            Assert.NotNull((await restartedRevision.GetSnapshotAsync()).PendingScaleIntent);
 
-                var recoveredScale = await restartedRevision.BeginScaleAsync(new FunctionScaleBeginRequest(
-                    "scale-to-two",
-                    recoveredOwnershipToken,
-                    DesiredReplicas: 2,
-                    QuiescingEpoch: null,
-                    ObservedReplicas: 1));
-                Assert.Equal(FunctionScaleBeginDecisionKind.Granted, recoveredScale.Kind);
-                Assert.Equal(pendingScaleLease, recoveredScale.Lease);
-                Assert.Equal(
-                    FunctionScaleCompleteDecision.Completed,
-                    await restartedRevision.CompleteScaleAsync(new FunctionScaleCompleteRequest(
-                        pendingScaleLease.IntentId,
-                        pendingScaleLease.Generation,
-                        FunctionCoordinationCompletionOutcome.Applied,
-                        recoveredOwnershipToken)));
-                var completed = await restartedRevision.GetSnapshotAsync();
-                Assert.Equal(2, completed.DesiredReplicas);
-                Assert.Null(completed.PendingScaleIntent);
-            }
-            finally
-            {
-                await restarted.StopAsync();
-                restarted.Dispose();
-            }
-        }
-        finally
-        {
-            await first.StopAsync();
-            await second.StopAsync();
-            first.Dispose();
-            second.Dispose();
-            await fixture.Client.DropDatabaseAsync(databaseName);
-        }
+            var recoveredScale = await restartedRevision.BeginScaleAsync(new FunctionScaleBeginRequest(
+                "scale-to-two",
+                recoveredOwnershipToken,
+                DesiredReplicas: 2,
+                QuiescingEpoch: null,
+                ObservedReplicas: 1));
+            Assert.Equal(FunctionScaleBeginDecisionKind.Granted, recoveredScale.Kind);
+            Assert.Equal(pendingScaleLease, recoveredScale.Lease);
+            Assert.Equal(
+                FunctionScaleCompleteDecision.Completed,
+                await restartedRevision.CompleteScaleAsync(new FunctionScaleCompleteRequest(
+                    pendingScaleLease.IntentId,
+                    pendingScaleLease.Generation,
+                    FunctionCoordinationCompletionOutcome.Applied,
+                    recoveredOwnershipToken)));
+            var completed = await restartedRevision.GetSnapshotAsync();
+            Assert.Equal(2, completed.DesiredReplicas);
+            Assert.Null(completed.PendingScaleIntent);
+        });
+    }
+
+    private static void RegisterSiloCleanup(TestResourceScope resources, IHost silo)
+    {
+        var cleanup = resources.CreateCleanupSequence("Orleans silo lifetime");
+        cleanup.Defer("stop silo", token => silo.StopAsync(token));
+        cleanup.Defer("dispose silo", _ => { silo.Dispose(); return Task.CompletedTask; });
     }
 
     private IHost CreateSilo(

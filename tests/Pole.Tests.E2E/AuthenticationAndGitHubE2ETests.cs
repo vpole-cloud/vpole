@@ -25,7 +25,8 @@ public sealed class AuthenticationAndGitHubE2ETests(PoleE2EFixture fixture)
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
 
         var journal = await fixture.Stub.GetFromJsonAsync<JsonElement[]>("/__e2e/requests");
-        Assert.Empty(journal ?? []);
+        Assert.NotNull(journal);
+        Assert.Empty(journal);
     }
 
     [Fact]
@@ -61,7 +62,8 @@ public sealed class AuthenticationAndGitHubE2ETests(PoleE2EFixture fixture)
             connection => string.Equals(connection.GetProperty("accountLogin").GetString(), "pole-e2e", StringComparison.Ordinal));
 
         var journal = await fixture.Stub.GetFromJsonAsync<JsonElement[]>("/__e2e/requests");
-        Assert.Contains(journal ?? [], request => request.GetProperty("path").GetString() == "/app/installations/42");
-        Assert.Contains(journal ?? [], request => request.GetProperty("path").GetString() == "/login/oauth/access_token");
+        Assert.NotNull(journal);
+        Assert.Contains(journal, request => request.GetProperty("path").GetString() == "/app/installations/42");
+        Assert.Contains(journal, request => request.GetProperty("path").GetString() == "/login/oauth/access_token");
     }
 }

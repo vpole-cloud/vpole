@@ -756,39 +756,37 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         TestUser? owner = null)
     {
         owner ??= Alpha;
-        var deadline = DateTimeOffset.UtcNow.AddMinutes(2);
-        while (DateTimeOffset.UtcNow < deadline)
+        await TestWait.UntilAsync(async phase =>
         {
             using var request = CreateAuthenticatedRequest(
                 HttpMethod.Get,
                 $"/api/v1/resource-groups/{resourceGroupId}/runtime-cells",
                 owner,
                 owner.DefaultTenantId);
-            using var response = await Api.SendAsync(request, cancellationToken);
+            using var response = await Api.SendAsync(request, phase);
             response.EnsureSuccessStatusCode();
             using var document = JsonDocument.Parse(
-                await response.Content.ReadAsStreamAsync(cancellationToken));
+                await response.Content.ReadAsStreamAsync(phase));
             var cells = document.RootElement.EnumerateArray().ToArray();
             if (cells.Length == 1)
             {
                 var namespaceName = cells[0].GetProperty("kubernetesNamespace").GetString()
                                     ?? throw new InvalidOperationException("Runtime cell has no Kubernetes namespace.");
-                var namespaceResource = await ReadNamespaceIfPresentAsync(namespaceName, cancellationToken);
+                var namespaceResource = await ReadNamespaceIfPresentAsync(namespaceName, phase);
                 if (namespaceResource is not null)
                 {
                     VerifyOwnedNamespace(namespaceResource);
                     _kubernetesNamespaces[resourceGroupId] = new RecordedNamespace(
                         namespaceName,
                         namespaceResource.Metadata.Uid);
-                    return;
+                    return true;
                 }
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
-        }
-
-        throw new TimeoutException($"A runtime-cell namespace for resource group '{resourceGroupId}' was not created.");
+            return false;
+        }, TimeSpan.FromMinutes(2), "The runtime-cell namespace was not created.", cancellationToken, TimeSpan.FromSeconds(2));
     }
+
 
     public Task<JsonElement> GetWebServiceDeploymentAsync(
         string resourceGroupId,
@@ -796,6 +794,14 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         CancellationToken cancellationToken) =>
         ReadKubectlJsonAsync(
             ["get", "deployment", webServiceName, "--namespace", GetNamespaceName(resourceGroupId), "--output=json"],
+            cancellationToken);
+
+    public Task<JsonElement> GetWebServiceConfigMapAsync(
+        string resourceGroupId,
+        string webServiceName,
+        CancellationToken cancellationToken) =>
+        ReadKubectlJsonAsync(
+            ["get", "configmap", $"{webServiceName}-config", "--namespace", GetNamespaceName(resourceGroupId), "--output=json"],
             cancellationToken);
 
     public async Task<bool> KubernetesSecretExistsAsync(
@@ -1009,52 +1015,29 @@ public sealed class PoleE2EFixture : IAsyncLifetime
 
     public async Task WaitForWebServiceReadyAsync(string groupId, string name, CancellationToken ct)
     {
-        var deadline = DateTime.UtcNow.AddMinutes(3);
-        while (DateTime.UtcNow < deadline)
+        await TestWait.UntilAsync(async phase =>
         {
             try
             {
                 var deployment =
                     await _kubernetes.AppsV1.ReadNamespacedDeploymentAsync(name,
                         GetNamespaceName(groupId),
-                        cancellationToken: ct);
+                        cancellationToken: phase);
                 if (deployment.Status?.ReadyReplicas >= deployment.Spec.Replicas &&
                     deployment.Status.AvailableReplicas >= deployment.Spec.Replicas &&
                     deployment.Status.UpdatedReplicas >= deployment.Spec.Replicas &&
                     deployment.Status.Replicas == deployment.Spec.Replicas &&
                     deployment.Status.ObservedGeneration >= deployment.Metadata.Generation)
-                    return;
+                    return true;
             }
             catch (HttpOperationException exception) when (exception.Response?.StatusCode == HttpStatusCode.NotFound)
             {
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(2), ct);
-        }
-
-        var pods = await _kubernetes.CoreV1.ListNamespacedPodAsync(GetNamespaceName(groupId), cancellationToken: ct);
-        var reasons = pods.Items.Where(pod => pod.Metadata.Name.StartsWith(name + "-", StringComparison.Ordinal))
-            .SelectMany(pod => pod.Status?.ContainerStatuses ?? [])
-            .Select(status => status.State?.Waiting)
-            .Where(waiting => waiting is not null)
-            .Select(waiting =>
-            {
-                var message = waiting!.Message ?? string.Empty;
-                var category = message.Contains("secret", StringComparison.OrdinalIgnoreCase)
-                    ?
-                    message.Contains("key", StringComparison.OrdinalIgnoreCase)
-                        ? "SecretKeyUnavailable"
-                        : "SecretUnavailable"
-                    :
-                    message.Contains("configmap", StringComparison.OrdinalIgnoreCase)
-                        ? "ConfigMapUnavailable"
-                        : "Other";
-                return $"{waiting.Reason}:{category}";
-            }).Distinct();
-        throw new TimeoutException(
-            "The application workload did not finish rollout within three minutes. Waiting categories: " +
-            string.Join(", ", reasons));
+            return false;
+        }, TimeSpan.FromMinutes(3), "The application workload did not finish rollout within three minutes.", ct, TimeSpan.FromSeconds(2));
     }
+
 
     /// <summary>Only forwards application HTTP. Database operations still originate inside the application and traverse its CNI policy.</summary>
     public async Task<(string Postgres, string Redis)> ProbeApplicationDependenciesAsync(string groupId,
@@ -1634,38 +1617,33 @@ public sealed class PoleE2EFixture : IAsyncLifetime
 
     private async Task<string> WaitForDefaultTenantAsync(string accessToken, CancellationToken cancellationToken)
     {
-        var deadline = DateTimeOffset.UtcNow.AddMinutes(2);
-        HttpStatusCode? lastStatusCode = null;
-        string? lastResponseBody = null;
-        while (DateTimeOffset.UtcNow < deadline)
+        string? result = null;
+        await TestWait.UntilAsync(async phase =>
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/tenants");
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-            using var response = await Api.SendAsync(request, cancellationToken);
-            lastStatusCode = response.StatusCode;
+            using var response = await Api.SendAsync(request, phase);
             if (response.IsSuccessStatusCode)
             {
-                lastResponseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-                using var document = JsonDocument.Parse(lastResponseBody);
+                using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(phase));
                 var tenant = document.RootElement.EnumerateArray()
                     .FirstOrDefault(item =>
                         item.TryGetProperty("isDefault", out var isDefault) && isDefault.GetBoolean());
                 if (tenant.ValueKind != JsonValueKind.Undefined)
-                    return tenant.GetProperty("id").GetString()
-                           ?? throw new InvalidOperationException("Default tenant has no id.");
+                    result = tenant.GetProperty("id").GetString()
+                             ?? throw new InvalidOperationException("Default tenant has no id.");
+                if (result is not null) return true;
             }
             else
             {
-                lastResponseBody = "(response body omitted to avoid reflecting credentials)";
+                throw new HttpRequestException($"Default tenant discovery returned HTTP {(int)response.StatusCode}.", null, response.StatusCode);
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
-        }
-
-        throw new TimeoutException(
-            "The default tenant was not created from the UserCreated outbox event. " +
-            $"Last GET /api/v1/tenants response: {(int?)lastStatusCode} {lastStatusCode}; {lastResponseBody}");
+            return false;
+        }, TimeSpan.FromMinutes(2), "The default tenant was not created from the UserCreated outbox event.", cancellationToken, TimeSpan.FromSeconds(1));
+        return result!;
     }
+
 
     private async Task WaitForHarborHealthAsync(CancellationToken cancellationToken)
     {
@@ -1673,22 +1651,21 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         {
             BaseAddress = HarborBaseAddress
         };
-        var deadline = DateTimeOffset.UtcNow.AddMinutes(3);
-        while (DateTimeOffset.UtcNow < deadline)
+        await TestWait.UntilAsync(async phase =>
         {
             try
             {
-                using var response = await client.GetAsync("/api/v2.0/health", cancellationToken);
+                using var response = await client.GetAsync("/api/v2.0/health", phase);
                 if (!response.IsSuccessStatusCode)
                     throw new HttpRequestException("Harbor API is not ready.");
 
                 // The API can become healthy before the registry endpoint is ready to accept
                 // BuildKit pushes. A 401 is the expected unauthenticated response from /v2/.
-                using var registryResponse = await client.GetAsync("/v2/", cancellationToken);
+                using var registryResponse = await client.GetAsync("/v2/", phase);
                 if (registryResponse.IsSuccessStatusCode ||
                     registryResponse.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                 {
-                    return;
+                    return true;
                 }
             }
             catch (HttpRequestException)
@@ -1696,25 +1673,22 @@ public sealed class PoleE2EFixture : IAsyncLifetime
                 // Harbor's Compose topology is still starting.
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
-        }
-
-        throw new TimeoutException("Harbor did not report healthy within three minutes.");
+            return false;
+        }, TimeSpan.FromMinutes(3), "Harbor did not report healthy within three minutes.", cancellationToken, TimeSpan.FromSeconds(2));
     }
+
 
     private async Task WaitForBuildKitReadyAsync(CancellationToken cancellationToken)
     {
-        var deadline = DateTimeOffset.UtcNow.AddMinutes(1);
-        while (DateTimeOffset.UtcNow < deadline)
+        await TestWait.UntilAsync(async phase =>
         {
-            if (await IsBuildKitReadyAsync(cancellationToken))
-                return;
+            if (await IsBuildKitReadyAsync(phase))
+                return true;
 
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
-        }
-
-        throw new TimeoutException("BuildKit did not accept a buildctl connection on its E2E endpoint.");
+            return false;
+        }, TimeSpan.FromMinutes(1), "BuildKit did not accept a buildctl connection on its E2E endpoint.", cancellationToken, TimeSpan.FromSeconds(1));
     }
+
 
     private async Task<bool> IsBuildKitReadyAsync(CancellationToken cancellationToken)
     {
@@ -1792,27 +1766,25 @@ public sealed class PoleE2EFixture : IAsyncLifetime
 
     private static async Task WaitForKeycloakDiscoveryAsync(HttpClient keycloak, CancellationToken cancellationToken)
     {
-        var deadline = DateTimeOffset.UtcNow.AddMinutes(2);
-        while (DateTimeOffset.UtcNow < deadline)
+        await TestWait.UntilAsync(async phase =>
         {
             try
             {
                 using var response = await keycloak.GetAsync(
                     "/realms/pole.control-plane/.well-known/openid-configuration",
-                    cancellationToken);
+                    phase);
                 if (response.IsSuccessStatusCode)
-                    return;
+                    return true;
             }
             catch (HttpRequestException)
             {
                 // Keycloak is still importing the realm.
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
-        }
-
-        throw new TimeoutException("Keycloak did not expose OpenID discovery within two minutes.");
+            return false;
+        }, TimeSpan.FromMinutes(2), "Keycloak did not expose OpenID discovery within two minutes.", cancellationToken, TimeSpan.FromSeconds(1));
     }
+
 
     private async Task<int> RunKubectlAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
