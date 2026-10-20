@@ -358,8 +358,11 @@ records. Storage failures cannot replace the original scenario failure. A missin
 a diagnostic gap, never proof that a request succeeded or no request happened.
 
 CI always exports allowlisted TRX outcomes plus JSON phase and headroom summaries, including on
-failed runs. Raw TRX stdout, stack traces, messages, theory arguments and arbitrary payloads are
-excluded from the published failure artifact. Headroom snapshots record free disk/memory and
+failed runs. Failed outcomes include a fixed error category and up to eight source locations
+(tracked repository-relative C#/F# filenames with valid line numbers). Unknown exception types
+remain `unknown`; absolute paths, method arguments and arbitrary exception text are discarded.
+Raw TRX stdout, stack traces, messages, theory arguments and arbitrary payloads are excluded from
+the published failure artifact. Headroom snapshots record free disk/memory and
 sanitized node conditions before infrastructure stages and on failure; image-GC warnings remain a
 separate infrastructure investigation until linked to a test failure by evidence.
 
