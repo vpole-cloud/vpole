@@ -347,6 +347,40 @@ public sealed class RealtimeRedisTests(RealtimeRedisFixture fixture) : IClassFix
     }
 
     [Fact]
+    public async Task GracefulServerStopWaitsForDisconnectedSubscriptionRemoval()
+    {
+        var topic = "disconnect-" + Guid.NewGuid().ToString("N");
+        await using var server = await StartServerAsync(topic, gateDisconnect: true);
+        var gate = server.Services.GetRequiredService<GatedDisconnectSubscriptions>();
+        var cookies = new CookieContainer();
+        using var browser = new HttpClient(new HttpClientHandler { CookieContainer = cookies });
+        browser.DefaultRequestHeaders.Add("Origin", "https://frontend.test");
+        browser.DefaultRequestHeaders.Authorization = new("Bearer", "realtime-test-credential");
+        Assert.Equal(HttpStatusCode.OK,
+            (await browser.PostAsync(Address(server) + RealtimeFeature.Route + "/session", null)).StatusCode);
+        var client = Client(Address(server), cookies);
+        Task? disposal = null;
+        try
+        {
+            await client.StartAsync().WaitAsync(TimeSpan.FromSeconds(15));
+            await client.InvokeCoreAsync<RealtimeSubscriptionAcknowledgement[]>("Subscribe",
+                [new[] { new RealtimeSubscriptionRequest(topic) }]).WaitAsync(TimeSpan.FromSeconds(15));
+            var clientDisposal = client.DisposeAsync().AsTask();
+            await gate.Started.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            await clientDisposal.WaitAsync(TimeSpan.FromSeconds(15));
+            disposal = StopServerAsync(server);
+            await Task.WhenAny(disposal, Task.Delay(TimeSpan.FromSeconds(2)));
+            Assert.False(disposal.IsCompleted);
+        }
+        finally
+        {
+            gate.Release.TrySetResult();
+            if (disposal is not null) await disposal.WaitAsync(TimeSpan.FromSeconds(15));
+            await client.DisposeAsync();
+        }
+    }
+
+    [Fact]
     public async Task RealServersShareCookieAndBackplaneAcrossRestartAndRedisOutage()
     {
         var topic = "replicas-" + Guid.NewGuid().ToString("N");
@@ -374,7 +408,7 @@ public sealed class RealtimeRedisTests(RealtimeRedisFixture fixture) : IClassFix
             Assert.Equal(1, (await changed.Task.WaitAsync(TimeSpan.FromSeconds(15))).Revision);
         }
 
-        await first.DisposeAsync();
+        await StopServerAsync(first);
         await using var restarted = await StartServerAsync(topic);
         Assert.Equal(HttpStatusCode.OK,
             (await browser.PostAsync(Address(restarted) + RealtimeFeature.Route + "/hub/negotiate?negotiateVersion=1",
@@ -441,7 +475,8 @@ public sealed class RealtimeRedisTests(RealtimeRedisFixture fixture) : IClassFix
 
     private async Task<WebApplication> StartServerAsync(string topic,
         string? disabledTopic = null,
-        RealtimeScope scope = RealtimeScope.Platform)
+        RealtimeScope scope = RealtimeScope.Platform,
+        bool gateDisconnect = false)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseKestrel().UseUrls("http://127.0.0.1:0");
@@ -455,6 +490,14 @@ public sealed class RealtimeRedisTests(RealtimeRedisFixture fixture) : IClassFix
         builder.Services.AddAuthorization();
         builder.Services.AddRealtimeFeature(builder.Configuration, development: true);
         builder.Services.AddRealtimeRedis(builder.Configuration, development: true);
+        if (gateDisconnect)
+        {
+            builder.Services.AddSingleton(provider => new GatedDisconnectSubscriptions(
+                new RedisRealtimeSubscriptions(provider.GetRequiredService<RealtimeRedisConnection>(),
+                    provider.GetRequiredService<TimeProvider>())));
+            builder.Services.AddSingleton<IRealtimeSubscriptions>(provider =>
+                provider.GetRequiredService<GatedDisconnectSubscriptions>());
+        }
         builder.Services.AddRealtimeTopic(topic, scope);
         if (disabledTopic is not null)
             builder.Services.AddRealtimeTopic(disabledTopic, RealtimeScope.Platform);
@@ -490,6 +533,44 @@ public sealed class RealtimeRedisTests(RealtimeRedisFixture fixture) : IClassFix
             }).Build();
 
     private static string Address(WebApplication app) => app.Urls.Single();
+
+    private static Task StopServerAsync(WebApplication server)
+    {
+        var cleanup = new TestResourceScope("Stop realtime test server");
+        cleanup.Defer("Dispose realtime test server", _ => server.DisposeAsync().AsTask());
+        return cleanup.RunAsync(async () =>
+        {
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            await server.StopAsync(deadline.Token).WaitAsync(deadline.Token);
+        });
+    }
+
+    private sealed class GatedDisconnectSubscriptions(IRealtimeSubscriptions inner) : IRealtimeSubscriptions
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task ReplaceAsync(string connectionId, IReadOnlyList<RealtimeSubscription> subscriptions,
+            CancellationToken cancellationToken) => inner.ReplaceAsync(connectionId, subscriptions, cancellationToken);
+        public async Task RemoveAsync(string connectionId, IReadOnlyCollection<string>? subscriptionIds,
+            CancellationToken cancellationToken)
+        {
+            // Subscribe replacement uses ConnectionAborted; OnDisconnected deliberately uses None.
+            if (!cancellationToken.CanBeCanceled)
+            {
+                Started.TrySetResult();
+                await Release.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            }
+            await inner.RemoveAsync(connectionId, subscriptionIds, cancellationToken);
+        }
+        public Task<IReadOnlyList<RealtimeSubscription>> FindAsync(string topic, string? tenantId,
+            CancellationToken cancellationToken) => inner.FindAsync(topic, tenantId, cancellationToken);
+        public Task<IReadOnlyList<RealtimeSubscription>> FindAllAsync(string topic, CancellationToken cancellationToken) =>
+            inner.FindAllAsync(topic, cancellationToken);
+        public Task<IReadOnlyList<string>> RevokeSessionAsync(string sessionId, CancellationToken cancellationToken) =>
+            inner.RevokeSessionAsync(sessionId, cancellationToken);
+        public Task<bool> IsSessionRevokedAsync(string sessionId, CancellationToken cancellationToken) =>
+            inner.IsSessionRevokedAsync(sessionId, cancellationToken);
+    }
 
     private static AuthenticationTicket Ticket(string session, DateTimeOffset expiry) => new(
         new ClaimsPrincipal(new ClaimsIdentity(new[]
