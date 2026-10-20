@@ -63,6 +63,35 @@ public sealed class TestResourceScope : IAsyncDisposable
         return group;
     }
 
+    public async Task RunAsync(Func<Task> body)
+    {
+        ThrowIfDisposeStarted();
+        Exception? primaryFailure = null;
+        try
+        {
+            await body();
+        }
+        catch (Exception exception)
+        {
+            primaryFailure = exception;
+            throw;
+        }
+        finally
+        {
+            try
+            {
+                await DisposeAsync();
+            }
+            catch (Exception cleanupFailure) when (primaryFailure is not null)
+            {
+                throw new AggregateException(
+                    "The test body and resource cleanup both failed.",
+                    primaryFailure,
+                    cleanupFailure);
+            }
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         CleanupAction[] cleanupActions;

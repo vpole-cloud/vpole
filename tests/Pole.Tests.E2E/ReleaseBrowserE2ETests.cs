@@ -16,92 +16,95 @@ public sealed class ReleaseBrowserE2ETests(PoleE2EFixture fixture)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = timeout.Token;
-        await using var resources = new TestResourceScope("release browser E2E");
-        var name = $"release-{Guid.NewGuid():N}"[..18];
-        var group = await SendAsync(HttpMethod.Post, "/api/v1/resource-groups", new { name, description = "Release browser test", tags = new[] { "e2e" } }, ct);
-        var groupId = Text(group, "id");
-        resources.Defer("delete release browser group", cleanup => DeleteGroupAsync(groupId, cleanup));
-        var targets = await SendAsync(HttpMethod.Get, "/api/v1/deployment-targets/available?resourceType=pole%2Fweb-service&requiresPublicIngress=false", null, ct);
-        var targetId = Text(targets.EnumerateArray().First(), "id");
-        var created = await SendAsync(HttpMethod.Post, "/api/v1/web-services", new
+        var resources = new TestResourceScope("release browser E2E");
+        await resources.RunAsync(async () =>
         {
-            name,
-            resourceGroupId = groupId,
-            exposure = "Private",
-            tags = new[] { "e2e" },
-            spec = Spec("initial"),
-            placement = new { targets = new[] { new { deploymentTargetId = targetId, fixedReplicas = 1 } } }
-        }, ct);
-        var id = Text(created, "webServiceId");
-        resources.Defer("delete release browser application", cleanup => DeleteWebServiceAsync(id, cleanup));
-        var targetDisabled = false;
-        resources.Defer("restore isolated fixture target availability", async cleanup => { if (targetDisabled) await SetTargetEnabledAsync(targetId, true, cleanup); });
-        await fixture.WaitForNamespaceCreationAsync(groupId, ct);
-        await WaitForReleaseAsync(id, 1, "Succeeded", ct);
-        await SendAsync(HttpMethod.Put, $"/api/v1/web-services/{id}", new { spec = Spec("changed"), tags = new[] { "e2e" }, exposure = "Private", expectedRevision = 1 }, ct);
-        await WaitForReleaseAsync(id, 2, "Succeeded", ct);
-        await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
-        await browserContainer.StartAsync(ct);
-        using var playwright = await Playwright.CreateAsync();
-        await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint, new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
-        await using var context = await browser.NewContextAsync(new BrowserNewContextOptions { ViewportSize = new ViewportSize { Width = 1440, Height = 900 }, IgnoreHTTPSErrors = true });
-        var page = await context.NewPageAsync();
-        await page.GotoAsync(fixture.FrontendBaseAddress.ToString());
-        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in", Exact = true }).ClickAsync();
-        await page.GetByLabel("Username or email").FillAsync(fixture.Alpha.Email);
-        await page.GetByRole(AriaRole.Textbox, new PageGetByRoleOptions { Name = "Password", Exact = true }).FillAsync(fixture.Alpha.Password);
-        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Sign In", Exact = true }).ClickAsync();
-        await page.GetByLabel("Tenant").SelectOptionAsync(fixture.Alpha.DefaultTenantId);
-        await page.GotoAsync(Url(id, "releases"));
-        var content = page.Locator("#app-content");
-        await Assertions.Expect(content.GetByText("Current desired revision 2.", new LocatorGetByTextOptions { Exact = false })).ToBeVisibleAsync();
-        // This fixture's target is isolated in its disposable Mongo/API graph. Keep the real
-        // release Pending during reload, then allow the existing server retry to finish it.
-        await SetTargetEnabledAsync(targetId, false, ct);
-        targetDisabled = true;
-        await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Redeploy current revision", Exact = true }).ClickAsync();
-        var dialog = page.GetByRole(AriaRole.Dialog);
-        await Assertions.Expect(dialog.GetByText("Redeploy reapplies current configuration.", new LocatorGetByTextOptions { Exact = false })).ToBeVisibleAsync();
-        await dialog.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Confirm redeploy", Exact = true }).ClickAsync();
-        await WaitForPlacementFailureAsync(id, ct);
-        await page.ReloadAsync();
-        var redeploy = content.Locator("[aria-label='Release revision 3']");
-        await Assertions.Expect(redeploy.GetByTestId("release-status")).ToHaveTextAsync("Pending", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
-        await Assertions.Expect(redeploy.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = "Revision 3 · Redeploy", Exact = true })).ToBeVisibleAsync();
-        await CaptureAsync(page, "pending");
-        await SetTargetEnabledAsync(targetId, true, ct);
-        targetDisabled = false;
-        await WaitForReleaseAsync(id, 3, "Succeeded", ct);
-        await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Refresh releases", Exact = true }).ClickAsync();
-        await Assertions.Expect(redeploy.GetByTestId("release-status")).ToHaveTextAsync("Succeeded", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
-        await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Rollback to revision 1", Exact = true }).ClickAsync();
-        dialog = page.GetByRole(AriaRole.Dialog);
-        await Assertions.Expect(dialog.GetByText("Database contents and Secret values are not restored.", new LocatorGetByTextOptions { Exact = false })).ToBeVisibleAsync();
-        var rollbackResponse = await page.RunAndWaitForResponseAsync(
-            () => dialog.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Confirm rollback", Exact = true }).ClickAsync(),
-            response => response.Request.Method == "POST" && response.Url.EndsWith($"/web-services/{id}/rollback", StringComparison.Ordinal));
-        Assert.Equal(202, rollbackResponse.Status);
-        // A click dispatches the handler; navigation must wait for server acceptance rather
-        // than cancel its in-flight request and then wait for a release that never existed.
-        await Assertions.Expect(dialog).ToBeHiddenAsync(new LocatorAssertionsToBeHiddenOptions { Timeout = 30_000 });
-        await Assertions.Expect(content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = "Revision 4 · Rollback", Exact = true })).ToBeVisibleAsync(new LocatorAssertionsToBeVisibleOptions { Timeout = 30_000 });
-        await page.ReloadAsync();
-        await WaitForReleaseAsync(id, 4, "Succeeded", ct);
-        await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Refresh releases", Exact = true }).ClickAsync();
-        var rollback = content.Locator("[aria-label='Release revision 4']");
-        await Assertions.Expect(rollback.GetByTestId("release-status")).ToHaveTextAsync("Succeeded", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
-        await CaptureAsync(page, "rollback");
-        var restored = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{id}", null, ct);
-        Assert.Equal(4, restored.GetProperty("activeRevision").GetInt64());
-        Assert.Equal("initial", restored.GetProperty("spec").GetProperty("config").GetProperty("environmentVariables").GetProperty("APP_MODE").GetString());
-        Assert.Equal("Private", Text(restored.GetProperty("exposure"), "mode"));
-        var placement = restored.GetProperty("deployments")[0];
-        Assert.Equal(targetId, Text(placement, "deploymentTargetId"));
-        Assert.Equal(1, placement.GetProperty("fixedReplicas").GetInt32());
-        await WaitForReadyAsync(id, ct);
-        await page.GotoAsync(Url(id, "operations"));
-        await Assertions.Expect(content.GetByTestId("readiness-status")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
-        await CaptureAsync(page, "ready");
+            var name = $"release-{Guid.NewGuid():N}"[..18];
+            var group = await SendAsync(HttpMethod.Post, "/api/v1/resource-groups", new { name, description = "Release browser test", tags = new[] { "e2e" } }, ct);
+            var groupId = Text(group, "id");
+            resources.Defer("delete release browser group", cleanup => DeleteGroupAsync(groupId, cleanup));
+            var targets = await SendAsync(HttpMethod.Get, "/api/v1/deployment-targets/available?resourceType=pole%2Fweb-service&requiresPublicIngress=false", null, ct);
+            var targetId = Text(targets.EnumerateArray().First(), "id");
+            var created = await SendAsync(HttpMethod.Post, "/api/v1/web-services", new
+            {
+                name,
+                resourceGroupId = groupId,
+                exposure = "Private",
+                tags = new[] { "e2e" },
+                spec = Spec("initial"),
+                placement = new { targets = new[] { new { deploymentTargetId = targetId, fixedReplicas = 1 } } }
+            }, ct);
+            var id = Text(created, "webServiceId");
+            resources.Defer("delete release browser application", cleanup => DeleteWebServiceAsync(id, cleanup));
+            var targetRestorationRequired = false;
+            resources.Defer("restore isolated fixture target availability", async cleanup => { if (targetRestorationRequired) await SetTargetEnabledAsync(targetId, true, cleanup); });
+            await fixture.WaitForNamespaceCreationAsync(groupId, ct);
+            await WaitForReleaseAsync(id, 1, "Succeeded", ct);
+            await SendAsync(HttpMethod.Put, $"/api/v1/web-services/{id}", new { spec = Spec("changed"), tags = new[] { "e2e" }, exposure = "Private", expectedRevision = 1 }, ct);
+            await WaitForReleaseAsync(id, 2, "Succeeded", ct);
+            await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            await browserContainer.StartAsync(ct);
+            using var playwright = await Playwright.CreateAsync();
+            await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint, new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
+            await using var context = await browser.NewContextAsync(new BrowserNewContextOptions { ViewportSize = new ViewportSize { Width = 1440, Height = 900 }, IgnoreHTTPSErrors = true });
+            var page = await context.NewPageAsync();
+            await page.GotoAsync(fixture.FrontendBaseAddress.ToString());
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in", Exact = true }).ClickAsync();
+            await page.GetByLabel("Username or email").FillAsync(fixture.Alpha.Email);
+            await page.GetByRole(AriaRole.Textbox, new PageGetByRoleOptions { Name = "Password", Exact = true }).FillAsync(fixture.Alpha.Password);
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Sign In", Exact = true }).ClickAsync();
+            await page.GetByLabel("Tenant").SelectOptionAsync(fixture.Alpha.DefaultTenantId);
+            await page.GotoAsync(Url(id, "releases"));
+            var content = page.Locator("#app-content");
+            await Assertions.Expect(content.GetByText("Current desired revision 2.", new LocatorGetByTextOptions { Exact = false })).ToBeVisibleAsync();
+            // This fixture's target is isolated in its disposable Mongo/API graph. Keep the real
+            // release Pending during reload, then allow the existing server retry to finish it.
+            targetRestorationRequired = true;
+            await SetTargetEnabledAsync(targetId, false, ct);
+            await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Redeploy current revision", Exact = true }).ClickAsync();
+            var dialog = page.GetByRole(AriaRole.Dialog);
+            await Assertions.Expect(dialog.GetByText("Redeploy reapplies current configuration.", new LocatorGetByTextOptions { Exact = false })).ToBeVisibleAsync();
+            await dialog.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Confirm redeploy", Exact = true }).ClickAsync();
+            await WaitForPlacementFailureAsync(id, ct);
+            await page.ReloadAsync();
+            var redeploy = content.Locator("[aria-label='Release revision 3']");
+            await Assertions.Expect(redeploy.GetByTestId("release-status")).ToHaveTextAsync("Pending", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
+            await Assertions.Expect(redeploy.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = "Revision 3 · Redeploy", Exact = true })).ToBeVisibleAsync();
+            await CaptureAsync(page, "pending");
+            await SetTargetEnabledAsync(targetId, true, ct);
+            targetRestorationRequired = false;
+            await WaitForReleaseAsync(id, 3, "Succeeded", ct);
+            await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Refresh releases", Exact = true }).ClickAsync();
+            await Assertions.Expect(redeploy.GetByTestId("release-status")).ToHaveTextAsync("Succeeded", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
+            await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Rollback to revision 1", Exact = true }).ClickAsync();
+            dialog = page.GetByRole(AriaRole.Dialog);
+            await Assertions.Expect(dialog.GetByText("Database contents and Secret values are not restored.", new LocatorGetByTextOptions { Exact = false })).ToBeVisibleAsync();
+            var rollbackResponse = await page.RunAndWaitForResponseAsync(
+                () => dialog.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Confirm rollback", Exact = true }).ClickAsync(),
+                response => response.Request.Method == "POST" && response.Url.EndsWith($"/web-services/{id}/rollback", StringComparison.Ordinal));
+            Assert.Equal(202, rollbackResponse.Status);
+            // A click dispatches the handler; navigation must wait for server acceptance rather
+            // than cancel its in-flight request and then wait for a release that never existed.
+            await Assertions.Expect(dialog).ToBeHiddenAsync(new LocatorAssertionsToBeHiddenOptions { Timeout = 30_000 });
+            await Assertions.Expect(content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = "Revision 4 · Rollback", Exact = true })).ToBeVisibleAsync(new LocatorAssertionsToBeVisibleOptions { Timeout = 30_000 });
+            await page.ReloadAsync();
+            await WaitForReleaseAsync(id, 4, "Succeeded", ct);
+            await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Refresh releases", Exact = true }).ClickAsync();
+            var rollback = content.Locator("[aria-label='Release revision 4']");
+            await Assertions.Expect(rollback.GetByTestId("release-status")).ToHaveTextAsync("Succeeded", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
+            await CaptureAsync(page, "rollback");
+            var restored = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{id}", null, ct);
+            Assert.Equal(4, restored.GetProperty("activeRevision").GetInt64());
+            Assert.Equal("initial", restored.GetProperty("spec").GetProperty("config").GetProperty("environmentVariables").GetProperty("APP_MODE").GetString());
+            Assert.Equal("Private", Text(restored.GetProperty("exposure"), "mode"));
+            var placement = restored.GetProperty("deployments")[0];
+            Assert.Equal(targetId, Text(placement, "deploymentTargetId"));
+            Assert.Equal(1, placement.GetProperty("fixedReplicas").GetInt32());
+            await WaitForReadyAsync(id, ct);
+            await page.GotoAsync(Url(id, "operations"));
+            await Assertions.Expect(content.GetByTestId("readiness-status")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
+            await CaptureAsync(page, "ready");
+        });
     }
 
     private static object Spec(string mode)

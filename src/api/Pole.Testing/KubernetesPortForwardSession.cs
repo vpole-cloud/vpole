@@ -7,16 +7,20 @@ namespace Pole.Testing;
 public sealed class KubernetesPortForwardSession : IAsyncDisposable
 {
     private readonly Process _process;
+    private readonly CancellationTokenSource _readerLifetime;
     private readonly Task<string> _standardOutput;
     private readonly Task<string> _standardError;
+    private int _disposed;
 
     private KubernetesPortForwardSession(
         Process process,
         int localPort,
         Task<string> standardOutput,
-        Task<string> standardError)
+        Task<string> standardError,
+        CancellationTokenSource readerLifetime)
     {
         _process = process;
+        _readerLifetime = readerLifetime;
         LocalPort = localPort;
         _standardOutput = standardOutput;
         _standardError = standardError;
@@ -55,10 +59,20 @@ public sealed class KubernetesPortForwardSession : IAsyncDisposable
         startInfo.ArgumentList.Add(resource);
         startInfo.ArgumentList.Add($"{assignedPort}:{remotePort}");
 
+        return await StartProcessAsync(startInfo, assignedPort, cancellationToken);
+    }
+
+    internal static async Task<KubernetesPortForwardSession> StartProcessAsync(
+        ProcessStartInfo startInfo,
+        int assignedPort,
+        CancellationToken cancellationToken)
+    {
         var process = Process.Start(startInfo)
                       ?? throw new InvalidOperationException("Failed to start kubectl port-forward process.");
+        var lifetime = new CancellationTokenSource();
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var forwardingMessage = $"Forwarding from 127.0.0.1:{assignedPort} ->";
+        // Startup cancellation must never stop draining the pipes of a running session.
         var standardOutput = ReadBoundedOutputAsync(
             process.StandardOutput,
             line =>
@@ -66,36 +80,42 @@ public sealed class KubernetesPortForwardSession : IAsyncDisposable
                 if (line.StartsWith(forwardingMessage, StringComparison.Ordinal))
                     ready.TrySetResult();
             },
-            cancellationToken);
-        var standardError = ReadBoundedOutputAsync(process.StandardError, cancellationToken);
-        var session = new KubernetesPortForwardSession(process, assignedPort, standardOutput, standardError);
-
+            lifetime.Token);
+        var standardError = ReadBoundedOutputAsync(process.StandardError, lifetime.Token);
+        var session = new KubernetesPortForwardSession(process, assignedPort, standardOutput, standardError, lifetime);
         try
         {
             await WaitForForwardingAsync(process, ready.Task, cancellationToken);
             return session;
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (Exception primaryFailure)
         {
-            await session.StopAsync();
+            try
+            {
+                await session.DisposeAsync();
+            }
+            catch (Exception cleanupFailure)
+            {
+                throw new AggregateException("Port-forward startup and cleanup failed.", primaryFailure, cleanupFailure);
+            }
             throw;
-        }
-        catch (Exception exception)
-        {
-            await session.StopAsync();
-            var output = await ReadOutputAsync(standardOutput);
-            var error = await ReadOutputAsync(standardError);
-            throw new TimeoutException(
-                $"kubectl port-forward for '{resource}' on target '{target.Key}' did not become ready. " +
-                $"stdout: {output} stderr: {error}",
-                exception);
         }
     }
 
     public async ValueTask DisposeAsync()
     {
-        await StopAsync();
-        _process.Dispose();
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+        try
+        {
+            await StopAsync();
+        }
+        finally
+        {
+            await _readerLifetime.CancelAsync();
+            _process.Dispose();
+            _readerLifetime.Dispose();
+        }
     }
 
     private async Task StopAsync()
@@ -166,6 +186,10 @@ public sealed class KubernetesPortForwardSession : IAsyncDisposable
         catch (OperationCanceledException)
         {
             return "<cancelled>";
+        }
+        catch (Exception failure) when (failure is IOException or ObjectDisposedException)
+        {
+            return "<closed>";
         }
     }
 
