@@ -520,7 +520,13 @@ it('retains logs on token refresh but immediately aborts and clears a revoked te
         .map((query) => query.state.data),
     ),
   ).not.toContain('ephemeral-runtime-canary')
+  const follow = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+    (item) => item.textContent === 'Follow runtime logs',
+  )!
+  const beforeRevocation = reads('runtime-logs')
   await act(async () => connection.accessRevoked('alpha'))
+  await act(async () => follow.click())
+  expect(reads('runtime-logs')).toBe(beforeRevocation)
   expect(streamSignal?.aborted).toBe(true)
   expect(streamCanceled).toBe(true)
   expect(container.textContent).not.toContain('ephemeral-runtime-canary')
@@ -1091,3 +1097,331 @@ it.each(['ended', 'errored'] as const)(
     expect(container.textContent).not.toContain(oldOutput)
   },
 )
+
+it('starts one replacement Follow after manual discovery is overtaken by a hint and its trailing read is accepted', async () => {
+  await open()
+  await select('Instance', 'owned-uid')
+  await select('Container', 'app')
+  await click('Follow runtime logs')
+  const oldSignal = streamSignal
+  await act(async () => {
+    streamController.enqueue(
+      encoder.encode(
+        `${JSON.stringify({ kind: 'Output', text: 'old-instance-window', reason: null, outputBytes: 19 })}\n`,
+      ),
+    )
+    streamController.enqueue(
+      encoder.encode(
+        `${JSON.stringify({ kind: 'Ended', text: null, reason: 'InstanceReplaced', outputBytes: 19 })}\n`,
+      ),
+    )
+  })
+  expect(container.textContent).toContain('explicitly select its replacement')
+  if (diagnostic.diagnostics.kind !== 'Available')
+    throw new Error('Expected complete native fixture')
+  diagnostic = {
+    ...diagnostic,
+    observationVersion: 2,
+    diagnostics: {
+      ...diagnostic.diagnostics,
+      instances: [{ ...diagnostic.diagnostics.instances[0], uid: 'replacement-uid' }],
+    },
+  }
+  health = { ...health, observationVersion: 2 }
+  await hint(2)
+  await tick(500)
+  expect(instances().value).toBe('')
+  expect(container.textContent).not.toContain('old-instance-window')
+
+  const held = deferred<Response>()
+  const overtaken = structuredClone(diagnostic)
+  heldDiagnostics = held.promise
+  await click('Refresh instances and events')
+  const refreshSignal = diagnosticSignal
+  await select('Instance', 'replacement-uid')
+  await select('Container', 'app')
+  const follow = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+    (item) => item.textContent === 'Follow runtime logs',
+  )!
+  expect(follow.disabled).toBe(false)
+  const beforeFollow = reads('runtime-logs')
+
+  diagnostic = { ...diagnostic, observationVersion: 3 }
+  health = { ...health, observationVersion: 3 }
+  await hint(3)
+  await tick(250)
+  expect(refreshSignal?.aborted).toBe(false)
+  expect(instances().value).toBe('replacement-uid')
+  expect(follow.disabled).toBe(true)
+  await click('Follow runtime logs')
+  expect(reads('runtime-logs')).toBe(beforeFollow)
+  expect(container.textContent).not.toContain('Opening runtime logs')
+  const discoveryReads = reads('diagnostics')
+  const trailing = deferred<Response>()
+  heldDiagnostics = trailing.promise
+  await act(async () => held.resolve(new Response(JSON.stringify(overtaken))))
+  await tick(0)
+  expect(reads('diagnostics')).toBe(discoveryReads + 1)
+  expect(follow.disabled).toBe(true)
+  expect(reads('runtime-logs')).toBe(beforeFollow)
+  heldDiagnostics = undefined
+  await act(async () => trailing.resolve(new Response(JSON.stringify(diagnostic))))
+  await tick(500)
+  expect(follow.disabled).toBe(false)
+  expect(instances().value).toBe('replacement-uid')
+  expect(container.textContent).not.toContain('Opening runtime logs')
+  expect(reads('runtime-logs')).toBe(beforeFollow)
+
+  streamCanceled = false
+  await click('Follow runtime logs')
+  expect(reads('runtime-logs')).toBe(beforeFollow + 1)
+  expect(streamSignal).not.toBe(oldSignal)
+  expect(streamSignal?.aborted).toBe(false)
+  expect(container.textContent).toContain('Reading runtime logs')
+  const [url, request] = http.fetch.mock.calls
+    .filter(([input]) =>
+      new URL(String(input), 'http://localhost').pathname.endsWith('/runtime-logs'),
+    )
+    .at(-1)!
+  const parameters = new URL(String(url), 'http://localhost').searchParams
+  expect(Object.fromEntries(parameters)).toEqual({
+    instanceUid: 'replacement-uid',
+    container: 'app',
+    expectedRevision: '7',
+    follow: 'true',
+    previous: 'false',
+    tailLines: '100',
+  })
+  expect(new Headers(request?.headers).get('X-Pole-Tenant-ID')).toBe('alpha')
+  expect(new Headers(request?.headers).get('Authorization')).toBe('Bearer first')
+  await act(async () =>
+    streamController.enqueue(
+      encoder.encode(
+        `${JSON.stringify({ kind: 'Output', text: 'replacement-window-marker', reason: null, outputBytes: 25 })}\n`,
+      ),
+    ),
+  )
+  expect(container.querySelector('[aria-label="Runtime log output"]')?.textContent).toBe(
+    'replacement-window-marker',
+  )
+  diagnostic = { ...diagnostic, observationVersion: 4 }
+  health = { ...health, observationVersion: 4 }
+  await hint(4)
+  expect(follow.disabled).toBe(true)
+  expect(streamSignal?.aborted).toBe(false)
+  await tick(500)
+  expect(streamSignal?.aborted).toBe(false)
+  expect(streamCanceled).toBe(false)
+  expect(reads('runtime-logs')).toBe(beforeFollow + 1)
+  expect(container.querySelector('[aria-label="Runtime log output"]')?.textContent).toBe(
+    'replacement-window-marker',
+  )
+})
+
+it('requires another explicit Follow when a hint disables the button between pointer down and native click', async () => {
+  await open()
+  await select('Instance', 'owned-uid')
+  await select('Container', 'app')
+  const follow = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+    (item) => item.textContent === 'Follow runtime logs',
+  )!
+  expect(follow.disabled).toBe(false)
+  const clicks = vi.fn()
+  follow.addEventListener('click', clicks)
+  await act(async () => follow.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
+  const held = deferred<Response>()
+  heldDiagnostics = held.promise
+  diagnostic = { ...diagnostic, observationVersion: 2 }
+  health = { ...health, observationVersion: 2 }
+  await hint(2)
+  expect(follow.disabled).toBe(true)
+  await act(async () => {
+    follow.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    follow.click()
+  })
+  expect(clicks).not.toHaveBeenCalled()
+  expect(reads('runtime-logs')).toBe(0)
+  expect(container.textContent).not.toContain('Opening runtime logs')
+  expect(container.querySelector('[aria-label="Runtime log output"]')).toBeNull()
+
+  await tick(250)
+  heldDiagnostics = undefined
+  await act(async () => held.resolve(new Response(JSON.stringify(diagnostic))))
+  await tick(500)
+  expect(follow.disabled).toBe(false)
+  expect(instances().value).toBe('owned-uid')
+  expect(reads('runtime-logs')).toBe(0)
+  await click('Follow runtime logs')
+  expect(clicks).toHaveBeenCalledOnce()
+  expect(reads('runtime-logs')).toBe(1)
+  expect(container.textContent).toContain('Reading runtime logs')
+})
+
+it('keeps an enabled Follow opening across a hint and accepts its stream only for the current reader', async () => {
+  await open()
+  await select('Instance', 'owned-uid')
+  await select('Container', 'app')
+  const held = deferred<Response>()
+  heldLogs = held.promise
+  await click('Follow runtime logs')
+  expect(reads('runtime-logs')).toBe(1)
+  expect(container.textContent).toContain('Opening runtime logs')
+  const openingSignal = streamSignal
+  diagnostic = { ...diagnostic, observationVersion: 2 }
+  health = { ...health, observationVersion: 2 }
+  await hint(2)
+  await tick(500)
+  expect(openingSignal?.aborted).toBe(false)
+  expect(container.textContent).toContain('Opening runtime logs')
+  await act(async () =>
+    held.resolve(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(value) {
+            streamController = value
+            for (const frame of [
+              { kind: 'Opened', text: null, reason: null, outputBytes: 0 },
+              { kind: 'Output', text: 'current-reader-output', reason: null, outputBytes: 21 },
+            ])
+              value.enqueue(encoder.encode(`${JSON.stringify(frame)}\n`))
+          },
+          cancel() {
+            streamCanceled = true
+          },
+        }),
+        { headers: { 'Content-Type': 'application/x-ndjson' } },
+      ),
+    ),
+  )
+  expect(reads('runtime-logs')).toBe(1)
+  expect(openingSignal?.aborted).toBe(false)
+  expect(streamCanceled).toBe(false)
+  expect(container.querySelector('[aria-label="Runtime log output"]')?.textContent).toBe(
+    'current-reader-output',
+  )
+  await click('Close runtime diagnostics')
+  expect(openingSignal?.aborted).toBe(true)
+  expect(streamCanceled).toBe(true)
+  expect(container.querySelector('[aria-label="Runtime log output"]')).toBeNull()
+})
+
+it('keeps a current replacement selectable for Follow while an unfenced background discovery GET is pending', async () => {
+  await open()
+  if (diagnostic.diagnostics.kind !== 'Available')
+    throw new Error('Expected complete native fixture')
+  diagnostic = {
+    ...diagnostic,
+    observationVersion: 2,
+    diagnostics: {
+      ...diagnostic.diagnostics,
+      instances: [{ ...diagnostic.diagnostics.instances[0], uid: 'replacement-uid' }],
+    },
+  }
+  health = { ...health, observationVersion: 2 }
+  await hint(2)
+  await tick(500)
+  await select('Instance', 'replacement-uid')
+  await select('Container', 'app')
+  const context = { tenantId: 'alpha', deploymentId: 'deployment', revision: 7, generation: 2 }
+  const before = controller.observationReadState('/api', context)
+  const held = deferred<Response>()
+  heldDiagnostics = held.promise
+  const key = scopedQueryKey(
+    session,
+    ['/api', 'alpha'],
+    ['runtime-discovery', 'deployment', 'pole/web-service', 'app', 'target', 7, 2],
+  )
+  let reading!: Promise<void>
+  await act(async () => {
+    reading = session.client.refetchQueries(
+      { queryKey: key, exact: true },
+      { cancelRefetch: false },
+    )
+  })
+  expect(session.client.getQueryState(key)).toMatchObject({
+    status: 'success',
+    fetchStatus: 'fetching',
+  })
+  const cached = session.client.getQueryData<{
+    value: { snapshot: ResourceDeploymentDiagnostics; epoch?: number }
+  }>(key)!
+  expect(cached.value.epoch).toBe(before.epoch)
+  expect(cached.value.snapshot.observationVersion).toBeGreaterThanOrEqual(before.floor)
+  expect(controller.observationReadState('/api', context)).toEqual(before)
+  expect(instances().value).toBe('replacement-uid')
+  const follow = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+    (item) => item.textContent === 'Follow runtime logs',
+  )!
+  await click('Follow runtime logs')
+  expect(reads('runtime-logs')).toBe(1)
+  expect(follow.disabled).toBe(false)
+  const selectedReader = streamSignal
+  await act(async () =>
+    streamController.enqueue(
+      encoder.encode(
+        `${JSON.stringify({ kind: 'Output', text: 'background-read-window', reason: null, outputBytes: 22 })}\n`,
+      ),
+    ),
+  )
+  heldDiagnostics = undefined
+  await act(async () => {
+    held.resolve(new Response(JSON.stringify(diagnostic)))
+    await reading
+  })
+  await tick(0)
+  expect(selectedReader?.aborted).toBe(false)
+  expect(streamCanceled).toBe(false)
+  expect(reads('runtime-logs')).toBe(1)
+  expect(container.querySelector('[aria-label="Runtime log output"]')?.textContent).toBe(
+    'background-read-window',
+  )
+})
+
+it('rejects Follow with retained instance data after a failed discovery refresh and throughout its pending recovery', async () => {
+  await open()
+  await select('Instance', 'owned-uid')
+  await select('Container', 'app')
+  const key = scopedQueryKey(
+    session,
+    ['/api', 'alpha'],
+    ['runtime-discovery', 'deployment', 'pole/web-service', 'app', 'target', 7, 2],
+  )
+  const accepted = session.client.getQueryData(key)
+  heldDiagnostics = Promise.resolve(new Response(null, { status: 503 }))
+  await act(async () =>
+    session.client.refetchQueries({ queryKey: key, exact: true }, { cancelRefetch: false }),
+  )
+  expect(session.client.getQueryState(key)?.status).toBe('error')
+  expect(session.client.getQueryData(key)).toBe(accepted)
+  expect(instances().value).toBe('owned-uid')
+  const follow = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+    (item) => item.textContent === 'Follow runtime logs',
+  )!
+  expect(follow.disabled).toBe(true)
+  await click('Follow runtime logs')
+  expect(reads('runtime-logs')).toBe(0)
+
+  const recovery = deferred<Response>()
+  heldDiagnostics = recovery.promise
+  let reading!: Promise<void>
+  await act(async () => {
+    reading = session.client.refetchQueries(
+      { queryKey: key, exact: true },
+      { cancelRefetch: false },
+    )
+  })
+  expect(session.client.getQueryState(key)?.fetchStatus).toBe('fetching')
+  expect(follow.disabled).toBe(true)
+  await click('Follow runtime logs')
+  expect(reads('runtime-logs')).toBe(0)
+  heldDiagnostics = undefined
+  await act(async () => {
+    recovery.resolve(new Response(JSON.stringify(diagnostic)))
+    await reading
+  })
+  await tick(0)
+  expect(follow.disabled).toBe(false)
+  await click('Follow runtime logs')
+  expect(reads('runtime-logs')).toBe(1)
+  expect(container.textContent).toContain('Reading runtime logs')
+})

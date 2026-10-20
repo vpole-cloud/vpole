@@ -2,6 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { readResourceRuntimeLogs, RuntimeLogUnavailableError } from '../api'
 import { useRuntimeDiagnostics } from '../modules/operations/useRuntimeSnapshot'
 import { useApiScope } from '../data/useApiScope'
+import { hasHealthyCurrentQueryData } from '../data/hasHealthyCurrentQueryData'
 import { useAppServices } from '../shell/AppContext'
 import type { ResourceDeploymentOperation } from '../types'
 import { Button, EmptyState, Notice } from './components'
@@ -123,6 +124,7 @@ function DiagnosticsContent({ operation }: { operation: ResourceDeploymentOperat
     value.deploymentRevision === (deployment.placement.deploymentRevision ?? 1) &&
     value.desiredGeneration === deployment.placement.desiredGeneration
   const exact = identityExact && details.snapshotCurrent
+  const healthyDiscovery = hasHealthyCurrentQueryData(details)
   // Retain the last safe instance list during resync. A hint is not evidence that an
   // instance vanished; only a fresh authoritative snapshot can remove its UID.
   const diagnostics =
@@ -191,8 +193,7 @@ function DiagnosticsContent({ operation }: { operation: ResourceDeploymentOperat
     setLogs(initial())
   }
   const start = (follow: boolean) => {
-    if (!authorized || !exact || !instance || !selectedContainer || details.status !== 'success')
-      return
+    if (!authorized || !exact || !instance || !selectedContainer || !healthyDiscovery) return
     stop()
     const owner = Object.assign(new AbortController(), { uid, container })
     current.current = owner
@@ -399,7 +400,7 @@ function DiagnosticsContent({ operation }: { operation: ResourceDeploymentOperat
           </label>
           <div className="row-actions">
             <Button
-              disabled={!exact || !selectedContainer || details.status !== 'success'}
+              disabled={!exact || !selectedContainer || !healthyDiscovery}
               onClick={() => start(false)}
             >
               {logs.status === 'ended' || logs.status === 'error'
@@ -407,7 +408,7 @@ function DiagnosticsContent({ operation }: { operation: ResourceDeploymentOperat
                 : 'Read recent logs'}
             </Button>
             <Button
-              disabled={!exact || !selectedContainer || previous || details.status !== 'success'}
+              disabled={!exact || !selectedContainer || previous || !healthyDiscovery}
               onClick={() => start(true)}
             >
               Follow runtime logs
