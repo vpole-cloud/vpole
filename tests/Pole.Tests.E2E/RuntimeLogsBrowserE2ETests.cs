@@ -25,6 +25,7 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
         using var native = new k8s.Kubernetes(nativeConfiguration);
         var resources = new TestResourceScope("runtime diagnostics browser E2E");
         Exception? primaryFailure = null;
+        TestPhaseJournal? journal = null;
         try
         {
             var kubeconfig = await File.ReadAllTextAsync(lab.KubeconfigPath, ct);
@@ -130,21 +131,24 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
             await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint, new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
             await using var context = await browser.NewContextAsync(new BrowserNewContextOptions { ViewportSize = new ViewportSize { Width = 1440, Height = 900 }, IgnoreHTTPSErrors = true });
             var page = await context.NewPageAsync(); await LoginAsync(page);
+            journal = new TestPhaseJournal(nameof(Runtime_logs_select_owned_containers_stop_on_replacement_and_isolate_transport_outage));
+            using var evidence = new BrowserPhaseJournal(page, journal);
             await page.GotoAsync(ResourceUrl(Text(first, "redisId")));
             await SelectAsync(page, Text(firstPlacement, "deploymentId"), uid, "log-a");
-            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Read recent logs", Exact = true }).ClickAsync();
+            await StartReadAsync(page, Text(firstPlacement, "deploymentId"), uid, "log-a", false, journal, ct);
             await Assertions.Expect(page.GetByLabel("Runtime log output")).ToContainTextAsync(markerA);
             Assert.DoesNotContain(markerB, await page.GetByLabel("Runtime log output").InnerTextAsync());
             await CaptureAsync(page, "recent");
             await page.GetByLabel("Container", new PageGetByLabelOptions { Exact = true }).SelectOptionAsync("log-b");
-            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Follow runtime logs", Exact = true }).ClickAsync();
+            var followed = await StartReadAsync(page, Text(firstPlacement, "deploymentId"), uid, "log-b", true, journal, ct);
             await Assertions.Expect(page.GetByLabel("Runtime log output")).ToContainTextAsync(markerB);
             Assert.DoesNotContain(markerA, await page.GetByLabel("Runtime log output").InnerTextAsync());
             var canceled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            page.RequestFailed += (_, request) => { if (request.Url.Contains("/runtime-logs?", StringComparison.Ordinal)) canceled.TrySetResult(); };
+            page.RequestFailed += (_, request) => { if (ReferenceEquals(request, followed)) canceled.TrySetResult(); };
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Close runtime diagnostics", Exact = true }).ClickAsync();
             await canceled.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
-            await SelectAsync(page, Text(firstPlacement, "deploymentId"), uid, "log-a"); await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Follow runtime logs", Exact = true }).ClickAsync();
+            await SelectAsync(page, Text(firstPlacement, "deploymentId"), uid, "log-a");
+            await StartReadAsync(page, Text(firstPlacement, "deploymentId"), uid, "log-a", true, journal, ct);
             await Assertions.Expect(page.GetByLabel("Runtime log output")).ToContainTextAsync(markerA);
             var selectedPod = await native.CoreV1.ReadNamespacedPodAsync(podName, ns, cancellationToken: ct);
             Assert.Equal(uid, selectedPod.Metadata.Uid);
@@ -158,8 +162,10 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Refresh instances and events", Exact = true }).ClickAsync();
             await page.GetByLabel("Instance", new PageGetByLabelOptions { Exact = true }).SelectOptionAsync(Text(replacement, "uid"));
             await page.GetByLabel("Container", new PageGetByLabelOptions { Exact = true }).SelectOptionAsync("log-a");
-            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Follow runtime logs", Exact = true }).ClickAsync();
+            journal.Record(TestPhase.Selection, Text(firstPlacement, "deploymentId"), Text(replacement, "uid"), "log-a");
+            await StartReadAsync(page, Text(firstPlacement, "deploymentId"), Text(replacement, "uid"), "log-a", true, journal, ct);
             await Assertions.Expect(page.GetByLabel("Runtime log output")).ToContainTextAsync(markerA);
+            journal.Record(TestPhase.StreamReading, Text(firstPlacement, "deploymentId"), Text(replacement, "uid"), "log-a");
             relay.Pause();
             await Assertions.Expect(page.GetByTestId($"runtime-log-viewer-{Text(firstPlacement, "deploymentId")}")).ToContainTextAsync("could not be reached", new LocatorAssertionsToContainTextOptions { Timeout = 40_000 });
             var outage = await SendAsync(HttpMethod.Get, $"/api/v1/resource-deployments/{Text(firstPlacement, "deploymentId")}/diagnostics", null, ct);
@@ -170,9 +176,10 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
             relay.Resume(); await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Refresh instances and events", Exact = true }).ClickAsync();
             await page.GetByLabel("Instance", new PageGetByLabelOptions { Exact = true }).SelectOptionAsync(Text(replacement, "uid"));
             await page.GetByLabel("Container", new PageGetByLabelOptions { Exact = true }).SelectOptionAsync("log-a");
-            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Read recent logs", Exact = true }).ClickAsync();
+            await StartReadAsync(page, Text(firstPlacement, "deploymentId"), Text(replacement, "uid"), "log-a", false, journal, ct);
             await Assertions.Expect(page.GetByLabel("Runtime log output")).ToContainTextAsync(markerA);
             await CaptureAsync(page, "reconnected");
+            journal.Record(TestPhase.Completed);
 
             object StorageBody(bool enabled, long revision) => new
             {
@@ -189,12 +196,48 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
                 revision
             };
         }
-        catch (Exception exception) { primaryFailure = exception; throw; }
+        catch (Exception exception) { journal?.Record(TestPhase.Failed); primaryFailure = exception; throw; }
         finally
         {
             try { await resources.DisposeAsync(); }
             catch (Exception cleanupFailure) when (primaryFailure is not null) { throw new AggregateException("Runtime diagnostics journey and cleanup failed.", primaryFailure, cleanupFailure); }
         }
+    }
+
+    private static async Task<IRequest> StartReadAsync(
+        IPage page,
+        string deploymentId,
+        string uid,
+        string container,
+        bool follow,
+        TestPhaseJournal journal,
+        CancellationToken cancellationToken)
+    {
+        journal.Record(TestPhase.Action, deploymentId, uid, container);
+        var observation = new TestActionObservation<IRequest>();
+        void OnRequest(object? sender, IRequest candidate)
+        {
+            if (BrowserPhaseJournal.IsRuntimeRequest(candidate, deploymentId, uid, container, follow))
+                observation.TryObserve(candidate);
+        }
+        page.Request += OnRequest;
+        IRequest request;
+        try
+        {
+            request = await observation.RunAsync(() => page.GetByRole(AriaRole.Button, new PageGetByRoleOptions
+            {
+                Name = follow ? "Follow runtime logs" : "Read recent logs",
+                Exact = true
+            }).ClickAsync(), TimeSpan.FromSeconds(5), cancellationToken);
+        }
+        finally
+        {
+            page.Request -= OnRequest;
+        }
+        journal.Record(TestPhase.StreamOpening, deploymentId, uid, container);
+        var response = await request.ResponseAsync().WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
+        Assert.True(response is { Ok: true }, $"Runtime log opening returned HTTP {response?.Status ?? 0}.");
+        return request;
     }
 
     private static object TargetMapping(string deploymentTargetId) => new
