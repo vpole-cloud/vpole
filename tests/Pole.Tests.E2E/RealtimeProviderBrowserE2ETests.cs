@@ -194,6 +194,7 @@ public sealed class RealtimeProviderBrowserE2ETests(PoleE2EFixture fixture)
             Assert.Equal(documentNavigations, journal.DocumentNavigations);
             await journal.DrainAsync();
             Assert.Equal(0, journal.ParseFailures);
+            Assert.Equal(0, journal.ObservationReadFailures);
             Assert.True(journal.TransportSafe,
                 "Realtime transport URLs and hub authentication headers must not expose bearer credentials.");
             await AssertNoReadableCredentialsAsync(page);
@@ -265,11 +266,9 @@ public sealed class RealtimeProviderBrowserE2ETests(PoleE2EFixture fixture)
         long CapturedAt,
         Snapshot Snapshot);
 
-    private sealed record Read(long StartedAt);
-
-    private sealed record Invocation(
-        string Method,
-        int Epoch);
+    private sealed record Read(
+        long StartedAt,
+        int Document);
 
     private sealed class StorageJournal
     {
@@ -279,7 +278,8 @@ public sealed class RealtimeProviderBrowserE2ETests(PoleE2EFixture fixture)
         private readonly ConcurrentDictionary<IRequest, Read> reads = new();
         private readonly ConcurrentDictionary<IRequest, bool> finished = new();
         private readonly ConcurrentDictionary<IRequest, bool> failed = new();
-        private readonly ConcurrentDictionary<int, bool> coverage = new();
+        private readonly RealtimeCoverageJournal coverage = new();
+        private readonly HttpReadJournal<IRequest> outcomes = new();
         private readonly ConcurrentQueue<Task> pending = new();
 
         private static readonly Regex Jwt = new(@"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}",
@@ -294,7 +294,10 @@ public sealed class RealtimeProviderBrowserE2ETests(PoleE2EFixture fixture)
         public int DocumentNavigations => Volatile.Read(ref documentNavigations);
         public int ParseFailures => Volatile.Read(ref parseFailures);
         public bool TransportSafe => Volatile.Read(ref unsafeTransport) == 0;
-        public bool Covered => coverage.TryGetValue(Volatile.Read(ref connection), out var current) && current;
+        public bool Covered => coverage.LatestCoveredConnection(values => values.Any(value => value.Covered &&
+            value.Topic == "storage-observations" && value.ResourceId == targetId && value.TenantId is null)) > 0;
+        public int ObservationReadFailures => outcomes.Snapshot().Count(value =>
+            value.Outcome is HttpReadOutcome.Rejected or HttpReadOutcome.TransportFailed);
         public long HintVersion => Interlocked.Read(ref hintVersion);
         public Snapshot? Latest => Volatile.Read(ref latest);
 
@@ -308,7 +311,9 @@ public sealed class RealtimeProviderBrowserE2ETests(PoleE2EFixture fixture)
                 if (request.IsNavigationRequest && request.Frame == page.MainFrame)
                 {
                     Interlocked.Increment(ref documentNavigations);
-                    coverage.Clear();
+                    coverage.Navigate();
+                    Interlocked.Exchange(ref hintVersion, 0);
+                    Interlocked.Exchange(ref latest, null);
                 }
 
                 CheckUrl(request.Url);
@@ -322,15 +327,21 @@ public sealed class RealtimeProviderBrowserE2ETests(PoleE2EFixture fixture)
                      request.Headers.ContainsKey("authorization")))
                     Interlocked.Increment(ref unsafeTransport);
                 if (IsObservation(request))
-                    reads[request] = new Read(Stopwatch.GetTimestamp());
+                {
+                    var started = Stopwatch.GetTimestamp();
+                    reads[request] = new Read(started, DocumentNavigations);
+                    outcomes.Start(request, path, started);
+                }
             };
             page.RequestFinished += (_, request) =>
             {
+                outcomes.Finish(request);
                 if (reads.ContainsKey(request))
                     finished[request] = true;
             };
             page.RequestFailed += (_, request) =>
             {
+                outcomes.Finish(request, failed: true, cancelled: request.Failure == "net::ERR_ABORTED");
                 if (reads.ContainsKey(request))
                 {
                     failed[request] = true;
@@ -339,8 +350,13 @@ public sealed class RealtimeProviderBrowserE2ETests(PoleE2EFixture fixture)
             };
             page.Response += (_, response) =>
             {
-                if (IsObservation(response.Request))
-                    pending.Enqueue(RecordAsync(response));
+                outcomes.Response(response.Request, response.Status);
+                if (IsObservation(response.Request) && reads.TryGetValue(response.Request, out var read))
+                {
+                    if (!response.Ok)
+                        failed[response.Request] = true;
+                    pending.Enqueue(RecordAsync(response, read.Document));
+                }
             };
             page.WebSocket += (_pageSender, socket) =>
             {
@@ -348,40 +364,16 @@ public sealed class RealtimeProviderBrowserE2ETests(PoleE2EFixture fixture)
                 if (new Uri(socket.Url).AbsolutePath != "/api/v1/realtime/hub")
                     return;
                 var id = Interlocked.Increment(ref connection);
-                var epoch = 0;
-                var closed = 0;
-                var invocations = new ConcurrentDictionary<string, Invocation>();
-                socket.Close += (_closeSender, _closeEvent) =>
-                {
-                    Interlocked.Exchange(ref closed, 1);
-                    coverage.TryRemove(id, out _);
-                };
-                socket.FrameSent += (_sentSender, frame) => ParseFrames(frame.Text,
+                coverage.Open(id, Stopwatch.GetTimestamp());
+                socket.Close += (_, _) => coverage.Close(id);
+                socket.FrameSent += (_, frame) => ParseFrames(frame.Text,
+                    message => coverage.Sent(id, message));
+                socket.FrameReceived += (_, frame) => ParseFrames(frame.Text,
                     message =>
                     {
-                        if (Number(message, "type") != 1 || Text(message, "invocationId") is not { } invocation)
+                        if (!coverage.IsCurrent(id))
                             return;
-                        var method = Text(message, "target");
-                        if (method is "Subscribe" or "Unsubscribe")
-                        {
-                            Interlocked.Increment(ref epoch);
-                            coverage.TryRemove(id, out _);
-                        }
-
-                        if (method is "Subscribe" or "Heartbeat" or "Unsubscribe")
-                            invocations[invocation] = new Invocation(method, Volatile.Read(ref epoch));
-                    });
-                socket.FrameReceived += (_receivedSender, frame) => ParseFrames(frame.Text,
-                    message =>
-                    {
-                        if (Volatile.Read(ref closed) != 0)
-                            return;
-                        if (Text(message, "target") == "SessionRevoked")
-                        {
-                            coverage.TryRemove(id, out _);
-                            return;
-                        }
-
+                        coverage.Received(id, message, Stopwatch.GetTimestamp());
                         if (Text(message, "target") == "Changed")
                         {
                             var change = message.GetProperty("arguments")[0];
@@ -410,18 +402,6 @@ public sealed class RealtimeProviderBrowserE2ETests(PoleE2EFixture fixture)
                                 }
                             }
                         }
-
-                        if (Number(message, "type") != 3 || Text(message, "invocationId") is not { } key ||
-                            !invocations.TryRemove(key, out var invocation) ||
-                            invocation.Method is not ("Subscribe" or "Heartbeat") ||
-                            invocation.Epoch != Volatile.Read(ref epoch))
-                            return;
-                        coverage[id] = message.TryGetProperty("result", out var result) &&
-                                       result.ValueKind == JsonValueKind.Array &&
-                                       result.EnumerateArray().Any(item =>
-                                           Text(item, "topic") == "storage-observations" &&
-                                           Text(item, "resourceId") == targetId &&
-                                           Text(item, "tenantId") is null && item.GetProperty("covered").GetBoolean());
                     });
             };
         }
@@ -440,9 +420,7 @@ public sealed class RealtimeProviderBrowserE2ETests(PoleE2EFixture fixture)
             ? reads.Values.Count(item => item.StartedAt >= value.StartedAt)
             : 0;
 
-        public bool ReadsQuiet(TimeSpan quiet) => !reads.Keys.Any(request => !finished.ContainsKey(request)) &&
-                                                  Stopwatch.GetElapsedTime(reads.Values.Select(item => item.StartedAt)
-                                                      .DefaultIfEmpty().Max()) >= quiet;
+        public bool ReadsQuiet(TimeSpan quiet) => outcomes.Quiet(_ => true, quiet);
 
         public Snapshot Metadata(JsonElement value)
         {
@@ -460,7 +438,7 @@ public sealed class RealtimeProviderBrowserE2ETests(PoleE2EFixture fixture)
                     .ToHashSet(StringComparer.Ordinal));
         }
 
-        private async Task RecordAsync(IResponse response)
+        private async Task RecordAsync(IResponse response, int requestDocument)
         {
             try
             {
@@ -471,10 +449,14 @@ public sealed class RealtimeProviderBrowserE2ETests(PoleE2EFixture fixture)
                     return;
                 }
 
+                if (requestDocument != DocumentNavigations)
+                    return;
                 var snapshot = Metadata(value);
                 Snapshot? previous;
                 do
                 {
+                    if (requestDocument != DocumentNavigations)
+                        return;
                     previous = Latest;
                     if (previous?.Version > snapshot.Version)
                         return;

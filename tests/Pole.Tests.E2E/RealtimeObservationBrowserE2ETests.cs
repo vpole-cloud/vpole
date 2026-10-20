@@ -123,6 +123,7 @@ public sealed class RealtimeObservationBrowserE2ETests(
 
         await journal.DrainAsync();
         Assert.Equal(0, journal.ParseFailures);
+        Assert.Equal(0, journal.DiagnosticReadFailures);
         Assert.Equal(sampleCount, removed.Count);
         var sorted = samples.Order().ToArray();
         var p95 = sorted[(int)Math.Ceiling(sampleCount * 0.95) - 1];
@@ -286,16 +287,6 @@ public sealed class RealtimeObservationBrowserE2ETests(
         string GroupId,
         string Name);
 
-    private sealed record Acknowledgement(
-        string Topic,
-        string? TenantId,
-        string? ResourceId,
-        bool Covered);
-
-    private sealed record Invocation(
-        string Method,
-        int Epoch);
-
     private sealed record DiagnosticsMetadata(
         long Version,
         bool Available,
@@ -303,7 +294,8 @@ public sealed class RealtimeObservationBrowserE2ETests(
 
     private sealed class ObservationJournal
     {
-        private readonly ConcurrentDictionary<int, Acknowledgement[]> coverage = new();
+        private readonly RealtimeCoverageJournal coverage = new();
+        private readonly HttpReadJournal<IRequest> reads = new();
         private readonly ConcurrentDictionary<IRequest, int> diagnosticRequests = new();
         private readonly ConcurrentQueue<Task> pending = new();
         private int connections;
@@ -312,6 +304,8 @@ public sealed class RealtimeObservationBrowserE2ETests(
         private long hintVersion;
         private DiagnosticsMetadata? diagnostics;
         public int ParseFailures => Volatile.Read(ref parseFailures);
+        public int DiagnosticReadFailures => reads.Snapshot().Count(value =>
+            value.Outcome is HttpReadOutcome.Rejected or HttpReadOutcome.TransportFailed);
         public long HintVersion => Interlocked.Read(ref hintVersion);
         public long DiagnosticsVersion => Volatile.Read(ref diagnostics)?.Version ?? 0;
 
@@ -319,10 +313,9 @@ public sealed class RealtimeObservationBrowserE2ETests(
             Volatile.Read(ref diagnostics) is { Available: true } value &&
             value.Version >= HintVersion && !value.InstanceUids.Contains(uid);
 
-        public bool HasCurrentCoverage => coverage.TryGetValue(Volatile.Read(ref connections), out var values) &&
-                                          values.Any(value => value.Covered && value.Topic == "runtime-observations" &&
-                                                              value.TenantId == tenantId &&
-                                                              value.ResourceId == deploymentId);
+        public bool HasCurrentCoverage => coverage.LatestCoveredConnection(values =>
+            values.Any(value => value.Covered && value.Topic == "runtime-observations" &&
+                value.TenantId == tenantId && value.ResourceId == deploymentId)) > 0;
 
         private readonly string tenantId;
         private readonly string serviceId;
@@ -350,19 +343,31 @@ public sealed class RealtimeObservationBrowserE2ETests(
                 if (request.IsNavigationRequest && request.Frame == page.MainFrame)
                 {
                     Interlocked.Increment(ref documentEpoch);
-                    coverage.Clear();
+                    coverage.Navigate();
                     Interlocked.Exchange(ref hintVersion, 0);
                     Interlocked.Exchange(ref diagnostics, null);
                 }
 
                 if (request.Method == "GET" && new Uri(request.Url).AbsolutePath ==
                     $"/api/v1/resource-deployments/{deploymentId}/diagnostics")
+                {
                     diagnosticRequests[request] = Volatile.Read(ref documentEpoch);
+                    reads.Start(request, new Uri(request.Url).AbsolutePath, Stopwatch.GetTimestamp());
+                }
             };
-            page.RequestFinished += (_sender, request) => diagnosticRequests.TryRemove(request, out _);
-            page.RequestFailed += (_sender, request) => diagnosticRequests.TryRemove(request, out _);
+            page.RequestFinished += (_sender, request) =>
+            {
+                reads.Finish(request);
+                diagnosticRequests.TryRemove(request, out _);
+            };
+            page.RequestFailed += (_sender, request) =>
+            {
+                reads.Finish(request, failed: true, cancelled: request.Failure == "net::ERR_ABORTED");
+                diagnosticRequests.TryRemove(request, out _);
+            };
             page.Response += (_, response) =>
             {
+                reads.Response(response.Request, response.Status);
                 if (response.Ok && response.Request.Method == "GET" &&
                     new Uri(response.Url).AbsolutePath == $"/api/v1/resource-deployments/{deploymentId}/diagnostics" &&
                     diagnosticRequests.TryRemove(response.Request, out var requestDocument))
@@ -373,86 +378,18 @@ public sealed class RealtimeObservationBrowserE2ETests(
                 if (new Uri(socket.Url).AbsolutePath != "/api/v1/realtime/hub")
                     return;
                 var connection = Interlocked.Increment(ref connections);
-                var openedDocument = Volatile.Read(ref documentEpoch);
-                var subscriptionEpoch = 0;
-                var closed = 0;
-                var invocations = new ConcurrentDictionary<string, Invocation>();
-                socket.Close += (_, _) =>
-                {
-                    Interlocked.Exchange(ref closed, 1);
-                    Interlocked.Increment(ref subscriptionEpoch);
-                    coverage.TryRemove(connection, out _);
-                };
-                socket.FrameSent += (_sender, frame) => ParseFrames(frame.Text,
+                coverage.Open(connection, Stopwatch.GetTimestamp());
+                socket.Close += (_, _) => coverage.Close(connection);
+                socket.FrameSent += (_, frame) => ParseFrames(frame.Text,
+                    message => coverage.Sent(connection, message));
+                socket.FrameReceived += (_, frame) => ParseFrames(frame.Text,
                     message =>
                     {
-                        if (Number(message, "type") == 1 && message.TryGetProperty("invocationId", out var id) &&
-                            message.TryGetProperty("target", out var target) &&
-                            target.ValueKind == JsonValueKind.String)
-                        {
-                            var method = target.GetString();
-                            if (method is "Subscribe" or "Unsubscribe")
-                            {
-                                Interlocked.Increment(ref subscriptionEpoch);
-                                coverage.TryRemove(connection, out _);
-                            }
-
-                            if (method is "Subscribe" or "Heartbeat" or "Unsubscribe")
-                                invocations[id.GetString()!] =
-                                    new Invocation(method, Volatile.Read(ref subscriptionEpoch));
-                        }
-                    });
-                socket.FrameReceived += (_sender, frame) => ParseFrames(frame.Text,
-                    message =>
-                    {
-                        if (Volatile.Read(ref closed) != 0 || openedDocument != Volatile.Read(ref documentEpoch))
+                        if (!coverage.IsCurrent(connection))
                             return;
-                        if (message.TryGetProperty("target", out var target))
-                        {
-                            var method = target.GetString();
-                            if (method == "SessionRevoked")
-                            {
-                                Interlocked.Increment(ref subscriptionEpoch);
-                                coverage.TryRemove(connection, out _);
-                                return;
-                            }
-
-                            if (method == "AccessRevoked")
-                            {
-                                var arguments = message.GetProperty("arguments");
-                                if (arguments.GetArrayLength() > 0 && arguments[0].ValueKind == JsonValueKind.String &&
-                                    arguments[0].GetString() == tenantId)
-                                {
-                                    Interlocked.Increment(ref subscriptionEpoch);
-                                    coverage.TryRemove(connection, out _);
-                                }
-
-                                return;
-                            }
-
-                            if (method == "Changed")
-                                RecordHint(message.GetProperty("arguments")[0]);
-                        }
-
-                        if (Number(message, "type") != 3 || !message.TryGetProperty("invocationId", out var id) ||
-                            !invocations.TryRemove(id.GetString()!, out var invocation) ||
-                            invocation.Method is not ("Subscribe" or "Heartbeat") ||
-                            invocation.Epoch != Volatile.Read(ref subscriptionEpoch))
-                            return;
-                        if (!message.TryGetProperty("result", out var result) ||
-                            result.ValueKind != JsonValueKind.Array)
-                        {
-                            coverage.TryRemove(connection, out _);
-                            return;
-                        }
-
-                        // Subscribe atomically replaces all interests; a false acknowledgement
-                        // or removal must replace historical true coverage as well.
-                        coverage[connection] = result.EnumerateArray().Select(item =>
-                            new Acknowledgement(Text(item, "topic"),
-                                OptionalText(item, "tenantId"),
-                                OptionalText(item, "resourceId"),
-                                item.GetProperty("covered").GetBoolean())).ToArray();
+                        coverage.Received(connection, message, Stopwatch.GetTimestamp());
+                        if (message.TryGetProperty("target", out var target) && target.GetString() == "Changed")
+                            RecordHint(message.GetProperty("arguments")[0]);
                     });
             };
         }

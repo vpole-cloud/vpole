@@ -687,22 +687,26 @@ public sealed class RealtimeBrowserE2ETests(
                     return;
                 }
 
-                var realResponse = await route.FetchAsync();
-                Assert.True(realResponse.Ok, "The delayed snapshot must come from the real authenticated API.");
-                held.TrySetResult();
-                await release.Task;
+                IAPIResponse? realResponse = null;
                 try
                 {
+                    realResponse = await route.FetchAsync();
+                    Assert.True(realResponse.Ok, "The delayed snapshot must come from the real authenticated API.");
+                    held.TrySetResult();
+                    await release.Task;
                     await route.FulfillAsync(new RouteFulfillOptions { Response = realResponse });
+                    delivered.TrySetResult();
                 }
-                catch (PlaywrightException)
+                catch (Exception)
                 {
-                    Interlocked.Increment(ref canceled);
+                    var failure = new InvalidOperationException("The delayed metadata interception failed.");
+                    held.TrySetException(failure);
+                    delivered.TrySetException(failure);
                 }
                 finally
                 {
-                    await realResponse.DisposeAsync();
-                    delivered.TrySetResult();
+                    if (realResponse is not null)
+                        await realResponse.DisposeAsync();
                 }
             });
         long revision = 1;
@@ -1237,18 +1241,6 @@ public sealed class RealtimeBrowserE2ETests(
         long Timestamp,
         DateTimeOffset ExpiresAtUtc);
 
-    private sealed record CoverageMetadata(
-        long Timestamp,
-        long OpenedAt,
-        int Connection,
-        string Topic,
-        string? ResourceId,
-        string? TenantId);
-
-    private sealed record ReadMetadata(
-        long Timestamp,
-        string Path);
-
     private sealed record ChangeMetadata(
         long Timestamp,
         string ResourceId,
@@ -1257,11 +1249,9 @@ public sealed class RealtimeBrowserE2ETests(
     private sealed class BrowserJournal
     {
         private readonly ConcurrentQueue<Task> pending = new();
-        private readonly ConcurrentQueue<CoverageMetadata> coverage = new();
-        private readonly ConcurrentQueue<ReadMetadata> reads = new();
-        private readonly ConcurrentDictionary<IRequest, ReadMetadata> activeReads = new();
+        private readonly RealtimeCoverageJournal coverage = new();
+        private readonly HttpReadJournal<IRequest> reads = new();
         private readonly ConcurrentQueue<ChangeMetadata> changes = new();
-        private readonly ConcurrentDictionary<int, bool> closed = new();
 
         private static readonly Regex Jwt = new(@"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}",
             RegexOptions.CultureInvariant);
@@ -1276,7 +1266,6 @@ public sealed class RealtimeBrowserE2ETests(
         private readonly ConcurrentDictionary<ParseFailureKind, int> parseFailureCauses = new();
         private int unsafeUrls;
         private int unsafeHeaders;
-        private int metadataReadFailures;
         private int connectionClosures;
         private readonly string tenantId;
         private long lastRefreshTimestamp;
@@ -1289,7 +1278,8 @@ public sealed class RealtimeBrowserE2ETests(
         public int ParseFailures => Volatile.Read(ref parseFailures);
         public bool UrlsSafe => Volatile.Read(ref unsafeUrls) == 0;
         public bool HandshakeHeadersSafe => Volatile.Read(ref unsafeHeaders) == 0;
-        public int MetadataReadFailures => Volatile.Read(ref metadataReadFailures);
+        public int MetadataReadFailures => reads.Snapshot().Count(value =>
+            value.Outcome is HttpReadOutcome.Rejected or HttpReadOutcome.TransportFailed);
         public int ConnectionClosures => Volatile.Read(ref connectionClosures);
         public int DocumentNavigations => Volatile.Read(ref documentNavigations);
         public int TenantReadScopeViolations => Volatile.Read(ref tenantReadScopeViolations);
@@ -1305,7 +1295,7 @@ public sealed class RealtimeBrowserE2ETests(
                 {
                     Interlocked.Increment(ref documentNavigations);
                     Interlocked.Exchange(ref documentStartedAt, Stopwatch.GetTimestamp());
-                    activeReads.Clear();
+                    coverage.Navigate();
                 }
 
                 CheckUrl(request.Url);
@@ -1316,9 +1306,7 @@ public sealed class RealtimeBrowserE2ETests(
                         (!request.Headers.TryGetValue("x-pole-tenant-id", out var requestedTenant) ||
                          requestedTenant != tenantId))
                         Interlocked.Increment(ref tenantReadScopeViolations);
-                    var read = new ReadMetadata(Stopwatch.GetTimestamp(), path);
-                    reads.Enqueue(read);
-                    activeReads[request] = read;
+                    reads.Start(request, path, Stopwatch.GetTimestamp());
                 }
 
                 if ((path == "/api/v1/realtime/session" ||
@@ -1330,13 +1318,13 @@ public sealed class RealtimeBrowserE2ETests(
                      request.Headers.ContainsKey("authorization")))
                     Interlocked.Increment(ref unsafeHeaders);
             };
-            page.RequestFinished += (_, request) => FinishRead(request);
-            page.RequestFailed += (_, request) => FinishRead(request);
+            page.RequestFinished += (_, request) => reads.Finish(request);
+            page.RequestFailed += (_, request) => reads.Finish(request, failed: true,
+                cancelled: request.Failure == "net::ERR_ABORTED");
             page.Response += (_, response) =>
             {
                 var path = new Uri(response.Url).AbsolutePath;
-                if (response.Request.Method == "GET" && IsPilotPath(path) && !response.Ok)
-                    Interlocked.Increment(ref metadataReadFailures);
+                reads.Response(response.Request, response.Status);
                 if (response.Ok && path.EndsWith("/protocol/openid-connect/token", StringComparison.Ordinal) &&
                     response.Request.Method == "POST" &&
                     response.Request.PostData?.Contains("grant_type=refresh_token", StringComparison.Ordinal) == true)
@@ -1355,9 +1343,11 @@ public sealed class RealtimeBrowserE2ETests(
                     return;
                 var connection = Interlocked.Increment(ref connections);
                 var openedAt = Stopwatch.GetTimestamp();
+                coverage.Open(connection, openedAt);
+                socket.FrameSent += (_, frame) => RecordSent(frame.Text, connection);
                 socket.Close += (_, _) =>
                 {
-                    closed.TryAdd(connection, true);
+                    coverage.Close(connection);
                     Interlocked.Increment(ref connectionClosures);
                 };
                 socket.FrameReceived += (_, frame) => RecordCoverage(frame.Text, connection, openedAt);
@@ -1370,33 +1360,22 @@ public sealed class RealtimeBrowserE2ETests(
                                                         (!path["/api/v1/web-services/".Length..].Contains('/') ||
                                                          path.EndsWith("/releases", StringComparison.Ordinal));
 
-        private void FinishRead(IRequest request)
-        {
-            activeReads.TryRemove(request, out _);
-        }
+        public int CountPilotReads(string detailPath, long started, long ended) => reads.Snapshot().Count(value =>
+            value.StartedAt >= started && value.StartedAt <= ended && PilotPath(value.Path, detailPath));
 
-        public int CountPilotReads(string detailPath, long started, long ended) => reads.Count(value =>
-            value.Timestamp >= started && value.Timestamp <= ended &&
-            (value.Path == "/api/v1/web-services" || value.Path == detailPath ||
-             value.Path == $"{detailPath}/releases"));
+        public bool HasDetailRead(string path, long after) => reads.Snapshot().Any(value =>
+            value.Path == path && value.StartedAt > after && value.Outcome == HttpReadOutcome.Succeeded);
 
-        public bool HasDetailRead(string path, long after) =>
-            reads.Any(value => value.Path == path && value.Timestamp > after);
+        public bool PilotReadsQuiet(string detailPath, TimeSpan quiet) =>
+            reads.Quiet(path => PilotPath(path, detailPath), quiet);
 
-        public bool PilotReadsQuiet(string detailPath, TimeSpan quiet)
-        {
-            var latest = reads.Where(value =>
-                    value.Path == "/api/v1/web-services" || value.Path == detailPath ||
-                    value.Path == $"{detailPath}/releases")
-                .Select(value => value.Timestamp).DefaultIfEmpty().Max();
-            return !activeReads.Values.Any(value =>
-                       value.Path == "/api/v1/web-services" || value.Path == detailPath ||
-                       value.Path == $"{detailPath}/releases") &&
-                   Stopwatch.GetElapsedTime(latest) >= quiet;
-        }
+        private static bool PilotPath(string path, string detailPath) => path == "/api/v1/web-services" ||
+            path == detailPath || path == $"{detailPath}/releases";
 
         public string DescribePilotReads(string detailPath) =>
-            $"Pilot reads: inventory={reads.Count(value => value.Path == "/api/v1/web-services")}; detail={reads.Count(value => value.Path == detailPath)}; releases={reads.Count(value => value.Path == $"{detailPath}/releases")}; pending inventory={activeReads.Values.Count(value => value.Path == "/api/v1/web-services")}; pending detail={activeReads.Values.Count(value => value.Path == detailPath)}; bootstraps={Bootstraps.Count}; closes={ConnectionClosures}; refresh grants={RefreshResponses}.";
+            "Pilot read outcomes: " + string.Join("; ", reads.Snapshot().Where(value => PilotPath(value.Path, detailPath))
+                .GroupBy(value => value.Outcome).Select(group => $"{group.Key}={group.Count()}")) +
+            $"; bootstraps={Bootstraps.Count}; closes={ConnectionClosures}; refresh grants={RefreshResponses}.";
 
         public bool IsQuiet(string resourceId, TimeSpan quiet) => Stopwatch.GetElapsedTime(changes
                                                                       .Where(value => value.ResourceId == resourceId)
@@ -1469,6 +1448,29 @@ public sealed class RealtimeBrowserE2ETests(
             }
         }
 
+        private void RecordSent(string? text, int connection)
+        {
+            if (text is null)
+            {
+                RecordParseFailure(ParseFailureKind.HubBinary);
+                return;
+            }
+
+            foreach (var frame in text.Split('\u001e', StringSplitOptions.RemoveEmptyEntries))
+            {
+                try
+                {
+                    using var document = JsonDocument.Parse(frame);
+                    coverage.Sent(connection, document.RootElement);
+                }
+                catch (Exception failure) when (failure is JsonException or InvalidOperationException or FormatException
+                                                    or KeyNotFoundException)
+                {
+                    RecordParseFailure(failure is JsonException ? ParseFailureKind.HubJson : ParseFailureKind.HubSchema);
+                }
+            }
+        }
+
         private void RecordCoverage(string? text, int connection, long openedAt)
         {
             if (text is null)
@@ -1483,6 +1485,9 @@ public sealed class RealtimeBrowserE2ETests(
                 {
                     using var document = JsonDocument.Parse(frame);
                     var message = document.RootElement;
+                    if (!coverage.IsCurrent(connection))
+                        continue;
+                    coverage.Received(connection, message, Stopwatch.GetTimestamp());
                     if (message.TryGetProperty("target", out var target) && target.GetString() == "Changed")
                     {
                         var hint = message.GetProperty("arguments")[0];
@@ -1513,26 +1518,6 @@ public sealed class RealtimeBrowserE2ETests(
                                 revision));
                         }
                     }
-
-                    if (!message.TryGetProperty("type", out var type) || type.GetInt32() != 3 ||
-                        !message.TryGetProperty("result", out var result) || result.ValueKind != JsonValueKind.Array)
-                        continue;
-                    foreach (var item in result.EnumerateArray())
-                    {
-                        if (!item.TryGetProperty("covered", out var covered) || !covered.GetBoolean())
-                            continue;
-                        coverage.Enqueue(new CoverageMetadata(Stopwatch.GetTimestamp(),
-                            openedAt,
-                            connection,
-                            Text(item, "topic"),
-                            item.TryGetProperty("resourceId", out var resource) &&
-                            resource.ValueKind == JsonValueKind.String
-                                ? resource.GetString()
-                                : null,
-                            item.TryGetProperty("tenantId", out var tenant) && tenant.ValueKind == JsonValueKind.String
-                                ? tenant.GetString()
-                                : null));
-                    }
                 }
                 catch (Exception failure) when (failure is JsonException or InvalidOperationException or FormatException
                                                     or KeyNotFoundException)
@@ -1544,15 +1529,10 @@ public sealed class RealtimeBrowserE2ETests(
 
         public bool HasCoverage(string resourceId) => LatestCoveredConnection(resourceId) > 0;
 
-        public int LatestCoveredConnection(string resourceId, long after = 0) => coverage
-            .Where(value => value.ResourceId == resourceId && value.TenantId == tenantId && value.Timestamp > after &&
-                            value.OpenedAt > Math.Max(after, Interlocked.Read(ref documentStartedAt)) &&
-                            !closed.ContainsKey(value.Connection))
-            .GroupBy(value => value.Connection)
-            .Where(group =>
-                new[] { "web-services", "operations", "source-builds" }.All(topic =>
-                    group.Any(value => value.Topic == topic)))
-            .Select(group => group.Key).DefaultIfEmpty().Max();
+        public int LatestCoveredConnection(string resourceId, long after = 0) =>
+            coverage.LatestCoveredConnection(values => new[] { "web-services", "operations", "source-builds" }
+                .All(topic => values.Any(value => value.Covered && value.Topic == topic &&
+                    value.ResourceId == resourceId && value.TenantId == tenantId)), after, requireOpenedAfter: true);
 
         public Task DrainAsync() => Task.WhenAll(pending.ToArray());
     }

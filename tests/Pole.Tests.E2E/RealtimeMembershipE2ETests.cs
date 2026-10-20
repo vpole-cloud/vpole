@@ -243,6 +243,7 @@ public sealed class RealtimeMembershipE2ETests(PoleE2EFixture fixture)
         Assert.Equal(0, journal.ForeignUserHints);
         await journal.DrainAsync();
         Assert.Equal(0, journal.ParseFailures);
+        Assert.Equal(0, journal.DiscoveryReadFailures);
         Assert.Equal(0, journal.TenantHeadersOnDiscovery);
     }
 
@@ -441,17 +442,14 @@ public sealed class RealtimeMembershipE2ETests(PoleE2EFixture fixture)
         long StartedAt,
         JsonElement Tenants);
 
-    private sealed record OwnCoverage(
-        long ReceivedAt,
-        bool Covered);
-
     private sealed class MembershipJournal
     {
         private readonly string subject;
         private readonly string tenantId;
-        private readonly ConcurrentDictionary<IRequest, long> discoveryStarts = new();
+        private readonly ConcurrentDictionary<IRequest, (long StartedAt, int Document)> discoveryStarts = new();
+        private readonly HttpReadJournal<IRequest> discoveryReads = new();
         private readonly ConcurrentQueue<MembershipRead> membershipReads = new();
-        private readonly ConcurrentDictionary<int, OwnCoverage> ownCoverage = new();
+        private readonly RealtimeCoverageJournal coverage = new();
         private readonly ConcurrentQueue<Task> pending = new();
         private int connections;
         private int documentNavigations;
@@ -473,12 +471,14 @@ public sealed class RealtimeMembershipE2ETests(PoleE2EFixture fixture)
                 {
                     Interlocked.Increment(ref documentNavigations);
                     discoveryStarts.Clear();
-                    ownCoverage.Clear();
+                    coverage.Navigate();
                 }
 
                 if (request.Method == "GET" && new Uri(request.Url).AbsolutePath == "/api/v1/tenants")
                 {
-                    discoveryStarts[request] = Stopwatch.GetTimestamp();
+                    var started = Stopwatch.GetTimestamp();
+                    discoveryStarts[request] = (started, DocumentNavigations);
+                    discoveryReads.Start(request, "/api/v1/tenants", started);
                     if (request.Headers.ContainsKey("x-pole-tenant-id"))
                         Interlocked.Increment(ref tenantHeadersOnDiscovery);
                 }
@@ -491,30 +491,39 @@ public sealed class RealtimeMembershipE2ETests(PoleE2EFixture fixture)
             };
             page.Response += (_, response) =>
             {
+                discoveryReads.Response(response.Request, response.Status);
                 if (response.Ok && response.Request.Method == "GET" &&
                     new Uri(response.Url).AbsolutePath == "/api/v1/tenants" &&
                     discoveryStarts.TryGetValue(response.Request, out var started))
-                    pending.Enqueue(RecordReadAsync(response, started));
+                    pending.Enqueue(RecordReadAsync(response, started.StartedAt, started.Document));
             };
-            page.RequestFinished += (_, request) => FinishRead(request);
-            page.RequestFailed += (_, request) => FinishRead(request);
+            page.RequestFinished += (_, request) =>
+            {
+                discoveryReads.Finish(request);
+                FinishRead(request);
+            };
+            page.RequestFailed += (_, request) =>
+            {
+                discoveryReads.Finish(request, failed: true, cancelled: request.Failure == "net::ERR_ABORTED");
+                FinishRead(request);
+            };
             page.WebSocket += (_, socket) =>
             {
                 if (new Uri(socket.Url).AbsolutePath != "/api/v1/realtime/hub")
                     return;
                 var connection = Interlocked.Increment(ref connections);
-                var invocations = new ConcurrentDictionary<string, string>();
-                socket.Close += (sender, args) => ownCoverage.TryRemove(connection, out var removedCoverage);
+                coverage.Open(connection, Stopwatch.GetTimestamp());
+                socket.Close += (_, _) => coverage.Close(connection);
                 socket.FrameSent += (_, frame) => ReadFrames(frame.Text,
+                    message => coverage.Sent(connection, message));
+                socket.FrameReceived += (_, frame) => ReadFrames(frame.Text,
                     message =>
                     {
-                        if (message.TryGetProperty("type", out var type) && type.GetInt32() == 1 &&
-                            message.TryGetProperty("invocationId", out var invocation) &&
-                            message.TryGetProperty("target", out var target))
-                            invocations[invocation.GetString()!] = target.GetString()!;
+                        if (!coverage.IsCurrent(connection))
+                            return;
+                        coverage.Received(connection, message, Stopwatch.GetTimestamp());
+                        RecordMessage(message);
                     });
-                socket.FrameReceived += (_, frame) => ReadFrames(frame.Text,
-                    message => RecordMessage(message, connection, invocations));
             };
         }
 
@@ -525,10 +534,13 @@ public sealed class RealtimeMembershipE2ETests(PoleE2EFixture fixture)
         public int SessionRevocations => Volatile.Read(ref sessionRevocations);
         public int ForeignUserHints => Volatile.Read(ref foreignUserHints);
         public int ParseFailures => Volatile.Read(ref parseFailures);
+        public int DiscoveryReadFailures => discoveryReads.Snapshot().Count(value =>
+            value.Outcome is HttpReadOutcome.Rejected or HttpReadOutcome.TransportFailed);
         public int TenantHeadersOnDiscovery => Volatile.Read(ref tenantHeadersOnDiscovery);
 
         public bool HasOwnCoverage(long after = 0) =>
-            ownCoverage.Values.Any(value => value.Covered && value.ReceivedAt > after);
+            coverage.LatestCoveredConnection(values => values.Any(value => value.Covered &&
+                value.Topic == "tenant-access" && value.ResourceId == subject && value.TenantId is null), after) > 0;
 
         public bool HasFreshRole(TenantRole role, long after) => membershipReads.Any(value =>
             value.StartedAt > after && HasRole(value.Tenants, tenantId, role));
@@ -540,7 +552,7 @@ public sealed class RealtimeMembershipE2ETests(PoleE2EFixture fixture)
 
         private void FinishRead(IRequest request) => discoveryStarts.TryRemove(request, out _);
 
-        private async Task RecordReadAsync(IResponse response, long started)
+        private async Task RecordReadAsync(IResponse response, long started, int requestDocument)
         {
             try
             {
@@ -551,7 +563,8 @@ public sealed class RealtimeMembershipE2ETests(PoleE2EFixture fixture)
                     return;
                 }
 
-                membershipReads.Enqueue(new MembershipRead(started, tenants.Clone()));
+                if (requestDocument == DocumentNavigations)
+                    membershipReads.Enqueue(new MembershipRead(started, tenants.Clone()));
             }
             catch (Exception failure) when
                 (failure is PlaywrightException or JsonException or InvalidOperationException)
@@ -583,9 +596,7 @@ public sealed class RealtimeMembershipE2ETests(PoleE2EFixture fixture)
             }
         }
 
-        private void RecordMessage(JsonElement message,
-            int connection,
-            ConcurrentDictionary<string, string> invocations)
+        private void RecordMessage(JsonElement message)
         {
             if (message.TryGetProperty("target", out var target))
             {
@@ -615,20 +626,6 @@ public sealed class RealtimeMembershipE2ETests(PoleE2EFixture fixture)
                     }
                 }
             }
-
-            if (!message.TryGetProperty("type", out var type) || type.GetInt32() != 3 ||
-                !message.TryGetProperty("invocationId", out var invocation) ||
-                !invocations.TryRemove(invocation.GetString()!, out var method) ||
-                method is not ("Subscribe" or "Heartbeat"))
-                return;
-            var covered = message.TryGetProperty("result", out var result) && result.ValueKind == JsonValueKind.Array &&
-                          result.EnumerateArray().Any(item => Text(item, "topic") == "tenant-access" &&
-                                                              item.TryGetProperty("resourceId", out var resource) &&
-                                                              resource.GetString() == subject &&
-                                                              (!item.TryGetProperty("tenantId", out var tenant) ||
-                                                               tenant.ValueKind == JsonValueKind.Null) &&
-                                                              item.GetProperty("covered").GetBoolean());
-            ownCoverage[connection] = new OwnCoverage(Stopwatch.GetTimestamp(), covered);
         }
     }
 }
