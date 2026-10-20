@@ -174,6 +174,99 @@ class EvidenceTests(unittest.TestCase):
             gate.execute("intentional-failure", ["python3", "-c", "raise SystemExit(3)"], self.root, steps)
         self.assertEqual(3, steps[0]["exit_code"])
 
+    def backend_fixture(self, missing_coverage=False, fail_second=False):
+        projects = ["tests/A.csproj", "tests/B.csproj"]
+        (self.root / "tests").mkdir()
+        for name in ("A", "B"):
+            (self.root / "tests" / f"{name}.csproj").write_text(f"<Project><PropertyGroup><AssemblyName>{name}</AssemblyName></PropertyGroup></Project>")
+        report = self.trx().read_text()
+        calls = []
+
+        def execute(name, command, directory, steps, environment=None):
+            calls.append((name, command, environment))
+            if fail_second and name == "backend-1":
+                raise gate.GateError("controlled command failure")
+            output = Path(command[-1])
+            output.mkdir()
+            assembly = Path(command[2]).stem
+            (output / "results.trx").write_text(report.replace("<Results>", f'<TestDefinitions><UnitTest><TestMethod codeBase="/bin/{assembly}.dll" /></UnitTest></TestDefinitions><Results>'))
+            if not missing_coverage:
+                (output / "test.cobertura.xml").write_text("<coverage />")
+
+        return projects, calls, execute
+
+    def test_backend_lane_runs_every_project_sequentially_with_the_same_collector(self):
+        projects, calls, execute = self.backend_fixture()
+        output = self.root / "output"
+        with patch.object(gate, "ROOT", self.root), patch.object(gate, "test_projects", return_value=projects), \
+                patch.object(gate, "execute", side_effect=execute), patch.object(gate, "capture_headroom"):
+            result = gate.run_backend(output)
+        self.assertEqual(projects, list(result))
+        self.assertEqual(projects, [command[2] for _, command, _ in calls])
+        for _, command, environment in calls:
+            self.assertIn("--collect:Code Coverage;Format=Cobertura", command)
+            self.assertIn("-maxcpucount:1", command)
+            self.assertNotIn("--filter", command)
+            self.assertIn("POLE_TEST_EVIDENCE_DIRECTORY", environment)
+        manifest = json.loads((output / "backend-manifest.json").read_text())
+        self.assertEqual("passed", manifest["status"])
+        self.assertTrue(manifest["coverage"])
+
+    def test_failed_backend_command_retains_failure_manifest_and_headroom(self):
+        projects, calls, execute = self.backend_fixture(fail_second=True)
+        output = self.root / "output"
+        with patch.object(gate, "ROOT", self.root), patch.object(gate, "test_projects", return_value=projects), \
+                patch.object(gate, "execute", side_effect=execute), patch.object(gate, "capture_headroom") as snapshots:
+            with self.assertRaisesRegex(gate.GateError, "controlled command failure"):
+                gate.run_backend(output)
+        manifest = json.loads((output / "backend-manifest.json").read_text())
+        self.assertEqual("failed", manifest["status"])
+        self.assertEqual([projects[0]], list(manifest["tests"]))
+        self.assertEqual("failed-backend", snapshots.call_args.args[1])
+
+    def test_missing_coverage_blocks_backend_success(self):
+        projects, _, execute = self.backend_fixture(missing_coverage=True)
+        with patch.object(gate, "ROOT", self.root), patch.object(gate, "test_projects", return_value=projects), \
+                patch.object(gate, "execute", side_effect=execute), patch.object(gate, "capture_headroom"):
+            with self.assertRaisesRegex(gate.GateError, "coverage"):
+                gate.run_backend(self.root / "output")
+
+    def test_existing_backend_results_cannot_be_reused_as_new_evidence(self):
+        output = self.root / "output"
+        output.mkdir()
+        (output / "backend-manifest.json").write_text('{}')
+        with patch.object(gate, "ROOT", self.root), self.assertRaisesRegex(gate.GateError, "fresh directory"):
+            gate.run_backend(output)
+
+    def test_full_gate_uses_the_common_backend_lane(self):
+        with patch.object(gate, "ROOT", self.root), patch.object(gate, "ARTIFACTS", self.root / "quality"), \
+                patch.object(gate, "RECEIPT", self.root / "receipt.json"), \
+                patch.object(gate, "git", return_value="base"), patch.object(gate, "source_fingerprint", return_value="unchanged"), \
+                patch.object(gate, "test_projects", return_value=["tests/A.csproj"]), patch.object(gate, "capture_headroom"), \
+                patch.object(gate, "execute"), patch.object(gate, "format_command", return_value=None), \
+                patch.object(gate, "read_vitest", return_value={"total": 1, "passed": 1}), patch("builtins.print"), \
+                patch.object(gate, "run_backend") as backend:
+            gate.run_full("origin/master")
+        backend.assert_called_once()
+        self.assertEqual("passed", json.loads((self.root / "receipt.json").read_text())["status"])
+
+    def test_headroom_drops_native_messages_specs_and_credentials(self):
+        output = self.root / "output"
+        output.mkdir()
+        state = self.root / "state.json"
+        state.write_text(json.dumps({"tools": {"kubectlPath": "kubectl"}, "targets": [
+            {"key": "private-canary", "kubeconfigPath": "credentials-canary", "context": "context"}]}))
+        nodes = {"items": [{"spec": {"token": "spec-canary"}, "status": {"conditions": [
+            {"type": "Ready", "status": "True", "message": "message-canary"},
+            {"type": "DiskPressure", "status": "False"}]}}]}
+        with patch.object(gate, "ROOT", self.root), patch.dict(gate.os.environ, {"POLE_K8S_LAB_STATE": str(state)}), \
+                patch.object(gate.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, json.dumps(nodes).encode())):
+            gate.capture_headroom(output, "before-backend")
+        data = (output / "headroom-before-backend.json").read_text()
+        self.assertNotIn("canary", data)
+        self.assertTrue(json.loads(data)["targets"][0]["nodes"][0]["Ready"])
+        self.assertFalse(json.loads(data)["targets"][0]["nodes"][0]["DiskPressure"])
+
 
 if __name__ == "__main__":
     unittest.main()

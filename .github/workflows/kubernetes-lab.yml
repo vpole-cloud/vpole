@@ -76,16 +76,16 @@ jobs:
 
       - name: Start and verify the full lab
         run: |
+          python3 scripts/quality_gate.py headroom --results-directory .artifacts/coverage/backend/raw --phase before-lab
           ./infrastructure/kubernetes-lab/lab.sh up
           ./infrastructure/kubernetes-lab/lab.sh verify
+          python3 scripts/quality_gate.py headroom --results-directory .artifacts/coverage/backend/raw --phase after-lab
 
       - name: Run all backend tests with coverage
-        run: |
-          dotnet test --no-build --no-restore --nologo -maxcpucount:1 -nodeReuse:false \
-            --collect:"Code Coverage;Format=Cobertura" --logger trx \
-            --results-directory .artifacts/coverage/backend/raw
+        run: python3 scripts/quality_gate.py backend --results-directory .artifacts/coverage/backend/raw
 
       - name: Reject failed, skipped, or missing backend suites
+        if: ${{ !cancelled() }}
         run: python3 scripts/quality_gate.py check-backend-reports --directory .artifacts/coverage/backend/raw
 
       - name: Generate backend coverage report
@@ -113,6 +113,10 @@ jobs:
       - name: Reject leaked test resources
         if: always()
         run: ./infrastructure/kubernetes-lab/lab.sh audit-tests
+
+      - name: Snapshot failed runner headroom
+        if: failure()
+        run: python3 scripts/quality_gate.py headroom --results-directory .artifacts/coverage/backend/raw --phase failed-run
 
       - name: Export safe test evidence
         if: always()
