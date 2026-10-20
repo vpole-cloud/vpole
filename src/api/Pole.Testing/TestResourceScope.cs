@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using k8s.Autorest;
 
 namespace Pole.Testing;
 
@@ -77,7 +78,7 @@ public sealed class TestResourceScope : IAsyncDisposable
         catch (Exception exception)
         {
             primaryFailure = exception;
-            journal.Record(TestPhase.Failed);
+            journal.Record(TestPhase.Failed, status: FailureStatus(exception));
             throw;
         }
         finally
@@ -90,7 +91,7 @@ public sealed class TestResourceScope : IAsyncDisposable
             }
             catch (Exception cleanupFailure)
             {
-                journal.Record(TestPhase.Failed);
+                journal.Record(TestPhase.Failed, status: FailureStatus(cleanupFailure));
                 if (primaryFailure is null) throw;
                 throw new AggregateException(
                     "The test body and resource cleanup both failed.",
@@ -99,6 +100,13 @@ public sealed class TestResourceScope : IAsyncDisposable
             }
         }
     }
+
+    private static int? FailureStatus(Exception exception) => exception switch
+    {
+        HttpOperationException { Response: { } response } => (int)response.StatusCode,
+        HttpRequestException { StatusCode: { } status } => (int)status,
+        _ => null
+    };
 
     public async ValueTask DisposeAsync()
     {
