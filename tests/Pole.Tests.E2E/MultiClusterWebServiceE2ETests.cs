@@ -32,149 +32,157 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
         var labB = lab.GetRequiredTarget("workload-b");
         using var clientA = new KubernetesClient(labA.CreateConfiguration());
         using var clientB = new KubernetesClient(labB.CreateConfiguration());
-        await using var resources = new TestResourceScope("multi-cluster WebService E2E");
-
-        var targetBEnabled = true;
-        var serviceName = $"multi-{Guid.NewGuid():N}"[..24];
-
-        var targetA = await resources.CreateAsync(
-            $"delete deployment target '{labA.Key}'",
-            token => CreateTargetAsync(labA, token),
-            (target, token) => DeleteAdminResourceAsync($"/api/v1/platform/deployment-targets/{target.Id}", token),
-            cancellationToken);
-        var targetB = await resources.CreateAsync(
-            $"delete deployment target '{labB.Key}'",
-            token => CreateTargetAsync(labB, token),
-            (target, token) => DeleteAdminResourceAsync($"/api/v1/platform/deployment-targets/{target.Id}", token),
-            cancellationToken);
-        Assert.NotEqual(targetA.ClusterIdentity, targetB.ClusterIdentity);
-
-        var computeProfile = await resources.CreateAsync(
-            "delete multi-cluster compute profile",
-            token => CreateComputeProfileAsync(targetA.Id, targetB.Id, token),
-            (profile, token) => DeleteAdminResourceAsync(
-                $"/api/v1/platform/compute-profiles/{profile.Id}?revision={profile.Revision}",
-                token),
-            cancellationToken);
-        var namespaceCleanup = resources.CreateConcurrentCleanupGroup("resource-group namespaces");
-        var resourceGroupId = await resources.CreateAsync(
-            "delete multi-cluster resource group",
-            CreateResourceGroupAsync,
-            (id, token) => DeleteTenantResourceAsync($"/api/v1/resource-groups/{id}", token),
-            cancellationToken);
-        var webServiceCleanup = resources.CreateCleanupSequence("multi-cluster WebService");
-        var webServiceId = await webServiceCleanup.CreateAsync(
-            "delete multi-cluster WebService",
-            token => CreateWebServiceAsync(
-                serviceName,
-                resourceGroupId,
-                computeProfile.Id,
-                targetA.Id,
-                targetB.Id,
-                token),
-            (id, token) => DeleteTenantResourceAsync($"/api/v1/web-services/{id}", token),
-            cancellationToken);
-        webServiceCleanup.Defer(
-            "wait for multi-cluster WebService deletion",
-            token => WaitForNotFoundAsync($"/api/v1/web-services/{webServiceId}", token));
-
-        var applied = await WaitForPlacementsAsync(
-            webServiceId,
-            placements => placements.Length == 2 && placements.All(IsApplied),
-            cancellationToken);
-        var cells = await WaitForRuntimeCellsAsync(resourceGroupId, targetA.Id, targetB.Id, cancellationToken);
-        var namespaceA = cells[targetA.Id];
-        var namespaceB = cells[targetB.Id];
-        namespaceCleanup.Defer(
-            $"wait for namespace '{namespaceA}' on '{labA.Key}'",
-            token => WaitForNamespaceDeletionAsync(clientA, namespaceA, token));
-        namespaceCleanup.Defer(
-            $"wait for namespace '{namespaceB}' on '{labB.Key}'",
-            token => WaitForNamespaceDeletionAsync(clientB, namespaceB, token));
-        await AssertNamespaceOwnershipAsync(clientA, namespaceA, cancellationToken);
-        await AssertNamespaceOwnershipAsync(clientB, namespaceB, cancellationToken);
-        await WaitForDeploymentAvailableAsync(clientA, serviceName, namespaceA, cancellationToken);
-        await WaitForDeploymentAvailableAsync(clientB, serviceName, namespaceB, cancellationToken);
-
-        var initialB = await clientB.AppsV1.ReadNamespacedDeploymentAsync(serviceName, namespaceB);
-        var initialBRelease = RequiredReleaseId(initialB.Spec.Template.Metadata.Annotations);
-
-        targetB = await UpdateTargetAsync(targetB, enabled: false, cancellationToken);
-        targetBEnabled = false;
-        resources.Defer("re-enable workload-b deployment target", async token =>
+        var resources = new TestResourceScope("multi-cluster WebService E2E");
+        await resources.RunAsync(async () =>
         {
-            if (!targetBEnabled)
-                targetB = await UpdateTargetAsync(targetB, enabled: true, token);
+
+            var targetBEnabled = true;
+            var serviceName = $"multi-{Guid.NewGuid():N}"[..24];
+
+            var targetA = await resources.CreateAsync(
+                $"delete deployment target '{labA.Key}'",
+                token => CreateTargetAsync(labA, token),
+                (target, token) => DeleteAdminResourceAsync($"/api/v1/platform/deployment-targets/{target.Id}", token),
+                cancellationToken);
+            var targetB = await resources.CreateAsync(
+                $"delete deployment target '{labB.Key}'",
+                token => CreateTargetAsync(labB, token),
+                (target, token) => DeleteAdminResourceAsync($"/api/v1/platform/deployment-targets/{target.Id}", token),
+                cancellationToken);
+            Assert.NotEqual(targetA.ClusterIdentity, targetB.ClusterIdentity);
+
+            var computeProfile = await resources.CreateAsync(
+                "delete multi-cluster compute profile",
+                token => CreateComputeProfileAsync(targetA.Id, targetB.Id, token),
+                (profile, token) => DeleteAdminResourceAsync(
+                    $"/api/v1/platform/compute-profiles/{profile.Id}?revision={profile.Revision}",
+                    token),
+                cancellationToken);
+            var namespaceCleanup = resources.CreateConcurrentCleanupGroup("resource-group namespaces");
+            var resourceGroupId = await resources.CreateAsync(
+                "delete multi-cluster resource group",
+                CreateResourceGroupAsync,
+                (id, token) => DeleteTenantResourceAsync($"/api/v1/resource-groups/{id}", token),
+                cancellationToken);
+            var webServiceCleanup = resources.CreateCleanupSequence("multi-cluster WebService");
+            var webServiceId = await webServiceCleanup.CreateAsync(
+                "delete multi-cluster WebService",
+                token => CreateWebServiceAsync(
+                    serviceName,
+                    resourceGroupId,
+                    computeProfile.Id,
+                    targetA.Id,
+                    targetB.Id,
+                    token),
+                (id, token) => DeleteTenantResourceAsync($"/api/v1/web-services/{id}", token),
+                cancellationToken);
+            webServiceCleanup.Defer(
+                "wait for multi-cluster WebService deletion",
+                token => WaitForNotFoundAsync($"/api/v1/web-services/{webServiceId}", token));
+
+            var applied = await WaitForPlacementsAsync(
+                webServiceId,
+                placements => placements.Length == 2 && placements.All(IsApplied),
+                cancellationToken);
+            var cells = await WaitForRuntimeCellsAsync(resourceGroupId, targetA.Id, targetB.Id, cancellationToken);
+            var namespaceA = cells[targetA.Id];
+            var namespaceB = cells[targetB.Id];
+            namespaceCleanup.Defer(
+                $"wait for namespace '{namespaceA}' on '{labA.Key}'",
+                token => WaitForNamespaceDeletionAsync(clientA, namespaceA, token));
+            namespaceCleanup.Defer(
+                $"wait for namespace '{namespaceB}' on '{labB.Key}'",
+                token => WaitForNamespaceDeletionAsync(clientB, namespaceB, token));
+            await AssertNamespaceOwnershipAsync(clientA, namespaceA, cancellationToken);
+            await AssertNamespaceOwnershipAsync(clientB, namespaceB, cancellationToken);
+            await WaitForDeploymentAvailableAsync(clientA, serviceName, namespaceA, cancellationToken);
+            await WaitForDeploymentAvailableAsync(clientB, serviceName, namespaceB, cancellationToken);
+
+            var initialB = await clientB.AppsV1.ReadNamespacedDeploymentAsync(serviceName, namespaceB);
+            var initialBRelease = RequiredReleaseId(initialB.Spec.Template.Metadata.Annotations);
+
+            resources.Defer("re-enable workload-b deployment target", async token =>
+            {
+                if (!targetBEnabled)
+                {
+                    using var get = fixture.CreatePlatformAdminRequest(HttpMethod.Get, $"/api/v1/platform/deployment-targets/{targetB.Id}");
+                    var json = await SendJsonAsync(get, token);
+                    var current = targetB with { Revision = json.GetProperty("revision").GetInt64() };
+                    targetB = await UpdateTargetAsync(current, enabled: true, token);
+                }
+            });
+            targetBEnabled = false;
+            targetB = await UpdateTargetAsync(targetB, enabled: false, cancellationToken);
+            await SendAsync(
+                fixture.CreateAuthenticatedRequest(
+                    HttpMethod.Post,
+                    $"/api/v1/web-services/{webServiceId}/redeploy?expectedRevision=1",
+                    fixture.Alpha,
+                    fixture.Alpha.DefaultTenantId),
+                cancellationToken);
+
+            var partial = await WaitForPlacementsAsync(
+                webServiceId,
+                placements =>
+                    placements.Any(item => IsTarget(item, targetA.Id) && IsApplied(item)) &&
+                    placements.Any(item => IsTarget(item, targetB.Id) &&
+                                           RequiredString(item, "status") == "Failed" &&
+                                           RequiredString(item, "failureCode") == "DeploymentTargetDisabled"),
+                cancellationToken);
+            var failedB = partial.Single(item => IsTarget(item, targetB.Id));
+            var healthyPlacementBeforeRetry = partial.Single(item => IsTarget(item, targetA.Id));
+            var healthyDesiredGeneration = healthyPlacementBeforeRetry.GetProperty("desiredGeneration").GetInt64();
+            var healthyObservedGeneration = healthyPlacementBeforeRetry.GetProperty("observedGeneration").GetInt64();
+            var healthyBeforeRetry = await clientA.AppsV1.ReadNamespacedDeploymentAsync(serviceName, namespaceA);
+            var healthyRelease = RequiredReleaseId(healthyBeforeRetry.Spec.Template.Metadata.Annotations);
+
+            await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            await browserContainer.StartAsync(cancellationToken);
+            using var playwright = await Playwright.CreateAsync();
+            await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
+                new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
+            await using var context = await browser.NewContextAsync(new BrowserNewContextOptions { IgnoreHTTPSErrors = true });
+            var page = await context.NewPageAsync();
+            await page.GotoAsync(fixture.FrontendBaseAddress.ToString());
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in", Exact = true }).ClickAsync();
+            await page.GetByLabel("Username or email").FillAsync(fixture.Alpha.Email);
+            await page.GetByRole(AriaRole.Textbox, new PageGetByRoleOptions { Name = "Password", Exact = true }).FillAsync(fixture.Alpha.Password);
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Sign In", Exact = true }).ClickAsync();
+            await page.GotoAsync(new Uri(fixture.FrontendBaseAddress, $"?view=web-services&resourceType=pole%2Fweb-service&resource={webServiceId}&tenant={fixture.Alpha.DefaultTenantId}&section=operations").ToString());
+            var failedTarget = page.GetByTestId($"operation-row-{RequiredString(failedB, "deploymentId")}");
+            await Assertions.Expect(failedTarget).ToHaveCountAsync(1);
+            await Assertions.Expect(failedTarget).ToContainTextAsync("DeploymentTargetDisabled");
+            Assert.Equal(2, await page.Locator("[data-testid^='operation-row-']:visible").CountAsync());
+
+            await failedTarget.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Retry this apply", Exact = true }).ClickAsync();
+            var confirmation = page.GetByRole(AriaRole.Dialog);
+            await Assertions.Expect(confirmation).ToContainTextAsync(RequiredString(failedB, "deploymentId"));
+            await Assertions.Expect(confirmation).ToContainTextAsync(targetB.Id);
+            targetB = await UpdateTargetAsync(targetB, enabled: true, cancellationToken);
+            targetBEnabled = true;
+            var retryResponse = await page.RunAndWaitForResponseAsync(
+                () => confirmation.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Retry selected operation", Exact = true }).ClickAsync(),
+                response => response.Request.Method == "POST" && new Uri(response.Url).AbsolutePath == $"/api/v1/web-services/{webServiceId}/deployments/{RequiredString(failedB, "deploymentId")}/retry");
+            Assert.True(retryResponse.Ok, $"Selected target retry returned HTTP {retryResponse.Status}.");
+            using var retryBody = JsonDocument.Parse(retryResponse.Request.PostData!);
+            Assert.Equal(failedB.GetProperty("deploymentRevision").GetInt64(), retryBody.RootElement.GetProperty("expectedDeploymentRevision").GetInt64());
+            Assert.Equal("Apply", RequiredString(retryBody.RootElement, "expectedOperation"));
+
+            var retried = await WaitForPlacementsAsync(
+                webServiceId,
+                placements => placements.Any(item => IsTarget(item, targetB.Id) && IsApplied(item)),
+                cancellationToken);
+            await WaitForDeploymentAvailableAsync(clientB, serviceName, namespaceB, cancellationToken);
+            var healthyAfterRetry = await clientA.AppsV1.ReadNamespacedDeploymentAsync(serviceName, namespaceA);
+            var retriedB = await clientB.AppsV1.ReadNamespacedDeploymentAsync(serviceName, namespaceB);
+
+            var healthyPlacementAfterRetry = retried.Single(item => IsTarget(item, targetA.Id));
+            Assert.Equal(healthyDesiredGeneration, healthyPlacementAfterRetry.GetProperty("desiredGeneration").GetInt64());
+            Assert.Equal(healthyObservedGeneration, healthyPlacementAfterRetry.GetProperty("observedGeneration").GetInt64());
+            Assert.Equal(healthyRelease, RequiredReleaseId(healthyAfterRetry.Spec.Template.Metadata.Annotations));
+            Assert.NotEqual(initialBRelease, RequiredReleaseId(retriedB.Spec.Template.Metadata.Annotations));
+            Assert.Equal(2, applied.Select(item => RequiredString(item, "deploymentTargetId")).Distinct().Count());
         });
-        await SendAsync(
-            fixture.CreateAuthenticatedRequest(
-                HttpMethod.Post,
-                $"/api/v1/web-services/{webServiceId}/redeploy?expectedRevision=1",
-                fixture.Alpha,
-                fixture.Alpha.DefaultTenantId),
-            cancellationToken);
-
-        var partial = await WaitForPlacementsAsync(
-            webServiceId,
-            placements =>
-                placements.Any(item => IsTarget(item, targetA.Id) && IsApplied(item)) &&
-                placements.Any(item => IsTarget(item, targetB.Id) &&
-                                       RequiredString(item, "status") == "Failed" &&
-                                       RequiredString(item, "failureCode") == "DeploymentTargetDisabled"),
-            cancellationToken);
-        var failedB = partial.Single(item => IsTarget(item, targetB.Id));
-        var healthyPlacementBeforeRetry = partial.Single(item => IsTarget(item, targetA.Id));
-        var healthyDesiredGeneration = healthyPlacementBeforeRetry.GetProperty("desiredGeneration").GetInt64();
-        var healthyObservedGeneration = healthyPlacementBeforeRetry.GetProperty("observedGeneration").GetInt64();
-        var healthyBeforeRetry = await clientA.AppsV1.ReadNamespacedDeploymentAsync(serviceName, namespaceA);
-        var healthyRelease = RequiredReleaseId(healthyBeforeRetry.Spec.Template.Metadata.Annotations);
-
-        await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
-        await browserContainer.StartAsync(cancellationToken);
-        using var playwright = await Playwright.CreateAsync();
-        await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
-            new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
-        await using var context = await browser.NewContextAsync(new BrowserNewContextOptions { IgnoreHTTPSErrors = true });
-        var page = await context.NewPageAsync();
-        await page.GotoAsync(fixture.FrontendBaseAddress.ToString());
-        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in", Exact = true }).ClickAsync();
-        await page.GetByLabel("Username or email").FillAsync(fixture.Alpha.Email);
-        await page.GetByRole(AriaRole.Textbox, new PageGetByRoleOptions { Name = "Password", Exact = true }).FillAsync(fixture.Alpha.Password);
-        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Sign In", Exact = true }).ClickAsync();
-        await page.GotoAsync(new Uri(fixture.FrontendBaseAddress, $"?view=web-services&resourceType=pole%2Fweb-service&resource={webServiceId}&tenant={fixture.Alpha.DefaultTenantId}&section=operations").ToString());
-        var failedTarget = page.GetByTestId($"operation-row-{RequiredString(failedB, "deploymentId")}");
-        await Assertions.Expect(failedTarget).ToHaveCountAsync(1);
-        await Assertions.Expect(failedTarget).ToContainTextAsync("DeploymentTargetDisabled");
-        Assert.Equal(2, await page.Locator("[data-testid^='operation-row-']:visible").CountAsync());
-
-        await failedTarget.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Retry this apply", Exact = true }).ClickAsync();
-        var confirmation = page.GetByRole(AriaRole.Dialog);
-        await Assertions.Expect(confirmation).ToContainTextAsync(RequiredString(failedB, "deploymentId"));
-        await Assertions.Expect(confirmation).ToContainTextAsync(targetB.Id);
-        targetB = await UpdateTargetAsync(targetB, enabled: true, cancellationToken);
-        targetBEnabled = true;
-        var retryResponse = await page.RunAndWaitForResponseAsync(
-            () => confirmation.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Retry selected operation", Exact = true }).ClickAsync(),
-            response => response.Request.Method == "POST" && new Uri(response.Url).AbsolutePath == $"/api/v1/web-services/{webServiceId}/deployments/{RequiredString(failedB, "deploymentId")}/retry");
-        Assert.True(retryResponse.Ok, $"Selected target retry returned HTTP {retryResponse.Status}.");
-        using var retryBody = JsonDocument.Parse(retryResponse.Request.PostData!);
-        Assert.Equal(failedB.GetProperty("deploymentRevision").GetInt64(), retryBody.RootElement.GetProperty("expectedDeploymentRevision").GetInt64());
-        Assert.Equal("Apply", RequiredString(retryBody.RootElement, "expectedOperation"));
-
-        var retried = await WaitForPlacementsAsync(
-            webServiceId,
-            placements => placements.Any(item => IsTarget(item, targetB.Id) && IsApplied(item)),
-            cancellationToken);
-        await WaitForDeploymentAvailableAsync(clientB, serviceName, namespaceB, cancellationToken);
-        var healthyAfterRetry = await clientA.AppsV1.ReadNamespacedDeploymentAsync(serviceName, namespaceA);
-        var retriedB = await clientB.AppsV1.ReadNamespacedDeploymentAsync(serviceName, namespaceB);
-
-        var healthyPlacementAfterRetry = retried.Single(item => IsTarget(item, targetA.Id));
-        Assert.Equal(healthyDesiredGeneration, healthyPlacementAfterRetry.GetProperty("desiredGeneration").GetInt64());
-        Assert.Equal(healthyObservedGeneration, healthyPlacementAfterRetry.GetProperty("observedGeneration").GetInt64());
-        Assert.Equal(healthyRelease, RequiredReleaseId(healthyAfterRetry.Spec.Template.Metadata.Annotations));
-        Assert.NotEqual(initialBRelease, RequiredReleaseId(retriedB.Spec.Template.Metadata.Annotations));
-        Assert.Equal(2, applied.Select(item => RequiredString(item, "deploymentTargetId")).Distinct().Count());
     }
 
     private async Task AssertNamespaceOwnershipAsync(

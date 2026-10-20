@@ -7,6 +7,9 @@
     <IsTestProject>false</IsTestProject>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Pole.Tests.E2E" />
+  </ItemGroup>
+  <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="../Pole.Platform.Hosting/Pole.Platform.Hosting.csproj" />
   </ItemGroup>

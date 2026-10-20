@@ -266,60 +266,46 @@ public sealed class PoleE2EFixture : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
+        var failures = new List<Exception>();
+        async Task AttemptAsync(string phase, Func<Task> action)
+        {
+            try { await action(); }
+            catch (Exception failure) { failures.Add(new InvalidOperationException($"Fixture cleanup phase '{phase}' failed.", failure)); }
+        }
+
         _keycloakPortReservation.Stop();
         foreach (var reservation in _realtimeReplicaPortReservations)
             reservation.Stop();
         using var cleanupTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
-        var cancellationToken = cleanupTimeout.Token;
         foreach (var action in _cleanup.AsEnumerable().Reverse())
+            await AttemptAsync("restore external fixture state", () => action(cleanupTimeout.Token));
+
+        if (_application is not null)
         {
-            try
-            {
-                await action(cancellationToken);
-            }
-            catch
-            {
-                // Ephemeral AppHost resources are disposed below; keep attempting later cleanup actions.
-            }
+            await AttemptAsync("cancel startup", () => _shutdown.CancelAsync());
+            using var stopTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+            await AttemptAsync("stop application", () => _application.StopAsync(stopTimeout.Token));
+            // Dispose remains mandatory even when Stop fails.
+            await AttemptAsync("dispose application", () => _application.DisposeAsync().AsTask());
         }
 
-        try
+        await AttemptAsync("dispose BuildKit forwarding", () => DisposePortForwardAsync(_buildKitPortForward));
+        _buildKitPortForward = null;
+        await AttemptAsync("dispose Harbor forwarding", () => DisposePortForwardAsync(_harborPortForward));
+        _harborPortForward = null;
+        await AttemptAsync("dispose Kubernetes client", () => { _kubernetes.Dispose(); return Task.CompletedTask; });
+        await AttemptAsync("dispose API client", () => { Api?.Dispose(); return Task.CompletedTask; });
+        await AttemptAsync("dispose startup budget", () => { _shutdown.Dispose(); return Task.CompletedTask; });
+        await AttemptAsync("remove scratch files", () =>
         {
-            if (_application is not null)
-            {
-                await _shutdown.CancelAsync();
-                using var stopTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
-                await _application.StopAsync(stopTimeout.Token);
-                await _application.DisposeAsync();
-            }
-        }
-        finally
-        {
-            await DisposePortForwardAsync(_buildKitPortForward);
-            _buildKitPortForward = null;
-            await DisposePortForwardAsync(_harborPortForward);
-            _harborPortForward = null;
-            _kubernetes.Dispose();
-            Api?.Dispose();
-            _shutdown.Dispose();
-
             if (!string.IsNullOrWhiteSpace(_scratchDirectory) && Directory.Exists(_scratchDirectory))
-            {
-                try
-                {
-                    Directory.Delete(_scratchDirectory, recursive: true);
-                }
-                catch
-                {
-                    // Test diagnostics and a locked process should not hide the original test result.
-                }
-            }
-        }
-
+                Directory.Delete(_scratchDirectory, recursive: true);
+            return Task.CompletedTask;
+        });
         if (_harborProjectCleanupRegistered && !_harborProjectCleanupCompleted)
-        {
-            throw new InvalidOperationException("The source-build E2E Harbor project cleanup did not complete.");
-        }
+            failures.Add(new InvalidOperationException("The source-build E2E Harbor project cleanup did not complete."));
+        if (failures.Count > 0)
+            throw new AggregateException("E2E fixture cleanup failed.", failures);
     }
 
     private void ConfigureRealtimeReplica(IDistributedApplicationBuilder appHost,
@@ -1467,14 +1453,7 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         if (portForward is null)
             return;
 
-        try
-        {
-            await portForward.DisposeAsync();
-        }
-        catch
-        {
-            // The disposable test VM or lab process may already have stopped the forwarding process.
-        }
+        await portForward.DisposeAsync();
     }
 
     private Uri HarborBaseAddress => new(
