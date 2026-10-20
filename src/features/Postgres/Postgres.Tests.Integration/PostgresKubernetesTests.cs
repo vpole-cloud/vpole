@@ -89,38 +89,60 @@ public sealed class PostgresKubernetesTests(KubernetesClusterFixture fixture)
     [KubernetesFact("cnpg")]
     public async Task ManagedProjectionRotation_RewritesSecretBeforeWorkloadReapply()
     {
-        var cluster = BuildOperatorCluster();
-        IPostgresClusterDeploymentManager manager =
-            new PostgresClusterDeploymentManager(CreateSettings());
-        using var projection = new ManagedProjectionFixture(Kubernetes, cluster, NamespaceName);
-        await projection.ApplyAsync("initial-secret");
+        var resources = new TestResourceScope(nameof(ManagedProjectionRotation_RewritesSecretBeforeWorkloadReapply));
+        await resources.RunAsync(async () =>
+        {
+            var cluster = BuildOperatorCluster();
+            IPostgresClusterDeploymentManager manager =
+                new PostgresClusterDeploymentManager(CreateSettings());
+            using var projection = new ManagedProjectionFixture(Kubernetes, cluster, NamespaceName);
+            var metadata = new PostgresResourceDeploymentMetadata(
+                projection.Projection.DeploymentId, projection.Projection.IsolationScopeId,
+                projection.Projection.RuntimeCellId, projection.Projection.DeploymentTargetId, 1);
+            var journal = TestPhaseJournal.Current!;
+            await projection.ApplyAsync("initial-secret");
+            journal.Record(TestPhase.SnapshotAccepted, resourceId: projection.Projection.SecretId,
+                revision: projection.Projection.DesiredVersion);
 
-        await manager.ApplyAsync(
-            Kubernetes,
-            cluster,
-            projection.Credentials,
-            NamespaceName,
-            Target.StorageClassName,
-            Compute(),
-            Metadata(),
-            CancellationToken.None);
-        await projection.ApplyAsync("rotated-secret");
-        await manager.ApplyAsync(
-            Kubernetes,
-            cluster,
-            projection.Credentials,
-            NamespaceName,
-            Target.StorageClassName,
-            Compute(),
-            Metadata(),
-            CancellationToken.None);
+            journal.Record(TestPhase.Action, resourceId: cluster.Id, generation: metadata.Generation);
+            await manager.ApplyAsync(
+                Kubernetes,
+                cluster,
+                projection.Credentials,
+                NamespaceName,
+                Target.StorageClassName,
+                Compute(),
+                metadata,
+                CancellationToken.None);
+            await projection.ApplyAsync("rotated-secret");
+            journal.Record(TestPhase.SnapshotAccepted, resourceId: projection.Projection.SecretId,
+                revision: projection.Projection.DesiredVersion);
+            journal.Record(TestPhase.Action, resourceId: cluster.Id, generation: metadata.Generation);
+            await manager.ApplyAsync(
+                Kubernetes,
+                cluster,
+                projection.Credentials,
+                NamespaceName,
+                Target.StorageClassName,
+                Compute(),
+                metadata,
+                CancellationToken.None);
 
-        var secret = await Kubernetes.CoreV1.ReadNamespacedSecretAsync(
-            projection.Projection.KubernetesName,
-            NamespaceName);
+            var secret = await Kubernetes.CoreV1.ReadNamespacedSecretAsync(
+                projection.Projection.KubernetesName,
+                NamespaceName);
 
-        Assert.Equal("postgres-user", System.Text.Encoding.UTF8.GetString(secret.Data["username"]));
-        Assert.Equal("rotated-secret", System.Text.Encoding.UTF8.GetString(secret.Data["password"]));
+            Assert.Equal("postgres-user", System.Text.Encoding.UTF8.GetString(secret.Data["username"]));
+            Assert.Equal("rotated-secret", System.Text.Encoding.UTF8.GetString(secret.Data["password"]));
+
+            var native = JsonSerializer.SerializeToNode(await Kubernetes.CustomObjects.GetNamespacedCustomObjectAsync(
+                group: "postgresql.cnpg.io", version: "v1", namespaceParameter: NamespaceName,
+                plural: "clusters", name: PostgresClusterKubernetesBuilder.buildResourceName(cluster.Id)))!;
+            var labels = native["metadata"]!["labels"]!;
+            Assert.Equal(metadata.RuntimeCellId, labels["pole.io/runtime-cell-id"]!.GetValue<string>());
+            Assert.Equal(metadata.IsolationScopeId, labels["pole.io/isolation-scope-id"]!.GetValue<string>());
+            Assert.Equal(metadata.DeploymentId, labels["pole.io/resource-deployment-id"]!.GetValue<string>());
+        });
     }
 
     [KubernetesFact("cnpg")]
