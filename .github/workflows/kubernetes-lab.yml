@@ -23,6 +23,7 @@ jobs:
       POLE_K8S_LAB_RUNTIME: docker
       POLE_TEST_WORKTREE_ID: ci-${{ github.run_id }}
       POLE_TEST_RUN_ID: attempt-${{ github.run_attempt }}
+      POLE_TEST_EVIDENCE_DIRECTORY: ${{ github.workspace }}/.artifacts/test-phases
     steps:
       - uses: actions/checkout@v4
         with:
@@ -112,6 +113,22 @@ jobs:
       - name: Reject leaked test resources
         if: always()
         run: ./infrastructure/kubernetes-lab/lab.sh audit-tests
+
+      - name: Export safe test evidence
+        if: always()
+        run: >-
+          python3 scripts/export_test_evidence.py
+          --input .artifacts/coverage/backend/raw
+          --phases-directory .artifacts/test-phases
+          --output .artifacts/ci-safe
+
+      - name: Upload safe test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-evidence
+          path: .artifacts/ci-safe
+          retention-days: 14
 
       - name: Lab diagnostics
         if: failure()
