@@ -235,76 +235,79 @@ public sealed class RealtimeBrowserE2ETests(
     {
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
-        await using var resources = new TestResourceScope("realtime browser refresh E2E");
-        var owned = await CreateOwnedServiceAsync(resources, ct);
-        await fixture.WaitForNamespaceCreationAsync(owned.GroupId, ct);
-        await fixture.WaitForWebServiceReadyAsync(owned.GroupId, owned.Name, ct);
-        await fixture.UseInteractiveClientTokenLifespanAsync(resources, TimeSpan.FromSeconds(40), ct);
-
-        await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
-        await browserContainer.StartAsync(ct);
-        using var playwright = await Playwright.CreateAsync();
-        await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
-            new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
-        await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+        var resources = new TestResourceScope("realtime browser refresh E2E");
+        await resources.RunAsync(async () =>
         {
-            ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
-            IgnoreHTTPSErrors = true
-        });
-        var page = await context.NewPageAsync();
-        var journal = new BrowserJournal(page, fixture.Alpha.DefaultTenantId);
-        await LoginAsync(page);
-        await WaitForInitialBootstrapAsync(journal, ct);
-        await page.GotoAsync(ResourceUrl(owned.Id, "configuration"));
-        await Assertions.Expect(page.GetByRole(AriaRole.Heading,
-            new PageGetByRoleOptions { Name = "Service configuration", Exact = true })).ToBeVisibleAsync();
-        await WaitUntilAsync(() => journal.Bootstraps.Count > 0 && journal.HasCoverage(owned.Id),
-            TimeSpan.FromSeconds(30),
-            "The real browser did not acknowledge pilot coverage.",
-            ct);
-        var originalBootstrap = journal.Bootstraps.Last();
-        var originalConnection = journal.LatestCoveredConnection(owned.Id);
-        var refreshesBeforeDraft = journal.RefreshResponses;
-        var draft = "REALTIME_REFRESH_DRAFT=unsaved";
-        await page.GetByLabel("Environment variables").FillAsync(draft);
-        var workspaceTabs = page.GetByRole(AriaRole.Tablist,
-            new PageGetByRoleOptions { Name = "Web service workspace", Exact = true });
-        var workspaceTabCount = await workspaceTabs.GetByRole(AriaRole.Tab).CountAsync();
-        var selectedResource = workspaceTabs.GetByRole(AriaRole.Tab,
-            new LocatorGetByRoleOptions { Name = owned.Name, Exact = false });
-        await Assertions.Expect(selectedResource).ToHaveAttributeAsync("aria-selected", "true");
-        await AssertNoReadableCredentialsAsync(page, journal);
+            var owned = await CreateOwnedServiceAsync(resources, ct);
+            await fixture.WaitForNamespaceCreationAsync(owned.GroupId, ct);
+            await fixture.WaitForWebServiceReadyAsync(owned.GroupId, owned.Name, ct);
+            await fixture.UseInteractiveClientTokenLifespanAsync(resources, TimeSpan.FromSeconds(40), ct);
 
-        // Observe Keycloak's own refresh grant, not a manual updateToken call or an injected token.
-        await WaitUntilAsync(() => journal.RefreshResponses > refreshesBeforeDraft,
-            TimeSpan.FromSeconds(75),
-            "The interactive client did not complete a real refresh_token grant.",
-            ct);
-        var refreshCompleted = journal.LastRefreshTimestamp;
-        await WaitUntilAsync(() =>
+            await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            await browserContainer.StartAsync(ct);
+            using var playwright = await Playwright.CreateAsync();
+            await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
+                new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
+            await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
             {
-                var bootstrap = journal.Bootstraps.LastOrDefault(value => value.Timestamp > refreshCompleted &&
-                                                                          value.ExpiresAtUtc >
-                                                                          originalBootstrap.ExpiresAtUtc);
-                return bootstrap is not null &&
-                       journal.LatestCoveredConnection(owned.Id, bootstrap.Timestamp) > originalConnection;
-            },
-            TimeSpan.FromSeconds(30),
-            "Refreshed credentials did not bootstrap and acknowledge a new cookie connection.",
-            ct);
+                ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
+                IgnoreHTTPSErrors = true
+            });
+            var page = await context.NewPageAsync();
+            var journal = new BrowserJournal(page, fixture.Alpha.DefaultTenantId);
+            await LoginAsync(page);
+            await WaitForInitialBootstrapAsync(journal, ct);
+            await page.GotoAsync(ResourceUrl(owned.Id, "configuration"));
+            await Assertions.Expect(page.GetByRole(AriaRole.Heading,
+                new PageGetByRoleOptions { Name = "Service configuration", Exact = true })).ToBeVisibleAsync();
+            await WaitUntilAsync(() => journal.Bootstraps.Count > 0 && journal.HasCoverage(owned.Id),
+                TimeSpan.FromSeconds(30),
+                "The real browser did not acknowledge pilot coverage.",
+                ct);
+            var originalBootstrap = journal.Bootstraps.Last();
+            var originalConnection = journal.LatestCoveredConnection(owned.Id);
+            var refreshesBeforeDraft = journal.RefreshResponses;
+            var draft = "REALTIME_REFRESH_DRAFT=unsaved";
+            await page.GetByLabel("Environment variables").FillAsync(draft);
+            var workspaceTabs = page.GetByRole(AriaRole.Tablist,
+                new PageGetByRoleOptions { Name = "Web service workspace", Exact = true });
+            var workspaceTabCount = await workspaceTabs.GetByRole(AriaRole.Tab).CountAsync();
+            var selectedResource = workspaceTabs.GetByRole(AriaRole.Tab,
+                new LocatorGetByRoleOptions { Name = owned.Name, Exact = false });
+            await Assertions.Expect(selectedResource).ToHaveAttributeAsync("aria-selected", "true");
+            await AssertNoReadableCredentialsAsync(page, journal);
 
-        Assert.Equal(fixture.Alpha.DefaultTenantId, await page.GetByLabel("Tenant").InputValueAsync());
-        Assert.Equal(workspaceTabCount, await workspaceTabs.GetByRole(AriaRole.Tab).CountAsync());
-        await Assertions.Expect(selectedResource).ToHaveAttributeAsync("aria-selected", "true");
-        await Assertions.Expect(page.GetByRole(AriaRole.Tab,
-                new PageGetByRoleOptions { Name = "Configuration", Exact = true }))
-            .ToHaveAttributeAsync("aria-selected", "true");
-        Assert.Equal(draft, await page.GetByLabel("Environment variables").InputValueAsync());
-        await AssertNoReadableCredentialsAsync(page, journal);
-        Assert.True(journal.HandshakeHeadersSafe,
-            "Realtime bootstrap and hub requests must not contain a tenant header or hub bearer authentication.");
-        await journal.DrainAsync();
-        Assert.True(journal.ParseFailures == 0, journal.DescribeParseFailures());
+            // Observe Keycloak's own refresh grant, not a manual updateToken call or an injected token.
+            await WaitUntilAsync(() => journal.RefreshResponses > refreshesBeforeDraft,
+                TimeSpan.FromSeconds(75),
+                "The interactive client did not complete a real refresh_token grant.",
+                ct);
+            var refreshCompleted = journal.LastRefreshTimestamp;
+            await WaitUntilAsync(() =>
+                {
+                    var bootstrap = journal.Bootstraps.LastOrDefault(value => value.Timestamp > refreshCompleted &&
+                                                                              value.ExpiresAtUtc >
+                                                                              originalBootstrap.ExpiresAtUtc);
+                    return bootstrap is not null &&
+                           journal.LatestCoveredConnection(owned.Id, bootstrap.Timestamp) > originalConnection;
+                },
+                TimeSpan.FromSeconds(30),
+                "Refreshed credentials did not bootstrap and acknowledge a new cookie connection.",
+                ct);
+
+            Assert.Equal(fixture.Alpha.DefaultTenantId, await page.GetByLabel("Tenant").InputValueAsync());
+            Assert.Equal(workspaceTabCount, await workspaceTabs.GetByRole(AriaRole.Tab).CountAsync());
+            await Assertions.Expect(selectedResource).ToHaveAttributeAsync("aria-selected", "true");
+            await Assertions.Expect(page.GetByRole(AriaRole.Tab,
+                    new PageGetByRoleOptions { Name = "Configuration", Exact = true }))
+                .ToHaveAttributeAsync("aria-selected", "true");
+            Assert.Equal(draft, await page.GetByLabel("Environment variables").InputValueAsync());
+            await AssertNoReadableCredentialsAsync(page, journal);
+            Assert.True(journal.HandshakeHeadersSafe,
+                "Realtime bootstrap and hub requests must not contain a tenant header or hub bearer authentication.");
+            await journal.DrainAsync();
+            Assert.True(journal.ParseFailures == 0, journal.DescribeParseFailures());
+        });
     }
 
     [Fact]
@@ -312,108 +315,111 @@ public sealed class RealtimeBrowserE2ETests(
     {
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
-        await using var resources = new TestResourceScope("realtime owned Redis outage E2E");
-        var owned = await CreateOwnedServiceAsync(resources, ct);
-        await fixture.WaitForNamespaceCreationAsync(owned.GroupId, ct);
-        await fixture.WaitForWebServiceReadyAsync(owned.GroupId, owned.Name, ct);
-        await fixture.UseInteractiveClientTokenLifespanAsync(resources, TimeSpan.FromMinutes(5), ct);
-        await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
-        await browserContainer.StartAsync(ct);
-        using var playwright = await Playwright.CreateAsync();
-        await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
-            new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
-        await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+        var resources = new TestResourceScope("realtime owned Redis outage E2E");
+        await resources.RunAsync(async () =>
         {
-            ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
-            IgnoreHTTPSErrors = true
+            var owned = await CreateOwnedServiceAsync(resources, ct);
+            await fixture.WaitForNamespaceCreationAsync(owned.GroupId, ct);
+            await fixture.WaitForWebServiceReadyAsync(owned.GroupId, owned.Name, ct);
+            await fixture.UseInteractiveClientTokenLifespanAsync(resources, TimeSpan.FromMinutes(5), ct);
+            await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            await browserContainer.StartAsync(ct);
+            using var playwright = await Playwright.CreateAsync();
+            await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
+                new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
+            await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+            {
+                ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
+                IgnoreHTTPSErrors = true
+            });
+            var page = await context.NewPageAsync();
+            var journal = new BrowserJournal(page, fixture.Alpha.DefaultTenantId);
+            await LoginAsync(page);
+            await WaitForInitialBootstrapAsync(journal, ct);
+            await page.GotoAsync(ResourceUrl(owned.Id, "configuration"));
+            await Assertions.Expect(page.GetByRole(AriaRole.Heading,
+                new PageGetByRoleOptions { Name = "Service configuration", Exact = true })).ToBeVisibleAsync();
+            await WaitUntilAsync(() => journal.HasCoverage(owned.Id),
+                TimeSpan.FromSeconds(30),
+                "The outage scenario did not establish acknowledged browser coverage.",
+                ct);
+            var originalConnection = journal.LatestCoveredConnection(owned.Id);
+            var navigationCount = journal.DocumentNavigations;
+            const string draft = "REALTIME_REDIS_OUTAGE_DRAFT=unsaved";
+            var environment = page.GetByLabel("Environment variables");
+            await environment.FillAsync(draft);
+            var originalEditor = await environment.ElementHandleAsync()
+                                 ?? throw new InvalidOperationException("The dirty configuration editor is unavailable.");
+            var workspaceTabs = page.GetByRole(AriaRole.Tablist,
+                new PageGetByRoleOptions { Name = "Web service workspace", Exact = true });
+            var tabCount = await workspaceTabs.GetByRole(AriaRole.Tab).CountAsync();
+            var selectedResource = workspaceTabs.GetByRole(AriaRole.Tab,
+                new LocatorGetByRoleOptions { Name = owned.Name, Exact = false });
+            var sections = page.GetByRole(AriaRole.Tablist,
+                new PageGetByRoleOptions { Name = $"{owned.Name} sections", Exact = true });
+            var detailPath = $"/api/v1/web-services/{owned.Id}";
+            // This cleanup precedes the only outage action and executes before resource teardown.
+            // The command targets the isolated Aspire graph, never the reusable Kubernetes lab.
+            resources.Defer("restore owned realtime Redis", fixture.StartRealtimeRedisAsync);
+            await fixture.StopRealtimeRedisAsync(ct);
+            await WaitUntilAsync(() => !journal.HasCoverage(owned.Id),
+                TimeSpan.FromSeconds(30),
+                "The browser did not release real coverage after its owned Redis became unavailable.",
+                ct);
+            Assert.Equal(2, await UpdateMetadataAsync(owned.Id, 1, "redis-outage", ct));
+            await sections.GetByRole(AriaRole.Tab,
+                new LocatorGetByRoleOptions { Name = "Overview", Exact = true }).ClickAsync();
+            var visibleRevision = page.GetByText("Active revision", new PageGetByTextOptions { Exact = true })
+                .Locator("xpath=following-sibling::dd");
+            // Stable details retain their original manual fallback; only reconciling
+            // deployments use the existing 2.5s loop (43e5cab3 interval=false).
+            var refreshedAt = Stopwatch.GetTimestamp();
+            await page.GetByRole(AriaRole.Button,
+                new PageGetByRoleOptions { Name = "Refresh service details", Exact = true }).ClickAsync();
+            await WaitUntilAsync(() => journal.HasDetailRead(detailPath, refreshedAt),
+                TimeSpan.FromSeconds(15),
+                "The uncovered browser did not perform its requested manual detail GET.",
+                ct);
+            await Assertions.Expect(visibleRevision)
+                .ToHaveTextAsync("2", new LocatorAssertionsToHaveTextOptions { Timeout = 15000 });
+            Assert.False(journal.HasCoverage(owned.Id));
+            Assert.True(await originalEditor.EvaluateAsync<bool>("element => element.isConnected"),
+                "Redis fallback must keep the dirty configuration form mounted.");
+            var restoredAt = Stopwatch.GetTimestamp();
+            await fixture.StartRealtimeRedisAsync(ct);
+            await WaitUntilAsync(() => journal.Bootstraps.Any(value => value.Timestamp > restoredAt) &&
+                                       journal.LatestCoveredConnection(owned.Id, restoredAt) > originalConnection,
+                TimeSpan.FromSeconds(60),
+                "Redis recovery did not bootstrap and acknowledge a new browser connection.",
+                ct);
+            var bootstrap = journal.Bootstraps.Last(value => value.Timestamp > restoredAt);
+            await WaitUntilAsync(() => journal.HasDetailRead(detailPath, bootstrap.Timestamp),
+                TimeSpan.FromSeconds(15),
+                "Acknowledged recovery did not resync authoritative detail metadata.",
+                ct);
+            Assert.Equal(3, await UpdateMetadataAsync(owned.Id, 2, "redis-recovered", ct));
+            await WaitUntilAsync(() => journal.LastRevision(owned.Id) >= 3,
+                TimeSpan.FromSeconds(20),
+                "Recovered Redis did not deliver a committed metadata hint.",
+                ct);
+            await Assertions.Expect(visibleRevision)
+                .ToHaveTextAsync("3", new LocatorAssertionsToHaveTextOptions { Timeout = 20000 });
+            await sections.GetByRole(AriaRole.Tab,
+                new LocatorGetByRoleOptions { Name = "Configuration", Exact = true }).ClickAsync();
+            Assert.True(
+                await environment.EvaluateAsync<bool>("(element, original) => element === original", originalEditor),
+                "Outage recovery must retain the original dirty editor DOM node.");
+            Assert.Equal(draft, await environment.InputValueAsync());
+            Assert.Equal(fixture.Alpha.DefaultTenantId, await page.GetByLabel("Tenant").InputValueAsync());
+            Assert.Equal(tabCount, await workspaceTabs.GetByRole(AriaRole.Tab).CountAsync());
+            await Assertions.Expect(selectedResource).ToHaveAttributeAsync("aria-selected", "true");
+            Assert.Equal(navigationCount, journal.DocumentNavigations);
+            Assert.Equal(0, journal.MetadataReadFailures);
+            await AssertNoReadableCredentialsAsync(page, journal);
+            Assert.True(journal.HandshakeHeadersSafe);
+            await journal.DrainAsync();
+            Assert.True(journal.ParseFailures == 0, journal.DescribeParseFailures());
         });
-        var page = await context.NewPageAsync();
-        var journal = new BrowserJournal(page, fixture.Alpha.DefaultTenantId);
-        await LoginAsync(page);
-        await WaitForInitialBootstrapAsync(journal, ct);
-        await page.GotoAsync(ResourceUrl(owned.Id, "configuration"));
-        await Assertions.Expect(page.GetByRole(AriaRole.Heading,
-            new PageGetByRoleOptions { Name = "Service configuration", Exact = true })).ToBeVisibleAsync();
-        await WaitUntilAsync(() => journal.HasCoverage(owned.Id),
-            TimeSpan.FromSeconds(30),
-            "The outage scenario did not establish acknowledged browser coverage.",
-            ct);
-        var originalConnection = journal.LatestCoveredConnection(owned.Id);
-        var navigationCount = journal.DocumentNavigations;
-        const string draft = "REALTIME_REDIS_OUTAGE_DRAFT=unsaved";
-        var environment = page.GetByLabel("Environment variables");
-        await environment.FillAsync(draft);
-        var originalEditor = await environment.ElementHandleAsync()
-                             ?? throw new InvalidOperationException("The dirty configuration editor is unavailable.");
-        var workspaceTabs = page.GetByRole(AriaRole.Tablist,
-            new PageGetByRoleOptions { Name = "Web service workspace", Exact = true });
-        var tabCount = await workspaceTabs.GetByRole(AriaRole.Tab).CountAsync();
-        var selectedResource = workspaceTabs.GetByRole(AriaRole.Tab,
-            new LocatorGetByRoleOptions { Name = owned.Name, Exact = false });
-        var sections = page.GetByRole(AriaRole.Tablist,
-            new PageGetByRoleOptions { Name = $"{owned.Name} sections", Exact = true });
-        var detailPath = $"/api/v1/web-services/{owned.Id}";
-        // This cleanup precedes the only outage action and executes before resource teardown.
-        // The command targets the isolated Aspire graph, never the reusable Kubernetes lab.
-        resources.Defer("restore owned realtime Redis", fixture.StartRealtimeRedisAsync);
-        await fixture.StopRealtimeRedisAsync(ct);
-        await WaitUntilAsync(() => !journal.HasCoverage(owned.Id),
-            TimeSpan.FromSeconds(30),
-            "The browser did not release real coverage after its owned Redis became unavailable.",
-            ct);
-        Assert.Equal(2, await UpdateMetadataAsync(owned.Id, 1, "redis-outage", ct));
-        await sections.GetByRole(AriaRole.Tab,
-            new LocatorGetByRoleOptions { Name = "Overview", Exact = true }).ClickAsync();
-        var visibleRevision = page.GetByText("Active revision", new PageGetByTextOptions { Exact = true })
-            .Locator("xpath=following-sibling::dd");
-        // Stable details retain their original manual fallback; only reconciling
-        // deployments use the existing 2.5s loop (43e5cab3 interval=false).
-        var refreshedAt = Stopwatch.GetTimestamp();
-        await page.GetByRole(AriaRole.Button,
-            new PageGetByRoleOptions { Name = "Refresh service details", Exact = true }).ClickAsync();
-        await WaitUntilAsync(() => journal.HasDetailRead(detailPath, refreshedAt),
-            TimeSpan.FromSeconds(15),
-            "The uncovered browser did not perform its requested manual detail GET.",
-            ct);
-        await Assertions.Expect(visibleRevision)
-            .ToHaveTextAsync("2", new LocatorAssertionsToHaveTextOptions { Timeout = 15000 });
-        Assert.False(journal.HasCoverage(owned.Id));
-        Assert.True(await originalEditor.EvaluateAsync<bool>("element => element.isConnected"),
-            "Redis fallback must keep the dirty configuration form mounted.");
-        var restoredAt = Stopwatch.GetTimestamp();
-        await fixture.StartRealtimeRedisAsync(ct);
-        await WaitUntilAsync(() => journal.Bootstraps.Any(value => value.Timestamp > restoredAt) &&
-                                   journal.LatestCoveredConnection(owned.Id, restoredAt) > originalConnection,
-            TimeSpan.FromSeconds(60),
-            "Redis recovery did not bootstrap and acknowledge a new browser connection.",
-            ct);
-        var bootstrap = journal.Bootstraps.Last(value => value.Timestamp > restoredAt);
-        await WaitUntilAsync(() => journal.HasDetailRead(detailPath, bootstrap.Timestamp),
-            TimeSpan.FromSeconds(15),
-            "Acknowledged recovery did not resync authoritative detail metadata.",
-            ct);
-        Assert.Equal(3, await UpdateMetadataAsync(owned.Id, 2, "redis-recovered", ct));
-        await WaitUntilAsync(() => journal.LastRevision(owned.Id) >= 3,
-            TimeSpan.FromSeconds(20),
-            "Recovered Redis did not deliver a committed metadata hint.",
-            ct);
-        await Assertions.Expect(visibleRevision)
-            .ToHaveTextAsync("3", new LocatorAssertionsToHaveTextOptions { Timeout = 20000 });
-        await sections.GetByRole(AriaRole.Tab,
-            new LocatorGetByRoleOptions { Name = "Configuration", Exact = true }).ClickAsync();
-        Assert.True(
-            await environment.EvaluateAsync<bool>("(element, original) => element === original", originalEditor),
-            "Outage recovery must retain the original dirty editor DOM node.");
-        Assert.Equal(draft, await environment.InputValueAsync());
-        Assert.Equal(fixture.Alpha.DefaultTenantId, await page.GetByLabel("Tenant").InputValueAsync());
-        Assert.Equal(tabCount, await workspaceTabs.GetByRole(AriaRole.Tab).CountAsync());
-        await Assertions.Expect(selectedResource).ToHaveAttributeAsync("aria-selected", "true");
-        Assert.Equal(navigationCount, journal.DocumentNavigations);
-        Assert.Equal(0, journal.MetadataReadFailures);
-        await AssertNoReadableCredentialsAsync(page, journal);
-        Assert.True(journal.HandshakeHeadersSafe);
-        await journal.DrainAsync();
-        Assert.True(journal.ParseFailures == 0, journal.DescribeParseFailures());
     }
 
     [Fact]
@@ -421,134 +427,137 @@ public sealed class RealtimeBrowserE2ETests(
     {
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
-        await using var resources = new TestResourceScope("realtime same-account tenant tabs E2E");
-        var alphaTenant = fixture.Alpha.DefaultTenantId;
-        var betaTenant = fixture.Beta.DefaultTenantId;
-        var member = await SendAsync(HttpMethod.Post,
-            $"/api/v1/tenants/{alphaTenant}/members",
-            new
-            {
-                userId = fixture.Beta.KeycloakUserId,
-                email = fixture.Beta.Email,
-                role = TenantRole.Member
-            },
-            ct);
-        var memberId = Text(member, "id");
-        resources.Defer("remove owned realtime Alpha membership",
-            cleanup => DeleteAsync($"/api/v1/tenants/{alphaTenant}/members/{memberId}", cleanup));
-        var alpha = await CreateOwnedServiceAsync(resources, ct);
-        var beta = await CreateOwnedServiceAsync(resources, ct, fixture.Beta);
-        await fixture.WaitForNamespaceCreationAsync(alpha.GroupId, ct);
-        await fixture.WaitForNamespaceCreationAsync(beta.GroupId, ct, fixture.Beta);
-        await fixture.WaitForWebServiceReadyAsync(alpha.GroupId, alpha.Name, ct);
-        await fixture.WaitForWebServiceReadyAsync(beta.GroupId, beta.Name, ct);
-        await fixture.UseInteractiveClientTokenLifespanAsync(resources, TimeSpan.FromMinutes(5), ct);
-        await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
-        await browserContainer.StartAsync(ct);
-        using var playwright = await Playwright.CreateAsync();
-        await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
-            new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
-        await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+        var resources = new TestResourceScope("realtime same-account tenant tabs E2E");
+        await resources.RunAsync(async () =>
         {
-            ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
-            IgnoreHTTPSErrors = true
-        });
-        var alphaPage = await context.NewPageAsync();
-        var alphaJournal = new BrowserJournal(alphaPage, alphaTenant);
-        await LoginAsync(alphaPage, fixture.Beta);
-        await WaitForInitialBootstrapAsync(alphaJournal, ct);
-        await alphaPage.GotoAsync(ResourceUrl(alpha.Id, "configuration", alphaTenant));
-        await Assertions.Expect(alphaPage.GetByLabel("Environment variables")).ToBeVisibleAsync();
-        await WaitUntilAsync(() => alphaJournal.HasCoverage(alpha.Id),
-            TimeSpan.FromSeconds(30),
-            "The shared account did not acknowledge its Alpha resource.",
-            ct);
-        const string alphaDraft = "REALTIME_ALPHA_TAB_DRAFT=unsaved";
-        await alphaPage.GetByLabel("Environment variables").FillAsync(alphaDraft);
-        var alphaEditor = await alphaPage.GetByLabel("Environment variables").ElementHandleAsync()
-                          ?? throw new InvalidOperationException("The Alpha dirty editor is unavailable.");
-        alphaJournal.TrackTenantReads();
-        var betaPage = await context.NewPageAsync();
-        var betaJournal = new BrowserJournal(betaPage, betaTenant);
-        // Same browser context: the real Keycloak SSO and HttpOnly realtime cookie are shared.
-        await betaPage.GotoAsync(ResourceUrl(beta.Id, "configuration", betaTenant));
-        await Assertions.Expect(betaPage.GetByLabel("Environment variables"))
-            .ToBeVisibleAsync(new LocatorAssertionsToBeVisibleOptions { Timeout = 30000 });
-        await WaitUntilAsync(() => betaJournal.HasCoverage(beta.Id),
-            TimeSpan.FromSeconds(30),
-            "The shared account did not acknowledge its Beta resource.",
-            ct);
-        const string betaDraft = "REALTIME_BETA_TAB_DRAFT=unsaved";
-        await betaPage.GetByLabel("Environment variables").FillAsync(betaDraft);
-        var betaEditor = await betaPage.GetByLabel("Environment variables").ElementHandleAsync()
-                         ?? throw new InvalidOperationException("The Beta dirty editor is unavailable.");
-        betaJournal.TrackTenantReads();
-        var alphaNavigation = alphaJournal.DocumentNavigations;
-        var betaNavigation = betaJournal.DocumentNavigations;
-        await alphaPage.BringToFrontAsync();
-        await ClickResourceSectionAsync(alphaPage, alpha.Name, "Overview");
-        await WaitUntilAsync(() => alphaJournal.HasCoverage(alpha.Id),
-            TimeSpan.FromSeconds(30),
-            "Activating Alpha did not restore its own acknowledged coverage.",
-            ct);
-        Assert.Equal(2, await UpdateMetadataAsync(alpha.Id, 1, "alpha-tab", ct));
-        await WaitUntilAsync(() => alphaJournal.LastRevision(alpha.Id) >= 2,
-            TimeSpan.FromSeconds(20),
-            "The committed Alpha change did not reach its owning tab.",
-            ct);
-        await Assertions.Expect(ActiveRevision(alphaPage)).ToHaveTextAsync("2");
-        await betaPage.BringToFrontAsync();
-        await ClickResourceSectionAsync(betaPage, beta.Name, "Overview");
-        await WaitUntilAsync(() => betaJournal.HasCoverage(beta.Id),
-            TimeSpan.FromSeconds(30),
-            "Activating Beta did not restore its own acknowledged coverage.",
-            ct);
-        await Assertions.Expect(ActiveRevision(betaPage)).ToHaveTextAsync("1");
-        Assert.Equal(2, await UpdateMetadataAsync(beta.Id, 1, "beta-tab-2", ct, owner: fixture.Beta));
-        Assert.Equal(3, await UpdateMetadataAsync(beta.Id, 2, "beta-tab-3", ct, owner: fixture.Beta));
-        await WaitUntilAsync(() => betaJournal.LastRevision(beta.Id) >= 3,
-            TimeSpan.FromSeconds(20),
-            "The committed Beta change did not reach its owning tab.",
-            ct);
-        await Assertions.Expect(ActiveRevision(betaPage)).ToHaveTextAsync("3");
-        await alphaPage.BringToFrontAsync();
-        await WaitUntilAsync(() => alphaJournal.HasCoverage(alpha.Id),
-            TimeSpan.FromSeconds(30),
-            "Returning to Alpha did not retain its independent resource coverage.",
-            ct);
-        await Assertions.Expect(ActiveRevision(alphaPage)).ToHaveTextAsync("2");
-        foreach (var (page, journal, owned, tenantId, draft, editor, navigation) in new[]
-                 {
+            var alphaTenant = fixture.Alpha.DefaultTenantId;
+            var betaTenant = fixture.Beta.DefaultTenantId;
+            var member = await SendAsync(HttpMethod.Post,
+                $"/api/v1/tenants/{alphaTenant}/members",
+                new
+                {
+                    userId = fixture.Beta.KeycloakUserId,
+                    email = fixture.Beta.Email,
+                    role = TenantRole.Member
+                },
+                ct);
+            var memberId = Text(member, "id");
+            resources.Defer("remove owned realtime Alpha membership",
+                cleanup => DeleteAsync($"/api/v1/tenants/{alphaTenant}/members/{memberId}", cleanup));
+            var alpha = await CreateOwnedServiceAsync(resources, ct);
+            var beta = await CreateOwnedServiceAsync(resources, ct, fixture.Beta);
+            await fixture.WaitForNamespaceCreationAsync(alpha.GroupId, ct);
+            await fixture.WaitForNamespaceCreationAsync(beta.GroupId, ct, fixture.Beta);
+            await fixture.WaitForWebServiceReadyAsync(alpha.GroupId, alpha.Name, ct);
+            await fixture.WaitForWebServiceReadyAsync(beta.GroupId, beta.Name, ct);
+            await fixture.UseInteractiveClientTokenLifespanAsync(resources, TimeSpan.FromMinutes(5), ct);
+            await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            await browserContainer.StartAsync(ct);
+            using var playwright = await Playwright.CreateAsync();
+            await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
+                new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
+            await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+            {
+                ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
+                IgnoreHTTPSErrors = true
+            });
+            var alphaPage = await context.NewPageAsync();
+            var alphaJournal = new BrowserJournal(alphaPage, alphaTenant);
+            await LoginAsync(alphaPage, fixture.Beta);
+            await WaitForInitialBootstrapAsync(alphaJournal, ct);
+            await alphaPage.GotoAsync(ResourceUrl(alpha.Id, "configuration", alphaTenant));
+            await Assertions.Expect(alphaPage.GetByLabel("Environment variables")).ToBeVisibleAsync();
+            await WaitUntilAsync(() => alphaJournal.HasCoverage(alpha.Id),
+                TimeSpan.FromSeconds(30),
+                "The shared account did not acknowledge its Alpha resource.",
+                ct);
+            const string alphaDraft = "REALTIME_ALPHA_TAB_DRAFT=unsaved";
+            await alphaPage.GetByLabel("Environment variables").FillAsync(alphaDraft);
+            var alphaEditor = await alphaPage.GetByLabel("Environment variables").ElementHandleAsync()
+                              ?? throw new InvalidOperationException("The Alpha dirty editor is unavailable.");
+            alphaJournal.TrackTenantReads();
+            var betaPage = await context.NewPageAsync();
+            var betaJournal = new BrowserJournal(betaPage, betaTenant);
+            // Same browser context: the real Keycloak SSO and HttpOnly realtime cookie are shared.
+            await betaPage.GotoAsync(ResourceUrl(beta.Id, "configuration", betaTenant));
+            await Assertions.Expect(betaPage.GetByLabel("Environment variables"))
+                .ToBeVisibleAsync(new LocatorAssertionsToBeVisibleOptions { Timeout = 30000 });
+            await WaitUntilAsync(() => betaJournal.HasCoverage(beta.Id),
+                TimeSpan.FromSeconds(30),
+                "The shared account did not acknowledge its Beta resource.",
+                ct);
+            const string betaDraft = "REALTIME_BETA_TAB_DRAFT=unsaved";
+            await betaPage.GetByLabel("Environment variables").FillAsync(betaDraft);
+            var betaEditor = await betaPage.GetByLabel("Environment variables").ElementHandleAsync()
+                             ?? throw new InvalidOperationException("The Beta dirty editor is unavailable.");
+            betaJournal.TrackTenantReads();
+            var alphaNavigation = alphaJournal.DocumentNavigations;
+            var betaNavigation = betaJournal.DocumentNavigations;
+            await alphaPage.BringToFrontAsync();
+            await ClickResourceSectionAsync(alphaPage, alpha.Name, "Overview");
+            await WaitUntilAsync(() => alphaJournal.HasCoverage(alpha.Id),
+                TimeSpan.FromSeconds(30),
+                "Activating Alpha did not restore its own acknowledged coverage.",
+                ct);
+            Assert.Equal(2, await UpdateMetadataAsync(alpha.Id, 1, "alpha-tab", ct));
+            await WaitUntilAsync(() => alphaJournal.LastRevision(alpha.Id) >= 2,
+                TimeSpan.FromSeconds(20),
+                "The committed Alpha change did not reach its owning tab.",
+                ct);
+            await Assertions.Expect(ActiveRevision(alphaPage)).ToHaveTextAsync("2");
+            await betaPage.BringToFrontAsync();
+            await ClickResourceSectionAsync(betaPage, beta.Name, "Overview");
+            await WaitUntilAsync(() => betaJournal.HasCoverage(beta.Id),
+                TimeSpan.FromSeconds(30),
+                "Activating Beta did not restore its own acknowledged coverage.",
+                ct);
+            await Assertions.Expect(ActiveRevision(betaPage)).ToHaveTextAsync("1");
+            Assert.Equal(2, await UpdateMetadataAsync(beta.Id, 1, "beta-tab-2", ct, owner: fixture.Beta));
+            Assert.Equal(3, await UpdateMetadataAsync(beta.Id, 2, "beta-tab-3", ct, owner: fixture.Beta));
+            await WaitUntilAsync(() => betaJournal.LastRevision(beta.Id) >= 3,
+                TimeSpan.FromSeconds(20),
+                "The committed Beta change did not reach its owning tab.",
+                ct);
+            await Assertions.Expect(ActiveRevision(betaPage)).ToHaveTextAsync("3");
+            await alphaPage.BringToFrontAsync();
+            await WaitUntilAsync(() => alphaJournal.HasCoverage(alpha.Id),
+                TimeSpan.FromSeconds(30),
+                "Returning to Alpha did not retain its independent resource coverage.",
+                ct);
+            await Assertions.Expect(ActiveRevision(alphaPage)).ToHaveTextAsync("2");
+            foreach (var (page, journal, owned, tenantId, draft, editor, navigation) in new[]
+                     {
                      (alphaPage, alphaJournal, alpha, alphaTenant, alphaDraft, alphaEditor, alphaNavigation),
                      (betaPage, betaJournal, beta, betaTenant, betaDraft, betaEditor, betaNavigation)
                  })
-        {
-            await page.BringToFrontAsync();
-            await ClickResourceSectionAsync(page, owned.Name, "Configuration");
-            Assert.Equal(tenantId, await page.GetByLabel("Tenant").InputValueAsync());
-            Assert.Equal(draft, await page.GetByLabel("Environment variables").InputValueAsync());
-            Assert.True(await page.GetByLabel("Environment variables")
-                .EvaluateAsync<bool>("(element, original) => element === original", editor));
-            var foreign = owned == alpha ? beta : alpha;
-            Assert.Equal(0,
-                await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = foreign.Name, Exact = true })
-                    .CountAsync());
-            var safeWorkspace = await page.EvaluateAsync<bool>("""
+            {
+                await page.BringToFrontAsync();
+                await ClickResourceSectionAsync(page, owned.Name, "Configuration");
+                Assert.Equal(tenantId, await page.GetByLabel("Tenant").InputValueAsync());
+                Assert.Equal(draft, await page.GetByLabel("Environment variables").InputValueAsync());
+                Assert.True(await page.GetByLabel("Environment variables")
+                    .EvaluateAsync<bool>("(element, original) => element === original", editor));
+                var foreign = owned == alpha ? beta : alpha;
+                Assert.Equal(0,
+                    await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = foreign.Name, Exact = true })
+                        .CountAsync());
+                var safeWorkspace = await page.EvaluateAsync<bool>("""
                 ([tenant, resource]) => {
                   const records = Object.entries(localStorage).filter(([key]) => key.endsWith('.' + tenant));
                   return records.length > 0 && records.every(([, value]) => !value.includes(resource));
                 }
                 """,
-                new[] { tenantId, foreign.Id });
-            Assert.True(safeWorkspace, "Persisted workspace references must exclude the other tenant's resource.");
-            Assert.Equal(0, journal.TenantReadScopeViolations);
-            Assert.Equal(0, journal.ForeignTenantHints);
-            Assert.Equal(navigation, journal.DocumentNavigations);
-            await AssertNoReadableCredentialsAsync(page, journal);
-            Assert.True(journal.HandshakeHeadersSafe);
-            await journal.DrainAsync();
-            Assert.True(journal.ParseFailures == 0, journal.DescribeParseFailures());
-        }
+                    new[] { tenantId, foreign.Id });
+                Assert.True(safeWorkspace, "Persisted workspace references must exclude the other tenant's resource.");
+                Assert.Equal(0, journal.TenantReadScopeViolations);
+                Assert.Equal(0, journal.ForeignTenantHints);
+                Assert.Equal(navigation, journal.DocumentNavigations);
+                await AssertNoReadableCredentialsAsync(page, journal);
+                Assert.True(journal.HandshakeHeadersSafe);
+                await journal.DrainAsync();
+                Assert.True(journal.ParseFailures == 0, journal.DescribeParseFailures());
+            }
+        });
     }
 
     private static ILocator ActiveRevision(IPage page) => page
@@ -566,52 +575,55 @@ public sealed class RealtimeBrowserE2ETests(
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
         const int windowSeconds = 65;
-        await using var resources = new TestResourceScope("realtime browser polling E2E");
-        var owned = await CreateOwnedServiceAsync(resources, ct);
-        await fixture.WaitForNamespaceCreationAsync(owned.GroupId, ct);
-        await WaitForReleaseAsync(owned.Id, 1, "Succeeded", ct);
-        // The target belongs to this disposable fixture's Mongo/API graph. This follows the
-        // ReleaseBrowserE2ETests pattern; the shared lab and its credentials remain untouched.
-        resources.Defer("restore isolated realtime target availability",
-            cleanup => SetTargetEnabledAsync(owned.TargetId, true, cleanup));
-        await SetTargetEnabledAsync(owned.TargetId, false, ct);
-        await SendAsync(HttpMethod.Post, $"/api/v1/web-services/{owned.Id}/redeploy?expectedRevision=1", null, ct);
-        await WaitUntilAsync(async () =>
-            {
-                var value = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{owned.Id}", null, ct);
-                var placement = value.GetProperty("deployments")[0];
-                return Text(placement, "status") == "Failed" &&
-                       Text(placement, "failureCode") == "DeploymentTargetDisabled";
-            },
-            TimeSpan.FromMinutes(2),
-            "The real pending release did not reach its controlled disabled-target state.",
-            ct);
-        // Disabled-target failures are retryable. Use the public fenced retry command
-        // to reach a backoff long enough for both windows, rather than measuring real
-        // reconciliation writes as if they were idle polling.
-        await PrepareQuietFailedDeploymentAsync(owned, TimeSpan.FromSeconds(windowSeconds * 2 + 60), ct);
-        await fixture.UseInteractiveClientTokenLifespanAsync(resources, TimeSpan.FromMinutes(5), ct);
+        var resources = new TestResourceScope("realtime browser polling E2E");
+        await resources.RunAsync(async () =>
+        {
+            var owned = await CreateOwnedServiceAsync(resources, ct);
+            await fixture.WaitForNamespaceCreationAsync(owned.GroupId, ct);
+            await WaitForReleaseAsync(owned.Id, 1, "Succeeded", ct);
+            // The target belongs to this disposable fixture's Mongo/API graph. This follows the
+            // ReleaseBrowserE2ETests pattern; the shared lab and its credentials remain untouched.
+            resources.Defer("restore isolated realtime target availability",
+                cleanup => SetTargetEnabledAsync(owned.TargetId, true, cleanup));
+            await SetTargetEnabledAsync(owned.TargetId, false, ct);
+            await SendAsync(HttpMethod.Post, $"/api/v1/web-services/{owned.Id}/redeploy?expectedRevision=1", null, ct);
+            await WaitUntilAsync(async probeCancellation =>
+                {
+                    var value = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{owned.Id}", null, probeCancellation);
+                    var placement = value.GetProperty("deployments")[0];
+                    return Text(placement, "status") == "Failed" &&
+                           Text(placement, "failureCode") == "DeploymentTargetDisabled";
+                },
+                TimeSpan.FromMinutes(2),
+                "The real pending release did not reach its controlled disabled-target state.",
+                ct);
+            // Disabled-target failures are retryable. Use the public fenced retry command
+            // to reach a backoff long enough for both windows, rather than measuring real
+            // reconciliation writes as if they were idle polling.
+            await PrepareQuietFailedDeploymentAsync(owned, TimeSpan.FromSeconds(windowSeconds * 2 + 60), ct);
+            await fixture.UseInteractiveClientTokenLifespanAsync(resources, TimeSpan.FromMinutes(5), ct);
 
-        await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
-        await browserContainer.StartAsync(ct);
-        using var playwright = await Playwright.CreateAsync();
-        await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
-            new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
-        var baseline = await MeasurePendingReadsAsync(browser, owned, disconnected: true, windowSeconds, ct);
-        var covered = await MeasurePendingReadsAsync(browser, owned, disconnected: false, windowSeconds, ct);
-        Assert.True(baseline >= 20,
-            "The pending-release fallback must establish an actual 2.5-second polling baseline.");
-        var reduction = 1d - (double)covered / baseline;
-        output.WriteLine(
-            $"Controlled pending release: {windowSeconds}s per window; fallback GETs={baseline}; covered GETs={covered}; reduction={reduction:P1}.");
-        output.WriteLine(
-            "Ordinary 20s polling versus the 60s safety interval has a theoretical 66.7% steady-state reduction; this 80% gate is specific to the controlled 2.5s pending-release pilot.");
-        Assert.True(reduction >= 0.8,
-            "Acknowledged pilot coverage must reduce controlled pending-release metadata GETs by at least 80% against its measured disconnected baseline.");
-        await SetTargetEnabledAsync(owned.TargetId, true, ct);
-        // Quiet sampling deliberately retains a long failure backoff. Resume this same
-        // owned Apply through its public retry command after restoring the target.
-        await WaitForQuietReleaseRecoveryAsync(owned, resourceRevision: 2, ct);
+            await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            await browserContainer.StartAsync(ct);
+            using var playwright = await Playwright.CreateAsync();
+            await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
+                new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
+            var baseline = await MeasurePendingReadsAsync(browser, owned, disconnected: true, windowSeconds, ct);
+            var covered = await MeasurePendingReadsAsync(browser, owned, disconnected: false, windowSeconds, ct);
+            Assert.True(baseline >= 20,
+                "The pending-release fallback must establish an actual 2.5-second polling baseline.");
+            var reduction = 1d - (double)covered / baseline;
+            output.WriteLine(
+                $"Controlled pending release: {windowSeconds}s per window; fallback GETs={baseline}; covered GETs={covered}; reduction={reduction:P1}.");
+            output.WriteLine(
+                "Ordinary 20s polling versus the 60s safety interval has a theoretical 66.7% steady-state reduction; this 80% gate is specific to the controlled 2.5s pending-release pilot.");
+            Assert.True(reduction >= 0.8,
+                "Acknowledged pilot coverage must reduce controlled pending-release metadata GETs by at least 80% against its measured disconnected baseline.");
+            await SetTargetEnabledAsync(owned.TargetId, true, ct);
+            // Quiet sampling deliberately retains a long failure backoff. Resume this same
+            // owned Apply through its public retry command after restoring the target.
+            await WaitForQuietReleaseRecoveryAsync(owned, resourceRevision: 2, ct);
+        });
     }
 
     [Fact]
@@ -619,151 +631,154 @@ public sealed class RealtimeBrowserE2ETests(
     {
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
-        await using var resources = new TestResourceScope("realtime browser metadata E2E");
-        var owned = await CreateOwnedServiceAsync(resources, ct);
-        await fixture.WaitForNamespaceCreationAsync(owned.GroupId, ct);
-        await fixture.WaitForWebServiceReadyAsync(owned.GroupId, owned.Name, ct);
-        await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
-        await browserContainer.StartAsync(ct);
-        using var playwright = await Playwright.CreateAsync();
-        await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
-            new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
-        await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+        var resources = new TestResourceScope("realtime browser metadata E2E");
+        await resources.RunAsync(async () =>
         {
-            ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
-            IgnoreHTTPSErrors = true
-        });
-        var page = await context.NewPageAsync();
-        var journal = new BrowserJournal(page, fixture.Alpha.DefaultTenantId);
-        await LoginAsync(page);
-        await WaitForInitialBootstrapAsync(journal, ct);
-        await page.GotoAsync(ResourceUrl(owned.Id, "overview"));
-        var visibleRevision = page.Locator(".web-service-overview dl div")
-            .Filter(new LocatorFilterOptions { HasText = "Active revision" }).Locator("dd");
-        await Assertions.Expect(visibleRevision).ToHaveTextAsync("1");
-        await WaitUntilAsync(() => journal.HasCoverage(owned.Id),
-            TimeSpan.FromSeconds(30),
-            "The metadata pilot did not acknowledge real coverage.",
-            ct);
-        var detailPath = $"/api/v1/web-services/{owned.Id}";
-        var acknowledgedAt = Stopwatch.GetTimestamp();
-        try
-        {
-            await WaitUntilAsync(() => Stopwatch.GetElapsedTime(acknowledgedAt) >= TimeSpan.FromMilliseconds(500) &&
-                                       journal.PilotReadsQuiet(detailPath, TimeSpan.FromMilliseconds(500)),
-                TimeSpan.FromSeconds(10),
-                "Initial metadata subscriptions and their HTTP resync did not settle.",
-                ct);
-        }
-        catch (TimeoutException)
-        {
-            output.WriteLine(journal.DescribePilotReads(detailPath));
-            throw;
-        }
-
-        var detailRoute = $"**{detailPath}";
-        var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var delivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var reads = 0;
-        var canceled = 0;
-        page.RequestFailed += (_, request) =>
-        {
-            if (request.Method == "GET" && new Uri(request.Url).AbsolutePath == detailPath)
-                Interlocked.Increment(ref canceled);
-        };
-        await page.RouteAsync(detailRoute,
-            async route =>
+            var owned = await CreateOwnedServiceAsync(resources, ct);
+            await fixture.WaitForNamespaceCreationAsync(owned.GroupId, ct);
+            await fixture.WaitForWebServiceReadyAsync(owned.GroupId, owned.Name, ct);
+            await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            await browserContainer.StartAsync(ct);
+            using var playwright = await Playwright.CreateAsync();
+            await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
+                new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
+            await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
             {
-                if (route.Request.Method != "GET")
-                {
-                    await route.ContinueAsync();
-                    return;
-                }
-
-                if (Interlocked.Increment(ref reads) != 1)
-                {
-                    await route.ContinueAsync();
-                    return;
-                }
-
-                IAPIResponse? realResponse = null;
-                try
-                {
-                    realResponse = await route.FetchAsync();
-                    Assert.True(realResponse.Ok, "The delayed snapshot must come from the real authenticated API.");
-                    held.TrySetResult();
-                    await release.Task;
-                    await route.FulfillAsync(new RouteFulfillOptions { Response = realResponse });
-                    delivered.TrySetResult();
-                }
-                catch (Exception)
-                {
-                    var failure = new InvalidOperationException("The delayed metadata interception failed.");
-                    held.TrySetException(failure);
-                    delivered.TrySetException(failure);
-                }
-                finally
-                {
-                    if (realResponse is not null)
-                        await realResponse.DisposeAsync();
-                }
+                ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
+                IgnoreHTTPSErrors = true
             });
-        long revision = 1;
-        try
-        {
-            revision = await UpdateMetadataAsync(owned.Id, revision, "burst-0", ct);
-            await held.Task.WaitAsync(TimeSpan.FromSeconds(20), ct);
-            for (var index = 1; index < 8; index++)
-                revision = await UpdateMetadataAsync(owned.Id, revision, $"burst-{index}", ct);
-            await WaitForReleaseAsync(owned.Id, revision, "Succeeded", ct);
-            await WaitUntilAsync(() =>
-                    journal.LastRevision(owned.Id) >= revision && journal.IsQuiet(owned.Id, TimeSpan.FromSeconds(2)),
-                TimeSpan.FromSeconds(20),
-                "The committed metadata burst did not reach the real browser before releasing its old GET.",
+            var page = await context.NewPageAsync();
+            var journal = new BrowserJournal(page, fixture.Alpha.DefaultTenantId);
+            await LoginAsync(page);
+            await WaitForInitialBootstrapAsync(journal, ct);
+            await page.GotoAsync(ResourceUrl(owned.Id, "overview"));
+            var visibleRevision = page.Locator(".web-service-overview dl div")
+                .Filter(new LocatorFilterOptions { HasText = "Active revision" }).Locator("dd");
+            await Assertions.Expect(visibleRevision).ToHaveTextAsync("1");
+            await WaitUntilAsync(() => journal.HasCoverage(owned.Id),
+                TimeSpan.FromSeconds(30),
+                "The metadata pilot did not acknowledge real coverage.",
                 ct);
-            Assert.Equal(1, Volatile.Read(ref reads));
-            Assert.Equal(0, Volatile.Read(ref canceled));
-            release.TrySetResult();
-            await delivered.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
-            await Assertions.Expect(visibleRevision).ToHaveTextAsync(
-                revision.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                new LocatorAssertionsToHaveTextOptions { Timeout = 10_000 });
-            await WaitUntilAsync(() => journal.IsQuiet(owned.Id, TimeSpan.FromSeconds(1)),
-                TimeSpan.FromSeconds(5),
-                "The trailing metadata read did not settle.",
-                ct);
-            Assert.Equal(2, Volatile.Read(ref reads));
-            Assert.Equal(0, Volatile.Read(ref canceled));
-        }
-        finally
-        {
-            release.TrySetResult();
-            await page.UnrouteAsync(detailRoute);
-        }
+            var detailPath = $"/api/v1/web-services/{owned.Id}";
+            var acknowledgedAt = Stopwatch.GetTimestamp();
+            try
+            {
+                await WaitUntilAsync(() => Stopwatch.GetElapsedTime(acknowledgedAt) >= TimeSpan.FromMilliseconds(500) &&
+                                           journal.PilotReadsQuiet(detailPath, TimeSpan.FromMilliseconds(500)),
+                    TimeSpan.FromSeconds(10),
+                    "Initial metadata subscriptions and their HTTP resync did not settle.",
+                    ct);
+            }
+            catch (TimeoutException)
+            {
+                output.WriteLine(journal.DescribePilotReads(detailPath));
+                throw;
+            }
 
-        var samples = new List<double>();
-        for (var index = 0; index < 20; index++)
-        {
-            // Starting before the write includes its request/commit latency and therefore bounds
-            // commit-to-visible-revision latency conservatively without a product timing hook.
-            var started = Stopwatch.GetTimestamp();
-            revision = await UpdateMetadataAsync(owned.Id, revision, $"latency-{index}", ct);
-            await Assertions.Expect(visibleRevision).ToHaveTextAsync(
-                revision.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                new LocatorAssertionsToHaveTextOptions { Timeout = 10_000 });
-            samples.Add(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-        }
+            var detailRoute = $"**{detailPath}";
+            var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var delivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var reads = 0;
+            var canceled = 0;
+            page.RequestFailed += (_, request) =>
+            {
+                if (request.Method == "GET" && new Uri(request.Url).AbsolutePath == detailPath)
+                    Interlocked.Increment(ref canceled);
+            };
+            await page.RouteAsync(detailRoute,
+                async route =>
+                {
+                    if (route.Request.Method != "GET")
+                    {
+                        await route.ContinueAsync();
+                        return;
+                    }
 
-        samples.Sort();
-        var p95 = samples[(int)Math.Ceiling(samples.Count * 0.95) - 1];
-        output.WriteLine(
-            $"Committed WS metadata: {samples.Count} write-start-to-visible-revision samples; p95={p95:F0}ms (includes write request and commit).");
-        Assert.True(p95 <= 3000,
-            "The sampled metadata commit-to-visible-revision p95 upper bound must be at most three seconds.");
-        await AssertNoReadableCredentialsAsync(page, journal);
-        await journal.DrainAsync();
-        Assert.True(journal.ParseFailures == 0, journal.DescribeParseFailures());
+                    if (Interlocked.Increment(ref reads) != 1)
+                    {
+                        await route.ContinueAsync();
+                        return;
+                    }
+
+                    IAPIResponse? realResponse = null;
+                    try
+                    {
+                        realResponse = await route.FetchAsync();
+                        Assert.True(realResponse.Ok, "The delayed snapshot must come from the real authenticated API.");
+                        held.TrySetResult();
+                        await release.Task;
+                        await route.FulfillAsync(new RouteFulfillOptions { Response = realResponse });
+                        delivered.TrySetResult();
+                    }
+                    catch (Exception)
+                    {
+                        var failure = new InvalidOperationException("The delayed metadata interception failed.");
+                        held.TrySetException(failure);
+                        delivered.TrySetException(failure);
+                    }
+                    finally
+                    {
+                        if (realResponse is not null)
+                            await realResponse.DisposeAsync();
+                    }
+                });
+            long revision = 1;
+            try
+            {
+                revision = await UpdateMetadataAsync(owned.Id, revision, "burst-0", ct);
+                await held.Task.WaitAsync(TimeSpan.FromSeconds(20), ct);
+                for (var index = 1; index < 8; index++)
+                    revision = await UpdateMetadataAsync(owned.Id, revision, $"burst-{index}", ct);
+                await WaitForReleaseAsync(owned.Id, revision, "Succeeded", ct);
+                await WaitUntilAsync(() =>
+                        journal.LastRevision(owned.Id) >= revision && journal.IsQuiet(owned.Id, TimeSpan.FromSeconds(2)),
+                    TimeSpan.FromSeconds(20),
+                    "The committed metadata burst did not reach the real browser before releasing its old GET.",
+                    ct);
+                Assert.Equal(1, Volatile.Read(ref reads));
+                Assert.Equal(0, Volatile.Read(ref canceled));
+                release.TrySetResult();
+                await delivered.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
+                await Assertions.Expect(visibleRevision).ToHaveTextAsync(
+                    revision.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    new LocatorAssertionsToHaveTextOptions { Timeout = 10_000 });
+                await WaitUntilAsync(() => journal.IsQuiet(owned.Id, TimeSpan.FromSeconds(1)),
+                    TimeSpan.FromSeconds(5),
+                    "The trailing metadata read did not settle.",
+                    ct);
+                Assert.Equal(2, Volatile.Read(ref reads));
+                Assert.Equal(0, Volatile.Read(ref canceled));
+            }
+            finally
+            {
+                release.TrySetResult();
+                await page.UnrouteAsync(detailRoute);
+            }
+
+            var samples = new List<double>();
+            for (var index = 0; index < 20; index++)
+            {
+                // Starting before the write includes its request/commit latency and therefore bounds
+                // commit-to-visible-revision latency conservatively without a product timing hook.
+                var started = Stopwatch.GetTimestamp();
+                revision = await UpdateMetadataAsync(owned.Id, revision, $"latency-{index}", ct);
+                await Assertions.Expect(visibleRevision).ToHaveTextAsync(
+                    revision.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    new LocatorAssertionsToHaveTextOptions { Timeout = 10_000 });
+                samples.Add(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            }
+
+            samples.Sort();
+            var p95 = samples[(int)Math.Ceiling(samples.Count * 0.95) - 1];
+            output.WriteLine(
+                $"Committed WS metadata: {samples.Count} write-start-to-visible-revision samples; p95={p95:F0}ms (includes write request and commit).");
+            Assert.True(p95 <= 3000,
+                "The sampled metadata commit-to-visible-revision p95 upper bound must be at most three seconds.");
+            await AssertNoReadableCredentialsAsync(page, journal);
+            await journal.DrainAsync();
+            Assert.True(journal.ParseFailures == 0, journal.DescribeParseFailures());
+        });
     }
 
     private async Task<int> MeasurePendingReadsAsync(IBrowser browser,
@@ -795,12 +810,20 @@ public sealed class RealtimeBrowserE2ETests(
         // Wait for initial reads and the subscribe acknowledgement's resync outside the window.
         var detailPath = $"/api/v1/web-services/{owned.Id}";
         var acknowledgedAt = Stopwatch.GetTimestamp();
-        await WaitUntilAsync(() => Stopwatch.GetElapsedTime(acknowledgedAt) >= TimeSpan.FromMilliseconds(500) &&
-                                   journal.PilotReadsQuiet(detailPath, TimeSpan.FromMilliseconds(500)) &&
-                                   (disconnected || journal.IsQuiet(owned.Id, TimeSpan.FromSeconds(3))),
-            TimeSpan.FromSeconds(10),
-            "Initial pending-release metadata reads did not settle.",
-            ct);
+        try
+        {
+            await WaitUntilAsync(() => Stopwatch.GetElapsedTime(acknowledgedAt) >= TimeSpan.FromMilliseconds(500) &&
+                                       journal.PilotReadsQuiet(detailPath, TimeSpan.FromMilliseconds(500)) &&
+                                       (disconnected || journal.IsQuiet(owned.Id, TimeSpan.FromSeconds(3))),
+                TimeSpan.FromSeconds(10),
+                "Initial pending-release metadata reads did not settle.",
+                ct);
+        }
+        catch (TimeoutException)
+        {
+            output.WriteLine(journal.DescribePilotReads(detailPath));
+            throw;
+        }
         var before = await LoadQuietOperationAsync(owned.Id, ct);
         Assert.Equal("Failed", Text(before, "phase"));
         Assert.True(before.GetProperty("retryNotBeforeUtc").GetDateTime().ToUniversalTime() >
@@ -852,9 +875,9 @@ public sealed class RealtimeBrowserE2ETests(
         for (var attempt = 0; attempt < 6; attempt++)
         {
             JsonElement operation = default;
-            await WaitUntilAsync(async () =>
+            await WaitUntilAsync(async probeCancellation =>
                 {
-                    operation = await LoadQuietOperationAsync(owned.Id, ct);
+                    operation = await LoadQuietOperationAsync(owned.Id, probeCancellation);
                     return Text(operation, "phase") == "Failed" && operation.GetProperty("retryable").GetBoolean();
                 },
                 TimeSpan.FromMinutes(1),
@@ -874,9 +897,9 @@ public sealed class RealtimeBrowserE2ETests(
             if (response.StatusCode == HttpStatusCode.Conflict)
                 continue; // A real recovery race requires a fresh state.
             Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
-            await WaitUntilAsync(async () =>
+            await WaitUntilAsync(async probeCancellation =>
                 {
-                    var current = await LoadQuietOperationAsync(owned.Id, ct);
+                    var current = await LoadQuietOperationAsync(owned.Id, probeCancellation);
                     return Text(current, "phase") == "Failed" && current.GetProperty("attemptCount").GetInt32() > count;
                 },
                 TimeSpan.FromMinutes(1),
@@ -892,9 +915,9 @@ public sealed class RealtimeBrowserE2ETests(
     {
         string? expectedDeploymentId = null;
         string? lastState = null;
-        await WaitUntilAsync(async () =>
+        await WaitUntilAsync(async probeCancellation =>
             {
-                var operation = await LoadQuietOperationAsync(owned.Id, ct);
+                var operation = await LoadQuietOperationAsync(owned.Id, probeCancellation);
                 var deployment = operation.GetProperty("deployment");
                 var placement = deployment.GetProperty("placement");
                 Assert.Equal("pole/web-service", Text(deployment, "resourceType"));
@@ -932,7 +955,7 @@ public sealed class RealtimeBrowserE2ETests(
                     lastState = state;
                 }
 
-                var history = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{owned.Id}/releases", null, ct);
+                var history = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{owned.Id}/releases", null, probeCancellation);
                 Assert.Equal(resourceRevision, history.GetProperty("activeRevision").GetInt64());
                 if (history.GetProperty("releases").GetProperty("items").EnumerateArray().Any(value =>
                         value.GetProperty("resourceRevision").GetInt64() == resourceRevision &&
@@ -946,7 +969,7 @@ public sealed class RealtimeBrowserE2ETests(
                     $"/api/v1/resource-deployments/{deploymentId}/retry?expectedRevision={revision}&expectedOperation=Apply",
                     fixture.Alpha,
                     fixture.Alpha.DefaultTenantId);
-                using var response = await fixture.Api.SendAsync(retry, ct);
+                using var response = await fixture.Api.SendAsync(retry, probeCancellation);
                 if (response.StatusCode == HttpStatusCode.Conflict)
                 {
                     output.WriteLine("Quiet recovery: retry=Conflict; reloading current owned operation.");
@@ -987,9 +1010,9 @@ public sealed class RealtimeBrowserE2ETests(
 
     private async Task WaitForReleaseAsync(string id, long revision, string outcome, CancellationToken ct)
     {
-        await WaitUntilAsync(async () =>
+        await WaitUntilAsync(async probeCancellation =>
             {
-                var history = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{id}/releases", null, ct);
+                var history = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{id}/releases", null, probeCancellation);
                 return history.GetProperty("releases").GetProperty("items").EnumerateArray().Any(value =>
                     value.GetProperty("resourceRevision").GetInt64() == revision && Text(value, "outcome") == outcome);
             },
@@ -1149,14 +1172,14 @@ public sealed class RealtimeBrowserE2ETests(
     {
         owner ??= fixture.Alpha;
         await DeleteAsync($"/api/v1/web-services/{id}", ct, owner);
-        await WaitUntilAsync(async () =>
+        await WaitUntilAsync(async probeCancellation =>
             {
                 using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Get,
                     $"/api/v1/web-services/{id}",
                     owner,
                     owner.DefaultTenantId);
-                using var response = await fixture.Api.SendAsync(request, ct);
-                return response.StatusCode == HttpStatusCode.NotFound;
+                using var response = await fixture.Api.SendAsync(request, probeCancellation);
+                return TestDeletion.IsComplete(response.StatusCode);
             },
             TimeSpan.FromMinutes(3),
             "The owned realtime service did not complete cleanup.",
@@ -1181,24 +1204,12 @@ public sealed class RealtimeBrowserE2ETests(
     private static string Text(JsonElement value, string property) => value.GetProperty(property).GetString()!;
 
     private static Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout, string message, CancellationToken ct) =>
-        WaitUntilAsync(() => Task.FromResult(condition()), timeout, message, ct);
+        TestWait.UntilAsync(_ => Task.FromResult(condition()), timeout, message, ct);
 
-    private static async Task WaitUntilAsync(Func<Task<bool>> condition,
+    private static Task WaitUntilAsync(Func<CancellationToken, Task<bool>> condition,
         TimeSpan timeout,
         string message,
-        CancellationToken ct)
-    {
-        var deadline = Stopwatch.GetTimestamp() + (long)(timeout.TotalSeconds * Stopwatch.Frequency);
-        while (Stopwatch.GetTimestamp() < deadline)
-        {
-            ct.ThrowIfCancellationRequested();
-            if (await condition())
-                return;
-            await Task.Delay(100, ct);
-        }
-
-        throw new TimeoutException(message);
-    }
+        CancellationToken ct) => TestWait.UntilAsync(condition, timeout, message, ct);
 
     private static async Task AssertNoReadableCredentialsAsync(IPage page, BrowserJournal journal)
     {
@@ -1296,6 +1307,7 @@ public sealed class RealtimeBrowserE2ETests(
                     Interlocked.Increment(ref documentNavigations);
                     Interlocked.Exchange(ref documentStartedAt, Stopwatch.GetTimestamp());
                     coverage.Navigate();
+                    reads.Navigate();
                 }
 
                 CheckUrl(request.Url);
@@ -1364,7 +1376,7 @@ public sealed class RealtimeBrowserE2ETests(
             value.StartedAt >= started && value.StartedAt <= ended && PilotPath(value.Path, detailPath));
 
         public bool HasDetailRead(string path, long after) => reads.Snapshot().Any(value =>
-            value.Path == path && value.StartedAt > after && value.Outcome == HttpReadOutcome.Succeeded);
+            value.Document == DocumentNavigations && value.Path == path && value.StartedAt > after && value.Outcome == HttpReadOutcome.Succeeded);
 
         public bool PilotReadsQuiet(string detailPath, TimeSpan quiet) =>
             reads.Quiet(path => PilotPath(path, detailPath), quiet);
@@ -1373,9 +1385,9 @@ public sealed class RealtimeBrowserE2ETests(
             path == detailPath || path == $"{detailPath}/releases";
 
         public string DescribePilotReads(string detailPath) =>
-            "Pilot read outcomes: " + string.Join("; ", reads.Snapshot().Where(value => PilotPath(value.Path, detailPath))
-                .GroupBy(value => value.Outcome).Select(group => $"{group.Key}={group.Count()}")) +
-            $"; bootstraps={Bootstraps.Count}; closes={ConnectionClosures}; refresh grants={RefreshResponses}.";
+            $"Current document={DocumentNavigations}; bootstraps={Bootstraps.Count}; closes={ConnectionClosures}; refresh grants={RefreshResponses}. Recent pilot reads: " +
+            string.Join("; ", reads.Snapshot().Where(value => PilotPath(value.Path, detailPath)).TakeLast(32).Select(value =>
+                $"{(value.Path == "/api/v1/web-services" ? "inventory" : value.Path == detailPath ? "detail" : "releases")}: document={value.Document}, outcome={value.Outcome}, status={value.Status}, ageMs={(long)Stopwatch.GetElapsedTime(value.StartedAt).TotalMilliseconds}"));
 
         public bool IsQuiet(string resourceId, TimeSpan quiet) => Stopwatch.GetElapsedTime(changes
                                                                       .Where(value => value.ResourceId == resourceId)

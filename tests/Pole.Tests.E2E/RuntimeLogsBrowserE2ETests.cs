@@ -320,7 +320,7 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
         {
             using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Get, $"/api/v1/redis-services/{id}", fixture.Alpha, fixture.Alpha.DefaultTenantId);
             using var response = await fixture.Api.SendAsync(request, ct);
-            if (response.StatusCode == HttpStatusCode.NotFound) return;
+            if (TestDeletion.IsComplete(response.StatusCode)) return;
             await Task.Delay(500, ct);
         }
     }

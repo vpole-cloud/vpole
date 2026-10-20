@@ -134,6 +134,81 @@ public sealed class RealtimeJournalTests
         Assert.Equal(HttpReadOutcome.Cancelled, journal.Snapshot()[0].Outcome);
     }
 
+    [Theory]
+    [InlineData("pending")]
+    [InlineData("cancelled")]
+    [InlineData("succeeded")]
+    public void Retired_document_reads_cannot_block_current_success_or_restore_evidence(string lateOutcome)
+    {
+        var journal = new HttpReadJournal<string>();
+        journal.Start("old-inventory", "/inventory", 1);
+        journal.Navigate();
+        Assert.False(journal.Quiet(_ => true, TimeSpan.Zero));
+        if (lateOutcome != "pending")
+        {
+            journal.Response("old-inventory", 200);
+            journal.Finish("old-inventory", cancelled: lateOutcome == "cancelled");
+        }
+
+        // Even a late successful response cannot establish evidence for the new document.
+        Assert.False(journal.Quiet(_ => true, TimeSpan.Zero));
+        journal.Start("detail", "/detail", 2);
+        journal.Response("detail", 200);
+        journal.Finish("detail");
+        Assert.True(journal.Quiet(_ => true, TimeSpan.Zero));
+        Assert.Equal(2, journal.Snapshot().Count);
+        Assert.NotEqual(journal.Snapshot()[0].Document, journal.Snapshot()[1].Document);
+    }
+
+    [Theory]
+    [InlineData("cancelled")]
+    [InlineData("rejected")]
+    [InlineData("succeeded")]
+    public void Late_retired_completion_keeps_current_quiet_and_retains_its_outcome(string outcome)
+    {
+        var journal = new HttpReadJournal<string>();
+        journal.Start("old-inventory", "/inventory", 1);
+        journal.Navigate();
+        journal.Start("detail", "/detail", 2);
+        journal.Response("detail", 200);
+        journal.Finish("detail");
+        Assert.True(journal.Quiet(_ => true, TimeSpan.Zero));
+        journal.Response("old-inventory", outcome == "rejected" ? 503 : 200);
+        journal.Finish("old-inventory", cancelled: outcome == "cancelled");
+        Assert.True(journal.Quiet(_ => true, TimeSpan.Zero));
+        Assert.Equal(outcome switch
+        {
+            "cancelled" => HttpReadOutcome.Cancelled,
+            "rejected" => HttpReadOutcome.Rejected,
+            _ => HttpReadOutcome.Succeeded
+        }, journal.Snapshot()[0].Outcome);
+    }
+
+    [Theory]
+    [InlineData("pending")]
+    [InlineData("cancelled")]
+    [InlineData("rejected")]
+    [InlineData("transport")]
+    public void Current_document_pending_and_failed_reads_still_block_quiet(string outcome)
+    {
+        var journal = new HttpReadJournal<string>();
+        journal.Start("old", "/inventory", 1);
+        journal.Response("old", 200);
+        journal.Finish("old");
+        journal.Navigate();
+        journal.Start("detail", "/detail", 2);
+        journal.Response("detail", 200);
+        journal.Finish("detail");
+        journal.Start("current", "/inventory", 3);
+        if (outcome != "pending")
+        {
+            journal.Response("current", outcome == "rejected" ? 503 : 200);
+            journal.Finish("current", failed: outcome == "transport", cancelled: outcome == "cancelled");
+        }
+
+        Assert.False(journal.Quiet(_ => true, TimeSpan.Zero));
+    }
+
     private static RealtimeCoverageJournal Covered()
     {
         var journal = new RealtimeCoverageJournal();

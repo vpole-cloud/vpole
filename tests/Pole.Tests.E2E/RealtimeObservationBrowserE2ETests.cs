@@ -21,118 +21,121 @@ public sealed class RealtimeObservationBrowserE2ETests(
     {
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(15));
         var ct = budget.Token;
-        await using var resources = new TestResourceScope("realtime observation browser E2E");
-        var owned = await CreateOwnedServiceAsync(resources, ct);
-        await fixture.WaitForNamespaceCreationAsync(owned.GroupId, ct);
-        await fixture.WaitForWebServiceReadyAsync(owned.GroupId, owned.Name, ct);
-        await fixture.UseInteractiveClientTokenLifespanAsync(resources, TimeSpan.FromMinutes(5), ct);
-        var service = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{owned.Id}", null, ct);
-        var placement = Assert.Single(service.GetProperty("deployments").EnumerateArray());
-        var deploymentId = Text(placement, "deploymentId");
-        var revision = placement.GetProperty("deploymentRevision").GetInt64();
-        var generation = placement.GetProperty("desiredGeneration").GetInt64();
-
-        await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
-        await browserContainer.StartAsync(ct);
-        using var playwright = await Playwright.CreateAsync();
-        await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
-            new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
-        await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+        var resources = new TestResourceScope("realtime observation browser E2E");
+        await resources.RunAsync(async () =>
         {
-            ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
-            IgnoreHTTPSErrors = true
-        });
-        var page = await context.NewPageAsync();
-        var journal = new ObservationJournal(page,
-            fixture.Alpha.DefaultTenantId,
-            owned.Id,
-            Text(placement, "deploymentTargetId"),
-            deploymentId,
-            revision,
-            generation);
-        await LoginAsync(page);
-        await page.GotoAsync(new Uri(fixture.FrontendBaseAddress,
-                $"?view=web-services&resource={owned.Id}&section=operations&tenant={fixture.Alpha.DefaultTenantId}")
-            .ToString());
-        var row = page.GetByTestId($"operation-row-{deploymentId}");
-        await Assertions.Expect(row).ToBeVisibleAsync(new LocatorAssertionsToBeVisibleOptions { Timeout = 30_000 });
-        await Assertions.Expect(row.GetByTestId("readiness-status")).ToHaveTextAsync("Ready",
-            new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
-        await row.GetByRole(AriaRole.Button,
-            new LocatorGetByRoleOptions { Name = "Runtime logs and events", Exact = true }).ClickAsync();
-        var viewer = page.GetByTestId($"runtime-log-viewer-{deploymentId}");
-        var instance = viewer.GetByLabel("Instance", new LocatorGetByLabelOptions { Exact = true });
-        await WaitUntilAsync(() => journal.HasCurrentCoverage && journal.DiagnosticsVersion > 0,
-            TimeSpan.FromSeconds(30),
-            "Fresh native observation coverage was not acknowledged.",
-            ct);
+            var owned = await CreateOwnedServiceAsync(resources, ct);
+            await fixture.WaitForNamespaceCreationAsync(owned.GroupId, ct);
+            await fixture.WaitForWebServiceReadyAsync(owned.GroupId, owned.Name, ct);
+            await fixture.UseInteractiveClientTokenLifespanAsync(resources, TimeSpan.FromMinutes(5), ct);
+            var service = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{owned.Id}", null, ct);
+            var placement = Assert.Single(service.GetProperty("deployments").EnumerateArray());
+            var deploymentId = Text(placement, "deploymentId");
+            var revision = placement.GetProperty("deploymentRevision").GetInt64();
+            var generation = placement.GetProperty("desiredGeneration").GetInt64();
 
-        const int sampleCount = 20;
-        var samples = new List<double>(sampleCount);
-        var removed = new HashSet<string>(StringComparer.Ordinal);
-        for (var index = 0; index < sampleCount; index++)
-        {
-            string? podUid = null;
-            // Native readiness and replacement startup are prerequisites, outside the
-            // measured deletion-to-visible interval. Every helper revalidates ownership.
-            await WaitUntilAsync(async () =>
-                {
-                    var pods = await fixture.ListOwnedObservationPodsAsync(fixture.Alpha,
-                        fixture.Alpha.DefaultTenantId,
-                        owned.Id,
-                        deploymentId,
-                        ct);
-                    var ready = pods.SingleOrDefault(value => value.Ready && !removed.Contains(value.Uid));
-                    if (ready is null || !journal.HasCurrentCoverage ||
-                        !await viewer.IsVisibleAsync() ||
-                        await instance.Locator($"option[value='{ready.Uid}']").CountAsync() != 1)
-                        return false;
-                    podUid = ready.Uid;
-                    return true;
-                },
-                TimeSpan.FromMinutes(2),
-                "A fresh owned replacement was not ready and visible before the next sample.",
-                ct);
-            Assert.NotNull(podUid);
-            await instance.SelectOptionAsync(podUid);
-            var before = Math.Max(journal.HintVersion, journal.DiagnosticsVersion);
-            Assert.True(journal.HasCurrentCoverage && before > 0,
-                "Each sample must start with current native coverage and a positive retained version.");
-
-            // Starts before the real Kubernetes delete, including the helper's final UID
-            // and placement verification. This is an upper bound, not an exact commit time.
-            var started = Stopwatch.GetTimestamp();
-            await fixture.DeleteOwnedObservationPodAsync(fixture.Alpha,
+            await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            await browserContainer.StartAsync(ct);
+            using var playwright = await Playwright.CreateAsync();
+            await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
+                new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
+            await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+            {
+                ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
+                IgnoreHTTPSErrors = true
+            });
+            var page = await context.NewPageAsync();
+            var journal = new ObservationJournal(page,
                 fixture.Alpha.DefaultTenantId,
                 owned.Id,
+                Text(placement, "deploymentTargetId"),
                 deploymentId,
-                podUid,
+                revision,
+                generation);
+            await LoginAsync(page);
+            await page.GotoAsync(new Uri(fixture.FrontendBaseAddress,
+                    $"?view=web-services&resource={owned.Id}&section=operations&tenant={fixture.Alpha.DefaultTenantId}")
+                .ToString());
+            var row = page.GetByTestId($"operation-row-{deploymentId}");
+            await Assertions.Expect(row).ToBeVisibleAsync(new LocatorAssertionsToBeVisibleOptions { Timeout = 30_000 });
+            await Assertions.Expect(row.GetByTestId("readiness-status")).ToHaveTextAsync("Ready",
+                new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
+            await row.GetByRole(AriaRole.Button,
+                new LocatorGetByRoleOptions { Name = "Runtime logs and events", Exact = true }).ClickAsync();
+            var viewer = page.GetByTestId($"runtime-log-viewer-{deploymentId}");
+            var instance = viewer.GetByLabel("Instance", new LocatorGetByLabelOptions { Exact = true });
+            await WaitUntilAsync(() => journal.HasCurrentCoverage && journal.DiagnosticsVersion > 0,
+                TimeSpan.FromSeconds(30),
+                "Fresh native observation coverage was not acknowledged.",
                 ct);
-            await WaitUntilAsync(async () => journal.HasCurrentCoverage && journal.HintVersion > before &&
-                                             journal.CurrentDiagnosticsExclude(podUid) &&
-                                             await viewer.IsVisibleAsync() &&
-                                             await instance.Locator($"option[value='{podUid}']").CountAsync() == 0,
-                TimeSpan.FromSeconds(15),
-                "The committed native deletion did not reach current visible instance metadata.",
-                ct);
-            samples.Add(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-            if (await instance.CountAsync() > 0)
-                Assert.Equal(string.Empty, await instance.InputValueAsync());
-            removed.Add(podUid);
-        }
 
-        await journal.DrainAsync();
-        Assert.Equal(0, journal.ParseFailures);
-        Assert.Equal(0, journal.DiagnosticReadFailures);
-        Assert.Equal(sampleCount, removed.Count);
-        var sorted = samples.Order().ToArray();
-        var p95 = sorted[(int)Math.Ceiling(sampleCount * 0.95) - 1];
-        output.WriteLine(
-            $"Native WebService observation: {sampleCount} owned Pod UID-precondition deletes; write-start→visible old UID removal upper bound p95={p95:F0}ms, max={sorted[^1]:F0}ms.");
-        output.WriteLine(
-            "Replacement readiness is awaited outside each sample; this measures native deletion visibility, not rollout or replacement startup latency.");
-        Assert.True(p95 <= 5_000,
-            "The conservative native write-start to visible UID removal p95 must be at most five seconds.");
+            const int sampleCount = 20;
+            var samples = new List<double>(sampleCount);
+            var removed = new HashSet<string>(StringComparer.Ordinal);
+            for (var index = 0; index < sampleCount; index++)
+            {
+                string? podUid = null;
+                // Native readiness and replacement startup are prerequisites, outside the
+                // measured deletion-to-visible interval. Every helper revalidates ownership.
+                await WaitUntilAsync(async probeCancellation =>
+                    {
+                        var pods = await fixture.ListOwnedObservationPodsAsync(fixture.Alpha,
+                            fixture.Alpha.DefaultTenantId,
+                            owned.Id,
+                            deploymentId,
+                            probeCancellation);
+                        var ready = pods.SingleOrDefault(value => value.Ready && !removed.Contains(value.Uid));
+                        if (ready is null || !journal.HasCurrentCoverage ||
+                            !await viewer.IsVisibleAsync().WaitAsync(probeCancellation) ||
+                            await instance.Locator($"option[value='{ready.Uid}']").CountAsync().WaitAsync(probeCancellation) != 1)
+                            return false;
+                        podUid = ready.Uid;
+                        return true;
+                    },
+                    TimeSpan.FromMinutes(2),
+                    "A fresh owned replacement was not ready and visible before the next sample.",
+                    ct);
+                Assert.NotNull(podUid);
+                await instance.SelectOptionAsync(podUid);
+                var before = Math.Max(journal.HintVersion, journal.DiagnosticsVersion);
+                Assert.True(journal.HasCurrentCoverage && before > 0,
+                    "Each sample must start with current native coverage and a positive retained version.");
+
+                // Starts before the real Kubernetes delete, including the helper's final UID
+                // and placement verification. This is an upper bound, not an exact commit time.
+                var started = Stopwatch.GetTimestamp();
+                await fixture.DeleteOwnedObservationPodAsync(fixture.Alpha,
+                    fixture.Alpha.DefaultTenantId,
+                    owned.Id,
+                    deploymentId,
+                    podUid,
+                    ct);
+                await WaitUntilAsync(async probeCancellation => journal.HasCurrentCoverage && journal.HintVersion > before &&
+                                                 journal.CurrentDiagnosticsExclude(podUid) &&
+                                                 await viewer.IsVisibleAsync().WaitAsync(probeCancellation) &&
+                                                 await instance.Locator($"option[value='{podUid}']").CountAsync().WaitAsync(probeCancellation) == 0,
+                    TimeSpan.FromSeconds(15),
+                    "The committed native deletion did not reach current visible instance metadata.",
+                    ct);
+                samples.Add(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+                if (await instance.CountAsync() > 0)
+                    Assert.Equal(string.Empty, await instance.InputValueAsync());
+                removed.Add(podUid);
+            }
+
+            await journal.DrainAsync();
+            Assert.Equal(0, journal.ParseFailures);
+            Assert.Equal(0, journal.DiagnosticReadFailures);
+            Assert.Equal(sampleCount, removed.Count);
+            var sorted = samples.Order().ToArray();
+            var p95 = sorted[(int)Math.Ceiling(sampleCount * 0.95) - 1];
+            output.WriteLine(
+                $"Native WebService observation: {sampleCount} owned Pod UID-precondition deletes; write-start→visible old UID removal upper bound p95={p95:F0}ms, max={sorted[^1]:F0}ms.");
+            output.WriteLine(
+                "Replacement readiness is awaited outside each sample; this measures native deletion visibility, not rollout or replacement startup latency.");
+            Assert.True(p95 <= 5_000,
+                "The conservative native write-start to visible UID removal p95 must be at most five seconds.");
+        });
     }
 
     private async Task<OwnedService> CreateOwnedServiceAsync(TestResourceScope resources, CancellationToken ct)
@@ -231,14 +234,14 @@ public sealed class RealtimeObservationBrowserE2ETests(
     private async Task DeleteServiceAsync(string id, CancellationToken ct)
     {
         await DeleteAsync($"/api/v1/web-services/{id}", ct);
-        await WaitUntilAsync(async () =>
+        await WaitUntilAsync(async probeCancellation =>
             {
                 using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Get,
                     $"/api/v1/web-services/{id}",
                     fixture.Alpha,
                     fixture.Alpha.DefaultTenantId);
-                using var response = await fixture.Api.SendAsync(request, ct);
-                return response.StatusCode == HttpStatusCode.NotFound;
+                using var response = await fixture.Api.SendAsync(request, probeCancellation);
+                return TestDeletion.IsComplete(response.StatusCode);
             },
             TimeSpan.FromMinutes(3),
             "The owned observation service did not finish cleanup.",
@@ -263,24 +266,12 @@ public sealed class RealtimeObservationBrowserE2ETests(
     private static string Text(JsonElement value, string property) => value.GetProperty(property).GetString()!;
 
     private static Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout, string message, CancellationToken ct) =>
-        WaitUntilAsync(() => Task.FromResult(condition()), timeout, message, ct);
+        TestWait.UntilAsync(_ => Task.FromResult(condition()), timeout, message, ct, TimeSpan.FromMilliseconds(50));
 
-    private static async Task WaitUntilAsync(Func<Task<bool>> condition,
+    private static Task WaitUntilAsync(Func<CancellationToken, Task<bool>> condition,
         TimeSpan timeout,
         string message,
-        CancellationToken ct)
-    {
-        var started = Stopwatch.GetTimestamp();
-        while (Stopwatch.GetElapsedTime(started) < timeout)
-        {
-            ct.ThrowIfCancellationRequested();
-            if (await condition())
-                return;
-            await Task.Delay(50, ct);
-        }
-
-        throw new TimeoutException(message);
-    }
+        CancellationToken ct) => TestWait.UntilAsync(condition, timeout, message, ct, TimeSpan.FromMilliseconds(50));
 
     private sealed record OwnedService(
         string Id,
@@ -344,6 +335,7 @@ public sealed class RealtimeObservationBrowserE2ETests(
                 {
                     Interlocked.Increment(ref documentEpoch);
                     coverage.Navigate();
+                    reads.Navigate();
                     Interlocked.Exchange(ref hintVersion, 0);
                     Interlocked.Exchange(ref diagnostics, null);
                 }

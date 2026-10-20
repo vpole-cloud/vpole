@@ -248,19 +248,17 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
 
     private static async Task<string> WaitForBrowserSourceSelectionAsync(IPage page, CancellationToken token)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(30);
-        while (DateTime.UtcNow < deadline)
+        string? selected = null;
+        await TestWait.UntilAsync(async phase =>
         {
-            var selected = await page.GetByLabel("Linked source").InputValueAsync();
-            if (!string.IsNullOrWhiteSpace(selected)) return selected;
+            selected = await page.GetByLabel("Linked source").InputValueAsync().WaitAsync(phase);
+            if (!string.IsNullOrWhiteSpace(selected)) return true;
             var errors = page.GetByTestId("git-source-picker").GetByRole(AriaRole.Alert);
-            if (await errors.CountAsync() > 0)
-                throw new InvalidOperationException($"Browser source setup failed: {await errors.First.InnerTextAsync()}");
-            await Task.Delay(PollInterval, token);
-        }
-        await CaptureDeliveryScreenshotAsync(page, "desktop", "source-diagnostic", "current");
-        var source = await page.GetByTestId("git-source-picker").InnerTextAsync();
-        throw new InvalidOperationException($"Browser linked-source selection did not complete. Fixture source UI: {source}");
+            if (await errors.CountAsync().WaitAsync(phase) > 0)
+                throw new InvalidOperationException("Browser source setup reported an error.");
+            return false;
+        }, TimeSpan.FromSeconds(30), "Browser linked-source selection did not complete.", token, PollInterval);
+        return selected!;
     }
 
     private async Task<string> GetBrowserBuildIdAsync(string serviceId, CancellationToken token)
@@ -279,7 +277,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
             using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Get, $"/api/v1/search?query={Uri.EscapeDataString(name)}&pageNumber=1&pageSize=20", fixture.Alpha, fixture.Alpha.DefaultTenantId);
             using var response = await fixture.Api.SendAsync(request, token);
             Assert.True(response.IsSuccessStatusCode,
-                $"Browser search returned HTTP {(int)response.StatusCode}: {await response.Content.ReadAsStringAsync(token)}");
+                $"Browser search returned HTTP {(int)response.StatusCode}.");
             using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(token));
             if (document.RootElement.GetProperty("items").EnumerateArray().Any(item => RequiredString(item, "sourceId") == serviceId)) return;
             await Task.Delay(PollInterval, token);
@@ -290,7 +288,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
     {
         if (await page.Locator("html").GetAttributeAsync("data-theme") != theme)
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = $"Switch to {theme} theme" }).ClickAsync();
-        Assert.Equal(theme, await page.Locator("html").GetAttributeAsync("data-theme"));
+        await Assertions.Expect(page.Locator("html")).ToHaveAttributeAsync("data-theme", theme);
     }
 
     private static async Task CaptureDeliveryScreenshotsAsync(IPage page, string section)

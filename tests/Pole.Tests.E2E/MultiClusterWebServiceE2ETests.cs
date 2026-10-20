@@ -436,7 +436,11 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
                     name,
                     namespaceName,
                     cancellationToken: cancellationToken);
-                if (deployment.Status.AvailableReplicas >= 1)
+                if (deployment.Status.ObservedGeneration >= deployment.Metadata.Generation &&
+                    deployment.Status.UpdatedReplicas == deployment.Spec.Replicas &&
+                    deployment.Status.ReadyReplicas == deployment.Spec.Replicas &&
+                    deployment.Status.AvailableReplicas == deployment.Spec.Replicas &&
+                    deployment.Status.Replicas == deployment.Spec.Replicas)
                     return;
             }
             catch (HttpOperationException exception) when (exception.Response?.StatusCode == HttpStatusCode.NotFound)

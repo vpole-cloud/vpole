@@ -133,48 +133,37 @@ public sealed class ReleaseBrowserE2ETests(PoleE2EFixture fixture)
 
     private async Task WaitForPlacementFailureAsync(string id, CancellationToken ct)
     {
-        var deadline = DateTime.UtcNow.AddMinutes(2);
-        while (DateTime.UtcNow < deadline)
+        await TestWait.UntilAsync(async phase =>
         {
-            var service = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{id}", null, ct);
+            var service = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{id}", null, phase);
             var placement = service.GetProperty("deployments")[0];
-            if (Text(placement, "status") == "Failed" && Text(placement, "failureCode") == "DeploymentTargetDisabled") return;
-            await Task.Delay(TimeSpan.FromSeconds(1), ct);
-        }
-        throw new TimeoutException("The selected release target did not report its deliberate disabled-target failure.");
+            if (Text(placement, "status") == "Failed" && Text(placement, "failureCode") == "DeploymentTargetDisabled") return true;
+            return false;
+        }, TimeSpan.FromMinutes(2), "The selected release target did not report its deliberate disabled-target failure.", ct, TimeSpan.FromSeconds(1));
     }
 
     private async Task WaitForReleaseAsync(string id, long revision, string outcome, CancellationToken ct)
     {
-        var deadline = DateTime.UtcNow.AddMinutes(4);
-        JsonElement lastHistory = default;
-        while (DateTime.UtcNow < deadline)
+        await TestWait.UntilAsync(async phase =>
         {
-            var history = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{id}/releases", null, ct);
-            lastHistory = history;
+            var history = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{id}/releases", null, phase);
             var release = history.GetProperty("releases").GetProperty("items").EnumerateArray().FirstOrDefault(value => value.GetProperty("resourceRevision").GetInt64() == revision);
-            if (release.ValueKind == JsonValueKind.Object && Text(release, "outcome") == outcome) return;
-            await Task.Delay(TimeSpan.FromSeconds(2), ct);
-        }
-        var current = lastHistory.GetProperty("activeRevision").GetInt64();
-        var last = lastHistory.GetProperty("releases").GetProperty("items").EnumerateArray().FirstOrDefault(value => value.GetProperty("resourceRevision").GetInt64() == revision);
-        var state = last.ValueKind == JsonValueKind.Object ? Text(last, "outcome") : "Missing";
-        throw new TimeoutException($"Release revision {revision} did not reach {outcome}; active revision {current}, recorded outcome {state}.");
+            if (release.ValueKind == JsonValueKind.Object && Text(release, "outcome") == outcome) return true;
+            return false;
+        }, TimeSpan.FromMinutes(4), $"Release revision {revision} did not reach {outcome}.", ct, TimeSpan.FromSeconds(2));
     }
 
     private async Task WaitForReadyAsync(string id, CancellationToken ct)
     {
-        var deadline = DateTime.UtcNow.AddMinutes(4);
-        while (DateTime.UtcNow < deadline)
+        await TestWait.UntilAsync(async phase =>
         {
-            var service = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{id}", null, ct);
+            var service = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{id}", null, phase);
             var placement = service.GetProperty("deployments")[0];
-            var observed = await SendAsync(HttpMethod.Get, $"/api/v1/resource-deployments/{Text(placement, "deploymentId")}/observation", null, ct);
+            var observed = await SendAsync(HttpMethod.Get, $"/api/v1/resource-deployments/{Text(placement, "deploymentId")}/observation", null, phase);
             var value = observed.GetProperty("observation");
-            if (Text(value, "kind") == "Observed" && value.GetProperty("ready").GetBoolean() && observed.GetProperty("desiredGeneration").GetInt64() == placement.GetProperty("desiredGeneration").GetInt64()) return;
-            await Task.Delay(TimeSpan.FromSeconds(2), ct);
-        }
-        throw new TimeoutException("The restored release did not reach current native readiness.");
+            if (Text(value, "kind") == "Observed" && value.GetProperty("ready").GetBoolean() && observed.GetProperty("desiredGeneration").GetInt64() == placement.GetProperty("desiredGeneration").GetInt64()) return true;
+            return false;
+        }, TimeSpan.FromMinutes(4), "The restored release did not reach current native readiness.", ct, TimeSpan.FromSeconds(2));
     }
 
     private string Url(string id, string section) => new Uri(fixture.FrontendBaseAddress, $"?view=web-services&resource={id}&section={section}&tenant={fixture.Alpha.DefaultTenantId}").ToString();
@@ -196,16 +185,15 @@ public sealed class ReleaseBrowserE2ETests(PoleE2EFixture fixture)
     private async Task DeleteWebServiceAsync(string id, CancellationToken ct)
     {
         await DeleteAsync($"/api/v1/web-services/{id}", ct);
-        var deadline = DateTime.UtcNow.AddMinutes(3);
-        while (DateTime.UtcNow < deadline)
+        await TestWait.UntilAsync(async phase =>
         {
             using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Get, $"/api/v1/web-services/{id}", fixture.Alpha, fixture.Alpha.DefaultTenantId);
-            using var response = await fixture.Api.SendAsync(request, ct);
-            if (response.StatusCode == HttpStatusCode.NotFound) return;
-            await Task.Delay(TimeSpan.FromSeconds(2), ct);
-        }
-        throw new TimeoutException("Release browser application did not finish deletion.");
+            using var response = await fixture.Api.SendAsync(request, phase);
+            if (TestDeletion.IsComplete(response.StatusCode)) return true;
+            return false;
+        }, TimeSpan.FromMinutes(3), "Release browser application did not finish deletion.", ct, TimeSpan.FromSeconds(2));
     }
+
     private async Task DeleteGroupAsync(string id, CancellationToken ct)
     {
         await DeleteAsync($"/api/v1/resource-groups/{id}", ct);

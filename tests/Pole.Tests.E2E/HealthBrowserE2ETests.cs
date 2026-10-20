@@ -16,84 +16,87 @@ public sealed class HealthBrowserE2ETests(PoleE2EFixture fixture)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = timeout.Token;
-        await using var resources = new TestResourceScope("health browser E2E");
-        var suffix = Guid.NewGuid().ToString("N")[..10];
-        var name = $"health-{suffix}";
-        var group = await SendAsync(HttpMethod.Post, "/api/v1/resource-groups", new { name, description = "Health browser test", tags = new[] { "e2e" } }, ct);
-        var groupId = Text(group, "id");
-        resources.Defer("delete health browser group", cleanup => DeleteGroupAsync(groupId, cleanup));
-        var targets = await SendAsync(HttpMethod.Get, "/api/v1/deployment-targets/available?resourceType=pole%2Fweb-service&requiresPublicIngress=false", null, ct);
-        var targetId = Text(targets.EnumerateArray().First(), "id");
-        var app = await SendAsync(HttpMethod.Post, "/api/v1/web-services", new
+        var resources = new TestResourceScope("health browser E2E");
+        await resources.RunAsync(async () =>
         {
-            name,
-            resourceGroupId = groupId,
-            exposure = "Private",
-            tags = new[] { "e2e" },
-            spec = Spec(false),
-            placement = new { targets = new[] { new { deploymentTargetId = targetId, fixedReplicas = 1 } } }
-        }, ct);
-        var id = Text(app, "webServiceId");
-        resources.Defer("delete health browser application", cleanup => DeleteWebServiceAsync(id, cleanup));
-        await fixture.WaitForNamespaceCreationAsync(groupId, ct);
-        await WaitForObservationAsync(id, false, ct);
-        await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
-        await browserContainer.StartAsync(ct);
-        using var playwright = await Playwright.CreateAsync();
-        await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint, new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
-        await using var context = await browser.NewContextAsync(new BrowserNewContextOptions { ViewportSize = new ViewportSize { Width = 1440, Height = 900 }, IgnoreHTTPSErrors = true });
-        var page = await context.NewPageAsync();
-        await page.GotoAsync(fixture.FrontendBaseAddress.ToString());
-        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in", Exact = true }).ClickAsync();
-        await page.GetByLabel("Username or email").FillAsync(fixture.Alpha.Email);
-        await page.GetByRole(AriaRole.Textbox, new PageGetByRoleOptions { Name = "Password", Exact = true }).FillAsync(fixture.Alpha.Password);
-        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Sign In", Exact = true }).ClickAsync();
-        await page.GetByLabel("Tenant").SelectOptionAsync(fixture.Alpha.DefaultTenantId);
-        await page.GotoAsync(Url("web-services", id, "operations"));
-        var content = page.Locator("#app-content");
-        await Assertions.Expect(content.GetByTestId("readiness-status")).ToHaveTextAsync("Not ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
-        await Assertions.Expect(content.Locator("[data-testid='operation-status']:visible")).ToHaveTextAsync("Applied");
-        var healthTarget = content.Locator("[data-testid^='health-target-']:visible");
-        var warnings = healthTarget.Locator("details");
-        var warningsToggle = healthTarget.GetByText("Pods and warnings");
-        await warningsToggle.ClickAsync();
-        await Assertions.Expect(warnings).ToHaveAttributeAsync("open", "");
-        await warningsToggle.PressAsync("Enter");
-        await Assertions.Expect(warnings).ToHaveJSPropertyAsync("open", false);
-        await warningsToggle.PressAsync("Space");
-        await Assertions.Expect(warnings).ToHaveAttributeAsync("open", "");
-        await Assertions.Expect(warnings.GetByText("Unhealthy", new LocatorGetByTextOptions { Exact = false }).First)
-            .ToBeVisibleAsync(new LocatorAssertionsToBeVisibleOptions { Timeout = 30_000 });
-        await CaptureAsync(page, "not-ready");
-        var current = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{id}", null, ct);
-        var accepted = await SendAsync(HttpMethod.Put, $"/api/v1/web-services/{id}", new { spec = Spec(true), tags = new[] { "e2e" }, exposure = "Private", expectedRevision = current.GetProperty("activeRevision").GetInt64() }, ct);
-        var generation = accepted.GetProperty("deployments")[0].GetProperty("desiredGeneration").GetInt64();
-        Assert.True(generation > 1);
-        await page.ReloadAsync();
-        await Assertions.Expect(content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = "Operations and health", Exact = true })).ToBeVisibleAsync();
-        await Assertions.Expect(content.GetByText($"desired generation {generation}", new LocatorGetByTextOptions { Exact = false })).ToBeVisibleAsync();
-        await WaitForObservationAsync(id, true, ct);
-        await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Refresh operations", Exact = true }).ClickAsync();
-        await Assertions.Expect(content.GetByTestId("readiness-status")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
-        await CaptureAsync(page, "ready");
-        const string operationsRoute = "**/api/v1/resource-deployments/operations?*";
-        await page.RouteAsync(operationsRoute, route => route.AbortAsync("failed"));
-        await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Refresh operations", Exact = true }).ClickAsync();
-        await Assertions.Expect(content.GetByText("Previous operation state is stale.", new LocatorGetByTextOptions { Exact = false })).ToBeVisibleAsync();
-        await Assertions.Expect(content.Locator("[data-testid^='operation-row-']:visible")).ToHaveCountAsync(1);
-        Assert.Equal(0, await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Retry this apply", Exact = true }).CountAsync());
-        await CaptureAsync(page, "stale-read");
-        await page.UnrouteAsync(operationsRoute);
-        await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Refresh operations", Exact = true }).ClickAsync();
-        await Assertions.Expect(content.GetByText("Previous operation state is stale.", new LocatorGetByTextOptions { Exact = false })).ToHaveCountAsync(0);
-        await Assertions.Expect(content.GetByTestId("readiness-status")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
-        await page.GotoAsync(Url("resource-groups", groupId, "operations"));
-        await Assertions.Expect(page.Locator("#app-content").GetByTestId("readiness-status")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
-        await CaptureAsync(page, "group");
-        await page.GotoAsync(Url("overview", "catalog"));
-        await Assertions.Expect(page.Locator("#app-content").GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = name, Exact = true }).First).ToBeVisibleAsync();
-        await Assertions.Expect(page.Locator("#app-content").GetByTestId("readiness-status")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
-        await CaptureAsync(page, "tenant");
+            var suffix = Guid.NewGuid().ToString("N")[..10];
+            var name = $"health-{suffix}";
+            var group = await SendAsync(HttpMethod.Post, "/api/v1/resource-groups", new { name, description = "Health browser test", tags = new[] { "e2e" } }, ct);
+            var groupId = Text(group, "id");
+            resources.Defer("delete health browser group", cleanup => DeleteGroupAsync(groupId, cleanup));
+            var targets = await SendAsync(HttpMethod.Get, "/api/v1/deployment-targets/available?resourceType=pole%2Fweb-service&requiresPublicIngress=false", null, ct);
+            var targetId = Text(targets.EnumerateArray().First(), "id");
+            var app = await SendAsync(HttpMethod.Post, "/api/v1/web-services", new
+            {
+                name,
+                resourceGroupId = groupId,
+                exposure = "Private",
+                tags = new[] { "e2e" },
+                spec = Spec(false),
+                placement = new { targets = new[] { new { deploymentTargetId = targetId, fixedReplicas = 1 } } }
+            }, ct);
+            var id = Text(app, "webServiceId");
+            resources.Defer("delete health browser application", cleanup => DeleteWebServiceAsync(id, cleanup));
+            await fixture.WaitForNamespaceCreationAsync(groupId, ct);
+            await WaitForObservationAsync(id, false, ct);
+            await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            await browserContainer.StartAsync(ct);
+            using var playwright = await Playwright.CreateAsync();
+            await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint, new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
+            await using var context = await browser.NewContextAsync(new BrowserNewContextOptions { ViewportSize = new ViewportSize { Width = 1440, Height = 900 }, IgnoreHTTPSErrors = true });
+            var page = await context.NewPageAsync();
+            await page.GotoAsync(fixture.FrontendBaseAddress.ToString());
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in", Exact = true }).ClickAsync();
+            await page.GetByLabel("Username or email").FillAsync(fixture.Alpha.Email);
+            await page.GetByRole(AriaRole.Textbox, new PageGetByRoleOptions { Name = "Password", Exact = true }).FillAsync(fixture.Alpha.Password);
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Sign In", Exact = true }).ClickAsync();
+            await page.GetByLabel("Tenant").SelectOptionAsync(fixture.Alpha.DefaultTenantId);
+            await page.GotoAsync(Url("web-services", id, "operations"));
+            var content = page.Locator("#app-content");
+            await Assertions.Expect(content.GetByTestId("readiness-status")).ToHaveTextAsync("Not ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
+            await Assertions.Expect(content.Locator("[data-testid='operation-status']:visible")).ToHaveTextAsync("Applied");
+            var healthTarget = content.Locator("[data-testid^='health-target-']:visible");
+            var warnings = healthTarget.Locator("details");
+            var warningsToggle = healthTarget.GetByText("Pods and warnings");
+            await warningsToggle.ClickAsync();
+            await Assertions.Expect(warnings).ToHaveAttributeAsync("open", "");
+            await warningsToggle.PressAsync("Enter");
+            await Assertions.Expect(warnings).ToHaveJSPropertyAsync("open", false);
+            await warningsToggle.PressAsync("Space");
+            await Assertions.Expect(warnings).ToHaveAttributeAsync("open", "");
+            await Assertions.Expect(warnings.GetByText("Unhealthy", new LocatorGetByTextOptions { Exact = false }).First)
+                .ToBeVisibleAsync(new LocatorAssertionsToBeVisibleOptions { Timeout = 30_000 });
+            await CaptureAsync(page, "not-ready", id, "Operations and health");
+            var current = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{id}", null, ct);
+            var accepted = await SendAsync(HttpMethod.Put, $"/api/v1/web-services/{id}", new { spec = Spec(true), tags = new[] { "e2e" }, exposure = "Private", expectedRevision = current.GetProperty("activeRevision").GetInt64() }, ct);
+            var generation = accepted.GetProperty("deployments")[0].GetProperty("desiredGeneration").GetInt64();
+            Assert.True(generation > 1);
+            await page.ReloadAsync();
+            await Assertions.Expect(content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = "Operations and health", Exact = true })).ToBeVisibleAsync();
+            await Assertions.Expect(content.GetByText($"desired generation {generation}", new LocatorGetByTextOptions { Exact = false })).ToBeVisibleAsync();
+            await WaitForObservationAsync(id, true, ct, generation);
+            await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Refresh operations", Exact = true }).ClickAsync();
+            await Assertions.Expect(content.GetByTestId("readiness-status")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
+            await CaptureAsync(page, "ready", id, "Operations and health");
+            const string operationsRoute = "**/api/v1/resource-deployments/operations?*";
+            await page.RouteAsync(operationsRoute, route => route.AbortAsync("failed"));
+            await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Refresh operations", Exact = true }).ClickAsync();
+            await Assertions.Expect(content.GetByText("Previous operation state is stale.", new LocatorGetByTextOptions { Exact = false })).ToBeVisibleAsync();
+            await Assertions.Expect(content.Locator("[data-testid^='operation-row-']:visible")).ToHaveCountAsync(1);
+            Assert.Equal(0, await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Retry this apply", Exact = true }).CountAsync());
+            await CaptureAsync(page, "stale-read", id, "Operations and health");
+            await page.UnrouteAsync(operationsRoute);
+            await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Refresh operations", Exact = true }).ClickAsync();
+            await Assertions.Expect(content.GetByText("Previous operation state is stale.", new LocatorGetByTextOptions { Exact = false })).ToHaveCountAsync(0);
+            await Assertions.Expect(content.GetByTestId("readiness-status")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
+            await page.GotoAsync(Url("resource-groups", groupId, "operations"));
+            await Assertions.Expect(page.Locator("#app-content").GetByTestId("readiness-status")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
+            await CaptureAsync(page, "group", groupId, "Operations and health");
+            await page.GotoAsync(Url("overview", "catalog"));
+            await Assertions.Expect(page.Locator("#app-content").GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = name, Exact = true }).First).ToBeVisibleAsync();
+            await Assertions.Expect(page.Locator("#app-content").GetByTestId("readiness-status")).ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
+            await CaptureAsync(page, "tenant", "catalog", "Control plane");
+        });
     }
 
     private static object Spec(bool ready)
@@ -108,23 +111,20 @@ public sealed class HealthBrowserE2ETests(PoleE2EFixture fixture)
         };
     }
 
-    private async Task WaitForObservationAsync(string id, bool ready, CancellationToken ct)
-    {
-        var deadline = DateTime.UtcNow.AddMinutes(4);
-        while (DateTime.UtcNow < deadline)
+    private Task WaitForObservationAsync(string id, bool ready, CancellationToken ct, long minimumGeneration = 1) =>
+        TestWait.UntilAsync(async probeToken =>
         {
-            var resource = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{id}", null, ct);
+            var resource = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{id}", null, probeToken);
             var placement = resource.GetProperty("deployments")[0];
-            if (Text(placement, "status") == "Applied")
-            {
-                var observed = await SendAsync(HttpMethod.Get, $"/api/v1/resource-deployments/{Text(placement, "deploymentId")}/observation", null, ct);
-                var value = observed.GetProperty("observation");
-                if (Text(value, "kind") == "Observed" && value.GetProperty("ready").GetBoolean() == ready && value.GetProperty("rolloutCurrent").GetBoolean()) return;
-            }
-            await Task.Delay(TimeSpan.FromSeconds(2), ct);
-        }
-        throw new TimeoutException($"Expected owned native readiness={ready} was not observed for the current rollout.");
-    }
+            var desired = placement.GetProperty("desiredGeneration").GetInt64();
+            if (desired < minimumGeneration || Text(placement, "status") != "Applied" ||
+                placement.GetProperty("observedGeneration").GetInt64() != desired) return false;
+            var observed = await SendAsync(HttpMethod.Get, $"/api/v1/resource-deployments/{Text(placement, "deploymentId")}/observation", null, probeToken);
+            if (observed.GetProperty("desiredGeneration").GetInt64() != desired ||
+                observed.GetProperty("deploymentRevision").GetInt64() != placement.GetProperty("deploymentRevision").GetInt64()) return false;
+            var value = observed.GetProperty("observation");
+            return Text(value, "kind") == "Observed" && value.GetProperty("ready").GetBoolean() == ready && value.GetProperty("rolloutCurrent").GetBoolean();
+        }, TimeSpan.FromMinutes(4), $"Expected owned native readiness={ready} was not observed for the accepted rollout.", ct, pollInterval: TimeSpan.FromSeconds(2));
 
     private string Url(string view, string resource, string section = "overview") => new Uri(fixture.FrontendBaseAddress, $"?view={view}&resource={resource}&section={section}&tenant={fixture.Alpha.DefaultTenantId}").ToString();
     private static string Text(JsonElement value, string property) => value.GetProperty(property).GetString()!;
@@ -145,23 +145,22 @@ public sealed class HealthBrowserE2ETests(PoleE2EFixture fixture)
     private async Task DeleteWebServiceAsync(string id, CancellationToken ct)
     {
         await DeleteAsync($"/api/v1/web-services/{id}", ct);
-        var deadline = DateTime.UtcNow.AddMinutes(3);
-        while (DateTime.UtcNow < deadline)
+        await TestWait.UntilAsync(async probeToken =>
         {
             using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Get, $"/api/v1/web-services/{id}", fixture.Alpha, fixture.Alpha.DefaultTenantId);
-            using var response = await fixture.Api.SendAsync(request, ct);
-            if (response.StatusCode == HttpStatusCode.NotFound) return;
-            await Task.Delay(TimeSpan.FromSeconds(2), ct);
-        }
-        throw new TimeoutException("Health browser application did not finish deletion.");
+            using var response = await fixture.Api.SendAsync(request, probeToken);
+            return TestDeletion.IsComplete(response.StatusCode);
+        }, TimeSpan.FromMinutes(3), "Health browser application did not finish deletion.", ct, pollInterval: TimeSpan.FromSeconds(2));
     }
+
     private async Task DeleteGroupAsync(string id, CancellationToken ct)
     {
         await DeleteAsync($"/api/v1/resource-groups/{id}", ct);
         await fixture.WaitForNamespaceDeletionAsync(id, ct);
     }
-    private static async Task CaptureAsync(IPage page, string section)
+    private static async Task CaptureAsync(IPage page, string section, string resourceId, string heading)
     {
+        await BrowserWorkspaceReadiness.AssertAsync(page, resourceId, heading);
         var directory = Path.GetFullPath(Path.Combine(".artifacts", "frontend-health")); Directory.CreateDirectory(directory);
         foreach (var (viewport, width, height) in new[] { ("desktop", 1440, 900), ("mobile", 390, 844) })
         {
