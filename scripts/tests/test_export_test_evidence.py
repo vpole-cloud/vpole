@@ -21,6 +21,33 @@ class FailureEvidenceTests(unittest.TestCase):
         self.phases.mkdir()
         self.output = self.root / "safe"
 
+    def test_failed_report_preserves_only_known_category_and_repository_source_locations(self):
+        source = "tests/Pole.Tests.Integration/Realtime/RealtimeRedisTests.cs"
+        (self.raw / "failure.trx").write_text(f'''<TestRun><Results>
+<UnitTestResult outcome="Failed"><Output><ErrorInfo>
+<Message>Assert.Single() Failure: secret-message-canary</Message>
+<StackTrace>at Method(cookie-canary) in /home/runner/work/Pole/Pole/{source}:line 394
+at Payload() in /tmp/secret-file-canary.cs:line 2
+at Header() in /home/runner/work/Pole/Pole/{source}:line 9999999
+at Secret() in /home/runner/work/Pole/Pole/{source}:line -2
+secret-stack-canary</StackTrace></ErrorInfo></Output></UnitTestResult>
+</Results><ResultSummary outcome="Failed"><Counters total="1" failed="1" /></ResultSummary></TestRun>''')
+        evidence.export_evidence(self.raw, self.phases, self.output)
+        report = next(self.output.glob("*.trx")).read_text()
+        self.assertIn('"category": "assert.single"', report)
+        self.assertIn(f'"file": "{source}", "line": 394', report)
+        self.assertNotIn("canary", report)
+        self.assertNotIn("9999999", report)
+        self.assertNotIn("/home/runner", report)
+
+    def test_failure_categories_are_fixed_values_and_unknown_messages_are_never_echoed(self):
+        for message, expected in (("System.TimeoutException : secret-canary", "timeout"),
+                                  ("Assert.Equal() Failure: body-canary", "assert.equal"),
+                                  ("private-type-canary: secret-canary", "unknown")):
+            with self.subTest(expected=expected):
+                self.assertEqual({"category": expected, "locations": []},
+                                 evidence.safe_failure(message, "private-stack-canary"))
+
     def test_controlled_failed_run_preserves_failure_and_exports_no_sensitive_output(self):
         failed = subprocess.run(["python3", "-c", "raise SystemExit(3)"])
         (self.raw / "run.trx").write_text('''<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">

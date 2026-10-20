@@ -2,11 +2,13 @@
 """Export allowlisted test metadata; never publish captured output or response bodies."""
 
 import argparse
+from functools import lru_cache
 import hashlib
 import json
 import math
 from pathlib import Path
 import re
+import subprocess
 import uuid
 import xml.etree.ElementTree as ET
 
@@ -21,6 +23,7 @@ PHASES = {
 }
 HASH_FIELDS = ("scenario", "resource", "instance", "container")
 INTEGER_FIELDS = ("elapsedMs", "request", "revision", "generation", "observationVersion")
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
 
 def digest(value):
@@ -33,6 +36,54 @@ def count(value):
 
 def outcome(value):
     return value if value in OUTCOMES else "Error"
+
+
+@lru_cache(maxsize=1)
+def source_locations():
+    """Only tracked source filenames can enter an artifact, never paths from exceptions."""
+    try:
+        tracked = subprocess.check_output(
+            ["git", "ls-files", "-z", "--", "*.cs", "*.fs"], cwd=REPOSITORY_ROOT,
+            stderr=subprocess.DEVNULL, timeout=10).decode().split("\0")
+        locations = {}
+        for name in tracked:
+            if not re.fullmatch(r"(?:src|tests)/[A-Za-z0-9_./-]+\.(?:cs|fs)", name) or ".." in name.split("/"):
+                continue
+            path = (REPOSITORY_ROOT / name).resolve()
+            if path.is_relative_to(REPOSITORY_ROOT) and path.is_file():
+                locations[name] = len(path.read_text().splitlines())
+        return locations
+    except (OSError, ValueError, UnicodeError, subprocess.SubprocessError):
+        return {}
+
+
+def safe_failure(message, stack):
+    category = "unknown"
+    # Map known prefixes to fixed labels. Never include exception text or arbitrary type names.
+    for assertion in ("Equal", "NotEqual", "Single", "Empty", "NotEmpty", "True", "False", "Null",
+                      "NotNull", "Contains", "DoesNotContain", "Throws", "ThrowsAny", "IsType", "Fail"):
+        if (message or "").startswith(f"Assert.{assertion}() Failure"):
+            category = "assert." + assertion.lower()
+            break
+    for prefix, label in (("System.TimeoutException", "timeout"),
+                          ("System.OperationCanceledException", "cancelled"),
+                          ("System.Threading.Tasks.TaskCanceledException", "cancelled"),
+                          ("System.Net.Http.HttpRequestException", "http"),
+                          ("System.AggregateException", "aggregate")):
+        if re.match(re.escape(prefix) + r"(?:\s|:|$)", message or ""):
+            category = label
+            break
+    locations = []
+    for path, line in re.findall(r"\bin ([^\r\n]+):line ([0-9]{1,7})(?:\s|$)", (stack or "")[:65536]):
+        for name, last_line in source_locations().items():
+            if path.replace("\\", "/").endswith("/" + name) and 1 <= int(line) <= last_line:
+                location = {"file": name, "line": int(line)}
+                if location not in locations:
+                    locations.append(location)
+                break
+        if len(locations) >= 8:
+            break
+    return {"category": category, "locations": locations}
 
 
 def export_trx(source, destination):
@@ -62,7 +113,11 @@ def export_trx(source, destination):
         })
         if state != "Passed":
             error = ET.SubElement(ET.SubElement(entry, f"{{{NS}}}Output"), f"{{{NS}}}ErrorInfo")
-            ET.SubElement(error, f"{{{NS}}}Message").text = "Test did not pass; inspect the bounded phase journal."
+            original_error = result.find("{*}Output/{*}ErrorInfo")
+            failure = safe_failure(
+                original_error.findtext("{*}Message") if original_error is not None else None,
+                original_error.findtext("{*}StackTrace") if original_error is not None else None)
+            ET.SubElement(error, f"{{{NS}}}Message").text = json.dumps(failure)
     original_summary = original.find(".//{*}ResultSummary")
     original_counts = original.find(".//{*}Counters")
     counts = {name: count(original_counts.get(name)) if original_counts is not None else 0 for name in COUNTERS}
