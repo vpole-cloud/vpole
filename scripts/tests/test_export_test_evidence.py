@@ -48,6 +48,17 @@ secret-stack-canary</StackTrace></ErrorInfo></Output></UnitTestResult>
                 self.assertEqual({"category": expected, "locations": []},
                                  evidence.safe_failure(message, "private-stack-canary"))
 
+    def test_known_kubernetes_failure_exports_only_fixed_type_and_status(self):
+        for status, expected in (("Conflict", 409), ("Forbidden", 403), ("InternalServerError", 500)):
+            failure = evidence.safe_failure(
+                f"k8s.Autorest.HttpOperationException : Operation returned an invalid status code '{status}'\n"
+                "headers-canary secret-body-canary workload-canary", "cookie-stack-canary")
+            self.assertEqual({"category": "kubernetes.http", "status": expected, "locations": []}, failure)
+            self.assertNotIn("canary", json.dumps(failure))
+        unknown = evidence.safe_failure(
+            "k8s.Autorest.HttpOperationException : Operation returned an invalid status code 'status-canary'", "")
+        self.assertEqual({"category": "kubernetes.http", "locations": []}, unknown)
+
     def test_controlled_failed_run_preserves_failure_and_exports_no_sensitive_output(self):
         failed = subprocess.run(["python3", "-c", "raise SystemExit(3)"])
         (self.raw / "run.trx").write_text('''<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
