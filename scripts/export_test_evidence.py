@@ -91,6 +91,31 @@ def safe_phase(value):
     return result
 
 
+def safe_headroom(value):
+    phase = value.get("phase", "")
+    if not isinstance(phase, str) or not re.fullmatch(r"(?:before|after|failed)-(?:lab|run|backend(?:-[0-9]{1,3})?)", phase):
+        return None
+    result = {"phase": phase}
+    if type(value.get("lab_unavailable")) is bool:
+        result["lab_unavailable"] = value["lab_unavailable"]
+    for key in ("disk_total", "disk_free"):
+        number = value.get(key)
+        if type(number) is int and 0 <= number <= 2**63 - 1:
+            result[key] = number
+    result["memory"] = {key: number for key in ("MemTotal", "MemAvailable")
+                        if type(number := value.get("memory", {}).get(key)) is int and 0 <= number <= 2**63 - 1}
+    result["targets"] = []
+    for target in value.get("targets", [])[:8]:
+        safe = {"nodes": [{key: node[key] for key in ("Ready", "DiskPressure", "MemoryPressure") if type(node.get(key)) is bool}
+                          for node in target.get("nodes", [])[:32]]}
+        if isinstance(target.get("id"), str) and re.fullmatch(r"[a-f0-9]{64}", target["id"]):
+            safe["id"] = target["id"]
+        if type(target.get("unavailable")) is bool:
+            safe["unavailable"] = target["unavailable"]
+        result["targets"].append(safe)
+    return result
+
+
 def export_evidence(source, phases, destination):
     destination.mkdir(parents=True, exist_ok=True)
     reports = []
@@ -118,7 +143,18 @@ def export_evidence(source, phases, destination):
             exported_phases += 1
         except (OSError, ValueError, TypeError, RecursionError):
             problems += 1
-    result = {"reports": reports, "phase_files": exported_phases, "export_errors": problems}
+    headroom = []
+    for snapshot in sorted(source.glob("headroom-*.json"))[:128]:
+        try:
+            if snapshot.stat().st_size > 128 * 1024:
+                problems += 1
+                continue
+            item = safe_headroom(json.loads(snapshot.read_text()))
+            if item is not None:
+                headroom.append(item)
+        except (OSError, ValueError, TypeError, AttributeError, RecursionError):
+            problems += 1
+    result = {"reports": reports, "phase_files": exported_phases, "headroom": headroom, "export_errors": problems}
     (destination / "summary.json").write_text(json.dumps(result, indent=2) + "\n")
     return result
 

@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import time
@@ -123,12 +124,12 @@ def changed_csharp(base):
     return sorted(p for p in paths if p.endswith(".cs") and (ROOT / p).is_file())
 
 
-def execute(name, command, directory, steps):
+def execute(name, command, directory, steps, environment=None):
     log = directory / f"{name}.log"
     print(f"Running {name}; log: {log.relative_to(ROOT)}", flush=True)
     start = time.monotonic()
     with log.open("w") as stream:
-        result = subprocess.run(command, cwd=ROOT, stdout=stream, stderr=subprocess.STDOUT)
+        result = subprocess.run(command, cwd=ROOT, stdout=stream, stderr=subprocess.STDOUT, env=environment)
     steps.append({"name": name, "command": command, "exit_code": result.returncode, "seconds": round(time.monotonic() - start, 2), "log": str(log.relative_to(ROOT))})
     if result.returncode:
         raise GateError(f"{name} failed (exit {result.returncode}); inspect {log.relative_to(ROOT)}")
@@ -169,6 +170,93 @@ def require_publication_base(receipt, branch):
         raise GateError("PR target differs from the reviewed base; use open-pr --base with the tested target, or rerun the full gate against its origin ref")
 
 
+def capture_headroom(directory, phase, include_lab=True):
+    """Record scalar capacity/condition evidence, never kubeconfigs or native payloads."""
+    disk = shutil.disk_usage(ROOT)
+    memory = {}
+    try:
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            key, value = line.split(":", 1)
+            if key in ("MemTotal", "MemAvailable"):
+                memory[key] = int(value.split()[0]) * 1024
+    except (OSError, ValueError):
+        pass
+    result = {"phase": phase, "disk_total": disk.total, "disk_free": disk.free, "memory": memory, "targets": []}
+    state_path = Path(os.environ.get("POLE_K8S_LAB_STATE", ROOT / ".tmp/kubernetes-lab/state.json"))
+    if include_lab:
+        try:
+            state = json.loads(state_path.read_text())
+            for target in state.get("targets", [])[:8]:
+                item = {"id": hashlib.sha256(target["key"].encode()).hexdigest(), "nodes": []}
+                result["targets"].append(item)
+                try:
+                    command = [state["tools"]["kubectlPath"], "--kubeconfig", target["kubeconfigPath"],
+                               "--context", target["context"], "get", "nodes", "-o", "json", "--request-timeout=3s"]
+                    completed = subprocess.run(command, cwd=ROOT, capture_output=True, timeout=5)
+                    item["exit_code"] = completed.returncode
+                    if completed.returncode == 0:
+                        for node in json.loads(completed.stdout).get("items", [])[:32]:
+                            conditions = {condition.get("type"): condition.get("status") for condition in node.get("status", {}).get("conditions", [])}
+                            item["nodes"].append({name: conditions[name] == "True" for name in ("Ready", "DiskPressure", "MemoryPressure")
+                                                  if conditions.get(name) in ("True", "False")})
+                    else:
+                        item["unavailable"] = True
+                except (OSError, ValueError, KeyError, subprocess.TimeoutExpired):
+                    item["unavailable"] = True
+        except (OSError, ValueError, KeyError):
+            result["lab_unavailable"] = True
+    (directory / f"headroom-{phase}.json").write_text(json.dumps(result, indent=2) + "\n")
+
+
+def run_backend(directory, steps=None, tests=None):
+    """The one complete, sequential, coverage-enabled backend lane used locally and in CI."""
+    directory = directory.resolve()
+    if not directory.is_relative_to(ROOT):
+        raise GateError("Backend results must be inside the workspace")
+    directory.mkdir(parents=True, exist_ok=True)
+    manifest_path = directory / "backend-manifest.json"
+    if manifest_path.exists() or any(directory.rglob("*.trx")):
+        raise GateError("Backend results require a fresh directory; previous evidence must be retained")
+    steps = steps if steps is not None else []
+    tests = tests if tests is not None else {}
+    projects = test_projects()
+    manifest = {"status": "running", "coverage": True, "projects": projects, "steps": steps, "tests": tests}
+    environment = dict(os.environ)
+    environment.setdefault("POLE_TEST_EVIDENCE_DIRECTORY", str(directory / "phases"))
+    try:
+        capture_headroom(directory, "before-backend")
+        for index, project in enumerate(projects):
+            name = f"backend-{index}"
+            output = directory / name
+            if "Integration" in project or "Kubernetes" in project or "E2E" in project:
+                capture_headroom(directory, f"before-{name}")
+            command = ["dotnet", "test", project, "--no-build", "--no-restore", "--nologo", "-maxcpucount:1", "-nodeReuse:false",
+                       "--collect:Code Coverage;Format=Cobertura", "--logger", "trx;LogFileName=results.trx", "--results-directory", str(output)]
+            execute(name, command, directory, steps, environment)
+            tests[project] = read_trx(output / "results.trx")
+            coverage = list(output.rglob("*.cobertura.xml"))
+            if not coverage or any(ET.parse(report).getroot().tag != "coverage" for report in coverage):
+                raise GateError(f"Missing or invalid coverage report for {project}")
+            manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+        check_backend_reports(directory, ROOT)
+        manifest["status"] = "passed"
+        return tests
+    finally:
+        failing = sys.exc_info()[0] is not None
+        if manifest["status"] != "passed":
+            manifest["status"] = "failed"
+        try:
+            capture_headroom(directory, "after-backend" if manifest["status"] == "passed" else "failed-backend")
+        except OSError:
+            # A diagnostic write failure must not replace the failing test command.
+            manifest["headroom_unavailable"] = True
+        try:
+            manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+        except OSError:
+            if not failing:
+                raise
+
+
 def run_full(base):
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     directory = ARTIFACTS / time.strftime("%Y%m%d-%H%M%S")
@@ -182,18 +270,16 @@ def run_full(base):
         execute("automation", [sys.executable, "scripts/run_script_tests.py", str(directory / "scripts.json")], directory, steps)
         for index, shell_test in enumerate(sorted((ROOT / "infrastructure").glob("**/tests/*.sh"))):
             execute(f"shell-{index}", ["bash", str(shell_test)], directory, steps)
+        capture_headroom(directory, "before-lab", include_lab=False)
         execute("lab-verify", ["bash", "infrastructure/kubernetes-lab/lab.sh", "verify"], directory, steps)
+        capture_headroom(directory, "after-lab")
         execute("frontend-install", ["npm", "ci", "--prefix", "src/api/frontend"], directory, steps)
         execute("restore", ["dotnet", "restore", "Pole.slnx", *MSBUILD], directory, steps)
         execute("build", ["dotnet", "build", "Pole.slnx", "--no-restore", *MSBUILD], directory, steps)
         command = format_command(base)
         if command:
             execute("format", command, directory, steps)
-        # No filter, project subset, opt-out, or no-test success path is accepted here.
-        for index, project in enumerate(projects):
-            output = directory / f"backend-{index}"
-            execute(f"backend-{index}", ["dotnet", "test", project, "--no-build", "--no-restore", "--nologo", "--logger", "trx;LogFileName=results.trx", "--results-directory", str(output)], directory, steps)
-            receipt["tests"][project] = read_trx(output / "results.trx")
+        run_backend(directory, steps, receipt["tests"])
         frontend_report = directory / "frontend.json"
         execute("frontend-tests", ["npm", "test", "--prefix", "src/api/frontend", "--", "--reporter=json", f"--outputFile={frontend_report}"], directory, steps)
         receipt["tests"]["frontend"] = read_vitest(frontend_report)
@@ -210,6 +296,11 @@ def run_full(base):
         receipt["failure"] = str(error)
         raise GateError(str(error)) from error
     finally:
+        if receipt["status"] != "passed":
+            try:
+                capture_headroom(directory, "failed-run")
+            except OSError:
+                pass
         save_receipt(receipt)
 
 
@@ -220,6 +311,11 @@ def main():
         sub = commands.add_parser(name)
         sub.add_argument("--base", default="origin/master")
     commands.add_parser("verify")
+    backend_lane = commands.add_parser("backend")
+    backend_lane.add_argument("--results-directory", type=Path, required=True)
+    headroom = commands.add_parser("headroom")
+    headroom.add_argument("--results-directory", type=Path, required=True)
+    headroom.add_argument("--phase", choices=("before-lab", "after-lab", "failed-run"), required=True)
     backend = commands.add_parser("check-backend-reports")
     backend.add_argument("--directory", type=Path, required=True)
     frontend = commands.add_parser("check-frontend-report")
@@ -235,6 +331,11 @@ def main():
     try:
         if args.command == "run":
             run_full(args.base)
+        elif args.command == "backend":
+            run_backend(args.results_directory)
+        elif args.command == "headroom":
+            args.results_directory.mkdir(parents=True, exist_ok=True)
+            capture_headroom(args.results_directory, args.phase, include_lab=args.phase != "before-lab")
         elif args.command in ("format", "check-format"):
             command = format_command(args.base, fix=args.command == "format")
             if command:

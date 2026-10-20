@@ -61,6 +61,16 @@ class FailureEvidenceTests(unittest.TestCase):
         self.assertNotIn("payload-canary", text)
         self.assertIn('outcome="NotExecuted"', text)
 
+    def test_headroom_contains_only_capacity_and_boolean_node_conditions(self):
+        (self.raw / "headroom-before-backend-18.json").write_text(json.dumps({
+            "phase": "before-backend-18", "disk_free": 123, "memory": {"MemAvailable": 456, "token": "private-canary"},
+            "targets": [{"id": "a" * 64, "kubeconfig": "private-canary", "nodes": [{"Ready": True, "message": "private-canary"}]}],
+        }))
+        evidence.export_evidence(self.raw, self.phases, self.output)
+        text = (self.output / "summary.json").read_text()
+        self.assertNotIn("private-canary", text)
+        self.assertEqual(123, json.loads(text)["headroom"][0]["disk_free"])
+
 
 if __name__ == "__main__":
     unittest.main()
