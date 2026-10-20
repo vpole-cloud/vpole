@@ -214,9 +214,21 @@ never creates, resets, or deletes one.
 
 ## Code coverage
 
-Coverage is an optional diagnostic and does not change the normal local test commands. To collect
-fresh backend coverage for one project, clear the previous inputs and add the built-in Microsoft
-collector:
+Both complete local and CI gates require backend coverage. They use the same discovered project
+inventory, sequential executor and built-in Microsoft Cobertura collector. After restoring/building
+the solution and preparing the full lab, the backend lane can also run directly:
+
+```bash
+python3 scripts/quality_gate.py backend --results-directory .artifacts/backend-new-run
+```
+
+Choose a fresh directory inside the worktree for every invocation; old manifests and TRX files are
+rejected. The executor records each project's command, outcome and coverage files, then rejects
+missing, failed, skipped, empty or aborted suites. `python3 scripts/quality_gate.py run` invokes this
+same backend lane as part of the complete publication gate.
+
+Focused development checks may still use plain `dotnet test` without coverage. To collect coverage
+for one focused project, choose fresh inputs and add the collector:
 
 ```bash
 rm -rf -- .artifacts/coverage/backend/raw .artifacts/coverage/backend/report
@@ -245,7 +257,7 @@ npm run test:coverage --prefix src/api/frontend
 ```
 
 Its HTML report is written to `src/api/frontend/coverage`. CI collects backend coverage during the
-existing complete backend run and frontend coverage during the existing Vitest run, writes separate
+complete backend lane and frontend coverage during the Vitest run, writes separate
 summaries to the Actions run page, and uploads both HTML reports as 14-day artifacts. Coverage has
 no threshold yet; establish a representative baseline before using it as a merge gate.
 
@@ -295,13 +307,61 @@ Prefer factory methods over direct record or class construction because they:
 For generated infrastructure identifiers, prefer shared generators and helpers over hand-built strings.
 
 Tests that create external resources should register cleanup immediately through `TestResourceScope`
-instead of maintaining nullable identifiers in a large `finally` block. Cleanup runs in reverse
+instead of maintaining nullable identifiers in a large `finally` block. Execute the test body through
+`await resources.RunAsync(async () => { ... });` so a body failure and subsequent cleanup failures
+are both preserved. Register restoration before changing shared state, including operations whose
+response may be lost after acceptance. Cleanup runs in reverse
 registration order, continues after individual failures, and reports them together. Use a cleanup
 sequence when one resource has ordered deletion and observation steps that must all be attempted.
 Use a concurrent cleanup group only for independent resources such as same-run namespaces on
 different lab targets.
 Kubernetes cleanup must retain the namespace UID and ownership-label checks; do not register deletion
 of shared operators, volumes, ingress controllers, or other lab infrastructure.
+
+
+## Deterministic E2E contracts
+
+Use `TestWait.UntilAsync` for asynchronous server or Kubernetes probes. It uses a monotonic deadline
+and bounds the awaited probe itself; pass its callback token through every HTTP, Kubernetes and
+heartbeat request. Use Playwright assertions for visible conditions with a known resource ID,
+workspace and section. `NetworkIdle`, option position, global inventory counts and an old Ready
+replica do not establish acceptance of the intended operation. Keep real quiet/freshness windows
+and the existing latency budgets; a longer timeout is not a synchronization fix.
+
+Bind native readiness to the accepted revision/generation, observed generation, expected spec and
+updated/available replicas. Choose profiles and resources by owned IDs, then read back the saved
+configuration. Remove owned profiles only after their workloads. Deletion probes accept 404 as
+complete and 2xx as pending; unexpected 401/403/5xx terminate that phase with a safe status.
+
+SignalR evidence represents current coverage rather than a union of historical acknowledgements.
+Correlate invocation, connection, document and subscription epochs; false/empty acknowledgements
+replace previous coverage, and responses after close/unsubscribe cannot restore it. Record HTTP
+success, rejection, cancellation and transport failure separately. Intercepted request failures must
+fault the phase task immediately, preserving the original exception instead of waiting for a second
+timeout.
+
+### Safe failure evidence
+
+`TestResourceScope.RunAsync` activates a bounded `TestPhaseJournal` for the body and cleanup;
+`E2eApiClient` records metadata for API attempts in that context. Browser tests create pages through
+`BrowserEvidence.NewPageAsync(context)` so the same journal observes page requests until close.
+Tests without a resource scope still receive a separate browser journal. Scenario-specific code may
+record selection, accepted revision/generation and stream transitions using typed fields. Register
+an exact deployment/UID/container request observation before a single Follow action; allow native
+actionability waiting to finish before starting the request-completion deadline.
+
+Evidence accepts only phases, monotonic elapsed times, request numbers, HTTP status, typed
+revision/generation values supplied by the authoritative parser, and hashed resource/instance/
+container/scenario identifiers. It never records credentials, cookies, headers, complete URLs,
+arbitrary request/response payloads, exception messages or workload logs. Files have at most 1024
+records. Storage failures cannot replace the original scenario failure. A missing evidence file is
+a diagnostic gap, never proof that a request succeeded or no request happened.
+
+CI always exports allowlisted TRX outcomes plus JSON phase and headroom summaries, including on
+failed runs. Raw TRX stdout, stack traces, messages, theory arguments and arbitrary payloads are
+excluded from the published failure artifact. Headroom snapshots record free disk/memory and
+sanitized node conditions before infrastructure stages and on failure; image-GC warnings remain a
+separate infrastructure investigation until linked to a test failure by evidence.
 
 ## Notes
 

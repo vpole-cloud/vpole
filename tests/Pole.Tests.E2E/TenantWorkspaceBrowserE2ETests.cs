@@ -15,6 +15,7 @@ public sealed class TenantWorkspaceBrowserE2ETests(PoleE2EFixture fixture)
     [Fact]
     public async Task Viewer_reads_real_workloads_and_tenant_switch_discards_only_confirmed_drafts_and_old_reads()
     {
+        using var testEvidence = new TestPhaseJournal(nameof(Viewer_reads_real_workloads_and_tenant_switch_discards_only_confirmed_drafts_and_old_reads)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
         var resources = new TestResourceScope("tenant workspace browser E2E");
@@ -63,7 +64,7 @@ public sealed class TenantWorkspaceBrowserE2ETests(PoleE2EFixture fixture)
             using var playwright = await Playwright.CreateAsync();
             await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint, new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
             await using var context = await browser.NewContextAsync(new BrowserNewContextOptions { ViewportSize = new ViewportSize { Width = 1440, Height = 900 }, IgnoreHTTPSErrors = true });
-            var page = await context.NewPageAsync();
+            var page = await BrowserEvidence.NewPageAsync(context);
             await page.GotoAsync(fixture.FrontendBaseAddress.ToString());
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in", Exact = true }).ClickAsync();
             await page.GetByLabel("Username or email").FillAsync(fixture.Beta.Email);

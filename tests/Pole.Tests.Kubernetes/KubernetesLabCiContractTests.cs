@@ -16,7 +16,7 @@ public sealed class KubernetesLabCiContractTests
         Assert.Contains("Reclaim runner disk space", workflow, StringComparison.Ordinal);
         Assert.Contains("/usr/local/lib/android", workflow, StringComparison.Ordinal);
         Assert.Contains(
-            "dotnet test --no-build --no-restore --nologo -maxcpucount:1 -nodeReuse:false",
+            "run: python3 scripts/quality_gate.py backend --results-directory .artifacts/coverage/backend/raw",
             workflow,
             StringComparison.Ordinal);
         Assert.DoesNotContain("run: dotnet test\n", workflow, StringComparison.Ordinal);

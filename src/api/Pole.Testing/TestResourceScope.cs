@@ -66,6 +66,9 @@ public sealed class TestResourceScope : IAsyncDisposable
     public async Task RunAsync(Func<Task> body)
     {
         ThrowIfDisposeStarted();
+        ArgumentNullException.ThrowIfNull(body);
+        var journal = TestPhaseJournal.Current ?? new TestPhaseJournal(_description);
+        using var activation = journal.Activate();
         Exception? primaryFailure = null;
         try
         {
@@ -74,16 +77,21 @@ public sealed class TestResourceScope : IAsyncDisposable
         catch (Exception exception)
         {
             primaryFailure = exception;
+            journal.Record(TestPhase.Failed);
             throw;
         }
         finally
         {
             try
             {
+                journal.Record(TestPhase.Cleanup);
                 await DisposeAsync();
+                if (primaryFailure is null) journal.Record(TestPhase.Completed);
             }
-            catch (Exception cleanupFailure) when (primaryFailure is not null)
+            catch (Exception cleanupFailure)
             {
+                journal.Record(TestPhase.Failed);
+                if (primaryFailure is null) throw;
                 throw new AggregateException(
                     "The test body and resource cleanup both failed.",
                     primaryFailure,

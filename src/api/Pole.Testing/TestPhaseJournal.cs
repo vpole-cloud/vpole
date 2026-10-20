@@ -15,21 +15,53 @@ public enum TestPhase
 /// <summary>Bounded diagnostic metadata. Caller-owned identifiers are hashed; payloads are never accepted.</summary>
 public sealed class TestPhaseJournal
 {
+    private static readonly AsyncLocal<TestPhaseJournal?> Ambient = new();
     private readonly Lock _lock = new();
     private readonly long _started = Stopwatch.GetTimestamp();
     private readonly string _scenario;
     private int _count;
+    private long _nextRequest;
     private bool _unavailable;
-    public string Path { get; }
+    public string Path { get; } = string.Empty;
+    public static TestPhaseJournal? Current => Ambient.Value;
+
+    public long AllocateRequestId() => Interlocked.Increment(ref _nextRequest);
+
+    public IDisposable Activate()
+    {
+        var previous = Ambient.Value;
+        Ambient.Value = this;
+        return new Activation(previous);
+    }
 
     public TestPhaseJournal(string scenario, string? directory = null)
     {
         _scenario = Hash(scenario)!;
-        directory ??= Environment.GetEnvironmentVariable("POLE_TEST_EVIDENCE_DIRECTORY")
-                      ?? System.IO.Path.GetFullPath(System.IO.Path.Combine(".artifacts", "test-phases"));
-        Directory.CreateDirectory(directory);
-        Path = System.IO.Path.Combine(directory, $"{_scenario}-{Guid.NewGuid():N}.jsonl");
-        Record(TestPhase.Started);
+        try
+        {
+            directory ??= Environment.GetEnvironmentVariable("POLE_TEST_EVIDENCE_DIRECTORY")
+                          ?? System.IO.Path.GetFullPath(System.IO.Path.Combine(".artifacts", "test-phases"));
+            Directory.CreateDirectory(directory);
+            Path = System.IO.Path.Combine(directory, $"{_scenario}-{Guid.NewGuid():N}.jsonl");
+            Record(TestPhase.Started);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+                                         or ArgumentException or NotSupportedException or System.Security.SecurityException)
+        {
+            // Diagnostics must never prevent the scenario from starting or hide its actual failure.
+            _unavailable = true;
+        }
+    }
+
+    private sealed class Activation(TestPhaseJournal? previous) : IDisposable
+    {
+        private bool _disposed;
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            Ambient.Value = previous;
+        }
     }
 
     public bool Record(

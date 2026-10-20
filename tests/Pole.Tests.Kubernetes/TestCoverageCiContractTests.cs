@@ -13,7 +13,11 @@ public sealed class TestCoverageCiContractTests
     {
         var workflow = ReadRepositoryFile(".github", "workflows", "kubernetes-lab.yml");
 
-        Assert.Contains("Code Coverage;Format=Cobertura", workflow, StringComparison.Ordinal);
+        // Collector and sequential execution arguments are exercised by test_quality_gate.py.
+        Assert.Contains(
+            "run: python3 scripts/quality_gate.py backend --results-directory .artifacts/coverage/backend/raw",
+            workflow,
+            StringComparison.Ordinal);
         Assert.Contains("dotnet tool run reportgenerator", workflow, StringComparison.Ordinal);
         Assert.Contains("Html;Cobertura", workflow, StringComparison.Ordinal);
         Assert.Contains("MarkdownAssembliesSummary", workflow, StringComparison.Ordinal);

@@ -14,6 +14,7 @@ public sealed class DependencyBrowserE2ETests(PoleE2EFixture fixture)
     [SourceBuildFact]
     public async Task Application_dependencies_restore_partial_steps_and_allow_real_SQL_and_Redis_only_after_network_declarations()
     {
+        using var testEvidence = new TestPhaseJournal(nameof(Application_dependencies_restore_partial_steps_and_allow_real_SQL_and_Redis_only_after_network_declarations)).Activate();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(20));
         var ct = timeout.Token;
         await fixture.EnsureSourceBuildInfrastructureReadyAsync(ct);
@@ -97,7 +98,7 @@ public sealed class DependencyBrowserE2ETests(PoleE2EFixture fixture)
             using var playwright = await Playwright.CreateAsync();
             await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint, new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
             await using var context = await browser.NewContextAsync(new BrowserNewContextOptions { ViewportSize = new ViewportSize { Width = 1440, Height = 900 }, IgnoreHTTPSErrors = true });
-            var page = await context.NewPageAsync();
+            var page = await BrowserEvidence.NewPageAsync(context);
             await LoginAsync(page);
             await page.GotoAsync(new Uri(fixture.FrontendBaseAddress, $"?view=web-services&resource={appId}&section=dependencies").ToString());
             var content = page.Locator("#app-content");

@@ -16,6 +16,7 @@ public sealed class RealtimeProviderBrowserE2ETests(PoleE2EFixture fixture)
     [Fact]
     public async Task Native_storage_hints_preserve_dirty_draft_coalesce_slow_reads_and_keep_quiet_inventory_current()
     {
+        using var testEvidence = new TestPhaseJournal(nameof(Native_storage_hints_preserve_dirty_draft_coalesce_slow_reads_and_keep_quiet_inventory_current)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(8));
         var ct = budget.Token;
         var resources = new TestResourceScope("storage observation browser E2E");
@@ -41,7 +42,7 @@ public sealed class RealtimeProviderBrowserE2ETests(PoleE2EFixture fixture)
                 ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
                 IgnoreHTTPSErrors = true
             });
-            var page = await context.NewPageAsync();
+            var page = await BrowserEvidence.NewPageAsync(context);
             var journal = new StorageJournal(page, targetId, connectionVersion, canary);
             await page.GotoAsync(fixture.FrontendBaseAddress.ToString());
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in", Exact = true }).ClickAsync();

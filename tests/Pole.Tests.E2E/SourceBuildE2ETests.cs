@@ -22,6 +22,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
     [SourceBuildFact]
     public async Task Browser_git_creation_and_global_search_reach_the_same_source_built_resource()
     {
+        using var testEvidence = new TestPhaseJournal(nameof(Browser_git_creation_and_global_search_reach_the_same_source_built_resource)).Activate();
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMinutes(15));
         var token = cancellation.Token;
         await fixture.EnsureSourceBuildInfrastructureReadyAsync(token);
@@ -46,7 +47,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
                 ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
                 IgnoreHTTPSErrors = true
             });
-            var page = await context.NewPageAsync();
+            var page = await BrowserEvidence.NewPageAsync(context);
             await page.GotoAsync(fixture.FrontendBaseAddress.ToString());
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in", Exact = true }).ClickAsync();
             await page.GetByLabel("Username or email").FillAsync(fixture.Alpha.Email);
@@ -329,6 +330,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
     [SourceBuildFact]
     public async Task Source_build_uses_the_exact_repository_commit_pushes_an_artifact_and_records_release_provenance()
     {
+        using var testEvidence = new TestPhaseJournal(nameof(Source_build_uses_the_exact_repository_commit_pushes_an_artifact_and_records_release_provenance)).Activate();
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMinutes(15));
         var cancellationToken = cancellation.Token;
         await fixture.EnsureSourceBuildInfrastructureReadyAsync(cancellationToken);

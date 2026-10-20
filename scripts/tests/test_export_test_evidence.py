@@ -71,6 +71,118 @@ class FailureEvidenceTests(unittest.TestCase):
         self.assertNotIn("private-canary", text)
         self.assertEqual(123, json.loads(text)["headroom"][0]["disk_free"])
 
+    def test_controlled_frontend_failure_exports_typed_outcomes_without_arbitrary_text(self):
+        failed = subprocess.run(["python3", "-c", "raise SystemExit(3)"])
+        report = self.raw / "frontend.json"
+        report.write_text(json.dumps(self.frontend_report()))
+        result = evidence.export_evidence(self.raw, self.phases, self.output, report)
+        self.assertEqual(3, failed.returncode)
+        self.assertEqual(0, result["export_errors"])
+        self.assertEqual("frontend.json", result["frontend_report"])
+        safe = json.loads((self.output / "frontend.json").read_text())
+        self.assertFalse(safe["success"])
+        self.assertEqual(1, safe["counts"]["numFailedTests"])
+        self.assertEqual("failed", safe["suites"][0]["outcome"])
+        self.assertEqual("failed", safe["suites"][0]["tests"][0]["outcome"])
+        self.assertEqual(42, safe["suites"][0]["duration_ms"])
+        self.assertEqual(12.5, safe["suites"][0]["tests"][0]["duration_ms"])
+        self.assertRegex(safe["suites"][0]["id"], r"^[a-f0-9]{64}$")
+        self.assertRegex(safe["suites"][0]["tests"][0]["id"], r"^[a-f0-9]{64}$")
+        text = "".join(path.read_text() for path in self.output.iterdir())
+        self.assertNotIn("canary", text)
+        self.assertNotIn("failureMessages", text)
+        self.assertNotIn("fullName", text)
+
+    def test_frontend_cli_preserves_safe_failure_evidence_after_the_test_process_failed(self):
+        report = self.raw / "frontend.json"
+        report.write_text(json.dumps(self.frontend_report()))
+        exported = subprocess.run([
+            "python3", str(Path(__file__).parents[1] / "export_test_evidence.py"),
+            "--input", str(self.raw), "--phases-directory", str(self.phases), "--output", str(self.output),
+            "--frontend-report", str(report),
+        ], capture_output=True, text=True)
+        self.assertEqual(0, exported.returncode)
+        safe = json.loads((self.output / "frontend.json").read_text())
+        self.assertEqual(1, safe["counts"]["numFailedTests"])
+        self.assertNotIn("canary", exported.stdout + exported.stderr)
+
+    def test_missing_invalid_and_oversized_frontend_reports_produce_safe_error_summaries(self):
+        report = self.raw / "private-report-canary.json"
+        for content in (None, "private-invalid-canary", "[]", "null", '{"success":true}',
+                        json.dumps(self.frontend_report(numFailedTests="counter-canary")),
+                        json.dumps(self.frontend_report(testResults="payload-canary")),
+                        "size-canary" * (32 * 1024 * 1024 // len("size-canary") + 1)):
+            with self.subTest(content_type=type(content).__name__):
+                if content is None:
+                    report.unlink(missing_ok=True)
+                else:
+                    report.write_text(content)
+                result = evidence.export_evidence(self.raw, self.phases, self.output, report)
+                self.assertEqual(1, result["export_errors"])
+                self.assertIsNone(result["frontend_report"])
+                self.assertNotIn("canary", (self.output / "summary.json").read_text())
+
+    def test_invalid_frontend_report_does_not_leave_previous_success_metadata(self):
+        report = self.raw / "frontend.json"
+        report.write_text(json.dumps(self.frontend_report()))
+        evidence.export_evidence(self.raw, self.phases, self.output, report)
+        self.assertTrue((self.output / "frontend.json").exists())
+        report.write_text("invalid-canary")
+        result = evidence.export_evidence(self.raw, self.phases, self.output, report)
+        self.assertEqual(1, result["export_errors"])
+        self.assertFalse((self.output / "frontend.json").exists())
+        self.assertNotIn("canary", (self.output / "summary.json").read_text())
+
+    def test_frontend_missing_report_cli_fails_but_still_writes_the_bounded_summary(self):
+        exported = subprocess.run([
+            "python3", str(Path(__file__).parents[1] / "export_test_evidence.py"),
+            "--input", str(self.raw), "--phases-directory", str(self.phases), "--output", str(self.output),
+            "--frontend-report", str(self.raw / "missing-canary.json"),
+        ], capture_output=True, text=True)
+        self.assertEqual(1, exported.returncode)
+        self.assertEqual(1, json.loads((self.output / "summary.json").read_text())["export_errors"])
+        self.assertNotIn("canary", exported.stdout + exported.stderr)
+
+    def test_frontend_durations_and_unknown_outcomes_cannot_export_arbitrary_values(self):
+        for value in (True, -1, float("nan"), float("inf"), 10**400, "duration-canary"):
+            self.assertIsNone(evidence.frontend_duration(value))
+        self.assertEqual(12.5, evidence.frontend_duration(12.5))
+        self.assertEqual("error", evidence.frontend_outcome("outcome-canary"))
+        self.assertEqual("error", evidence.frontend_outcome([]))
+
+    def test_frontend_failure_artifact_is_always_uploaded_and_raw_report_is_excluded(self):
+        workflow = (Path(__file__).parents[2] / ".github/workflows/kubernetes-lab.yml").read_text()
+        frontend = workflow.split("  frontend:\n", 1)[1]
+        for step in ("Export safe frontend test evidence", "Upload safe frontend test evidence"):
+            block = frontend.split(f"      - name: {step}\n", 1)[1].split("      - name:", 1)[0]
+            self.assertIn("if: always()", block)
+        coverage = frontend.split("      - name: Upload frontend coverage report\n", 1)[1].split("      - name:", 1)[0]
+        self.assertIn("!src/api/frontend/coverage/tests.json", coverage)
+        self.assertIn("--frontend-report src/api/frontend/coverage/tests.json", frontend)
+
+    @staticmethod
+    def frontend_report(**overrides):
+        report = {
+            "success": False, "numTotalTestSuites": 1, "numPassedTestSuites": 0,
+            "numFailedTestSuites": 1, "numPendingTestSuites": 0,
+            "numTotalTests": 1, "numPassedTests": 0, "numFailedTests": 1,
+            "numPendingTests": 0, "numTodoTests": 0,
+            "testResults": [{
+                "name": "suite-header-canary.test.tsx", "status": "failed", "startTime": 1000, "endTime": 1042,
+                "message": "Bearer secret-canary", "console": "cookie-canary",
+                "assertionResults": [{
+                    "title": "title-canary", "fullName": "theory(parameter-canary)",
+                    "ancestorTitles": ["suite-canary"], "status": "failed", "duration": 12.5,
+                    "failureMessages": ["header-canary body-canary workload-log-canary"],
+                    "failureDetails": {"token": "token-canary", "cookie": "cookie-canary"},
+                    "meta": {"payload": "payload-canary"},
+                }],
+            }],
+            "snapshot": {"failure": "snapshot-body-canary"}, "testResultsProcessor": "console-canary",
+        }
+        report.update(overrides)
+        return report
+
 
 if __name__ == "__main__":
     unittest.main()

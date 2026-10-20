@@ -18,6 +18,7 @@ public sealed class RealtimeStorageObservationE2ETests(PoleE2EFixture fixture)
     [Fact]
     public async Task Admin_native_storage_changes_publish_sanitized_coherent_snapshots_and_deny_regular_users()
     {
+        using var testEvidence = new TestPhaseJournal(nameof(Admin_native_storage_changes_publish_sanitized_coherent_snapshots_and_deny_regular_users)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(5));
         var ct = budget.Token;
         var resources = new TestResourceScope("native storage observation E2E");

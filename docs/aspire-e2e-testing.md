@@ -173,10 +173,16 @@ against a real GitHub installation, see [GitHub source build E2E](github-source-
 The [Test workflow](../.github/workflows/kubernetes-lab.yml) runs the full lab and the complete
 backend test set on GitHub-hosted Ubuntu for every pull request and push to `master`. The workflow
 removes the unused preinstalled Android SDK to retain enough disk for the nested clusters, restores
-and builds once, and serializes test projects on the constrained runner. Local development retains
-the plain `dotnet test` command. Failure diagnostics include node conditions, pods, and events for
-every target; the worktree-scoped leak audit still runs after test failure. Frontend unit tests and
-the frontend build run in a separate job.
+and builds once, then runs the shared `quality_gate.py backend --results-directory` executor with
+coverage and a fresh results directory. The complete local gate uses that same project inventory,
+order and collector. Focused development retains plain `dotnet test` without coverage. The
+worktree-scoped leak audit still runs after test failure. Frontend tests, build and lint run in a
+separate job.
+
+The workflow always publishes a sanitized failure-evidence artifact containing test outcomes,
+bounded phase records and runner headroom summaries. It excludes raw TRX output/exception messages,
+credentials, cookies, headers, arbitrary payloads and workload logs. See [safe failure evidence](testing.md#safe-failure-evidence)
+for recording and redaction contracts.
 
 `HealthBrowserE2ETests` creates an owned private nginx workload with a deliberately failing readiness
 probe. It verifies Applied separately from Not ready, bounded owned warning context, reload after
@@ -248,3 +254,37 @@ WebService pilot is not their passing result. Serialize heavy lanes according to
 worktree scheduling. Final publication still requires `python3 scripts/quality_gate.py run` with
 zero failed or skipped tests across all backend/frontend/automation/infrastructure lanes; missing
 prerequisites and pre-existing failures block it. No focused result alone is a full-gate claim.
+
+## Journey synchronization and restoration contracts
+
+Each family establishes an authoritative condition and owns restoration before changing state.
+Shared helpers do not remove tenant, ownership, UID, revision or generation fences.
+
+| Family | Required condition | Owned changes and cleanup |
+| --- | --- | --- |
+| Runtime logs | Exact deployment, replacement Pod UID, container and read mode; one click starts one request | Owned workload; cancel exact stream on replacement, scope exit or close |
+| Source builds | Accepted build/release IDs and terminal server state | Register BuildKit recovery and Git stub revision restoration before mutation |
+| Multi-cluster | Placement target and accepted rollout with current native observed generation | Register target restoration before disable; remove each owned namespace with UID checks |
+| Releases | Accepted new release revision and current native readiness after retry | Restore target settings even if the mutation response was lost; then remove owned workload |
+| Tenant workspace | Known resource IDs and owned Pod/container, isolated tenant callbacks | Restore tenant context; cancel the exact old runtime request |
+| Auth and GitHub | Non-null journal and explicit authentication/source state | Restore stub revision and temporary client/user settings |
+| Functions / Orleans | Both owned silos admitted and expected cross-silo execution/stop behavior | Remove owned function/release resources; preserve normal stop budget |
+| Provider journeys | Known profile/resource IDs and read-back configuration; loaded workspace before screenshots | Remove owned workloads before disabling their eligible profiles |
+| Health | Accepted revision/generation, Applied distinct from readiness, native observed rollout | Remove owned workload and probe configuration; preserve freshness windows |
+| Storage | Current target, known discovery IDs and bounded monotonic probes | Restore temporary target/storage settings; remove only owned resources |
+| Realtime | Current acknowledged coverage and successful reads, independent transport outcomes | Clear coverage on close/unsubscribe/navigation; fault held phases on intercepted request failure |
+
+Use `TestResourceScope.RunAsync` to preserve body and cleanup failures together. Register every
+restoration before changing shared state, then attempt remaining cleanup even if one action fails.
+Use `BrowserEvidence.NewPageAsync` for page-level phase evidence and forward `TestWait.UntilAsync`
+callback tokens into the actual probe. Playwright role/label assertions wait for defined UI state;
+quiet windows and SLO sampling remain explicit measurements rather than arbitrary delays.
+
+The CI-stabilization acceptance contract requires ten separately recorded repetitions each of
+runtime logs, Health, metadata burst and two Orleans silos. Every failure requires diagnosis and
+correction; another green repetition does not erase it. After all changes and independent review,
+run the complete local gate with coverage and no filters or skips, then require three independent
+complete CI runs of the same final SHA on clean runners. Keep each attempt's evidence and verify
+that no owned test resources remain. These are acceptance requirements, not a claim that the
+current checkout has completed them. Runner topology changes, quarantine, automatic retry-to-green
+and blanket timeout increases are outside this stabilization contract.

@@ -95,6 +95,23 @@ public sealed class PoleE2EFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        var evidence = new TestPhaseJournal("E2E fixture initialization");
+        using var activation = evidence.Activate();
+        try
+        {
+            evidence.Record(TestPhase.Discovery);
+            await InitializeCoreAsync();
+            evidence.Record(TestPhase.Completed);
+        }
+        catch
+        {
+            evidence.Record(TestPhase.Failed);
+            throw;
+        }
+    }
+
+    private async Task InitializeCoreAsync()
+    {
         await StartLabServiceAccessAsync(_shutdown.Token);
         _scratchDirectory = Path.Combine(Path.GetTempPath(), "pole-e2e", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_scratchDirectory);
@@ -266,6 +283,9 @@ public sealed class PoleE2EFixture : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
+        var evidence = new TestPhaseJournal("E2E fixture disposal");
+        using var activation = evidence.Activate();
+        evidence.Record(TestPhase.Cleanup);
         var failures = new List<Exception>();
         async Task AttemptAsync(string phase, Func<Task> action)
         {
@@ -305,7 +325,11 @@ public sealed class PoleE2EFixture : IAsyncLifetime
         if (_harborProjectCleanupRegistered && !_harborProjectCleanupCompleted)
             failures.Add(new InvalidOperationException("The source-build E2E Harbor project cleanup did not complete."));
         if (failures.Count > 0)
+        {
+            evidence.Record(TestPhase.Failed);
             throw new AggregateException("E2E fixture cleanup failed.", failures);
+        }
+        evidence.Record(TestPhase.Completed);
     }
 
     private void ConfigureRealtimeReplica(IDistributedApplicationBuilder appHost,

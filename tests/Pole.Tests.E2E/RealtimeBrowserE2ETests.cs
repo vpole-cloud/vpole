@@ -25,6 +25,7 @@ public sealed class RealtimeBrowserE2ETests(
     [Fact]
     public async Task Real_Keycloak_cookie_and_notifications_are_shared_by_two_full_API_processes()
     {
+        using var testEvidence = new TestPhaseJournal(nameof(Real_Keycloak_cookie_and_notifications_are_shared_by_two_full_API_processes)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(6));
         var ct = budget.Token;
         var resources = new TestResourceScope("realtime root replicas E2E");
@@ -233,6 +234,7 @@ public sealed class RealtimeBrowserE2ETests(
     [Fact]
     public async Task Ui_token_refresh_renews_cookie_transport_and_preserves_dirty_tenant_workspace()
     {
+        using var testEvidence = new TestPhaseJournal(nameof(Ui_token_refresh_renews_cookie_transport_and_preserves_dirty_tenant_workspace)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
         var resources = new TestResourceScope("realtime browser refresh E2E");
@@ -253,7 +255,7 @@ public sealed class RealtimeBrowserE2ETests(
                 ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
                 IgnoreHTTPSErrors = true
             });
-            var page = await context.NewPageAsync();
+            var page = await BrowserEvidence.NewPageAsync(context);
             var journal = new BrowserJournal(page, fixture.Alpha.DefaultTenantId);
             await LoginAsync(page);
             await WaitForInitialBootstrapAsync(journal, ct);
@@ -313,6 +315,7 @@ public sealed class RealtimeBrowserE2ETests(
     [Fact]
     public async Task Owned_realtime_Redis_outage_falls_back_and_recovers_without_remounting_dirty_workspace()
     {
+        using var testEvidence = new TestPhaseJournal(nameof(Owned_realtime_Redis_outage_falls_back_and_recovers_without_remounting_dirty_workspace)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
         var resources = new TestResourceScope("realtime owned Redis outage E2E");
@@ -332,7 +335,7 @@ public sealed class RealtimeBrowserE2ETests(
                 ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
                 IgnoreHTTPSErrors = true
             });
-            var page = await context.NewPageAsync();
+            var page = await BrowserEvidence.NewPageAsync(context);
             var journal = new BrowserJournal(page, fixture.Alpha.DefaultTenantId);
             await LoginAsync(page);
             await WaitForInitialBootstrapAsync(journal, ct);
@@ -425,6 +428,7 @@ public sealed class RealtimeBrowserE2ETests(
     [Fact]
     public async Task Same_account_tabs_keep_different_tenant_notifications_and_dirty_workspaces_isolated()
     {
+        using var testEvidence = new TestPhaseJournal(nameof(Same_account_tabs_keep_different_tenant_notifications_and_dirty_workspaces_isolated)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
         var resources = new TestResourceScope("realtime same-account tenant tabs E2E");
@@ -461,7 +465,7 @@ public sealed class RealtimeBrowserE2ETests(
                 ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
                 IgnoreHTTPSErrors = true
             });
-            var alphaPage = await context.NewPageAsync();
+            var alphaPage = await BrowserEvidence.NewPageAsync(context);
             var alphaJournal = new BrowserJournal(alphaPage, alphaTenant);
             await LoginAsync(alphaPage, fixture.Beta);
             await WaitForInitialBootstrapAsync(alphaJournal, ct);
@@ -476,7 +480,7 @@ public sealed class RealtimeBrowserE2ETests(
             var alphaEditor = await alphaPage.GetByLabel("Environment variables").ElementHandleAsync()
                               ?? throw new InvalidOperationException("The Alpha dirty editor is unavailable.");
             alphaJournal.TrackTenantReads();
-            var betaPage = await context.NewPageAsync();
+            var betaPage = await BrowserEvidence.NewPageAsync(context);
             var betaJournal = new BrowserJournal(betaPage, betaTenant);
             // Same browser context: the real Keycloak SSO and HttpOnly realtime cookie are shared.
             await betaPage.GotoAsync(ResourceUrl(beta.Id, "configuration", betaTenant));
@@ -572,6 +576,7 @@ public sealed class RealtimeBrowserE2ETests(
     [Fact]
     public async Task Covered_pending_release_reduces_metadata_reads_against_real_disconnected_polling()
     {
+        using var testEvidence = new TestPhaseJournal(nameof(Covered_pending_release_reduces_metadata_reads_against_real_disconnected_polling)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
         const int windowSeconds = 65;
@@ -629,6 +634,7 @@ public sealed class RealtimeBrowserE2ETests(
     [Fact]
     public async Task Committed_metadata_bursts_keep_a_slow_read_alive_and_reach_visible_revisions_within_budget()
     {
+        using var testEvidence = new TestPhaseJournal(nameof(Committed_metadata_bursts_keep_a_slow_read_alive_and_reach_visible_revisions_within_budget)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
         var resources = new TestResourceScope("realtime browser metadata E2E");
@@ -647,7 +653,7 @@ public sealed class RealtimeBrowserE2ETests(
                 ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
                 IgnoreHTTPSErrors = true
             });
-            var page = await context.NewPageAsync();
+            var page = await BrowserEvidence.NewPageAsync(context);
             var journal = new BrowserJournal(page, fixture.Alpha.DefaultTenantId);
             await LoginAsync(page);
             await WaitForInitialBootstrapAsync(journal, ct);
@@ -792,7 +798,7 @@ public sealed class RealtimeBrowserE2ETests(
             ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
             IgnoreHTTPSErrors = true
         });
-        var page = await context.NewPageAsync();
+        var page = await BrowserEvidence.NewPageAsync(context);
         if (disconnected)
             await page.RouteAsync("**/api/v1/realtime/**", route => route.AbortAsync("failed"));
         var journal = new BrowserJournal(page, fixture.Alpha.DefaultTenantId);

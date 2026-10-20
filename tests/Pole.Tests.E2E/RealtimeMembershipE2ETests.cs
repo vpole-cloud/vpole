@@ -17,6 +17,7 @@ public sealed class RealtimeMembershipE2ETests(PoleE2EFixture fixture)
     [Fact]
     public async Task Own_user_notifications_revalidate_roles_and_restore_removed_membership_without_token_rotation()
     {
+        using var testEvidence = new TestPhaseJournal(nameof(Own_user_notifications_revalidate_roles_and_restore_removed_membership_without_token_rotation)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
         var resources = new TestResourceScope("realtime membership browser E2E");
@@ -43,7 +44,7 @@ public sealed class RealtimeMembershipE2ETests(PoleE2EFixture fixture)
                 ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
                 IgnoreHTTPSErrors = true
             });
-            var page = await context.NewPageAsync();
+            var page = await BrowserEvidence.NewPageAsync(context);
             var journal = new MembershipJournal(page, subject, tenantId);
             await LoginAsync(page);
             await page.GotoAsync(new Uri(fixture.FrontendBaseAddress,
