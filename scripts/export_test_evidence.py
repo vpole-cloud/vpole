@@ -69,6 +69,10 @@ def safe_failure(message, stack):
                           ("System.OperationCanceledException", "cancelled"),
                           ("System.Threading.Tasks.TaskCanceledException", "cancelled"),
                           ("System.Net.Http.HttpRequestException", "http"),
+                          ("k8s.Autorest.HttpOperationException", "kubernetes.http"),
+                          ("StackExchange.Redis.RedisConnectionException", "redis.connection"),
+                          ("StackExchange.Redis.RedisTimeoutException", "redis.timeout"),
+                          ("System.InvalidOperationException", "invalid.operation"),
                           ("System.AggregateException", "aggregate")):
         if re.match(re.escape(prefix) + r"(?:\s|:|$)", message or ""):
             category = label
@@ -83,7 +87,18 @@ def safe_failure(message, stack):
                 break
         if len(locations) >= 8:
             break
-    return {"category": category, "locations": locations}
+    failure = {"category": category, "locations": locations}
+    if category == "kubernetes.http":
+        statuses = {"BadRequest": 400, "Unauthorized": 401, "Forbidden": 403, "NotFound": 404,
+                    "Conflict": 409, "Gone": 410, "UnprocessableEntity": 422, "TooManyRequests": 429,
+                    "InternalServerError": 500, "BadGateway": 502, "ServiceUnavailable": 503,
+                    "GatewayTimeout": 504}
+        match = re.match(
+            r"k8s\.Autorest\.HttpOperationException\s*:\s*Operation returned an invalid status code '([A-Za-z]+)'",
+            message or "")
+        if match and match[1] in statuses:
+            failure["status"] = statuses[match[1]]
+    return failure
 
 
 def export_trx(source, destination):
