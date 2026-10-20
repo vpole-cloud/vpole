@@ -13,6 +13,7 @@ public sealed class StorageBrowserE2ETests(PoleE2EFixture fixture)
     [Fact]
     public async Task Platform_administrator_reads_target_inventory_and_creates_and_updates_a_revisioned_profile()
     {
+        using var testEvidence = new TestPhaseJournal(nameof(Platform_administrator_reads_target_inventory_and_creates_and_updates_a_revisioned_profile)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(5));
         var ct = budget.Token;
         var resources = new TestResourceScope("storage browser E2E");
@@ -23,7 +24,7 @@ public sealed class StorageBrowserE2ETests(PoleE2EFixture fixture)
             using var playwright = await Playwright.CreateAsync();
             await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint, new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
             await using var context = await browser.NewContextAsync(new BrowserNewContextOptions { ViewportSize = new ViewportSize { Width = 1440, Height = 900 }, IgnoreHTTPSErrors = true });
-            var page = await context.NewPageAsync();
+            var page = await BrowserEvidence.NewPageAsync(context);
             await page.GotoAsync(fixture.FrontendBaseAddress.ToString());
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in", Exact = true }).ClickAsync();
             await page.GetByLabel("Username or email").FillAsync(fixture.PlatformAdminUser.Email);

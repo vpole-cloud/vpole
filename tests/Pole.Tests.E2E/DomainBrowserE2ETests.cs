@@ -14,6 +14,7 @@ public sealed class DomainBrowserE2ETests(PoleE2EFixture fixture)
     [Fact]
     public async Task Tenant_can_reserve_inspect_replace_and_detach_exact_target_hostnames_in_separate_workspaces()
     {
+        using var testEvidence = new TestPhaseJournal(nameof(Tenant_can_reserve_inspect_replace_and_detach_exact_target_hostnames_in_separate_workspaces)).Activate();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = timeout.Token;
         var resources = new TestResourceScope("domain browser E2E");
@@ -42,7 +43,7 @@ public sealed class DomainBrowserE2ETests(PoleE2EFixture fixture)
                 ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
                 IgnoreHTTPSErrors = true
             });
-            var page = await context.NewPageAsync();
+            var page = await BrowserEvidence.NewPageAsync(context);
             await page.GotoAsync(fixture.FrontendBaseAddress.ToString());
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in", Exact = true }).ClickAsync();
             await page.GetByLabel("Username or email").FillAsync(fixture.Alpha.Email);

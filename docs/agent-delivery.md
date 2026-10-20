@@ -89,7 +89,12 @@ python3 scripts/quality_gate.py run
 ```
 
 The gate discovers all backend test projects, requires each in the solution,
-restores/builds the solution, and runs every project sequentially without filters.
+restores/builds the solution, and runs every project sequentially without filters using the same
+coverage-enabled backend executor as CI. The standalone lane is
+`python3 scripts/quality_gate.py backend --results-directory .artifacts/backend-new-run` after
+build/lab preparation; it requires a fresh results directory. Focused `dotnet test` remains valid
+without coverage during development. The complete gate requires each project's current Cobertura
+output and records its command/outcome in a backend manifest.
 It verifies TRX totals and rejects skipped, failed, empty or aborted runs. It also
 runs every automation test, lab recovery regression test, frontend test, frontend
 build/lint, changed-file formatting and the resource leak audit. Frontend pending

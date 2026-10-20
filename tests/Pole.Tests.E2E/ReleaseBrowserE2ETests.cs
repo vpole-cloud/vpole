@@ -14,6 +14,7 @@ public sealed class ReleaseBrowserE2ETests(PoleE2EFixture fixture)
     [Fact]
     public async Task Redeploy_pending_survives_reload_and_rollback_restores_spec_with_a_new_ready_release()
     {
+        using var testEvidence = new TestPhaseJournal(nameof(Redeploy_pending_survives_reload_and_rollback_restores_spec_with_a_new_ready_release)).Activate();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = timeout.Token;
         var resources = new TestResourceScope("release browser E2E");
@@ -47,7 +48,7 @@ public sealed class ReleaseBrowserE2ETests(PoleE2EFixture fixture)
             using var playwright = await Playwright.CreateAsync();
             await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint, new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
             await using var context = await browser.NewContextAsync(new BrowserNewContextOptions { ViewportSize = new ViewportSize { Width = 1440, Height = 900 }, IgnoreHTTPSErrors = true });
-            var page = await context.NewPageAsync();
+            var page = await BrowserEvidence.NewPageAsync(context);
             await page.GotoAsync(fixture.FrontendBaseAddress.ToString());
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in", Exact = true }).ClickAsync();
             await page.GetByLabel("Username or email").FillAsync(fixture.Alpha.Email);

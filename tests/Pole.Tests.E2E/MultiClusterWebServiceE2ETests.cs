@@ -24,6 +24,7 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
     [KubernetesFact("multi-cluster", "monitoring")]
     public async Task Two_target_reconciliation_isolates_failure_and_retries_only_failed_target()
     {
+        using var testEvidence = new TestPhaseJournal(nameof(Two_target_reconciliation_isolates_failure_and_retries_only_failed_target)).Activate();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var cancellationToken = timeout.Token;
         var lab = fixture.LabState;
@@ -142,7 +143,7 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
             await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
                 new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
             await using var context = await browser.NewContextAsync(new BrowserNewContextOptions { IgnoreHTTPSErrors = true });
-            var page = await context.NewPageAsync();
+            var page = await BrowserEvidence.NewPageAsync(context);
             await page.GotoAsync(fixture.FrontendBaseAddress.ToString());
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in", Exact = true }).ClickAsync();
             await page.GetByLabel("Username or email").FillAsync(fixture.Alpha.Email);

@@ -18,6 +18,7 @@ public sealed class BrowserSmokeE2ETests(
     [Fact]
     public async Task User_can_manage_image_services_in_separate_workspace_tabs_at_desktop_and_mobile_widths()
     {
+        using var testEvidence = new TestPhaseJournal(nameof(User_can_manage_image_services_in_separate_workspace_tabs_at_desktop_and_mobile_widths)).Activate();
         var resources = new TestResourceScope("browser smoke E2E");
         await resources.RunAsync(async () =>
         {
@@ -45,7 +46,7 @@ public sealed class BrowserSmokeE2ETests(
                     // Keycloak's local HTTPS endpoint uses an untrusted development certificate.
                     IgnoreHTTPSErrors = true
                 });
-                var page = await context.NewPageAsync();
+                var page = await BrowserEvidence.NewPageAsync(context);
                 var content = page.Locator("#app-content");
                 var navigation = new ConcurrentQueue<string>();
                 void Record(string item)

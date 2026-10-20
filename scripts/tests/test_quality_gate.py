@@ -205,7 +205,8 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(projects, [command[2] for _, command, _ in calls])
         for _, command, environment in calls:
             self.assertIn("--collect:Code Coverage;Format=Cobertura", command)
-            self.assertIn("-maxcpucount:1", command)
+            for argument in ("--no-build", "--no-restore", "--nologo", "-maxcpucount:1", "-nodeReuse:false"):
+                self.assertIn(argument, command)
             self.assertNotIn("--filter", command)
             self.assertIn("POLE_TEST_EVIDENCE_DIRECTORY", environment)
         manifest = json.loads((output / "backend-manifest.json").read_text())

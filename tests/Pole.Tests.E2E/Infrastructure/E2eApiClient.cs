@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using Pole.Testing;
 
 namespace Pole.Tests.E2E.Infrastructure;
 
@@ -47,7 +48,29 @@ public sealed class E2eApiClient(
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         }
 
-        return await client.SendAsync(request, completion, ct);
+        var journal = TestPhaseJournal.Current;
+        var requestId = journal?.AllocateRequestId() ?? 0;
+        if (request.Method == HttpMethod.Post || request.Method == HttpMethod.Put ||
+            request.Method == HttpMethod.Patch || request.Method == HttpMethod.Delete)
+            PhaseRequestEvidence.Record(journal, TestPhase.Action, request.RequestUri, requestId);
+        PhaseRequestEvidence.Record(journal, TestPhase.RequestStarted, request.RequestUri, requestId);
+        try
+        {
+            var response = await client.SendAsync(request, completion, ct);
+            PhaseRequestEvidence.Record(journal, TestPhase.ResponseReceived, request.RequestUri, requestId,
+                (int)response.StatusCode);
+            return response;
+        }
+        catch (OperationCanceledException)
+        {
+            PhaseRequestEvidence.Record(journal, TestPhase.RequestCancelled, request.RequestUri, requestId);
+            throw;
+        }
+        catch (HttpRequestException)
+        {
+            PhaseRequestEvidence.Record(journal, TestPhase.RequestFailed, request.RequestUri, requestId);
+            throw;
+        }
     }
 
     public void Dispose()

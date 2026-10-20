@@ -19,6 +19,7 @@ public sealed class RealtimeObservationBrowserE2ETests(
     [Fact]
     public async Task Owned_native_pod_deletions_reach_current_visible_diagnostics_within_observation_budget()
     {
+        using var testEvidence = new TestPhaseJournal(nameof(Owned_native_pod_deletions_reach_current_visible_diagnostics_within_observation_budget)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(15));
         var ct = budget.Token;
         var resources = new TestResourceScope("realtime observation browser E2E");
@@ -44,7 +45,7 @@ public sealed class RealtimeObservationBrowserE2ETests(
                 ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
                 IgnoreHTTPSErrors = true
             });
-            var page = await context.NewPageAsync();
+            var page = await BrowserEvidence.NewPageAsync(context);
             var journal = new ObservationJournal(page,
                 fixture.Alpha.DefaultTenantId,
                 owned.Id,

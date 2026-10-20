@@ -15,6 +15,7 @@ public sealed class DatabaseBrowserE2ETests(PoleE2EFixture fixture, ITestOutputH
     [Fact]
     public async Task User_can_provision_and_edit_PostgreSQL_with_transient_credentials_and_readable_placement()
     {
+        using var testEvidence = new TestPhaseJournal(nameof(User_can_provision_and_edit_PostgreSQL_with_transient_credentials_and_readable_placement)).Activate();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var resources = new TestResourceScope("PostgreSQL browser E2E");
         await resources.RunAsync(async () =>
@@ -37,7 +38,7 @@ public sealed class DatabaseBrowserE2ETests(PoleE2EFixture fixture, ITestOutputH
                 ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
                 IgnoreHTTPSErrors = true
             });
-            var page = await context.NewPageAsync();
+            var page = await BrowserEvidence.NewPageAsync(context);
             await LoginAsync(page);
             var content = page.Locator("#app-content");
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "PostgreSQL", Exact = true }).ClickAsync();
@@ -118,6 +119,7 @@ public sealed class DatabaseBrowserE2ETests(PoleE2EFixture fixture, ITestOutputH
     [Fact]
     public async Task User_can_provision_edit_and_delete_Redis_with_readable_single_target_placement()
     {
+        using var testEvidence = new TestPhaseJournal(nameof(User_can_provision_edit_and_delete_Redis_with_readable_single_target_placement)).Activate();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var resources = new TestResourceScope("Redis browser E2E");
         await resources.RunAsync(async () =>
@@ -137,7 +139,7 @@ public sealed class DatabaseBrowserE2ETests(PoleE2EFixture fixture, ITestOutputH
                 ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
                 IgnoreHTTPSErrors = true
             });
-            var page = await context.NewPageAsync();
+            var page = await BrowserEvidence.NewPageAsync(context);
             await LoginAsync(page);
             var content = page.Locator("#app-content");
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Redis", Exact = true }).ClickAsync();

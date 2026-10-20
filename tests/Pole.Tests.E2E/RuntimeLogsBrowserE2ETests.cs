@@ -18,6 +18,7 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
     [KubernetesFact("multi-cluster")]
     public async Task Runtime_logs_select_owned_containers_stop_on_replacement_and_isolate_transport_outage()
     {
+        using var testEvidence = new TestPhaseJournal(nameof(Runtime_logs_select_owned_containers_stop_on_replacement_and_isolate_transport_outage)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10)); var ct = budget.Token;
         var lab = fixture.LabState.GetRequiredTarget("workload-a");
         var nativeConfiguration = lab.CreateConfiguration(); var originalServer = new Uri(nativeConfiguration.Host);
@@ -130,9 +131,8 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
             using var playwright = await Playwright.CreateAsync();
             await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint, new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
             await using var context = await browser.NewContextAsync(new BrowserNewContextOptions { ViewportSize = new ViewportSize { Width = 1440, Height = 900 }, IgnoreHTTPSErrors = true });
-            var page = await context.NewPageAsync(); await LoginAsync(page);
-            journal = new TestPhaseJournal(nameof(Runtime_logs_select_owned_containers_stop_on_replacement_and_isolate_transport_outage));
-            using var evidence = new BrowserPhaseJournal(page, journal);
+            var page = await BrowserEvidence.NewPageAsync(context); await LoginAsync(page);
+            journal = TestPhaseJournal.Current!;
             await page.GotoAsync(ResourceUrl(Text(first, "redisId")));
             await SelectAsync(page, Text(firstPlacement, "deploymentId"), uid, "log-a");
             await StartReadAsync(page, Text(firstPlacement, "deploymentId"), uid, "log-a", false, journal, ct);
@@ -269,7 +269,14 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
         {
             var value = await SendAsync(HttpMethod.Get, $"/api/v1/resource-deployments/{deployment}/diagnostics", null, ready.Token);
             var diagnostics = value.GetProperty("diagnostics");
-            if (Text(diagnostics, "kind") == "Available" && diagnostics.GetProperty("instances").EnumerateArray().Any(item => item.GetProperty("ready").GetBoolean() && Text(item, "uid") != oldUid && item.GetProperty("containers").EnumerateArray().Any(container => Text(container, "name") == "log-a"))) return value;
+            if (Text(diagnostics, "kind") == "Available" && diagnostics.GetProperty("instances").EnumerateArray().Any(item => item.GetProperty("ready").GetBoolean() && Text(item, "uid") != oldUid && item.GetProperty("containers").EnumerateArray().Any(container => Text(container, "name") == "log-a")))
+            {
+                TestPhaseJournal.Current?.Record(TestPhase.SnapshotAccepted, resourceId: deployment,
+                    revision: value.GetProperty("deploymentRevision").GetInt64(),
+                    generation: value.GetProperty("desiredGeneration").GetInt64(),
+                    observationVersion: value.TryGetProperty("observationVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt64(out var number) ? number : null);
+                return value;
+            }
             await Task.Delay(500, ready.Token);
         }
     }

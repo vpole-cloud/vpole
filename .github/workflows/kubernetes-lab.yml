@@ -210,5 +210,25 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: frontend-coverage
-          path: src/api/frontend/coverage
+          path: |
+            src/api/frontend/coverage
+            !src/api/frontend/coverage/tests.json
+          retention-days: 14
+
+      - name: Export safe frontend test evidence
+        if: always()
+        run: >-
+          python3 scripts/export_test_evidence.py
+          --input src/api/frontend/coverage
+          --phases-directory .artifacts/frontend-test-phases
+          --frontend-report src/api/frontend/coverage/tests.json
+          --output .artifacts/frontend-ci-safe
+
+      - name: Upload safe frontend test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-test-evidence
+          path: .artifacts/frontend-ci-safe
+          if-no-files-found: error
           retention-days: 14

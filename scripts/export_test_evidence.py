@@ -4,6 +4,7 @@
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 import re
 import uuid
@@ -116,7 +117,82 @@ def safe_headroom(value):
     return result
 
 
-def export_evidence(source, phases, destination):
+FRONTEND_OUTCOMES = {"passed", "failed", "pending", "todo", "skipped", "disabled", "error"}
+FRONTEND_COUNTERS = (
+    "numTotalTestSuites", "numPassedTestSuites", "numFailedTestSuites", "numPendingTestSuites",
+    "numTotalTests", "numPassedTests", "numFailedTests", "numPendingTests", "numTodoTests",
+)
+
+
+def frontend_duration(value):
+    if type(value) in (int, float) and 0 <= value <= 2**53 - 1 and math.isfinite(value):
+        return value
+    return None
+
+
+def frontend_outcome(value):
+    return value if isinstance(value, str) and value in FRONTEND_OUTCOMES else "error"
+
+
+def export_frontend(source, destination):
+    """Vitest's JSON contains arbitrary assertion messages and titles; copy no free-form text."""
+    if source.stat().st_size > 32 * 1024 * 1024:
+        raise ValueError("Report exceeds metadata export limit")
+    original = json.loads(source.read_text())
+    if not isinstance(original, dict) or type(original.get("success")) is not bool:
+        raise ValueError("Invalid frontend report")
+    counts = {}
+    for key in FRONTEND_COUNTERS:
+        number = original.get(key, 0)
+        if type(number) is not int or not 0 <= number <= 999_999_999:
+            raise ValueError("Invalid frontend counters")
+        counts[key] = number
+    if any(key not in original for key in ("numTotalTests", "numPassedTests", "numFailedTests")):
+        raise ValueError("Missing frontend counters")
+    results = original.get("testResults")
+    if not isinstance(results, list) or len(results) > 10_000:
+        raise ValueError("Invalid frontend suites")
+    suites = []
+    test_count = 0
+    for suite_index, suite in enumerate(results):
+        if not isinstance(suite, dict):
+            raise ValueError("Invalid frontend suite")
+        assertions = suite.get("assertionResults")
+        if not isinstance(assertions, list) or len(assertions) > 20_000:
+            raise ValueError("Invalid frontend assertions")
+        test_count += len(assertions)
+        if test_count > 100_000:
+            raise ValueError("Frontend assertion limit exceeded")
+        suite_name = suite.get("name")
+        if not isinstance(suite_name, str):
+            raise ValueError("Invalid frontend suite identity")
+        suite_id = digest(suite_name)
+        tests = []
+        for test_index, assertion in enumerate(assertions):
+            if not isinstance(assertion, dict):
+                raise ValueError("Invalid frontend assertion")
+            title = assertion.get("fullName", assertion.get("title", ""))
+            if not isinstance(title, str):
+                raise ValueError("Invalid frontend test identity")
+            tests.append({
+                "id": digest(json.dumps([suite_id, suite_index, title, test_index])),
+                "outcome": frontend_outcome(assertion.get("status")),
+                "duration_ms": frontend_duration(assertion.get("duration")),
+            })
+        start = frontend_duration(suite.get("startTime"))
+        end = frontend_duration(suite.get("endTime"))
+        suites.append({
+            "id": suite_id,
+            "outcome": frontend_outcome(suite.get("status")),
+            "duration_ms": frontend_duration(end - start) if start is not None and end is not None else None,
+            "tests": tests,
+        })
+    result = {"success": original["success"], "counts": counts, "suites": suites}
+    destination.write_text(json.dumps(result, indent=2, allow_nan=False) + "\n")
+    return result
+
+
+def export_evidence(source, phases, destination, frontend_report=None):
     destination.mkdir(parents=True, exist_ok=True)
     reports = []
     problems = 0
@@ -154,7 +230,17 @@ def export_evidence(source, phases, destination):
                 headroom.append(item)
         except (OSError, ValueError, TypeError, AttributeError, RecursionError):
             problems += 1
+    frontend_file = None
+    if frontend_report is not None:
+        try:
+            (destination / "frontend.json").unlink(missing_ok=True)
+            export_frontend(frontend_report, destination / "frontend.json")
+            frontend_file = "frontend.json"
+        except (OSError, ValueError, TypeError, OverflowError, RecursionError):
+            problems += 1
     result = {"reports": reports, "phase_files": exported_phases, "headroom": headroom, "export_errors": problems}
+    if frontend_report is not None:
+        result["frontend_report"] = frontend_file
     (destination / "summary.json").write_text(json.dumps(result, indent=2) + "\n")
     return result
 
@@ -164,8 +250,9 @@ def main():
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--phases-directory", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--frontend-report", type=Path)
     args = parser.parse_args()
-    result = export_evidence(args.input, args.phases_directory, args.output)
+    result = export_evidence(args.input, args.phases_directory, args.output, args.frontend_report)
     print(f"Exported {len(result['reports'])} test reports and {result['phase_files']} phase journals; export errors: {result['export_errors']}.")
     return 1 if result["export_errors"] else 0
 
