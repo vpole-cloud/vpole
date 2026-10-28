@@ -19,7 +19,7 @@ Start with `docs/README.md`. For implementation rules, read `docs/engineering-gu
 
 ## Verified commands
 
-The repository pins .NET SDK `11.0.100-rc.1.26425.128` in `global.json`.
+The repository pins .NET SDK `11.0.100-rc.3.26522.148` in `global.json`.
 
 From the repository root:
 

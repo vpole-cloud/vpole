@@ -1,8 +1,8 @@
-FROM mcr.microsoft.com/dotnet/aspnet:11.0.0-rc.1 AS base
+FROM mcr.microsoft.com/dotnet/aspnet:11.0.0-rc.3 AS base
 USER $APP_UID
 WORKDIR /app
 
-FROM mcr.microsoft.com/dotnet/sdk:11.0.100-rc.1 AS build
+FROM mcr.microsoft.com/dotnet/sdk:11.0.100-rc.3 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 COPY . .

@@ -9,7 +9,7 @@ namespace Pole.Tests.E2E.Infrastructure;
 internal sealed class PlaywrightBrowserContainer : IAsyncDisposable
 {
     private const int PlaywrightPort = 3000;
-    private const string PlaywrightVersion = "1.62.0";
+    private const string PlaywrightVersion = "1.64.1";
     private readonly IContainer _container;
 
     public PlaywrightBrowserContainer(TestRunIdentity identity)

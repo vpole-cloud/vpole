@@ -18,6 +18,11 @@ The AppHost is `src/api/Pole.AppHost/Pole.AppHost.csproj`. It starts MongoDB 7.0
 the integration-test fixture), Keycloak, RabbitMQ, the Pole API, and the Vite frontend. The sample
 `blog` project requires an explicit start.
 
+The local MongoDB resource explicitly uses plaintext transport through
+`WithoutHttpsCertificate()`. Aspire 13.6 enables MongoDB TLS by default when a developer
+certificate is available; Pole's custom replica-set bootstrap and Mongo Express retain
+their existing local connection setup.
+
 Pole validates and loads the complete envelope-encryption key ring before migrations or background
 jobs start. A missing or invalid key is an intentional fail-closed startup error; AppHost never
 creates a replacement.

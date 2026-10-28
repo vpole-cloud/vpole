@@ -12,8 +12,11 @@ var mongoEntrypointScript = File.ReadAllText(mongoEntrypointPath);
 
 var mongoUsername = builder.AddParameter("mongo-username");
 var mongoPassword = builder.AddParameter("mongo-password", secret: true);
+#pragma warning disable ASPIRECERTIFICATES001 // Aspire's documented local TLS opt-out is experimental.
 var mongoServer = builder.AddMongoDB("pole-mongo", userName: mongoUsername, password: mongoPassword)
     .WithImageTag("7.0")
+    // The local replica-set bootstrap and Mongo Express use plaintext connections.
+    .WithoutHttpsCertificate()
     // Avoid executing a host bind mount, which rootless SELinux runtimes can deny.
     .WithEntrypoint("/bin/bash")
     .WithArgs("-c", mongoEntrypointScript, "mongo-entrypoint")
@@ -23,6 +26,7 @@ var mongoServer = builder.AddMongoDB("pole-mongo", userName: mongoUsername, pass
             options.WithLifetime(ContainerLifetime.Persistent);
     })
     .WithReplicaSet();
+#pragma warning restore ASPIRECERTIFICATES001
 if (!e2eEnabled)
 {
     mongoServer
