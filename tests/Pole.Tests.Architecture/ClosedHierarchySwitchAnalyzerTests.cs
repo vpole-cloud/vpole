@@ -12,6 +12,7 @@ public sealed class ClosedHierarchySwitchAnalyzerTests
     [InlineData("state switch { Ready => 1, _ => 0 }")]
     [InlineData("state switch { Ready => 1, var other => 0 }")]
     [InlineData("state switch { Ready => 1, State => 0 }")]
+    [InlineData("state switch { Ready => 1, global::State => 0 }")]
     [InlineData("state switch { Ready => 1, State other => 0 }")]
     [InlineData("state switch { Ready => 1, object other => 0 }")]
     [InlineData("state switch { Ready => 1, { } => 0 }")]
