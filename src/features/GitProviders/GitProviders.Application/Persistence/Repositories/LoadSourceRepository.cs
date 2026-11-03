@@ -8,14 +8,13 @@ public delegate Task<SourceRepository?> LoadSourceRepository(
     string sourceRepositoryId,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoLoadSourceRepository(IMongoDatabase database)
+internal sealed class MongoLoadSourceRepository(IMongoCollection<SourceRepository> sourceRepositories)
 {
     public async Task<SourceRepository?> InvokeAsync(
         string tenantId,
         string sourceRepositoryId,
         CancellationToken cancellationToken = default) =>
-        await database
-            .GetCollection<SourceRepository>("SourceRepositories")
+        await sourceRepositories
             .Find(GitProviderFilters.SourceRepositoryByTenantAndId(tenantId, sourceRepositoryId))
             .FirstOrDefaultAsync(cancellationToken);
 }

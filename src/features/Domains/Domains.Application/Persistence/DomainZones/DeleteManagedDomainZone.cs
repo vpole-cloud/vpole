@@ -46,17 +46,12 @@ public delegate Task<DeleteManagedDomainZoneOutcome>
         CancellationToken cancellationToken = default);
 
 internal sealed class MongoDeleteManagedDomainZone(
-    IMongoDatabase database,
+    IMongoCollection<TenantDomainZone> zones,
+    IMongoCollection<HostnameBinding> bindings,
     ApplyDeploymentTargetReferenceChanges applyDeploymentTargetReferenceChanges,
     StoreOutboxWrites outbox,
     IGitOpsMutations git)
 {
-    private readonly IMongoCollection<TenantDomainZone> zones =
-        database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
-
-    private readonly IMongoCollection<HostnameBinding> bindings =
-        database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
-
     public Task<DeleteManagedDomainZoneOutcome> InvokeAsync(
         string tenantId,
         string zoneId,

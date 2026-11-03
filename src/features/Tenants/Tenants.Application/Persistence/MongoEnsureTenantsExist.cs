@@ -6,10 +6,8 @@ using Pole.Features.Tenants.Domain;
 
 namespace Pole.Features.Tenants.Application.Persistence;
 
-internal sealed class MongoEnsureTenantsExist(IMongoDatabase database)
+internal sealed class MongoEnsureTenantsExist(IMongoCollection<Tenant> _tenants)
 {
-    private readonly IMongoCollection<Tenant> _tenants = database.GetCollection<Tenant>("Tenants");
-
     public async Task<EnsureTenantsExistOutcome> InvokeAsync(
         IReadOnlyCollection<string> tenantIds,
         CancellationToken cancellationToken = default)

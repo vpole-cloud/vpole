@@ -10,17 +10,12 @@ using Pole.Features.Domains.Domain;
 namespace Pole.Features.Domains.Application.Persistence.HostnameBindings;
 
 internal sealed class MongoCreateGeneratedHostnameBindings(
-    IMongoDatabase database,
+    IMongoCollection<TenantDomainZone> zones,
+    IMongoCollection<HostnameBinding> bindings,
     MongoHostnameBindingCleanup cleanup,
     TimeProvider timeProvider,
     StoreOutboxWrites outbox)
 {
-    private readonly IMongoCollection<TenantDomainZone> zones =
-        database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
-
-    private readonly IMongoCollection<HostnameBinding> bindings =
-        database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
-
     public async Task<CreateGeneratedHostnameBindingsOutcome> InvokeAsync(
         IReadOnlyList<CreateGeneratedHostnameBindingRequest> requests,
         IClientSessionHandle session,

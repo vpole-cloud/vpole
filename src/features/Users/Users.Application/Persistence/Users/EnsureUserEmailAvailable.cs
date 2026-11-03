@@ -13,10 +13,8 @@ public delegate Task<EnsureUserEmailAvailableOutcome> EnsureUserEmailAvailable(
     string email,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoEnsureUserEmailAvailable(IMongoDatabase database)
+internal sealed class MongoEnsureUserEmailAvailable(IMongoCollection<PoleUser> _users)
 {
-    private readonly IMongoCollection<PoleUser> _users = database.GetCollection<PoleUser>("Users");
-
     public async Task<EnsureUserEmailAvailableOutcome> InvokeAsync(
         string email,
         CancellationToken cancellationToken = default) =>

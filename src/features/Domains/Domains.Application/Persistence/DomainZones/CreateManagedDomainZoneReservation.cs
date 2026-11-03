@@ -43,15 +43,12 @@ public delegate Task<CreateManagedDomainZoneOutcome>
         CancellationToken cancellationToken = default);
 
 internal sealed class MongoCreateManagedDomainZoneReservation(
-    IMongoDatabase database,
+    IMongoCollection<TenantDomainZone> zones,
     ApplyDeploymentTargetReferenceChanges applyDeploymentTargetReferenceChanges,
     FenceDeploymentTargetWorkloadConfigurations fenceDeploymentTargetWorkloadConfigurations,
     TimeProvider timeProvider,
     StoreOutboxWrites outbox)
 {
-    private readonly IMongoCollection<TenantDomainZone> zones =
-        database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
-
     public async Task<CreateManagedDomainZoneOutcome>
         InvokeAsync(
             CreateManagedDomainZoneCommand request,

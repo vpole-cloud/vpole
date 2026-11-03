@@ -7,10 +7,8 @@ public delegate Task<Tenant?> LoadTenant(
     string tenantId,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoLoadTenant(IMongoDatabase database)
+internal sealed class MongoLoadTenant(IMongoCollection<Tenant> _tenants)
 {
-    private readonly IMongoCollection<Tenant> _tenants = database.GetCollection<Tenant>("Tenants");
-
     public async Task<Tenant?> InvokeAsync(
         string tenantId,
         CancellationToken cancellationToken = default) =>

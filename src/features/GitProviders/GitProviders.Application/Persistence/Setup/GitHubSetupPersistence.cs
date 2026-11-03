@@ -12,16 +12,11 @@ namespace Pole.Features.GitProviders.Application.Persistence.Setup;
 /// setup-state transition protocol and are intentionally kept together.
 /// </summary>
 internal sealed class GitHubSetupPersistence(
-    IMongoDatabase database,
+    IMongoCollection<GitHubSetupAttempt> _attempts,
+    IMongoCollection<GitProviderConnection> _connections,
     MongoRunTransaction transactions,
     StoreOutboxWrites outbox)
 {
-    private readonly IMongoCollection<GitHubSetupAttempt> _attempts =
-        database.GetCollection<GitHubSetupAttempt>("GitHubSetupAttempts");
-
-    private readonly IMongoCollection<GitProviderConnection> _connections =
-        database.GetCollection<GitProviderConnection>("GitProviderConnections");
-
     internal async Task<GitHubSetupAttempt?> FindAwaitingInstallationAsync(
         string stateHash,
         DateTime now,

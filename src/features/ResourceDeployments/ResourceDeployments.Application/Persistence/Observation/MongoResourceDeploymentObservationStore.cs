@@ -17,6 +17,7 @@ namespace Pole.Features.ResourceDeployments.Application.Persistence.Observation;
 /// <summary>Feature-owned context fences, sanitized payloads and events; shared store owns the protocol.</summary>
 internal sealed class MongoResourceDeploymentObservationStore(
     IMongoDatabase database,
+    IMongoCollection<ResourceDeployment> deployments,
     MongoRunTransaction transactions,
     FenceDeploymentTargetObservation fenceTarget,
     StoreOutboxWrites storeOutboxWrites) : IResourceDeploymentObservationStore
@@ -34,7 +35,7 @@ internal sealed class MongoResourceDeploymentObservationStore(
         ControlsCollection,
         DemandsCollection,
         SnapshotsCollection,
-        new Definition(database, fenceTarget, storeOutboxWrites));
+        new Definition(database, deployments, fenceTarget, storeOutboxWrites));
 
     public Task<ObservationMutationOutcome> PutDemandAsync(ObservationDemand demand,
         ResourceDeploymentObservationContext context,
@@ -237,6 +238,7 @@ internal sealed class MongoResourceDeploymentObservationStore(
 
     private sealed class Definition(
         IMongoDatabase database,
+        IMongoCollection<ResourceDeployment> deployments,
         FenceDeploymentTargetObservation fenceTarget,
         StoreOutboxWrites storeOutboxWrites) : IMongoObservationDefinition<
             ResourceDeploymentObservationContext,
@@ -293,10 +295,6 @@ internal sealed class MongoResourceDeploymentObservationStore(
         public FilterDefinition<ObservationSnapshotDocument> SnapshotPin(
             ResourceDeploymentObservationContext context) =>
             ObservationStoreFilters.ForSnapshotContext(context);
-
-        private readonly IMongoCollection<ResourceDeployment> deployments =
-            database.GetCollection<ResourceDeployment>("ResourceDeployments");
-
         public async Task<MongoObservationRejected?> FenceAsync(ResourceDeploymentObservationContext context,
             IClientSessionHandle session,
             CancellationToken ct)

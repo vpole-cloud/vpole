@@ -311,7 +311,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
                     .InvokeOutcomeAsync<DeleteDeploymentTargetPersistenceOutcome>,
                 deleteClock,
                 new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<PersistDeploymentTargetDeletionFenceOutcome>,
-                new MongoStoreOutboxWrites(fixture.Database).InvokeAsync).InvokeAsync,
+                new MongoStoreOutboxWrites(fixture.Database.GetCollection<OutboxMessage>("OutboxMessages")).InvokeAsync).InvokeAsync,
             new NoOpClientCache().Invalidate);
 
         var deletion = Task.Run(() => deleteHandler.HandleAsync(new DeleteDeploymentTargetRequest(existing.Id)));
@@ -361,7 +361,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
                 new MongoRunTransaction(fixture.Client)
                     .InvokeOutcomeAsync<EnsureBootstrapDefaultDeploymentTargetOutcome>,
                 timeProvider,
-                new MongoStoreOutboxWrites(fixture.Database).InvokeAsync).InvokeAsync,
+                new MongoStoreOutboxWrites(fixture.Database.GetCollection<OutboxMessage>("OutboxMessages")).InvokeAsync).InvokeAsync,
             preparer.InvokeAsync,
             (probe ?? new SuccessfulProbe()).InvokeAsync,
             options ?? CreateOptions(new DeploymentTargetBootstrapOptions()),

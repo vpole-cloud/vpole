@@ -14,17 +14,12 @@ internal sealed record RemoveCustomHostnameBindingRequest(
     GitLifecycleAuthority? Lifecycle);
 
 internal sealed class MongoDeleteCustomHostnameBinding(
-    IMongoDatabase database,
+    IMongoCollection<TenantDomainZone> zones,
+    IMongoCollection<HostnameBinding> bindings,
     MongoHostnameBindingCleanup cleanup,
     StoreOutboxWrites outbox,
     IGitOpsMutations git)
 {
-    private readonly IMongoCollection<TenantDomainZone> zones =
-        database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
-
-    private readonly IMongoCollection<HostnameBinding> bindings =
-        database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
-
     public Task<DeleteCustomHostnameBindingOutcome> InvokeAsync(
         DeleteCustomHostnameBindingRequest request,
         IClientSessionHandle session,

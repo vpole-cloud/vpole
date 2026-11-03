@@ -16,11 +16,8 @@ public delegate Task<DomainZoneBindingPage> LoadDomainZoneBindingPage(
     int pageSize,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoLoadDomainZoneBindingPage(IMongoDatabase database)
+internal sealed class MongoLoadDomainZoneBindingPage(IMongoCollection<HostnameBinding> bindings)
 {
-    private readonly IMongoCollection<HostnameBinding> bindings =
-        database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
-
     public async Task<DomainZoneBindingPage> InvokeAsync(
         string tenantId, string zoneId, int pageNumber, int pageSize, CancellationToken cancellationToken = default)
     {

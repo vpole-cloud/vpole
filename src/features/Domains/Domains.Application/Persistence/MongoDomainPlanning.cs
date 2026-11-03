@@ -5,14 +5,10 @@ using Pole.Features.Domains.Domain;
 
 namespace Pole.Features.Domains.Application.Persistence;
 
-internal sealed class MongoDomainPlanning(IMongoDatabase database)
+internal sealed class MongoDomainPlanning(
+    IMongoCollection<TenantDomainZone> zones,
+    IMongoCollection<HostnameBinding> bindings)
 {
-    private readonly IMongoCollection<TenantDomainZone> zones =
-        database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
-
-    private readonly IMongoCollection<HostnameBinding> bindings =
-        database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
-
     public async Task<NamedDomainZoneOutcome> ResolveZoneAsync(
         NamedDomainZoneRequest request,
         IClientSessionHandle? session,

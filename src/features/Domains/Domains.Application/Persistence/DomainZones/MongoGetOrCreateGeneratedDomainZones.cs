@@ -13,16 +13,13 @@ using Pole.ResultType;
 namespace Pole.Features.Domains.Application.Persistence.DomainZones;
 
 internal sealed class MongoGetOrCreateGeneratedDomainZones(
-    IMongoDatabase database,
+    IMongoCollection<TenantDomainZone> zones,
     ApplyDeploymentTargetReferenceChanges applyDeploymentTargetReferenceChanges,
     FenceDeploymentTargetWorkloadConfigurations fenceDeploymentTargetWorkloadConfigurations,
     LoadTenantIdentity loadTenantIdentity,
     TimeProvider timeProvider,
     StoreOutboxWrites outbox)
 {
-    private readonly IMongoCollection<TenantDomainZone> zones =
-        database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
-
     public async Task<GetOrCreateGeneratedDomainZonesOutcome> InvokeAsync(
         IReadOnlyList<GetOrCreateGeneratedZoneRequest> requests,
         IClientSessionHandle session,

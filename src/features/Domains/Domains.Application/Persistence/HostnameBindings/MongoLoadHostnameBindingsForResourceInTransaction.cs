@@ -6,11 +6,8 @@ using Pole.Features.Domains.Domain;
 
 namespace Pole.Features.Domains.Application.Persistence.HostnameBindings;
 
-internal sealed class MongoLoadHostnameBindingsForResourceInTransaction(IMongoDatabase database)
+internal sealed class MongoLoadHostnameBindingsForResourceInTransaction(IMongoCollection<HostnameBinding> bindings)
 {
-    private readonly IMongoCollection<HostnameBinding> bindings =
-        database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
-
     public async Task<IReadOnlyList<HostnameBindingSnapshot>> InvokeAsync(
         LoadHostnameBindingsForResourceInTransactionRequest request,
         IClientSessionHandle session,

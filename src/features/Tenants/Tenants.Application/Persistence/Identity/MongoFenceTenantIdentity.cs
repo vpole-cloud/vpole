@@ -4,10 +4,8 @@ using Pole.Features.Tenants.Domain;
 
 namespace Pole.Features.Tenants.Application.Persistence.Identity;
 
-internal sealed class MongoFenceTenantIdentity(IMongoDatabase database)
+internal sealed class MongoFenceTenantIdentity(IMongoCollection<Tenant> tenants)
 {
-    private readonly IMongoCollection<Tenant> tenants = database.GetCollection<Tenant>("Tenants");
-
     public async Task<LoadTenantIdentityOutcome> InvokeAsync(
         FenceTenantIdentityRequest request,
         IClientSessionHandle session,

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Domains.Application.Endpoints;
 using Pole.Features.Domains.Application.Persistence.DomainZones;
@@ -13,6 +14,10 @@ public static class DomainPersistenceRegistration
     /// <summary>Registers only the provider-owned domain capabilities and transaction delegates.</summary>
     public static IServiceCollection AddDomainPersistence(this IServiceCollection services)
     {
+        services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
+            .GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones));
+        services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
+            .GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings));
         services.AddScoped<MongoDomainPlanning>();
         services.AddScoped<ResolveNamedDomainZone>(provider =>
             provider.GetRequiredService<MongoDomainPlanning>().ResolveZoneAsync);

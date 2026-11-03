@@ -7,13 +7,12 @@ public delegate Task<IReadOnlyList<GitProviderConnection>> LoadGitProviderConnec
     string tenantId,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoLoadGitProviderConnections(IMongoDatabase database)
+internal sealed class MongoLoadGitProviderConnections(IMongoCollection<GitProviderConnection> gitProviderConnections)
 {
     public async Task<IReadOnlyList<GitProviderConnection>> InvokeAsync(
         string tenantId,
         CancellationToken cancellationToken = default) =>
-        await database
-            .GetCollection<GitProviderConnection>("GitProviderConnections")
+        await gitProviderConnections
             .Find(GitProviderFilters.ConnectionsByTenant(tenantId))
             .SortBy(item => item.Provider)
             .ThenBy(item => item.AccountLogin)

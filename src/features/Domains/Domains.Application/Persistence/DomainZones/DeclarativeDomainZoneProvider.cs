@@ -22,7 +22,7 @@ public sealed record DomainZoneDeclarationTargetAmbiguous : IDeclarationFailure;
 public sealed record DomainZoneDeclarationAlreadyReserved : IDeclarationFailure;
 
 internal sealed partial class DeclarativeDomainZoneProvider(
-    IMongoDatabase database,
+    IMongoCollection<TenantDomainZone> zones,
     IGitOpsMutations git,
     MongoRunTransaction transactions,
     ResolveNamedDomainReservationTarget resolveTargetName,
@@ -34,9 +34,6 @@ internal sealed partial class DeclarativeDomainZoneProvider(
         IDeclarativeReferencePreparation,
         IDeclarativeResourceLifecycleProvider, IDeclarativeAdoptionPreviewProvider, IDeclarativePreviewReferenceProvider
 {
-    private readonly IMongoCollection<TenantDomainZone> zones =
-        database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
-
     public string Kind => "DomainZone";
 
     public string DescribeFailure(IDeclarationFailure failure) => failure switch

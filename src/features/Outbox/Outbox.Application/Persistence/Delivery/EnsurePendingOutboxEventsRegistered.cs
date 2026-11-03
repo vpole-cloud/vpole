@@ -3,10 +3,8 @@ using MongoDB.Driver;
 namespace Pole.Features.Outbox.Application.Persistence.Delivery;
 
 /// <summary>Run before workers start so retained durable work always has a registered event contract.</summary>
-public sealed class EnsurePendingOutboxEventsRegistered(IMongoDatabase database, OutboxEventAssemblyCatalog catalog)
+public sealed class EnsurePendingOutboxEventsRegistered(IMongoCollection<OutboxMessage> _messages, OutboxEventAssemblyCatalog catalog)
 {
-    private readonly IMongoCollection<OutboxMessage> _messages = database.GetCollection<OutboxMessage>("OutboxMessages");
-
     public async Task InvokeAsync(CancellationToken cancellationToken = default)
     {
         using var names = await _messages.DistinctAsync(message => message.EventType,

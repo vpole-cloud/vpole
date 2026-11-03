@@ -12,12 +12,10 @@ public delegate Task PersistCreatedTenant(
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoPersistCreatedTenant(
-    IMongoDatabase database,
+    IMongoCollection<Tenant> _tenants,
     StoreOutboxWrites storeOutboxWrites,
     RunMongoOutcomeTransaction<Unit> runTransaction)
 {
-    private readonly IMongoCollection<Tenant> _tenants = database.GetCollection<Tenant>("Tenants");
-
     public Task InvokeAsync(
         Tenant tenant,
         CancellationToken cancellationToken = default) => runTransaction(async (transaction, ct) =>

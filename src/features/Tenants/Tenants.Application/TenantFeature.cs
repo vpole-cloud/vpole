@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pole.ASP.Helpers;
 using Pole.Database;
+using MongoDB.Driver;
 using Pole.Features.Realtime.Contracts;
 using Pole.ResultType;
 using Pole.Features.Core.Multitenancy;
@@ -12,6 +13,7 @@ using Pole.Features.Tenants.Application.Persistence.Identity;
 using Pole.Features.Tenants.Application.Persistence.Members;
 using Pole.Features.Tenants.Application.Persistence.Tenants;
 using Pole.Features.Tenants.Contracts;
+using Pole.Features.Tenants.Domain;
 using Pole.Mediator;
 
 namespace Pole.Features.Tenants.Application;
@@ -20,6 +22,8 @@ public static class TenantFeature
 {
     public static IServiceCollection AddTenantsFeature(this IServiceCollection services)
     {
+        services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
+            .GetCollection<Tenant>("Tenants"));
         services.AddHttpContextAccessor();
         services.AddSingleton(new RealtimeTopic("tenant-access", RealtimeScope.User));
         services.AddOutcomeTransaction<PersistAddedTenantMemberOutcome>();

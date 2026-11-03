@@ -10,11 +10,8 @@ public delegate Task<IReadOnlyList<TenantDomainZoneSnapshot>> LoadTenantDomainZo
     string? deploymentTargetId = null,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoLoadTenantDomainZones(IMongoDatabase database)
+internal sealed class MongoLoadTenantDomainZones(IMongoCollection<TenantDomainZone> zones)
 {
-    private readonly IMongoCollection<TenantDomainZone> zones =
-        database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
-
     public async Task<IReadOnlyList<TenantDomainZoneSnapshot>> InvokeAsync(
         string tenantId,
         string? deploymentTargetId = null,
