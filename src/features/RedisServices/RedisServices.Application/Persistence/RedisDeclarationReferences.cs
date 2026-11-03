@@ -1,3 +1,4 @@
+using Pole.Database;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.GitOps.Contracts;
