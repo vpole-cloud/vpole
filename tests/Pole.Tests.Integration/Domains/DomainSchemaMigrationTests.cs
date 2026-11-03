@@ -84,9 +84,11 @@ public sealed class DomainSchemaMigrationTests(MongoReplicaSetFixture fixture) :
         {
             var indexes = await fixture.Database.GetCollection<BsonDocument>(collection).Indexes.List().ToListAsync();
             var generated = Assert.Single(indexes, index => index["name"] == generatedIndex);
-            Assert.Equal(new BsonDocument { ["TenantId"] = 1, [parentField] = 1, ["Identity._t"] = 1 }, generated["key"]);
+            Assert.Equal(new BsonDocument { ["TenantId"] = 1, [parentField] = 1, ["Identity._t"] = 1 },
+                generated["key"]);
             Assert.True(generated["unique"].AsBoolean);
-            Assert.Equal(new BsonDocument("Identity._t", "GeneratedDomainIdentity"), generated["partialFilterExpression"]);
+            Assert.Equal(new BsonDocument("Identity._t", "GeneratedDomainIdentity"),
+                generated["partialFilterExpression"]);
             var named = Assert.Single(indexes, index => index["name"] == $"UX_{collection}_Tenant_TechnicalName");
             Assert.Equal(new BsonDocument { ["TenantId"] = 1, ["Identity.TechnicalName"] = 1 }, named["key"]);
             Assert.Equal(new BsonDocument("Identity._t", "NamedDomainIdentity"), named["partialFilterExpression"]);

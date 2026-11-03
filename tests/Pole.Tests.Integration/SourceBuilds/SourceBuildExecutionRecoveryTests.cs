@@ -351,10 +351,12 @@ public sealed class SourceBuildExecutionRecoveryTests(Pole.Testing.MongoReplicaS
         job = job.StartBuilding(now);
         if (state == "Building") return job;
 
-        job = job.StartPushing(SourceBuildArtifactFactory.Create("registry/application:attempt-one", "sha256:artifact"), now);
+        job = job.StartPushing(SourceBuildArtifactFactory.Create("registry/application:attempt-one",
+            "sha256:artifact"), now);
         if (state == "Pushing") return job;
 
-        job = job.StartDeploying(SourceBuildArtifactFactory.Create("registry/application:attempt-one", "sha256:artifact"),
+        job = job.StartDeploying(SourceBuildArtifactFactory.Create("registry/application:attempt-one",
+            "sha256:artifact"),
             "release-one", now);
         return state switch
         {

@@ -35,12 +35,14 @@ public sealed class PersistenceConstructionTests
     }
 
     private static bool NeedsGenerator(MethodDeclarationSyntax method) =>
-        method.Modifiers.Any(token => token.RawKind == (int)SyntaxKind.PartialKeyword) && method.AttributeLists.SelectMany(list => list.Attributes)
+        method.Modifiers.Any(token => token.RawKind == (int)SyntaxKind.PartialKeyword) &&
+            method.AttributeLists.SelectMany(list => list.Attributes)
             .Any(attribute => attribute.Name.ToString().Split('.').Last() is
                 "GeneratedRegex" or "GeneratedRegexAttribute" or "LoggerMessage" or "LoggerMessageAttribute");
 
     private static bool IsStaticComposition(InvocationExpressionSyntax call) =>
-        call.Ancestors().OfType<TypeDeclarationSyntax>().Any(type => type.Modifiers.Any(token => token.RawKind == (int)SyntaxKind.StaticKeyword)) ||
+        call.Ancestors().OfType<TypeDeclarationSyntax>().Any(type => type.Modifiers.Any(token => token.RawKind == (
+            int)SyntaxKind.StaticKeyword)) ||
         call.Ancestors().OfType<MethodDeclarationSyntax>().Any(method =>
             method.Modifiers.Any(token => token.RawKind == (int)SyntaxKind.StaticKeyword));
 }

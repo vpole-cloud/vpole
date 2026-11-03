@@ -146,8 +146,10 @@ public static class TestServiceProviderFactory
             deploymentTargetLookup.FenceManyOutcomeAsync);
         services.AddSingleton<IEnvelopeEncryptionService>(
             TestEnvelopeEncryption.Create());
-        services.AddFeatureMigrations("pole.postgres", typeof(Pole.Features.Postgres.Migrations.PostgresNameIndexesMigration).Assembly);
-        services.AddFeatureMigrations("pole.redis", typeof(Pole.Features.RedisServices.Migrations.RedisNameIndexesMigration).Assembly);
+        services.AddFeatureMigrations("pole.postgres", typeof(
+            Pole.Features.Postgres.Migrations.PostgresNameIndexesMigration).Assembly);
+        services.AddFeatureMigrations("pole.redis", typeof(
+            Pole.Features.RedisServices.Migrations.RedisNameIndexesMigration).Assembly);
         services.AddMigrations([
             .. PolePlatform.MigrationAssemblies,
             typeof(Pole.Features.WebServices.Migrations.WebServiceSchemaValidationMigration).Assembly,

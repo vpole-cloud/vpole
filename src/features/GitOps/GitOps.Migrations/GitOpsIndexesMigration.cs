@@ -41,7 +41,8 @@ public sealed class GitOpsIndexesMigration : IMigration
                     new CreateIndexOptions<BsonDocument>
                     {
                         Name = "IX_GitRuns_Tenant_Source_HumanLifecycle_Generation",
-                        PartialFilterExpression = new BsonDocument { ["Input._t"] = "GitInputLifecycle", ["Input.Plan.Authorization._t"] = "GitPreviewConfirmed" }
+                        PartialFilterExpression = new BsonDocument { ["Input._t"] = "GitInputLifecycle",
+                            ["Input.Plan.Authorization._t"] = "GitPreviewConfirmed" }
                     }),
                 new(Builders<BsonDocument>.IndexKeys.Ascending("State._t")
                     .Ascending("State.Lease.ExpiresAtUtc").Ascending("State.NextAttemptAtUtc"))

@@ -69,7 +69,8 @@ internal sealed class DeclarativeFunctionProvider(
         CancellationToken ct) => references.PrepareReferencesAsync(operation, ct);
 
     public Task<ReadPreviewReferencesOutcome> ReadPreviewReferencesAsync(ReadPreviewReferencesRequest request,
-        IClientSessionHandle session, CancellationToken ct) => references.ReadPreviewReferencesAsync(request, session, ct);
+        IClientSessionHandle session, CancellationToken ct) => references.ReadPreviewReferencesAsync(request,
+            session, ct);
 
     public Task<GitOperationResult> ApplyAsync(GitOperation operation, CancellationToken ct) =>
         execution.ApplyAsync(operation, ct);

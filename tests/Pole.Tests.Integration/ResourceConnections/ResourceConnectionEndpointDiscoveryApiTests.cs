@@ -42,7 +42,8 @@ public sealed class ResourceConnectionEndpointDiscoveryApiTests(MongoReplicaSetF
             Members = ImmutableList.Create(TenantFactory.CreateMember(TestData.TenantId, TestData.UserId, TestData.UserEmail, TenantRole.Viewer))
         });
         var body = await Client.GetStringAsync(UriFor(destination.Id.ToUpperInvariant(), source.Id.ToUpperInvariant()));
-        var discovered = JsonSerializer.Deserialize<ResourceConnectionEndpointsDto>(body, Pole.ASP.Helpers.PoleHttpJson.CreateSerializerOptions())!;
+        var discovered = JsonSerializer.Deserialize<ResourceConnectionEndpointsDto>(body,
+            Pole.ASP.Helpers.PoleHttpJson.CreateSerializerOptions())!;
         Assert.Equal(destination.Id, discovered.ResourceId);
         var endpoint = Assert.Single(discovered.Endpoints);
         Assert.Equal("redis", endpoint.Protocol);
