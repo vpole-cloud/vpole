@@ -21,5 +21,3 @@ module internal SearchPersistenceRegistration =
             Func<IServiceProvider, IMongoCollection<SearchProjectionVersionDocument>>(fun sp ->
                 sp.GetRequiredService<IMongoDatabase>().GetCollection<SearchProjectionVersionDocument>("SearchProjectionVersions")))
         |> ignore
-        services.AddSingleton(RealtimeTopic("search", RealtimeScope.Tenant)) |> ignore
-        services.AddSingleton<SearchSourceTypeRegistry>() |> ignore

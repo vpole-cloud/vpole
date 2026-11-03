@@ -12,6 +12,8 @@ type SearchFeatureRegistration =
     [<System.Runtime.CompilerServices.Extension>]
     static member AddSearchFeature(services: IServiceCollection) =
         SearchPersistenceRegistration.registerCollections services
+        services.AddSingleton(RealtimeTopic("search", RealtimeScope.Tenant)) |> ignore
+        services.AddSingleton<SearchSourceTypeRegistry>() |> ignore
 
         services.AddSingleton<ResolveSearchSourceType>(
             Func<IServiceProvider, ResolveSearchSourceType>(fun serviceProvider ->
