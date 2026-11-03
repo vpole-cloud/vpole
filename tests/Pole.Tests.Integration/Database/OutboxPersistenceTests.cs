@@ -2,7 +2,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.Outbox.Application.Migrations;
+using Pole.Features.Outbox.Migrations;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Events;
 using Pole.Features.Shared.Models;

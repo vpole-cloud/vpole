@@ -10,7 +10,7 @@ using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.GitHub;
-using Pole.Features.GitProviders.Application.Migrations;
+using Pole.Features.GitProviders.Migrations;
 using Pole.Features.GitProviders.Domain;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.Tenants.Domain;

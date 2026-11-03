@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
-using Pole.Features.Domains.Application.Migrations;
+using Pole.Features.Domains.Migrations;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
 using Pole.Features.GitOps.Application;

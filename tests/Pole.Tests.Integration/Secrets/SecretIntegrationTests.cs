@@ -19,7 +19,7 @@ using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
 using Pole.Features.Secrets.Application.Endpoints;
-using Pole.Features.Secrets.Application.Migrations;
+using Pole.Features.Secrets.Migrations;
 using Pole.Features.Secrets.Application.Persistence;
 using Pole.Features.Secrets.Application;
 using Pole.Features.Secrets.Domain;

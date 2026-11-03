@@ -199,6 +199,18 @@ chooses its namespace, for example `pole.redis/v1/redis-service-created`.
 Application maps domain state to event-owned payloads. Avoiding a small amount of mapping code is
 not a reason to couple event evolution to a domain or synchronous contract model.
 
+### Migrations
+
+`Feature.Migrations` owns the feature's migration implementations and their frozen BSON collection,
+field, discriminator, validator and index definitions. It references only `shared/Migrations`, whose
+only package dependency is MongoDB.Driver. F# migration projects additionally reference FSharp.Core.
+Migrations must not reference feature projects or runtime helpers, even within their own feature.
+Runtime persistence keeps its own index names; it does not import migration constants.
+
+The host registers explicit migration assemblies separately from Application assemblies. The
+Database runner owns ordering and durable history; provider migrations retain their feature-scoped
+history identities. Moving a migration must preserve its ID, scope and schema/index semantics.
+
 ### Application
 
 `Feature.Application` owns orchestration, persistence implementations, endpoint flows,
@@ -245,12 +257,13 @@ provider edge and leaves the platform persistence implementation extensible.
 | Source project        | Allowed feature dependencies                                                                                                                      | Forbidden feature dependencies                                      |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | Primitives            | None                                                                                                                                              | Every feature project                                               |
+| Migrations            | Shared migration API only                                                                                                                         | Every feature project and runtime helper                           |
 | Domain                | Own Primitives                                                                                                                                    | Contracts, Events, Application, another feature                     |
 | Contracts             | Own Primitives                                                                                                                                    | Domain, Events, Application, another feature's Contracts/Primitives |
 | Contracts.HttpMapping | Own Contracts; shared HTTP mapping abstraction                                                                                                    | Domain, Events, Application, another feature project                |
 | Events                | Own Primitives                                                                                                                                    | Domain, Contracts, Application, another feature                     |
 | Application           | Own Primitives/Domain/Contracts/Contracts.HttpMapping/Events; foreign Contracts/Contracts.HttpMapping/Events; contract-exposed foreign Primitives | Foreign Domain/Application                                          |
-| Pole.Server           | Application projects required for composition                                                                                                     | None imposed by this policy                                         |
+| Pole.Server           | Application and Migrations projects required for composition                                                                                                     | None imposed by this policy                                         |
 | Tests                 | Projects required by the test boundary                                                                                                            | None imposed by this policy                                         |
 
 References to dependency-leaf shared projects are governed by the shared-primitives rules below,

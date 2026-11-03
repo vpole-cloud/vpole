@@ -7,7 +7,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Encryption;
-using Pole.Features.ContainerRegistries.Application.Migrations;
+using Pole.Features.ContainerRegistries.Migrations;
 using Pole.Features.ContainerRegistries.Application.Endpoints;
 using Pole.Features.ContainerRegistries.Application.Persistence;
 using Pole.Features.ContainerRegistries.Application.Persistence.Credentials;

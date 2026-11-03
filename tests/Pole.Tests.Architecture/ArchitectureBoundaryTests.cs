@@ -178,8 +178,7 @@ public sealed class ArchitectureBoundaryTests
                 StringComparison.Ordinal));
         var violations = applicationSources
             .Where(source =>
-                !source.RelativePath.Contains("/Persistence/", StringComparison.Ordinal) &&
-                !source.RelativePath.Contains("/Migrations/", StringComparison.Ordinal))
+                !source.RelativePath.Contains("/Persistence/", StringComparison.Ordinal))
             .SelectMany(source => FindFSharpSymbols(
                 [source],
                 RawMongoQuerySymbols,
@@ -249,7 +248,7 @@ public sealed class ArchitectureBoundaryTests
     }
 
     [Fact]
-    public async Task MongoApplicationBoundaryAnalyzer_AllowsPersistenceAndMigrationSources()
+    public async Task MongoApplicationBoundaryAnalyzer_AllowsPersistenceSources()
     {
         var diagnostics = await AnalyzeAsync(
             """
@@ -264,6 +263,23 @@ public sealed class ArchitectureBoundaryTests
 
         Assert.DoesNotContain(diagnostics, diagnostic =>
             diagnostic.Id == MongoApplicationBoundaryAnalyzer.DiagnosticId);
+    }
+
+    [Theory]
+    [InlineData("/src/features/Example/Example.Migrations/ExampleMigration.cs", false)]
+    [InlineData("/src/features/Example/Example.Application/Migrations/ExampleMigration.cs", true)]
+    [InlineData("/src/features/Example/Example.Application/Endpoints/Migrations/Example.cs", true)]
+    public async Task MongoApplicationBoundaryAnalyzer_RecognizesTheSeparateMigrationProjectRole(string path, bool rejected)
+    {
+        var diagnostics = await AnalyzeAsync(
+            """
+            using MongoDB.Driver;
+            public sealed class Example(IMongoCollection<string> collection)
+            {
+                public FilterDefinition<string> All() => Builders<string>.Filter.Empty;
+            }
+            """, path);
+        Assert.Equal(rejected, diagnostics.Any(diagnostic => diagnostic.Id == MongoApplicationBoundaryAnalyzer.DiagnosticId));
     }
 
     [Fact]
@@ -321,7 +337,7 @@ public sealed class ArchitectureBoundaryTests
     {
         var identities = ArchitectureSources.ProductionCSharp()
             .Where(source => source.RelativePath.StartsWith("src/features/", StringComparison.Ordinal) &&
-                source.RelativePath.Contains(".Application/", StringComparison.Ordinal))
+                source.RelativePath.Contains(".Migrations/", StringComparison.Ordinal))
             .SelectMany(source => source.Root.DescendantNodes().OfType<ClassDeclarationSyntax>()
                 .Where(type => type.BaseList?.Types.Any(item => GetTypeName(item.Type) == "IMigration") == true)
                 .SelectMany(type => type.Members.OfType<PropertyDeclarationSyntax>()
@@ -339,7 +355,16 @@ public sealed class ArchitectureBoundaryTests
 
         // Different provider namespaces may deliberately scope the same ObjectId.
         // Within one feature, a copied migration must always have a distinct ID.
-        var duplicates = identities.GroupBy(item => (item.Feature, item.Id))
+        var fsharpIdentities = ArchitectureSources.ProductionFSharp()
+            .Where(source => source.RelativePath.Contains(".Migrations/", StringComparison.Ordinal))
+            .SelectMany(source => Regex.Matches(source.Text, "ObjectId\\(\"([0-9a-fA-F]{24})\"\\)")
+                .Select(match => new
+                {
+                    Feature = source.RelativePath.Split('/')[2],
+                    Id = match.Groups[1].Value.ToLowerInvariant(),
+                    Location = source.RelativePath
+                }));
+        var duplicates = identities.Concat(fsharpIdentities).GroupBy(item => (item.Feature, item.Id))
             .Where(group => group.Count() > 1)
             .Select(group => $"Duplicate migration ID {group.Key.Id} in {group.Key.Feature}: " +
                 string.Join(", ", group.Select(item => item.Location)))

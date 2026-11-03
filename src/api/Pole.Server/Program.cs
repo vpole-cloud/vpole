@@ -29,7 +29,6 @@ using Pole.Features.Postgres.Application;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.RedisServices.Application;
 using Pole.Features.ResourceConnections.Application;
-using Pole.Features.RedisServices.Application.Migrations;
 using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceGroups.Application;
 using Pole.Features.ResourceGroups.Application.Common;
@@ -91,11 +90,9 @@ builder.Services.AddPolePlatform(configuration,
     .AddRedisServicesFeature()
     .AddResourceConnectionsFeature()
     .AddPostgresFeature(configuration)
+    .AddServiceMigrations()
     .AddHangfireWithMongo(configuration)
     .AddOpenApi();
-builder.Services.AddSingleton<IMigration>(new FeatureScopedMigration(
-    "pole.redis",
-    new RedisSchemaValidationMigration()));
 builder.Services.AddCors(options =>
 {
     var frontendOrigin = configuration["Cors:FrontendOrigin"] ?? "http://localhost:5173";

@@ -1,6 +1,5 @@
 using MongoDB.Driver;
 using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Application.Migrations;
 using Pole.Features.RedisServices.Domain;
 
 namespace Pole.Features.RedisServices.Application.Persistence.Mutations;
@@ -40,7 +39,7 @@ internal sealed class MongoPersistCreatedRedis(
         catch (MongoWriteException exception) when (
             exception.WriteError.Category == ServerErrorCategory.DuplicateKey &&
             exception.WriteError.Message.Contains(
-                RedisNameIndexesMigration.TenantNameIndex,
+                RedisIndexes.TenantName,
                 StringComparison.Ordinal))
         {
             return new RedisServiceNameAlreadyExists(redis.Name);

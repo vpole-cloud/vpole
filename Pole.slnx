@@ -20,6 +20,7 @@
     <Project Path="src/shared/ResultType/ResultType.csproj" />
     <Project Path="src/shared/ArchitectureAnalyzers/Pole.ArchitectureAnalyzers.csproj" />
     <Project Path="src/shared/Database/Database.csproj" />
+    <Project Path="src/shared/Migrations/Migrations.csproj" />
     <Project Path="src/shared/Dns/Dns.csproj" />
     <Project Path="src/shared/Multitenancy/Multitenancy.csproj" />
     <Project Path="src/shared/Kubernetes/Kubernetes.csproj" />
@@ -35,6 +36,7 @@
   </Folder>
   <Folder Name="/features/" />
   <Folder Name="/features/GitOps/">
+    <Project Path="src/features/GitOps/GitOps.Migrations/GitOps.Migrations.csproj" />
     <Project Path="src/features/GitOps/GitOps.Primitives/GitOps.Primitives.csproj" />
     <Project Path="src/features/GitOps/GitOps.Domain/GitOps.Domain.csproj" />
     <Project Path="src/features/GitOps/GitOps.Events/GitOps.Events.csproj" />
@@ -48,6 +50,7 @@
     <Project Path="src/features/Realtime/Realtime.Tests/Realtime.Tests.csproj" />
   </Folder>
   <Folder Name="/features/Functions/">
+    <Project Path="src/features/Functions/Functions.Migrations/Functions.Migrations.csproj" />
     <Project Path="src/features/Functions/Functions.Application/Functions.Application.csproj" />
     <Project Path="src/features/Functions/Functions.Domain/Functions.Domain.csproj" />
     <Project Path="src/features/Functions/Functions.Events/Functions.Events.csproj" />
@@ -55,6 +58,7 @@
     <Project Path="src/features/Functions/Functions.Tests/Functions.Tests.csproj" />
   </Folder>
   <Folder Name="/features/Quotas/">
+    <Project Path="src/features/Quotas/Quotas.Migrations/Quotas.Migrations.csproj" />
     <Project Path="src/features/Quotas/Quotas.Application/Quotas.Application.csproj" />
     <Project Path="src/features/Quotas/Quotas.Contracts/Quotas.Contracts.csproj" />
     <Project Path="src/features/Quotas/Quotas.Contracts.HttpMapping/Quotas.Contracts.HttpMapping.csproj" />
@@ -62,6 +66,7 @@
     <Project Path="src/features/Quotas/Quotas.Primitives/Quotas.Primitives.csproj" />
   </Folder>
   <Folder Name="/features/GitProviders/">
+    <Project Path="src/features/GitProviders/GitProviders.Migrations/GitProviders.Migrations.csproj" />
     <Project Path="src/features/GitProviders/GitProviders.Events/GitProviders.Events.csproj" />
     <Project Path="src/features/GitProviders/GitProviders.Application/GitProviders.Application.csproj" />
     <Project Path="src/features/GitProviders/GitProviders.Contracts/GitProviders.Contracts.csproj" />
@@ -70,11 +75,13 @@
     <Project Path="src/features/GitProviders/GitProviders.Tests/GitProviders.Tests.csproj" />
   </Folder>
   <Folder Name="/features/ContainerRegistries/">
+    <Project Path="src/features/ContainerRegistries/ContainerRegistries.Migrations/ContainerRegistries.Migrations.csproj" />
     <Project Path="src/features/ContainerRegistries/ContainerRegistries.Application/ContainerRegistries.Application.csproj" />
     <Project Path="src/features/ContainerRegistries/ContainerRegistries.Contracts/ContainerRegistries.Contracts.csproj" />
     <Project Path="src/features/ContainerRegistries/ContainerRegistries.Domain/ContainerRegistries.Domain.csproj" />
   </Folder>
   <Folder Name="/features/DeploymentTargets/">
+    <Project Path="src/features/DeploymentTargets/DeploymentTargets.Migrations/DeploymentTargets.Migrations.csproj" />
     <Project Path="src/features/DeploymentTargets/DeploymentTargets.Events/DeploymentTargets.Events.csproj" />
     <Project Path="src/features/DeploymentTargets/DeploymentTargets.Application/DeploymentTargets.Application.csproj" />
     <Project Path="src/features/DeploymentTargets/DeploymentTargets.Contracts/DeploymentTargets.Contracts.csproj" />
@@ -82,6 +89,7 @@
     <Project Path="src/features/DeploymentTargets/DeploymentTargets.Domain/DeploymentTargets.Domain.csproj" />
   </Folder>
   <Folder Name="/features/ComputeProfiles/">
+    <Project Path="src/features/ComputeProfiles/ComputeProfiles.Migrations/ComputeProfiles.Migrations.csproj" />
     <Project Path="src/features/ComputeProfiles/ComputeProfiles.Events/ComputeProfiles.Events.csproj" />
     <Project Path="src/features/ComputeProfiles/ComputeProfiles.Application/ComputeProfiles.Application.csproj" />
     <Project Path="src/features/ComputeProfiles/ComputeProfiles.Contracts/ComputeProfiles.Contracts.csproj" />
@@ -89,6 +97,7 @@
     <Project Path="src/features/ComputeProfiles/ComputeProfiles.Domain/ComputeProfiles.Domain.csproj" />
   </Folder>
   <Folder Name="/features/SourceBuilds/">
+    <Project Path="src/features/SourceBuilds/SourceBuilds.Migrations/SourceBuilds.Migrations.csproj" />
     <Project Path="src/features/SourceBuilds/SourceBuilds.Application/SourceBuilds.Application.csproj" />
     <Project Path="src/features/SourceBuilds/SourceBuilds.Contracts/SourceBuilds.Contracts.csproj" />
     <Project Path="src/features/SourceBuilds/SourceBuilds.Domain/SourceBuilds.Domain.csproj" />
@@ -96,6 +105,7 @@
     <Project Path="src/features/SourceBuilds/SourceBuilds.Tests/SourceBuilds.Tests.csproj" />
   </Folder>
   <Folder Name="/features/Domains/">
+    <Project Path="src/features/Domains/Domains.Migrations/Domains.Migrations.csproj" />
     <Project Path="src/features/Domains/Domains.Tests/Domains.Tests.csproj" />
     <Project Path="src/features/Domains/Domains.Events/Domains.Events.csproj" />
     <Project Path="src/features/Domains/Domains.Application/Domains.Application.csproj" />
@@ -104,6 +114,7 @@
     <Project Path="src/features/Domains/Domains.Domain/Domains.Domain.csproj" />
   </Folder>
   <Folder Name="/features/RedisServices/">
+    <Project Path="src/features/RedisServices/RedisServices.Migrations/RedisServices.Migrations.csproj" />
     <Project Path="src/features/RedisServices/RedisServices.Contracts/RedisServices.Contracts.csproj" />
     <Project Path="src/features/RedisServices/RedisServices.Tests/RedisServices.Tests.csproj" />
     <Project Path="src/features/RedisServices/RedisServices.Tests.Integration/RedisServices.Tests.Integration.csproj" />
@@ -112,12 +123,14 @@
     <Project Path="src/features/RedisServices/RedisServices.Events/RedisServices.Events.csproj" />
   </Folder>
   <Folder Name="/features/ResourceConnections/">
+    <Project Path="src/features/ResourceConnections/ResourceConnections.Migrations/ResourceConnections.Migrations.csproj" />
     <Project Path="src/features/ResourceConnections/ResourceConnections.Application/ResourceConnections.Application.csproj" />
     <Project Path="src/features/ResourceConnections/ResourceConnections.Domain/ResourceConnections.Domain.csproj" />
     <Project Path="src/features/ResourceConnections/ResourceConnections.Events/ResourceConnections.Events.csproj" />
     <Project Path="src/features/ResourceConnections/ResourceConnections.Tests/ResourceConnections.Tests.csproj" />
   </Folder>
   <Folder Name="/features/Postgres/">
+    <Project Path="src/features/Postgres/Postgres.Migrations/Postgres.Migrations.fsproj" />
     <Project Path="src/features/Postgres/Postgres.Tests/Postgres.Tests.csproj" />
     <Project Path="src/features/Postgres/Postgres.Tests.Integration/Postgres.Tests.Integration.csproj" />
     <Project Path="src/features/Postgres/Postgres.Application/Postgres.Application.fsproj" />
@@ -125,6 +138,7 @@
     <Project Path="src/features/Postgres/Postgres.Events/Postgres.Events.fsproj" />
   </Folder>
   <Folder Name="/features/ResourceGroups/">
+    <Project Path="src/features/ResourceGroups/ResourceGroups.Migrations/ResourceGroups.Migrations.csproj" />
     <Project Path="src/features/ResourceGroups/ResourceGroups.Contracts/ResourceGroups.Contracts.csproj" />
     <Project Path="src/features/ResourceGroups/ResourceGroups.Contracts.HttpMapping/ResourceGroups.Contracts.HttpMapping.csproj" />
     <Project Path="src/features/ResourceGroups/ResourceGroups.Application/ResourceGroups.Application.csproj" />
@@ -132,6 +146,7 @@
     <Project Path="src/features/ResourceGroups/ResourceGroups.Events/ResourceGroups.Events.csproj" />
   </Folder>
   <Folder Name="/features/ResourceDeployments/">
+    <Project Path="src/features/ResourceDeployments/ResourceDeployments.Migrations/ResourceDeployments.Migrations.csproj" />
     <Project Path="src/features/ResourceDeployments/ResourceDeployments.Application/ResourceDeployments.Application.csproj" />
     <Project Path="src/features/ResourceDeployments/ResourceDeployments.Contracts/ResourceDeployments.Contracts.csproj" />
     <Project Path="src/features/ResourceDeployments/ResourceDeployments.Contracts.HttpMapping/ResourceDeployments.Contracts.HttpMapping.csproj" />
@@ -139,6 +154,7 @@
     <Project Path="src/features/ResourceDeployments/ResourceDeployments.Events/ResourceDeployments.Events.csproj" />
   </Folder>
   <Folder Name="/features/WebServices/">
+    <Project Path="src/features/WebServices/WebServices.Migrations/WebServices.Migrations.csproj" />
     <Project Path="src/features/WebServices/WebServices.Application/WebServices.Application.csproj" />
     <Project Path="src/features/WebServices/WebServices.Contracts/WebServices.Contracts.csproj" />
     <Project Path="src/features/WebServices/WebServices.Domain/WebServices.Domain.csproj" />
@@ -146,6 +162,7 @@
     <Project Path="src/features/WebServices/WebServices.Tests/WebServices.Tests.csproj" />
   </Folder>
   <Folder Name="/features/Outbox/">
+    <Project Path="src/features/Outbox/Outbox.Migrations/Outbox.Migrations.csproj" />
     <Project Path="src/features/Outbox/Outbox.Application/Outbox.Application.csproj" />
     <Project Path="src/features/Outbox/Outbox.Contracts/Outbox.Contracts.csproj" />
     <Project Path="src/features/Outbox/Outbox.Domain/Outbox.Domain.csproj" />
@@ -162,12 +179,14 @@
     <Project Path="src/features/Users/Users.Application/Users.Application.csproj" />
   </Folder>
   <Folder Name="/features/Search/">
+    <Project Path="src/features/Search/Search.Migrations/Search.Migrations.fsproj" />
     <Project Path="src/features/Search/Search.Events/Search.Events.csproj" />
     <Project Path="src/features/Search/Search.Application/Search.Application.fsproj" />
     <Project Path="src/features/Search/Search.Contracts/Search.Contracts.csproj" />
     <Project Path="src/features/Search/Search.Domain/Search.Domain.fsproj" />
   </Folder>
   <Folder Name="/features/StorageProfiles/">
+    <Project Path="src/features/StorageProfiles/StorageProfiles.Migrations/StorageProfiles.Migrations.csproj" />
     <Project Path="src/features/StorageProfiles/StorageProfiles.Events/StorageProfiles.Events.csproj" />
     <Project Path="src/features/StorageProfiles/StorageProfiles.Contracts/StorageProfiles.Contracts.csproj" />
     <Project Path="src/features/StorageProfiles/StorageProfiles.Contracts.HttpMapping/StorageProfiles.Contracts.HttpMapping.csproj" />
@@ -187,6 +206,7 @@
     <Project Path="tests/Pole.Tests.ObservationSerializationProbe/Pole.Tests.ObservationSerializationProbe.csproj" />
   </Folder>
   <Folder Name="/features/Secrets/">
+    <Project Path="src/features/Secrets/Secrets.Migrations/Secrets.Migrations.csproj" />
     <Project Path="src/features/Secrets/Secrets.Primitives/Secrets.Primitives.csproj" />
     <Project Path="src/features/Secrets/Secrets.Contracts/Secrets.Contracts.csproj" />
     <Project Path="src/features/Secrets/Secrets.Domain/Secrets.Domain.csproj" />
@@ -197,6 +217,7 @@
   <Project Path="src/features/Postgres/Postgres.Contracts/Postgres.Contracts.csproj" />
   <Project Path="src/features/ResourceConnections/ResourceConnections.Contracts/ResourceConnections.Contracts.csproj" />
   <Folder Name="/features/PrivateAccess/">
+    <Project Path="src/features/PrivateAccess/PrivateAccess.Migrations/PrivateAccess.Migrations.csproj" />
     <Project Path="src/features/PrivateAccess/PrivateAccess.Tests.Integration/PrivateAccess.Tests.Integration.csproj" />
     <Project Path="src/features/PrivateAccess/PrivateAccess.Application/PrivateAccess.Application.csproj" />
     <Project Path="src/features/PrivateAccess/PrivateAccess.Contracts/PrivateAccess.Contracts.csproj" />

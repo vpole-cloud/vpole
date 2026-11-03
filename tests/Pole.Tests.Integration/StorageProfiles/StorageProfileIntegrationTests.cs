@@ -7,7 +7,7 @@ using Pole.Features.StorageProfiles.Application;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Application.Endpoints;
 using Pole.Features.StorageProfiles.Application.Endpoints.KubernetesInventory;
-using Pole.Features.StorageProfiles.Application.Migrations;
+using Pole.Features.StorageProfiles.Migrations;
 using Pole.Features.StorageProfiles.Application.Persistence;
 using Pole.Features.StorageProfiles.Application.Persistence.Mutations;
 using Pole.Features.StorageProfiles.Application.Persistence.Reads;

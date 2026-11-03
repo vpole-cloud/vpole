@@ -1,3 +1,4 @@
+using Pole.Migrations;
 using System.Reflection;
 using FluentValidation;
 using Hangfire;
@@ -72,7 +73,7 @@ public static class DependencyInjection
 
         public IServiceCollection AddMigrations(params Assembly[] assemblies)
         {
-            var migrationTypes = assemblies
+            var migrationTypes = assemblies.Distinct()
                 .SelectMany(assembly => assembly.GetTypes())
                 .Where(type => type is { IsClass: true, IsAbstract: false } &&
                                typeof(IMigration).IsAssignableFrom(type));
@@ -82,6 +83,18 @@ public static class DependencyInjection
                 services.AddSingleton(typeof(IMigration), migrationType);
             }
 
+            return services;
+        }
+
+        public IServiceCollection AddFeatureMigrations(string featureId, params Assembly[] assemblies)
+        {
+            foreach (var migrationType in assemblies.Distinct().SelectMany(assembly => assembly.GetTypes())
+                         .Where(type => type is { IsClass: true, IsAbstract: false } &&
+                                        typeof(IMigration).IsAssignableFrom(type)))
+            {
+                services.AddSingleton<IMigration>(provider => new FeatureScopedMigration(featureId,
+                    (IMigration)ActivatorUtilities.CreateInstance(provider, migrationType)));
+            }
             return services;
         }
 

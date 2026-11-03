@@ -63,6 +63,7 @@ public abstract class MediatorIntegrationTestBase(MongoReplicaSetFixture fixture
             [typeof(PostgresClusterCreatedEvent).Assembly],
             []);
         services.AddPostgresFeature(configuration);
+        services.AddFeatureMigrations("pole.postgres", typeof(Pole.Features.Postgres.Migrations.PostgresNameIndexesMigration).Assembly);
         services.AddResourceConnectionsFeature();
         services.AddTestDeploymentTargets();
         services.AddUnavailableSourceBuildTargets();

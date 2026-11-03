@@ -1,6 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Features.ResourceDeployments.Application.Migrations;
+using Pole.Features.ResourceDeployments.Migrations;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Pole.Workloads;

@@ -393,6 +393,7 @@ public sealed class ModuleBoundaryArchitectureTests
 
         return source.Role switch
         {
+            ProjectRole.Migrations => targetIdentity is "Migrations",
             ProjectRole.Contracts => targetIdentity is "ResultType" or "Workloads",
             ProjectRole.ContractHttpMapping => targetIdentity is "ASP",
             ProjectRole.Events => targetIdentity is "Events" or "Workloads",
@@ -403,7 +404,7 @@ public sealed class ModuleBoundaryArchitectureTests
     private static bool IsAllowed(ProjectNode source, ProjectNode target) =>
         source.Role switch
         {
-            ProjectRole.Primitives => false,
+            ProjectRole.Migrations or ProjectRole.Primitives => false,
             ProjectRole.Domain or ProjectRole.Contracts or ProjectRole.Events
                 when source.Feature == target.Feature =>
                 target.Role is ProjectRole.Primitives,
@@ -497,6 +498,8 @@ public sealed class ModuleBoundaryArchitectureTests
         {
             if (identity.EndsWith(".Contracts.HttpMapping", StringComparison.Ordinal))
                 return ProjectRole.ContractHttpMapping;
+            if (identity.EndsWith(".Migrations", StringComparison.Ordinal))
+                return ProjectRole.Migrations;
             if (identity.EndsWith(".Domain", StringComparison.Ordinal))
                 return ProjectRole.Domain;
             if (identity.EndsWith(".Contracts", StringComparison.Ordinal))
@@ -564,6 +567,7 @@ public sealed class ModuleBoundaryArchitectureTests
     private enum ProjectRole
     {
         Other,
+        Migrations,
         Domain,
         Contracts,
         ContractHttpMapping,

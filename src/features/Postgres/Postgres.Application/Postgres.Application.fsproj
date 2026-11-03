@@ -27,7 +27,6 @@
         <Compile Include="Persistence\PostgresOutcome.fs" />
         <Compile Include="Persistence\PostgresFilters.fs" />
         <Compile Include="Persistence\PostgresPersistenceGuards.fs" />
-        <Compile Include="Persistence\PostgresNameIndexesMigration.fs" />
         <Compile Include="Persistence\Reads\LoadPostgresClusterById.fs" />
         <Compile Include="Persistence\Reads\LoadPostgresConnectionEndpoints.fs" />
         <Compile Include="Persistence\Reads\LoadPostgresClusterPage.fs" />

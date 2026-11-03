@@ -1,7 +1,7 @@
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Features.RedisServices.Application.Migrations;
+using Pole.Features.RedisServices.Migrations;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.Shared.Models;
 using Pole.Features.RedisServices.Tests.Integration.Infrastructure;

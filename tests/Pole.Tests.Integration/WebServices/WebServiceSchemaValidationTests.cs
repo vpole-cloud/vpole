@@ -1,7 +1,7 @@
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using Pole.Features.Shared.Models;
-using Pole.Features.WebServices.Application.Migrations;
+using Pole.Features.WebServices.Migrations;
 using Pole.Features.WebServices.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;

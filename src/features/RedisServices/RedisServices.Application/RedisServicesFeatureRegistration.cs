@@ -4,7 +4,6 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pole.Database;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Kubernetes;
-using Pole.Features.RedisServices.Application.Migrations;
 using Pole.Features.RedisServices.Application.Persistence;
 using Pole.Features.RedisServices.Application.Persistence.Lifecycle;
 using Pole.Features.RedisServices.Application.Search;
@@ -22,9 +21,6 @@ public static class RedisServicesFeatureRegistration
         this IServiceCollection services)
     {
         services.AddSingleton(new RealtimeTopic("redis", RealtimeScope.Tenant));
-        services.AddSingleton<IMigration>(new FeatureScopedMigration(
-            "pole.redis",
-            new RedisNameIndexesMigration()));
         services.AddSingleton<SearchSourceType>(RedisServiceSearchProjection.SourceType);
         services.AddRedisPersistence();
         services.AddSingleton(new ResourceConnectionDeclarationKind("RedisService",

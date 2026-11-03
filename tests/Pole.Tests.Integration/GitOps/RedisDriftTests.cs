@@ -13,7 +13,7 @@ using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Endpoints;
-using Pole.Features.RedisServices.Application.Migrations;
+using Pole.Features.RedisServices.Migrations;
 using Pole.Features.RedisServices.Application.Persistence.Mutations;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceDeployments.Domain;

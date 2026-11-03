@@ -70,6 +70,25 @@ public static class PolePlatform
         typeof(UserEndpoints).Assembly,
     ];
 
+    public static Assembly[] MigrationAssemblies =>
+    [
+        typeof(Pole.Features.GitOps.Migrations.GitOpsIndexesMigration).Assembly,
+        typeof(Pole.Features.Secrets.Migrations.SecretIndexesMigration).Assembly,
+        typeof(Pole.Features.PrivateAccess.Migrations.PrivateAccessIndexesMigration).Assembly,
+        typeof(Pole.Features.Quotas.Migrations.QuotaMigration).Assembly,
+        typeof(Pole.Features.Domains.Migrations.DomainIndexesMigration).Assembly,
+        typeof(Pole.Features.GitProviders.Migrations.GitProviderConnectionsMigration).Assembly,
+        typeof(Pole.Features.ContainerRegistries.Migrations.ContainerRegistryMigration).Assembly,
+        typeof(Pole.Features.ComputeProfiles.Migrations.ComputeProfileIndexesMigration).Assembly,
+        typeof(Pole.Features.DeploymentTargets.Migrations.DeploymentTargetMigration).Assembly,
+        typeof(Pole.Features.SourceBuilds.Migrations.SourceBuildMigration).Assembly,
+        typeof(Pole.Features.Outbox.Migrations.OutboxMessageMigration).Assembly,
+        typeof(Pole.Features.ResourceGroups.Migrations.ResourceGroupPlacementMigration).Assembly,
+        typeof(Pole.Features.ResourceDeployments.Migrations.ResourceDeploymentMigration).Assembly,
+        typeof(Pole.Features.Search.Migrations.SearchDocumentIndexesMigration).Assembly,
+        typeof(Pole.Features.StorageProfiles.Migrations.StorageProfileMigration).Assembly
+    ];
+
     public static Assembly[] EventAssemblies =>
     [
         typeof(Pole.Features.GitOps.Events.GitSourceWorkRequested).Assembly,
@@ -119,8 +138,8 @@ public static class PolePlatform
             .AddContainerRegistriesFeature(configuration)
             .AddSourceBuildsFeature(configuration)
             .AddUsersFeature(configuration)
-            .AddMigrations(ApplicationAssemblies
-                .Concat(additionalMigrationAssemblies ?? additionalApplicationAssemblies).Distinct().ToArray())
+            .AddMigrations(MigrationAssemblies
+                .Concat(additionalMigrationAssemblies ?? []).Distinct().ToArray())
             .AddValidatorsFromAssemblies(applications)
             .AddPoleMediator(applications);
         return services;

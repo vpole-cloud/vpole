@@ -193,7 +193,7 @@ public sealed class GitLifecycleExecutor(
         catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIdIndex(exception,
                                                         inventory.CollectionNamespace.CollectionName) ||
                                                     MongoDuplicateKey.IsForIndex(exception,
-                                                        GitOpsIndexesMigration.ResourceIdentityIndex,
+                                                        GitOpsIndexes.ResourceIdentity,
                                                         inventory.CollectionNamespace.CollectionName))
         {
             return new GitPreviewStale();

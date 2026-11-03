@@ -1,7 +1,7 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Dns;
-using Pole.Features.Domains.Application.Migrations;
+using Pole.Features.Domains.Migrations;
 using Pole.Features.Domains.Application.Persistence;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;

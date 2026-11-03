@@ -1,3 +1,4 @@
+using Pole.Migrations;
 using System.Reflection;
 using Hangfire;
 using MassTransit;

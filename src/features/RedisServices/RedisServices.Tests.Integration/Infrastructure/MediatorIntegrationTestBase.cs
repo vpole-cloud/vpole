@@ -8,7 +8,7 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.RedisServices.Application;
 using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Application.Migrations;
+using Pole.Features.RedisServices.Migrations;
 using Pole.Features.RedisServices.Events;
 using Pole.Features.ResourceConnections.Application;
 using Pole.Features.StorageProfiles.Application.Common;
@@ -64,8 +64,7 @@ public abstract class MediatorIntegrationTestBase(MongoReplicaSetFixture fixture
             []);
         services.AddRedisServicesFeature();
         services.AddResourceConnectionsFeature();
-        services.AddSingleton<IMigration>(new FeatureScopedMigration(
-            "pole.redis", new RedisSchemaValidationMigration()));
+        services.AddFeatureMigrations("pole.redis", typeof(RedisSchemaValidationMigration).Assembly);
         services.AddTestDeploymentTargets();
         services.AddUnavailableSourceBuildTargets();
         ReplaceTenantAuthorizationWithFake(services);

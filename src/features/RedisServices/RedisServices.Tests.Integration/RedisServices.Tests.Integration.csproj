@@ -49,4 +49,7 @@
     <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="../RedisServices.Migrations/RedisServices.Migrations.csproj" />
+  </ItemGroup>
 </Project>

@@ -1,8 +1,9 @@
+using Pole.Migrations;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.Search.Application.Migrations;
+using Pole.Features.Search.Migrations;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 

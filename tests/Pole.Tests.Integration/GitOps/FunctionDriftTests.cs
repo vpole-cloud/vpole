@@ -6,7 +6,7 @@ using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Endpoints;
-using Pole.Features.Functions.Application.Migrations;
+using Pole.Features.Functions.Migrations;
 using Pole.Features.Functions.Application.Persistence;
 using Pole.Features.Functions.Application.Persistence.Lifecycle;
 using Pole.Features.Functions.Domain;

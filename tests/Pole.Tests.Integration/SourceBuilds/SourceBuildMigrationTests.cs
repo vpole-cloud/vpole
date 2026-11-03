@@ -1,7 +1,7 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Features.ContainerRegistries.Application.Migrations;
-using Pole.Features.SourceBuilds.Application.Migrations;
+using Pole.Features.ContainerRegistries.Migrations;
+using Pole.Features.SourceBuilds.Migrations;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 

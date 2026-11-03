@@ -46,7 +46,7 @@ public sealed class MongoApplicationBoundaryAnalyzer : DiagnosticAnalyzer
         var name = (SimpleNameSyntax)context.Node;
         if (!context.Node.SyntaxTree.FilePath.Replace('\\', '/').Contains(".Application/", StringComparison.Ordinal) ||
             !RawMongoQuerySymbols.Contains(name.Identifier.ValueText) ||
-            IsPersistenceOrMigrationSource(context.Node.SyntaxTree.FilePath))
+            IsPersistenceSource(context.Node.SyntaxTree.FilePath))
             return;
 
         context.ReportDiagnostic(Diagnostic.Create(
@@ -55,10 +55,9 @@ public sealed class MongoApplicationBoundaryAnalyzer : DiagnosticAnalyzer
             name.Identifier.ValueText));
     }
 
-    private static bool IsPersistenceOrMigrationSource(string filePath)
+    private static bool IsPersistenceSource(string filePath)
     {
         var normalizedPath = filePath.Replace('\\', '/');
-        return normalizedPath.Contains("/Persistence/", StringComparison.OrdinalIgnoreCase) ||
-               normalizedPath.Contains("/Migrations/", StringComparison.OrdinalIgnoreCase);
+        return normalizedPath.Contains(".Application/Persistence/", StringComparison.Ordinal);
     }
 }

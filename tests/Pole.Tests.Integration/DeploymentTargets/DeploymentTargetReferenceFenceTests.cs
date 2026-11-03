@@ -5,7 +5,7 @@ using Pole.Features.Outbox.Application.Persistence.Writes;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
-using Pole.Features.DeploymentTargets.Application.Migrations;
+using Pole.Features.DeploymentTargets.Migrations;
 using Pole.Features.DeploymentTargets.Application.Persistence;
 using Pole.Features.DeploymentTargets.Application.Persistence.Mutations;
 using Pole.Features.DeploymentTargets.Application.Persistence.References;
