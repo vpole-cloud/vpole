@@ -4,11 +4,24 @@ using Pole.Features.Secrets.Domain;
 using Pole.Features.Secrets.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Workloads;
 
 namespace Pole.Features.Secrets.Application.Persistence;
 
-internal sealed partial class DeclarativeSecretBindingProvider
+internal sealed class SecretBindingPlanning(
+    IMongoCollection<Secret> secrets,
+    SecretBindingConsumerCatalog consumers,
+    IGitOpsMutations git,
+    LoadIsolationScopePlanningSnapshot loadPlanningScope,
+    FenceIsolationScopePlanningSnapshot fencePlanningScope,
+    FenceRegisteredResource fenceConsumer,
+    LoadResourceDeploymentPlanningSnapshot loadPlanningPlacements,
+    FenceResourceDeploymentPlanningSnapshot fencePlanningPlacements,
+    SecretPlanningFence planningFence)
 {
+    private ResourceTypeId ConsumerType(SecretBindingDeclaration spec) =>
+        consumers.Get(spec.Consumer.Kind).ResourceType;
+
     public async Task<ReadCurrentDeclarationOutcome> ReadCurrentAsync(
         ReadCurrentDeclarationRequest request,
         IClientSessionHandle session,
@@ -33,7 +46,7 @@ internal sealed partial class DeclarativeSecretBindingProvider
             return new DeclarationReadBlocked(new DeclarationIdentityChanged());
 
         if (binding.Selection is not AllSecretDeployments ||
-            !consumers.Values.Any(item => item.ResourceType.Value == binding.Consumer.ResourceType &&
+            !consumers.All.Any(item => item.ResourceType.Value == binding.Consumer.ResourceType &&
                 item.Usage == binding.Usage))
             return new DeclarationReadBlocked(
                 new SecretBindingDeclarationRejected(SecretBindingDeclarationError.ImmutableBindingChange));
@@ -104,7 +117,7 @@ internal sealed partial class DeclarativeSecretBindingProvider
         return new DeclarationFenced();
     }
 
-    private async Task<ReadBindingPlanningOutcome> ReadDependenciesAsync(GitOperationInput operation,
+    internal async Task<ReadBindingPlanningOutcome> ReadDependenciesAsync(GitOperationInput operation,
         IClientSessionHandle session, CancellationToken ct)
     {
         var spec = DeclarationJson.Read<SecretBindingDeclaration>(operation.Declaration.Spec);
@@ -136,10 +149,10 @@ internal sealed partial class DeclarativeSecretBindingProvider
         return new BindingPlanningDependencies(secret, consumerId, owned, placed);
     }
 
-    private static DeclarationReadBlocked BindingPlanningBlocked(SecretBindingDeclarationError reason) =>
+    internal static DeclarationReadBlocked BindingPlanningBlocked(SecretBindingDeclarationError reason) =>
         new(new SecretBindingDeclarationRejected(reason));
 
-    private static DeclarationDocumentVersion[] Versions(BindingPlanningDependencies dependencies) =>
+    internal static DeclarationDocumentVersion[] Versions(BindingPlanningDependencies dependencies) =>
     [
         .. SecretPlanningFence.Versions(dependencies.Secret),
         new($"ResourceGroup/{dependencies.Scope.ResourceGroupId}", dependencies.Scope.ResourceGroupRevision),
@@ -148,7 +161,7 @@ internal sealed partial class DeclarativeSecretBindingProvider
             new DeclarationDocumentVersion($"ResourceDeployment/{item.DeploymentId}", item.Revision))
     ];
 
-    private static DeclarationProjection Project(
+    internal static DeclarationProjection Project(
         string secretId,
         SecretConsumerIdentity consumer,
         Pole.Features.Secrets.Primitives.SecretBindingUsage usage,
