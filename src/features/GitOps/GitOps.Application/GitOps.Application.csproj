@@ -7,6 +7,7 @@
     <RootNamespace>Pole.Features.GitOps.Application</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Pole.Tests.Integration" />
     <ProjectReference Include="../GitOps.Contracts/GitOps.Contracts.csproj"/>
     <ProjectReference Include="../GitOps.Domain/GitOps.Domain.csproj"/>
     <ProjectReference Include="../GitOps.Events/GitOps.Events.csproj"/>
