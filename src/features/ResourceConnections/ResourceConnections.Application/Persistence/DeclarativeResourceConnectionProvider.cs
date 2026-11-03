@@ -1,4 +1,3 @@
-using System.Text.Json;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
@@ -6,6 +5,7 @@ using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceConnections.Domain;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Workloads;
+using System.Text.Json;
 
 namespace Pole.Features.ResourceConnections.Application.Persistence;
 
@@ -20,7 +20,7 @@ public sealed record ConnectionDeclarationEndpointUnavailable : IDeclarationFail
 
 public sealed record ConnectionDeclarationTopologyUnavailable : IDeclarationFailure;
 
-internal sealed partial class DeclarativeResourceConnectionProvider(
+internal sealed class DeclarativeResourceConnectionProvider(
     IMongoCollection<ResourceConnection> connections,
     IEnumerable<ResourceConnectionDeclarationKind> registeredKinds,
     ResourceConnectionEndpointCatalog endpoints,
@@ -157,5 +157,295 @@ internal sealed partial class DeclarativeResourceConnectionProvider(
         public DeclarationDocumentVersion[] Versions => Registrations.Select(item =>
             new DeclarationDocumentVersion($"ResourceRegistration/{item.Resource.RegistrationId}", item.ReferenceFence))
             .ToArray();
+    }
+
+    public async Task<PreviewLifecycleAdoptionOutcome> PreviewAdoptionAsync(
+        PreviewLifecycleAdoptionRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var current = await connections.Find(session,
+                ResourceConnectionFilters.ByTenantAndId(request.TenantId, request.ResourceId))
+            .FirstOrDefaultAsync(cancellationToken);
+        if (current is null || current.Lifecycle is not ActiveResourceConnection)
+            return new DeclarationReadBlocked(new ConnectionDeclarationUnavailable());
+
+        if (request.Declaration.Address.Kind != Kind || current.Name != request.Declaration.Address.Name)
+            return new DeclarationReadBlocked(new DeclarationIdentityChanged());
+
+        var spec = DeclarationJson.Read<ResourceConnectionDeclaration>(request.Declaration.Spec);
+        var sourceId = ReferenceId(spec.Source);
+        var destinationId = ReferenceId(spec.Destination);
+        if (sourceId is null || destinationId is null || !kinds.TryGetValue(spec.Source.Kind, out var sourceType) ||
+            !kinds.TryGetValue(spec.Destination.Kind, out var destinationType))
+            return new DeclarationReadBlocked(new DeclarationReferenceUnavailable(
+                sourceId is null ? spec.Source : spec.Destination));
+
+        var command = new CreateResourceConnectionCommand(request.TenantId, request.Declaration.Address.Name,
+            sourceType, sourceId, destinationType, destinationId, spec.Endpoint);
+        var projection = Project(new(current.TenantId, current.Name,
+            ResourceTypeId.Create(current.SourceResourceTypeId), current.SourceResourceId,
+            ResourceTypeId.Create(current.DestinationResourceTypeId), current.DestinationResourceId,
+            current.EndpointId));
+        var desiredProjection = Project(command);
+        var currentDeclaration = new CurrentDeclaration(current.Id, LifecycleVersion(current), projection,
+            DeclarationConfigurationState.Configured);
+        var source = await loadRegistration(new(request.TenantId, sourceType, sourceId), session, cancellationToken);
+        var destination = await loadRegistration(new(request.TenantId, destinationType, destinationId),
+            session, cancellationToken);
+        if (source is null || destination is null)
+        {
+            // The engine proves reserved IDs against the complete reviewed snapshot. A replacement
+            // can project those identities before their prerequisite resources exist; actual endpoint
+            // and placement admission remains mandatory in the normal Bind phase.
+            return !JsonElement.DeepEquals(projection.Identity, desiredProjection.Identity)
+                ? new GitLifecycleAdoptionPreview(currentDeclaration, desiredProjection, [])
+                : new DeclarationReadBlocked(new DeclarationReferenceUnavailable(
+                    source is null ? spec.Source : spec.Destination));
+        }
+
+        var resolved = new ResolvedDeclaration(command,
+            new[] { source, destination }.DistinctBy(item => item.Resource.RegistrationId)
+                .OrderBy(item => item.Resource.RegistrationId, StringComparer.Ordinal).ToArray());
+        var desired = await ProjectResolvedAsync(resolved, session, cancellationToken);
+        return desired switch
+        {
+            DeclarationProjection accepted => new GitLifecycleAdoptionPreview(currentDeclaration, accepted, []),
+            DeclarationReadBlocked blocked => blocked
+        };
+
+        string? ReferenceId(ResourceAddress address)
+        {
+            var references = request.References.Where(item => item.Address == address).ToArray();
+            return references.Length == 1 ? references[0].ResourceId : null;
+        }
+    }
+
+    public string DependencyOwner => "ResourceConnections";
+
+    public async Task<ReadLifecycleResourceOutcome> ReadLifecycleAsync(
+        ReadLifecycleResourceRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var current = await connections.Find(session,
+                ResourceConnectionFilters.ByTenantAndId(request.TenantId, request.Resource.ResourceId))
+            .FirstOrDefaultAsync(cancellationToken);
+        if (current is null)
+            return new GitLifecycleResourceAbsent();
+
+        if (request.Resource.Address.Kind != Kind || current.Name != request.Resource.Address.Name)
+            return new DeclarationReadBlocked(new DeclarationIdentityChanged());
+
+        return new GitLifecycleResourceSnapshot(request.Resource, LifecycleVersion(current),
+            current.Lifecycle is ActiveResourceConnection ? GitLifecyclePresence.Active : GitLifecyclePresence.Deleting,
+            GitLifecycleProtection.ConfigurationOnly, GitLifecycleVersionSemantics.ObservedDocuments);
+    }
+
+    public async Task<RemoveLifecycleResourceOutcome> RemoveAsync(
+        RemoveLifecycleResourceRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var read = await ReadLifecycleAsync(new(request.Authority.TenantId, request.Resource),
+            session, cancellationToken);
+        if (read is GitLifecycleResourceAbsent)
+            return new GitLifecycleResourceRemoved();
+        if (read is DeclarationReadBlocked blocked)
+            return blocked;
+
+        var current = (GitLifecycleResourceSnapshot)read.Value;
+        if (!SameVersions(current.Version, request.Expected))
+            return new DeclarationPreconditionsChanged();
+
+        var expected = ResourceConnectionPlanningVersion.FromDocuments(request.Resource.ResourceId,
+            current.Version.Documents.ToDictionary(item => item.DocumentId, item => item.Revision))!;
+        var outcome = await deletion.ExecuteAsync(new(request.Authority.TenantId, request.Resource.ResourceId,
+            expected, request.Authority), session, cancellationToken);
+        return outcome switch
+        {
+            ResourceConnection => new GitLifecycleRemovalRequested(),
+            ResourceConnectionMissing => new GitLifecycleResourceRemoved(),
+            ResourceConnectionDeletionConflict => new DeclarationPreconditionsChanged(),
+            ResourceConnectionGitOwned => new StaleGitExecution()
+        };
+    }
+
+    public async Task<IReadOnlyList<GitLifecycleDependency>> ReadDependenciesAsync(
+        ReadLifecycleDependenciesRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        if (!kinds.TryGetValue(request.Resource.Address.Kind, out var resourceType))
+            return [];
+
+        var affected = await connections.Find(session,
+                ResourceConnectionFilters.ByResource(request.TenantId, resourceType, request.Resource.ResourceId))
+            .SortBy(item => item.Id).ToListAsync(cancellationToken);
+        return affected.Select(item => new GitLifecycleDependency(
+            new(new(Kind, item.Name), item.Id), request.Resource, LifecycleVersion(item),
+            GitLifecycleDependencyOrder.AfterDependentRemovalRequested)).ToArray();
+    }
+
+    public async Task<FenceDeclarationOutcome> FenceDependenciesAsync(
+        FenceLifecycleDependenciesRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        if (!session.IsInTransaction)
+            throw new InvalidOperationException("Connection dependency fencing requires a transaction.");
+
+        var current = await ReadDependenciesAsync(new(request.TenantId, request.Resource), session, cancellationToken);
+        if (current.Count != request.Expected.Count || current.Any(item =>
+                !request.Expected.Any(expected => expected.Dependent == item.Dependent &&
+                    expected.Target == item.Target && expected.Order == item.Order &&
+                    SameVersions(expected.Version, item.Version))))
+            return new DeclarationPreconditionsChanged();
+
+        if (!kinds.TryGetValue(request.Resource.Address.Kind, out var resourceType))
+            return new DeclarationFenced();
+
+        // Connection admission writes this same registration. This closes the phantom-reference race
+        // even when the reviewed dependency set was empty.
+        var registration = await loadRegistration(new(request.TenantId, resourceType, request.Resource.ResourceId),
+            session, cancellationToken);
+        if (registration is not null && await fenceRegistration(registration, session, cancellationToken)
+            is not ResourceRegistrationSnapshotFenced)
+            return new DeclarationPreconditionsChanged();
+
+        foreach (var dependency in current)
+        {
+            var connection = await connections.Find(session,
+                ResourceConnectionFilters.ByTenantAndId(request.TenantId, dependency.Dependent.ResourceId))
+                .SingleAsync(cancellationToken);
+            if (!SameVersions(LifecycleVersion(connection), dependency.Version))
+                return new DeclarationPreconditionsChanged();
+            // Deleting configuration is frozen. The parent's mandatory joined reviewed cascade
+            // conditionally writes this exact live token after authorization in the same transaction.
+            // Advancing it here would invalidate the approved cascade's own preconditions.
+            if (connection.Lifecycle is DeletingResourceConnection)
+                continue;
+
+            var revision = dependency.Version.Documents[0].Revision;
+            var fence = dependency.Version.Documents[1].Revision;
+            var result = await connections.UpdateOneAsync(session,
+                ResourceConnectionFilters.AtPlanningVersion(request.TenantId,
+                    new(dependency.Dependent.ResourceId, revision, fence)),
+                Builders<ResourceConnection>.Update.Inc(item => item.ReferenceFence, 1),
+                cancellationToken: cancellationToken);
+            if (result.ModifiedCount != 1)
+                return new DeclarationPreconditionsChanged();
+        }
+
+        return new DeclarationFenced();
+    }
+
+    private static DeclarationVersionToken LifecycleVersion(ResourceConnection current) => new(
+        [new(ResourceConnectionPlanningVersion.RevisionDocumentId(current.Id), current.Revision),
+            new(ResourceConnectionPlanningVersion.ReferenceFenceDocumentId(current.Id), current.ReferenceFence)]);
+
+    private static bool SameVersions(DeclarationVersionToken left, DeclarationVersionToken right) =>
+        left.Documents.OrderBy(item => item.DocumentId, StringComparer.Ordinal)
+            .SequenceEqual(right.Documents.OrderBy(item => item.DocumentId, StringComparer.Ordinal));
+
+    public async Task<ReadCurrentDeclarationOutcome> ReadCurrentAsync(
+        ReadCurrentDeclarationRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var current = request.Operation is { } operation
+            ? await connections.Find(session, ResourceConnectionFilters.ByTenantAndId(request.TenantId,
+                operation.ResourceId)).FirstOrDefaultAsync(cancellationToken)
+            : null;
+        current ??= await connections.Find(session,
+                ResourceConnectionFilters.ByName(request.TenantId, request.Address.Name))
+            .FirstOrDefaultAsync(cancellationToken);
+        if (current is null)
+            return new CurrentDeclarationMissing();
+
+        if (current.Name != request.Address.Name)
+            return new DeclarationReadBlocked(new DeclarationIdentityChanged());
+
+        if (current.Lifecycle is not ActiveResourceConnection)
+            return new DeclarationReadBlocked(new ConnectionDeclarationUnavailable());
+
+        return new CurrentDeclaration(current.Id, new([new($"ResourceConnection/{current.Id}", current.Revision)]),
+            Project(new(current.TenantId, current.Name, ResourceTypeId.Create(current.SourceResourceTypeId),
+                current.SourceResourceId, ResourceTypeId.Create(current.DestinationResourceTypeId),
+                current.DestinationResourceId, current.EndpointId)), DeclarationConfigurationState.Configured);
+    }
+
+    public async Task<ProjectDesiredDeclarationOutcome> ProjectDesiredAsync(
+        ProjectDesiredDeclarationRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveDeclarationAsync(request.TenantId, request.Declaration, request.Operation,
+            session, cancellationToken);
+        return resolved is null
+            ? new DeclarationReadBlocked(new ConnectionDeclarationUnavailable())
+            : await ProjectResolvedAsync(resolved, session, cancellationToken);
+    }
+
+    private async Task<ProjectDesiredDeclarationOutcome> ProjectResolvedAsync(
+        ResolvedDeclaration resolved,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var topology = await admission.ReadAsync(resolved.Command, session, cancellationToken);
+        return topology switch
+        {
+            ResolvedResourceConnectionTopology => Project(resolved.Command) with
+            { Dependencies = new(resolved.Versions) },
+            ConnectionResourceMissing => new DeclarationReadBlocked(new ConnectionDeclarationUnavailable()),
+            ConnectionPlacementDeleting => new DeclarationReadBlocked(new ConnectionDeclarationUnavailable()),
+            ConnectionEndpointUnsupported => new DeclarationReadBlocked(new ConnectionDeclarationEndpointUnavailable()),
+            ConnectionSourceHasNoPlacements =>
+                new DeclarationReadBlocked(new ConnectionDeclarationTopologyUnavailable()),
+            ConnectionDestinationTargetMissing =>
+                new DeclarationReadBlocked(new ConnectionDeclarationTopologyUnavailable()),
+            ConnectionDestinationTargetAmbiguous =>
+                new DeclarationReadBlocked(new ConnectionDeclarationTopologyUnavailable())
+        };
+    }
+
+    public async Task<FenceDeclarationOutcome> FenceAsync(
+        FenceDeclarationRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var operation = request.Operation;
+        var resolved = await ResolveDeclarationAsync(operation.Context.TenantId, operation.Declaration, operation,
+            session, cancellationToken);
+        if (resolved is null || !resolved.Versions.All(request.Expected.Documents.Contains))
+            return new DeclarationPreconditionsChanged();
+
+        var expected = request.Expected.Documents.SingleOrDefault(item =>
+            item.DocumentId == $"ResourceConnection/{operation.ResourceId}");
+        var current = await connections.Find(session,
+            ResourceConnectionFilters.ByTenantAndId(operation.Context.TenantId, operation.ResourceId))
+            .FirstOrDefaultAsync(cancellationToken);
+        if (current is null ? expected is not null : expected?.Revision != current.Revision ||
+            current.Lifecycle is not ActiveResourceConnection)
+            return new DeclarationPreconditionsChanged();
+
+        foreach (var registration in resolved.Registrations)
+        {
+            if (await fenceRegistration(registration, session, cancellationToken)
+                is not ResourceRegistrationSnapshotFenced)
+                return new DeclarationPreconditionsChanged();
+        }
+
+        if (current is not null)
+        {
+            var fenced = await connections.UpdateOneAsync(session, ResourceConnectionFilters.AtRevision(
+                current.TenantId, current.Id, current.Revision),
+                Builders<ResourceConnection>.Update.Inc(item => item.ReferenceFence, 1),
+                cancellationToken: cancellationToken);
+            if (fenced.ModifiedCount != 1)
+                return new DeclarationPreconditionsChanged();
+        }
+
+        return new DeclarationFenced();
     }
 }
