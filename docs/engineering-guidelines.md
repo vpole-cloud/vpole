@@ -107,7 +107,8 @@ Use C# closed record hierarchies for finite domain state families and sealed ter
 Use operation-specific unions for outcomes and open interfaces for provider extension points.
 Match the typed union or closed hierarchy with an exhaustive switch expression; do not switch on
 an untyped Value and add a fallback that hides a newly introduced case. Null is a separate case
-only where the input contract is nullable. Persistence still requires explicit discriminator
+only where the input contract is nullable. `POLE012` rejects catch-all arms over closed hierarchies;
+name rejected states explicitly so new variants still require a decision. Persistence still requires explicit discriminator
 configuration and serialization verification.
 
 ## Endpoint file structure

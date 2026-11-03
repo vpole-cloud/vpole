@@ -245,7 +245,7 @@ public sealed class MongoGitLifecycleGuard(
                 GitLifecycleMutationEffect.Remove => action.Action is not
                     (GitLifecycleAction.Remove or GitLifecycleAction.Replace),
                 null => true,
-                _ => true
+                GitPreviewAwaitingConfirmation => true
             }))
             return false;
 
@@ -281,7 +281,7 @@ public sealed class MongoGitLifecycleGuard(
                 GitPreviewConfirmed human => human.RunId != run.Id,
                 GitPreviewPolicyAuthorized policy => policy.RunId != run.Id ||
                     policy.ConfigurationRevision != run.Stamp.ConfigurationRevision,
-                _ => true
+                GitPreviewAwaitingConfirmation => true
             }))
             return null;
 

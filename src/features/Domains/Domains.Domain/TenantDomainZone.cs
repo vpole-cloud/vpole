@@ -41,8 +41,7 @@ public sealed record TenantDomainZone(
     public TenantDomainZoneKind Kind => Identity switch
     {
         GeneratedDomainIdentity => TenantDomainZoneKind.Generated,
-        NamedDomainIdentity => TenantDomainZoneKind.ManagedReservation,
-        _ => throw new InvalidOperationException("The domain identity is not supported.")
+        NamedDomainIdentity => TenantDomainZoneKind.ManagedReservation
     };
 }
 

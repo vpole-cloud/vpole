@@ -103,7 +103,8 @@ public sealed class GitLifecyclePreviews(
                     item.Name), item => item.ResourceId),
                 GitPreviewReplacement replacement => replacement.Resources.ToDictionary(item =>
                     new ResourceAddress(item.DesiredKind, item.DesiredName), _ => ObjectId.GenerateNewId().ToString()),
-                _ => new Dictionary<ResourceAddress, string>()
+                GitPreviewResourceChanges or GitPreviewRemoval or GitPreviewDetachSource or
+                    GitPreviewRelocateSource => new Dictionary<ResourceAddress, string>()
             };
             var read = await snapshots.ReadAsync(source, location, selectedIds, ct);
             if (read is GitPreviewReadFailed failed)
@@ -213,7 +214,8 @@ public sealed class GitLifecyclePreviews(
                     DisplayUrl = displayUrl,
                     Revision = checked(source.Revision + 1)
                 },
-                _ => source
+                GitPreviewResourceChanges or GitPreviewAdoption or GitPreviewRemoval or
+                    GitPreviewReplacement => source
             };
             if (state.CurrentRun is { } active)
                 await runs.UpdateOneAsync(tx.Session, GitRepositoryFilters.Run(source.TenantId, source.Id,

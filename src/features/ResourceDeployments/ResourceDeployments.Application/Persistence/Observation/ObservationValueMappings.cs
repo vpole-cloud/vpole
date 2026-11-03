@@ -54,8 +54,7 @@ internal static class ObservationValueMappings
                     KubernetesWorkloadObservation.SafeReason(item.Reason),
                     item.Count,
                     Utc(item.LastSeenAtUtc))).ToArray(),
-                SafeOptionalUnavailable(observed.EventsUnavailableReason))),
-        _ => throw new ArgumentException("Unsupported observation value.", nameof(value))
+                SafeOptionalUnavailable(observed.EventsUnavailableReason)))
     };
 
     internal static StoredDiagnostics? Store(WorkloadDiagnostics? value) => value switch
