@@ -1,5 +1,5 @@
 using System.Net;
-using System.Net.Http.Json;
+using Pole.Tests.Integration.Http;
 using System.Text.Json;
 using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Endpoints;

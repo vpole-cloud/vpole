@@ -1,5 +1,5 @@
 using System.Net;
-using System.Net.Http.Json;
+using Pole.Tests.Integration.Http;
 using MongoDB.Driver;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Domain;

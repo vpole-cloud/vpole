@@ -442,7 +442,7 @@ public sealed class RealtimeBrowserE2ETests(
                 {
                     userId = fixture.Beta.KeycloakUserId,
                     email = fixture.Beta.Email,
-                    role = TenantRole.Member
+                    role = TenantRole.Member.ToString()
                 },
                 ct);
             var memberId = Text(member, "id");

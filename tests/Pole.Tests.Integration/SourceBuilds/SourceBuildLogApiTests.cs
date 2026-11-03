@@ -1,6 +1,6 @@
 using System.Collections.Immutable;
 using System.Net;
-using System.Net.Http.Json;
+using Pole.Tests.Integration.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;

@@ -1,4 +1,3 @@
-using System.Text.Json.Serialization;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -41,7 +40,7 @@ public sealed record AdoptionCandidateView(
     string? OwnerSourceId,
     bool Selectable,
     string? Blocker,
-    [property: JsonConverter(typeof(JsonStringEnumConverter<GitLifecyclePresence>))] GitLifecyclePresence Presence,
+    GitLifecyclePresence Presence,
     AdoptionBindingView? Binding);
 
 public sealed record AdoptionCandidatePage(

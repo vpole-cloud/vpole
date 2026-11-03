@@ -1,6 +1,6 @@
 using System.Collections.Immutable;
 using System.Net;
-using System.Net.Http.Json;
+using Pole.Tests.Integration.Http;
 using MongoDB.Driver;
 using Pole.Features.Functions.Application.Endpoints;
 using Pole.Features.Functions.Domain;

@@ -1,4 +1,3 @@
-using System.Text.Json.Serialization;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -16,7 +15,6 @@ using Pole.Validation;
 namespace Pole.Features.DeploymentTargets.Application.Endpoints;
 
 public sealed record UpdateDeploymentTargetNetworkPolicyBody(
-    [property: JsonConverter(typeof(JsonStringEnumConverter<NetworkPolicyEnforcement>))]
     NetworkPolicyEnforcement Enforcement,
     bool AllowIsolationNotEnforced,
     long Revision);

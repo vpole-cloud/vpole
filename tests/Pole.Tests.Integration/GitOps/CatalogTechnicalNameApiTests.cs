@@ -1,5 +1,5 @@
 using System.Net;
-using System.Net.Http.Json;
+using Pole.Tests.Integration.Http;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;

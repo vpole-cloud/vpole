@@ -1,6 +1,6 @@
 using System.Collections.Immutable;
 using System.Net;
-using System.Net.Http.Json;
+using Pole.Tests.Integration.Http;
 using System.Text.Json;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Primitives;

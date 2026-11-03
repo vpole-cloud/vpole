@@ -112,7 +112,7 @@ export interface ResourcePage extends Page<SourceResource> {
   inventoryRevision: number
 }
 export interface GitOpsOperation extends ResourceIdentity {
-  phase: 0 | 1 | 2 | null
+  phase: 'Prepare' | 'Bind' | 'Configure' | null
   status: 'Pending' | 'Succeeded' | 'Blocked' | 'PendingCleanup' | 'AwaitingConfirmation'
   blocker: string | null
   changed: boolean

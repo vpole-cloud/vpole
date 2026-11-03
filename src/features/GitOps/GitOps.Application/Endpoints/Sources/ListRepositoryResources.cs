@@ -1,4 +1,3 @@
-using System.Text.Json.Serialization;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -19,7 +18,6 @@ public sealed record RepositoryResourceView(
     string Name,
     string ResourceId,
     string? ResourceTypeId,
-    [property: JsonConverter(typeof(JsonStringEnumConverter<GitResourceMaterialization>))]
     GitResourceMaterialization Materialization,
     bool PendingRemoval,
     string? Blocker,

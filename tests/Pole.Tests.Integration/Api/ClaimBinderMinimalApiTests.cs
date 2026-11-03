@@ -1,5 +1,5 @@
 using System.Net;
-using System.Net.Http.Json;
+using Pole.Tests.Integration.Http;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;

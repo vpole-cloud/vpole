@@ -1,7 +1,7 @@
 using Pole.Features.ResourceDeployments.Contracts;
 using System.Collections.Immutable;
 using System.Net;
-using System.Net.Http.Json;
+using Pole.Tests.Integration.Http;
 using System.Text.Json;
 using MongoDB.Bson;
 using MongoDB.Driver;

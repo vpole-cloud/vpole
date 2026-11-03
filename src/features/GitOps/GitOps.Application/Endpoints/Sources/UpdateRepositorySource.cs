@@ -20,7 +20,6 @@ namespace Pole.Features.GitOps.Application.Endpoints.Sources;
 public sealed record UpdateRepositorySourceBody(
     long ExpectedRevision,
     int PollIntervalSeconds,
-    [property: JsonConverter(typeof(JsonStringEnumConverter<GitPrunePolicy>))]
     GitPrunePolicy Prune = GitPrunePolicy.Retain);
 
 public sealed record UpdateRepositorySourceRequest(

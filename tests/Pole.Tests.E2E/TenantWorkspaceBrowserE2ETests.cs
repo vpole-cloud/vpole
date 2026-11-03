@@ -24,7 +24,7 @@ public sealed class TenantWorkspaceBrowserE2ETests(PoleE2EFixture fixture)
             var alphaTenant = fixture.Alpha.DefaultTenantId;
             var betaTenant = fixture.Beta.DefaultTenantId;
             var member = await SendAsync(HttpMethod.Post, $"/api/v1/tenants/{alphaTenant}/members", fixture.Alpha, alphaTenant,
-                new { userId = fixture.Beta.KeycloakUserId, email = fixture.Beta.Email, role = TenantRole.Viewer }, ct);
+                new { userId = fixture.Beta.KeycloakUserId, email = fixture.Beta.Email, role = TenantRole.Viewer.ToString() }, ct);
             var memberId = Text(member, "id");
             resources.Defer("remove temporary Alpha Viewer", token => DeleteAsync($"/api/v1/tenants/{alphaTenant}/members/{memberId}", fixture.Alpha, alphaTenant, token));
             var suffix = Guid.NewGuid().ToString("N")[..10];

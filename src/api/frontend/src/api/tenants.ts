@@ -2,23 +2,15 @@ import type { Tenant, TenantRole } from '../types'
 import { buildHeaders, fetchJson } from './transport'
 
 type TenantResponse = Omit<Tenant, 'role'> & {
-  role: TenantRole | number
+  role: unknown
 }
 
-const tenantRoles: Record<number, TenantRole> = {
-  0: 'Viewer',
-  1: 'Member',
-  2: 'Admin',
-  3: 'Owner',
-}
+const tenantRoles = new Set<TenantRole>(['Viewer', 'Member', 'Admin', 'Owner'])
 
-export function normalizeTenantRole(role: TenantRole | number): TenantRole {
-  if (typeof role === 'string') return role
+export function normalizeTenantRole(role: unknown): TenantRole {
+  if (typeof role === 'string' && tenantRoles.has(role as TenantRole)) return role as TenantRole
 
-  const normalized = tenantRoles[role]
-  if (normalized) return normalized
-
-  throw new Error(`Unknown tenant role value: ${role}`)
+  throw new Error(`Unknown tenant role value: ${String(role)}`)
 }
 
 export async function fetchTenants(apiBaseUrl: string, token?: string, signal?: AbortSignal) {

@@ -118,7 +118,7 @@ public static class PolePlatform
             .Where(assembly => configuration.GetValue<bool>("Realtime:Enabled") ||
                                assembly != typeof(RealtimeFeature).Assembly).ToArray();
         var events = EventAssemblies.Concat(additionalEventAssemblies).Distinct().ToArray();
-        services.AddKubernetes(configuration).AddDatabase()
+        services.AddPoleHttpJson().AddKubernetes(configuration).AddDatabase()
             .AddRealtimeFeature(configuration, development).AddRealtimeRedis(configuration, development)
             .AddOutboxFeature(configuration, events)
             .AddGitOpsFeature()

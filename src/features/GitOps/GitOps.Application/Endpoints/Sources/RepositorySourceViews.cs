@@ -42,8 +42,8 @@ public sealed record RepositorySourceView(
     RepositorySynchronizationView Synchronization,
     RepositoryInventorySummary Inventory,
     RepositoryRunView? LatestRun,
-    [property: JsonConverter(typeof(JsonStringEnumConverter<GitSourceActivity>))] GitSourceActivity Activity,
-    [property: JsonConverter(typeof(JsonStringEnumConverter<GitPrunePolicy>))] GitPrunePolicy Prune);
+    GitSourceActivity Activity,
+    GitPrunePolicy Prune);
 
 public sealed record RepositoryRunDiagnosticView(
     string Code,
@@ -81,7 +81,6 @@ public sealed record RepositoryOperationView(
     RepositoryLifecycleOperationView? Lifecycle);
 
 public sealed record RepositoryOperationPlanView(
-    [property: JsonConverter(typeof(JsonStringEnumConverter<GitPlannedAction>))]
     GitPlannedAction Action,
     long Revision,
     DateTime EvaluatedAtUtc,
@@ -104,7 +103,7 @@ public sealed record RepositoryRunLifecycleView(
 
 public sealed record RepositoryLifecycleOperationView(
     string ActionId,
-    [property: JsonConverter(typeof(JsonStringEnumConverter<GitLifecycleAction>))] GitLifecycleAction Action,
+    GitLifecycleAction Action,
     string? LastCompletedStep,
     string? ReplacementResourceId,
     string? ReplacementName,

@@ -343,8 +343,7 @@ internal static class ComputeProfileRequestParsing
 
     public static bool IsDefined<TEnum>(string? value)
         where TEnum : struct, Enum =>
-        Enum.TryParse<TEnum>(value, ignoreCase: true, out var parsed) &&
-        Enum.IsDefined(parsed);
+        Enum.GetNames<TEnum>().Contains(value?.Trim(), StringComparer.OrdinalIgnoreCase);
 
     public static TEnum Parse<TEnum>(string value)
         where TEnum : struct, Enum =>

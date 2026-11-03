@@ -15,7 +15,7 @@ public sealed record PreviewResourceView(
 public sealed record LifecyclePreviewActionView(
     string Id,
     PreviewResourceView Resource,
-    [property: JsonConverter(typeof(JsonStringEnumConverter<GitLifecycleAction>))] GitLifecycleAction Action,
+    GitLifecycleAction Action,
     PreviewResourceView? Replacement,
     IReadOnlyList<string> Dependencies,
     IReadOnlyList<string> ChangedFields,

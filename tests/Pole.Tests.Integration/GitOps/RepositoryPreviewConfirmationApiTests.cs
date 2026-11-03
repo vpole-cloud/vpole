@@ -1,5 +1,5 @@
 using System.Net;
-using System.Net.Http.Json;
+using Pole.Tests.Integration.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.GitOps.Application.Endpoints.Sources.Previews;
 using Pole.Features.GitOps.Application.Persistence;

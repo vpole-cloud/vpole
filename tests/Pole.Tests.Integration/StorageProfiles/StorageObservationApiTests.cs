@@ -1,6 +1,6 @@
 using System.Collections.Immutable;
 using System.Net;
-using System.Net.Http.Json;
+using Pole.Tests.Integration.Http;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using k8s;
@@ -70,7 +70,7 @@ public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture) :
         Assert.DoesNotContain("metadata", payload);
         var snapshot =
             JsonSerializer.Deserialize<StorageObservationSnapshot>(payload,
-                new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+                Pole.ASP.Helpers.PoleHttpJson.CreateSerializerOptions())!;
         Assert.Equal(TestData.DefaultDeploymentTargetId, snapshot.DeploymentTargetId);
         Assert.Equal(1, snapshot.ConnectionVersion);
         Assert.Null(snapshot.ObservationVersion);
@@ -114,7 +114,7 @@ public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture) :
         Assert.DoesNotContain("native-canary", payload);
         var snapshot =
             JsonSerializer.Deserialize<StorageObservationSnapshot>(payload,
-                new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+                Pole.ASP.Helpers.PoleHttpJson.CreateSerializerOptions())!;
         Assert.True(snapshot.Complete);
         Assert.Equal(provisioner, Assert.Single(snapshot.StorageClasses).Provisioner);
         Assert.Equal(3, reads.Count);
@@ -133,7 +133,7 @@ public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture) :
         Assert.DoesNotContain("native-canary", payload);
         var snapshot =
             JsonSerializer.Deserialize<StorageObservationSnapshot>(payload,
-                new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+                Pole.ASP.Helpers.PoleHttpJson.CreateSerializerOptions())!;
         Assert.True(snapshot.Complete);
         var owner = Assert.Single(snapshot.PersistentVolumeClaims).Owner;
         Assert.Equal("Мій кластер", owner.ResourceName);

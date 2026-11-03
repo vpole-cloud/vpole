@@ -190,6 +190,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         });
 
         builder.WebHost.UseTestServer();
+        builder.Services.AddPoleHttpJson();
         builder.Services.AddSingleton(fixture.Client);
         builder.Services.AddSingleton(fixture.Database);
         builder.Services.AddSingleton(TimeProvider.System);

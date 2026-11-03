@@ -1,5 +1,5 @@
 using System.Collections.Immutable;
-using System.Net.Http.Json;
+using Pole.Tests.Integration.Http;
 using System.Net;
 using MongoDB.Bson;
 using MongoDB.Driver;
