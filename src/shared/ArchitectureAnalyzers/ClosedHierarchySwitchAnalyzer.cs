@@ -38,7 +38,8 @@ public sealed class ClosedHierarchySwitchAnalyzer : DiagnosticAnalyzer
         };
         if (expression is null ||
             context.SemanticModel.GetTypeInfo(expression, context.CancellationToken).Type is not INamedTypeSymbol type ||
-            !(type.IsClosed || type.IsTupleType && type.TupleElements.Any(element => element.Type.IsClosed)))
+            !(IsClosedHierarchy(type) || type.IsTupleType &&
+                type.TupleElements.Any(element => IsClosedHierarchy(element.Type))))
             return;
 
         IEnumerable<SyntaxNode> catchAll = context.Node switch
@@ -53,6 +54,12 @@ public sealed class ClosedHierarchySwitchAnalyzer : DiagnosticAnalyzer
         foreach (var node in catchAll)
             context.ReportDiagnostic(Diagnostic.Create(Rule, node.GetLocation(), type.Name));
     }
+
+    private static bool IsClosedHierarchy(ITypeSymbol type) =>
+        type.DeclaringSyntaxReferences.Any(reference => reference.GetSyntax().ChildTokens()
+            .Any(token => token.ValueText == "closed")) ||
+        type.GetAttributes().Any(attribute => attribute.AttributeClass?.ToDisplayString() ==
+            "System.Runtime.CompilerServices.IsClosedTypeAttribute");
 
     private static bool IsCatchAll(PatternSyntax pattern) => pattern switch
     {
