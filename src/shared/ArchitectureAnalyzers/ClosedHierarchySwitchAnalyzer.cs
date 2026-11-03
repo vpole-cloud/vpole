@@ -44,11 +44,13 @@ public sealed class ClosedHierarchySwitchAnalyzer : DiagnosticAnalyzer
 
         IEnumerable<SyntaxNode> catchAll = context.Node switch
         {
-            SwitchExpressionSyntax value => value.Arms.Where(arm => IsCatchAll(arm.Pattern, type, context.SemanticModel))
+            SwitchExpressionSyntax value => value.Arms
+                .Where(arm => IsCatchAll(arm.Pattern, type, context.SemanticModel))
                 .Select(arm => (SyntaxNode)arm.Pattern),
             SwitchStatementSyntax value => value.Sections.SelectMany(section => section.Labels)
                 .Where(label => label is DefaultSwitchLabelSyntax ||
-                    label is CasePatternSwitchLabelSyntax pattern && IsCatchAll(pattern.Pattern, type, context.SemanticModel)),
+                    label is CasePatternSwitchLabelSyntax pattern &&
+                    IsCatchAll(pattern.Pattern, type, context.SemanticModel)),
             _ => []
         };
         foreach (var node in catchAll)
@@ -70,7 +72,8 @@ public sealed class ClosedHierarchySwitchAnalyzer : DiagnosticAnalyzer
         DiscardPatternSyntax or VarPatternSyntax => true,
         ParenthesizedPatternSyntax nested => IsCatchAll(nested.Pattern, input, semantics),
         // A bare type name can remain a ConstantPatternSyntax after parsing; binding identifies it as a type.
-        ConstantPatternSyntax constant when semantics.GetSymbolInfo(constant.Expression).Symbol is ITypeSymbol matched =>
+        ConstantPatternSyntax constant when
+            semantics.GetSymbolInfo(constant.Expression).Symbol is ITypeSymbol matched =>
             ((CSharpCompilation)semantics.Compilation).ClassifyConversion(input, matched).IsImplicit,
         TypePatternSyntax typed => MatchesBaseType(typed.Type, input, semantics),
         DeclarationPatternSyntax typed => MatchesBaseType(typed.Type, input, semantics),
