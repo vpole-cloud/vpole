@@ -7,10 +7,16 @@ using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Domain;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
+using static Pole.Features.Functions.Application.Persistence.FunctionDeclarations;
 
 namespace Pole.Features.Functions.Application.Persistence;
 
-internal sealed partial class DeclarativeFunctionProvider
+internal sealed class FunctionDeclarationAdoption(
+    IMongoCollection<FunctionApp> resources,
+    ResolveComputeProfilePlanningSnapshot loadCompute,
+    FunctionDeclarationPlanning planning,
+    FunctionDeclarationReferences referenceReader,
+    FunctionDeclarationLifecycle lifecycleReader)
 {
     public async Task<PreviewLifecycleAdoptionOutcome> PreviewAdoptionAsync(
         PreviewLifecycleAdoptionRequest request,
@@ -24,11 +30,11 @@ internal sealed partial class DeclarativeFunctionProvider
             return Blocked(FunctionDeclarationError.ResourceDeleting);
         if (root.NormalizedName != request.Declaration.Address.Name)
             return new DeclarationReadBlocked(new DeclarationIdentityChanged());
-        var loaded = await ReadCurrentStateAsync(root, session, cancellationToken);
+        var loaded = await planning.ReadCurrentStateAsync(root, session, cancellationToken);
         if (loaded is DeclarationReadBlocked currentBlocked)
             return currentBlocked;
         var current = (FunctionPlanningCurrent)loaded.Value;
-        var technical = await ReadPreviewReferencesAsync(new(request.TenantId, request.Declaration,
+        var technical = await referenceReader.ReadPreviewReferencesAsync(new(request.TenantId, request.Declaration,
             request.References), session, cancellationToken);
         if (technical is DeclarationReadBlocked rejected)
             return rejected;
@@ -65,7 +71,7 @@ internal sealed partial class DeclarativeFunctionProvider
         if (references.All(item => item.State == GitPreviewReferenceState.Existing) &&
             JsonElement.DeepEquals(projected.Identity, desired.Identity))
         {
-            var checkedPlan = await ReadPlanningWithReferencesAsync(new(request.TenantId, request.ResourceId,
+            var checkedPlan = await planning.ReadPlanningWithReferencesAsync(new(request.TenantId, request.ResourceId,
                 request.Declaration, DeclarationPhase.Configure,
                 address => Task.FromResult(PreviewReference(references, address)?.ResourceId)),
                 session, cancellationToken);
@@ -75,7 +81,7 @@ internal sealed partial class DeclarativeFunctionProvider
             desired = desired with { Dependencies = new(DependencyVersions(dependencies)) };
         }
 
-        var lifecycle = await ReadLifecycleStateAsync(root, session, cancellationToken);
+        var lifecycle = await lifecycleReader.ReadLifecycleStateAsync(root, session, cancellationToken);
         return new GitLifecycleAdoptionPreview(new(root.Id, new(LifecycleVersions(lifecycle)), projected,
             root.DesiredState == FunctionAppDesiredState.Prepared
                 ? DeclarationConfigurationState.Prepared : DeclarationConfigurationState.Configured),

@@ -355,8 +355,11 @@ public sealed partial class DeclarativePipelineTests
         };
         var providers = Services.GetServices<IDeclarativeResourceProvider>().ToArray();
         var provider = providers.Single(item => item.Kind == "FunctionApp");
+        var executionType = provider.GetType().Assembly.GetType(
+            "Pole.Features.Functions.Application.Persistence.FunctionDeclarationExecution", throwOnError: true)!;
+        var execution = ActivatorUtilities.CreateInstance(Services, executionType, rejectAfterApply);
         var failing = (IDeclarativeResourceProvider)ActivatorUtilities.CreateInstance(Services,
-            provider.GetType(), rejectAfterApply);
+            provider.GetType(), execution);
         var registry = new DeclarativeProviderRegistry(
             providers.Select(item => item.Kind == "FunctionApp" ? failing : item));
         var result = await new RepositoryPipelineDriver(Services, Fixture, repository, customProviders: registry)

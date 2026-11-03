@@ -11,10 +11,24 @@ using Pole.Features.Quotas.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Secrets.Contracts;
+using Pole.Features.Functions.Application.Persistence.Mutations;
+using static Pole.Features.Functions.Application.Persistence.FunctionDeclarations;
 
 namespace Pole.Features.Functions.Application.Persistence;
 
-internal sealed partial class DeclarativeFunctionProvider
+internal sealed class FunctionDeclarationExecution(
+    IMongoCollection<FunctionApp> resources,
+    IMongoCollection<FunctionRouteBinding> routes,
+    IGitOpsMutations git,
+    MongoRunTransaction transactions,
+    FunctionDeclarationPlanning planning,
+    IQuotaAdmissionExecutor quotas,
+    IResourceRegistrar registrar,
+    CreateResourceDeployment createPlacement,
+    RequestResourceDeploymentSetApply applyPlacements,
+    AdmitConsumerSecretReferences admitSecrets,
+    PersistFunctionAppRevision persistRevision,
+    TimeProvider clock)
 {
     public async Task<GitOperationResult> ApplyAsync(GitOperation operation, CancellationToken ct)
     {
@@ -24,7 +38,7 @@ internal sealed partial class DeclarativeFunctionProvider
                 new FunctionDeclarationRejected(FunctionDeclarationError.UnexpectedOperation), ct);
 
         var loaded = await transactions.InvokeOutcomeAsync<ReadFunctionPlanningOutcome>(async (tx, token) =>
-            tx.Commit(await ReadPlanningAsync(operation.Input, tx.Session, token)), ct);
+            tx.Commit(await planning.ReadPlanningAsync(operation.Input, tx.Session, token)), ct);
         if (loaded is DeclarationReadBlocked blocked)
             return await BlockAsync(operation, blocked.Failure, ct);
 
@@ -67,7 +81,7 @@ internal sealed partial class DeclarativeFunctionProvider
                         var authoritative = dependencies;
                         if (root is not null)
                         {
-                            var state = await ReadCurrentStateAsync(root, tx.Session, token);
+                            var state = await planning.ReadCurrentStateAsync(root, tx.Session, token);
                             if (state is DeclarationReadBlocked unavailable)
                                 return tx.Abort(new(operation.ResourceId, unavailable.Failure));
 
