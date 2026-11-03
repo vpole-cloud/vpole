@@ -50,29 +50,5 @@ internal static class TenantFilters
                 AtLeastTwoOwners()));
 
     private static FilterDefinition<Tenant> AtLeastTwoOwners() =>
-        new BsonDocumentFilterDefinition<Tenant>(
-            new BsonDocument(
-                "$expr",
-                new BsonDocument(
-                    "$gt",
-                    new BsonArray
-                    {
-                        new BsonDocument(
-                            "$size",
-                            new BsonDocument(
-                                "$filter",
-                                new BsonDocument
-                                {
-                                    ["input"] = "$Members",
-                                    ["as"] = "member",
-                                    ["cond"] = new BsonDocument(
-                                        "$eq",
-                                        new BsonArray
-                                        {
-                                            "$$member.Role",
-                                            (int)TenantRole.Owner
-                                        })
-                                })),
-                        1
-                    })));
+        Builders<Tenant>.Filter.Where(tenant => tenant.Members.Count(member => member.Role == TenantRole.Owner) > 1);
 }
