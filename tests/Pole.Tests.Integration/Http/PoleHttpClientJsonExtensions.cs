@@ -44,6 +44,14 @@ internal static class PoleHttpClientJsonExtensions
         JsonSerializerOptions? options, CancellationToken cancellationToken = default) =>
         ClientJson.PutAsJsonAsync(client, uri, value, WithHttpEnums(options), cancellationToken);
 
+    public static Task<HttpResponseMessage> PatchAsJsonAsync<T>(this HttpClient client, string? uri, T value,
+        CancellationToken cancellationToken = default) =>
+        ClientJson.PatchAsJsonAsync(client, uri, value, Options, cancellationToken);
+
+    public static Task<HttpResponseMessage> PatchAsJsonAsync<T>(this HttpClient client, string? uri, T value,
+        JsonSerializerOptions? options, CancellationToken cancellationToken = default) =>
+        ClientJson.PatchAsJsonAsync(client, uri, value, WithHttpEnums(options), cancellationToken);
+
     private static JsonSerializerOptions WithHttpEnums(JsonSerializerOptions? options)
     {
         if (options is null) return Options;
