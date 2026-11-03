@@ -160,7 +160,7 @@ public sealed class SecretProjectionReconciler(
     private async Task DeleteAndCompleteAsync(SecretProjection owned, CancellationToken ct)
     {
         var deleted = await target.DeleteAsync(owned, ct);
-        await complete(deleted.Value switch
+        await complete(deleted switch
         {
             SecretProjectionTargetSucceeded => owned.Deleted(),
             SecretProjectionTargetFailure failure => owned.Failed(SecretProjectionTargetErrorCodes.Code(failure))

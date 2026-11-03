@@ -77,7 +77,7 @@ public sealed class CreateIsolationScopeHandler(
         return persisted switch
         {
             IsolationScope success => success.ToDto(),
-            PersistCreatedIsolationScopeError error => error.Value switch
+            PersistCreatedIsolationScopeError error => error switch
             {
                 ResourceGroupRevisionConflict conflict => new CreateIsolationScopeError(conflict),
                 IsolationScopeNameConflict conflict => new CreateIsolationScopeError(conflict)
