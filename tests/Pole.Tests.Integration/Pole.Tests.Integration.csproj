@@ -8,6 +8,11 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <!-- Pole API tests opt into the server JSON policy; external protocol fixtures import framework helpers explicitly. -->
+        <Using Remove="System.Net.Http.Json" />
+    </ItemGroup>
+
+    <ItemGroup>
     <ProjectReference Include="../../src/features/GitOps/GitOps.Application/GitOps.Application.csproj" />
         <ProjectReference Include="../Pole.Tests.ObservationSerializationProbe/Pole.Tests.ObservationSerializationProbe.csproj" ReferenceOutputAssembly="false" IsAspireProjectResource="false" />
         <ProjectReference Include="../../src/features/PrivateAccess/PrivateAccess.Application/PrivateAccess.Application.csproj" />
