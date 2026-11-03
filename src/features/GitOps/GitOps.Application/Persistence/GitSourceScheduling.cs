@@ -142,7 +142,7 @@ public sealed class GitSourceScheduling(
             candidates = candidates.AppendStage<T>(new BsonDocument("$match", new BsonDocument("$or", new BsonArray
             {
                 new BsonDocument($"{eligible}.{nameof(RepositorySource.Activity)}", (int)GitSourceActivity.Active),
-                Builders<GitReconciliationRun>.Filter.OfType<GitRunInput, GitInputLifecycle>(item => item.Input)
+                GitRepositoryFilters.LifecycleInput()
                     .Render(new(registry.GetSerializer<GitReconciliationRun>(), registry))
             })));
         return candidates.AppendStage<T>(new BsonDocument("$unset", eligible));
