@@ -37,7 +37,8 @@ public sealed class ClosedHierarchySwitchAnalyzer : DiagnosticAnalyzer
             _ => null
         };
         if (expression is null ||
-            context.SemanticModel.GetTypeInfo(expression, context.CancellationToken).Type is not INamedTypeSymbol type ||
+            context.SemanticModel.GetTypeInfo(expression,
+                context.CancellationToken).Type is not INamedTypeSymbol type ||
             !(IsClosedHierarchy(type) || type.IsTupleType &&
                 type.TupleElements.Any(element => IsClosedHierarchy(element.Type))))
             return;

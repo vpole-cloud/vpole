@@ -90,7 +90,8 @@ internal static class GitRepositoryFilters
                                    Builders<GitReconciliationRun>.Filter.Eq(
                                        item => item.Stamp.ConfigurationRevision,
                                        stamp.ConfigurationRevision) &
-                                   Builders<GitReconciliationRun>.Filter.OfType<GitRunState, GitRunClaimed>(item => item.State) &
+                                   Builders<GitReconciliationRun>.Filter.OfType<GitRunState, GitRunClaimed>(item =>
+                                       item.State) &
                                    Builders<GitReconciliationRun>.Filter.Eq(
                                        item => ((GitRunClaimed)item.State).Lease.WorkerId, claim.WorkerId) &
                                    Builders<GitReconciliationRun>.Filter.Eq(

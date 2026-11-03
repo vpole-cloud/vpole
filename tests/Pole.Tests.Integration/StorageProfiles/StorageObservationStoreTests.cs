@@ -566,7 +566,8 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
         var delayed = new MongoStorageObservationStore(
             database.GetCollection<StorageObservationControlDocument>(MongoStorageObservationStore.ControlsCollection),
             database.GetCollection<StorageObservationDemandDocument>(MongoStorageObservationStore.DemandsCollection),
-            database.GetCollection<StorageObservationSnapshotDocument>(MongoStorageObservationStore.SnapshotsCollection),
+            database.GetCollection<StorageObservationSnapshotDocument>(
+                MongoStorageObservationStore.SnapshotsCollection),
             new MongoRunTransaction(client),
             (request, session, ct) =>
                 new MongoFenceDeploymentTargetObservation(client

@@ -228,8 +228,10 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddStorageProfilesFeature();
         builder.Services.AddWebServicesFeature();
         builder.Services.AddQuotasFeature(builder.Configuration);
-        builder.Services.AddFeatureMigrations("pole.postgres", typeof(Pole.Features.Postgres.Migrations.PostgresNameIndexesMigration).Assembly);
-        builder.Services.AddFeatureMigrations("pole.redis", typeof(Pole.Features.RedisServices.Migrations.RedisNameIndexesMigration).Assembly);
+        builder.Services.AddFeatureMigrations("pole.postgres", typeof(
+            Pole.Features.Postgres.Migrations.PostgresNameIndexesMigration).Assembly);
+        builder.Services.AddFeatureMigrations("pole.redis", typeof(
+            Pole.Features.RedisServices.Migrations.RedisNameIndexesMigration).Assembly);
         builder.Services.AddMigrations([
             .. PolePlatform.MigrationAssemblies,
             typeof(Pole.Features.WebServices.Migrations.WebServiceSchemaValidationMigration).Assembly,

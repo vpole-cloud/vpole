@@ -149,9 +149,12 @@ public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture) :
         var id = TestData.DefaultDeploymentTargetId;
         await Fixture.DbContext.DeploymentTargets.InsertOneAsync(TestData.SeedDeploymentTarget(id));
         var store = new MongoStorageObservationStore(
-            Fixture.Database.GetCollection<StorageObservationControlDocument>(MongoStorageObservationStore.ControlsCollection),
-            Fixture.Database.GetCollection<StorageObservationDemandDocument>(MongoStorageObservationStore.DemandsCollection),
-            Fixture.Database.GetCollection<StorageObservationSnapshotDocument>(MongoStorageObservationStore.SnapshotsCollection),
+            Fixture.Database.GetCollection<StorageObservationControlDocument>(
+                MongoStorageObservationStore.ControlsCollection),
+            Fixture.Database.GetCollection<StorageObservationDemandDocument>(
+                MongoStorageObservationStore.DemandsCollection),
+            Fixture.Database.GetCollection<StorageObservationSnapshotDocument>(
+                MongoStorageObservationStore.SnapshotsCollection),
             new Pole.Database.MongoRunTransaction(Fixture.Client),
             (request, session, ct) =>
                 new Pole.Features.DeploymentTargets.Application.Persistence.Admission.

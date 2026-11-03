@@ -269,7 +269,8 @@ public sealed class ArchitectureBoundaryTests
     [InlineData("/src/features/Example/Example.Migrations/ExampleMigration.cs", false)]
     [InlineData("/src/features/Example/Example.Application/Migrations/ExampleMigration.cs", true)]
     [InlineData("/src/features/Example/Example.Application/Endpoints/Migrations/Example.cs", true)]
-    public async Task MongoApplicationBoundaryAnalyzer_RecognizesTheSeparateMigrationProjectRole(string path, bool rejected)
+    public async Task MongoApplicationBoundaryAnalyzer_RecognizesTheSeparateMigrationProjectRole(string path,
+        bool rejected)
     {
         var diagnostics = await AnalyzeAsync(
             """
@@ -279,7 +280,8 @@ public sealed class ArchitectureBoundaryTests
                 public FilterDefinition<string> All() => Builders<string>.Filter.Empty;
             }
             """, path);
-        Assert.Equal(rejected, diagnostics.Any(diagnostic => diagnostic.Id == MongoApplicationBoundaryAnalyzer.DiagnosticId));
+        Assert.Equal(rejected, diagnostics.Any(diagnostic =>
+            diagnostic.Id == MongoApplicationBoundaryAnalyzer.DiagnosticId));
     }
 
     [Fact]

@@ -208,11 +208,14 @@ internal static class SourceBuildLogFilters
     public static FilterDefinition<SourceBuildLog> WritableAtRevision(SourceBuildLog log, DateTime now) =>
         AtRevision(log) & Builders<SourceBuildLog>.Filter.Eq(value => value.WriterToken, log.WriterToken) &
         Builders<SourceBuildLog>.Filter.OfType<SourceBuildLogState, OpenSourceBuildLog>(value => value.State) &
-        Builders<SourceBuildLog>.Filter.Gt(value => ((OpenSourceBuildLog)value.State).LeaseExpiresAtUtc, now) & Builders<SourceBuildLog>.Filter.Gt(value => value.ExpiresAtUtc, now);
+        Builders<SourceBuildLog>.Filter.Gt(value => ((OpenSourceBuildLog)value.State).LeaseExpiresAtUtc,
+            now) & Builders<SourceBuildLog>.Filter.Gt(value => value.ExpiresAtUtc, now);
     public static FilterDefinition<SourceBuildLog> Recoverable(DateTime now) =>
         (Builders<SourceBuildLog>.Filter.Lte(log => log.ExpiresAtUtc, now) &
             Builders<SourceBuildLog>.Filter.Not(Builders<SourceBuildLog>.Filter.OfType<SourceBuildLogState, ExpiredSourceBuildLog>(value => value.State))) |
-        (Builders<SourceBuildLog>.Filter.OfType<SourceBuildLogState, OpenSourceBuildLog>(value => value.State) & Builders<SourceBuildLog>.Filter.Lte(value => ((OpenSourceBuildLog)value.State).LeaseExpiresAtUtc, now));
+        (Builders<SourceBuildLog>.Filter.OfType<SourceBuildLogState, OpenSourceBuildLog>(value =>
+            value.State) & Builders<SourceBuildLog>.Filter.Lte(value => ((
+            OpenSourceBuildLog)value.State).LeaseExpiresAtUtc, now));
 }
 
 internal static class SourceBuildPromotionReceiptFilters

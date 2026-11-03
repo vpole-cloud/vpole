@@ -64,7 +64,8 @@ public sealed class ComputeProfileRequestValidatorTests
     public void Enum_names_in_string_request_fields_reject_numeric_and_unknown_values(string value)
     {
         var body = ValidBody() with { Architecture = value };
-        Assert.Contains(new CreateComputeProfileRequestValidator().Validate(new CreateComputeProfileRequest(body)).Errors,
+        Assert.Contains(new CreateComputeProfileRequestValidator().Validate(new CreateComputeProfileRequest(
+            body)).Errors,
             error => error.PropertyName == "Body.Architecture");
 
         var affinity = new ComputeNodeAffinityExpressionRequestBody("example/key", value, ["value"]);

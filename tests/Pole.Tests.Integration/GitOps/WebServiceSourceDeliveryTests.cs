@@ -98,7 +98,8 @@ public sealed partial class DeclarativePipelineTests
         { Execution = new ClaimedSourceBuildExecution("source-delivery-test", 1, now.AddMinutes(2)) };
         var digest = "sha256:" + new string('d', 64);
         job = job.StartCloning(now).StartAnalyzing(now).StartBuilding(now)
-            .StartPushing(SourceBuildArtifactFactory.Create("registry.test/tenant/application:attempt-one", digest), now);
+            .StartPushing(SourceBuildArtifactFactory.Create("registry.test/tenant/application:attempt-one", digest),
+                now);
         await DbContext.SourceBuildJobs.InsertOneAsync(job);
         var request = new SourceBuildDeploymentRequest(TestData.TenantId, service.Id, job.Id, application.Id,
             job.CommitSha, new(configuration.Id, configuration.Revision, 1, "source-delivery-test", 1),

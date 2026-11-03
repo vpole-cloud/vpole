@@ -303,7 +303,8 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
                     .InvokeOutcomeAsync<DeleteDeploymentTargetPersistenceOutcome>,
                 timeProvider ?? TimeProvider.System,
                 new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<PersistDeploymentTargetDeletionFenceOutcome>,
-                new MongoStoreOutboxWrites(fixture.Database.GetCollection<OutboxMessage>("OutboxMessages")).InvokeAsync).InvokeAsync,
+                new MongoStoreOutboxWrites(fixture.Database.GetCollection<OutboxMessage>(
+                    "OutboxMessages")).InvokeAsync).InvokeAsync,
             new NoOpClientCache().Invalidate);
 
     private ApplyDeploymentTargetReferenceChanges CreateAdmission() =>

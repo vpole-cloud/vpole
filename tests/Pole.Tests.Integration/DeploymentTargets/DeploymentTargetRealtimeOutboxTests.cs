@@ -419,7 +419,8 @@ public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture f
                 DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName)).InvokeAsync;
 
     private MongoRunTransaction Run() => new(fixture.Client);
-    private StoreOutboxWrites Store() => new MongoStoreOutboxWrites(fixture.Database.GetCollection<OutboxMessage>("OutboxMessages")).InvokeAsync;
+    private StoreOutboxWrites Store() => new MongoStoreOutboxWrites(fixture.Database.GetCollection<OutboxMessage>(
+        "OutboxMessages")).InvokeAsync;
     private Task<long> CountEventsAsync() => fixture.DbContext.CountOutboxMessagesAsync(EventType);
 
     private Task<DeploymentTarget> ReadAsync(string id) =>
