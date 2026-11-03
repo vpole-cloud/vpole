@@ -69,7 +69,7 @@ public sealed class GitOperationReportReader(
             {
                 GitInputLifecycle lifecycle => lifecycle.Plan.Operations,
                 GitInputAwaitingApproval approval => byPreview.GetValueOrDefault(approval.PreviewId)?.Operations ?? [],
-                _ => []
+                GitInputUnresolved or GitInputPinned or GitInputAccepted => []
             };
             var stored = results.Where(item => item.RunId == run.Id && item.Fence == run.Stamp.Fence).ToArray();
             foreach (var action in actions.Where(item => item.Action != GitLifecycleAction.Apply))

@@ -171,7 +171,8 @@ public sealed record GitOperationPreview(
             (GitPreviewRepositoryInput expected, GitPreviewRepositoryInput actual) =>
                 expected.Repository == actual.Repository && expected.Snapshot.Commit == actual.Snapshot.Commit &&
                 expected.Snapshot.DesiredHash == actual.Snapshot.DesiredHash,
-            _ => false
+            (GitPreviewInventoryInput, GitPreviewRepositoryInput) or
+                (GitPreviewRepositoryInput, GitPreviewInventoryInput) => false
         });
 
     private static bool Matches(GitResourcePreconditions? expected, GitResourcePreconditions? current)

@@ -146,7 +146,7 @@ internal static class FunctionDeclarationJson
                 Enum.IsDefined(timer.ConcurrencyPolicy) && Enum.IsDefined(timer.MisfirePolicy) &&
                 timer.Retry is { MaxAttempts: > 0 and <= 10, BackoffSeconds: not null } &&
                 timer.Retry.BackoffSeconds.All(delay => delay is >= 0 and <= 86400),
-            _ => false
+            null => false
         };
 
     public static FunctionRevisionSpec Spec(FunctionDeclaration declaration,

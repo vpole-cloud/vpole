@@ -385,6 +385,6 @@ public sealed class GitRunStore(
         GitRunDelayed delayed when delayed.NextAttemptAtUtc <= now => checked(delayed.LastAttempt + 1),
         GitRunWaitingCleanup waiting when waiting.NextAttemptAtUtc <= now => checked(waiting.LastAttempt + 1),
         GitRunClaimed claimed when claimed.Lease.ExpiresAtUtc <= now => checked(claimed.Lease.Attempt + 1),
-        _ => null
+        GitRunDelayed or GitRunWaitingCleanup or GitRunClaimed or GitRunFinished => null
     };
 }

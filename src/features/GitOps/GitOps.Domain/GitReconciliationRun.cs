@@ -207,7 +207,8 @@ public sealed record GitReconciliationRun(
             GitRunDelayed delayed when delayed.NextAttemptAtUtc <= now => delayed.LastAttempt,
             GitRunWaitingCleanup waiting when waiting.NextAttemptAtUtc <= now => waiting.LastAttempt,
             GitRunClaimed claimed when claimed.Lease.ExpiresAtUtc <= now => claimed.Lease.Attempt,
-            _ => throw new InvalidOperationException("The run is not available for a claim.")
+            GitRunDelayed or GitRunWaitingCleanup or GitRunClaimed or GitRunFinished =>
+                throw new InvalidOperationException("The run is not available for a claim.")
         };
         if (lease.Attempt != checked(previous + 1))
             throw new InvalidOperationException("A claim must advance the attempt exactly once.");

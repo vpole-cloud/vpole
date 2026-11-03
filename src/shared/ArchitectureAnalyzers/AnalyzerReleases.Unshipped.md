@@ -16,3 +16,5 @@
 
 | POLE010 | Architecture | Error | Feature-owned Mongo root models belong to the owning Domain project. |
 | POLE011 | Architecture | Error | Domain constructor parameters have no optional defaults. |
+
+| POLE012 | Architecture | Error | Closed hierarchy switches name variants instead of a catch-all. |

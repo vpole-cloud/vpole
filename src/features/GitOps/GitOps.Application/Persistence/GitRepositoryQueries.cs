@@ -157,7 +157,7 @@ public sealed class GitRepositoryQueries(
                     lifecycle.Plan.Authorization is GitPreviewPolicyAuthorized
                         ? RepositoryLifecycleAuthorization.PrunePolicy
                         : RepositoryLifecycleAuthorization.UserConfirmed),
-                _ => null
+                GitInputUnresolved or GitInputPinned or GitInputAccepted => null
             });
 
     private static RepositoryRunStatus Status(GitReconciliationRun run) => run.Input is GitInputAwaitingApproval

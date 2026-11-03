@@ -11,7 +11,8 @@ public static class GitLifecycleReceiptCompletion
         {
             GitPreviewConfirmed confirmed => confirmed.RunId,
             GitPreviewPolicyAuthorized policy => policy.RunId,
-            _ => throw new InvalidOperationException("Completion requires an authorized lifecycle plan.")
+            GitPreviewAwaitingConfirmation =>
+                throw new InvalidOperationException("Completion requires an authorized lifecycle plan.")
         };
         var scoped = receipts.Where(item => item.TenantId == plan.Source.Source.TenantId &&
             item.SourceId == plan.Source.Source.SourceId && item.RunId == runId && item.Fence == fence).ToArray();

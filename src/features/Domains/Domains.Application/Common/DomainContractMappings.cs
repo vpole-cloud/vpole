@@ -45,7 +45,6 @@ internal static class DomainContractMappings
     private static string? TechnicalName(DomainIdentity identity) => identity switch
     {
         GeneratedDomainIdentity => null,
-        NamedDomainIdentity named => named.TechnicalName,
-        _ => throw new InvalidOperationException("The domain identity is not supported.")
+        NamedDomainIdentity named => named.TechnicalName
     };
 }

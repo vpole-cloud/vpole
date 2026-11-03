@@ -36,8 +36,7 @@ public sealed record HostnameBinding(
     public HostnameBindingKind Kind => Identity switch
     {
         GeneratedDomainIdentity => HostnameBindingKind.Generated,
-        NamedDomainIdentity => HostnameBindingKind.Custom,
-        _ => throw new InvalidOperationException("The domain identity is not supported.")
+        NamedDomainIdentity => HostnameBindingKind.Custom
     };
 }
 
