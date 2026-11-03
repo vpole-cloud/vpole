@@ -18,19 +18,20 @@ public static class DomainPersistenceRegistration
             .GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones));
         services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
             .GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings));
-        services.AddScoped<MongoDomainPlanning>();
+        services.AddScoped<MongoDomainZoneReferences>();
+        services.AddScoped<MongoHostnameBindingReferences>();
         services.AddScoped<ResolveNamedDomainZone>(provider =>
-            provider.GetRequiredService<MongoDomainPlanning>().ResolveZoneAsync);
+            provider.GetRequiredService<MongoDomainZoneReferences>().ResolveAsync);
         services.AddScoped<ResolveNamedHostnameBinding>(provider =>
-            provider.GetRequiredService<MongoDomainPlanning>().ResolveBindingAsync);
+            provider.GetRequiredService<MongoHostnameBindingReferences>().ResolveAsync);
         services.AddScoped<LoadDomainZoneForPlanning>(provider =>
-            provider.GetRequiredService<MongoDomainPlanning>().LoadZoneAsync);
+            provider.GetRequiredService<MongoDomainZoneReferences>().LoadAsync);
         services.AddScoped<LoadHostnameBindingForPlanning>(provider =>
-            provider.GetRequiredService<MongoDomainPlanning>().LoadBindingAsync);
+            provider.GetRequiredService<MongoHostnameBindingReferences>().LoadAsync);
         services.AddScoped<FenceDomainZone>(provider =>
-            provider.GetRequiredService<MongoDomainPlanning>().FenceZoneAsync);
+            provider.GetRequiredService<MongoDomainZoneReferences>().FenceAsync);
         services.AddScoped<FenceHostnameBinding>(provider =>
-            provider.GetRequiredService<MongoDomainPlanning>().FenceBindingAsync);
+            provider.GetRequiredService<MongoHostnameBindingReferences>().FenceAsync);
         services.AddScoped<MongoLoadTenantDomainZone>();
         services.AddScoped<LoadTenantDomainZone>(provider =>
             provider.GetRequiredService<MongoLoadTenantDomainZone>().InvokeAsync);

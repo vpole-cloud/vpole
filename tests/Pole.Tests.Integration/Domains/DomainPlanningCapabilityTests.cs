@@ -31,25 +31,26 @@ public sealed class DomainPlanningCapabilityTests(MongoReplicaSetFixture fixture
         var binding = Binding(zone);
         await Zones.InsertOneAsync(zone);
         await Bindings.InsertOneAsync(binding);
-        var provider = new MongoDomainPlanning(Zones, Bindings);
+        var zoneReferences = new MongoDomainZoneReferences(Zones);
+        var bindingReferences = new MongoHostnameBindingReferences(Bindings);
 
-        Assert.IsType<NamedDomainZoneFound>((await provider.ResolveZoneAsync(
+        Assert.IsType<NamedDomainZoneFound>((await zoneReferences.ResolveAsync(
             new NamedDomainZoneRequest(zone.TenantId, "company-zone"), null, default)).Value);
-        Assert.IsType<NamedHostnameBindingFound>((await provider.ResolveBindingAsync(
+        Assert.IsType<NamedHostnameBindingFound>((await bindingReferences.ResolveAsync(
             new NamedHostnameBindingRequest(zone.TenantId, "api-alias"), null, default)).Value);
-        Assert.IsType<NamedDomainZoneNotFound>((await provider.ResolveZoneAsync(
+        Assert.IsType<NamedDomainZoneNotFound>((await zoneReferences.ResolveAsync(
             new NamedDomainZoneRequest(Id(), "company-zone"), null, default)).Value);
-        Assert.IsType<NamedHostnameBindingNotFound>((await provider.ResolveBindingAsync(
+        Assert.IsType<NamedHostnameBindingNotFound>((await bindingReferences.ResolveAsync(
             new NamedHostnameBindingRequest(Id(), "api-alias"), null, default)).Value);
-        Assert.Null(await provider.LoadZoneAsync(new LoadDomainZonePlanningRequest(Id(), zone.Id), null, default));
-        Assert.Null(await provider.LoadBindingAsync(
+        Assert.Null(await zoneReferences.LoadAsync(new LoadDomainZonePlanningRequest(Id(), zone.Id), null, default));
+        Assert.Null(await bindingReferences.LoadAsync(
             new LoadHostnameBindingPlanningRequest(Id(), binding.Id), null, default));
 
         var generated = TenantDomainZoneFactory.CreateGenerated(
             zone.TenantId, Id(), "pole-generated-system", DnsName.Create("example.test"),
             new TenantDomainZoneFactory.CreateOptions(Id(), DateTime.UtcNow));
         await Zones.InsertOneAsync(generated);
-        Assert.IsType<NamedDomainZoneNotFound>((await provider.ResolveZoneAsync(
+        Assert.IsType<NamedDomainZoneNotFound>((await zoneReferences.ResolveAsync(
             new NamedDomainZoneRequest(zone.TenantId, generated.Label), null, default)).Value);
     }
 
@@ -60,23 +61,24 @@ public sealed class DomainPlanningCapabilityTests(MongoReplicaSetFixture fixture
         var binding = Binding(zone);
         await Zones.InsertOneAsync(zone);
         await Bindings.InsertOneAsync(binding);
-        var provider = new MongoDomainPlanning(Zones, Bindings);
+        var zoneReferences = new MongoDomainZoneReferences(Zones);
+        var bindingReferences = new MongoHostnameBindingReferences(Bindings);
         using var session = await fixture.Client.StartSessionAsync();
         session.StartTransaction();
-        Assert.IsType<DomainZoneFenced>((await provider.FenceZoneAsync(
+        Assert.IsType<DomainZoneFenced>((await zoneReferences.FenceAsync(
             new FenceDomainZoneRequest(zone.TenantId, zone.Id, zone.Revision, 0), session, default)).Value);
-        Assert.IsType<HostnameBindingFenced>((await provider.FenceBindingAsync(
+        Assert.IsType<HostnameBindingFenced>((await bindingReferences.FenceAsync(
             new FenceHostnameBindingRequest(zone.TenantId, binding.Id, 0), session, default)).Value);
-        Assert.IsType<DomainZonePreconditionChanged>((await provider.FenceZoneAsync(
+        Assert.IsType<DomainZonePreconditionChanged>((await zoneReferences.FenceAsync(
             new FenceDomainZoneRequest(zone.TenantId, zone.Id, zone.Revision, 0), session, default)).Value);
         await session.AbortTransactionAsync();
         Assert.Equal(0, (await Zones.Find(item => item.Id == zone.Id).SingleAsync()).ReferenceFence);
         Assert.Equal(0, (await Bindings.Find(item => item.Id == binding.Id).SingleAsync()).ReferenceFence);
 
         session.StartTransaction();
-        Assert.IsType<DomainZoneFenced>((await provider.FenceZoneAsync(
+        Assert.IsType<DomainZoneFenced>((await zoneReferences.FenceAsync(
             new FenceDomainZoneRequest(zone.TenantId, zone.Id, zone.Revision, 0), session, default)).Value);
-        Assert.IsType<HostnameBindingFenced>((await provider.FenceBindingAsync(
+        Assert.IsType<HostnameBindingFenced>((await bindingReferences.FenceAsync(
             new FenceHostnameBindingRequest(zone.TenantId, binding.Id, 0), session, default)).Value);
         await session.CommitTransactionAsync();
         var storedZone = await Zones.Find(item => item.Id == zone.Id).SingleAsync();
