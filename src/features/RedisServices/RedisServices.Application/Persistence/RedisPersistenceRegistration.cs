@@ -27,6 +27,11 @@ public static class RedisPersistenceRegistration
             MongoLoadRedisConnectionEndpoints>();
         services.AddScoped<IResourceConnectionDestinationNameCapability,
             MongoLoadRedisConnectionEndpoints>();
+        services.AddScoped<RedisDeclarationPlanner>();
+        services.AddScoped<RedisDeclarationReferences>();
+        services.AddScoped<RedisDeclarationExecution>();
+        services.AddScoped<RedisDeclarationAdoption>();
+        services.AddScoped<RedisDeclarationLifecycle>();
         services.AddScoped<DeclarativeRedisProvider>();
         services.AddScoped<IDeclarativeResourceProvider>(sp => sp.GetRequiredService<DeclarativeRedisProvider>());
         services.AddScoped<IDeclarativeResourceLifecycleProvider>(sp =>
