@@ -18,3 +18,5 @@
 | POLE011 | Architecture | Error | Domain constructor parameters have no optional defaults. |
 
 | POLE012 | Architecture | Error | Closed hierarchy switches name variants instead of a catch-all. |
+
+| POLE013 | Architecture | Error | Runtime Mongo field filters use typed expressions instead of string literals. |

@@ -62,8 +62,9 @@ internal static class GitRepositoryFilters
         Builders<GitReconciliationRun>.Filter.Lt(item => item.Stamp.Generation, stamp.Generation);
 
     public static FilterDefinition<GitReconciliationRun> HumanConfirmedLifecycle() =>
-        Builders<GitReconciliationRun>.Filter.Eq("Input._t", nameof(GitInputLifecycle)) &
-        Builders<GitReconciliationRun>.Filter.Eq("Input.Plan.Authorization._t", nameof(GitPreviewConfirmed));
+        Builders<GitReconciliationRun>.Filter.OfType<GitRunInput, GitInputLifecycle>(item => item.Input) &
+        Builders<GitReconciliationRun>.Filter.OfType<GitPreviewState, GitPreviewConfirmed>(
+            item => ((GitInputLifecycle)item.Input).Plan.Authorization);
 
     public static FilterDefinition<GitReconciliationRun> PriorHumanLifecycle(GitRunStamp stamp) =>
         PreviousRuns(stamp) & HumanConfirmedLifecycle();
@@ -85,9 +86,11 @@ internal static class GitRepositoryFilters
                                    Builders<GitReconciliationRun>.Filter.Eq(
                                        item => item.Stamp.ConfigurationRevision,
                                        stamp.ConfigurationRevision) &
-                                   new BsonDocument("State._t", nameof(GitRunClaimed)) &
-                                   new BsonDocument("State.Lease.WorkerId", claim.WorkerId) &
-                                   new BsonDocument("State.Lease.Attempt", claim.Attempt) &
+                                   Builders<GitReconciliationRun>.Filter.OfType<GitRunState, GitRunClaimed>(item => item.State) &
+                                   Builders<GitReconciliationRun>.Filter.Eq(
+                                       item => ((GitRunClaimed)item.State).Lease.WorkerId, claim.WorkerId) &
+                                   Builders<GitReconciliationRun>.Filter.Eq(
+                                       item => ((GitRunClaimed)item.State).Lease.Attempt, claim.Attempt) &
                                    new BsonDocument("$expr",
                                        new BsonDocument("$gt", new BsonArray { "$State.Lease.ExpiresAtUtc", "$$NOW" }));
 }

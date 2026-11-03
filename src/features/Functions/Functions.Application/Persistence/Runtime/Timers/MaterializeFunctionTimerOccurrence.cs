@@ -133,7 +133,7 @@ internal static class FunctionTimerOccurrenceFilters
             Builders<FunctionTimerState>.Filter.Eq(timer => timer.FunctionAppId, claimed.FunctionAppId),
             Builders<FunctionTimerState>.Filter.Eq(timer => timer.Enabled, true),
             Builders<FunctionTimerState>.Filter.Ne(timer => timer.Lease, null),
-            Builders<FunctionTimerState>.Filter.Eq("Lease.Token", claimed.Lease!.Token));
+            Builders<FunctionTimerState>.Filter.Eq(item => item.Lease!.Token, claimed.Lease!.Token));
 
     public static FilterDefinition<FunctionInvocation> InvocationById(string invocationId) =>
         Builders<FunctionInvocation>.Filter.Eq(invocation => invocation.Id, invocationId);
@@ -160,6 +160,6 @@ internal static class FunctionTimerOccurrenceFilters
         Builders<FunctionTimerState>.Filter.And(
             Builders<FunctionTimerState>.Filter.Eq(candidate => candidate.Id, timer.Id),
             Builders<FunctionTimerState>.Filter.Ne(candidate => candidate.Lease, null),
-            Builders<FunctionTimerState>.Filter.Eq("Lease.Token", timer.Lease!.Token),
+            Builders<FunctionTimerState>.Filter.Eq(item => item.Lease!.Token, timer.Lease!.Token),
             Builders<FunctionTimerState>.Filter.Eq(candidate => candidate.NextOccurrenceUtc, scheduledForUtc));
 }

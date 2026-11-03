@@ -45,5 +45,5 @@ internal static class FunctionTimerSchedulerFilters
             Builders<FunctionTimerState>.Filter.Lte(timer => timer.NextOccurrenceUtc, nowUtc),
             Builders<FunctionTimerState>.Filter.Or(
                 Builders<FunctionTimerState>.Filter.Eq(timer => timer.Lease, null),
-                Builders<FunctionTimerState>.Filter.Lte("Lease.ExpiresAtUtc", nowUtc)));
+                Builders<FunctionTimerState>.Filter.Lte(item => item.Lease!.ExpiresAtUtc, nowUtc)));
 }

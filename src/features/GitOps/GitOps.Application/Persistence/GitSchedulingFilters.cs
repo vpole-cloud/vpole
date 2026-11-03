@@ -24,33 +24,22 @@ internal static class GitSchedulingFilters
 
     public static FilterDefinition<GitSynchronizationState> Pending() =>
         Builders<GitSynchronizationState>.Filter.Eq(item => item.CurrentRun, null) &
-        new BsonDocument("$expr",
-            new BsonDocument("$gt",
-                new BsonArray
-                    { "$RequestedGeneration", "$CompletedGeneration" }));
+        Builders<GitSynchronizationState>.Filter.Where(item =>
+            item.RequestedGeneration > item.CompletedGeneration);
 
     public static FilterDefinition<GitSynchronizationState> PollDue(DateTime now) =>
         Builders<GitSynchronizationState>.Filter.Lte(item => item.NextPollAtUtc, now);
 
     public static FilterDefinition<GitReconciliationRun> Recoverable() =>
-        new BsonDocument("$or",
-            new BsonArray
-            {
-                new BsonDocument("State._t", nameof(GitRunWaiting)),
-                new BsonDocument
-                {
-                    { "State._t", nameof(GitRunDelayed) },
-                    { "$expr", new BsonDocument("$lte", new BsonArray { "$State.NextAttemptAtUtc", "$$NOW" }) }
-                },
-                new BsonDocument
-                {
-                    { "State._t", nameof(GitRunWaitingCleanup) },
-                    { "$expr", new BsonDocument("$lte", new BsonArray { "$State.NextAttemptAtUtc", "$$NOW" }) }
-                },
-                new BsonDocument
-                {
-                    { "State._t", nameof(GitRunClaimed) },
-                    { "$expr", new BsonDocument("$lte", new BsonArray { "$State.Lease.ExpiresAtUtc", "$$NOW" }) }
-                }
-            });
+        Builders<GitReconciliationRun>.Filter.OfType<GitRunState, GitRunWaiting>(item => item.State) |
+        (Builders<GitReconciliationRun>.Filter.OfType<GitRunState, GitRunDelayed>(item => item.State) &
+            Due("$State.NextAttemptAtUtc")) |
+        (Builders<GitReconciliationRun>.Filter.OfType<GitRunState, GitRunWaitingCleanup>(item => item.State) &
+            Due("$State.NextAttemptAtUtc")) |
+        (Builders<GitReconciliationRun>.Filter.OfType<GitRunState, GitRunClaimed>(item => item.State) &
+            Due("$State.Lease.ExpiresAtUtc"));
+
+    // $$NOW must be evaluated by MongoDB, independently of the worker's clock.
+    private static FilterDefinition<GitReconciliationRun> Due(string field) =>
+        new BsonDocument("$expr", new BsonDocument("$lte", new BsonArray { field, "$$NOW" }));
 }

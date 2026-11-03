@@ -28,5 +28,5 @@ internal static class FunctionInvocationDispatchFilters
                 invocation => invocation.State,
                 [FunctionInvocationState.Dispatching, FunctionInvocationState.Running]),
             Builders<FunctionInvocation>.Filter.Ne(invocation => invocation.Lease, null),
-            Builders<FunctionInvocation>.Filter.Lte("Lease.ExpiresAtUtc", nowUtc));
+            Builders<FunctionInvocation>.Filter.Lte(item => item.Lease!.ExpiresAtUtc, nowUtc));
 }
