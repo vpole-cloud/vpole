@@ -16,6 +16,9 @@ public sealed class ClosedHierarchySwitchAnalyzerTests
     [InlineData("state switch { Ready => 1, State other => 0 }")]
     [InlineData("state switch { Ready => 1, object other => 0 }")]
     [InlineData("state switch { Ready => 1, { } => 0 }")]
+    [InlineData("state switch { Ready => 1, { Version: _ } => 0, null => -1 }")]
+    [InlineData("state switch { Ready => 1, { Version: var version } => 0, null => -1 }")]
+    [InlineData("state switch { Ready => 1, { Version: (_) } => 0, null => -1 }")]
     [InlineData("state switch { Ready => 1, not null => 0 }")]
     public async Task Catch_all_does_not_hide_future_closed_variants(string expression)
     {
@@ -90,10 +93,17 @@ public sealed class ClosedHierarchySwitchAnalyzerTests
         Assert.Empty(await Analyze("return state switch { State and Ready => 1, Failed => 0, null => -1 };"));
     }
 
+    [Fact]
+    public async Task Constrained_shared_property_pattern_remains_allowed()
+    {
+        Assert.Empty(await Analyze(
+            "return state switch { { Version: 1 } => 2, Ready => 1, Failed => 0, null => -1 };"));
+    }
+
     private static async Task<Diagnostic[]> Analyze(string body, bool closed = true)
     {
         var source = $$"""
-            public {{(closed ? "closed" : "abstract")}} record State;
+            public {{(closed ? "closed" : "abstract")}} record State { public int Version { get; init; } }
             public sealed record Ready : State;
             public sealed record Failed : State;
             public static class Mapping
