@@ -27,7 +27,8 @@ public sealed class WebServiceSourceBuildDeploymentService(
         var session = transaction.Session;
         var promotion = new SourceBuildPromotionRequest(request.TenantId, request.BuildJobId, request.WebServiceId,
             request.Authority, new(request.SourceRepositoryId, request.CommitSha,
-                $"{request.Image.RegistryHost}/{request.Image.ImageName}:{request.Image.Tag}"), request.Image.Digest);
+                new($"{request.Image.RegistryHost}/{request.Image.ImageName}:{request.Image.Tag}",
+                    request.Image.Digest)));
         var admission = await beginPromotion(promotion, session, ct);
         if (admission is SourceBuildAlreadyPromoted replay)
             return transaction.Commit(

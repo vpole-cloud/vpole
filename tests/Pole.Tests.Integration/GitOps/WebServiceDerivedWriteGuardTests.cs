@@ -42,7 +42,7 @@ public sealed partial class DeclarativePipelineTests
         session.StartTransaction();
         var promotion = new SourceBuildPromotionRequest(current.TenantId, jobId, current.Id,
             new(configurationId, 1, 1, "worker", 1),
-            new(Id(), new string('a', 40), "registry.test/app:1"), artifact.Digest);
+            new(Id(), new string('a', 40), new("registry.test/app:1", artifact.Digest)));
         var snapshot = TestData.ValidWebServiceSpecSnapshot() with
         {
             Image = new DeliveredSourceBuildImageSnapshot(configurationId,

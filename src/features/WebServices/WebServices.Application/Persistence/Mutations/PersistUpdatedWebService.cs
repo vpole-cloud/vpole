@@ -292,7 +292,8 @@ internal sealed class MongoPersistUpdatedWebService(
             current.Spec.Image.SourceBuildConfigurationId != promotion.Authority.ConfigurationId ||
             next.Spec.Image is not DeliveredSourceBuildImage artifact ||
             artifact.ConfigurationId != promotion.Authority.ConfigurationId || artifact.JobId != promotion.BuildJobId ||
-            artifact.Generation != promotion.Authority.Generation || artifact.Digest != promotion.ImageDigest ||
+            artifact.Generation != promotion.Authority.Generation ||
+            artifact.Digest != promotion.Input.Artifact.Digest ||
             !(current.Spec with { Image = artifact }).HasSameConfiguration(next.Spec) ||
             current.Exposure != next.Exposure || !current.Tags.SetEquals(next.Tags) ||
             next.Lifecycle is not ActiveWebServiceLifecycle || next.Revision != current.Revision + 1 ||

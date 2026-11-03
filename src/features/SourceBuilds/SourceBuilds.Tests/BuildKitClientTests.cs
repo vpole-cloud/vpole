@@ -97,7 +97,7 @@ public sealed class BuildKitClientTests
             "robot$build",
             "registry-secret"));
 
-        var image = Assert.IsType<BuiltContainerImage>(result.Value);
+        var image = Assert.IsType<SourceBuildArtifact>(result.Value);
         Assert.Equal(Digest, image.Digest);
         Assert.NotNull(runner.LastSpec);
         Assert.False(Directory.Exists(runner.LastSpec.EnvironmentVariables["DOCKER_CONFIG"]));

@@ -87,13 +87,14 @@ public static class SourceBuildDtoMappings
             BuildingSourceBuild building => new(
                 "building", SourceBuildPhase.Building, building.StartedAtUtc, null, null, null, null, null, null),
             PushingSourceBuild pushing => new(
-                "pushing", SourceBuildPhase.Pushing, pushing.StartedAtUtc, null, pushing.ImageReference, null, null, null, null),
+                "pushing", SourceBuildPhase.Pushing, pushing.StartedAtUtc, null,
+                pushing.Artifact.Reference, null, null, null, null),
             DeployingSourceBuild deploying => new(
-                "deploying", SourceBuildPhase.Deploying, deploying.StartedAtUtc, null, deploying.ImageReference,
-                deploying.ImageDigest, deploying.ReleaseId, null, null),
+                "deploying", SourceBuildPhase.Deploying, deploying.StartedAtUtc, null,
+                deploying.Artifact.Reference, deploying.Artifact.Digest, deploying.ReleaseId, null, null),
             SucceededSourceBuild succeeded => new(
-                "succeeded", null, createdAtUtc, succeeded.CompletedAtUtc, succeeded.ImageReference,
-                succeeded.ImageDigest, succeeded.ReleaseId, null, null),
+                "succeeded", null, createdAtUtc, succeeded.CompletedAtUtc, succeeded.Artifact.Reference,
+                succeeded.Artifact.Digest, succeeded.ReleaseId, null, null),
             FailedSourceBuild failed => new(
                 "failed", failed.Phase, createdAtUtc, failed.FailedAtUtc, null, null, null, failed.Code, failed.Message),
             _ => throw new ArgumentOutOfRangeException(nameof(state), state, null)

@@ -15,6 +15,21 @@ public sealed record SourceBuildRecipe(string Dockerfile)
     }
 }
 
+public sealed record SourceBuildArtifact(string Reference, string Digest);
+
+public static class SourceBuildArtifactFactory
+{
+    public static SourceBuildArtifact Create(string reference, string digest)
+    {
+        if (string.IsNullOrWhiteSpace(reference))
+            throw new ArgumentException("A non-empty image reference is required.", nameof(reference));
+        if (string.IsNullOrWhiteSpace(digest))
+            throw new ArgumentException("A non-empty image digest is required.", nameof(digest));
+
+        return new(reference, digest);
+    }
+}
+
 public sealed record SourceBuildConfiguration(
     [property: BsonId]
     [property: BsonRepresentation(BsonType.ObjectId)]
@@ -139,19 +154,16 @@ public sealed record BuildingSourceBuild(DateTime StartedAtUtc) : SourceBuildJob
 
 public sealed record PushingSourceBuild(
     DateTime StartedAtUtc,
-    string ImageReference,
-    string ExpectedDigest) : SourceBuildJobState;
+    SourceBuildArtifact Artifact) : SourceBuildJobState;
 
 public sealed record DeployingSourceBuild(
     DateTime StartedAtUtc,
-    string ImageReference,
-    string ImageDigest,
+    SourceBuildArtifact Artifact,
     string ReleaseId) : SourceBuildJobState;
 
 public sealed record SucceededSourceBuild(
     DateTime CompletedAtUtc,
-    string ImageReference,
-    string ImageDigest,
+    SourceBuildArtifact Artifact,
     string ReleaseId) : SourceBuildJobState;
 
 public sealed record FailedSourceBuild(
@@ -213,32 +225,36 @@ public static class SourceBuildJobTransitions
 
     public static SourceBuildJob StartPushing(
         this SourceBuildJob job,
-        string imageReference,
-        string expectedDigest,
-        DateTime occurredAtUtc) =>
-        Transition<BuildingSourceBuild>(
+        SourceBuildArtifact artifact,
+        DateTime occurredAtUtc)
+    {
+        ArgumentNullException.ThrowIfNull(artifact);
+        return Transition<BuildingSourceBuild>(
             job,
-            new PushingSourceBuild(occurredAtUtc, imageReference, expectedDigest),
+            new PushingSourceBuild(occurredAtUtc,
+                SourceBuildArtifactFactory.Create(artifact.Reference, artifact.Digest)),
             occurredAtUtc);
+    }
 
     public static SourceBuildJob StartDeploying(
         this SourceBuildJob job,
-        string imageDigest,
+        SourceBuildArtifact artifact,
         string releaseId,
         DateTime occurredAtUtc)
     {
         if (job.State is not PushingSourceBuild pushing)
             return InvalidTransition(job, nameof(PushingSourceBuild));
 
-        if (pushing.ExpectedDigest != imageDigest)
-            throw new ArgumentException("Promotion must retain the built artifact digest.", nameof(imageDigest));
+        ArgumentNullException.ThrowIfNull(artifact);
+        var promotedArtifact = SourceBuildArtifactFactory.Create(artifact.Reference, artifact.Digest);
+        if (pushing.Artifact != promotedArtifact)
+            throw new ArgumentException("Promotion must retain the built artifact.", nameof(artifact));
 
         return job with
         {
             State = new DeployingSourceBuild(
                 occurredAtUtc,
-                pushing.ImageReference,
-                imageDigest,
+                promotedArtifact,
                 releaseId),
             UpdatedAtUtc = occurredAtUtc
         };
@@ -253,8 +269,7 @@ public static class SourceBuildJobTransitions
         {
             State = new SucceededSourceBuild(
                 occurredAtUtc,
-                deploying.ImageReference,
-                deploying.ImageDigest,
+                deploying.Artifact,
                 deploying.ReleaseId),
             UpdatedAtUtc = occurredAtUtc
         };

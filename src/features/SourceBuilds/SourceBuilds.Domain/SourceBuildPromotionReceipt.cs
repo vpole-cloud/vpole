@@ -14,8 +14,7 @@ public sealed record SourceBuildPromotionReceipt(
     long Generation,
     string SourceRepositoryId,
     string CommitSha,
-    string ImageReference,
-    string ImageDigest,
+    SourceBuildArtifact Artifact,
     string ReleaseId,
     long WebServiceRevision);
 
@@ -23,19 +22,21 @@ public static class SourceBuildPromotionReceiptFactory
 {
     public static SourceBuildPromotionReceipt Create(
         SourceBuildJob job,
-        string imageDigest,
+        SourceBuildArtifact artifact,
         string releaseId,
         long webServiceRevision)
     {
-        if (string.IsNullOrWhiteSpace(imageDigest) || string.IsNullOrWhiteSpace(releaseId) || webServiceRevision <= 0)
+        if (string.IsNullOrWhiteSpace(releaseId) || webServiceRevision <= 0)
             throw new ArgumentException("Promotion requires an artifact and a committed workload revision.");
 
-        if (job.State is not PushingSourceBuild pushing || pushing.ExpectedDigest != imageDigest)
+        ArgumentNullException.ThrowIfNull(artifact);
+        var promotedArtifact = SourceBuildArtifactFactory.Create(artifact.Reference, artifact.Digest);
+        if (job.State is not PushingSourceBuild pushing || pushing.Artifact != promotedArtifact)
             throw new ArgumentException("A promotion receipt requires the built artifact.", nameof(job));
 
         return new(job.Id, job.TenantId, job.ConfigurationId, job.WebServiceId,
             job.InputVersion.ConfigurationRevision, job.InputVersion.Generation, job.SourceRepositoryId, job.CommitSha,
-            pushing.ImageReference, imageDigest, releaseId,
+            promotedArtifact, releaseId,
             webServiceRevision);
     }
 }

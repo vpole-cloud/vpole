@@ -356,7 +356,7 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
             Request = request;
             if (ThrowUnexpected) throw new InvalidOperationException($"unsafe infrastructure detail {request.RegistrySecret}");
             return Task.FromResult<BuildContainerImageOutcome>(
-                new BuiltContainerImage(request.Target.Reference, Digest));
+                SourceBuildArtifactFactory.Create(request.Target.Reference, Digest));
         }
     }
 
