@@ -58,6 +58,14 @@ public static class WebServicePersistenceRegistration
         services.AddCapability<MongoLoadWebServiceDeploymentTokens, LoadWebServiceDeploymentTokens>(x => x.InvokeAsync);
         services.AddCapability<MongoRevokeWebServiceDeploymentToken, RevokeWebServiceDeploymentTokenOutcome>(x => x.InvokeOutcomeAsync);
         services.AddCapability<MongoTouchWebServiceDeploymentToken, TouchWebServiceDeploymentToken>(x => x.InvokeAsync);
+        services.AddScoped<WebServicePlanningReader>();
+        services.AddScoped<WebServiceDeclarationPlanner>();
+        services.AddScoped<WebServiceDeclarationFences>();
+        services.AddScoped<WebServiceDeclarationReferences>();
+        services.AddScoped<WebServiceDeclarationExecution>();
+        services.AddScoped<WebServiceDeclarationIngress>();
+        services.AddScoped<WebServiceDeclarationAdoption>();
+        services.AddScoped<WebServiceDeclarationLifecycle>();
         services.AddScoped<DeclarativeWebServiceProvider>();
         services.AddScoped<IDeclarativeResourceProvider>(provider =>
             provider.GetRequiredService<DeclarativeWebServiceProvider>());

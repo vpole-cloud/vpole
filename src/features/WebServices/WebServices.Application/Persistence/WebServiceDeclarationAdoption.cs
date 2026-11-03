@@ -8,10 +8,22 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Application.Common;
+using static Pole.Features.WebServices.Application.Persistence.WebServiceDeclarations;
+using static Pole.Features.WebServices.Application.Persistence.WebServicePlanning;
 
 namespace Pole.Features.WebServices.Application.Persistence;
 
-internal sealed partial class DeclarativeWebServiceProvider
+internal sealed class WebServiceDeclarationAdoption(
+    IMongoCollection<WebService> services,
+    IGitOpsMutations git,
+    LoadIsolationScopePlanningSnapshot loadPlanningScope,
+    LoadResourceDeploymentPlanningSnapshot loadPlanningPlacements,
+    ResolveComputeProfilePlanningSnapshot resolvePlanningCompute,
+    ResolveDeploymentTargetPlanningSnapshot resolvePlanningTarget,
+    WebServiceDeclarationReferences referencePreparation,
+    WebServicePlanningReader planningReader,
+    WebServiceDeclarationFences fences,
+    WebServiceDeclarationLifecycle lifecycle)
 {
     public async Task<PreviewLifecycleAdoptionOutcome> PreviewAdoptionAsync(
         PreviewLifecycleAdoptionRequest request,
@@ -30,7 +42,7 @@ internal sealed partial class DeclarativeWebServiceProvider
             placements.Items[0].State == ResourceDeploymentPlanningState.Deleting)
             return PlanningBlocked(WebServiceDeclarationError.ImmutablePlacementChange);
 
-        var technical = await ReadPreviewReferencesAsync(new(request.TenantId, request.Declaration,
+        var technical = await referencePreparation.ReadPreviewReferencesAsync(new(request.TenantId, request.Declaration,
             request.References), session, cancellationToken);
         if (technical is DeclarationReadBlocked blocked)
             return blocked;
@@ -99,7 +111,7 @@ internal sealed partial class DeclarativeWebServiceProvider
 
         if (references.All(item => item.State == GitPreviewReferenceState.Existing))
         {
-            var checkedPlan = await ReadPlanningWithReferencesAsync(new(request.TenantId, request.ResourceId,
+            var checkedPlan = await planningReader.ReadPlanningWithReferencesAsync(new(request.TenantId, request.ResourceId,
                 request.Declaration, DeclarationPhase.Configure,
                 address => Task.FromResult(PreviewReference(references, address)?.ResourceId)),
                 session, cancellationToken);
@@ -120,7 +132,7 @@ internal sealed partial class DeclarativeWebServiceProvider
         CancellationToken cancellationToken)
     {
         var operation = request.Operation;
-        var read = await ReadLifecycleAsync(new(request.Authority.TenantId,
+        var read = await lifecycle.ReadLifecycleAsync(new(request.Authority.TenantId,
             new(operation.Declaration.Address, operation.ResourceId)), session, cancellationToken);
 
         // The approved vector includes this resource and its accepted dependencies.
@@ -135,25 +147,25 @@ internal sealed partial class DeclarativeWebServiceProvider
         var current = await services.Find(session, WebServiceFilters.ById(request.Authority.TenantId,
             operation.ResourceId)).SingleAsync(cancellationToken);
         var spec = DeclarationJson.Read<WebServiceDeclaration>(operation.Declaration.Spec);
-        var targetId = await AcceptedReferenceAsync(operation, new("DeploymentTarget", spec.Placement.DeploymentTarget),
+        var targetId = await planningReader.AcceptedReferenceAsync(operation, new("DeploymentTarget", spec.Placement.DeploymentTarget),
             session, cancellationToken);
-        var computeId = await AcceptedReferenceAsync(operation,
+        var computeId = await planningReader.AcceptedReferenceAsync(operation,
             new("ComputeProfile", spec.Placement.ComputeProfile.Name),
             session, cancellationToken);
-        var groupId = await AcceptedReferenceAsync(operation, new("ResourceGroup", spec.ResourceGroup),
+        var groupId = await planningReader.AcceptedReferenceAsync(operation, new("ResourceGroup", spec.ResourceGroup),
             session, cancellationToken);
         string? scopeId = null;
         if (groupId is not null)
         {
             if (spec.Placement.IsolationScope is { } scopeName)
-                scopeId = await AcceptedReferenceAsync(operation, new("IsolationScope", scopeName),
+                scopeId = await planningReader.AcceptedReferenceAsync(operation, new("IsolationScope", scopeName),
                     session, cancellationToken);
             else if (await loadPlanningScope(new(current.TenantId, groupId, null), session, cancellationToken)
                 is IsolationScopePlanningSnapshot defaultScope)
                 scopeId = defaultScope.IsolationScopeId;
         }
         var buildId = spec.Image is DeclaredSourceBuildImage build
-            ? await AcceptedReferenceAsync(operation, new("SourceBuildConfiguration", build.SourceBuildConfiguration),
+            ? await planningReader.AcceptedReferenceAsync(operation, new("SourceBuildConfiguration", build.SourceBuildConfiguration),
                 session, cancellationToken) : null;
         if (groupId != current.ResourceGroupId || scopeId != current.IsolationScopeId ||
             current.Spec.Image.SourceBuildConfigurationId != buildId)
@@ -165,7 +177,7 @@ internal sealed partial class DeclarativeWebServiceProvider
             placements.Items[0].DeploymentTargetId != targetId)
             return PlanningBlocked(WebServiceDeclarationError.ImmutablePlacementChange);
 
-        var fenced = await FenceAsync(new(operation, request.Expected), session, cancellationToken);
+        var fenced = await fences.FenceAsync(new(operation, request.Expected), session, cancellationToken);
         if (fenced is DeclarationReadBlocked blocked)
             return blocked;
         if (fenced is DeclarationPreconditionsChanged changed)

@@ -4,12 +4,17 @@ using Pole.Features.Domains.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
+using static Pole.Features.WebServices.Application.Persistence.WebServiceDeclarations;
+using static Pole.Features.WebServices.Application.Persistence.WebServicePlanning;
 
 namespace Pole.Features.WebServices.Application.Persistence;
 
-internal sealed partial class DeclarativeWebServiceProvider
+internal sealed class WebServiceDeclarationIngress(
+    GetOrCreateGeneratedDomainZones getOrCreateGeneratedDomainZones,
+    LoadHostnameBindingsForDeploymentInTransaction loadHostnameBindingsForDeployment,
+    CreateGeneratedHostnameBindings createGeneratedHostnameBindings)
 {
-    private async Task<PrepareWebServiceIngressOutcome> PrepareIngressAsync(
+    internal async Task<PrepareWebServiceIngressOutcome> PrepareIngressAsync(
         PrepareWebServiceIngressRequest request,
         IClientSessionHandle session,
         CancellationToken ct)
