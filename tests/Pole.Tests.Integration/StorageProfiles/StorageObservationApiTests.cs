@@ -11,6 +11,7 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.StorageProfiles.Application.Observation;
 using Pole.Features.StorageProfiles.Application.Persistence.Observation;
 using Pole.Features.StorageProfiles.Contracts;
+using Pole.Features.StorageProfiles.Domain.Observation;
 using Pole.Tests.Integration.Infrastructure;
 using Pole.Tests.Integration.ResourceDeployments;
 using Xunit;
@@ -147,7 +148,10 @@ public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture) :
     {
         var id = TestData.DefaultDeploymentTargetId;
         await Fixture.DbContext.DeploymentTargets.InsertOneAsync(TestData.SeedDeploymentTarget(id));
-        var store = new MongoStorageObservationStore(Fixture.Database,
+        var store = new MongoStorageObservationStore(
+            Fixture.Database.GetCollection<StorageObservationControlDocument>(MongoStorageObservationStore.ControlsCollection),
+            Fixture.Database.GetCollection<StorageObservationDemandDocument>(MongoStorageObservationStore.DemandsCollection),
+            Fixture.Database.GetCollection<StorageObservationSnapshotDocument>(MongoStorageObservationStore.SnapshotsCollection),
             new Pole.Database.MongoRunTransaction(Fixture.Client),
             (request, session, ct) =>
                 new Pole.Features.DeploymentTargets.Application.Persistence.Admission.

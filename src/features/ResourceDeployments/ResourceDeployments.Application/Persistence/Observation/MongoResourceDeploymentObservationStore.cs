@@ -16,7 +16,9 @@ namespace Pole.Features.ResourceDeployments.Application.Persistence.Observation;
 
 /// <summary>Feature-owned context fences, sanitized payloads and events; shared store owns the protocol.</summary>
 internal sealed class MongoResourceDeploymentObservationStore(
-    IMongoDatabase database,
+    IMongoCollection<ObservationControlDocument> controls,
+    IMongoCollection<ObservationDemandDocument> demands,
+    IMongoCollection<ObservationSnapshotDocument> snapshots,
     IMongoCollection<ResourceDeployment> deployments,
     MongoRunTransaction transactions,
     FenceDeploymentTargetObservation fenceTarget,
@@ -30,12 +32,11 @@ internal sealed class MongoResourceDeploymentObservationStore(
         ResourceDeploymentObservationContext,
         ObservationControlDocument,
         ObservationDemandDocument,
-        ObservationSnapshotDocument> core = new(database,
+        ObservationSnapshotDocument> core = new(controls,
+        demands,
+        snapshots,
         transactions,
-        ControlsCollection,
-        DemandsCollection,
-        SnapshotsCollection,
-        new Definition(database, deployments, fenceTarget, storeOutboxWrites));
+        new Definition(deployments, fenceTarget, storeOutboxWrites));
 
     public Task<ObservationMutationOutcome> PutDemandAsync(ObservationDemand demand,
         ResourceDeploymentObservationContext context,
@@ -237,7 +238,6 @@ internal sealed class MongoResourceDeploymentObservationStore(
     });
 
     private sealed class Definition(
-        IMongoDatabase database,
         IMongoCollection<ResourceDeployment> deployments,
         FenceDeploymentTargetObservation fenceTarget,
         StoreOutboxWrites storeOutboxWrites) : IMongoObservationDefinition<

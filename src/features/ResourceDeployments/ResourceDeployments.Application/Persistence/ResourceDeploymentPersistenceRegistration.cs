@@ -10,8 +10,10 @@ using Pole.Features.ResourceDeployments.Application.Persistence.Reads;
 using Pole.Features.ResourceDeployments.Application.Persistence.Reconciliation;
 using Pole.Features.ResourceDeployments.Application.Persistence.Requests;
 using Pole.Features.ResourceDeployments.Application.Persistence.Validation;
+using Pole.Features.ResourceDeployments.Application.Persistence.Observation;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceDeployments.Domain.Observation;
 using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Persistence;
@@ -23,6 +25,12 @@ internal static class ResourceDeploymentPersistenceRegistration
     {
         services.TryAddScoped<ResourceDeploymentIsolationProjection>();
         services.TryAddScoped<ResourceDeploymentConnectionGuard>();
+        services.TryAddSingleton(serviceProvider => serviceProvider.GetRequiredService<IMongoDatabase>()
+            .GetCollection<ObservationControlDocument>(MongoResourceDeploymentObservationStore.ControlsCollection));
+        services.TryAddSingleton(serviceProvider => serviceProvider.GetRequiredService<IMongoDatabase>()
+            .GetCollection<ObservationDemandDocument>(MongoResourceDeploymentObservationStore.DemandsCollection));
+        services.TryAddSingleton(serviceProvider => serviceProvider.GetRequiredService<IMongoDatabase>()
+            .GetCollection<ObservationSnapshotDocument>(MongoResourceDeploymentObservationStore.SnapshotsCollection));
         services.TryAddSingleton(serviceProvider => serviceProvider
             .GetRequiredService<IMongoDatabase>()
             .GetCollection<ResourceDeployment>("ResourceDeployments"));

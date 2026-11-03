@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
+using MongoDB.Driver;
 using Pole.Features.StorageProfiles.Application.Observation;
 using Pole.Features.StorageProfiles.Application.Discovery.Observation;
 using Pole.Features.StorageProfiles.Application.Persistence.Observation;
@@ -13,6 +14,7 @@ using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Application.Persistence;
 using Pole.Features.StorageProfiles.Application.Validation;
 using Pole.Features.StorageProfiles.Contracts;
+using Pole.Features.StorageProfiles.Domain.Observation;
 
 namespace Pole.Features.StorageProfiles.Application;
 
@@ -34,6 +36,12 @@ public static class StorageProfileApplicationRegistration
             }).Validate(options => options.Valid, "Storage observation limits are outside the supported bounds.")
             .ValidateOnStart();
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<StorageObservationOptions>>().Value);
+        services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
+            .GetCollection<StorageObservationControlDocument>(MongoStorageObservationStore.ControlsCollection));
+        services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
+            .GetCollection<StorageObservationDemandDocument>(MongoStorageObservationStore.DemandsCollection));
+        services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
+            .GetCollection<StorageObservationSnapshotDocument>(MongoStorageObservationStore.SnapshotsCollection));
         services.TryAddScoped<IStorageObservationStore, MongoStorageObservationStore>();
         services.TryAddScoped<StorageObservationContextLoader>();
         services.TryAddScoped<StorageObservationNativeReader>();
