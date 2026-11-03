@@ -11,6 +11,11 @@ public sealed class ClosedHierarchySwitchAnalyzerTests
     [Theory]
     [InlineData("state switch { Ready => 1, _ => 0 }")]
     [InlineData("state switch { Ready => 1, var other => 0 }")]
+    [InlineData("state switch { Ready => 1, State => 0 }")]
+    [InlineData("state switch { Ready => 1, State other => 0 }")]
+    [InlineData("state switch { Ready => 1, object other => 0 }")]
+    [InlineData("state switch { Ready => 1, { } => 0 }")]
+    [InlineData("state switch { Ready => 1, not null => 0 }")]
     public async Task Catch_all_does_not_hide_future_closed_variants(string expression)
     {
         var diagnostic = Assert.Single(await Analyze($"return {expression};"));
@@ -67,6 +72,21 @@ public sealed class ClosedHierarchySwitchAnalyzerTests
     public async Task Tuple_of_closed_states_cannot_hide_a_new_variant()
     {
         Assert.Single(await Analyze("return (state, state) switch { (Ready, Ready) => 1, _ => 0 };"));
+    }
+
+    [Theory]
+    [InlineData("return (state, state) switch { (Ready, Ready) => 1, (_, _) => 0 };")]
+    [InlineData("return (state, state) switch { (Ready, Ready) => 1, (_, Failed) => 0 };")]
+    public async Task Tuple_component_patterns_cannot_absorb_future_variants(string body)
+    {
+        Assert.Single(await Analyze(body));
+    }
+
+    [Fact]
+    public async Task Explicit_subtype_property_patterns_remain_allowed()
+    {
+        Assert.Empty(await Analyze("return state switch { Ready { } => 1, Failed => 0, null => -1 };"));
+        Assert.Empty(await Analyze("return state switch { State and Ready => 1, Failed => 0, null => -1 };"));
     }
 
     private static async Task<Diagnostic[]> Analyze(string body, bool closed = true)

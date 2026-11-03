@@ -39,17 +39,16 @@ public sealed class ClosedHierarchySwitchAnalyzer : DiagnosticAnalyzer
         if (expression is null ||
             context.SemanticModel.GetTypeInfo(expression,
                 context.CancellationToken).Type is not INamedTypeSymbol type ||
-            !(IsClosedHierarchy(type) || type.IsTupleType &&
-                type.TupleElements.Any(element => IsClosedHierarchy(element.Type))))
+            !ContainsClosedHierarchy(type))
             return;
 
         IEnumerable<SyntaxNode> catchAll = context.Node switch
         {
-            SwitchExpressionSyntax value => value.Arms.Where(arm => IsCatchAll(arm.Pattern))
+            SwitchExpressionSyntax value => value.Arms.Where(arm => IsCatchAll(arm.Pattern, type, context.SemanticModel))
                 .Select(arm => (SyntaxNode)arm.Pattern),
             SwitchStatementSyntax value => value.Sections.SelectMany(section => section.Labels)
                 .Where(label => label is DefaultSwitchLabelSyntax ||
-                    label is CasePatternSwitchLabelSyntax pattern && IsCatchAll(pattern.Pattern)),
+                    label is CasePatternSwitchLabelSyntax pattern && IsCatchAll(pattern.Pattern, type, context.SemanticModel)),
             _ => []
         };
         foreach (var node in catchAll)
@@ -62,10 +61,33 @@ public sealed class ClosedHierarchySwitchAnalyzer : DiagnosticAnalyzer
     private static bool IsClosedHierarchy(ITypeSymbol type) => type.IsClosed;
 #pragma warning restore RSEXPERIMENTAL006
 
-    private static bool IsCatchAll(PatternSyntax pattern) => pattern switch
+    private static bool ContainsClosedHierarchy(ITypeSymbol type) =>
+        IsClosedHierarchy(type) || type is INamedTypeSymbol { IsTupleType: true } tuple &&
+        tuple.TupleElements.Any(element => ContainsClosedHierarchy(element.Type));
+
+    private static bool IsCatchAll(PatternSyntax pattern, ITypeSymbol input, SemanticModel semantics) => pattern switch
     {
         DiscardPatternSyntax or VarPatternSyntax => true,
-        ParenthesizedPatternSyntax nested => IsCatchAll(nested.Pattern),
+        ParenthesizedPatternSyntax nested => IsCatchAll(nested.Pattern, input, semantics),
+        TypePatternSyntax typed => MatchesBaseType(typed.Type, input, semantics),
+        DeclarationPatternSyntax typed => MatchesBaseType(typed.Type, input, semantics),
+        RecursivePatternSyntax recursive when input is INamedTypeSymbol { IsTupleType: true } tuple &&
+            recursive.PositionalPatternClause is { } positional =>
+            positional.Subpatterns.Count == tuple.TupleElements.Length &&
+            positional.Subpatterns.Select((item, index) =>
+                ContainsClosedHierarchy(tuple.TupleElements[index].Type) &&
+                IsCatchAll(item.Pattern, tuple.TupleElements[index].Type, semantics)).Any(value => value),
+        RecursivePatternSyntax { Type: { } type } => MatchesBaseType(type, input, semantics),
+        RecursivePatternSyntax { PositionalPatternClause: null, PropertyPatternClause.Subpatterns.Count: 0 } => true,
+        BinaryPatternSyntax binary when binary.IsKind(SyntaxKind.OrPattern) =>
+            IsCatchAll(binary.Left, input, semantics) || IsCatchAll(binary.Right, input, semantics),
+        BinaryPatternSyntax binary when binary.IsKind(SyntaxKind.AndPattern) =>
+            IsCatchAll(binary.Left, input, semantics) && IsCatchAll(binary.Right, input, semantics),
+        UnaryPatternSyntax => true,
         _ => false
     };
+
+    private static bool MatchesBaseType(TypeSyntax syntax, ITypeSymbol input, SemanticModel semantics) =>
+        semantics.GetTypeInfo(syntax).Type is { } matched &&
+        ((CSharpCompilation)semantics.Compilation).ClassifyConversion(input, matched).IsImplicit;
 }
