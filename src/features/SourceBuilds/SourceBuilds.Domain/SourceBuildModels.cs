@@ -15,7 +15,9 @@ public sealed record SourceBuildRecipe(string Dockerfile)
     }
 }
 
-public sealed record SourceBuildArtifact(string Reference, string Digest);
+public sealed record SourceBuildArtifact(
+    string Reference,
+    string Digest);
 
 public static class SourceBuildArtifactFactory
 {
