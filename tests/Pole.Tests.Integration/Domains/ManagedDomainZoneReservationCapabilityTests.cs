@@ -114,7 +114,7 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
             string label = "api")
     {
         var reservation = new MongoCreateManagedDomainZoneReservation(
-            fixture.Database,
+            fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones"),
             coordinator.ApplyChangesOutcomeAsync,
             coordinator.FenceManyOutcomeAsync,
             TimeProvider.System,

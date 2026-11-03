@@ -345,14 +345,20 @@ internal static class StorageMetricFixtures
         NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown);
 
     internal static MongoStorageObservationStore
-        Store(MongoReplicaSetFixture fixture, StoreOutboxWrites? writes = null) => new(fixture.Database,
-        new MongoRunTransaction(fixture.Client),
-        (request, session, ct) =>
-            new MongoFenceDeploymentTargetObservation(fixture.DbContext.DeploymentTargets).InvokeAsync(request,
-                session,
-                ct),
-        writes ?? fixture.StoreOutboxWrites,
-        new());
+        Store(MongoReplicaSetFixture fixture, StoreOutboxWrites? writes = null) => new(
+            fixture.Database.GetCollection<StorageObservationControlDocument>(
+                MongoStorageObservationStore.ControlsCollection),
+            fixture.Database.GetCollection<StorageObservationDemandDocument>(
+                MongoStorageObservationStore.DemandsCollection),
+            fixture.Database.GetCollection<StorageObservationSnapshotDocument>(
+                MongoStorageObservationStore.SnapshotsCollection),
+            new MongoRunTransaction(fixture.Client),
+            (request, session, ct) =>
+                new MongoFenceDeploymentTargetObservation(fixture.DbContext.DeploymentTargets).InvokeAsync(request,
+                    session,
+                    ct),
+            writes ?? fixture.StoreOutboxWrites,
+            new());
 
     internal static StorageObservationNativeReader Native(IKubernetes client,
         ObservationReadBudget budget) => new(new FixedKubernetesClientProvider(client),

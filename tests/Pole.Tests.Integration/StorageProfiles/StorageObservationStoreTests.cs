@@ -694,14 +694,20 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
             }));
     }
 
-    private MongoStorageObservationStore Store(StoreOutboxWrites? writes = null) => new(fixture.Database,
-        new MongoRunTransaction(fixture.Client),
-        (request, session, ct) =>
-            new MongoFenceDeploymentTargetObservation(fixture.DbContext.DeploymentTargets).InvokeAsync(request,
-                session,
-                ct),
-        writes ?? fixture.StoreOutboxWrites,
-        new());
+    private MongoStorageObservationStore Store(StoreOutboxWrites? writes = null) => new(
+            fixture.Database.GetCollection<StorageObservationControlDocument>(
+                MongoStorageObservationStore.ControlsCollection),
+            fixture.Database.GetCollection<StorageObservationDemandDocument>(
+                MongoStorageObservationStore.DemandsCollection),
+            fixture.Database.GetCollection<StorageObservationSnapshotDocument>(
+                MongoStorageObservationStore.SnapshotsCollection),
+            new MongoRunTransaction(fixture.Client),
+            (request, session, ct) =>
+                new MongoFenceDeploymentTargetObservation(fixture.DbContext.DeploymentTargets).InvokeAsync(request,
+                    session,
+                    ct),
+            writes ?? fixture.StoreOutboxWrites,
+            new());
 
     private async Task<Seeded> SeedAsync()
     {

@@ -20,7 +20,8 @@ namespace Pole.Tests.Integration.Domains;
 public sealed class DomainLifecycleTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
 {
     private readonly ReviewedLifecycleAuthority authorization = new(fixture.Client);
-    private readonly RemovalCapability workload = new(fixture.Database);
+    private readonly RemovalCapability workload = new(
+        fixture.Database.GetCollection<HostnameBinding>("HostnameBindings"));
     protected override void ConfigureServices(IServiceCollection services)
     {
         services.AddSingleton<IGitOpsMutations>(authorization);
@@ -222,7 +223,8 @@ public sealed class DomainLifecycleTests(MongoReplicaSetFixture fixture) : Media
     private static ReadLifecycleResourceRequest Read(HostnameBinding binding) => new(binding.TenantId,
         new(new("HostnameBinding", ((NamedDomainIdentity)binding.Identity).TechnicalName), binding.Id));
 
-    private sealed class RemovalCapability(IMongoDatabase database) : IHostnameBindingRemovalCapability
+    private sealed class RemovalCapability(IMongoCollection<HostnameBinding> bindings)
+        : IHostnameBindingRemovalCapability
     {
         public string DeploymentId { get; set; } = ObjectId.GenerateNewId().ToString();
         public string Kind => "WebService";
@@ -256,7 +258,7 @@ public sealed class DomainLifecycleTests(MongoReplicaSetFixture fixture) : Media
                 throw new InvalidOperationException("Injected workload attachment write failure");
             Assert.Equal(Version, Assert.Single(request.Snapshot.DocumentVersions).Version);
             Provenance = request.Provenance;
-            SawAbsentBindingAtRemoval = !await database.GetCollection<HostnameBinding>("HostnameBindings")
+            SawAbsentBindingAtRemoval = !await bindings
                 .Find(session, item => item.Id == request.BindingId).AnyAsync(cancellationToken);
             return new HostnameAttachmentApplied(true);
         }

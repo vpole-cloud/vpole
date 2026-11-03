@@ -65,7 +65,9 @@ public sealed class GitProviderIdentityTests(MongoReplicaSetFixture fixture) : M
     }
 
     private GitHubSetupPersistence Persistence() =>
-        new(Fixture.Database, Services.GetRequiredService<MongoRunTransaction>(), Fixture.StoreOutboxWrites);
+        new(Fixture.Database.GetCollection<GitHubSetupAttempt>("GitHubSetupAttempts"),
+            DbContext.GitProviderConnections,
+            Services.GetRequiredService<MongoRunTransaction>(), Fixture.StoreOutboxWrites);
 
     private Task Indexes() => DbContext.GitProviderConnections.Indexes.CreateManyAsync(
     [

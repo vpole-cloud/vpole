@@ -19,12 +19,12 @@ public sealed class UnavailableEventContractStartupTests(MongoReplicaSetFixture 
         var now = DateTime.UtcNow;
         var pending = OutboxMessage.Create("acme.test/v1/created", "tenant-1", "{}", null, null, now, now, null);
         await messages.InsertOneAsync(pending);
-        var missing = new EnsurePendingOutboxEventsRegistered(Fixture.Database, new OutboxEventAssemblyCatalog([]));
+        var missing = new EnsurePendingOutboxEventsRegistered(messages, new OutboxEventAssemblyCatalog([]));
         await Assert.ThrowsAsync<InvalidOperationException>(() => missing.InvokeAsync());
         var retained = await messages.Find(message => message.Id == pending.Id).SingleAsync();
         Assert.IsType<PendingOutboxMessageState>(retained.State);
 
-        var restored = new EnsurePendingOutboxEventsRegistered(Fixture.Database,
+        var restored = new EnsurePendingOutboxEventsRegistered(messages,
             new OutboxEventAssemblyCatalog([new FixtureAssembly()]));
         await restored.InvokeAsync();
 

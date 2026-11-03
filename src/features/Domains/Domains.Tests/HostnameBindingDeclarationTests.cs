@@ -11,8 +11,12 @@ namespace Pole.Features.Domains.Tests;
 
 public sealed class HostnameBindingDeclarationTests
 {
+    private static readonly IMongoDatabase Database =
+        new MongoClient("mongodb://localhost:27017").GetDatabase("domain-schema-tests");
+
     private static DeclarativeHostnameBindingProvider Provider() => new(
-        new MongoClient("mongodb://localhost:27017").GetDatabase("domain-schema-tests"),
+        Database.GetCollection<Pole.Features.Domains.Domain.TenantDomainZone>("TenantDomainZones"),
+        Database.GetCollection<Pole.Features.Domains.Domain.HostnameBinding>("HostnameBindings"),
         null!, null!, null!, null!, null!, null!, null!, null!, [new WorkloadCapability()], null!);
 
     [Theory]
