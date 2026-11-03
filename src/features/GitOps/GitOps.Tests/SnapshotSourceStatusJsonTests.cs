@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using Pole.ASP.Helpers;
 using Pole.Features.GitOps.Application.Endpoints.Sources;
 using Xunit;
 using Pole.Features.GitOps.Primitives;
@@ -7,6 +9,8 @@ namespace Pole.Features.GitOps.Tests;
 
 public sealed class SnapshotSourceStatusJsonTests
 {
+    private static readonly JsonSerializerOptions HttpOptions = PoleHttpJson.CreateSerializerOptions();
+
     public static IEnumerable<object[]> Actions() => Enum.GetValues<GitPlannedAction>()
         .Select(value => new object[] { value });
 
@@ -15,11 +19,15 @@ public sealed class SnapshotSourceStatusJsonTests
     public void Operation_plan_has_a_typed_JSON_action_contract(GitPlannedAction action)
     {
         var plan = new RepositoryOperationPlanView(action, 1, DateTime.UnixEpoch, ["configuration.description"]);
-        var json = JsonSerializer.Serialize(plan, JsonSerializerOptions.Web);
+        var json = JsonSerializer.Serialize(plan, HttpOptions);
         using var document = JsonDocument.Parse(json);
         Assert.Equal(action.ToString(), document.RootElement.GetProperty("action").GetString());
         Assert.Equal(action, JsonSerializer.Deserialize<RepositoryOperationPlanView>(json,
-            JsonSerializerOptions.Web)!.Action);
+            HttpOptions)!.Action);
+        var numeric = JsonNode.Parse(json)!;
+        numeric["action"] = (int)action;
+        Assert.Throws<JsonException>(() =>
+            JsonSerializer.Deserialize<RepositoryOperationPlanView>(numeric.ToJsonString(), HttpOptions));
     }
 
     public static IEnumerable<object[]> States() => Enum.GetValues<RepositoryRunStatus>()
@@ -42,9 +50,9 @@ public sealed class SnapshotSourceStatusJsonTests
             [],
             null,
             null);
-        var json = JsonSerializer.Serialize(view, JsonSerializerOptions.Web);
+        var json = JsonSerializer.Serialize(view, HttpOptions);
         using var document = JsonDocument.Parse(json);
         Assert.Equal(state.ToString(), document.RootElement.GetProperty("status").GetString());
-        Assert.Equal(state, JsonSerializer.Deserialize<RepositoryRunView>(json, JsonSerializerOptions.Web)!.Status);
+        Assert.Equal(state, JsonSerializer.Deserialize<RepositoryRunView>(json, HttpOptions)!.Status);
     }
 }
