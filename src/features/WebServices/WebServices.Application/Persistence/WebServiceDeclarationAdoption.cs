@@ -111,8 +111,8 @@ internal sealed class WebServiceDeclarationAdoption(
 
         if (references.All(item => item.State == GitPreviewReferenceState.Existing))
         {
-            var checkedPlan = await planningReader.ReadPlanningWithReferencesAsync(new(request.TenantId, request.ResourceId,
-                request.Declaration, DeclarationPhase.Configure,
+            var checkedPlan = await planningReader.ReadPlanningWithReferencesAsync(
+                new(request.TenantId, request.ResourceId, request.Declaration, DeclarationPhase.Configure,
                 address => Task.FromResult(PreviewReference(references, address)?.ResourceId)),
                 session, cancellationToken);
             if (checkedPlan is DeclarationReadBlocked rejected)
@@ -147,8 +147,8 @@ internal sealed class WebServiceDeclarationAdoption(
         var current = await services.Find(session, WebServiceFilters.ById(request.Authority.TenantId,
             operation.ResourceId)).SingleAsync(cancellationToken);
         var spec = DeclarationJson.Read<WebServiceDeclaration>(operation.Declaration.Spec);
-        var targetId = await planningReader.AcceptedReferenceAsync(operation, new("DeploymentTarget", spec.Placement.DeploymentTarget),
-            session, cancellationToken);
+        var targetId = await planningReader.AcceptedReferenceAsync(
+            operation, new("DeploymentTarget", spec.Placement.DeploymentTarget), session, cancellationToken);
         var computeId = await planningReader.AcceptedReferenceAsync(operation,
             new("ComputeProfile", spec.Placement.ComputeProfile.Name),
             session, cancellationToken);
@@ -165,8 +165,9 @@ internal sealed class WebServiceDeclarationAdoption(
                 scopeId = defaultScope.IsolationScopeId;
         }
         var buildId = spec.Image is DeclaredSourceBuildImage build
-            ? await planningReader.AcceptedReferenceAsync(operation, new("SourceBuildConfiguration", build.SourceBuildConfiguration),
-                session, cancellationToken) : null;
+            ? await planningReader.AcceptedReferenceAsync(
+                operation, new("SourceBuildConfiguration", build.SourceBuildConfiguration), session, cancellationToken)
+            : null;
         if (groupId != current.ResourceGroupId || scopeId != current.IsolationScopeId ||
             current.Spec.Image.SourceBuildConfigurationId != buildId)
             return new DeclarationReadBlocked(new DeclarationReplacementRequired());

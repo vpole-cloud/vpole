@@ -316,7 +316,8 @@ internal sealed class WebServiceDeclarationExecution(
         if (next == current)
             next = current.AdvancePlacementDesiredState();
 
-        var exposure = await ingressPreparation.PrepareIngressAsync(new(next, dependencies.Target.Target, placements), session, ct);
+        var exposure = await ingressPreparation.PrepareIngressAsync(
+            new(next, dependencies.Target.Target, placements), session, ct);
         if (exposure is WebServiceDeclarationRejected rejected)
             return new(current.Id, rejected);
         var ingress = ((PreparedWebServiceIngress)exposure.Value).Changes;
