@@ -2,6 +2,7 @@ namespace Pole.Features.Search.Application.Persistence
 
 open System.Text.RegularExpressions
 open MongoDB.Bson
+open MongoDB.Bson.Serialization
 open MongoDB.Driver
 open Pole.Features.Search.Application.Common
 open Pole.Features.Search.Application.Projection
@@ -31,16 +32,16 @@ module internal SearchProjectionFilters =
     let acceptsOperationalStatus (status : SearchOperationalStatusSnapshot) =
         let filter = Builders<SearchSourceDocument>.Filter
         filter.Or(
-            filter.Exists("OperationalStatus", false),
-            filter.Eq("OperationalStatus", BsonNull.Value),
-            filter.Lt("OperationalStatus.ResourceRevision", status.ResourceRevision),
+            filter.Exists((fun source -> source.OperationalStatus :> obj), false),
+            filter.Eq(_.OperationalStatus, None),
+            filter.Lt(_.OperationalStatus.Value.ResourceRevision, status.ResourceRevision),
             filter.And(
-                filter.Eq("OperationalStatus.ResourceRevision", status.ResourceRevision),
-                filter.Lt("OperationalStatus.ObservedGeneration", status.ObservedGeneration)),
+                filter.Eq(_.OperationalStatus.Value.ResourceRevision, status.ResourceRevision),
+                filter.Lt(_.OperationalStatus.Value.ObservedGeneration, status.ObservedGeneration)),
             filter.And(
-                filter.Eq("OperationalStatus.ResourceRevision", status.ResourceRevision),
-                filter.Eq("OperationalStatus.ObservedGeneration", status.ObservedGeneration),
-                filter.Lte("OperationalStatus.EventOccurredAtUtc", status.EventOccurredAtUtc)))
+                filter.Eq(_.OperationalStatus.Value.ResourceRevision, status.ResourceRevision),
+                filter.Eq(_.OperationalStatus.Value.ObservedGeneration, status.ObservedGeneration),
+                filter.Lte(_.OperationalStatus.Value.EventOccurredAtUtc, status.EventOccurredAtUtc)))
 
     let sourceAcceptingOperationalStatus
         (identity : SearchProjectionIdentity)
@@ -50,40 +51,18 @@ module internal SearchProjectionFilters =
             acceptsOperationalStatus status)
 
     let getSourceMatchStage (query : SearchQuery) =
-        let bsonDocument (elements : BsonElement list) = BsonDocument(elements)
-        let bsonArray (values : BsonValue list) = BsonArray(values)
+        let filter = Builders<SearchSourceDocument>.Filter
         let regex = BsonRegularExpression($"^{Regex.Escape(SearchDocumentFactory.normalize query.Query)}")
-        let mutable conditions =
-            [ bsonDocument [
-                BsonElement(
-                    "SearchKeys.Value",
-                    bsonDocument [ BsonElement("$regex", regex) ])
-              ] :> BsonValue ]
-
-        conditions <-
-            conditions @
-            [ bsonDocument [ BsonElement("TenantId", BsonString(query.TenantId)) ] :> BsonValue ]
-
-        match query.Types with
-        | Some types when not (List.isEmpty types) ->
-            let typeValues =
-                types
-                |> List.map (fun value -> BsonString(value.ApiName) :> BsonValue)
-                |> bsonArray
-            conditions <-
-                conditions @
-                [ bsonDocument [
-                    BsonElement(
-                        "SourceApiName",
-                        bsonDocument [ BsonElement("$in", typeValues) ])
-                  ] :> BsonValue ]
-        | _ -> ()
-
-        if conditions.Length = 1 then
-            bsonDocument [ BsonElement("$match", conditions.Head.AsBsonDocument) ]
-        else
-            bsonDocument [
-                BsonElement(
-                    "$match",
-                    bsonDocument [ BsonElement("$and", bsonArray conditions) ])
-            ]
+        let conditions =
+            [ filter.ElemMatch(
+                  (fun source -> source.SearchKeys :> seq<SearchSourceKey>),
+                  Builders<SearchSourceKey>.Filter.Regex((fun key -> key.Value :> obj), regex))
+              filter.Eq(_.TenantId, query.TenantId) ]
+        let conditions =
+            match query.Types with
+            | Some types when not (List.isEmpty types) ->
+                filter.In(_.SourceApiName, types |> Seq.map _.ApiName) :: conditions
+            | _ -> conditions
+        let registry = BsonSerializer.SerializerRegistry
+        let arguments = RenderArgs<SearchSourceDocument>(registry.GetSerializer<SearchSourceDocument>(), registry)
+        BsonDocument("$match", filter.And(conditions).Render(arguments))

@@ -113,6 +113,39 @@ public sealed class ResourceDeploymentSearchProjectionTests(
         Assert.Equal("other-worker", otherTenantProjection.Title);
     }
 
+    [Theory]
+    [InlineData(3, 1, -1, true)]
+    [InlineData(2, 6, -1, true)]
+    [InlineData(2, 5, 1, true)]
+    [InlineData(1, 6, 1, false)]
+    [InlineData(2, 4, 1, false)]
+    [InlineData(2, 5, -1, false)]
+    public async Task PersistedOperationalStatus_OrdersRevisionThenGenerationThenEventTime(
+        long resourceRevision,
+        long observedGeneration,
+        int eventTimeOffsetSeconds,
+        bool accepted)
+    {
+        var tenantId = ObjectId.GenerateNewId().ToString();
+        var resourceId = ObjectId.GenerateNewId().ToString();
+        var identity = new SearchProjectionIdentity(
+            tenantId, WebServiceSearchProjection.SourceType.ResourceTypeId, resourceId);
+        var eventTime = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        await CreateProjection(CreateWebSnapshot(tenantId, resourceId, "worker"));
+        await UpdateStatus(identity, new(2, 5, "current", null, eventTime));
+
+        await UpdateStatus(identity, new(resourceRevision, observedGeneration, "candidate", null,
+            eventTime.AddSeconds(eventTimeOffsetSeconds)));
+
+        var projected = await LoadAsync(tenantId, resourceId);
+        var status = Assert.IsType<SearchOperationalStatus>(projected.OperationalStatus.Value);
+        Assert.Equal(accepted ? "candidate" : "current", status.Status);
+        Assert.Equal(accepted ? resourceRevision : 2, status.ResourceRevision);
+        Assert.Equal(accepted ? observedGeneration : 5, status.ObservedGeneration);
+        Assert.Equal(accepted ? eventTime.AddSeconds(eventTimeOffsetSeconds) : eventTime,
+            status.EventOccurredAtUtc);
+    }
+
     [Fact]
     public async Task MultiTargetStatus_IsAggregatedAndSanitized()
     {
