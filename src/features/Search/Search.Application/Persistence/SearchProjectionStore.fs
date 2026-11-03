@@ -17,7 +17,7 @@ open Pole.Features.Search.Domain
 open Pole.Features.Search.Events
 
 type internal SearchProjectionStore(
-    database: IMongoDatabase,
+    client: IMongoClient,
     documents: IMongoCollection<SearchDocument>,
     sources: IMongoCollection<SearchSourceDocument>,
     versions: IMongoCollection<SearchProjectionVersionDocument>,
@@ -120,7 +120,7 @@ type internal SearchProjectionStore(
             if resourceRevision < 1L then
                 invalidArg (nameof documentSet) "Search projection resource revision must be positive."
 
-            use! session = database.Client.StartSessionAsync(cancellationToken = cancellationToken)
+            use! session = client.StartSessionAsync(cancellationToken = cancellationToken)
 
             let! _ =
                 session.WithTransactionAsync(
@@ -225,7 +225,7 @@ type internal SearchProjectionStore(
             if resourceRevision < 1L then
                 invalidArg (nameof resourceRevision) "Search projection resource revision must be positive."
 
-            use! session = database.Client.StartSessionAsync(cancellationToken = cancellationToken)
+            use! session = client.StartSessionAsync(cancellationToken = cancellationToken)
 
             let! _ =
                 session.WithTransactionAsync(
@@ -304,7 +304,7 @@ type internal SearchProjectionStore(
             cancellationToken: CancellationToken
         ) =
         task {
-            use! session = database.Client.StartSessionAsync(cancellationToken = cancellationToken)
+            use! session = client.StartSessionAsync(cancellationToken = cancellationToken)
 
             let! _ =
                 session.WithTransactionAsync(

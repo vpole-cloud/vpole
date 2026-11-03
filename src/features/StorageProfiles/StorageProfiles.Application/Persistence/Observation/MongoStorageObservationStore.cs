@@ -15,7 +15,9 @@ namespace Pole.Features.StorageProfiles.Application.Persistence.Observation;
 
 /// <summary>Feature-owned context fences, sanitized payloads and events; shared store owns the protocol.</summary>
 internal sealed class MongoStorageObservationStore(
-    IMongoDatabase database,
+    IMongoCollection<StorageObservationControlDocument> controls,
+    IMongoCollection<StorageObservationDemandDocument> demands,
+    IMongoCollection<StorageObservationSnapshotDocument> snapshots,
     MongoRunTransaction transactions,
     FenceDeploymentTargetObservation fenceTarget,
     StoreOutboxWrites storeOutboxWrites,
@@ -29,11 +31,10 @@ internal sealed class MongoStorageObservationStore(
         StorageObservationContext,
         StorageObservationControlDocument,
         StorageObservationDemandDocument,
-        StorageObservationSnapshotDocument> core = new(database,
+        StorageObservationSnapshotDocument> core = new(controls,
+        demands,
+        snapshots,
         transactions,
-        ControlsCollection,
-        DemandsCollection,
-        SnapshotsCollection,
         new Definition(fenceTarget, storeOutboxWrites));
 
     public Task<StorageObservationMutationOutcome> PutDemandAsync(StorageObservationDemand demand,

@@ -5,22 +5,15 @@ namespace Pole.Database.Observation;
 
 /// <summary>Storage protocol only. No Kubernetes models, resource types, authorization or event dependencies.</summary>
 public sealed class MongoObservationStore<TContext, TControl, TDemand, TSnapshot>(
-    IMongoDatabase database,
+    IMongoCollection<TControl> controls,
+    IMongoCollection<TDemand> demands,
+    IMongoCollection<TSnapshot> snapshots,
     MongoRunTransaction transactions,
-    string controlsCollection,
-    string demandsCollection,
-    string snapshotsCollection,
     IMongoObservationDefinition<TContext, TControl, TDemand, TSnapshot> definition)
     where TControl : class, IObservationControl
     where TDemand : class, IObservationDemand
     where TSnapshot : class, IObservationSnapshot
 {
-    private readonly IMongoCollection<TControl> controls = database.GetCollection<TControl>(controlsCollection);
-    private readonly IMongoCollection<TDemand> demands = database.GetCollection<TDemand>(demandsCollection);
-
-    private readonly IMongoCollection<TSnapshot> snapshots =
-        database.GetCollection<TSnapshot>(snapshotsCollection);
-
     private readonly MongoObservationFilters<TContext, TControl, TDemand, TSnapshot> filters = new(definition);
     private readonly MongoObservationPipelines<TContext, TControl, TDemand, TSnapshot> pipelines = new(definition);
     private readonly Func<TControl, string?> sourceOf = definition.Source.Compile();

@@ -93,7 +93,7 @@ public sealed class SearchProjectionOutboxTests(MongoReplicaSetFixture fixture) 
             await Services.GetRequiredService<CreateSearchProjection>()(snapshot);
         var before = await ProjectionState();
         var count = await DbContext.CountOutboxMessagesAsync(EventName);
-        var services = new ServiceCollection().AddSingleton(Fixture.Database)
+        var services = new ServiceCollection().AddSingleton(Fixture.Client).AddSingleton(Fixture.Database)
             .AddSingleton(new SearchSourceType(Type, "Widget", 3)).AddSearchFeature();
         services.AddSingleton<StoreOutboxWrites>(async (session, writes, ct) =>
         {

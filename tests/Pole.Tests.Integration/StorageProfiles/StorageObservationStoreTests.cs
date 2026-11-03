@@ -562,8 +562,11 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
             });
         };
         using var client = new MongoClient(settings);
+        var database = client.GetDatabase(fixture.Database.DatabaseNamespace.DatabaseName);
         var delayed = new MongoStorageObservationStore(
-            client.GetDatabase(fixture.Database.DatabaseNamespace.DatabaseName),
+            database.GetCollection<StorageObservationControlDocument>(MongoStorageObservationStore.ControlsCollection),
+            database.GetCollection<StorageObservationDemandDocument>(MongoStorageObservationStore.DemandsCollection),
+            database.GetCollection<StorageObservationSnapshotDocument>(MongoStorageObservationStore.SnapshotsCollection),
             new MongoRunTransaction(client),
             (request, session, ct) =>
                 new MongoFenceDeploymentTargetObservation(client

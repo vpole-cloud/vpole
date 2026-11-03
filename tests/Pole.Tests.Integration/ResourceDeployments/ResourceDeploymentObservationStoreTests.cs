@@ -858,7 +858,10 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         };
         using var client = new MongoClient(settings);
         var database = client.GetDatabase(fixture.Database.DatabaseNamespace.DatabaseName);
-        var delayed = new MongoResourceDeploymentObservationStore(database,
+        var delayed = new MongoResourceDeploymentObservationStore(
+            database.GetCollection<ObservationControlDocument>(MongoResourceDeploymentObservationStore.ControlsCollection),
+            database.GetCollection<ObservationDemandDocument>(MongoResourceDeploymentObservationStore.DemandsCollection),
+            database.GetCollection<ObservationSnapshotDocument>(MongoResourceDeploymentObservationStore.SnapshotsCollection),
             database.GetCollection<ResourceDeployment>("ResourceDeployments"),
             new MongoRunTransaction(client),
             (request, session, ct) => new MongoFenceDeploymentTargetObservation(
