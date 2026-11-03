@@ -7,7 +7,7 @@ namespace Pole.Dns;
 /// Canonical ASCII DNS name. Unicode input is deliberately not converted in this layer:
 /// callers must supply an already encoded punycode label when IDNA is required.
 /// </summary>
-public sealed partial record DnsName
+public sealed record DnsName
 {
     public const int MaximumLength = 253;
 
