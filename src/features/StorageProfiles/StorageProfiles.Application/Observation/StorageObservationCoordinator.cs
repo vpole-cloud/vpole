@@ -124,14 +124,14 @@ internal sealed class StorageObservationOwner(
                     cut.SourceVersion,
                     cut.SourceId,
                     inventory,
-                    ct)).Value switch
+                    ct)) switch
             {
                 StorageObservationSnapshot => ObservationSampleResult.Accepted,
                 StorageObservationRejected
                 {
                     Reason: StorageObservationRejection.SourceChanged
                 } => ObservationSampleResult.Superseded,
-                _ => ObservationSampleResult.OwnerLost
+                StorageObservationRejected => ObservationSampleResult.OwnerLost
             };
         }
 

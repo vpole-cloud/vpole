@@ -156,12 +156,12 @@ public sealed class ResourceDeploymentObservationOwner(
                     cut.SourceVersion,
                     cut.SourceId,
                     observation,
-                    ct)).Value switch
+                    ct)) switch
             {
                 ResourceDeploymentSharedObservation => ObservationSampleResult.Accepted,
                 ObservationStoreRejected { Reason: ObservationStoreRejection.BindingChanged } =>
                     ObservationSampleResult.Superseded,
-                _ => ObservationSampleResult.OwnerLost
+                ObservationStoreRejected => ObservationSampleResult.OwnerLost
             };
         }
 

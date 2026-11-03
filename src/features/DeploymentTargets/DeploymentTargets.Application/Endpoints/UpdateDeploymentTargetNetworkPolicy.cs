@@ -54,16 +54,16 @@ public sealed class UpdateDeploymentTargetNetworkPolicyHandler(
             request.Body.AllowIsolationNotEnforced,
             now);
         var result = await persistTarget(target, replacement, cancellationToken);
-        if (result is DeploymentTarget persisted)
+        return result switch
         {
-            var defaultId = await loadDefaultTargetId(cancellationToken);
-            return persisted.ToDto(persisted.Id == defaultId);
-        }
-
-        return result.Value switch
-        {
-            DeploymentTargetRevisionConflict conflict => conflict,
-            _ => throw new InvalidOperationException("An unchanged ingress configuration cannot conflict.")
+            DeploymentTarget persisted => persisted.ToDto(
+                persisted.Id == await loadDefaultTargetId(cancellationToken)),
+            PersistUpdatedDeploymentTargetError error => error switch
+            {
+                DeploymentTargetRevisionConflict conflict => conflict,
+                DeploymentTargetPublicBaseDomainReferenced or DeploymentTargetPublicBaseDomainConflict =>
+                    throw new InvalidOperationException("An unchanged ingress configuration cannot conflict.")
+            }
         };
     }
 }
