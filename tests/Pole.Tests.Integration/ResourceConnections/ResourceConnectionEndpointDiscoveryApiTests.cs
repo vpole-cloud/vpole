@@ -1,6 +1,6 @@
 using System.Collections.Immutable;
 using System.Net;
-using System.Net.Http.Json;
+using Pole.Tests.Integration.Http;
 using System.Text.Json;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -42,7 +42,7 @@ public sealed class ResourceConnectionEndpointDiscoveryApiTests(MongoReplicaSetF
             Members = ImmutableList.Create(TenantFactory.CreateMember(TestData.TenantId, TestData.UserId, TestData.UserEmail, TenantRole.Viewer))
         });
         var body = await Client.GetStringAsync(UriFor(destination.Id.ToUpperInvariant(), source.Id.ToUpperInvariant()));
-        var discovered = JsonSerializer.Deserialize<ResourceConnectionEndpointsDto>(body, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var discovered = JsonSerializer.Deserialize<ResourceConnectionEndpointsDto>(body, Pole.ASP.Helpers.PoleHttpJson.CreateSerializerOptions())!;
         Assert.Equal(destination.Id, discovered.ResourceId);
         var endpoint = Assert.Single(discovered.Endpoints);
         Assert.Equal("redis", endpoint.Protocol);

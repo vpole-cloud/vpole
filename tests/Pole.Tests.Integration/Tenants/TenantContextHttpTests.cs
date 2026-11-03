@@ -232,6 +232,7 @@ public sealed class TenantContextHttpTests
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
+        builder.Services.AddPoleHttpJson();
         builder.Services.AddTenantsFeature();
         builder.Services.AddPoleMediator();
         builder.Services.AddAuthorization();

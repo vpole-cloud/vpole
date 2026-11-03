@@ -155,13 +155,14 @@ describe('shared inventory API', () => {
 })
 
 describe('tenant role normalization', () => {
-  it('maps the numeric API enum to the frontend role contract', () => {
-    expect(normalizeTenantRole(3)).toBe('Owner')
-    expect(normalizeTenantRole(1)).toBe('Member')
+  it('rejects numeric API enum values', () => {
+    expect(() => normalizeTenantRole(3)).toThrow('Unknown tenant role value: 3')
+    expect(() => normalizeTenantRole(1)).toThrow('Unknown tenant role value: 1')
   })
 
   it('preserves a string role and rejects an unknown enum value', () => {
     expect(normalizeTenantRole('Admin')).toBe('Admin')
+    expect(() => normalizeTenantRole('Unknown')).toThrow('Unknown tenant role value: Unknown')
     expect(() => normalizeTenantRole(99)).toThrow('Unknown tenant role value: 99')
   })
 })

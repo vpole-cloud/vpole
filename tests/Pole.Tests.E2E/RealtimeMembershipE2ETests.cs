@@ -275,11 +275,11 @@ public sealed class RealtimeMembershipE2ETests(PoleE2EFixture fixture)
             {
                 userId = fixture.Beta.KeycloakUserId,
                 email = fixture.Beta.Email,
-                role
+                role = role.ToString()
             }
             : new
             {
-                role
+                role = role.ToString()
             },
         ct);
 
@@ -413,9 +413,7 @@ public sealed class RealtimeMembershipE2ETests(PoleE2EFixture fixture)
 
     private static bool HasRole(JsonElement tenants, string tenantId, TenantRole role) =>
         tenants.EnumerateArray().Any(tenant => Text(tenant, "id") == tenantId &&
-                                               (tenant.GetProperty("role").ValueKind == JsonValueKind.Number
-                                                   ? tenant.GetProperty("role").GetInt32() == (int)role
-                                                   : Text(tenant, "role") == role.ToString()));
+                                               Text(tenant, "role") == role.ToString());
 
     private static Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout, string message, CancellationToken ct) =>
         TestWait.UntilAsync(_ => Task.FromResult(condition()), timeout, message, ct);

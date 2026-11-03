@@ -1,5 +1,5 @@
 using System.Collections.Immutable;
-using System.Net.Http.Json;
+using Pole.Tests.Integration.Http;
 using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
@@ -45,7 +45,7 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
             ObjectId.GenerateNewId().ToString(), "cell", "target", "private-namespace").Failed("ProjectionUnavailable");
         await Fixture.Database.GetCollection<SecretProjection>("SecretProjections").InsertOneAsync(projection);
         var body = await Client.GetStringAsync($"/api/v1/secrets/{metadata.Id.ToUpperInvariant()}/projections");
-        var status = Assert.Single(JsonSerializer.Deserialize<SecretProjectionStatusDto[]>(body, new JsonSerializerOptions(JsonSerializerDefaults.Web))!);
+        var status = Assert.Single(JsonSerializer.Deserialize<SecretProjectionStatusDto[]>(body, Pole.ASP.Helpers.PoleHttpJson.CreateSerializerOptions())!);
         Assert.Equal("Failed", status.Health);
         Assert.Equal("ProjectionUnavailable", status.FailureCode);
         Assert.Equal(projection.DeploymentId, status.ResourceDeploymentId);

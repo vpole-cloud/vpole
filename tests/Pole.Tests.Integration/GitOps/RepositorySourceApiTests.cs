@@ -1,6 +1,6 @@
 using Pole.Features.GitOps.Migrations;
 using System.Net;
-using System.Net.Http.Json;
+using Pole.Tests.Integration.Http;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;

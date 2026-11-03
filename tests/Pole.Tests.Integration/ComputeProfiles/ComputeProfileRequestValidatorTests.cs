@@ -57,6 +57,28 @@ public sealed class ComputeProfileRequestValidatorTests
             error.ErrorMessage.Contains("one mapping", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData("0")]
+    [InlineData("999")]
+    [InlineData("invalid")]
+    public void Enum_names_in_string_request_fields_reject_numeric_and_unknown_values(string value)
+    {
+        var body = ValidBody() with { Architecture = value };
+        Assert.Contains(new CreateComputeProfileRequestValidator().Validate(new CreateComputeProfileRequest(body)).Errors,
+            error => error.PropertyName == "Body.Architecture");
+
+        var affinity = new ComputeNodeAffinityExpressionRequestBody("example/key", value, ["value"]);
+        Assert.Contains(new ComputeNodeAffinityExpressionRequestBodyValidator().Validate(affinity).Errors,
+            error => error.PropertyName == "Operator");
+
+        var invalidOperator = new ComputeTolerationRequestBody("example/key", value, null, "NoSchedule", null);
+        Assert.Contains(new ComputeTolerationRequestBodyValidator().Validate(invalidOperator).Errors,
+            error => error.PropertyName == "Operator");
+        var invalidEffect = invalidOperator with { Operator = "Exists", Effect = value };
+        Assert.Contains(new ComputeTolerationRequestBodyValidator().Validate(invalidEffect).Errors,
+            error => error.PropertyName == "Effect");
+    }
+
     private static CreateComputeProfileRequestBody ValidBody() =>
         new("test-profile",
             "Default",

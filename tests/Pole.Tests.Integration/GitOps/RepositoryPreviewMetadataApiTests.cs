@@ -1,5 +1,5 @@
 using System.Net;
-using System.Net.Http.Json;
+using Pole.Tests.Integration.Http;
 using Pole.Features.GitOps.Application.Endpoints.Sources.Previews;
 using Xunit;
 

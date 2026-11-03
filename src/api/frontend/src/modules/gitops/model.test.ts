@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sourceExecuting, sourceInterval, retryAvailable, settingsEqual } from './model'
+import { sourceExecuting, sourceInterval, phaseLabel, retryAvailable, settingsEqual } from './model'
 import { selectedReference, referenceParams } from './navigation'
 import { gitOpsSourceFixture as source, gitOpsRunFixture as run } from './testFixtures'
 describe('GitOps execution and command guards', () => {
@@ -57,4 +57,11 @@ describe('source-bound URL references', () => {
     expect(params.has('run')).toBe(false)
     expect(selectedReference(params.toString(), 'source', 'preview')).toBe('preview')
   })
+})
+
+it('renders named declaration phases and the nullable lifecycle phase', () => {
+  expect(phaseLabel('Prepare')).toBe('Prepare')
+  expect(phaseLabel('Bind')).toBe('Bind')
+  expect(phaseLabel('Configure')).toBe('Configure')
+  expect(phaseLabel(null)).toBe('Lifecycle')
 })

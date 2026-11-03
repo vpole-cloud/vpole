@@ -2,7 +2,7 @@ using Pole.Observation;
 using Pole.Features.Core.Multitenancy;
 using System.Collections.Immutable;
 using System.Net;
-using System.Net.Http.Json;
+using Pole.Tests.Integration.Http;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;

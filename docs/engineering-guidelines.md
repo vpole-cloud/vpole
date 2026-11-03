@@ -60,6 +60,12 @@ Separate validation by the kind of information required to evaluate a rule.
 
 ### Request validation
 
+HTTP JSON enum values use their declared string names. The shared `AddPoleHttpJson` HTTP
+configuration rejects integer tokens and numeric strings, including defined enum ordinals.
+Property converters at this boundary must also reject integers; they take precedence over the
+shared options. String fields that represent enums must validate named values. Persistence,
+integration events and external protocols retain their own serialization configuration.
+
 Request validation checks the request itself. This includes required values, formats, ranges, lengths, and relationships between fields that can be evaluated without reading external state.
 
 - Keep request validation deterministic and free of I/O.

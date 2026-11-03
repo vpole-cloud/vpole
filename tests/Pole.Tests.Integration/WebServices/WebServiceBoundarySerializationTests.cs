@@ -95,7 +95,7 @@ public sealed class WebServiceBoundarySerializationTests
     [Fact]
     public void CreateRequest_OmittedExposureDefaultsPrivate_AndNumericEnumsAreRejected()
     {
-        var webJsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var webJsonOptions = Pole.ASP.Helpers.PoleHttpJson.CreateSerializerOptions();
         var omitted = JsonSerializer.Deserialize<CreateWebServiceRequestBody>("{}", webJsonOptions);
 
         Assert.NotNull(omitted);

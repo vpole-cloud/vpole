@@ -157,7 +157,7 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
             {
                 userId = fixture.Beta.KeycloakUserId,
                 email = fixture.Beta.Email,
-                role = TenantRole.Viewer
+                role = TenantRole.Viewer.ToString()
             }, ct);
         try
         {

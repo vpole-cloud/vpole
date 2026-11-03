@@ -25,7 +25,6 @@ public sealed record CreateRepositorySourceBody(
     string Branch,
     string ManifestDirectory,
     int PollIntervalSeconds = 300,
-    [property: JsonConverter(typeof(JsonStringEnumConverter<GitPrunePolicy>))]
     GitPrunePolicy Prune = GitPrunePolicy.Retain);
 
 public sealed record CreateRepositorySourceRequest(

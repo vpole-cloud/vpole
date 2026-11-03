@@ -471,7 +471,6 @@ public sealed record CreateWebServiceRequestBody(
     ImmutableHashSet<string> Tags,
     [property: JsonConverter(typeof(WebServiceExposureModeJsonConverter))]
     WebServiceExposureMode Exposure = WebServiceExposureMode.Private,
-    [property: JsonConverter(typeof(JsonStringEnumConverter<WebServiceCreationMode>))]
     WebServiceCreationMode CreationMode = WebServiceCreationMode.Image);
 
 public enum WebServiceCreationMode { Image, SourceBuild }

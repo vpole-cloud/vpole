@@ -41,7 +41,7 @@ it('reads final receipts when a run completes after its last operation poll', as
             kind: 'ResourceGroup',
             name: 'group',
             resourceId: 'group',
-            phase: 0,
+            phase: 'Prepare',
             status: complete ? 'Succeeded' : 'Pending',
             blocker: null,
             changed: complete,
@@ -74,7 +74,8 @@ it('reads final receipts when a run completes after its last operation poll', as
   await act(async () => {
     await vi.advanceTimersByTimeAsync(5001)
   })
-  const operation = () => app.container.querySelector('[data-testid="gitops-operation-group-0"]')!
+  const operation = () =>
+    app.container.querySelector('[data-testid="gitops-operation-group-Prepare"]')!
   expect(operation().textContent).toContain('Pending')
   complete = true
   await act(async () =>

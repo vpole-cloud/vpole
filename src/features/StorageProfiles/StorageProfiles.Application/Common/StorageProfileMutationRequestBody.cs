@@ -81,8 +81,7 @@ public abstract class StorageProfileMutationRequestBodyValidator<TBody>
 
     private static bool BeDefinedEnumValue<TEnum>(string? value)
         where TEnum : struct, Enum =>
-        Enum.TryParse<TEnum>(value, ignoreCase: true, out var parsed) &&
-        Enum.IsDefined(parsed);
+        Enum.GetNames<TEnum>().Contains(value?.Trim(), StringComparer.OrdinalIgnoreCase);
 }
 
 public sealed class StorageProfileTargetMappingRequestBodyValidator
@@ -109,11 +108,8 @@ public sealed class StorageProfileTenantAccessDtoValidator
     {
         RuleFor(access => access.Mode)
             .Must(mode =>
-                Enum.TryParse<StorageProfileTenantAccessMode>(
-                    mode,
-                    ignoreCase: true,
-                    out var parsed) &&
-                Enum.IsDefined(parsed))
+                Enum.GetNames<StorageProfileTenantAccessMode>()
+                    .Contains(mode?.Trim(), StringComparer.OrdinalIgnoreCase))
             .WithMessage("Tenant access mode is invalid.");
         RuleFor(access => access.TenantIds)
             .NotNull();

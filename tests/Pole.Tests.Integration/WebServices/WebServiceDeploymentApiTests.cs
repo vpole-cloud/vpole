@@ -1,7 +1,8 @@
+using JsonContent = System.Net.Http.Json.JsonContent;
 using System.Collections.Immutable;
 using System.Net;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
+using Pole.Tests.Integration.Http;
 using System.Text.Json;
 using MongoDB.Bson;
 using MongoDB.Driver;

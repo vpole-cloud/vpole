@@ -10,10 +10,8 @@ public sealed class DeploymentTargetConnectionRequestBodyValidator
     {
         RuleFor(body => body.Kind)
             .NotEmpty()
-            .Must(kind => Enum.TryParse<DeploymentTargetConnectionKind>(
-                kind,
-                ignoreCase: true,
-                out _))
+            .Must(kind => Enum.GetNames<DeploymentTargetConnectionKind>()
+                .Contains(kind?.Trim(), StringComparer.OrdinalIgnoreCase))
             .WithMessage("Connection kind is invalid.");
 
         When(IsKind(DeploymentTargetConnectionKind.InCluster), () =>

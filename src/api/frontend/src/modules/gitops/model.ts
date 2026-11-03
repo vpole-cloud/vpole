@@ -1,4 +1,10 @@
-import type { GitOpsSource, GitOpsRun, SourceSettings, RepositoryLocation } from './types'
+import type {
+  GitOpsSource,
+  GitOpsRun,
+  GitOpsOperation,
+  SourceSettings,
+  RepositoryLocation,
+} from './types'
 export const sections = ['overview', 'resources', 'runs', 'previews', 'settings'] as const
 export type GitOpsSection = (typeof sections)[number]
 const executing = new Set([
@@ -33,8 +39,7 @@ export const retryAvailable = (source: GitOpsSource, run: GitOpsRun | null) =>
   run.configurationRevision === source.revision &&
   Boolean(run.commit) &&
   (run.status === 'Blocked' || run.status === 'Failed')
-export const phaseLabel = (phase: 0 | 1 | 2 | null) =>
-  phase === null ? 'Lifecycle' : ['Prepare', 'Bind', 'Configure'][phase]
+export const phaseLabel = (phase: GitOpsOperation['phase']) => phase ?? 'Lifecycle'
 export const safeCode = (code: string | null | undefined) =>
   code && /^[a-zA-Z0-9_.-]{1,160}$/.test(code) ? code : 'Unavailable'
 
