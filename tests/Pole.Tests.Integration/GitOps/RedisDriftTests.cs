@@ -270,8 +270,11 @@ public sealed partial class DeclarativePipelineTests
         };
         var providers = Services.GetServices<IDeclarativeResourceProvider>().ToArray();
         var redisProvider = providers.Single(item => item.Kind == "RedisService");
+        var executionType = redisProvider.GetType().Assembly.GetType(
+            "Pole.Features.RedisServices.Application.Persistence.RedisDeclarationExecution", throwOnError: true)!;
+        var execution = ActivatorUtilities.CreateInstance(Services, executionType, rejectAfterCreate);
         var failing = (IDeclarativeResourceProvider)ActivatorUtilities.CreateInstance(Services,
-            redisProvider.GetType(), rejectAfterCreate);
+            redisProvider.GetType(), execution);
         var registry = new DeclarativeProviderRegistry(providers.Select(item =>
             item.Kind == "RedisService" ? failing : item));
         var result = await new RepositoryPipelineDriver(Services, Fixture, repository, customProviders: registry)
