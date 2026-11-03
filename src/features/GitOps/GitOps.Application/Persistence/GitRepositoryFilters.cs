@@ -62,6 +62,9 @@ internal static class GitRepositoryFilters
         SourceRuns(stamp.Source.TenantId, stamp.Source.SourceId) &
         Builders<GitReconciliationRun>.Filter.Lt(item => item.Stamp.Generation, stamp.Generation);
 
+    public static FilterDefinition<GitReconciliationRun> LifecycleInput() =>
+        Builders<GitReconciliationRun>.Filter.OfType<GitRunInput, GitInputLifecycle>(item => item.Input);
+
     public static FilterDefinition<GitReconciliationRun> HumanConfirmedLifecycle() =>
         Builders<GitReconciliationRun>.Filter.OfType<GitRunInput, GitInputLifecycle>(item => item.Input) &
         Builders<GitReconciliationRun>.Filter.OfType<GitPreviewState, GitPreviewConfirmed>(
