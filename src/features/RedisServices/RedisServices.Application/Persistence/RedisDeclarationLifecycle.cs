@@ -10,10 +10,22 @@ using Pole.Features.RedisServices.Application.Persistence.Mutations;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
+using static Pole.Features.RedisServices.Application.Persistence.RedisDeclarations;
+using static Pole.Features.RedisServices.Application.Persistence.RedisPlanning;
 
 namespace Pole.Features.RedisServices.Application.Persistence;
 
-internal sealed partial class DeclarativeRedisProvider
+internal sealed class RedisDeclarationLifecycle(
+    IMongoCollection<Redis> resources,
+    IGitOpsMutations git,
+    LoadResourceDeploymentPlanningSnapshot loadPlacements,
+    FenceResourceDeploymentPlanningSnapshot fencePlacements,
+    BeginRedisDeletion beginDeletion,
+    RequestResourceDeploymentDeletion deletePlacement,
+    IQuotaUsageRelease releaseQuota,
+    IGitLifecyclePlanGuard lifecycleGuard,
+    LoadResourceConnectionCascadePlanning loadCascade,
+    TimeProvider clock)
 {
     public string DependencyOwner => "RedisServices";
 
@@ -194,4 +206,21 @@ internal sealed partial class DeclarativeRedisProvider
     private static bool SameLifecycleVersions(DeclarationVersionToken left, DeclarationVersionToken right) =>
         left.Documents.OrderBy(item => item.DocumentId, StringComparer.Ordinal)
             .SequenceEqual(right.Documents.OrderBy(item => item.DocumentId, StringComparer.Ordinal));
+
+    public async Task<IReadOnlyList<string>> ReadLifecycleWarningsAsync(
+        ReadLifecycleWarningsRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        if (!session.IsInTransaction)
+            throw new InvalidOperationException("Lifecycle warning reads require an active transaction.");
+
+        if (request.Action is not (GitLifecycleAction.Remove or GitLifecycleAction.Replace) ||
+            !await resources.Find(session, RedisFilters.ById(request.TenantId, request.ResourceId))
+                .AnyAsync(cancellationToken))
+            return [];
+
+        // RedisInKubernetes requests native PVC deletion through StatefulSet WhenDeleted=Delete.
+        return ["RedisPersistentVolumeClaimsDeleted", "PersistentVolumeReclaimPolicyDeterminesDataRetention"];
+    }
 }

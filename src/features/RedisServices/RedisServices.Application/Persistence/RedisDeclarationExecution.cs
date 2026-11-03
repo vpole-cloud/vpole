@@ -10,10 +10,22 @@ using Pole.Features.RedisServices.Application.Persistence.Mutations;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
+using static Pole.Features.RedisServices.Application.Persistence.RedisDeclarations;
+using static Pole.Features.RedisServices.Application.Persistence.RedisPlanning;
 
 namespace Pole.Features.RedisServices.Application.Persistence;
 
-internal sealed partial class DeclarativeRedisProvider
+internal sealed class RedisDeclarationExecution(
+    IMongoCollection<Redis> resources,
+    IGitOpsMutations git,
+    MongoRunTransaction transactions,
+    RedisDeclarationPlanner planner,
+    IQuotaAdmissionExecutor quotas,
+    IResourceRegistrar registrar,
+    CreateResourceDeployment createPlacement,
+    RequestResourceDeploymentSetApply applyPlacements,
+    PersistCreatedRedis persistCreated,
+    PersistUpdatedRedis persistUpdated)
 {
     public async Task<GitOperationResult> ApplyAsync(GitOperation operation, CancellationToken ct)
     {
@@ -23,7 +35,7 @@ internal sealed partial class DeclarativeRedisProvider
                 new RedisDeclarationRejected(RedisDeclarationError.UnexpectedOperation), ct);
 
         var loaded = await transactions.InvokeOutcomeAsync<ReadRedisPlanningOutcome>(async (tx, token) =>
-            tx.Commit(await ReadPlanningAsync(operation.Input, tx.Session, token)), ct);
+            tx.Commit(await planner.ReadPlanningAsync(operation.Input, tx.Session, token)), ct);
         if (loaded is DeclarationReadBlocked blocked)
             return await BlockAsync(operation, blocked.Failure, ct);
 

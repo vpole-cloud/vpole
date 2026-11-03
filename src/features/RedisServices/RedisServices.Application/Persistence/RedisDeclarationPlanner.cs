@@ -10,10 +10,24 @@ using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.StorageProfiles.Contracts;
+using static Pole.Features.RedisServices.Application.Persistence.RedisDeclarations;
+using static Pole.Features.RedisServices.Application.Persistence.RedisPlanning;
 
 namespace Pole.Features.RedisServices.Application.Persistence;
 
-internal sealed partial class DeclarativeRedisProvider
+internal sealed class RedisDeclarationPlanner(
+    IMongoCollection<Redis> resources,
+    IGitOpsMutations git,
+    LoadIsolationScopePlanningSnapshot loadScope,
+    FenceIsolationScopePlanningSnapshot fenceScope,
+    ResolveDeploymentTargetPlanningSnapshot loadTarget,
+    FenceDeploymentTargetPlanningSnapshot fenceTarget,
+    ResolveComputeProfilePlanningSnapshot loadCompute,
+    FenceComputeProfilePlanningSnapshot fenceCompute,
+    ResolveStorageProfilePlanningSnapshot loadStorage,
+    FenceStorageProfilePlanningSnapshot fenceStorage,
+    LoadResourceDeploymentPlanningSnapshot loadPlacements,
+    FenceResourceDeploymentPlanningSnapshot fencePlacements)
 {
     public async Task<ReadCurrentDeclarationOutcome> ReadCurrentAsync(
         ReadCurrentDeclarationRequest request,
@@ -123,7 +137,7 @@ internal sealed partial class DeclarativeRedisProvider
         return new DeclarationFenced();
     }
 
-    private async Task<ReadRedisPlanningOutcome> ReadPlanningAsync(
+    internal async Task<ReadRedisPlanningOutcome> ReadPlanningAsync(
         GitOperationInput operation,
         IClientSessionHandle session,
         CancellationToken ct)
@@ -189,56 +203,4 @@ internal sealed partial class DeclarativeRedisProvider
 
         return new RedisPlanningDependencies(current, scope, target, compute, storage, placements);
     }
-
-    private static DeclarationDocumentVersion[] DependencyVersions(RedisPlanningDependencies dependencies) =>
-    [
-        new($"ResourceGroup/{dependencies.Scope.ResourceGroupId}", dependencies.Scope.ResourceGroupRevision),
-        new($"IsolationScope/{dependencies.Scope.IsolationScopeId}", dependencies.Scope.ScopeRevision),
-        new($"DeploymentTarget/{dependencies.Target.Target.Id}", dependencies.Target.Target.Revision),
-        new($"DeploymentTarget/{dependencies.Target.Target.Id}/WorkloadConfiguration",
-            dependencies.Target.Target.WorkloadConfiguration.Revision),
-        new($"ComputeProfile/{dependencies.Compute.Compute.ComputeProfileId}/Policy",
-            dependencies.Compute.PolicyRevision),
-        new($"StorageProfile/{dependencies.Storage.Storage.ProfileId}/Policy", dependencies.Storage.PolicyRevision),
-        .. dependencies.Placements?.Items.Select(item =>
-            new DeclarationDocumentVersion($"ResourceDeployment/{item.DeploymentId}", item.Revision)) ?? []
-    ];
-
-    private static DeclarationProjection Project(
-        DeclarationPhase phase,
-        RedisManagedIdentity identity,
-        ResourceDeploymentComputeConfiguration compute,
-        IEnumerable<string> tags) =>
-        new(DeclarationJson.Write(identity), phase == DeclarationPhase.Prepare
-            ? DeclarationJson.Write(new { })
-            : DeclarationJson.Write(new
-            {
-                tags = tags.Order(StringComparer.Ordinal),
-                computeProfileId = compute.ComputeProfileId,
-                computeProfileRevision = compute.ComputeProfileRevision,
-                compute = ComputeProjection(compute)
-            }));
-
-    private static ResourceDeploymentStorageConfiguration StorageConfiguration(ResolvedStorageProfile storage) =>
-        new(storage.ProfileId, storage.ProfileRevision, storage.StorageClassName);
 }
-
-internal sealed record RedisManagedIdentity(
-    string ResourceGroupId,
-    string IsolationScopeId,
-    string DeploymentTargetId,
-    int StorageSizeGb,
-    string StorageProfileId,
-    ResourceDeploymentStorageConfiguration Storage);
-
-internal sealed record RedisPlanningDependencies(
-    Redis? Current,
-    IsolationScopePlanningSnapshot Scope,
-    DeploymentTargetPlanningSnapshot Target,
-    ComputeProfilePlanningSnapshot Compute,
-    StorageProfilePlanningSnapshot Storage,
-    ResourceDeploymentPlanningSnapshot? Placements);
-
-internal union ReadRedisPlanningOutcome(
-    RedisPlanningDependencies,
-    DeclarationReadBlocked);
