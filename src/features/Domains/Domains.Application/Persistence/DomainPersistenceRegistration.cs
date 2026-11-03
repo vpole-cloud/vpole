@@ -6,6 +6,7 @@ using Pole.Features.Domains.Application.Endpoints;
 using Pole.Features.Domains.Application.Persistence.DomainZones;
 using Pole.Features.Domains.Application.Persistence.HostnameBindings;
 using Pole.Features.Domains.Contracts;
+using Pole.Features.Domains.Domain;
 
 namespace Pole.Features.Domains.Application.Persistence;
 
