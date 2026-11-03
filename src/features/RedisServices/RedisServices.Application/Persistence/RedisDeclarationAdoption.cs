@@ -25,8 +25,8 @@ internal sealed class RedisDeclarationAdoption(
         IClientSessionHandle session,
         CancellationToken ct)
     {
-        var references = await referencePreparation.ReadPreviewReferencesAsync(new(request.TenantId, request.Declaration,
-            request.References), session, ct);
+        var references = await referencePreparation.ReadPreviewReferencesAsync(
+            new(request.TenantId, request.Declaration, request.References), session, ct);
         if (references is DeclarationReadBlocked blocked)
             return blocked;
         var accepted = ((GitPreviewReferencesSnapshot)references.Value).References;

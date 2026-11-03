@@ -88,9 +88,9 @@ internal sealed class RedisDeclarationReferences(
     }
 
     private sealed record RedisPlanningReferences(
-    string? TargetId,
-    string? ComputeId,
-    string? StorageId);
+        string? TargetId,
+        string? ComputeId,
+        string? StorageId);
 
     public async Task<ReadPreviewReferencesOutcome> ReadPreviewReferencesAsync(
         ReadPreviewReferencesRequest request,
