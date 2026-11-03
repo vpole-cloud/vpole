@@ -208,7 +208,8 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             Execution = new ClaimedSourceBuildExecution("deployment-test", 1, now.AddMinutes(2))
         };
         job = job.StartCloning(now).StartAnalyzing(now).StartBuilding(now)
-            .StartPushing("harbor.test/pole-test/web-services/service-1:build-1", Digest, now);
+            .StartPushing(SourceBuildArtifactFactory.Create(
+                "harbor.test/pole-test/web-services/service-1:build-1", Digest), now);
         await DbContext.SourceBuildJobs.InsertOneAsync(job);
         await DbContext.RunOutcomeInTransactionAsync<RegisteredResource>(
             async (transaction, cancellationToken) =>

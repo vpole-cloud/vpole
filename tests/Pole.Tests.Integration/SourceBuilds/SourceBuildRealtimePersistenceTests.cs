@@ -227,7 +227,8 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
         var job = Job();
         var now = job.UpdatedAtUtc;
         return job.StartCloning(now.AddSeconds(1)).StartAnalyzing(now.AddSeconds(2)).StartBuilding(now.AddSeconds(3))
-            .StartPushing("image-pilot", "digest-pilot", now.AddSeconds(4))
-            .StartDeploying("digest-pilot", "release-pilot", now.AddSeconds(5));
+            .StartPushing(SourceBuildArtifactFactory.Create("image-pilot", "digest-pilot"), now.AddSeconds(4))
+            .StartDeploying(SourceBuildArtifactFactory.Create("image-pilot", "digest-pilot"), "release-pilot",
+                now.AddSeconds(5));
     }
 }

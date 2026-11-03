@@ -21,10 +21,6 @@ public sealed record BuildKitBuildRequest(
         $"BuildKitBuildRequest(context={ContextPath}, target={Target.Reference}, credentials=[REDACTED])";
 }
 
-public sealed record BuiltContainerImage(
-    string Reference,
-    string Digest);
-
 public sealed record BuildKitNotConfigured;
 
 public sealed record BuildKitTimedOut(int TimeoutMinutes);
@@ -40,7 +36,7 @@ public union BuildContainerImageError(
     BuildKitBuildRejected);
 
 public union BuildContainerImageOutcome(
-    BuiltContainerImage,
+    SourceBuildArtifact,
     BuildContainerImageError);
 
 public delegate Task<BuildContainerImageOutcome>
@@ -141,7 +137,7 @@ public sealed class BuildKitClient(
                     new BuildKitBuildRejected("BuildKit did not return a valid image digest."));
             }
 
-            return new BuiltContainerImage(request.Target.Reference, digest);
+            return SourceBuildArtifactFactory.Create(request.Target.Reference, digest);
         }
         finally
         {

@@ -220,8 +220,20 @@ public sealed class SourceBuildExecutionRecoveryTests(Pole.Testing.MongoReplicaS
         {
             "repository" => request with { Input = request.Input with { SourceRepositoryId = "other-repository" } },
             "commit" => request with { Input = request.Input with { CommitSha = new string('b', 40) } },
-            "reference" => request with { Input = request.Input with { ImageReference = "other/image:tag" } },
-            "digest" => request with { ImageDigest = "sha256:other" },
+            "reference" => request with
+            {
+                Input = request.Input with
+                {
+                    Artifact = request.Input.Artifact with { Reference = "other/image:tag" }
+                }
+            },
+            "digest" => request with
+            {
+                Input = request.Input with
+                {
+                    Artifact = request.Input.Artifact with { Digest = "sha256:other" }
+                }
+            },
             _ => throw new ArgumentOutOfRangeException(nameof(mismatch))
         };
         await transactions.InvokeOutcomeAsync<bool>(async (transaction, ct) =>
@@ -305,7 +317,8 @@ public sealed class SourceBuildExecutionRecoveryTests(Pole.Testing.MongoReplicaS
 
     private static SourceBuildPromotionRequest Promotion(SourceBuildJob job) =>
         new(job.TenantId, job.Id, job.WebServiceId, new(job.ConfigurationId, 1, 1, "worker", 1),
-            new(job.SourceRepositoryId, job.CommitSha, "registry/application:attempt-one"), "sha256:artifact");
+            new(job.SourceRepositoryId, job.CommitSha,
+                new("registry/application:attempt-one", "sha256:artifact")));
 
     private ServiceProvider Services() => new ServiceCollection().AddLogging().AddSingleton(fixture.Client)
         .AddSingleton(fixture.Database).AddSingleton(fixture.StoreOutboxWrites).AddSingleton<MongoRunTransaction>()
@@ -338,10 +351,11 @@ public sealed class SourceBuildExecutionRecoveryTests(Pole.Testing.MongoReplicaS
         job = job.StartBuilding(now);
         if (state == "Building") return job;
 
-        job = job.StartPushing("registry/application:attempt-one", "sha256:artifact", now);
+        job = job.StartPushing(SourceBuildArtifactFactory.Create("registry/application:attempt-one", "sha256:artifact"), now);
         if (state == "Pushing") return job;
 
-        job = job.StartDeploying("sha256:artifact", "release-one", now);
+        job = job.StartDeploying(SourceBuildArtifactFactory.Create("registry/application:attempt-one", "sha256:artifact"),
+            "release-one", now);
         return state switch
         {
             "Deploying" => job,

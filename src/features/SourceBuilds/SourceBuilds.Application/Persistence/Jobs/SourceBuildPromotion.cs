@@ -23,13 +23,14 @@ internal sealed class SourceBuildPromotion(
         var previous = await receipts.Find(session, SourceBuildPromotionReceiptFilters.ByJob(request))
             .FirstOrDefaultAsync(cancellationToken);
         if (previous is not null)
-            return previous.WebServiceId == request.WebServiceId && previous.ImageDigest == request.ImageDigest &&
+            return previous.WebServiceId == request.WebServiceId &&
+                previous.Artifact.Reference == request.Input.Artifact.Reference &&
+                previous.Artifact.Digest == request.Input.Artifact.Digest &&
                 previous.ConfigurationId == request.Authority.ConfigurationId &&
                 previous.ConfigurationRevision == request.Authority.ConfigurationRevision &&
                 previous.Generation == request.Authority.Generation &&
                 previous.SourceRepositoryId == request.Input.SourceRepositoryId &&
-                previous.CommitSha == request.Input.CommitSha &&
-                previous.ImageReference == request.Input.ImageReference
+                previous.CommitSha == request.Input.CommitSha
                 ? new SourceBuildAlreadyPromoted(previous.ReleaseId, previous.WebServiceRevision)
                 : new SourceBuildPromotionSuperseded();
 
@@ -38,8 +39,8 @@ internal sealed class SourceBuildPromotion(
         if (job is null || job.State is not PushingSourceBuild pushing ||
             job.SourceRepositoryId != request.Input.SourceRepositoryId ||
             job.CommitSha != request.Input.CommitSha ||
-            pushing.ImageReference != request.Input.ImageReference ||
-            pushing.ExpectedDigest != request.ImageDigest ||
+            pushing.Artifact.Reference != request.Input.Artifact.Reference ||
+            pushing.Artifact.Digest != request.Input.Artifact.Digest ||
             job.WebServiceId != request.WebServiceId ||
             job.ConfigurationId != request.Authority.ConfigurationId ||
             job.InputVersion.ConfigurationRevision != request.Authority.ConfigurationRevision ||
@@ -73,10 +74,12 @@ internal sealed class SourceBuildPromotion(
         var promotion = request.Promotion;
         var job = await jobs.Find(session, SourceBuildJobFilters.ById(promotion.TenantId, promotion.BuildJobId))
             .SingleAsync(cancellationToken);
-        var receipt = SourceBuildPromotionReceiptFactory.Create(job, promotion.ImageDigest,
+        var artifact = SourceBuildArtifactFactory.Create(promotion.Input.Artifact.Reference,
+            promotion.Input.Artifact.Digest);
+        var receipt = SourceBuildPromotionReceiptFactory.Create(job, artifact,
             request.ReleaseId, request.Revision);
         await receipts.InsertOneAsync(session, receipt, cancellationToken: cancellationToken);
-        var deploying = job.StartDeploying(promotion.ImageDigest, request.ReleaseId,
+        var deploying = job.StartDeploying(artifact, request.ReleaseId,
             timeProvider.GetUtcNow().UtcDateTime);
         var written = await jobs.ReplaceOneAsync(session, SourceBuildJobFilters.AtUpdatedAt(job), deploying,
             cancellationToken: cancellationToken);

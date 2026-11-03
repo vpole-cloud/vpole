@@ -133,13 +133,12 @@ public sealed class SourceBuildJobExecutor(
                     await FailAsync(job, SourceBuildPhase.Building, imageError);
                     return;
                 }
-                var image = (BuiltContainerImage)imageResult.Value;
+                var image = (SourceBuildArtifact)imageResult.Value;
                 await capture.WriteAsync(SourceBuildLogStream.System,
                     "BuildKit output capture finished; deployment outcome is tracked separately.\n");
 
                 var pushing = job.StartPushing(
-                    image.Reference,
-                    image.Digest,
+                    image,
                     timeProvider.GetUtcNow().UtcDateTime);
                 if (!await tryPersistSourceBuildJob(job, pushing, cancellationToken))
                     return;
@@ -212,7 +211,7 @@ public sealed class SourceBuildJobExecutor(
                 var deployment = (SourceBuildDeploymentResult)deploymentResult.Value;
 
                 var deploying = job.StartDeploying(
-                    artifact.Digest,
+                    SourceBuildArtifactFactory.Create(image.Reference, artifact.Digest),
                     deployment.ReleaseId,
                     timeProvider.GetUtcNow().UtcDateTime);
                 await tryPersistSourceBuildJob(job, deploying, cancellationToken);

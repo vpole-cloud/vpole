@@ -13,29 +13,52 @@ public sealed class SourceBuildDomainTests
         var now = new DateTime(2026, 10, 31, 8, 0, 0, DateTimeKind.Utc);
         var job = Job(now).StartCloning(now.AddSeconds(1)).StartAnalyzing(now.AddSeconds(2))
             .StartBuilding(now.AddSeconds(3))
-            .StartPushing("harbor.test/application:build-1", "sha256:digest", now.AddSeconds(4))
-            .StartDeploying("sha256:digest", "release-1", now.AddSeconds(5)).Succeed(now.AddSeconds(6));
+            .StartPushing(SourceBuildArtifactFactory.Create("harbor.test/application:build-1", "sha256:digest"),
+                now.AddSeconds(4))
+            .StartDeploying(SourceBuildArtifactFactory.Create("harbor.test/application:build-1", "sha256:digest"),
+                "release-1", now.AddSeconds(5)).Succeed(now.AddSeconds(6));
         var stored = BsonSerializer.Deserialize<SourceBuildJob>(job.ToBson());
         Assert.Equal(job, stored);
         Assert.Equal(new SourceBuildInputVersion(3, 1, 7), stored.InputVersion);
         Assert.Equal(new string('a', 40), stored.CommitSha);
         Assert.Equal("FROM scratch", stored.Recipe.Dockerfile);
-        Assert.Equal("release-1", Assert.IsType<SucceededSourceBuild>(stored.State).ReleaseId);
+        var succeeded = Assert.IsType<SucceededSourceBuild>(stored.State);
+        Assert.Equal("release-1", succeeded.ReleaseId);
+        Assert.Equal(new SourceBuildArtifact("harbor.test/application:build-1", "sha256:digest"), succeeded.Artifact);
         Assert.Equal("user-1", Assert.IsType<ManualSourceBuildTrigger>(stored.Trigger).UserId);
     }
 
     [Fact]
-    public void PushingStatePinsArtifactDigestAcrossBsonAndRejectsDifferentPromotion()
+    public void BuildStatesPinArtifactAcrossBsonAndRejectDifferentPromotion()
     {
         var now = new DateTime(2026, 10, 31, 8, 0, 0, DateTimeKind.Utc);
         var job = Job(now).StartCloning(now).StartAnalyzing(now).StartBuilding(now)
-            .StartPushing("registry/application:attempt-1", "sha256:original", now);
+            .StartPushing(SourceBuildArtifactFactory.Create("registry/application:attempt-1", "sha256:original"), now);
         var stored = BsonSerializer.Deserialize<SourceBuildJob>(job.ToBson());
         Assert.Equal(job, stored);
-        Assert.Equal("sha256:original", Assert.IsType<PushingSourceBuild>(stored.State).ExpectedDigest);
-        Assert.Throws<ArgumentException>(() => stored.StartDeploying("sha256:other", "release-1", now));
+        Assert.Equal(new SourceBuildArtifact("registry/application:attempt-1", "sha256:original"),
+            Assert.IsType<PushingSourceBuild>(stored.State).Artifact);
+        var deploying = stored.StartDeploying(
+            SourceBuildArtifactFactory.Create("registry/application:attempt-1", "sha256:original"),
+            "release-1", now);
+        var storedDeploying = BsonSerializer.Deserialize<SourceBuildJob>(deploying.ToBson());
+        Assert.Equal(deploying, storedDeploying);
+        Assert.Equal(new SourceBuildArtifact("registry/application:attempt-1", "sha256:original"),
+            Assert.IsType<DeployingSourceBuild>(storedDeploying.State).Artifact);
+        Assert.Throws<ArgumentException>(() => stored.StartDeploying(
+            SourceBuildArtifactFactory.Create("registry/application:attempt-1", "sha256:other"), "release-1", now));
+        Assert.Throws<ArgumentException>(() => stored.StartDeploying(
+            SourceBuildArtifactFactory.Create("registry/other:attempt-1", "sha256:original"), "release-1", now));
         Assert.Throws<ArgumentException>(() =>
-            SourceBuildPromotionReceiptFactory.Create(stored, "sha256:other", "release-1", 1));
+            SourceBuildPromotionReceiptFactory.Create(stored,
+                SourceBuildArtifactFactory.Create("registry/application:attempt-1", "sha256:other"), "release-1", 1));
+    }
+
+    [Fact]
+    public void ArtifactFactoryRequiresNonEmptyReferenceAndDigest()
+    {
+        Assert.Throws<ArgumentException>(() => SourceBuildArtifactFactory.Create(" ", "sha256:digest"));
+        Assert.Throws<ArgumentException>(() => SourceBuildArtifactFactory.Create("registry/application:tag", ""));
     }
 
     [Fact]
@@ -86,12 +109,13 @@ public sealed class SourceBuildDomainTests
     {
         var now = new DateTime(2026, 10, 31, 8, 0, 0, DateTimeKind.Utc);
         var job = Job(now).StartCloning(now).StartAnalyzing(now).StartBuilding(now)
-            .StartPushing("registry/application:build-1", "sha256:digest", now);
-        var receipt = SourceBuildPromotionReceiptFactory.Create(job, "sha256:digest", "release-1", 2);
+            .StartPushing(SourceBuildArtifactFactory.Create("registry/application:build-1", "sha256:digest"), now);
+        var receipt = SourceBuildPromotionReceiptFactory.Create(job,
+            SourceBuildArtifactFactory.Create("registry/application:build-1", "sha256:digest"), "release-1", 2);
         Assert.Equal(job.Id, receipt.Id);
         Assert.Equal(job.SourceRepositoryId, receipt.SourceRepositoryId);
         Assert.Equal(job.CommitSha, receipt.CommitSha);
-        Assert.Equal("registry/application:build-1", receipt.ImageReference);
+        Assert.Equal(new SourceBuildArtifact("registry/application:build-1", "sha256:digest"), receipt.Artifact);
         Assert.Equal(job.InputVersion.Generation, receipt.Generation);
         Assert.Equal(job.InputVersion.ConfigurationRevision, receipt.ConfigurationRevision);
         Assert.Equal(receipt, BsonSerializer.Deserialize<SourceBuildPromotionReceipt>(receipt.ToBson()));
