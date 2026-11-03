@@ -14,7 +14,9 @@ public sealed record SourceBuildPromotionInput(
     string CommitSha,
     SourceBuildPromotionArtifact Artifact);
 
-public sealed record SourceBuildPromotionArtifact(string Reference, string Digest);
+public sealed record SourceBuildPromotionArtifact(
+    string Reference,
+    string Digest);
 
 public sealed record SourceBuildPromotionRequest(
     string TenantId,

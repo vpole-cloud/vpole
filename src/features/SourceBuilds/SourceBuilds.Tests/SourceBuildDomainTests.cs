@@ -24,7 +24,8 @@ public sealed class SourceBuildDomainTests
         Assert.Equal("FROM scratch", stored.Recipe.Dockerfile);
         var succeeded = Assert.IsType<SucceededSourceBuild>(stored.State);
         Assert.Equal("release-1", succeeded.ReleaseId);
-        Assert.Equal(new SourceBuildArtifact("harbor.test/application:build-1", "sha256:digest"), succeeded.Artifact);
+        Assert.Equal(SourceBuildArtifactFactory.Create("harbor.test/application:build-1", "sha256:digest"),
+            succeeded.Artifact);
         Assert.Equal("user-1", Assert.IsType<ManualSourceBuildTrigger>(stored.Trigger).UserId);
     }
 
@@ -36,14 +37,14 @@ public sealed class SourceBuildDomainTests
             .StartPushing(SourceBuildArtifactFactory.Create("registry/application:attempt-1", "sha256:original"), now);
         var stored = BsonSerializer.Deserialize<SourceBuildJob>(job.ToBson());
         Assert.Equal(job, stored);
-        Assert.Equal(new SourceBuildArtifact("registry/application:attempt-1", "sha256:original"),
+        Assert.Equal(SourceBuildArtifactFactory.Create("registry/application:attempt-1", "sha256:original"),
             Assert.IsType<PushingSourceBuild>(stored.State).Artifact);
         var deploying = stored.StartDeploying(
             SourceBuildArtifactFactory.Create("registry/application:attempt-1", "sha256:original"),
             "release-1", now);
         var storedDeploying = BsonSerializer.Deserialize<SourceBuildJob>(deploying.ToBson());
         Assert.Equal(deploying, storedDeploying);
-        Assert.Equal(new SourceBuildArtifact("registry/application:attempt-1", "sha256:original"),
+        Assert.Equal(SourceBuildArtifactFactory.Create("registry/application:attempt-1", "sha256:original"),
             Assert.IsType<DeployingSourceBuild>(storedDeploying.State).Artifact);
         Assert.Throws<ArgumentException>(() => stored.StartDeploying(
             SourceBuildArtifactFactory.Create("registry/application:attempt-1", "sha256:other"), "release-1", now));
@@ -115,7 +116,8 @@ public sealed class SourceBuildDomainTests
         Assert.Equal(job.Id, receipt.Id);
         Assert.Equal(job.SourceRepositoryId, receipt.SourceRepositoryId);
         Assert.Equal(job.CommitSha, receipt.CommitSha);
-        Assert.Equal(new SourceBuildArtifact("registry/application:build-1", "sha256:digest"), receipt.Artifact);
+        Assert.Equal(SourceBuildArtifactFactory.Create("registry/application:build-1", "sha256:digest"),
+            receipt.Artifact);
         Assert.Equal(job.InputVersion.Generation, receipt.Generation);
         Assert.Equal(job.InputVersion.ConfigurationRevision, receipt.ConfigurationRevision);
         Assert.Equal(receipt, BsonSerializer.Deserialize<SourceBuildPromotionReceipt>(receipt.ToBson()));
