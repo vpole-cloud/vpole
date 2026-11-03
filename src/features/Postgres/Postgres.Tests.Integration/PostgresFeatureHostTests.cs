@@ -5,6 +5,8 @@ using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Testing;
+using Pole.Platform.Hosting;
+using Pole.Features.Postgres.Migrations;
 using Pole.Database;
 using Pole.Features.Postgres.Application;
 using Pole.Features.Postgres.Application.Common;
@@ -45,6 +47,7 @@ public sealed class PostgresFeatureHostTests(MongoReplicaSetFixture fixture)
             null,
             services =>
         {
+            services.AddFeatureMigrations("pole.postgres", typeof(PostgresNameIndexesMigration).Assembly);
             services.AddSingleton(fixture.Client);
             services.AddSingleton(fixture.Database);
             services.AddScoped<EnsureRuntimeCellIngressBaseline>(_ =>
