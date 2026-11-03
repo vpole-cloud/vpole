@@ -76,8 +76,12 @@ internal static class SourceBuildJobFilters
 {
     public static FilterDefinition<SourceBuildJob> OwnedLease(SourceBuildExecutionIdentity identity) =>
         SourceBuildJobFilters.ById(identity.TenantId, identity.BuildJobId) &
-        Builders<SourceBuildJob>.Filter.Eq("Execution.WorkerId", identity.WorkerId) &
-        Builders<SourceBuildJob>.Filter.Eq("Execution.Attempt", identity.Attempt) &
+        Builders<SourceBuildJob>.Filter.OfType<SourceBuildExecution, ClaimedSourceBuildExecution>(
+            item => item.Execution) &
+        Builders<SourceBuildJob>.Filter.Eq(item => ((ClaimedSourceBuildExecution)item.Execution).WorkerId,
+            identity.WorkerId) &
+        Builders<SourceBuildJob>.Filter.Eq(item => ((ClaimedSourceBuildExecution)item.Execution).Attempt,
+            identity.Attempt) &
         new BsonDocument("$expr", new BsonDocument("$gt", new BsonArray { "$Execution.ExpiresAtUtc", "$$NOW" }));
 
     public static FilterDefinition<SourceBuildJob> LiveLease(SourceBuildJob job) =>
@@ -204,11 +208,11 @@ internal static class SourceBuildLogFilters
     public static FilterDefinition<SourceBuildLog> WritableAtRevision(SourceBuildLog log, DateTime now) =>
         AtRevision(log) & Builders<SourceBuildLog>.Filter.Eq(value => value.WriterToken, log.WriterToken) &
         Builders<SourceBuildLog>.Filter.OfType<SourceBuildLogState, OpenSourceBuildLog>(value => value.State) &
-        Builders<SourceBuildLog>.Filter.Gt("State.LeaseExpiresAtUtc", now) & Builders<SourceBuildLog>.Filter.Gt(value => value.ExpiresAtUtc, now);
+        Builders<SourceBuildLog>.Filter.Gt(value => ((OpenSourceBuildLog)value.State).LeaseExpiresAtUtc, now) & Builders<SourceBuildLog>.Filter.Gt(value => value.ExpiresAtUtc, now);
     public static FilterDefinition<SourceBuildLog> Recoverable(DateTime now) =>
         (Builders<SourceBuildLog>.Filter.Lte(log => log.ExpiresAtUtc, now) &
             Builders<SourceBuildLog>.Filter.Not(Builders<SourceBuildLog>.Filter.OfType<SourceBuildLogState, ExpiredSourceBuildLog>(value => value.State))) |
-        (Builders<SourceBuildLog>.Filter.OfType<SourceBuildLogState, OpenSourceBuildLog>(value => value.State) & Builders<SourceBuildLog>.Filter.Lte("State.LeaseExpiresAtUtc", now));
+        (Builders<SourceBuildLog>.Filter.OfType<SourceBuildLogState, OpenSourceBuildLog>(value => value.State) & Builders<SourceBuildLog>.Filter.Lte(value => ((OpenSourceBuildLog)value.State).LeaseExpiresAtUtc, now));
 }
 
 internal static class SourceBuildPromotionReceiptFilters

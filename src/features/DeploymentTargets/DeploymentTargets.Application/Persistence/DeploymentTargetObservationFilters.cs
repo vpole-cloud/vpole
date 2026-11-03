@@ -9,5 +9,5 @@ internal static class DeploymentTargetObservationFilters
         CurrentEnabledConnection(string targetId, long connectionVersion) =>
         DeploymentTargetFilters.ById(targetId) & DeploymentTargetFilters.NotPendingDeletion() &
         Builders<DeploymentTarget>.Filter.Eq(target => target.Enabled, true) &
-        Builders<DeploymentTarget>.Filter.Eq("Connection.Version", connectionVersion);
+        Builders<DeploymentTarget>.Filter.Eq(target => target.Connection.Version, connectionVersion);
 }

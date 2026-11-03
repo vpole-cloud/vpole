@@ -20,6 +20,37 @@ public sealed class GitRunLeaseTests(MongoReplicaSetFixture fixture) : MediatorI
         Services.GetRequiredService<IMongoCollection<GitReconciliationRun>>();
 
     [Fact]
+    public async Task LiveClaimRequiresStoredIdentityFenceAndAnUnexpiredMongoLease()
+    {
+        var source = await CreateSource();
+        var claimed = Assert.IsType<GitWorkClaim>((await Store.ClaimAsync(
+            new(source.TenantId, source.Id), "filter-worker", default)).Value);
+        var stamp = claimed.Run.Stamp;
+        var identity = claimed.Handle.Identity;
+        Assert.Equal(1, await Runs.CountDocumentsAsync(GitRepositoryFilters.LiveClaim(stamp, identity)));
+        Assert.Equal(0, await Runs.CountDocumentsAsync(GitSchedulingFilters.Recoverable()));
+
+        var changed = new[]
+        {
+            stamp with { Source = stamp.Source with { TenantId = MongoDB.Bson.ObjectId.GenerateNewId().ToString() } },
+            stamp with { Source = stamp.Source with { SourceId = MongoDB.Bson.ObjectId.GenerateNewId().ToString() } },
+            stamp with { RunId = MongoDB.Bson.ObjectId.GenerateNewId().ToString() },
+            stamp with { ConfigurationRevision = stamp.ConfigurationRevision + 1 },
+            stamp with { Fence = stamp.Fence + 1 }
+        };
+        foreach (var candidate in changed)
+            Assert.Equal(0, await Runs.CountDocumentsAsync(GitRepositoryFilters.LiveClaim(candidate, identity)));
+        Assert.Equal(0, await Runs.CountDocumentsAsync(GitRepositoryFilters.LiveClaim(stamp,
+            identity with { WorkerId = "other-worker" })));
+        Assert.Equal(0, await Runs.CountDocumentsAsync(GitRepositoryFilters.LiveClaim(stamp,
+            identity with { Attempt = identity.Attempt + 1 })));
+
+        await Expire(claimed);
+        Assert.Equal(0, await Runs.CountDocumentsAsync(GitRepositoryFilters.LiveClaim(stamp, identity)));
+        Assert.Equal(1, await Runs.CountDocumentsAsync(GitSchedulingFilters.Recoverable()));
+    }
+
+    [Fact]
     public async Task ConcurrentWorkersHaveOneLeaseAndHeartbeatKeepsIdentity()
     {
         var source = await CreateSource();

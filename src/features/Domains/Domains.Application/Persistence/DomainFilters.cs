@@ -21,7 +21,7 @@ internal static class DomainFilters
     public static FilterDefinition<TenantDomainZone> ZoneByTechnicalName(
         string tenantId,
         string technicalName) =>
-        ZoneForTenant(tenantId) & DomainIdentityFilters.Named<TenantDomainZone>() &
+        ZoneForTenant(tenantId) & Builders<TenantDomainZone>.Filter.OfType<DomainIdentity, NamedDomainIdentity>(item => item.Identity) &
         Builders<TenantDomainZone>.Filter.Eq(
             item => ((NamedDomainIdentity)item.Identity).TechnicalName, technicalName);
 
@@ -33,7 +33,7 @@ internal static class DomainFilters
     public static FilterDefinition<HostnameBinding> BindingByTechnicalName(
         string tenantId,
         string technicalName) =>
-        Builders<HostnameBinding>.Filter.ForTenant(tenantId) & DomainIdentityFilters.Named<HostnameBinding>() &
+        Builders<HostnameBinding>.Filter.ForTenant(tenantId) & Builders<HostnameBinding>.Filter.OfType<DomainIdentity, NamedDomainIdentity>(item => item.Identity) &
         Builders<HostnameBinding>.Filter.Eq(
             item => ((NamedDomainIdentity)item.Identity).TechnicalName, technicalName);
 
@@ -71,7 +71,7 @@ internal static class DomainFilters
             Builders<TenantDomainZone>.Filter.In(
                 zone => zone.DeploymentTargetId,
                 deploymentTargetIds),
-            DomainIdentityFilters.Generated<TenantDomainZone>());
+            Builders<TenantDomainZone>.Filter.OfType<DomainIdentity, GeneratedDomainIdentity>(item => item.Identity));
 
     public static FilterDefinition<TenantDomainZone> AtRevision(
         TenantDomainZone zone) =>
@@ -97,7 +97,7 @@ internal static class DomainFilters
         Builders<TenantDomainZone>.Filter.Or(zones.Select(zone =>
             Builders<TenantDomainZone>.Filter.And(
                 AtRevision(zone),
-                DomainIdentityFilters.Generated<TenantDomainZone>())));
+                Builders<TenantDomainZone>.Filter.OfType<DomainIdentity, GeneratedDomainIdentity>(item => item.Identity))));
 
     public static FilterDefinition<HostnameBinding> BindingForDeployment(
         string tenantId,
@@ -165,5 +165,5 @@ internal static class DomainFilters
                     Builders<HostnameBinding>.Filter.In(
                         binding => binding.ResourceDeploymentId,
                         deploymentIds),
-                    DomainIdentityFilters.Generated<HostnameBinding>())));
+                    Builders<HostnameBinding>.Filter.OfType<DomainIdentity, GeneratedDomainIdentity>(item => item.Identity))));
 }

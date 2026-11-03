@@ -34,5 +34,5 @@ internal static class FunctionTimerLeaseFilters
         Builders<FunctionTimerState>.Filter.And(
             Builders<FunctionTimerState>.Filter.Eq(candidate => candidate.Id, timer.Id),
             Builders<FunctionTimerState>.Filter.Ne(candidate => candidate.Lease, null),
-            Builders<FunctionTimerState>.Filter.Eq("Lease.Token", timer.Lease!.Token));
+            Builders<FunctionTimerState>.Filter.Eq(item => item.Lease!.Token, timer.Lease!.Token));
 }

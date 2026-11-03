@@ -165,32 +165,31 @@ internal static class FunctionAppDeletionFilters
     public static FilterDefinition<FunctionRouteBinding> Routes(
         string tenantId,
         string functionAppId) =>
-        Owned<FunctionRouteBinding>(tenantId, functionAppId);
+        Builders<FunctionRouteBinding>.Filter.Eq(item => item.TenantId, tenantId) &
+        Builders<FunctionRouteBinding>.Filter.Eq(item => item.FunctionAppId, functionAppId);
 
     public static FilterDefinition<FunctionTimerState> Timers(
         string tenantId,
         string functionAppId) =>
-        Owned<FunctionTimerState>(tenantId, functionAppId);
+        Builders<FunctionTimerState>.Filter.Eq(item => item.TenantId, tenantId) &
+        Builders<FunctionTimerState>.Filter.Eq(item => item.FunctionAppId, functionAppId);
 
     public static FilterDefinition<FunctionInvocation> Invocations(
         string tenantId,
         string functionAppId) =>
-        Owned<FunctionInvocation>(tenantId, functionAppId);
+        Builders<FunctionInvocation>.Filter.Eq(item => item.TenantId, tenantId) &
+        Builders<FunctionInvocation>.Filter.Eq(item => item.FunctionAppId, functionAppId);
 
     public static FilterDefinition<FunctionMeterEvent> MeterEvents(
         string tenantId,
         string functionAppId) =>
-        Owned<FunctionMeterEvent>(tenantId, functionAppId);
+        Builders<FunctionMeterEvent>.Filter.Eq(item => item.TenantId, tenantId) &
+        Builders<FunctionMeterEvent>.Filter.Eq(item => item.FunctionAppId, functionAppId);
 
     public static FilterDefinition<FunctionUsageBucket> UsageBuckets(
         string tenantId,
         string functionAppId) =>
-        Owned<FunctionUsageBucket>(tenantId, functionAppId);
+        Builders<FunctionUsageBucket>.Filter.Eq(item => item.TenantId, tenantId) &
+        Builders<FunctionUsageBucket>.Filter.Eq(item => item.FunctionAppId, functionAppId);
 
-    private static FilterDefinition<T> Owned<T>(
-        string tenantId,
-        string functionAppId) =>
-        Builders<T>.Filter.And(
-            Builders<T>.Filter.Eq("TenantId", tenantId),
-            Builders<T>.Filter.Eq("FunctionAppId", functionAppId));
 }

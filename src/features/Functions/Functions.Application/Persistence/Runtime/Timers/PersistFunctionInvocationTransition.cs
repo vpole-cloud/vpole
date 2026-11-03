@@ -50,5 +50,5 @@ internal static class FunctionInvocationTransitionFilters
             Builders<FunctionInvocation>.Filter.Eq(candidate => candidate.State, invocation.State),
             Builders<FunctionInvocation>.Filter.Eq(candidate => candidate.AttemptNumber, invocation.AttemptNumber),
             Builders<FunctionInvocation>.Filter.Ne(candidate => candidate.Lease, null),
-            Builders<FunctionInvocation>.Filter.Eq("Lease.Token", invocation.Lease!.Token));
+            Builders<FunctionInvocation>.Filter.Eq(item => item.Lease!.Token, invocation.Lease!.Token));
 }
