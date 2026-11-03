@@ -40,7 +40,8 @@ public sealed class TenantWorkspaceBrowserE2ETests(PoleE2EFixture fixture)
             var betaGroup = await CreateGroupAsync(fixture.Beta, betaTenant, betaName, ct);
             resources.Defer("delete Beta owner group", token => DeleteGroupAsync(betaGroup, fixture.Beta, betaTenant, token));
             var targets = await SendAsync(HttpMethod.Get, "/api/v1/deployment-targets/available?resourceType=pole%2Fweb-service&requiresPublicIngress=false", fixture.Alpha, alphaTenant, null, ct);
-            var probe = new { path = "/", port = "80", initialDelaySeconds = 0, periodSeconds = 1, timeoutSeconds = 1, successThreshold = 1, failureThreshold = 30 };
+            var probe = new { path = "/", port = "80", initialDelaySeconds = 0, periodSeconds = 3,
+                timeoutSeconds = 1, successThreshold = 1, failureThreshold = 10 };
             var created = await SendAsync(HttpMethod.Post, "/api/v1/web-services", fixture.Alpha, alphaTenant, new
             {
                 name = alphaName,
