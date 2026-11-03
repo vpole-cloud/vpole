@@ -12,17 +12,21 @@ using Pole.Features.WebServices.Application.Persistence.Lifecycle;
 using Pole.Features.WebServices.Application.Persistence.Mutations;
 using Pole.Features.WebServices.Domain;
 using Pole.Workloads;
+using static Pole.Features.WebServices.Application.Persistence.WebServiceDeclarations;
+using static Pole.Features.WebServices.Application.Persistence.WebServicePlanning;
 
 namespace Pole.Features.WebServices.Application.Persistence;
 
-public sealed record WebServiceLifecycleBuildInProgress : IDeclarationFailure;
-
-public sealed record WebServiceLifecycleDeploymentRejected(ResourceDeploymentMutationError Error) : IDeclarationFailure;
-
-internal sealed partial class DeclarativeWebServiceProvider
+internal sealed class WebServiceDeclarationLifecycle(
+    IMongoCollection<WebService> services,
+    IGitOpsMutations git,
+    LoadResourceDeploymentPlanningSnapshot loadPlanningPlacements,
+    LoadSourceBuildConfigurationReference loadBuildConfiguration,
+    IQuotaUsageRelease releaseQuota,
+    IGitLifecyclePlanGuard lifecycleGuard,
+    LoadResourceConnectionCascadePlanning loadCascadePlanning,
+    ApplyWebServiceDeletion deleteWorkflow)
 {
-    public ResourceTypeId ResourceType => WebServiceResourceDeployment.ResourceType;
-
     public async Task<ReadLifecycleResourceOutcome> ReadLifecycleAsync(
         ReadLifecycleResourceRequest request,
         IClientSessionHandle session,
@@ -134,85 +138,72 @@ internal sealed partial class DeclarativeWebServiceProvider
         };
     }
 
-    private static DeclarationDocumentVersion[] LifecycleVersions(WebService current,
-        IReadOnlyList<ResourceDeploymentPlanningItem> placements) =>
-    [
-        new($"WebService/{current.Id}", current.Revision),
-        new($"WebService/{current.Id}/PlanningFence", current.PlanningFence),
-        new($"WebService/{current.Id}/Managed/{LifecycleConfigurationHash(current, placements)}", 0),
-        .. placements.SelectMany(item => LifecyclePlacementVersions(item,
-            current.Lifecycle is DeletingWebServiceLifecycle))
-    ];
-
-    private static string LifecycleConfigurationHash(WebService current,
-        IReadOnlyList<ResourceDeploymentPlanningItem> placements)
+    public async Task<IReadOnlyList<GitLifecycleDependency>> ReadDependenciesAsync(
+        ReadLifecycleDependenciesRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
     {
-        var value = new
+        var result = new List<GitLifecycleDependency>();
+        using var cursor = await services.Find(session, WebServiceFilters.VisibleToTenant(request.TenantId))
+            .ToCursorAsync(cancellationToken);
+        while (await cursor.MoveNextAsync(cancellationToken))
         {
-            current.ResourceGroupId,
-            current.IsolationScopeId,
-            current.DeclaredPlacement,
-            image = ImageProjection(current.Spec.Image),
-            ports = current.Spec.Config.PortMappings.OrderBy(item => item.Name, StringComparer.Ordinal),
-            environment = current.Spec.Config.EnvironmentVariables.OrderBy(item => item.Key, StringComparer.Ordinal)
-                .ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal),
-            secrets = current.Spec.Config.SecretEnvironmentReferences.OrderBy(item => item.Key, StringComparer.Ordinal)
-                .ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal),
-            connections = current.Spec.Config.ConnectionEnvironmentReferences
-                .OrderBy(item => item.Key, StringComparer.Ordinal)
-                .ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal),
-            current.Spec.Probes,
-            current.Spec.Autoscaling,
-            tags = current.Tags.Order(StringComparer.Ordinal),
-            current.Exposure.Mode,
-            lifecycle = current.Lifecycle.GetType().Name,
-            placements = placements.OrderBy(item => item.DeploymentId, StringComparer.Ordinal).Select(item => new
+            foreach (var current in cursor.Current)
             {
-                item.DeploymentId,
-                item.ResourceGroupId,
-                item.IsolationScopeId,
-                item.DeploymentTargetId,
-                item.FixedReplicas,
-                compute = ComputeProjection(item.Compute),
-                ingress = IngressProjection(item.Ingress)
-            })
-        };
-        return Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(value)));
+                if (References(current, request.Resource))
+                    result.Add(new(new(new(Kind, current.Name), current.Id), request.Resource,
+                        new(LifecycleVersions(current, [])), request.Resource.Address.Kind switch
+                        {
+                            "SourceBuildConfiguration" => GitLifecycleDependencyOrder.AfterDependentRemovalRequested,
+                            "ResourceConnection" => GitLifecycleDependencyOrder.AfterRemovalRequested,
+                            _ => GitLifecycleDependencyOrder.BeforeRemoval
+                        }));
+            }
+        }
+
+        return result.OrderBy(item => item.Dependent.ResourceId, StringComparer.Ordinal).ToArray();
     }
 
-    private static IReadOnlyList<DeclarationDocumentVersion> LifecyclePlacementVersions(
-        ResourceDeploymentPlanningItem item, bool deleting)
+    public async Task<FenceDeclarationOutcome> FenceDependenciesAsync(
+        FenceLifecycleDependenciesRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
     {
-        if (!deleting || item.State != ResourceDeploymentPlanningState.Deleting)
-            return [new($"ResourceDeployment/{item.DeploymentId}/DesiredGeneration", item.DesiredGeneration),
-                new($"ResourceDeployment/{item.DeploymentId}/ResourceRevision", item.ResourceRevision)];
-        var intent = new
+        var current = await ReadDependenciesAsync(new(request.TenantId, request.Resource), session, cancellationToken);
+        if (current.Count != request.Expected.Count || current.Any(item => !request.Expected.Any(expected =>
+                expected.Dependent == item.Dependent && expected.Target == item.Target &&
+                expected.Order == item.Order &&
+                SameLifecycleVersions(expected.Version.Documents, item.Version.Documents))))
+            return new DeclarationPreconditionsChanged();
+
+        foreach (var dependency in current)
         {
-            item.ResourceGroupId,
-            item.IsolationScopeId,
-            item.DeploymentTargetId,
-            item.FixedReplicas,
-            item.Compute.ComputeProfileId,
-            item.Compute.ComputeProfileRevision,
-            compute = ComputeProjection(item.Compute),
-            item.Storage,
-            ingress = item.Ingress is { } ingress ? new
-            {
-                ingress.IngressClassName,
-                ingress.ClusterIssuerName,
-                ingress.PublicBaseDomain,
-                hostnames = ingress.Hostnames.Order(StringComparer.Ordinal)
-            } : null,
-            item.DeploymentTargetConfigurationRevision,
-            item.DesiredGeneration,
-            item.ResourceRevision
-        };
-        var hash = Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(intent)));
-        return [new($"ResourceDeployment/{item.DeploymentId}/DeleteIntent/{hash}", item.DesiredGeneration)];
+            var root = await services.Find(session,
+                WebServiceFilters.ById(request.TenantId, dependency.Dependent.ResourceId))
+                .FirstOrDefaultAsync(cancellationToken);
+            if (root is null)
+                return new DeclarationPreconditionsChanged();
+            var fenced = await services.UpdateOneAsync(session, WebServiceFilters.AtPlanningVersion(root),
+                Builders<WebService>.Update.Inc(item => item.PlanningFence, 1),
+                cancellationToken: cancellationToken);
+            if (fenced.ModifiedCount != 1)
+                return new DeclarationPreconditionsChanged();
+        }
+
+        return new DeclarationFenced();
     }
 
-    private static bool SameLifecycleVersions(IEnumerable<DeclarationDocumentVersion> current,
-        IEnumerable<DeclarationDocumentVersion> expected) =>
-        current.OrderBy(item => item.DocumentId, StringComparer.Ordinal)
-            .SequenceEqual(expected.OrderBy(item => item.DocumentId, StringComparer.Ordinal));
+    private static bool References(WebService current, GitLifecycleResourceReference target) =>
+        target.Address.Kind switch
+        {
+            "ResourceGroup" => current.ResourceGroupId == target.ResourceId,
+            "IsolationScope" => current.IsolationScopeId == target.ResourceId,
+            "Secret" => current.Spec.Config.SecretEnvironmentReferences.Values
+                .Any(item => item.SecretId == target.ResourceId),
+            "ResourceConnection" => current.Spec.Config.ConnectionEnvironmentReferences.Values
+                .Any(item => item.ConnectionId == target.ResourceId),
+            "SourceBuildConfiguration" => current.Lifecycle is not DeletingWebServiceLifecycle &&
+                current.Spec.Image.SourceBuildConfigurationId == target.ResourceId,
+            _ => false
+        };
 }

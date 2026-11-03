@@ -8,10 +8,25 @@ using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Application.Common;
+using Pole.Features.GitOps.Primitives;
+using Pole.Features.ResourceConnections.Contracts;
+using Pole.Features.Secrets.Contracts;
+using Pole.Features.SourceBuilds.Contracts;
+using static Pole.Features.WebServices.Application.Persistence.WebServiceDeclarations;
+using static Pole.Features.WebServices.Application.Persistence.WebServicePlanning;
 
 namespace Pole.Features.WebServices.Application.Persistence;
 
-internal sealed partial class DeclarativeWebServiceProvider
+internal sealed class WebServiceDeclarationPlanner(
+    IMongoCollection<WebService> services,
+    IGitOpsMutations git,
+    WebServicePlanningReader planningReader,
+    LoadIsolationScopePlanningSnapshot loadPlanningScope,
+    LoadResourceDeploymentPlanningSnapshot loadPlanningPlacements,
+    ResolveComputeProfilePlanningSnapshot resolvePlanningCompute,
+    ResolveDeploymentTargetPlanningSnapshot resolvePlanningTarget,
+    ResolveNamedDeploymentTarget resolveTargetName,
+    ResolveNamedComputeProfile resolveProfileName)
 {
     public async Task<ReadCurrentDeclarationOutcome> ReadCurrentAsync(
         ReadCurrentDeclarationRequest request,
@@ -163,61 +178,75 @@ internal sealed partial class DeclarativeWebServiceProvider
             DesiredIngress(spec, targetSnapshot.Target));
     }
 
-    private sealed record PlanningPlacement(
-        string ResourceGroupId,
-        string IsolationScopeId,
-        string DeploymentTargetId,
-        string? SourceBuildConfigurationId = null);
-
-    private sealed record PlanningCompute(
-        string ProfileId,
-        long Revision,
-        int Replicas,
-        JsonElement Resolution);
-
-    private static DeclarationProjection Project(
-        WebServiceSpec spec,
-        IEnumerable<string> tags,
-        string exposure,
-        PlanningPlacement placement,
-        PlanningCompute compute,
-        PlanningIngress? ingress) => new(DeclarationJson.Write(placement with
-        { SourceBuildConfigurationId = spec.Image.SourceBuildConfigurationId }), DeclarationJson.Write(new
-        {
-            image = ImageProjection(spec.Image),
-            ports = spec.Config.PortMappings.OrderBy(port => port.Name, StringComparer.Ordinal).ToArray(),
-            environment = spec.Config.EnvironmentVariables,
-            secretEnvironment = spec.Config.SecretEnvironmentReferences,
-            connectionEnvironment = spec.Config.ConnectionEnvironmentReferences,
-            probes = spec.Probes,
-            autoscaling = spec.Autoscaling,
-            tags = tags.Select(tag => tag.Trim()).Distinct().Order(StringComparer.Ordinal).ToArray(),
-            exposure,
-            ingress,
-            compute
-        }));
-
-    private static JsonElement ImageProjection(WebServiceImage image) => image switch
+    private async Task<ReadCurrentDeclarationOutcome> ReadAcceptedCurrentAsync(ReadCurrentDeclarationRequest request,
+        IClientSessionHandle session, CancellationToken ct)
     {
-        ImageInfo direct => DeclarationJson.Write(new { direct.Server, direct.Name, direct.Tag }),
-        PendingSourceBuildImage or DeliveredSourceBuildImage =>
-            DeclarationJson.Write(new { sourceBuildConfigurationId = image.SourceBuildConfigurationId }),
-        UnboundSourceBuildImage => DeclarationJson.Write(new { awaitingConfiguration = true })
-    };
+        var operation = request.Operation!;
+        var current = await services.Find(session, WebServiceFilters.ById(request.TenantId, operation.ResourceId))
+            .FirstOrDefaultAsync(ct);
+        current ??= await services.Find(session,
+                WebServiceFilters.ByTechnicalName(request.TenantId, request.Address.Name))
+            .FirstOrDefaultAsync(ct);
+        if (current is null)
+            return new CurrentDeclarationMissing();
+        if (current.Id == operation.ResourceId && current.Name != request.Address.Name)
+            return new DeclarationReadBlocked(new DeclarationIdentityChanged());
 
-    private sealed record PlanningIngress(
-        string ClassName,
-        string ClusterIssuer,
-        string? PublicBaseDomain);
+        if (current.Lifecycle is DeletingWebServiceLifecycle)
+            return PlanningBlocked(WebServiceDeclarationError.ResourceDeleting);
+        if (current.DeclaredPlacement is null)
+            return PlanningBlocked(WebServiceDeclarationError.PreparedPlacementIdentityUnavailable);
 
-    private static PlanningIngress? IngressProjection(ResourceDeploymentIngressConfiguration? ingress) =>
-        ingress is null ? null : new(ingress.IngressClassName, ingress.ClusterIssuerName, ingress.PublicBaseDomain);
+        var loaded = await loadPlanningPlacements(new(request.TenantId,
+            WebServiceResourceDeployment.ResourceType, current.Id), session, ct);
+        if (loaded is not ResourceDeploymentPlanningSnapshot placements || placements.Items.Count != 1)
+            return PlanningBlocked(WebServiceDeclarationError.ImmutablePlacementChange);
 
-    private static PlanningIngress? DesiredIngress(WebServiceDeclaration spec, DeploymentTargetLookupDto target) =>
-        spec.Exposure == WebServiceDeclarationRules.PublicExposure &&
-        target.WorkloadConfiguration.Ingress is { } ingress
-            ? new(ingress.IngressClassName, ingress.ClusterIssuerName, ingress.PublicBaseDomain) : null;
+        var placement = placements.Items[0];
+        if (placement.DeploymentTargetId != current.DeclaredPlacement.DeploymentTargetId ||
+            placement.ResourceGroupId != current.ResourceGroupId ||
+            placement.IsolationScopeId != current.IsolationScopeId ||
+            placement.State == ResourceDeploymentPlanningState.Deleting)
+            return PlanningBlocked(WebServiceDeclarationError.ImmutablePlacementChange);
 
-    private static DeclarationReadBlocked PlanningBlocked(WebServiceDeclarationError reason) =>
-        new(new WebServiceDeclarationRejected(reason));
+        var identity = new PlanningPlacement(current.ResourceGroupId, current.IsolationScopeId,
+            placement.DeploymentTargetId, current.Spec.Image.SourceBuildConfigurationId);
+        var projection = operation.Phase == DeclarationPhase.Prepare
+            ? new DeclarationProjection(DeclarationJson.Write(identity), DeclarationJson.Write(new { }))
+            : Project(current.Spec, current.Tags, current.Exposure.Mode.ToString(), identity,
+                new(placement.Compute.ComputeProfileId, placement.Compute.ComputeProfileRevision,
+                    placement.FixedReplicas, ComputeProjection(placement.Compute)),
+                IngressProjection(placement.Ingress));
+        return new CurrentDeclaration(current.Id, new([
+                new($"WebService/{current.Id}", current.Revision),
+                new($"WebService/{current.Id}/PlanningFence", current.PlanningFence),
+                .. placements.Items.Select(item =>
+                    new DeclarationDocumentVersion($"ResourceDeployment/{item.DeploymentId}", item.Revision))]),
+            projection, operation.Phase == DeclarationPhase.Prepare ||
+                current.Lifecycle is not PreparedWebServiceLifecycle
+                ? DeclarationConfigurationState.Configured : DeclarationConfigurationState.Prepared);
+    }
+
+    private async Task<ProjectDesiredDeclarationOutcome> ProjectAcceptedDesiredAsync(GitOperationInput operation,
+        IClientSessionHandle session, CancellationToken ct)
+    {
+        var read = await planningReader.ReadExecutionPlanningAsync(operation, session, ct);
+        if (read is DeclarationReadBlocked blocked)
+            return blocked;
+
+        var dependencies = (WebServicePlanningDependencies)read.Value;
+        var spec = DeclarationJson.Read<WebServiceDeclaration>(operation.Declaration.Spec);
+        var identity = new PlanningPlacement(dependencies.Scope.ResourceGroupId,
+            dependencies.Scope.IsolationScopeId, dependencies.Target.Target.Id, dependencies.BuildConfigurationId);
+        var projection = operation.Phase == DeclarationPhase.Prepare
+            ? new DeclarationProjection(DeclarationJson.Write(identity), DeclarationJson.Write(new { }))
+            : Project(ToSpec(spec, dependencies.References, dependencies.Current?.Spec,
+                    dependencies.ConnectionReferences, dependencies.BuildConfigurationId),
+                spec.Tags, spec.Exposure,
+                identity, new(dependencies.Compute.Compute.ComputeProfileId, spec.Placement.ComputeProfile.Revision,
+                    spec.FixedReplicas,
+                    ComputeProjection(dependencies.Compute.Compute.ToResourceDeploymentConfiguration())),
+                DesiredIngress(spec, dependencies.Target.Target));
+        return projection with { Dependencies = new(DependencyVersions(dependencies)) };
+    }
 }
