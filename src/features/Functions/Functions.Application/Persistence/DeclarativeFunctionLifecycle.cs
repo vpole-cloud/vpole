@@ -8,12 +8,23 @@ using Pole.Features.Quotas.Contracts;
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Workloads;
+using static Pole.Features.Functions.Application.Persistence.FunctionDeclarations;
 
 namespace Pole.Features.Functions.Application.Persistence;
 
 public sealed record FunctionLifecycleDeploymentRejected(ResourceDeploymentMutationError Error) : IDeclarationFailure;
 
-internal sealed partial class DeclarativeFunctionProvider
+internal sealed class FunctionDeclarationLifecycle(
+    IMongoCollection<FunctionApp> resources,
+    IMongoCollection<FunctionRevision> revisions,
+    IMongoCollection<FunctionRouteBinding> routes,
+    IGitOpsMutations git,
+    LoadResourceDeploymentPlanningSnapshot loadPlacements,
+    FenceResourceDeploymentPlanningSnapshot fencePlacements,
+    IQuotaUsageRelease releaseQuota,
+    IGitLifecyclePlanGuard lifecycleGuard,
+    LoadResourceConnectionCascadePlanning loadCascadePlanning,
+    ApplyFunctionAppDeletion deleteWorkflow)
 {
     public ResourceTypeId ResourceType => FunctionResourceDeployment.ResourceType;
 
@@ -101,7 +112,7 @@ internal sealed partial class DeclarativeFunctionProvider
         };
     }
 
-    private async Task<FunctionLifecycleState> ReadLifecycleStateAsync(
+    internal async Task<FunctionLifecycleState> ReadLifecycleStateAsync(
         FunctionApp current,
         IClientSessionHandle session,
         CancellationToken cancellationToken)
@@ -117,70 +128,90 @@ internal sealed partial class DeclarativeFunctionProvider
             placements is ResourceDeploymentPlanningSnapshot found ? found.Items : []);
     }
 
-    private static DeclarationDocumentVersion[] LifecycleVersions(FunctionLifecycleState state) =>
-    [
-        new($"FunctionApp/{state.Root.Id}", state.Root.NextRevisionNumber),
-        new($"FunctionApp/{state.Root.Id}/PlanningFence", state.Root.PlanningFence),
-        new($"FunctionApp/{state.Root.Id}/Managed/{PlanningRootHash(state.Root)}", 0),
-        new($"FunctionApp/{state.Root.Id}/Placements/{LifecyclePlacementHash(state.Placements)}", 0),
-        new($"FunctionApp/{state.Root.Id}/Pointers/{state.Root.ActiveRevisionId}/{state.Root.PendingRevisionId}", 0),
-        new($"FunctionRoute/{state.Root.FunctionRoute}/{state.Route?.State}/{state.Route?.ActiveRevisionId}",
-            state.Route?.PlanningFence ?? 0),
-        .. state.Configuration.Select(item => new DeclarationDocumentVersion(
-            $"FunctionRevision/{item.Id}/{ManagedSpecHash(item.Spec)}", item.PlanningFence)),
-        .. state.Placements.SelectMany(item => LifecyclePlacementVersions(item,
-            state.Root.DesiredState == FunctionAppDesiredState.Deleting))
-    ];
 
-    private static string LifecyclePlacementHash(IReadOnlyList<ResourceDeploymentPlanningItem> placements) =>
-        Hash(DeclarationJson.Write(placements.OrderBy(item => item.DeploymentId, StringComparer.Ordinal)
-            .Select(item => new
-            {
-                item.DeploymentId,
-                item.ResourceGroupId,
-                item.IsolationScopeId,
-                item.DeploymentTargetId,
-                item.FixedReplicas,
-                item.State,
-                compute = ComputeProjection(item.Compute)
-            })));
+    public string DependencyOwner => "Functions";
 
-    private static IReadOnlyList<DeclarationDocumentVersion> LifecyclePlacementVersions(
-        ResourceDeploymentPlanningItem item,
-        bool deleting)
+    public async Task<IReadOnlyList<GitLifecycleDependency>> ReadDependenciesAsync(
+        ReadLifecycleDependenciesRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
     {
-        if (!deleting || item.State != ResourceDeploymentPlanningState.Deleting)
-            return [new($"ResourceDeployment/{item.DeploymentId}/DesiredGeneration", item.DesiredGeneration),
-                new($"ResourceDeployment/{item.DeploymentId}/ResourceRevision", item.ResourceRevision)];
-        var intent = new
+        var result = new List<GitLifecycleDependency>();
+        using var cursor = await resources.Find(session, FunctionAppFilters.ByTenant(request.TenantId))
+            .ToCursorAsync(cancellationToken);
+        while (await cursor.MoveNextAsync(cancellationToken))
         {
-            item.ResourceGroupId,
-            item.IsolationScopeId,
-            item.DeploymentTargetId,
-            item.FixedReplicas,
-            item.Compute.ComputeProfileId,
-            item.Compute.ComputeProfileRevision,
-            compute = ComputeProjection(item.Compute),
-            item.Storage,
-            ingress = item.Ingress is { } ingress ? new
+            foreach (var root in cursor.Current)
             {
-                ingress.IngressClassName,
-                ingress.ClusterIssuerName,
-                ingress.PublicBaseDomain,
-                hostnames = ingress.Hostnames.Order(StringComparer.Ordinal)
-            } : null,
-            item.DeploymentTargetConfigurationRevision,
-            item.DesiredGeneration,
-            item.ResourceRevision
-        };
-        var hash = Hash(DeclarationJson.Write(intent));
-        return [new($"ResourceDeployment/{item.DeploymentId}/DeleteIntent/{hash}", item.DesiredGeneration)];
+                var state = await ReadLifecycleStateAsync(root, session, cancellationToken);
+                var references = request.Resource.Address.Kind switch
+                {
+                    "ResourceGroup" => root.ResourceGroupId == request.Resource.ResourceId,
+                    "IsolationScope" => state.Placements.Any(item =>
+                        item.IsolationScopeId == request.Resource.ResourceId),
+                    "Secret" => state.Configuration.SelectMany(item => item.Spec.Configuration.SecretReferences.Values)
+                        .Any(item => item.SecretId == request.Resource.ResourceId),
+                    _ => false
+                };
+                if (references)
+                    result.Add(new(new(new(Kind, root.NormalizedName), root.Id), request.Resource,
+                        new(LifecycleVersions(state))));
+            }
+        }
+
+        return result.OrderBy(item => item.Dependent.ResourceId, StringComparer.Ordinal).ToArray();
     }
 
-    private static bool SameLifecycleVersions(IEnumerable<DeclarationDocumentVersion> current,
-        IEnumerable<DeclarationDocumentVersion> expected) =>
-        current.OrderBy(item => item.DocumentId, StringComparer.Ordinal)
-            .SequenceEqual(expected.OrderBy(item => item.DocumentId, StringComparer.Ordinal));
+    public async Task<FenceDeclarationOutcome> FenceDependenciesAsync(
+        FenceLifecycleDependenciesRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var current = await ReadDependenciesAsync(new(request.TenantId, request.Resource), session, cancellationToken);
+        if (current.Count != request.Expected.Count || current.Any(item => !request.Expected.Any(expected =>
+                expected.Dependent == item.Dependent && expected.Target == item.Target &&
+                SameLifecycleVersions(expected.Version.Documents, item.Version.Documents))))
+            return new DeclarationPreconditionsChanged();
+
+        foreach (var dependency in current)
+        {
+            var root = await resources.Find(session,
+                FunctionAppFilters.ByTenantAndId(request.TenantId, dependency.Dependent.ResourceId))
+                .FirstOrDefaultAsync(cancellationToken);
+            if (root is null)
+                return new DeclarationPreconditionsChanged();
+            var state = await ReadLifecycleStateAsync(root, session, cancellationToken);
+            var fenced = await resources.UpdateOneAsync(session, FunctionAppFilters.AtPlanningVersion(root),
+                Builders<FunctionApp>.Update.Inc(item => item.PlanningFence, 1), cancellationToken: cancellationToken);
+            if (fenced.ModifiedCount != 1)
+                return new DeclarationPreconditionsChanged();
+            if (state.Placements.Count > 0 && await fencePlacements(
+                    new(root.TenantId, ResourceType, root.Id, state.Placements), session, cancellationToken)
+                is not ResourceDeploymentPlanningFenced)
+                return new DeclarationPreconditionsChanged();
+
+            if (state.Route is { } route)
+            {
+                var routeFenced = await routes.UpdateOneAsync(session,
+                    FunctionRouteBindingFilters.AtPlanningVersion(route),
+                    Builders<FunctionRouteBinding>.Update.Inc(item => item.PlanningFence, 1),
+                    cancellationToken: cancellationToken);
+                if (routeFenced.ModifiedCount != 1)
+                    return new DeclarationPreconditionsChanged();
+            }
+            foreach (var revision in state.Configuration)
+            {
+                var changed = await revisions.UpdateOneAsync(session,
+                    FunctionRevisionFilters.AtPlanningVersion(revision),
+                    Builders<FunctionRevision>.Update.Inc(item => item.PlanningFence, 1),
+                    cancellationToken: cancellationToken);
+                if (changed.ModifiedCount != 1)
+                    return new DeclarationPreconditionsChanged();
+            }
+        }
+
+        return new DeclarationFenced();
+    }
 }
 
 internal sealed record FunctionLifecycleState(

@@ -17,6 +17,11 @@ public static class FunctionAppApplicationRegistration
         this IServiceCollection services)
     {
         services.AddFunctionAppPersistence();
+        services.AddScoped<FunctionDeclarationPlanning>();
+        services.AddScoped<FunctionDeclarationReferences>();
+        services.AddScoped<FunctionDeclarationExecution>();
+        services.AddScoped<FunctionDeclarationLifecycle>();
+        services.AddScoped<FunctionDeclarationAdoption>();
         services.AddScoped<DeclarativeFunctionProvider>();
         services.AddScoped<IDeclarativeResourceProvider>(provider =>
             provider.GetRequiredService<DeclarativeFunctionProvider>());

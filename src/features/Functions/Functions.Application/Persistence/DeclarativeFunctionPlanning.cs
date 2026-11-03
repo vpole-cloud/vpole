@@ -9,11 +9,34 @@ using Pole.Features.GitOps.Primitives;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Secrets.Contracts;
+using static Pole.Features.Functions.Application.Persistence.FunctionDeclarations;
 
 namespace Pole.Features.Functions.Application.Persistence;
 
-internal sealed partial class DeclarativeFunctionProvider
+internal sealed class FunctionDeclarationPlanning(
+    IMongoCollection<FunctionApp> resources,
+    IMongoCollection<FunctionRevision> revisions,
+    IMongoCollection<FunctionRouteBinding> routes,
+    IGitOpsMutations git,
+    LoadIsolationScopePlanningSnapshot loadScope,
+    FenceIsolationScopePlanningSnapshot fenceScope,
+    ResolveDeploymentTargetPlanningSnapshot loadTarget,
+    FenceDeploymentTargetPlanningSnapshot fenceTarget,
+    ResolveComputeProfilePlanningSnapshot loadCompute,
+    FenceComputeProfilePlanningSnapshot fenceCompute,
+    LoadResourceDeploymentPlanningSnapshot loadPlacements,
+    FenceResourceDeploymentPlanningSnapshot fencePlacements,
+    LoadConsumerSecretPlanningSnapshot loadSecrets,
+    FenceConsumerSecretPlanningSnapshot fenceSecrets)
 {
+    public async Task<string?> ResolveAsync(
+        ResolveDeclaredResourceRequest request,
+        IClientSessionHandle session,
+        CancellationToken ct) =>
+        (await resources.Find(session, FunctionAppFilters.ByName(request.TenantId, request.Name))
+            .FirstOrDefaultAsync(ct))?.Id;
+
+
     public async Task<ReadCurrentDeclarationOutcome> ReadCurrentAsync(
         ReadCurrentDeclarationRequest request, IClientSessionHandle session, CancellationToken ct)
     {
@@ -130,7 +153,7 @@ internal sealed partial class DeclarativeFunctionProvider
         return new DeclarationFenced();
     }
 
-    private async Task<ReadFunctionCurrentOutcome> ReadCurrentStateAsync(
+    internal async Task<ReadFunctionCurrentOutcome> ReadCurrentStateAsync(
         FunctionApp current, IClientSessionHandle session, CancellationToken ct)
     {
         if (current.DesiredState is not (FunctionAppDesiredState.Prepared or FunctionAppDesiredState.Enabled))
@@ -162,7 +185,7 @@ internal sealed partial class DeclarativeFunctionProvider
         return new FunctionPlanningCurrent(current, latest, activeRevision, route, placements);
     }
 
-    private async Task<ReadFunctionPlanningOutcome> ReadPlanningAsync(
+    internal async Task<ReadFunctionPlanningOutcome> ReadPlanningAsync(
         GitOperationInput operation, IClientSessionHandle session, CancellationToken ct)
     {
         return await ReadPlanningWithReferencesAsync(new(operation.Context.TenantId, operation.ResourceId,
@@ -170,7 +193,7 @@ internal sealed partial class DeclarativeFunctionProvider
                 new(operation.Context, operation.ResourceId, address), session, ct)), session, ct);
     }
 
-    private async Task<ReadFunctionPlanningOutcome> ReadPlanningWithReferencesAsync(
+    internal async Task<ReadFunctionPlanningOutcome> ReadPlanningWithReferencesAsync(
         FunctionPlanningInput input,
         IClientSessionHandle session,
         CancellationToken ct)
@@ -251,45 +274,6 @@ internal sealed partial class DeclarativeFunctionProvider
         return new FunctionPlanningDependencies(current, scope, target, compute, references.ToImmutable(), secrets);
     }
 
-    private static ConsumerSecretKeyReference[] PreviousSecrets(FunctionPlanningCurrent? current) =>
-        current is null ? [] : ConfigurationRevisions(current).SelectMany(revision =>
-                revision.Spec.Configuration.SecretReferences.Values)
-            .Select(reference => new ConsumerSecretKeyReference(reference.SecretId, reference.Key))
-            .Distinct().ToArray();
-
-    private static IEnumerable<FunctionRevision> ConfigurationRevisions(FunctionPlanningCurrent current) =>
-        new[] { current.Latest, current.Active }.OfType<FunctionRevision>().DistinctBy(revision => revision.Id);
-
-    private static DeclarationDocumentVersion[] CurrentVersions(FunctionPlanningCurrent current) =>
-    [
-        new($"FunctionApp/{current.Root.Id}", current.Root.NextRevisionNumber),
-        new($"FunctionApp/{current.Root.Id}/PlanningFence", current.Root.PlanningFence),
-        new($"FunctionApp/{current.Root.Id}/Managed/{PlanningRootHash(current.Root)}", 0),
-        new($"FunctionApp/{current.Root.Id}/Pointers/{current.Root.ActiveRevisionId}/{current.Root.PendingRevisionId}",
-            0),
-        new($"FunctionRoute/{current.Route.NormalizedRoute}/{current.Route.State}/{current.Route.ActiveRevisionId}",
-            current.Route.PlanningFence),
-        .. ConfigurationRevisions(current).Select(revision => new DeclarationDocumentVersion(
-            $"FunctionRevision/{revision.Id}/{ManagedSpecHash(revision.Spec)}", revision.PlanningFence)),
-        .. current.Placements.Items.Select(item =>
-            new DeclarationDocumentVersion($"ResourceDeployment/{item.DeploymentId}", item.Revision))
-    ];
-
-    private static DeclarationDocumentVersion[] DependencyVersions(FunctionPlanningDependencies dependencies) =>
-    [
-        new($"ResourceGroup/{dependencies.Scope.ResourceGroupId}", dependencies.Scope.ResourceGroupRevision),
-        new($"IsolationScope/{dependencies.Scope.IsolationScopeId}", dependencies.Scope.ScopeRevision),
-        new($"DeploymentTarget/{dependencies.Target.Target.Id}", dependencies.Target.Target.Revision),
-        new($"DeploymentTarget/{dependencies.Target.Target.Id}/WorkloadConfiguration",
-            dependencies.Target.Target.WorkloadConfiguration.Revision),
-        new($"ComputeProfile/{dependencies.Compute.Compute.ComputeProfileId}/Policy",
-            dependencies.Compute.PolicyRevision),
-        .. dependencies.Secrets?.Secrets.SelectMany(version => new DeclarationDocumentVersion[]
-        {
-            new($"Secret/{version.SecretId}", version.Revision),
-            new($"Secret/{version.SecretId}/ReferenceFence", version.ReferenceFence)
-        }) ?? []
-    ];
 }
 
 internal sealed record FunctionPlanningCurrent(
