@@ -22,6 +22,18 @@ internal sealed class SecretBindingPlanning(
     private ResourceTypeId ConsumerType(SecretBindingDeclaration spec) =>
         consumers.Get(spec.Consumer.Kind).ResourceType;
 
+    public async Task<string?> ResolveAsync(
+        ResolveDeclaredResourceRequest request,
+        IClientSessionHandle session,
+        CancellationToken ct)
+    {
+        var secret = await secrets.Find(
+            session,
+            SecretFilters.DeclarationBindingName(request.TenantId, request.Name)).FirstOrDefaultAsync(ct);
+
+        return secret?.Bindings.SingleOrDefault(binding => binding.DeclarationName == request.Name)?.Id;
+    }
+
     public async Task<ReadCurrentDeclarationOutcome> ReadCurrentAsync(
         ReadCurrentDeclarationRequest request,
         IClientSessionHandle session,
@@ -76,7 +88,8 @@ internal sealed class SecretBindingPlanning(
             };
         }
 
-        var spec = DeclarationJson.Read<SecretBindingDeclaration>(NormalizeAndValidate(request.Declaration.Spec));
+        var spec = DeclarationJson.Read<SecretBindingDeclaration>(
+            consumers.NormalizeAndValidate(request.Declaration.Spec));
         var secretAddress = new ResourceAddress("Secret", spec.Secret);
         var secretId = await git.ResolveAsync(new(request.TenantId, secretAddress), session, cancellationToken);
         if (secretId is null)
