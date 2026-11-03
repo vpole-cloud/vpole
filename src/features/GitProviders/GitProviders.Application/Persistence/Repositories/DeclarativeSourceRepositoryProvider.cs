@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Globalization;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.GitOps.Contracts;
@@ -9,6 +7,8 @@ using Pole.Features.GitProviders.Application.ProviderOperations;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.GitProviders.Domain;
 using Pole.Workloads;
+using System.Globalization;
+using System.Text.Json;
 
 namespace Pole.Features.GitProviders.Application.Persistence.Repositories;
 
@@ -29,7 +29,7 @@ public sealed record SourceRepositoryDeclarationUnavailable : IDeclarationFailur
 
 public sealed record SourceRepositoryDeclarationLocationConflict : IDeclarationFailure;
 
-internal sealed partial class DeclarativeSourceRepositoryProvider(
+internal sealed class DeclarativeSourceRepositoryProvider(
     IMongoCollection<SourceRepository> repositories,
     IMongoCollection<GitProviderConnection> connections,
     FindNamedGitProviderConnection findConnection,
@@ -165,4 +165,190 @@ internal sealed partial class DeclarativeSourceRepositoryProvider(
 
     private static DeclarationProjection Project(string connectionId, string repositoryId, string branch) =>
         new(DeclarationJson.Write(new { connectionId, repositoryId, branch }), DeclarationJson.Write(new { }));
+
+    public async Task<ReadLifecycleResourceOutcome> ReadLifecycleAsync(
+        ReadLifecycleResourceRequest request, IClientSessionHandle session, CancellationToken cancellationToken)
+    {
+        var current = await repositories.Find(session,
+            GitProviderFilters.SourceRepositoryByTenantAndId(request.TenantId, request.Resource.ResourceId))
+            .FirstOrDefaultAsync(cancellationToken);
+        if (current is null)
+            return new GitLifecycleResourceAbsent();
+
+        if (request.Resource.Address.Kind != Kind || current.TechnicalName != request.Resource.Address.Name)
+            return new DeclarationReadBlocked(new DeclarationIdentityChanged());
+        return new GitLifecycleResourceSnapshot(request.Resource, LifecycleVersions(current),
+            GitLifecyclePresence.Active, GitLifecycleProtection.ConfigurationOnly,
+            GitLifecycleVersionSemantics.ObservedDocuments);
+    }
+
+    public async Task<RemoveLifecycleResourceOutcome> RemoveAsync(
+        RemoveLifecycleResourceRequest request, IClientSessionHandle session, CancellationToken cancellationToken)
+    {
+        var read = await ReadLifecycleAsync(new(request.Authority.TenantId, request.Resource),
+            session, cancellationToken);
+        if (read is GitLifecycleResourceAbsent)
+            return new GitLifecycleResourceRemoved();
+
+        if (read is DeclarationReadBlocked blocked)
+            return blocked;
+        if (!SameVersions(((GitLifecycleResourceSnapshot)read.Value).Version, request.Expected))
+            return new DeclarationPreconditionsChanged();
+
+        var outcome = await deletion.ExecuteAsync(new(request.Authority.TenantId, request.Resource.ResourceId,
+            request.Authority), session, cancellationToken);
+        return outcome switch
+        {
+            SourceRepositoryDeleted or SourceRepositoryNotFound => new GitLifecycleResourceRemoved(),
+            SourceRepositoryHasBuildConfiguration => new DeclarationReadBlocked(new GitLifecycleDependencyRetained()),
+            SourceRepositoryGitOwned => new StaleGitExecution()
+        };
+    }
+
+    public async Task<ReadPreviewReferencesOutcome> ReadPreviewReferencesAsync(
+        ReadPreviewReferencesRequest request, IClientSessionHandle session, CancellationToken cancellationToken)
+    {
+        var spec = DeclarationJson.Read<SourceRepositoryDeclaration>(request.Consumer.Spec);
+        var address = ConnectionAddress(spec);
+        var accepted = request.References.SingleOrDefault(item => item.Address == address);
+        var filter = accepted is null
+            ? GitProviderFilters.ConnectionByTenantAndName(request.TenantId, spec.Connection)
+            : GitProviderFilters.ConnectionByTenantAndId(request.TenantId, accepted.ResourceId);
+        var connection = await connections.Find(session, filter).FirstOrDefaultAsync(cancellationToken);
+        if (connection is not { Provider: GitProviderKind.GitHub } || connection.TechnicalName != spec.Connection)
+            return new DeclarationReadBlocked(new SourceRepositoryDeclarationConnectionUnavailable());
+        return new GitPreviewReferencesSnapshot(request.References.Where(item => item.Address != address)
+            .Append(new(address, connection.Id, new([ConnectionVersion(connection)]))).ToArray());
+    }
+
+    public async Task<PreviewLifecycleAdoptionOutcome> PreviewAdoptionAsync(
+        PreviewLifecycleAdoptionRequest request, IClientSessionHandle session, CancellationToken cancellationToken)
+    {
+        var current = await ReadCurrentAsync(new(request.TenantId, request.Declaration.Address), session,
+            cancellationToken);
+        if (current is not CurrentDeclaration found || found.ResourceId != request.ResourceId)
+            return new DeclarationReadBlocked(new DeclarationIdentityChanged());
+
+        var read = await ReadPreviewReferencesAsync(new(request.TenantId, request.Declaration, request.References),
+            session, cancellationToken);
+        if (read is DeclarationReadBlocked blocked)
+            return blocked;
+
+        var references = ((GitPreviewReferencesSnapshot)read.Value).References;
+        var spec = DeclarationJson.Read<SourceRepositoryDeclaration>(request.Declaration.Spec);
+        var connection = references.Single(item => item.Address == ConnectionAddress(spec));
+        return new GitLifecycleAdoptionPreview(found,
+            Project(connection.ResourceId, spec.RepositoryId, spec.Branch) with
+            { Dependencies = connection.Version }, references);
+    }
+
+    private static DeclarationVersionToken LifecycleVersions(SourceRepository repository) => new(
+        [new($"SourceRepository/{repository.Id}", repository.Revision),
+            new($"SourceRepositoryFence/{repository.Id}", repository.ReferenceFence)]);
+
+    private static bool SameVersions(DeclarationVersionToken left, DeclarationVersionToken right) =>
+        left.Documents.OrderBy(item => item.DocumentId, StringComparer.Ordinal)
+            .SequenceEqual(right.Documents.OrderBy(item => item.DocumentId, StringComparer.Ordinal));
+
+    public async Task<ReadCurrentDeclarationOutcome> ReadCurrentAsync(
+        ReadCurrentDeclarationRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var current = request.Operation is { } operation
+            ? await repositories.Find(session,
+                    GitProviderFilters.SourceRepositoryByTenantAndId(request.TenantId, operation.ResourceId))
+                .FirstOrDefaultAsync(cancellationToken)
+            : null;
+        current ??= await repositories.Find(session,
+                GitProviderFilters.SourceRepositoryByTenantAndName(request.TenantId, request.Address.Name))
+            .FirstOrDefaultAsync(cancellationToken);
+        if (current is null)
+            return new CurrentDeclarationMissing();
+
+        if (current.TechnicalName != request.Address.Name)
+            return new DeclarationReadBlocked(new DeclarationIdentityChanged());
+
+        return new CurrentDeclaration(current.Id, new([new($"SourceRepository/{current.Id}", current.Revision)]),
+            Project(current.ConnectionId, current.ExternalRepositoryId, current.Branch),
+            DeclarationConfigurationState.Configured);
+    }
+
+    public async Task<ProjectDesiredDeclarationOutcome> ProjectDesiredAsync(
+        ProjectDesiredDeclarationRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var declaration = DeclarationJson.Read<SourceRepositoryDeclaration>(request.Declaration.Spec);
+        var connection = await ConnectionAsync(request.TenantId, declaration, request.Operation, session,
+            cancellationToken);
+        return connection is null
+            ? new DeclarationReadBlocked(new SourceRepositoryDeclarationConnectionUnavailable())
+            : Project(connection.Id, declaration.RepositoryId, declaration.Branch) with
+            { Dependencies = new([ConnectionVersion(connection)]) };
+    }
+
+    public async Task<FenceDeclarationOutcome> FenceAsync(
+        FenceDeclarationRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var operation = request.Operation;
+        var declaration = DeclarationJson.Read<SourceRepositoryDeclaration>(operation.Declaration.Spec);
+        var connection = await ConnectionAsync(operation.Context.TenantId, declaration, operation, session,
+            cancellationToken);
+        if (connection is null || !request.Expected.Documents.Contains(ConnectionVersion(connection)))
+            return new DeclarationPreconditionsChanged();
+
+        var current = await repositories.Find(session,
+                GitProviderFilters.SourceRepositoryByTenantAndId(operation.Context.TenantId, operation.ResourceId))
+            .FirstOrDefaultAsync(cancellationToken);
+        var expected = request.Expected.Documents.SingleOrDefault(item =>
+            item.DocumentId == $"SourceRepository/{operation.ResourceId}");
+        if (current is null ? expected is not null : expected?.Revision != current.Revision)
+            return new DeclarationPreconditionsChanged();
+
+        var connectionFence = await connections.UpdateOneAsync(session,
+            GitProviderFilters.ConnectionAtFence(connection.TenantId, connection.Id, connection.ReferenceFence),
+            Builders<GitProviderConnection>.Update.Inc(item => item.ReferenceFence, 1),
+            cancellationToken: cancellationToken);
+        if (connectionFence.ModifiedCount != 1)
+            return new DeclarationPreconditionsChanged();
+
+        if (current is not null)
+        {
+            var rootFence = await repositories.UpdateOneAsync(session,
+                GitProviderFilters.SourceRepositoryAtRevision(current.TenantId, current.Id, current.Revision),
+                Builders<SourceRepository>.Update.Inc(item => item.ReferenceFence, 1),
+                cancellationToken: cancellationToken);
+            if (rootFence.ModifiedCount != 1)
+                return new DeclarationPreconditionsChanged();
+        }
+
+        return new DeclarationFenced();
+    }
+
+    private async Task<GitProviderConnection?> ConnectionAsync(
+        string tenantId,
+        SourceRepositoryDeclaration declaration,
+        GitOperationInput? operation,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var connectionId = operation is null ? null : await git.ResolveAcceptedAsync(
+            new(operation.Context, operation.ResourceId, ConnectionAddress(declaration)), session, cancellationToken);
+        if (operation is not null && connectionId is null)
+            return null;
+
+        var filter = connectionId is null
+            ? GitProviderFilters.ConnectionByTenantAndName(tenantId, declaration.Connection)
+            : GitProviderFilters.ConnectionByTenantAndId(tenantId, connectionId);
+        var connection = await connections.Find(session, filter).FirstOrDefaultAsync(cancellationToken);
+        return connection is { Provider: GitProviderKind.GitHub } && connection.TechnicalName == declaration.Connection
+            ? connection
+            : null;
+    }
+
+    private static DeclarationDocumentVersion ConnectionVersion(GitProviderConnection connection) =>
+        new($"GitProviderConnection/{connection.Id}", connection.ReferenceFence);
 }
