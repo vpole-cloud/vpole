@@ -162,6 +162,6 @@ internal sealed class RedisDeclarationExecution(
             (_, _) => Task.FromResult(new GitOperationResult(operation.ResourceId, failure)), ct);
 
     private sealed record RedisExecution(
-    GitOperation Operation,
-    RedisPlanningDependencies Dependencies);
+        GitOperation Operation,
+        RedisPlanningDependencies Dependencies);
 }
