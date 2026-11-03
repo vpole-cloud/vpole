@@ -1,4 +1,4 @@
-﻿using MongoDB.Driver;
+using MongoDB.Driver;
 using Pole.Features.Core.Multitenancy;
 
 namespace Pole.Database;
