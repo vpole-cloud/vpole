@@ -12,7 +12,7 @@ public sealed class PersistenceConstructionTests
         var violations = ArchitectureSources.ProductionCSharp()
             .Where(source => !source.RelativePath.Contains(".Tests/", StringComparison.Ordinal))
             .SelectMany(source => source.Root.DescendantNodes().OfType<TypeDeclarationSyntax>()
-                .Where(type => type.Modifiers.Any(SyntaxKind.PartialKeyword))
+                .Where(type => type.Modifiers.Any(token => token.RawKind == (int)SyntaxKind.PartialKeyword))
                 .Where(type => !type.DescendantNodes().OfType<MethodDeclarationSyntax>().Any(NeedsGenerator))
                 .Select(type => ArchitectureSources.Describe(source, type,
                     "Keep the implementation together or extract a cohesive collaborator.")));
@@ -35,12 +35,12 @@ public sealed class PersistenceConstructionTests
     }
 
     private static bool NeedsGenerator(MethodDeclarationSyntax method) =>
-        method.Modifiers.Any(SyntaxKind.PartialKeyword) && method.AttributeLists.SelectMany(list => list.Attributes)
+        method.Modifiers.Any(token => token.RawKind == (int)SyntaxKind.PartialKeyword) && method.AttributeLists.SelectMany(list => list.Attributes)
             .Any(attribute => attribute.Name.ToString().Split('.').Last() is
                 "GeneratedRegex" or "GeneratedRegexAttribute" or "LoggerMessage" or "LoggerMessageAttribute");
 
     private static bool IsStaticComposition(InvocationExpressionSyntax call) =>
-        call.Ancestors().OfType<TypeDeclarationSyntax>().Any(type => type.Modifiers.Any(SyntaxKind.StaticKeyword)) ||
+        call.Ancestors().OfType<TypeDeclarationSyntax>().Any(type => type.Modifiers.Any(token => token.RawKind == (int)SyntaxKind.StaticKeyword)) ||
         call.Ancestors().OfType<MethodDeclarationSyntax>().Any(method =>
-            method.Modifiers.Any(SyntaxKind.StaticKeyword));
+            method.Modifiers.Any(token => token.RawKind == (int)SyntaxKind.StaticKeyword));
 }
