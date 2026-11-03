@@ -33,8 +33,8 @@ internal sealed class WebServicePlanningReader(
         ReadPlanningWithReferencesAsync(new(operation.Context.TenantId, operation.ResourceId, operation.Declaration,
             operation.Phase, address => AcceptedReferenceAsync(operation, address, session, ct)), session, ct);
 
-    internal async Task<ReadWebServicePlanningOutcome> ReadPlanningWithReferencesAsync(WebServicePlanningInput operation,
-        IClientSessionHandle session, CancellationToken ct)
+    internal async Task<ReadWebServicePlanningOutcome> ReadPlanningWithReferencesAsync(
+        WebServicePlanningInput operation, IClientSessionHandle session, CancellationToken ct)
     {
         var spec = DeclarationJson.Read<WebServiceDeclaration>(operation.Declaration.Spec);
         var tenant = operation.TenantId;
