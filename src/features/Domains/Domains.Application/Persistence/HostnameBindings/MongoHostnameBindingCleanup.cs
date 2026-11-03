@@ -12,17 +12,12 @@ namespace Pole.Features.Domains.Application.Persistence.HostnameBindings;
 /// Owns the shared transactional lifecycle for hostname bindings and their generated zones.
 /// </summary>
 internal sealed class MongoHostnameBindingCleanup(
-    IMongoDatabase database,
+    IMongoCollection<TenantDomainZone> zones,
+    IMongoCollection<HostnameBinding> bindings,
     ApplyDeploymentTargetReferenceChanges applyDeploymentTargetReferenceChanges,
     TimeProvider timeProvider,
     StoreOutboxWrites outbox)
 {
-    private readonly IMongoCollection<TenantDomainZone> zones =
-        database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
-
-    private readonly IMongoCollection<HostnameBinding> bindings =
-        database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
-
     internal async Task<CleanupHostnameBindingsOutcome> DeleteAsync(
         string tenantId,
         FilterDefinition<HostnameBinding> bindingFilter,

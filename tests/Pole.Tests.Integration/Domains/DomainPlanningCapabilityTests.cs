@@ -31,7 +31,7 @@ public sealed class DomainPlanningCapabilityTests(MongoReplicaSetFixture fixture
         var binding = Binding(zone);
         await Zones.InsertOneAsync(zone);
         await Bindings.InsertOneAsync(binding);
-        var provider = new MongoDomainPlanning(fixture.Database);
+        var provider = new MongoDomainPlanning(Zones, Bindings);
 
         Assert.IsType<NamedDomainZoneFound>((await provider.ResolveZoneAsync(
             new NamedDomainZoneRequest(zone.TenantId, "company-zone"), null, default)).Value);
@@ -60,7 +60,7 @@ public sealed class DomainPlanningCapabilityTests(MongoReplicaSetFixture fixture
         var binding = Binding(zone);
         await Zones.InsertOneAsync(zone);
         await Bindings.InsertOneAsync(binding);
-        var provider = new MongoDomainPlanning(fixture.Database);
+        var provider = new MongoDomainPlanning(Zones, Bindings);
         using var session = await fixture.Client.StartSessionAsync();
         session.StartTransaction();
         Assert.IsType<DomainZoneFenced>((await provider.FenceZoneAsync(

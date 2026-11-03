@@ -5,10 +5,8 @@ using Pole.Features.Tenants.Domain;
 
 namespace Pole.Features.Tenants.Application.Persistence.Identity;
 
-internal sealed class MongoLoadTenantMember(IMongoDatabase database)
+internal sealed class MongoLoadTenantMember(IMongoCollection<Tenant> tenants)
 {
-    private readonly IMongoCollection<Tenant> tenants = database.GetCollection<Tenant>("Tenants");
-
     public async Task<LoadTenantMemberOutcome> InvokeAsync(
         LoadTenantMemberRequest request,
         IClientSessionHandle? session = null,

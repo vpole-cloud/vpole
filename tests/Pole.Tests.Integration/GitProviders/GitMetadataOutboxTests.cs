@@ -28,7 +28,7 @@ public sealed class GitMetadataOutboxTests(MongoReplicaSetFixture fixture) : Med
         var attempt = Attempt();
         var metadata = Metadata();
         var now = DateTime.UtcNow;
-        var persistence = new GitHubSetupPersistence(Fixture.Database, Transactions, Fixture.StoreOutboxWrites);
+        var persistence = SetupPersistence(Fixture.StoreOutboxWrites);
         var id = await persistence.UpsertConnectionAsync(attempt, metadata, now, default);
         Assert.IsType<LinkedGitProviderConnection>(id.Value);
         Assert.Equal(id, await persistence.UpsertConnectionAsync(attempt, metadata, now, default));
@@ -117,7 +117,7 @@ public sealed class GitMetadataOutboxTests(MongoReplicaSetFixture fixture) : Med
         string? connectionId = null;
         if (mutation is "connection-update" or "connection-delete")
             connectionId = Assert.IsType<LinkedGitProviderConnection>((
-                await new GitHubSetupPersistence(Fixture.Database, Transactions, Fixture.StoreOutboxWrites)
+                await SetupPersistence(Fixture.StoreOutboxWrites)
                     .UpsertConnectionAsync(attempt, metadata, now, default)).Value).Id;
         var repository = Repository();
         if (mutation is "repository-create" or "repository-delete")
@@ -133,9 +133,7 @@ public sealed class GitMetadataOutboxTests(MongoReplicaSetFixture fixture) : Med
         };
         await Assert.ThrowsAsync<InvalidOperationException>(() => mutation switch
         {
-            "connection-create" or "connection-update" => new GitHubSetupPersistence(Fixture.Database,
-                    Transactions,
-                    failing)
+            "connection-create" or "connection-update" => SetupPersistence(failing)
                 .UpsertConnectionAsync(attempt,
                     metadata with
                     {
@@ -143,7 +141,8 @@ public sealed class GitMetadataOutboxTests(MongoReplicaSetFixture fixture) : Med
                     },
                     now.AddSeconds(1),
                     default),
-            "connection-delete" => new MongoDeleteGitProviderConnection(Fixture.Database, Transactions, failing)
+            "connection-delete" => new MongoDeleteGitProviderConnection(
+                Fixture.DbContext.GitProviderConnections, Fixture.DbContext.SourceRepositories, Transactions, failing)
                 .InvokeAsync(attempt.TenantId, connectionId!),
             "repository-create" => Link(failing)
                 .InvokeAsync(repository),
@@ -176,6 +175,12 @@ public sealed class GitMetadataOutboxTests(MongoReplicaSetFixture fixture) : Med
         "private-account",
         GitProviderAccountType.User,
         GitProviderRepositorySelection.Selected);
+
+    private GitHubSetupPersistence SetupPersistence(StoreOutboxWrites outbox) =>
+        new(Fixture.Database.GetCollection<GitHubSetupAttempt>("GitHubSetupAttempts"),
+            DbContext.GitProviderConnections,
+            Transactions,
+            outbox);
 
     private MongoPersistLinkedSourceRepository Link(StoreOutboxWrites outbox) =>
         new(DbContext.SourceRepositories, DbContext.GitProviderConnections, Transactions, outbox);

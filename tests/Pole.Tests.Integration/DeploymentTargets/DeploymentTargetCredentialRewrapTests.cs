@@ -159,7 +159,7 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
                 CreateNoPublicBaseDomainReferences(),
                 CreateNoOverlappingPublicBaseDomain(),
                 new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<PersistUpdatedDeploymentTargetOutcome>,
-                new MongoStoreOutboxWrites(fixture.Database).InvokeAsync).InvokeAsync,
+                new MongoStoreOutboxWrites(fixture.Database.GetCollection<OutboxMessage>("OutboxMessages")).InvokeAsync).InvokeAsync,
             new NoOpClientCache().Invalidate,
             timeProvider);
 

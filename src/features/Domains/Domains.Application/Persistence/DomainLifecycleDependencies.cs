@@ -6,15 +6,12 @@ using Pole.Features.GitOps.Contracts;
 namespace Pole.Features.Domains.Application.Persistence;
 
 internal sealed class DomainLifecycleDependencies(
-    IMongoDatabase database,
+    IMongoCollection<TenantDomainZone> zones,
+    IMongoCollection<HostnameBinding> bindings,
     FenceDomainZone fenceZone,
     FenceHostnameBinding fenceBinding,
     IEnumerable<IHostnameBindingWorkloadCapability> workloads) : IDeclarativeLifecycleDependencyProvider
 {
-    private readonly IMongoCollection<TenantDomainZone> zones =
-        database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
-    private readonly IMongoCollection<HostnameBinding> bindings =
-        database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
     private readonly IReadOnlyDictionary<string, IHostnameBindingWorkloadCapability> capabilities =
         workloads.ToDictionary(item => item.Kind, StringComparer.Ordinal);
     public string DependencyOwner => "Domains";

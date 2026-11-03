@@ -7,11 +7,8 @@ using Pole.Workloads;
 
 namespace Pole.Features.Domains.Application.Persistence.HostnameBindings;
 
-internal sealed class MongoLoadHostnameBindingsForDeployment(IMongoDatabase database)
+internal sealed class MongoLoadHostnameBindingsForDeployment(IMongoCollection<HostnameBinding> bindings)
 {
-    private readonly IMongoCollection<HostnameBinding> bindings =
-        database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
-
     public async Task<IReadOnlyList<HostnameBindingSnapshot>> InvokeAsync(
         LoadHostnameBindingsForDeploymentRequest request,
         CancellationToken cancellationToken = default)

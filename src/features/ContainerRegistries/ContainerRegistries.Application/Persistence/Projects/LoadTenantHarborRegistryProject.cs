@@ -7,13 +7,12 @@ public delegate Task<RegistryProject?> LoadTenantHarborRegistryProject(
     string tenantId,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoLoadTenantHarborRegistryProject(IMongoDatabase database)
+internal sealed class MongoLoadTenantHarborRegistryProject(IMongoCollection<RegistryProject> registryProjects)
 {
     public async Task<RegistryProject?> InvokeAsync(
         string tenantId,
         CancellationToken cancellationToken = default) =>
-        await database
-            .GetCollection<RegistryProject>("RegistryProjects")
+        await registryProjects
             .Find(ContainerRegistryFilters.HarborProjectByTenant(tenantId))
             .FirstOrDefaultAsync(cancellationToken);
 }

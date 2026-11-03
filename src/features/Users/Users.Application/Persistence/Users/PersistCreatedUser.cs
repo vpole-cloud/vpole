@@ -21,12 +21,10 @@ public delegate Task<PersistCreatedUserOutcome> PersistCreatedUser(
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoPersistCreatedUser(
-    IMongoDatabase database,
+    IMongoCollection<PoleUser> _users,
     MongoRunTransaction transaction,
     StoreOutboxWrites storeOutboxWrites)
 {
-    private readonly IMongoCollection<PoleUser> _users = database.GetCollection<PoleUser>("Users");
-
     public async Task<PersistCreatedUserOutcome> InvokeAsync(
         PersistCreatedUserRequest request,
         CancellationToken cancellationToken = default)

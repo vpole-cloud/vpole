@@ -4,11 +4,8 @@ using Pole.Features.ContainerRegistries.Domain;
 
 namespace Pole.Features.ContainerRegistries.Application.Persistence.Credentials;
 
-public sealed class RegistryCredentialRewrapPersistence(IMongoDatabase database)
+public sealed class RegistryCredentialRewrapPersistence(IMongoCollection<RegistryCredential> credentials)
 {
-    private readonly IMongoCollection<RegistryCredential> credentials =
-        database.GetCollection<RegistryCredential>("RegistryCredentials");
-
     internal async Task<IReadOnlyList<RegistryCredential>> LoadBatchAsync(
         string? cursor,
         int limit,

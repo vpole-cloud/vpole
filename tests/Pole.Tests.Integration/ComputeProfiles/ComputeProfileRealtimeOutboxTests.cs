@@ -13,6 +13,7 @@ using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Application.Persistence.Writes;
 using Pole.Features.Outbox.Contracts;
+using Pole.Features.Outbox.Domain;
 using Pole.Features.Realtime.Contracts;
 using Pole.Features.ResourceDeployments.Application.Persistence;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -87,7 +88,7 @@ public sealed class ComputeProfileRealtimeOutboxTests(MongoReplicaSetFixture fix
         var beforeCount = await CountEventsAsync();
         var beforeReferences = await fixture.DbContext.DeploymentTargetReferences.Find(_ => true).ToListAsync();
         var beforeTargets = await fixture.DbContext.DeploymentTargets.Find(_ => true).ToListAsync();
-        var realStore = new MongoStoreOutboxWrites(fixture.Database);
+        var realStore = new MongoStoreOutboxWrites(fixture.Database.GetCollection<OutboxMessage>("OutboxMessages"));
         StoreOutboxWrites failingStore = async (session, writes, ct) =>
         {
             await realStore.InvokeAsync(session, writes, ct);

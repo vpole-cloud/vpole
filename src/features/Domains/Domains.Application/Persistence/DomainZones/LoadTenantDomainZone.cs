@@ -15,11 +15,8 @@ public delegate Task<LoadTenantDomainZoneOutcome>
         string zoneId,
         CancellationToken cancellationToken = default);
 
-internal sealed class MongoLoadTenantDomainZone(IMongoDatabase database)
+internal sealed class MongoLoadTenantDomainZone(IMongoCollection<TenantDomainZone> zones)
 {
-    private readonly IMongoCollection<TenantDomainZone> zones =
-        database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
-
     public async Task<LoadTenantDomainZoneOutcome> InvokeAsync(
         string tenantId,
         string zoneId,

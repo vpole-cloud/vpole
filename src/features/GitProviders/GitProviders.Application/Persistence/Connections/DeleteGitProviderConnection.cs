@@ -19,7 +19,8 @@ public delegate Task<PersistDeletedGitProviderConnectionOutcome> DeleteGitProvid
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoDeleteGitProviderConnection(
-    IMongoDatabase database,
+    IMongoCollection<GitProviderConnection> gitProviderConnections,
+    IMongoCollection<SourceRepository> sourceRepositories,
     MongoRunTransaction transactions,
     StoreOutboxWrites outbox)
 {
@@ -28,14 +29,14 @@ internal sealed class MongoDeleteGitProviderConnection(
         string connectionId,
         CancellationToken cancellationToken = default)
     {
-        var connections = database.GetCollection<GitProviderConnection>("GitProviderConnections");
+        var connections = gitProviderConnections;
         var connectionFilter = GitProviderFilters.ConnectionByTenantAndId(tenantId, connectionId);
         return await transactions.InvokeOutcomeAsync<PersistDeletedGitProviderConnectionOutcome>(async (tx, ct) =>
             {
                 if (!await connections.Find(tx.Session, connectionFilter).AnyAsync(ct))
                     return tx.Abort(new GitProviderConnectionNotFound(connectionId));
 
-                var repositories = database.GetCollection<SourceRepository>("SourceRepositories");
+                var repositories = sourceRepositories;
                 if (await repositories
                         .Find(tx.Session,
                             GitProviderFilters.SourceRepositoriesByTenantAndConnection(tenantId, connectionId))

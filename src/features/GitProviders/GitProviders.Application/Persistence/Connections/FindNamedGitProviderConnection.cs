@@ -4,13 +4,13 @@ using Pole.Features.GitProviders.Domain;
 
 namespace Pole.Features.GitProviders.Application.Persistence.Connections;
 
-internal sealed class MongoFindNamedGitProviderConnection(IMongoDatabase database)
+internal sealed class MongoFindNamedGitProviderConnection(IMongoCollection<GitProviderConnection> gitProviderConnections)
 {
     public async Task<FindNamedGitProviderConnectionOutcome> InvokeAsync(
         NamedGitProviderConnectionRequest request,
         CancellationToken cancellationToken)
     {
-        var connection = await database.GetCollection<GitProviderConnection>("GitProviderConnections")
+        var connection = await gitProviderConnections
             .Find(GitProviderFilters.ConnectionByTenantAndName(request.TenantId, request.TechnicalName))
             .FirstOrDefaultAsync(cancellationToken);
 

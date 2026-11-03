@@ -59,6 +59,10 @@ public static class GitProviderApplicationRegistration
             .GetCollection<SourceRepository>("SourceRepositories"));
         services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
             .GetCollection<GitProviderConnection>("GitProviderConnections"));
+        services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
+            .GetCollection<GitHubDeliveryReceipt>(GitHubWebhookPersistence.CollectionName));
+        services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
+            .GetCollection<GitHubSetupAttempt>("GitHubSetupAttempts"));
         services.TryAddScoped<MongoSourceRepositoryReferences>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IDeclarativeResourceProvider,
             DeclarativeSourceRepositoryProvider>());

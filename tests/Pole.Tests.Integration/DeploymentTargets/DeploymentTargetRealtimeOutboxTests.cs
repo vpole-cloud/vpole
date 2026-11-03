@@ -14,6 +14,7 @@ using Pole.Features.DeploymentTargets.Events;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Application.Persistence.Writes;
 using Pole.Features.Outbox.Contracts;
+using Pole.Features.Outbox.Domain;
 using Pole.Features.Realtime.Contracts;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -76,7 +77,7 @@ public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture f
         if (!creating)
             await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         var before = creating ? null : await ReadAsync(target.Id);
-        var realStore = new MongoStoreOutboxWrites(fixture.Database);
+        var realStore = new MongoStoreOutboxWrites(fixture.Database.GetCollection<OutboxMessage>("OutboxMessages"));
         StoreOutboxWrites failingStore = async (session, writes, ct) =>
         {
             await realStore.InvokeAsync(session, writes, ct);
@@ -418,7 +419,7 @@ public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture f
                 DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName)).InvokeAsync;
 
     private MongoRunTransaction Run() => new(fixture.Client);
-    private StoreOutboxWrites Store() => new MongoStoreOutboxWrites(fixture.Database).InvokeAsync;
+    private StoreOutboxWrites Store() => new MongoStoreOutboxWrites(fixture.Database.GetCollection<OutboxMessage>("OutboxMessages")).InvokeAsync;
     private Task<long> CountEventsAsync() => fixture.DbContext.CountOutboxMessagesAsync(EventType);
 
     private Task<DeploymentTarget> ReadAsync(string id) =>

@@ -31,8 +31,9 @@ public sealed class DomainZoneLoadCapabilityTests(MongoReplicaSetFixture fixture
         await fixture.Database
             .GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones)
             .InsertManyAsync([zone, otherTargetZone, foreignZone]);
-        var loadZone = new MongoLoadTenantDomainZone(fixture.Database);
-        var loadZones = new MongoLoadTenantDomainZones(fixture.Database);
+        var zones = fixture.Database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
+        var loadZone = new MongoLoadTenantDomainZone(zones);
+        var loadZones = new MongoLoadTenantDomainZones(zones);
 
         var foreignLookup = await loadZone.InvokeAsync(tenantId, foreignZone.Id);
         var selected = await loadZones.InvokeAsync(tenantId, deploymentTargetId);

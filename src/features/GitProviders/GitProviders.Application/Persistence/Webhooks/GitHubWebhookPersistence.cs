@@ -9,7 +9,8 @@ using Pole.Features.Outbox.Contracts;
 namespace Pole.Features.GitProviders.Application.Persistence.Webhooks;
 
 public sealed class GitHubWebhookPersistence(
-    IMongoDatabase database,
+    IMongoCollection<GitHubDeliveryReceipt> gitHubDeliveryReceipt,
+    IMongoCollection<GitProviderConnection> gitProviderConnections,
     MongoRunTransaction transactions,
     StoreOutboxWrites outbox)
 {
@@ -20,7 +21,7 @@ public sealed class GitHubWebhookPersistence(
         GitHubBranchPush? push,
         CancellationToken ct)
     {
-        var receipts = database.GetCollection<GitHubDeliveryReceipt>(CollectionName);
+        var receipts = gitHubDeliveryReceipt;
 
         Task<GitHubWebhookResult> AttemptAsync() => transactions.InvokeOutcomeAsync<GitHubWebhookResult>(
             async (tx, token) =>
@@ -34,7 +35,7 @@ public sealed class GitHubWebhookPersistence(
 
                 if (push is not null)
                 {
-                    var connection = await database.GetCollection<GitProviderConnection>("GitProviderConnections")
+                    var connection = await gitProviderConnections
                         .Find(tx.Session, GitProviderFilters.ConnectionByInstallation(push.InstallationId))
                         .FirstOrDefaultAsync(token);
                     if (connection is not null)

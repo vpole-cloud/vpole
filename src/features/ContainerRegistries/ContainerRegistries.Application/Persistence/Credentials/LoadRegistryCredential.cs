@@ -9,14 +9,14 @@ public delegate Task<RegistryCredential?> LoadRegistryCredential(
     RegistryCredentialPurpose purpose,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoLoadRegistryCredential(IMongoDatabase database)
+internal sealed class MongoLoadRegistryCredential(IMongoCollection<RegistryCredential> registryCredentials)
 {
     public async Task<RegistryCredential?> InvokeAsync(
         string tenantId,
         string registryProjectId,
         RegistryCredentialPurpose purpose,
         CancellationToken cancellationToken = default) =>
-        await database.GetCollection<RegistryCredential>("RegistryCredentials")
+        await registryCredentials
             .Find(ContainerRegistryFilters.CredentialByTenantProjectAndPurpose(
                 tenantId,
                 registryProjectId,

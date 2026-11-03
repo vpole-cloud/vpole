@@ -28,15 +28,11 @@ public union PersistReadyRegistryProjectOutcome(
 /// concurrency fences.
 /// </summary>
 public sealed class RegistryProvisioningPersistence(
-    IMongoDatabase database,
+    IMongoCollection<RegistryProject> projects,
+    IMongoCollection<RegistryCredential> credentials,
     MongoRunTransaction transactions,
     TimeProvider timeProvider)
 {
-    private readonly IMongoCollection<RegistryProject> projects =
-        database.GetCollection<RegistryProject>("RegistryProjects");
-    private readonly IMongoCollection<RegistryCredential> credentials =
-        database.GetCollection<RegistryCredential>("RegistryCredentials");
-
     internal async Task<ClaimRegistryProvisioningOutcome>
         ClaimProvisioningAsync(
             string tenantId,

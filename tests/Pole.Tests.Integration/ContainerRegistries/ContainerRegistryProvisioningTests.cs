@@ -219,7 +219,8 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         await Fixture.DbContext.RegistryCredentials.InsertOneAsync(credential);
 
         var service = new RegistryCredentialRewrapService(
-            new RegistryCredentialRewrapPersistence(Fixture.Database),
+            new RegistryCredentialRewrapPersistence(
+                Fixture.Database.GetCollection<RegistryCredential>("RegistryCredentials")),
             encryption.RotatingService);
         var wrongTarget = encryption.RotatingService.ActiveKey with { KeyVersion = 99 };
         var rejected = await service.InvokeAsync(wrongTarget);

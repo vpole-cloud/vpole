@@ -22,7 +22,8 @@ public sealed record HostnameDeclarationDependencyUnavailable : IDeclarationFail
 public sealed record HostnameDeclarationAlreadyReserved : IDeclarationFailure;
 
 internal sealed partial class DeclarativeHostnameBindingProvider(
-    IMongoDatabase database,
+    IMongoCollection<TenantDomainZone> zones,
+    IMongoCollection<HostnameBinding> bindings,
     IGitOpsMutations git,
     MongoRunTransaction transactions,
     ResolveNamedDomainReservationTarget resolveTargetName,
@@ -36,12 +37,6 @@ internal sealed partial class DeclarativeHostnameBindingProvider(
     : ITransactionalDeclarativeResourceProvider, IDeclarativeReferencePreparation,
         IDeclarativeResourceLifecycleProvider, IDeclarativeAdoptionPreviewProvider, IDeclarativePreviewReferenceProvider
 {
-    private readonly IMongoCollection<TenantDomainZone> zones =
-        database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
-
-    private readonly IMongoCollection<HostnameBinding> bindings =
-        database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
-
     private readonly IReadOnlyDictionary<string, IHostnameBindingWorkloadCapability> capabilities =
         workloadCapabilities.ToDictionary(item => item.Kind, StringComparer.Ordinal);
 

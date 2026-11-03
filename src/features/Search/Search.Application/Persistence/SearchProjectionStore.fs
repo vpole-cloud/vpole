@@ -16,12 +16,13 @@ open Pole.Features.Search.Contracts
 open Pole.Features.Search.Domain
 open Pole.Features.Search.Events
 
-type internal SearchProjectionStore(database: IMongoDatabase, outbox: StoreOutboxWrites) =
-    let documents = database.GetCollection<SearchDocument>("SearchDocuments")
-    let sources = database.GetCollection<SearchSourceDocument>("SearchSourceDocuments")
-
-    let versions =
-        database.GetCollection<SearchProjectionVersionDocument>("SearchProjectionVersions")
+type internal SearchProjectionStore(
+    database: IMongoDatabase,
+    documents: IMongoCollection<SearchDocument>,
+    sources: IMongoCollection<SearchSourceDocument>,
+    versions: IMongoCollection<SearchProjectionVersionDocument>,
+    outbox: StoreOutboxWrites
+) =
 
     let bsonDocument (elements: BsonElement list) = BsonDocument(elements)
     let bsonArray (values: BsonValue list) = BsonArray(values)

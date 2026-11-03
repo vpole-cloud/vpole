@@ -3,6 +3,8 @@ using Hangfire;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+using MongoDB.Driver;
+using Pole.Features.ContainerRegistries.Domain;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.ContainerRegistries.Application.Harbor;
 using Pole.Features.ContainerRegistries.Application.Persistence;
@@ -23,6 +25,11 @@ public static class ContainerRegistryApplicationRegistration
         services.Configure<HarborOptions>(configuration.GetSection(HarborOptions.SectionName));
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<HarborOptions>>().Value);
         services.TryAddSingleton(TimeProvider.System);
+
+        services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
+            .GetCollection<RegistryProject>("RegistryProjects"));
+        services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
+            .GetCollection<RegistryCredential>("RegistryCredentials"));
 
         services.TryAddScoped<RegistryProvisioningPersistence>();
         services.TryAddScoped<MongoLoadTenantHarborRegistryProject>();

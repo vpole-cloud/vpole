@@ -7,12 +7,11 @@ public delegate Task CreateGitHubSetupAttempt(
     GitHubSetupAttempt attempt,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoCreateGitHubSetupAttempt(IMongoDatabase database)
+internal sealed class MongoCreateGitHubSetupAttempt(IMongoCollection<GitHubSetupAttempt> gitHubSetupAttempts)
 {
     public Task InvokeAsync(
         GitHubSetupAttempt attempt,
         CancellationToken cancellationToken = default) =>
-        database
-            .GetCollection<GitHubSetupAttempt>("GitHubSetupAttempts")
+        gitHubSetupAttempts
             .InsertOneAsync(attempt, cancellationToken: cancellationToken);
 }

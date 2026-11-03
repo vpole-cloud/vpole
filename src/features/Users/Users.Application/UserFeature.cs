@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using MongoDB.Driver;
+using Pole.Features.Users.Domain;
 using Pole.Features.Users.Application.Identity;
 using Pole.Features.Users.Application.Persistence;
 using Pole.Features.Users.Application.Persistence.Users;
@@ -13,6 +15,8 @@ public static class UserFeature
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
+            .GetCollection<PoleUser>("Users"));
         services.Configure<KeycloakOptions>(configuration.GetSection(KeycloakOptions.SectionName));
         services.AddHttpClient<IIdentityProvider, KeycloakIdentityProvider>();
 

@@ -7,11 +7,8 @@ using EventExtensions = Pole.Features.Events.Abstractions.EventExtensions;
 
 namespace Pole.Features.Outbox.Application.Persistence.Writes;
 
-internal sealed class MongoStoreOutboxWrites(IMongoDatabase database)
+internal sealed class MongoStoreOutboxWrites(IMongoCollection<OutboxMessage> _outboxMessages)
 {
-    private readonly IMongoCollection<OutboxMessage> _outboxMessages =
-        database.GetCollection<OutboxMessage>("OutboxMessages");
-
     public Task InvokeAsync(
         IClientSessionHandle session,
         IReadOnlyCollection<OutboxWrite> writes,
