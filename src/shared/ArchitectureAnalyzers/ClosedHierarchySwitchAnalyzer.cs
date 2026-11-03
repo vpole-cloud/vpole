@@ -55,11 +55,11 @@ public sealed class ClosedHierarchySwitchAnalyzer : DiagnosticAnalyzer
             context.ReportDiagnostic(Diagnostic.Create(Rule, node.GetLocation(), type.Name));
     }
 
-    private static bool IsClosedHierarchy(ITypeSymbol type) =>
-        type.DeclaringSyntaxReferences.Any(reference => reference.GetSyntax().ChildTokens()
-            .Any(token => token.ValueText == "closed")) ||
-        type.GetAttributes().Any(attribute => attribute.AttributeClass?.ToDisplayString() ==
-            "System.Runtime.CompilerServices.IsClosedTypeAttribute");
+    // The pinned preview compiler hides its IsClosedTypeAttribute from GetAttributes().
+    // This accessor needs the preview semantic API; source and emitted-assembly tests cover it.
+#pragma warning disable RSEXPERIMENTAL006
+    private static bool IsClosedHierarchy(ITypeSymbol type) => type.IsClosed;
+#pragma warning restore RSEXPERIMENTAL006
 
     private static bool IsCatchAll(PatternSyntax pattern) => pattern switch
     {
