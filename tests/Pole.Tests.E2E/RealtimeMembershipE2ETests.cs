@@ -321,9 +321,9 @@ public sealed class RealtimeMembershipE2ETests(PoleE2EFixture fixture)
             path = "/",
             port = "80",
             initialDelaySeconds = 0,
-            periodSeconds = 2,
+            periodSeconds = 6,
             timeoutSeconds = 1,
-            failureThreshold = 30,
+            failureThreshold = 10,
             successThreshold = 1
         };
         var created = await SendAsync(HttpMethod.Post,

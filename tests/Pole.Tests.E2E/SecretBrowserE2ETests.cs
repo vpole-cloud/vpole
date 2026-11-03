@@ -139,7 +139,7 @@ public sealed class SecretBrowserE2ETests(PoleE2EFixture fixture, ITestOutputHel
         }
     }
 
-    private static object Probe() => new { path = "/", port = "80", initialDelaySeconds = 0, periodSeconds = 1, timeoutSeconds = 1, successThreshold = 1, failureThreshold = 30 };
+    private static object Probe() => new { path = "/", port = "80", initialDelaySeconds = 0, periodSeconds = 3, timeoutSeconds = 1, successThreshold = 1, failureThreshold = 10 };
 
     private async Task<JsonElement> SendAsync(HttpMethod method, string path, object? body, CancellationToken token)
     {
