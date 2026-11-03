@@ -6,11 +6,24 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Secrets.Domain;
 using Pole.Features.Secrets.Events;
+using Pole.Workloads;
 
 namespace Pole.Features.Secrets.Application.Persistence;
 
-internal sealed partial class DeclarativeSecretBindingProvider
+internal sealed class SecretBindingAdoption(
+    IMongoCollection<Secret> secrets,
+    SecretBindingConsumerCatalog consumers,
+    IGitOpsMutations git,
+    LoadIsolationScopePlanningSnapshot loadPlanningScope,
+    LoadResourceDeploymentPlanningSnapshot loadPlanningPlacements,
+    SecretBindingPlanning planning,
+    StoreSecretChange publish,
+    TimeProvider clock)
 {
+    private const string Kind = "SecretBinding";
+
+    private ResourceTypeId ConsumerType(SecretBindingDeclaration spec) =>
+        consumers.Get(spec.Consumer.Kind).ResourceType;
     public async Task<PreviewLifecycleAdoptionOutcome> PreviewAdoptionAsync(
         PreviewLifecycleAdoptionRequest request,
         IClientSessionHandle session,
@@ -25,21 +38,22 @@ internal sealed partial class DeclarativeSecretBindingProvider
             spec.Secret))?.ResourceId;
         var consumerId = request.References.SingleOrDefault(item => item.Address == spec.Consumer)?.ResourceId;
         if (secret is null || binding is null || secretId is null || consumerId is null)
-            return BindingPlanningBlocked(SecretBindingDeclarationError.BindingPrerequisiteUnavailable);
+            return SecretBindingPlanning.BindingPlanningBlocked(
+                SecretBindingDeclarationError.BindingPrerequisiteUnavailable);
 
         if (secret.Management is ProviderManagedSecret owner && owner.BindingId == binding.Id ||
             binding.Selection is not AllSecretDeployments || secret.Id != secretId ||
             binding.Consumer.ResourceId != consumerId || binding.Consumer.ResourceType != ConsumerType(spec).Value ||
             binding.Usage != spec.Usage ||
             binding.DeclarationName is { } name && name != request.Declaration.Address.Name)
-            return BindingPlanningBlocked(SecretBindingDeclarationError.ImmutableBindingChange);
+            return SecretBindingPlanning.BindingPlanningBlocked(SecretBindingDeclarationError.ImmutableBindingChange);
 
         var named = await secrets.Find(session,
             SecretFilters.DeclarationBindingName(request.TenantId, request.Declaration.Address.Name))
             .FirstOrDefaultAsync(ct);
         if (named?.Bindings.Any(item => item.DeclarationName == request.Declaration.Address.Name &&
                 item.Id != binding.Id) == true)
-            return BindingPlanningBlocked(SecretBindingDeclarationError.ImmutableBindingChange);
+            return SecretBindingPlanning.BindingPlanningBlocked(SecretBindingDeclarationError.ImmutableBindingChange);
 
         var scope = await loadPlanningScope(new(request.TenantId, secret.ResourceGroupId, secret.IsolationScopeId),
             session, ct);
@@ -49,19 +63,21 @@ internal sealed partial class DeclarativeSecretBindingProvider
             placements is not ResourceDeploymentPlanningSnapshot placed || placed.Items.Any(item =>
                 item.ResourceGroupId != secret.ResourceGroupId || item.IsolationScopeId != secret.IsolationScopeId ||
                 item.State == ResourceDeploymentPlanningState.Deleting))
-            return BindingPlanningBlocked(SecretBindingDeclarationError.BindingScopeUnavailable);
+            return SecretBindingPlanning.BindingPlanningBlocked(SecretBindingDeclarationError.BindingScopeUnavailable);
 
         var desired = SecretBinding.Create(binding.Id, binding.Consumer.ResourceType, consumerId,
             new AllSecretDeployments(), spec.KeyMappings, spec.Usage) with
         { DeclarationName = request.Declaration.Address.Name };
         if (secret.DeclareBinding(desired, clock.GetUtcNow().UtcDateTime) is not Secret)
-            return BindingPlanningBlocked(SecretBindingDeclarationError.SecretKeysInUse);
+            return SecretBindingPlanning.BindingPlanningBlocked(SecretBindingDeclarationError.SecretKeysInUse);
 
-        var versions = new DeclarationVersionToken(Versions(new(secret, consumerId, accepted, placed)));
+        var versions = new DeclarationVersionToken(
+            SecretBindingPlanning.Versions(new(secret, consumerId, accepted, placed)));
         return new GitLifecycleAdoptionPreview(new(binding.Id, versions,
-                Project(secret.Id, binding.Consumer, binding.Usage, binding.KeyMappings),
+                SecretBindingPlanning.Project(secret.Id, binding.Consumer, binding.Usage, binding.KeyMappings),
                 DeclarationConfigurationState.Configured),
-            Project(secret.Id, binding.Consumer, spec.Usage, spec.KeyMappings) with { Dependencies = versions },
+            SecretBindingPlanning.Project(secret.Id, binding.Consumer, spec.Usage, spec.KeyMappings) with
+            { Dependencies = versions },
             [new(new("Secret", spec.Secret), secret.Id, new(SecretPlanningFence.Versions(secret))),
                 new(spec.Consumer, consumerId, versions)]);
     }
@@ -76,7 +92,7 @@ internal sealed partial class DeclarativeSecretBindingProvider
                 Lifecycle: request.Authority, LifecycleEffect: GitLifecycleMutationEffect.Adopt), session, ct))
             return new StaleGitExecution();
 
-        var dependencies = await ReadDependenciesAsync(operation, session, ct);
+        var dependencies = await planning.ReadDependenciesAsync(operation, session, ct);
         if (dependencies is DeclarationReadBlocked blocked)
             return blocked;
 
@@ -84,9 +100,9 @@ internal sealed partial class DeclarativeSecretBindingProvider
         var binding = read.Secret.Bindings.SingleOrDefault(item => item.Id == operation.ResourceId);
         if (binding is null || read.Secret.Management is ProviderManagedSecret owner && owner.BindingId == binding.Id ||
             binding.DeclarationName is { } name && name != operation.Declaration.Address.Name)
-            return BindingPlanningBlocked(SecretBindingDeclarationError.ImmutableBindingChange);
+            return SecretBindingPlanning.BindingPlanningBlocked(SecretBindingDeclarationError.ImmutableBindingChange);
 
-        var fenced = await FenceAsync(new(operation, request.Expected), session, ct);
+        var fenced = await planning.FenceAsync(new(operation, request.Expected), session, ct);
         if (fenced is DeclarationReadBlocked failure)
             return failure;
         if (fenced is DeclarationPreconditionsChanged changed)

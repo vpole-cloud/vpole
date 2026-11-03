@@ -5,8 +5,12 @@ using Pole.Features.Secrets.Domain;
 
 namespace Pole.Features.Secrets.Application.Persistence;
 
-internal sealed partial class DeclarativeSecretBindingProvider
+internal sealed class SecretBindingLifecycle(
+    IMongoCollection<Secret> secrets,
+    MongoRemoveSecretBinding deletion)
 {
+    private const string Kind = "SecretBinding";
+
     public async Task<ReadLifecycleResourceOutcome> ReadLifecycleAsync(
         ReadLifecycleResourceRequest request,
         IClientSessionHandle session,

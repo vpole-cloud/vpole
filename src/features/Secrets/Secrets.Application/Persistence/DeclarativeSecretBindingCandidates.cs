@@ -4,7 +4,9 @@ using Pole.Features.Secrets.Domain;
 
 namespace Pole.Features.Secrets.Application.Persistence;
 
-internal sealed partial class DeclarativeSecretBindingProvider
+internal sealed class SecretBindingCandidates(
+    IMongoCollection<Secret> secrets,
+    SecretBindingConsumerCatalog consumers)
 {
     public async Task<DeclarationAdoptionCandidatePage> FindAdoptionCandidatesAsync(
         FindDeclarationAdoptionCandidatesRequest request,
@@ -13,7 +15,7 @@ internal sealed partial class DeclarativeSecretBindingProvider
     {
         var related = request.References.Related;
         var consumer = request.References.Consumer;
-        if (related.Address.Kind != "Secret" || !consumers.TryGetValue(consumer.Address.Kind, out var capability))
+        if (related.Address.Kind != "Secret" || !consumers.TryGet(consumer.Address.Kind, out var capability))
             return new([], false);
         var secret = await secrets.Find(session, SecretFilters.Identity(request.TenantId, related.ResourceId))
             .FirstOrDefaultAsync(cancellationToken);

@@ -75,6 +75,12 @@ internal static class SecretPersistenceRegistration
         services.AddScoped<IDeclarativeResourceProvider>(sp => sp.GetRequiredService<DeclarativeSecretProvider>());
         services.AddScoped<IDeclarativeResourceLifecycleProvider>(sp =>
             sp.GetRequiredService<DeclarativeSecretProvider>());
+        services.AddScoped<SecretBindingConsumerCatalog>();
+        services.AddScoped<SecretBindingPlanning>();
+        services.AddScoped<SecretBindingExecution>();
+        services.AddScoped<SecretBindingAdoption>();
+        services.AddScoped<SecretBindingLifecycle>();
+        services.AddScoped<SecretBindingCandidates>();
         services.AddScoped<DeclarativeSecretBindingProvider>();
         services.AddScoped<IDeclarativeResourceProvider>(sp =>
             sp.GetRequiredService<DeclarativeSecretBindingProvider>());
