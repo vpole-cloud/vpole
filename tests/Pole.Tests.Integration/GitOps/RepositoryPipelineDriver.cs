@@ -138,7 +138,8 @@ internal sealed class RepositoryPipelineDriver(
                                     run.Diagnostics.Any(item => item.Document != null)
                     => RepositoryPipelineStatus.InvalidSnapshot,
                 GitRunFinished => RepositoryPipelineStatus.Failed,
-                _ => RepositoryPipelineStatus.Applying
+                GitRunWaiting or GitRunClaimed or GitRunDelayed or GitRunWaitingCleanup =>
+                    RepositoryPipelineStatus.Applying
             };
         return new(snapshot, report.Context, report.Operations, status);
     }
@@ -157,7 +158,8 @@ internal sealed class RepositoryPipelineDriver(
         {
             GitRunClaimed claimed => new GitRunClaimed(claimed.Lease with { ExpiresAtUtc = due }),
             GitRunDelayed delayed => (GitRunState)(delayed with { NextAttemptAtUtc = due }),
-            _ => throw new InvalidOperationException("Only an interrupted active run can be recovered.")
+            GitRunWaiting or GitRunWaitingCleanup or GitRunFinished =>
+                throw new InvalidOperationException("Only an interrupted active run can be recovered.")
         };
         await Runs.UpdateOneAsync(item => item.Id == run.Id,
             Builders<GitReconciliationRun>.Update.Set(item => item.State, state));
