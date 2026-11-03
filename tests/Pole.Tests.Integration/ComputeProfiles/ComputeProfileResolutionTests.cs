@@ -1,13 +1,13 @@
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ComputeProfiles.Application.Common;
-using Pole.Features.ComputeProfiles.Application.Migrations;
+using Pole.Features.ComputeProfiles.Migrations;
 using Pole.Features.ComputeProfiles.Application.Persistence;
 using Pole.Features.ComputeProfiles.Application.Persistence.Mutations;
 using Pole.Features.ComputeProfiles.Application.Persistence.Reads;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
-using Pole.Features.DeploymentTargets.Application.Migrations;
+using Pole.Features.DeploymentTargets.Migrations;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;

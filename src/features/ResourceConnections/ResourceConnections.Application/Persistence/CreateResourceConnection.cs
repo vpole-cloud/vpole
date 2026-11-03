@@ -102,7 +102,7 @@ internal sealed class MongoCreateResourceConnection(
                 await connections.InsertOneAsync(session, connection, cancellationToken: cancellationToken);
             }
             catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(exception,
-                Migrations.ResourceConnectionIndexesMigration.TenantNameIndex,
+                ResourceConnectionIndexes.TenantName,
                 connections.CollectionNamespace.CollectionName))
             {
                 return new ConnectionNameAlreadyExists(command.Name);

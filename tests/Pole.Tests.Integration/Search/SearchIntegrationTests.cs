@@ -1,3 +1,4 @@
+using Pole.Migrations;
 using System.Collections.Immutable;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,7 +10,7 @@ using Pole.Features.Request;
 using Pole.Features.ResourceGroups.Application.Search;
 using Pole.Features.ResourceGroups.Events;
 using Pole.Features.Search.Application.Common;
-using Pole.Features.Search.Application.Migrations;
+using Pole.Features.Search.Migrations;
 using Pole.Features.Search.Application.Projection;
 using Pole.Features.Search.Contracts;
 using Pole.Features.Search.Domain;

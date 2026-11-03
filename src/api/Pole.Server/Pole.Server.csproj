@@ -66,4 +66,13 @@
 
 <ItemGroup><ProjectReference Include="../../features/PrivateAccess/PrivateAccess.Runtime/PrivateAccess.Runtime.csproj" /></ItemGroup>
 <ItemGroup><ProjectReference Include="../Pole.Platform.Hosting/Pole.Platform.Hosting.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../features/RedisServices/RedisServices.Migrations/RedisServices.Migrations.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../features/WebServices/WebServices.Migrations/WebServices.Migrations.csproj" />
+    <ProjectReference Include="../../features/Functions/Functions.Migrations/Functions.Migrations.csproj" />
+    <ProjectReference Include="../../features/ResourceConnections/ResourceConnections.Migrations/ResourceConnections.Migrations.csproj" />
+    <ProjectReference Include="../../features/Postgres/Postgres.Migrations/Postgres.Migrations.fsproj" />
+  </ItemGroup>
 </Project>

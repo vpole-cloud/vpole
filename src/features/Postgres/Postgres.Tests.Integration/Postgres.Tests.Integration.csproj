@@ -51,4 +51,7 @@
     <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="../Postgres.Migrations/Postgres.Migrations.fsproj" />
+  </ItemGroup>
 </Project>

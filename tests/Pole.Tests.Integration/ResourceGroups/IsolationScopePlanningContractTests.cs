@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Features.ResourceGroups.Application.Endpoints;
-using Pole.Features.ResourceGroups.Application.Migrations;
+using Pole.Features.ResourceGroups.Migrations;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Tests.Integration.Infrastructure;

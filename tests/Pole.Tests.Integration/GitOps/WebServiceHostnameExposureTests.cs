@@ -1,5 +1,5 @@
 using MongoDB.Driver;
-using Pole.Features.Domains.Application.Migrations;
+using Pole.Features.Domains.Migrations;
 using Pole.Features.GitOps.Application;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;

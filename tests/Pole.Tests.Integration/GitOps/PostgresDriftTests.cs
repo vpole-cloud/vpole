@@ -1,3 +1,4 @@
+using Pole.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -11,7 +12,7 @@ using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.Postgres.Application.Common;
-using Pole.Features.Postgres.Application.Migrations;
+using Pole.Features.Postgres.Migrations;
 using Pole.Features.Postgres.Application.Persistence;
 using Pole.Features.Postgres.Application.Persistence.Mutations;
 using Pole.Features.Postgres.Application.Persistence.Lifecycle;

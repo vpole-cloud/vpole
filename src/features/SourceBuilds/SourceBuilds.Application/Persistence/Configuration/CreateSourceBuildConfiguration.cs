@@ -3,7 +3,6 @@ using Pole.Database;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
-using Pole.Features.SourceBuilds.Application.Migrations;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Domain;
 
@@ -70,12 +69,12 @@ internal sealed class MongoCreateSourceBuildConfiguration(
             await configurations.InsertOneAsync(session, configuration, cancellationToken: cancellationToken);
         }
         catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(exception,
-            SourceBuildMigration.TenantNameIndex, configurations.CollectionNamespace.CollectionName))
+            SourceBuildIndexes.TenantName, configurations.CollectionNamespace.CollectionName))
         {
             return new SourceBuildConfigurationNameConflict(configuration.TechnicalName);
         }
         catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(exception,
-            SourceBuildMigration.TenantWebServiceIndex, configurations.CollectionNamespace.CollectionName))
+            SourceBuildIndexes.TenantWebService, configurations.CollectionNamespace.CollectionName))
         {
             return new SourceBuildConfigurationAlreadyExists(configuration.WebServiceId);
         }

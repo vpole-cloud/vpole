@@ -62,4 +62,22 @@
     </ItemGroup>
     <Copy SourceFiles="@(ObservationSerializationProbeFiles)" DestinationFolder="$(OutDir)ObservationSerializationProbe" SkipUnchangedFiles="true" />
 </Target>
+  <ItemGroup>
+    <ProjectReference Include="../../src/features/ComputeProfiles/ComputeProfiles.Migrations/ComputeProfiles.Migrations.csproj" />
+    <ProjectReference Include="../../src/features/ContainerRegistries/ContainerRegistries.Migrations/ContainerRegistries.Migrations.csproj" />
+    <ProjectReference Include="../../src/features/DeploymentTargets/DeploymentTargets.Migrations/DeploymentTargets.Migrations.csproj" />
+    <ProjectReference Include="../../src/features/Domains/Domains.Migrations/Domains.Migrations.csproj" />
+    <ProjectReference Include="../../src/features/Functions/Functions.Migrations/Functions.Migrations.csproj" />
+    <ProjectReference Include="../../src/features/GitOps/GitOps.Migrations/GitOps.Migrations.csproj" />
+    <ProjectReference Include="../../src/features/GitProviders/GitProviders.Migrations/GitProviders.Migrations.csproj" />
+    <ProjectReference Include="../../src/features/Outbox/Outbox.Migrations/Outbox.Migrations.csproj" />
+    <ProjectReference Include="../../src/features/ResourceConnections/ResourceConnections.Migrations/ResourceConnections.Migrations.csproj" />
+    <ProjectReference Include="../../src/features/ResourceDeployments/ResourceDeployments.Migrations/ResourceDeployments.Migrations.csproj" />
+    <ProjectReference Include="../../src/features/ResourceGroups/ResourceGroups.Migrations/ResourceGroups.Migrations.csproj" />
+    <ProjectReference Include="../../src/features/Search/Search.Migrations/Search.Migrations.fsproj" />
+    <ProjectReference Include="../../src/features/Secrets/Secrets.Migrations/Secrets.Migrations.csproj" />
+    <ProjectReference Include="../../src/features/SourceBuilds/SourceBuilds.Migrations/SourceBuilds.Migrations.csproj" />
+    <ProjectReference Include="../../src/features/StorageProfiles/StorageProfiles.Migrations/StorageProfiles.Migrations.csproj" />
+    <ProjectReference Include="../../src/features/WebServices/WebServices.Migrations/WebServices.Migrations.csproj" />
+  </ItemGroup>
 </Project>

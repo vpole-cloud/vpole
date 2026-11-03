@@ -1,7 +1,7 @@
 using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
-using Pole.Features.Domains.Application.Migrations;
+using Pole.Features.Domains.Migrations;
 using Pole.Features.Domains.Domain;
 using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Jobs;

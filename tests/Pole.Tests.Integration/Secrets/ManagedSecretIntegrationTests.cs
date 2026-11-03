@@ -1,3 +1,4 @@
+using Pole.Migrations;
 using Pole.Features.GitOps.Application;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
@@ -9,7 +10,7 @@ using Pole.Encryption;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Secrets.Application.Projections;
-using Pole.Features.Secrets.Application.Migrations;
+using Pole.Features.Secrets.Migrations;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;

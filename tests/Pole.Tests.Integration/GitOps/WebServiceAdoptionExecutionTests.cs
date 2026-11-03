@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Migrations;
 using System.Collections.Immutable;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;

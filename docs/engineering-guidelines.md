@@ -22,7 +22,9 @@ Every model of a feature's own persisted state belongs to that feature's Domain 
 This includes aggregate documents, immutable revisions, history, retained cleanup authority,
 stored snapshots and projections, including their feature-owned nested data. Business methods
 are not a condition for Domain ownership. Application.Persistence owns database operations,
-filters, indexes, migrations, codecs and transport serialization configuration.
+filters, runtime index identifiers, codecs and transport serialization configuration.
+Feature.Migrations owns frozen BSON schema and index migrations; it references only the small
+shared migration API and never Application, Domain, Contracts, or runtime helpers.
 MongoDB BSON mapping attributes may live with the persisted Domain models.
 
 DTOs and integration events retain their Contracts/Events ownership when serialized as payloads.

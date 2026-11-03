@@ -1,3 +1,4 @@
+using Pole.Platform.Hosting;
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Configuration;
@@ -8,7 +9,7 @@ using Pole.Testing;
 using Pole.Database;
 using Pole.Features.RedisServices.Application;
 using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Application.Migrations;
+using Pole.Features.RedisServices.Migrations;
 using Pole.Features.RedisServices.Events;
 using Pole.Features.ResourceConnections.Application;
 using Pole.Features.ResourceGroups.Contracts;
@@ -38,9 +39,10 @@ public sealed class RedisFeatureHostTests(MongoReplicaSetFixture fixture)
             typeof(RedisServiceCreatedEvent).Assembly,
             (services, _) => services.AddRedisServicesFeature().AddResourceConnectionsFeature(),
             endpoints => endpoints.MapRedisServiceEndpoints(),
-            new FeatureScopedMigration("pole.redis", new RedisSchemaValidationMigration()),
+            null,
             services =>
         {
+            services.AddFeatureMigrations("pole.redis", typeof(RedisSchemaValidationMigration).Assembly);
             services.AddSingleton(fixture.Client);
             services.AddSingleton(fixture.Database);
             services.AddScoped<EnsureRuntimeCellIngressBaseline>(_ =>

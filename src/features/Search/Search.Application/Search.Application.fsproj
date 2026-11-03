@@ -14,7 +14,6 @@
     <ItemGroup>
         <Compile Include="Common\SearchSourceTypeRegistry.fs" />
         <Compile Include="Common\SearchDto.fs" />
-        <Compile Include="Migrations\SearchDocumentIndexesMigration.fs" />
         <Compile Include="Projection\SearchDocumentFactory.fs" />
         <Compile Include="Persistence\SearchProjectionFilters.fs" />
         <Compile Include="Persistence\SearchProjectionStore.fs" />

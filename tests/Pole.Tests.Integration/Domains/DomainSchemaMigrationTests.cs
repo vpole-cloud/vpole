@@ -1,6 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Features.Domains.Application.Migrations;
+using Pole.Features.Domains.Migrations;
 using Pole.Features.Domains.Domain;
 using Pole.Dns;
 using Pole.Workloads;
@@ -67,6 +67,30 @@ public sealed class DomainSchemaMigrationTests(MongoReplicaSetFixture fixture) :
         Assert.Contains("UX_HostnameBindings_Hostname", bindingIndexes);
         Assert.Contains("UX_HostnameBindings_Tenant_Deployment_Generated", bindingIndexes);
         Assert.Contains("IX_HostnameBindings_Zone", bindingIndexes);
+    }
+
+    [Fact]
+    public async Task Indexes_freeze_scalar_identity_discriminators_and_compound_key_order()
+    {
+        await new TenantDomainZoneSchemaValidationMigration().Up(fixture.Database);
+        await new HostnameBindingSchemaValidationMigration().Up(fixture.Database);
+        await new DomainIndexesMigration().Up(fixture.Database);
+
+        foreach (var (collection, generatedIndex, parentField) in new[]
+                 {
+                     ("TenantDomainZones", "UX_TenantDomainZones_Tenant_Target_Generated", "DeploymentTargetId"),
+                     ("HostnameBindings", "UX_HostnameBindings_Tenant_Deployment_Generated", "ResourceDeploymentId")
+                 })
+        {
+            var indexes = await fixture.Database.GetCollection<BsonDocument>(collection).Indexes.List().ToListAsync();
+            var generated = Assert.Single(indexes, index => index["name"] == generatedIndex);
+            Assert.Equal(new BsonDocument { ["TenantId"] = 1, [parentField] = 1, ["Identity._t"] = 1 }, generated["key"]);
+            Assert.True(generated["unique"].AsBoolean);
+            Assert.Equal(new BsonDocument("Identity._t", "GeneratedDomainIdentity"), generated["partialFilterExpression"]);
+            var named = Assert.Single(indexes, index => index["name"] == $"UX_{collection}_Tenant_TechnicalName");
+            Assert.Equal(new BsonDocument { ["TenantId"] = 1, ["Identity.TechnicalName"] = 1 }, named["key"]);
+            Assert.Equal(new BsonDocument("Identity._t", "NamedDomainIdentity"), named["partialFilterExpression"]);
+        }
     }
 
     [Fact]

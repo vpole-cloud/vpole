@@ -1,7 +1,7 @@
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Features.Functions.Application.Migrations;
+using Pole.Features.Functions.Migrations;
 using Pole.Features.Functions.Domain;
 using Pole.Functions.Protocol;
 using Pole.Tests.Integration.Infrastructure;

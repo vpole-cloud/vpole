@@ -6,7 +6,7 @@ using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.ResourceConnections.Application.Endpoints;
-using Pole.Features.ResourceConnections.Application.Migrations;
+using Pole.Features.ResourceConnections.Migrations;
 using Pole.Features.ResourceConnections.Application.Persistence;
 using Pole.Features.ResourceConnections.Domain;
 using Pole.Tests.Integration.Infrastructure;

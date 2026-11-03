@@ -52,7 +52,7 @@ internal sealed class MongoGitOpsMutations(
         }
         catch (MongoWriteException ex) when (MongoDuplicateKey.IsForIdIndex(ex, GitOpsCollections.Inventory) ||
                                              MongoDuplicateKey.IsForIndex(ex,
-                                                 GitOpsIndexesMigration.ResourceIdentityIndex,
+                                                 GitOpsIndexes.ResourceIdentity,
                                                  GitOpsCollections.Inventory))
         {
             outcome = await AttemptAsync();
