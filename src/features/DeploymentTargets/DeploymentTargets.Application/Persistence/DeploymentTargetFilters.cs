@@ -47,10 +47,10 @@ internal static class DeploymentTargetFilters
         EncryptedValue envelope) => Builders<DeploymentTarget>.Filter.And(
             ById(targetId),
             Builders<DeploymentTarget>.Filter.Eq(
-                "Connection.Version",
+                item => item.Connection.Version,
                 connectionVersion),
             Builders<DeploymentTarget>.Filter.Eq(
-                "Connection.EncryptedKubeconfig",
+                item => ((KubeconfigDeploymentTargetConnection)item.Connection).EncryptedKubeconfig,
                 envelope));
 
     public static FilterDefinition<DeploymentTarget> AtServiceAccountCredentialEnvelope(
@@ -59,10 +59,10 @@ internal static class DeploymentTargetFilters
         EncryptedValue envelope) => Builders<DeploymentTarget>.Filter.And(
             ById(targetId),
             Builders<DeploymentTarget>.Filter.Eq(
-                "Connection.Version",
+                item => item.Connection.Version,
                 connectionVersion),
             Builders<DeploymentTarget>.Filter.Eq(
-                "Connection.EncryptedCredential",
+                item => ((ServiceAccountDeploymentTargetConnection)item.Connection).EncryptedCredential,
                 envelope));
 
     public static FilterDefinition<DeploymentTarget> AtRevisionAndNotPendingDeletion(
