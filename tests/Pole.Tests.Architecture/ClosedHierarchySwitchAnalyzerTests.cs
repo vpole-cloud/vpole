@@ -35,6 +35,40 @@ public sealed class ClosedHierarchySwitchAnalyzerTests
         Assert.Empty(await Analyze("return state switch { Ready => 1, _ => 0 };", closed: false));
     }
 
+    [Fact]
+    public async Task Referenced_closed_hierarchy_remains_protected_after_emission()
+    {
+        var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+            .Split(Path.PathSeparator).Select(path => MetadataReference.CreateFromFile(path)).ToArray();
+        var options = new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary);
+        var parsing = new CSharpParseOptions(LanguageVersion.Preview);
+        var definitions = CSharpCompilation.Create("ClosedStates",
+            [CSharpSyntaxTree.ParseText("""
+                public closed record State;
+                public sealed record Ready : State;
+                public sealed record Failed : State;
+                """, parsing)], references, options);
+        using var assembly = new MemoryStream();
+        var emitted = definitions.Emit(assembly);
+        Assert.True(emitted.Success, string.Join("\n", emitted.Diagnostics));
+        var consumer = CSharpCompilation.Create("Consumer",
+            [CSharpSyntaxTree.ParseText("""
+                public static class Mapping
+                {
+                    public static int Map(State state) => state switch { Ready => 1, _ => 0 };
+                }
+                """, parsing)], references.Append(MetadataReference.CreateFromImage(assembly.ToArray())), options);
+        var diagnostics = await consumer.WithAnalyzers([new ClosedHierarchySwitchAnalyzer()])
+            .GetAnalyzerDiagnosticsAsync();
+        Assert.Single(diagnostics);
+    }
+
+    [Fact]
+    public async Task Tuple_of_closed_states_cannot_hide_a_new_variant()
+    {
+        Assert.Single(await Analyze("return (state, state) switch { (Ready, Ready) => 1, _ => 0 };"));
+    }
+
     private static async Task<Diagnostic[]> Analyze(string body, bool closed = true)
     {
         var source = $$"""

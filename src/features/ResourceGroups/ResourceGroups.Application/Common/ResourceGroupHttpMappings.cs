@@ -17,7 +17,7 @@ public static class ResourceGroupHttpMappings
         409, PoleProblemTypeId.FromCode("resource-groups.name-already-exists"),
         "Resource group name already exists", "resource-groups.name-already-exists").ToHttpResult();
 
-    public static IResult Map(CreateIsolationScopeError error) => error.Value switch
+    public static IResult Map(CreateIsolationScopeError error) => error switch
     {
         ResourceGroupNotFound value => MapResourceGroupNotFound(value).ToHttpResult(),
         ResourceGroupDeleting value => MapResourceGroupDeleting(value).ToHttpResult(),
@@ -25,13 +25,13 @@ public static class ResourceGroupHttpMappings
         IsolationScopeNameConflict value => MapIsolationScopeNameConflict(value).ToHttpResult()
     };
 
-    public static IResult Map(UpdateResourceGroupError error) => error.Value switch
+    public static IResult Map(UpdateResourceGroupError error) => error switch
     {
         ResourceGroupNotFound value => MapResourceGroupNotFound(value).ToHttpResult(),
         ResourceGroupRevisionConflict value => MapResourceGroupRevisionConflict(value).ToHttpResult()
     };
 
-    public static IResult Map(ResourceGroupDeletionError error) => error.Value switch
+    public static IResult Map(ResourceGroupDeletionError error) => error switch
     {
         ResourceGroupNotFound value => MapResourceGroupNotFound(value).ToHttpResult(),
         ResourceGroupContainsResources value => MapResourceGroupContainsResources(value).ToHttpResult(),
@@ -39,7 +39,7 @@ public static class ResourceGroupHttpMappings
         ResourceGroupRevisionConflict value => MapResourceGroupRevisionConflict(value).ToHttpResult()
     };
 
-    public static IResult Map(IsolationScopeDeletionError error) => error.Value switch
+    public static IResult Map(IsolationScopeDeletionError error) => error switch
     {
         ResourceGroupNotFound value => MapResourceGroupNotFound(value).ToHttpResult(),
         ResourceGroupDeleting value => MapResourceGroupDeleting(value).ToHttpResult(),
@@ -50,7 +50,7 @@ public static class ResourceGroupHttpMappings
         ResourceGroupRevisionConflict value => MapResourceGroupRevisionConflict(value).ToHttpResult()
     };
 
-    public static IResult Map(RetryRuntimeCellError error) => error.Value switch
+    public static IResult Map(RetryRuntimeCellError error) => error switch
     {
         RuntimeCellNotFound value => MapRuntimeCellNotFound(value).ToHttpResult(),
         RuntimeCellRetryRejected value => MapRuntimeCellRetryRejected(value).ToHttpResult(),

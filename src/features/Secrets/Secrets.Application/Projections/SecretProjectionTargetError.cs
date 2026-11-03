@@ -1,6 +1,6 @@
 namespace Pole.Features.Secrets.Application.Projections;
 
-public abstract record SecretProjectionTargetFailure;
+public closed record SecretProjectionTargetFailure;
 public sealed record SecretProjectionTargetUnavailable : SecretProjectionTargetFailure;
 public sealed record SecretProjectionTargetDisabled : SecretProjectionTargetFailure;
 public sealed record SecretProjectionOwnershipConflict : SecretProjectionTargetFailure;

@@ -67,7 +67,10 @@ public closed record DeploymentTargetNetworkSource
                     right.PodLabels.TryGetValue(label.Key, out var value) && value == label.Value),
             (DeploymentTargetCidrNetworkSource left, DeploymentTargetCidrNetworkSource right) =>
                 left.Cidr == right.Cidr,
-            _ => false
+            (null, DeploymentTargetPodNetworkSource or DeploymentTargetCidrNetworkSource) or
+                (DeploymentTargetPodNetworkSource or DeploymentTargetCidrNetworkSource, null) or
+                (DeploymentTargetPodNetworkSource, DeploymentTargetCidrNetworkSource) or
+                (DeploymentTargetCidrNetworkSource, DeploymentTargetPodNetworkSource) => false
         };
 }
 

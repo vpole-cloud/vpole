@@ -38,8 +38,7 @@ public sealed class ClosedHierarchySwitchAnalyzer : DiagnosticAnalyzer
         };
         if (expression is null ||
             context.SemanticModel.GetTypeInfo(expression, context.CancellationToken).Type is not INamedTypeSymbol type ||
-            !type.DeclaringSyntaxReferences.Any(reference => reference.GetSyntax(context.CancellationToken)
-                .ChildTokens().Any(token => token.ValueText == "closed")))
+            !(type.IsClosed || type.IsTupleType && type.TupleElements.Any(element => element.Type.IsClosed)))
             return;
 
         IEnumerable<SyntaxNode> catchAll = context.Node switch
