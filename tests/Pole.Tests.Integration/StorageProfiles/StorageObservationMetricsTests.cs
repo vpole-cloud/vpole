@@ -21,6 +21,7 @@ using Pole.Features.StorageProfiles.Application.Discovery.Observation;
 using Pole.Features.StorageProfiles.Application.Observation;
 using Pole.Features.StorageProfiles.Application.Persistence.Observation;
 using Pole.Features.StorageProfiles.Contracts;
+using Pole.Features.StorageProfiles.Domain.Observation;
 using Pole.Tests.Integration.Infrastructure;
 using Pole.Tests.Integration.ResourceDeployments;
 using Xunit;
