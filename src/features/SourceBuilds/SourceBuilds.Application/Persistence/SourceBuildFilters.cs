@@ -1,4 +1,3 @@
-using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Application.Persistence.Jobs;
@@ -82,7 +81,8 @@ internal static class SourceBuildJobFilters
             identity.WorkerId) &
         Builders<SourceBuildJob>.Filter.Eq(item => ((ClaimedSourceBuildExecution)item.Execution).Attempt,
             identity.Attempt) &
-        new BsonDocument("$expr", new BsonDocument("$gt", new BsonArray { "$Execution.ExpiresAtUtc", "$$NOW" }));
+        Builders<SourceBuildJob>.Filter.AfterServerNow(
+            item => ((ClaimedSourceBuildExecution)item.Execution).ExpiresAtUtc);
 
     public static FilterDefinition<SourceBuildJob> LiveLease(SourceBuildJob job) =>
         job.Execution is ClaimedSourceBuildExecution lease
@@ -96,8 +96,8 @@ internal static class SourceBuildJobFilters
             Builders<SourceBuildJob>.Filter.Not(SourceBuildJobFilters.TerminalStates()) &
             Builders<SourceBuildJob>.Filter.Not(
                 Builders<SourceBuildJob>.Filter.OfType<SourceBuildJobState, DeployingSourceBuild>(item => item.State)) &
-            new BsonDocument("$expr", new BsonDocument("$lte",
-                new BsonArray { "$Execution.ExpiresAtUtc", "$$NOW" })));
+            Builders<SourceBuildJob>.Filter.AtOrBeforeServerNow(
+                item => ((ClaimedSourceBuildExecution)item.Execution).ExpiresAtUtc));
 
     public static FilterDefinition<SourceBuildJob> RecoverableBefore(DateTime cutoffUtc) =>
         Recoverable & Builders<SourceBuildJob>.Filter.Lte(item => item.UpdatedAtUtc, cutoffUtc);

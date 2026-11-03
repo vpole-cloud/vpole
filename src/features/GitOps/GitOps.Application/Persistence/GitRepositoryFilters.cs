@@ -1,5 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Database;
 using Pole.Features.GitOps.Domain;
 
 namespace Pole.Features.GitOps.Application.Persistence;
@@ -91,8 +92,8 @@ internal static class GitRepositoryFilters
                                        item => ((GitRunClaimed)item.State).Lease.WorkerId, claim.WorkerId) &
                                    Builders<GitReconciliationRun>.Filter.Eq(
                                        item => ((GitRunClaimed)item.State).Lease.Attempt, claim.Attempt) &
-                                   new BsonDocument("$expr",
-                                       new BsonDocument("$gt", new BsonArray { "$State.Lease.ExpiresAtUtc", "$$NOW" }));
+                                   Builders<GitReconciliationRun>.Filter.AfterServerNow(
+                                       item => ((GitRunClaimed)item.State).Lease.ExpiresAtUtc);
 }
 
 internal sealed class GitDatabaseClock(IMongoCollection<RepositorySource> sources)

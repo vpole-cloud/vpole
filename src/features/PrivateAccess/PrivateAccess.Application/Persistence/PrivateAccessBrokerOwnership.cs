@@ -148,7 +148,8 @@ internal static class PrivateAccessBrokerOwnerFilters
             Builders<PrivateAccessBrokerOwner>.Filter.Or(
                 Builders<PrivateAccessBrokerOwner>.Filter.Eq(
                     item => item.InstanceId, instanceId),
-                ServerExpiry("$lte")));
+                Builders<PrivateAccessBrokerOwner>.Filter.AtOrBeforeServerNow(
+                    item => item.LeaseExpiresAtUtc)));
 
     public static FilterDefinition<PrivateAccessBrokerOwner> Lease(
         PrivateAccessBrokerOwnerLease lease) =>
@@ -167,7 +168,8 @@ internal static class PrivateAccessBrokerOwnerFilters
 
     public static FilterDefinition<PrivateAccessBrokerOwner> ActiveLease(
         PrivateAccessBrokerOwnerLease lease) =>
-        Builders<PrivateAccessBrokerOwner>.Filter.And(Lease(lease), ServerExpiry("$gt"));
+        Builders<PrivateAccessBrokerOwner>.Filter.And(Lease(lease),
+            Builders<PrivateAccessBrokerOwner>.Filter.AfterServerNow(item => item.LeaseExpiresAtUtc));
 
     public static FilterDefinition<PrivateAccessBrokerOwner> ActiveForGateway(
         string gatewayId,
@@ -180,9 +182,5 @@ internal static class PrivateAccessBrokerOwnerFilters
                 item => item.DeploymentTargetId, targetId),
             Builders<PrivateAccessBrokerOwner>.Filter.Ne(item => item.InstanceId, null),
             Builders<PrivateAccessBrokerOwner>.Filter.Ne(item => item.InternalOrigin, null),
-            ServerExpiry("$gt"));
-
-    private static FilterDefinition<PrivateAccessBrokerOwner> ServerExpiry(string comparison) =>
-        new BsonDocument("$expr", new BsonDocument(comparison,
-            new BsonArray { "$LeaseExpiresAtUtc", "$$NOW" }));
+            Builders<PrivateAccessBrokerOwner>.Filter.AfterServerNow(item => item.LeaseExpiresAtUtc));
 }

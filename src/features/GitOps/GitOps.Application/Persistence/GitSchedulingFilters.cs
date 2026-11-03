@@ -1,5 +1,5 @@
-using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Database;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 
@@ -33,13 +33,12 @@ internal static class GitSchedulingFilters
     public static FilterDefinition<GitReconciliationRun> Recoverable() =>
         Builders<GitReconciliationRun>.Filter.OfType<GitRunState, GitRunWaiting>(item => item.State) |
         (Builders<GitReconciliationRun>.Filter.OfType<GitRunState, GitRunDelayed>(item => item.State) &
-            Due("$State.NextAttemptAtUtc")) |
+            Builders<GitReconciliationRun>.Filter.AtOrBeforeServerNow(
+                item => ((GitRunDelayed)item.State).NextAttemptAtUtc)) |
         (Builders<GitReconciliationRun>.Filter.OfType<GitRunState, GitRunWaitingCleanup>(item => item.State) &
-            Due("$State.NextAttemptAtUtc")) |
+            Builders<GitReconciliationRun>.Filter.AtOrBeforeServerNow(
+                item => ((GitRunWaitingCleanup)item.State).NextAttemptAtUtc)) |
         (Builders<GitReconciliationRun>.Filter.OfType<GitRunState, GitRunClaimed>(item => item.State) &
-            Due("$State.Lease.ExpiresAtUtc"));
-
-    // $$NOW must be evaluated by MongoDB, independently of the worker's clock.
-    private static FilterDefinition<GitReconciliationRun> Due(string field) =>
-        new BsonDocument("$expr", new BsonDocument("$lte", new BsonArray { field, "$$NOW" }));
+            Builders<GitReconciliationRun>.Filter.AtOrBeforeServerNow(
+                item => ((GitRunClaimed)item.State).Lease.ExpiresAtUtc));
 }
