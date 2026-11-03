@@ -22,6 +22,7 @@
         <Compile Include="Persistence\PersistSearchOperationalStatus.fs" />
         <Compile Include="Persistence\SearchIndexedDocuments.fs" />
         <Compile Include="Realtime\SearchRealtimeConsumer.fs" />
+        <Compile Include="Persistence\SearchPersistenceRegistration.fs" />
         <Compile Include="DependencyInjection.fs" />
         <Compile Include="Endpoints\GetSearchResults.fs" />
         <Compile Include="Endpoints\AllSearchEndpoints.fs" />
