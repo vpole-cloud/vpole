@@ -250,14 +250,20 @@ public sealed class StorageObservationOwnerTests(MongoReplicaSetFixture fixture)
         Assert.Equal("old-class", Assert.Single((await store.LoadFreshSnapshotAsync(context))!.StorageClasses).Name);
     }
 
-    private MongoStorageObservationStore Store() => new(fixture.Database,
-        new MongoRunTransaction(fixture.Client),
-        (request, session, ct) =>
-            new MongoFenceDeploymentTargetObservation(fixture.DbContext.DeploymentTargets).InvokeAsync(request,
-                session,
-                ct),
-        fixture.StoreOutboxWrites,
-        new());
+    private MongoStorageObservationStore Store() => new(
+            fixture.Database.GetCollection<StorageObservationControlDocument>(
+                MongoStorageObservationStore.ControlsCollection),
+            fixture.Database.GetCollection<StorageObservationDemandDocument>(
+                MongoStorageObservationStore.DemandsCollection),
+            fixture.Database.GetCollection<StorageObservationSnapshotDocument>(
+                MongoStorageObservationStore.SnapshotsCollection),
+            new MongoRunTransaction(fixture.Client),
+            (request, session, ct) =>
+                new MongoFenceDeploymentTargetObservation(fixture.DbContext.DeploymentTargets).InvokeAsync(request,
+                    session,
+                    ct),
+            fixture.StoreOutboxWrites,
+            new());
 
     private async Task<StorageObservationContext> SeedAsync()
     {

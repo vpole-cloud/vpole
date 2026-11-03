@@ -655,7 +655,9 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
             NullLogger<RegistryProvisioningCleanupService>.Instance);
 
     private RegistryProvisioningPersistence CreatePersistence(TimeProvider? timeProvider = null) =>
-        new(Fixture.Database, new MongoRunTransaction(Fixture.Client), timeProvider ?? TimeProvider.System);
+        new(Fixture.Database.GetCollection<RegistryProject>("RegistryProjects"),
+            Fixture.Database.GetCollection<RegistryCredential>("RegistryCredentials"),
+            new MongoRunTransaction(Fixture.Client), timeProvider ?? TimeProvider.System);
 
     private static RegistryProject CreateCleanupRequiredProject(
         string tenantId,

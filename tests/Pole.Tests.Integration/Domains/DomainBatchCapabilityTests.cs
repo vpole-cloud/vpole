@@ -399,19 +399,21 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
         RecordingTargetCoordinator coordinator)
     {
         var cleanup = new MongoHostnameBindingCleanup(
-            fixture.Database,
+            fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones"),
+            fixture.Database.GetCollection<HostnameBinding>("HostnameBindings"),
             coordinator.ApplyChangesOutcomeAsync,
             TimeProvider.System,
             fixture.StoreOutboxWrites);
         var zones = new MongoGetOrCreateGeneratedDomainZones(
-            fixture.Database,
+            fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones"),
             coordinator.ApplyChangesOutcomeAsync,
             coordinator.FenceManyOutcomeAsync,
             FixedTenantIdentityLookup(tenantId),
             TimeProvider.System,
             fixture.StoreOutboxWrites);
         var bindings = new MongoCreateGeneratedHostnameBindings(
-            fixture.Database,
+            fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones"),
+            fixture.Database.GetCollection<HostnameBinding>("HostnameBindings"),
             cleanup,
             TimeProvider.System,
             fixture.StoreOutboxWrites);

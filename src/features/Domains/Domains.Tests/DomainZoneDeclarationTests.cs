@@ -9,8 +9,11 @@ namespace Pole.Features.Domains.Tests;
 
 public sealed class DomainZoneDeclarationTests
 {
+    private static readonly IMongoDatabase Database =
+        new MongoClient("mongodb://localhost:27017").GetDatabase("domain-schema-tests");
+
     private static DeclarativeDomainZoneProvider Provider() => new(
-        new MongoClient("mongodb://localhost:27017").GetDatabase("domain-schema-tests"),
+        Database.GetCollection<Pole.Features.Domains.Domain.TenantDomainZone>("TenantDomainZones"),
         null!, null!, null!, null!, null!, null!, null!, null!);
 
     [Fact]

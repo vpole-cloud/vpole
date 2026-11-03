@@ -31,9 +31,14 @@ public sealed class DomainMetadataOutboxTests(MongoReplicaSetFixture fixture) : 
             "company-zone", new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow));
         var zones = Fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones");
         await zones.InsertOneAsync(zone);
-        var cleanup = new MongoHostnameBindingCleanup(Fixture.Database, References,
+        var cleanup = new MongoHostnameBindingCleanup(
+            Fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones"),
+            Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings"),
+            References,
             TimeProvider.System, Fixture.StoreOutboxWrites);
-        var create = new MongoCreateCustomHostnameBinding(Fixture.Database, cleanup,
+        var create = new MongoCreateCustomHostnameBinding(
+            Fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones"),
+            Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings"), cleanup,
             TimeProvider.System, Fixture.StoreOutboxWrites);
         var relative = string.Join('.', Enumerable.Repeat(new string('a', 63), 3).Append(new string('b', 50)));
         using var session = await Fixture.Client.StartSessionAsync();
@@ -104,11 +109,15 @@ public sealed class DomainMetadataOutboxTests(MongoReplicaSetFixture fixture) : 
             ObjectId.GenerateNewId().ToString(),
             "binding",
             "binding-" + MongoDB.Bson.ObjectId.GenerateNewId());
-        var cleanup = new MongoHostnameBindingCleanup(Fixture.Database,
+        var cleanup = new MongoHostnameBindingCleanup(
+            Fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones"),
+            Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings"),
             References,
             TimeProvider.System,
             Fixture.StoreOutboxWrites);
-        var create = new MongoCreateCustomHostnameBinding(Fixture.Database,
+        var create = new MongoCreateCustomHostnameBinding(
+            Fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones"),
+            Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings"),
             cleanup,
             TimeProvider.System,
             Fixture.StoreOutboxWrites);
@@ -177,7 +186,8 @@ public sealed class DomainMetadataOutboxTests(MongoReplicaSetFixture fixture) : 
             Assert.Single(services, item => item.ServiceType == typeof(RealtimeTopic)).ImplementationInstance);
     }
 
-    private MongoCreateManagedDomainZoneReservation Creator(bool fail = false) => new(Fixture.Database,
+    private MongoCreateManagedDomainZoneReservation Creator(bool fail = false) => new(
+        Fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones"),
         References,
         (_, _, _) =>
             Task.FromResult<FenceDeploymentTargetWorkloadConfigurationsOutcome>(

@@ -929,7 +929,13 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
 
     private MongoResourceDeploymentObservationStore Store(StoreOutboxWrites? writes = null,
         FenceDeploymentTargetObservation? fence = null) =>
-        new(fixture.Database,
+        new(fixture.Database.GetCollection<ObservationControlDocument>(
+                MongoResourceDeploymentObservationStore.ControlsCollection),
+            fixture.Database.GetCollection<ObservationDemandDocument>(
+                MongoResourceDeploymentObservationStore.DemandsCollection),
+            fixture.Database.GetCollection<ObservationSnapshotDocument>(
+                MongoResourceDeploymentObservationStore.SnapshotsCollection),
+            fixture.Database.GetCollection<ResourceDeployment>("ResourceDeployments"),
             new MongoRunTransaction(fixture.Client),
             fence ?? FenceTargetAsync,
             writes ?? fixture.StoreOutboxWrites);
