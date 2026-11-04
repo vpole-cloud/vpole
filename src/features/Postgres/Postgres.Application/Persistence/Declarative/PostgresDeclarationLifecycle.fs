@@ -33,9 +33,9 @@ type PostgresDeclarationLifecycle(
     let placementVersions (item : ResourceDeploymentPlanningItem) (current : PostgresCluster) =
         if not (current.Lifecycle :? DeletingPostgresClusterLifecycle)
            || item.State <> ResourceDeploymentPlanningState.Deleting then
-            [| DeclarationDocumentVersion(DeclarationVersionKeys.DeploymentDesiredGeneration(item.DeploymentId),
+            [| DeclarationDocumentVersion(ResourceDeploymentVersionKeys.DesiredGeneration(item.DeploymentId),
                                           item.DesiredGeneration)
-               DeclarationDocumentVersion(DeclarationVersionKeys.DeploymentResourceRevision(item.DeploymentId),
+               DeclarationDocumentVersion(ResourceDeploymentVersionKeys.ResourceRevision(item.DeploymentId),
                                           item.ResourceRevision) |]
         else
             let bootstrap = PostgresPlanning.bootstrap current
@@ -69,7 +69,7 @@ type PostgresDeclarationLifecycle(
                    DesiredGeneration = item.DesiredGeneration
                    ResourceRevision = item.ResourceRevision |}
             let hash = System.Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(intent)))
-            [| DeclarationDocumentVersion(DeclarationVersionKeys.DeploymentDeleteIntent(item.DeploymentId, hash),
+            [| DeclarationDocumentVersion(ResourceDeploymentVersionKeys.DeleteIntent(item.DeploymentId, hash),
                                           item.DesiredGeneration) |]
 
     let versions (current : PostgresCluster) (placements : LoadResourceDeploymentPlanningSnapshotOutcome) =

@@ -2,11 +2,14 @@ using System.Collections.Immutable;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Pole.Features.ComputeProfiles.Contracts;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Domain;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Secrets.Contracts;
 using Pole.Workloads;
 
@@ -225,28 +228,28 @@ internal static class FunctionDeclarations
         .. ConfigurationRevisions(current).Select(revision => new DeclarationDocumentVersion(
             ConfigurationRevisionKey(revision.Id, ManagedSpecHash(revision.Spec)), revision.PlanningFence)),
         .. current.Placements.Items.Select(item =>
-            new DeclarationDocumentVersion(DeclarationVersionKeys.ResourceDeployment(item.DeploymentId), item.Revision))
+            new DeclarationDocumentVersion(ResourceDeploymentVersionKeys.Revision(item.DeploymentId), item.Revision))
     ];
 
     internal static DeclarationDocumentVersion[] DependencyVersions(FunctionPlanningDependencies dependencies) =>
     [
         new(
-            DeclarationVersionKeys.ResourceGroup(dependencies.Scope.ResourceGroupId),
+            ResourceGroupVersionKeys.Revision(dependencies.Scope.ResourceGroupId),
             dependencies.Scope.ResourceGroupRevision),
         new(
-            DeclarationVersionKeys.IsolationScope(dependencies.Scope.IsolationScopeId),
+            ResourceGroupVersionKeys.IsolationScopeRevision(dependencies.Scope.IsolationScopeId),
             dependencies.Scope.ScopeRevision),
         new(
-            DeclarationVersionKeys.DeploymentTarget(dependencies.Target.Target.Id),
+            DeploymentTargetVersionKeys.Revision(dependencies.Target.Target.Id),
             dependencies.Target.Target.Revision),
-        new(DeclarationVersionKeys.TargetWorkloadConfiguration(dependencies.Target.Target.Id),
+        new(DeploymentTargetVersionKeys.WorkloadConfiguration(dependencies.Target.Target.Id),
             dependencies.Target.Target.WorkloadConfiguration.Revision),
-        new(DeclarationVersionKeys.ComputeProfilePolicy(dependencies.Compute.Compute.ComputeProfileId),
+        new(ComputeProfileVersionKeys.Policy(dependencies.Compute.Compute.ComputeProfileId),
             dependencies.Compute.PolicyRevision),
         .. dependencies.Secrets?.Secrets.SelectMany(version => new DeclarationDocumentVersion[]
         {
-            new(DeclarationVersionKeys.Secret(version.SecretId), version.Revision),
-            new(DeclarationVersionKeys.SecretReferenceFence(version.SecretId), version.ReferenceFence)
+            new(SecretVersionKeys.Revision(version.SecretId), version.Revision),
+            new(SecretVersionKeys.ReferenceFence(version.SecretId), version.ReferenceFence)
         }) ?? []
     ];
 
@@ -283,8 +286,8 @@ internal static class FunctionDeclarations
         bool deleting)
     {
         if (!deleting || item.State != ResourceDeploymentPlanningState.Deleting)
-            return [new(DeclarationVersionKeys.DeploymentDesiredGeneration(item.DeploymentId), item.DesiredGeneration),
-                new(DeclarationVersionKeys.DeploymentResourceRevision(item.DeploymentId), item.ResourceRevision)];
+            return [new(ResourceDeploymentVersionKeys.DesiredGeneration(item.DeploymentId), item.DesiredGeneration),
+                new(ResourceDeploymentVersionKeys.ResourceRevision(item.DeploymentId), item.ResourceRevision)];
         var intent = new
         {
             item.ResourceGroupId,
@@ -307,7 +310,7 @@ internal static class FunctionDeclarations
             item.ResourceRevision
         };
         var hash = Hash(DeclarationJson.Write(intent));
-        return [new(DeclarationVersionKeys.DeploymentDeleteIntent(item.DeploymentId, hash), item.DesiredGeneration)];
+        return [new(ResourceDeploymentVersionKeys.DeleteIntent(item.DeploymentId, hash), item.DesiredGeneration)];
     }
 
     internal static bool SameLifecycleVersions(IEnumerable<DeclarationDocumentVersion> current,

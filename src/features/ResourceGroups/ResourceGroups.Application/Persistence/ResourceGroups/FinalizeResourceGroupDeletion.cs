@@ -5,6 +5,7 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Persistence.IsolationScopes;
 using Pole.Features.ResourceGroups.Application.Persistence.RuntimeCells;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.ResultType;
 
@@ -93,7 +94,7 @@ internal sealed class MongoFinalizeResourceGroupDeletion(
                 : new GitDeclaredCleanupResource("ResourceGroup", resourceGroup.Id);
             await cleanupProofs.RecordAsync(new(tenantId, subject,
                 ScopeFinalizationCleanupKey(isolationScopeId, resourceGroup.Revision),
-                [new(DeclarationVersionKeys.ResourceGroup(resourceGroupId), resourceGroup.Revision,
+                [new(ResourceGroupVersionKeys.Revision(resourceGroupId), resourceGroup.Revision,
                     checked(resourceGroup.Revision + 1))]), transaction.Session, ct);
 
             if (scope is not null)

@@ -170,8 +170,8 @@ internal sealed class RedisDeclarationLifecycle(
         Redis resource)
     {
         if (resource.Lifecycle is not DeletingRedisLifecycle || item.State != ResourceDeploymentPlanningState.Deleting)
-            return [new(DeclarationVersionKeys.DeploymentDesiredGeneration(item.DeploymentId), item.DesiredGeneration),
-                new(DeclarationVersionKeys.DeploymentResourceRevision(item.DeploymentId), item.ResourceRevision)];
+            return [new(ResourceDeploymentVersionKeys.DesiredGeneration(item.DeploymentId), item.DesiredGeneration),
+                new(ResourceDeploymentVersionKeys.ResourceRevision(item.DeploymentId), item.ResourceRevision)];
         var intent = new
         {
             item.ResourceGroupId,
@@ -200,7 +200,7 @@ internal sealed class RedisDeclarationLifecycle(
             item.ResourceRevision
         };
         var hash = Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(intent)));
-        return [new(DeclarationVersionKeys.DeploymentDeleteIntent(item.DeploymentId, hash), item.DesiredGeneration)];
+        return [new(ResourceDeploymentVersionKeys.DeleteIntent(item.DeploymentId, hash), item.DesiredGeneration)];
     }
 
     private static bool SameLifecycleVersions(DeclarationVersionToken left, DeclarationVersionToken right) =>

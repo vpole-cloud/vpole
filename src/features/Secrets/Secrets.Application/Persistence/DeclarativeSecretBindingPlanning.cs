@@ -169,13 +169,13 @@ internal sealed class SecretBindingPlanning(
     [
         .. SecretPlanningFence.Versions(dependencies.Secret),
         new(
-            DeclarationVersionKeys.ResourceGroup(dependencies.Scope.ResourceGroupId),
+            ResourceGroupVersionKeys.Revision(dependencies.Scope.ResourceGroupId),
             dependencies.Scope.ResourceGroupRevision),
         new(
-            DeclarationVersionKeys.IsolationScope(dependencies.Scope.IsolationScopeId),
+            ResourceGroupVersionKeys.IsolationScopeRevision(dependencies.Scope.IsolationScopeId),
             dependencies.Scope.ScopeRevision),
         .. dependencies.Placements.Items.Select(item =>
-            new DeclarationDocumentVersion(DeclarationVersionKeys.ResourceDeployment(item.DeploymentId), item.Revision))
+            new DeclarationDocumentVersion(ResourceDeploymentVersionKeys.Revision(item.DeploymentId), item.Revision))
     ];
 
     internal static DeclarationProjection Project(

@@ -2,6 +2,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.GitOps.Contracts;
+using Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
@@ -195,7 +196,8 @@ internal sealed class MongoResourceRegistrationMutations(
         {
             await cleanupProofs.RecordAsync(new(tenantId, new GitRegisteredCleanupResource(resourceTypeId, resourceId),
                 UnregisteredCleanupKey(current.Id),
-                [new(DeclarationVersionKeys.ResourceGroupFence(resourceGroupId), before.RegistrationFence,
+                [new(ResourceGroupLifecycleVersions.RegistrationFenceVersionKey(resourceGroupId),
+                    before.RegistrationFence,
                     checked(before.RegistrationFence + 1))]), session, cancellationToken);
             await storeOutboxWrites(
                 session,

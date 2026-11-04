@@ -93,7 +93,7 @@ internal sealed class WebServiceDeclarationLifecycle(
             var actual = await loadBuildConfiguration(new(tenant, configurationId), session, cancellationToken);
             if (actual is SourceBuildConfigurationSnapshot existing && (configuration.Expected is null ||
                     !configuration.Expected.Documents.Any(item =>
-                        item.DocumentId == DeclarationVersionKeys.SourceBuildConfiguration(configurationId) &&
+                        item.DocumentId == SourceBuildConfigurationVersionKeys.Revision(configurationId) &&
                         item.Revision == existing.Revision)) ||
                 actual is not SourceBuildConfigurationSnapshot && configuration.Expected is not null)
                 return new DeclarationPreconditionsChanged();

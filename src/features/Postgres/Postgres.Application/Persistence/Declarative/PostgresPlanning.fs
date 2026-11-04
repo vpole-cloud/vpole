@@ -63,53 +63,53 @@ module PostgresPlanning =
 
     let versions (data : PostgresPlanningDependencies) =
         let catalog = data.Catalog
-        [| DeclarationDocumentVersion(DeclarationVersionKeys.ResourceGroup(catalog.Scope.ResourceGroupId),
+        [| DeclarationDocumentVersion(ResourceGroupVersionKeys.Revision(catalog.Scope.ResourceGroupId),
                 catalog.Scope.ResourceGroupRevision)
            DeclarationDocumentVersion(
-               DeclarationVersionKeys.IsolationScope(catalog.Scope.IsolationScopeId),
+               ResourceGroupVersionKeys.IsolationScopeRevision(catalog.Scope.IsolationScopeId),
                catalog.Scope.ScopeRevision)
            DeclarationDocumentVersion(
-               DeclarationVersionKeys.DeploymentTarget(catalog.Target.Target.Id), catalog.Target.Target.Revision)
-           DeclarationDocumentVersion(DeclarationVersionKeys.TargetWorkloadConfiguration(catalog.Target.Target.Id),
+               DeploymentTargetVersionKeys.Revision(catalog.Target.Target.Id), catalog.Target.Target.Revision)
+           DeclarationDocumentVersion(DeploymentTargetVersionKeys.WorkloadConfiguration(catalog.Target.Target.Id),
                 catalog.Target.Target.WorkloadConfiguration.Revision)
            DeclarationDocumentVersion(
-               DeclarationVersionKeys.ComputeProfilePolicy(catalog.Compute.Compute.ComputeProfileId),
+               ComputeProfileVersionKeys.Policy(catalog.Compute.Compute.ComputeProfileId),
                 catalog.Compute.PolicyRevision)
-           DeclarationDocumentVersion(DeclarationVersionKeys.StorageProfilePolicy(catalog.Storage.Storage.ProfileId),
+           DeclarationDocumentVersion(StorageProfileVersionKeys.Policy(catalog.Storage.Storage.ProfileId),
                 catalog.Storage.PolicyRevision)
            match data.Placements with
            | Some placements ->
                for placement in placements.Items do
                    DeclarationDocumentVersion(
-                       DeclarationVersionKeys.ResourceDeployment(placement.DeploymentId),
+                       ResourceDeploymentVersionKeys.Revision(placement.DeploymentId),
                        placement.Revision)
            | None -> ()
            match data.Bootstrap with
            | Some ready ->
-               DeclarationDocumentVersion(DeclarationVersionKeys.Secret(ready.Source.SecretId), ready.Source.Revision)
+               DeclarationDocumentVersion(SecretVersionKeys.Revision(ready.Source.SecretId), ready.Source.Revision)
                DeclarationDocumentVersion(
-                   DeclarationVersionKeys.SecretReferenceFence(ready.Source.SecretId),
+                   SecretVersionKeys.ReferenceFence(ready.Source.SecretId),
                    ready.Source.ReferenceFence)
                DeclarationDocumentVersion(
-                   DeclarationVersionKeys.SecretValueVersion(ready.Source.SecretId),
+                   SecretVersionKeys.ValueVersion(ready.Source.SecretId),
                    ready.ValueVersion)
            | None -> ()
            match data.Credentials with
            | Some credentials ->
                for secret in credentials.Secrets do
-                   DeclarationDocumentVersion(DeclarationVersionKeys.Secret(secret.SecretId), secret.Revision)
+                   DeclarationDocumentVersion(SecretVersionKeys.Revision(secret.SecretId), secret.Revision)
                    DeclarationDocumentVersion(
-                       DeclarationVersionKeys.SecretReferenceFence(secret.SecretId),
+                       SecretVersionKeys.ReferenceFence(secret.SecretId),
                        secret.ReferenceFence)
            | None -> ()
            match data.Adoption with
            | Some credential ->
-               DeclarationDocumentVersion(DeclarationVersionKeys.Secret(credential.SecretId), credential.Revision)
+               DeclarationDocumentVersion(SecretVersionKeys.Revision(credential.SecretId), credential.Revision)
                DeclarationDocumentVersion(
-                   DeclarationVersionKeys.SecretReferenceFence(credential.SecretId),
+                   SecretVersionKeys.ReferenceFence(credential.SecretId),
                    credential.ReferenceFence)
                DeclarationDocumentVersion(
-                   DeclarationVersionKeys.SecretValueVersion(credential.SecretId),
+                   SecretVersionKeys.ValueVersion(credential.SecretId),
                    credential.ValueVersion)
            | None -> () |]
 

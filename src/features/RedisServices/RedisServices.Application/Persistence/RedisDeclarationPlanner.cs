@@ -61,7 +61,7 @@ internal sealed class RedisDeclarationPlanner(
         return new CurrentDeclaration(current.Id,
             new([new(DeclarationVersionKeys.Resource(RedisDeclarations.Kind, current.Id), current.Revision),
                 new(DeclarationVersionKeys.PlanningFence(RedisDeclarations.Kind, current.Id), current.PlanningFence),
-                new(DeclarationVersionKeys.ResourceDeployment(placement.DeploymentId), placement.Revision)]),
+                new(ResourceDeploymentVersionKeys.Revision(placement.DeploymentId), placement.Revision)]),
             Project(phase, new(current.ResourceGroupId, placement.IsolationScopeId,
                 placement.DeploymentTargetId, current.Spec.Storage.SizeGb, current.Spec.Storage.StorageProfileId,
                 placement.Storage!), placement.Compute, current.Tags),

@@ -124,9 +124,10 @@ internal sealed class WebServiceDeclarationReferences(
                 return new DeclarationReadBlocked(new DeclarationReferenceUnavailable(scopeAddress));
             scope = new(scopeAddress, actualScope.IsolationScopeId, new([
                 new(
-                    DeclarationVersionKeys.ResourceGroup(actualScope.ResourceGroupId),
+                    ResourceGroupVersionKeys.Revision(actualScope.ResourceGroupId),
                     actualScope.ResourceGroupRevision),
-                new(DeclarationVersionKeys.IsolationScope(actualScope.IsolationScopeId), actualScope.ScopeRevision)]));
+                new(ResourceGroupVersionKeys.IsolationScopeRevision(actualScope.IsolationScopeId),
+                    actualScope.ScopeRevision)]));
         }
         else if (scope is not { State: GitPreviewReferenceState.Planned })
             return PlanningBlocked(WebServiceDeclarationError.ResourceGroupUnavailable);
@@ -170,13 +171,13 @@ internal sealed class WebServiceDeclarationReferences(
         return new GitPreviewReferencesSnapshot([
             scope,
             new(targetAddress, targetId, new([
-                new(DeclarationVersionKeys.DeploymentTarget(targetId), target.Target.Revision),
-                new(DeclarationVersionKeys.TargetWorkloadConfiguration(targetId),
+                new(DeploymentTargetVersionKeys.Revision(targetId), target.Target.Revision),
+                new(DeploymentTargetVersionKeys.WorkloadConfiguration(targetId),
                     target.Target.WorkloadConfiguration.Revision)])),
             new(computeAddress, computeId, new([
-                new(DeclarationVersionKeys.ComputeProfilePolicy(computeId), compute.PolicyRevision),
+                new(ComputeProfileVersionKeys.Policy(computeId), compute.PolicyRevision),
                 new(
-                    DeclarationVersionKeys.ComputeProfileRevision(computeId, spec.Placement.ComputeProfile.Revision),
+                    ComputeProfileVersionKeys.Revision(computeId, spec.Placement.ComputeProfile.Revision),
                     0)]))]);
     }
 }

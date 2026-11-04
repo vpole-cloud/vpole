@@ -61,8 +61,8 @@ internal sealed class WebServiceDeclarationPlanner(
             new(placement.Compute.ComputeProfileId, placement.Compute.ComputeProfileRevision,
                 placement.FixedReplicas, ComputeProjection(placement.Compute)), IngressProjection(placement.Ingress));
         return new CurrentDeclaration(current.Id, new([
-                new(DeclarationVersionKeys.WebService(current.Id), current.Revision),
-                new(DeclarationVersionKeys.ResourceDeployment(placement.DeploymentId), placement.Revision)]),
+                new(WebServiceDeclarations.VersionKey(current.Id), current.Revision),
+                new(ResourceDeploymentVersionKeys.Revision(placement.DeploymentId), placement.Revision)]),
             projection, current.Lifecycle is PreparedWebServiceLifecycle
                 ? DeclarationConfigurationState.Prepared : DeclarationConfigurationState.Configured);
     }
@@ -218,13 +218,13 @@ internal sealed class WebServiceDeclarationPlanner(
                     placement.FixedReplicas, ComputeProjection(placement.Compute)),
                 IngressProjection(placement.Ingress));
         return new CurrentDeclaration(current.Id, new([
-                new(DeclarationVersionKeys.WebService(current.Id), current.Revision),
+                new(WebServiceDeclarations.VersionKey(current.Id), current.Revision),
                 new(
                     DeclarationVersionKeys.PlanningFence(WebServiceDeclarations.Kind, current.Id),
                     current.PlanningFence),
                 .. placements.Items.Select(item =>
                     new DeclarationDocumentVersion(
-                        DeclarationVersionKeys.ResourceDeployment(item.DeploymentId), item.Revision))]),
+                        ResourceDeploymentVersionKeys.Revision(item.DeploymentId), item.Revision))]),
             projection, operation.Phase == DeclarationPhase.Prepare ||
                 current.Lifecycle is not PreparedWebServiceLifecycle
                 ? DeclarationConfigurationState.Configured : DeclarationConfigurationState.Prepared);

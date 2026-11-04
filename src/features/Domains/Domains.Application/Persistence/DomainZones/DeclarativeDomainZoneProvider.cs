@@ -149,8 +149,8 @@ internal sealed class DeclarativeDomainZoneProvider(
 
     private static DeclarationDocumentVersion[] TargetVersions(DomainReservationTargetPlanningSnapshot target) =>
     [
-        new(DeclarationVersionKeys.DeploymentTarget(target.PublicIngress.DeploymentTargetId), target.TargetRevision),
-        new(DeclarationVersionKeys.TargetWorkloadConfiguration(target.PublicIngress.DeploymentTargetId),
+        new(DeploymentTargetVersionKeys.Revision(target.PublicIngress.DeploymentTargetId), target.TargetRevision),
+        new(DeploymentTargetVersionKeys.WorkloadConfiguration(target.PublicIngress.DeploymentTargetId),
             target.PublicIngress.WorkloadConfigurationRevision)
     ];
 
@@ -255,8 +255,8 @@ internal sealed class DeclarativeDomainZoneProvider(
             return new DeclarationReadBlocked(new DeclarationIdentityChanged());
 
         return new CurrentDeclaration(current.Id,
-            new([new(DeclarationVersionKeys.DomainZone(current.Id), current.Revision),
-                new(DeclarationVersionKeys.DomainZoneReferenceFence(current.Id), current.ReferenceFence)]),
+            new([new(DomainLifecycleVersions.ZoneRevisionKey(current.Id), current.Revision),
+                new(DomainLifecycleVersions.ZoneReferenceFenceKey(current.Id), current.ReferenceFence)]),
             Project(current.DeploymentTargetId, current.Label), DeclarationConfigurationState.Configured);
     }
 
@@ -292,9 +292,9 @@ internal sealed class DeclarativeDomainZoneProvider(
                 DomainFilters.ZoneById(operation.Context.TenantId, operation.ResourceId))
             .FirstOrDefaultAsync(cancellationToken);
         var expected = request.Expected.Documents.SingleOrDefault(item =>
-            item.DocumentId == DeclarationVersionKeys.DomainZone(operation.ResourceId));
+            item.DocumentId == DomainLifecycleVersions.ZoneRevisionKey(operation.ResourceId));
         var expectedFence = request.Expected.Documents.SingleOrDefault(item =>
-            item.DocumentId == DeclarationVersionKeys.DomainZoneReferenceFence(operation.ResourceId));
+            item.DocumentId == DomainLifecycleVersions.ZoneReferenceFenceKey(operation.ResourceId));
         if (current is null ? expected is not null || expectedFence is not null :
             expected?.Revision != current.Revision || expectedFence?.Revision != current.ReferenceFence)
             return new DeclarationPreconditionsChanged();

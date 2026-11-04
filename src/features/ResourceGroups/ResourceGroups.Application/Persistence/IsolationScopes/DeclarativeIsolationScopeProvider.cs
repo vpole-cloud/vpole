@@ -114,8 +114,8 @@ internal sealed class DeclarativeIsolationScopeProvider(
 
     private static DeclarationDocumentVersion[] GroupVersions(ResourceGroupPlanningSnapshot group) =>
     [
-        new(DeclarationVersionKeys.ResourceGroup(group.ResourceGroupId), group.Revision),
-        new(DeclarationVersionKeys.IsolationScope(group.DefaultIsolationScopeId), group.ScopeRevision)
+        new(ResourceGroupVersionKeys.Revision(group.ResourceGroupId), group.Revision),
+        new(ResourceGroupVersionKeys.IsolationScopeRevision(group.DefaultIsolationScopeId), group.ScopeRevision)
     ];
 
     private static DeclarationProjection Project(string groupId) =>
@@ -229,7 +229,7 @@ internal sealed class DeclarativeIsolationScopeProvider(
 
         return new CurrentDeclaration(current.Id,
             new([
-                new(DeclarationVersionKeys.IsolationScope(current.Id), current.Revision)]),
+                new(ResourceGroupVersionKeys.IsolationScopeRevision(current.Id), current.Revision)]),
             Project(current.ResourceGroupId),
             DeclarationConfigurationState.Configured);
     }
@@ -271,7 +271,7 @@ internal sealed class DeclarativeIsolationScopeProvider(
             IsolationScopeFilters.ByTenantAndId(request.Operation.Context.TenantId, request.Operation.ResourceId))
             .FirstOrDefaultAsync(cancellationToken);
         var expected = request.Expected.Documents.SingleOrDefault(document =>
-            document.DocumentId == DeclarationVersionKeys.IsolationScope(request.Operation.ResourceId));
+            document.DocumentId == ResourceGroupVersionKeys.IsolationScopeRevision(request.Operation.ResourceId));
         if (current is null ? expected is not null :
             expected?.Revision != current.Revision || current.ResourceGroupId != group.ResourceGroupId ||
             current.Lifecycle is not ActiveIsolationScopeLifecycleState)
