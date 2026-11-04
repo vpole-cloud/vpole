@@ -16,44 +16,71 @@ internal sealed class ConsumerSecretReferenceAdmission(
     LoadResourceDeploymentConnectionPlacements loadPlacements)
 {
     public async Task<AdmitConsumerSecretReferencesOutcome> InvokeAsync(
-        string tenantId,
-        string resourceGroupId,
-        string isolationScopeId,
-        ResourceTypeId consumerType,
-        string consumerId,
-        IReadOnlyCollection<ConsumerSecretKeyReference> previousReferences,
-        IReadOnlyCollection<ConsumerSecretKeyReference> desiredReferences,
-        bool requireAvailable,
+        AdmitConsumerSecretReferencesRequest request,
         IClientSessionHandle session,
-        CancellationToken ct,
-        bool retainPreviousReferencesUntilRollout = false)
+        CancellationToken ct)
     {
         if (!session.IsInTransaction) throw new InvalidOperationException("Consumer Secret admission requires a transaction.");
-        var ids = previousReferences.Concat(desiredReferences).Select(reference => reference.SecretId).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal);
+        var requireAvailable = request.Availability switch
+        {
+            ConsumerSecretAvailabilityPolicy.RequireAvailable => true,
+            ConsumerSecretAvailabilityPolicy.AllowUnavailableForCleanup => false,
+            _ => throw new ArgumentOutOfRangeException(nameof(request.Availability))
+        };
+        var ids = request.PreviousReferences.Concat(request.DesiredReferences).Select(reference => reference.SecretId).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal);
         IReadOnlyList<ResourceDeploymentConnectionPlacement>? placements = null;
         foreach (var id in ids)
         {
-            var desired = desiredReferences.Where(reference => reference.SecretId == id).Select(reference => reference.Key).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToImmutableArray();
-            var current = await secrets.Find(session, SecretFilters.Identity(tenantId, id)).FirstOrDefaultAsync(ct);
-            var binding = current?.Bindings.SingleOrDefault(item => item.ConsumerType == consumerType.Value && item.ConsumerId == consumerId);
+            var desired = request.DesiredReferences.Where(reference => reference.SecretId == id).Select(reference => reference.Key).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToImmutableArray();
+            var current = await secrets.Find(session, SecretFilters.Identity(request.TenantId, id)).FirstOrDefaultAsync(ct);
+            var binding = current?.Bindings.SingleOrDefault(item => item.Consumer.ResourceType == request.ConsumerType.Value && item.Consumer.ResourceId == request.ConsumerId);
             if (requireAvailable && desired.Length > 0)
             {
-                if (current is null || binding is null || current.ResourceGroupId != resourceGroupId || current.IsolationScopeId != isolationScopeId)
+                if (current is null || binding is null || current.ResourceGroupId != request.ResourceGroupId || current.IsolationScopeId != request.IsolationScopeId)
                     return Unavailable(id, ConsumerSecretReferenceError.SecretBindingUnavailable);
                 if (desired.Any(key => !current.HasValue(key)))
                     return Unavailable(id, ConsumerSecretReferenceError.SecretValuesMissing);
                 if (desired.Any(key => !ConsumerSecretReferenceAuthority.IncludesKey(current, binding, key)))
                     return Unavailable(id, ConsumerSecretReferenceError.SecretKeyUnavailable);
-                placements ??= (await loadPlacements(tenantId, consumerType, consumerId, session, ct)).Where(item => !item.DeletionRequested).ToArray();
+                placements ??= (await loadPlacements(
+                    new LoadResourceDeploymentConnectionPlacementsRequest(
+                        TenantId: request.TenantId,
+                        ResourceType: request.ConsumerType,
+                        ResourceId: request.ConsumerId),
+                    session: session,
+                    cancellationToken: ct)).Where(item => !item.DeletionRequested).ToArray();
                 if (placements.Count == 0 || placements.Any(placement => !SecretProjectionAuthority.IncludesDeployment(binding.Selection, placement.DeploymentId)) ||
-                    await admitScope(tenantId, resourceGroupId, isolationScopeId, new ResourceScopeConsumerReference(consumerType, consumerId), session, ct) is ResourceScopeReferenceUnavailable ||
-                    await admitDeployments(tenantId, resourceGroupId, isolationScopeId, consumerType, consumerId, true, [], session, ct) is ResourceDeploymentReferenceUnavailable)
+                    await admitScope(
+                        new AdmitResourceScopeReferenceRequest(
+                            TenantId: request.TenantId,
+                            ResourceGroupId: request.ResourceGroupId,
+                            IsolationScopeId: request.IsolationScopeId,
+                            Consumer: new ResourceScopeConsumerReference(request.ConsumerType, request.ConsumerId)),
+                        session: session,
+                        cancellationToken: ct) is ResourceScopeReferenceUnavailable ||
+                    await admitDeployments(
+                        new AdmitResourceDeploymentReferencesRequest(
+                            TenantId: request.TenantId,
+                            ResourceGroupId: request.ResourceGroupId,
+                            IsolationScopeId: request.IsolationScopeId,
+                            ConsumerType: request.ConsumerType,
+                            ConsumerId: request.ConsumerId,
+                            AllDeployments: true,
+                            DeploymentIds: []),
+                        session: session,
+                        cancellationToken: ct) is ResourceDeploymentReferenceUnavailable)
                     return Unavailable(id, ConsumerSecretReferenceError.SecretDeploymentCoverageUnavailable);
             }
             if (current is null || binding is null) continue; // Revocation must never block independent cleanup.
-            var updatedBindings = current.Bindings.Select(item => item.Id == binding.Id ? item.PinReferences(desired, retainPreviousReferencesUntilRollout) : item).ToImmutableArray();
+            var pinned = request.Retention switch
+            {
+                PreviousSecretReferenceRetention.DoNotRetain => binding.RequireKeys(desired),
+                PreviousSecretReferenceRetention.KeepUntilRolloutConfirmed => binding.RequireKeysThroughRollout(desired),
+                _ => throw new ArgumentOutOfRangeException(nameof(request.Retention))
+            };
+            var updatedBindings = current.Bindings.Select(item => item.Id == binding.Id ? pinned : item).ToImmutableArray();
             // Pins affect admission only, not encrypted values or the projection revision.
-            await secrets.UpdateOneAsync(session, SecretFilters.Identity(tenantId, id), Builders<Secret>.Update
+            await secrets.UpdateOneAsync(session, SecretFilters.Identity(request.TenantId, id), Builders<Secret>.Update
                 .Set(item => item.Bindings, updatedBindings).Inc(item => item.ReferenceFence, 1), cancellationToken: ct);
         }
         return new ConsumerSecretReferencesAdmitted();
@@ -66,5 +93,4 @@ internal static class ConsumerSecretReferenceAuthority
 {
     internal static bool IncludesKey(Secret secret, SecretBinding binding, string key) =>
         secret.KeyNames.Contains(key) && (binding.KeyMappings.Count == 0 || binding.KeyMappings.ContainsKey(key));
-    internal static string ProjectedKey(SecretBinding binding, string key) => binding.ProjectedKey(key);
 }

@@ -47,28 +47,34 @@ public sealed class ResourceDeploymentOperationsPersistence(
             .Skip((page - 1) * size).Limit(size).ToListAsync(cancellationToken);
         var items = new List<ResourceDeploymentOperationDto>();
         var owners = new Dictionary<(string Type, string Id), RegisteredResource?>();
-        var targetNames = new Dictionary<string, string?>();
+        var targets = new Dictionary<string, DeploymentTargetLookupDto?>();
         foreach (var deployment in rows)
         {
             var key = (deployment.ResourceType, deployment.ResourceId);
             if (!owners.TryGetValue(key, out var owner))
             {
-                owner = await loadResource(tenantId, ResourceTypeId.Create(deployment.ResourceType), deployment.ResourceId, cancellationToken);
+                owner = await loadResource(
+                    new LoadRegisteredResourceRequest(
+                        TenantId: tenantId,
+                        ResourceTypeId: ResourceTypeId.Create(deployment.ResourceType),
+                        ResourceId: deployment.ResourceId),
+                    cancellationToken: cancellationToken);
                 owners[key] = owner;
             }
             var targetId = deployment.ResolvedPlacement.DeploymentTargetId;
-            if (!targetNames.TryGetValue(targetId, out var targetName))
+            if (!targets.TryGetValue(targetId, out var target))
             {
-                targetName = (await lookupTarget(targetId, cancellationToken)) switch
+                target = (await lookupTarget(targetId, cancellationToken)) switch
                 {
-                    DeploymentTargetLookupDto target => target.DisplayName,
+                    DeploymentTargetLookupDto found => found,
                     DeploymentTargetLookupError => null
                 };
-                targetNames[targetId] = targetName;
+                targets[targetId] = target;
             }
-            items.Add(ToOperation(deployment, owner?.TenantId == tenantId && owner.ResourceGroupId == deployment.ResourceGroupId ? owner.DisplayName : null)
+            items.Add(ToOperation(deployment, owner?.TenantId == tenantId && owner.ResourceGroupId == deployment.ResourceGroupId ? owner.DisplayName : null,
+                ResourceDeploymentIsolationProjection.FromPolicy(target?.NetworkPolicy ?? DeploymentTargetNetworkPolicyDto.Unknown))
                 with
-            { OperationGeneration = deployment.State.Generation, TargetDisplayName = targetName });
+            { OperationGeneration = deployment.State.Generation, TargetDisplayName = target?.DisplayName });
         }
         var counts = new ResourceDeploymentOperationCounts(
             await CountAsync<WaitingForRuntimeCellResourceDeploymentState>() + await CountAsync<PreparedResourceDeploymentState>(),
@@ -82,15 +88,15 @@ public sealed class ResourceDeploymentOperationsPersistence(
             ResourceDeploymentFilters.ForOperationState<TState>(filter), cancellationToken: cancellationToken);
     }
 
-    public static ResourceDeploymentOperationDto ToOperation(ResourceDeployment deployment, string? name) => deployment.State switch
+    public static ResourceDeploymentOperationDto ToOperation(ResourceDeployment deployment, string? name, ResourceDeploymentIsolationDto isolation) => deployment.State switch
     {
-        PreparedResourceDeploymentState state => new(deployment.ToDto(), name, "Prepared", 0, deployment.CreatedAtUtc, false, null),
-        WaitingForRuntimeCellResourceDeploymentState state => new(deployment.ToDto(), name, "Waiting", 0, state.RequestedAtUtc, false, null),
-        PendingResourceDeploymentState state => new(deployment.ToDto(), name, "Accepted", state.AttemptCount, state.RequestedAtUtc, false, null),
-        ReconcilingResourceDeploymentState state => new(deployment.ToDto(), name, "Running", state.AttemptCount, state.StartedAtUtc, false, null),
-        AppliedResourceDeploymentState state => new(deployment.ToDto(), name, "Applied", 0, state.AppliedAtUtc, false, null),
-        FailedResourceDeploymentState state => new(deployment.ToDto(), name, "Failed", state.AttemptCount, state.FailedAtUtc, state.Retryable, state.RetryNotBeforeUtc),
-        DeletedResourceDeploymentState state => new(deployment.ToDto(), name, "Deleted", 0, state.DeletedAtUtc, false, null),
+        PreparedResourceDeploymentState state => new(deployment.ToDto(isolation), name, "Prepared", 0, deployment.CreatedAtUtc, false, null),
+        WaitingForRuntimeCellResourceDeploymentState state => new(deployment.ToDto(isolation), name, "Waiting", 0, state.RequestedAtUtc, false, null),
+        PendingResourceDeploymentState state => new(deployment.ToDto(isolation), name, "Accepted", state.AttemptCount, state.RequestedAtUtc, false, null),
+        ReconcilingResourceDeploymentState state => new(deployment.ToDto(isolation), name, "Running", state.AttemptCount, state.StartedAtUtc, false, null),
+        AppliedResourceDeploymentState state => new(deployment.ToDto(isolation), name, "Applied", 0, state.AppliedAtUtc, false, null),
+        FailedResourceDeploymentState state => new(deployment.ToDto(isolation), name, "Failed", state.AttemptCount, state.FailedAtUtc, state.Retryable, state.RetryNotBeforeUtc),
+        DeletedResourceDeploymentState state => new(deployment.ToDto(isolation), name, "Deleted", 0, state.DeletedAtUtc, false, null),
         _ => throw new InvalidOperationException("Unrecognized resource deployment state.")
     };
 }

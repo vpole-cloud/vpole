@@ -38,10 +38,10 @@ internal sealed class ManagedProjectionFixture : IDisposable
         services.AddSingleton<IKubernetesClientProvider>(new SingleTargetProvider(kubernetes, Projection.DeploymentTargetId));
         services.AddScoped<LoadSecretById>(_ => (tenant, id, ct) => Task.FromResult(
             _authority is { } authority && authority.TenantId == tenant && authority.Id == id ? authority : null));
-        services.AddScoped<LoadExactResourceDeploymentRuntimePlacement>(_ => (tenant, type, resource, deployment, ct) =>
+        services.AddScoped<LoadExactResourceDeploymentRuntimePlacement>(_ => (request, ct) =>
             Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(
-                tenant == Projection.TenantId && type == ResourceTypeId.Create("pole/postgresql") &&
-                resource == Projection.ConsumerId && deployment == Projection.DeploymentId
+                request.TenantId == Projection.TenantId && request.ResourceType == ResourceTypeId.Create("pole/postgresql") &&
+                request.ResourceId == Projection.ConsumerId && request.DeploymentId == Projection.DeploymentId
                     ? new ResourceDeploymentRuntimePlacementDto(Projection.DeploymentId, Projection.ConsumerId, Projection.RuntimeCellId,
                         Projection.DeploymentTargetId, Projection.KubernetesNamespace, 1, 1,
                         new ResourceDeploymentComputeConfiguration(PostgresTestData.DefaultComputeProfileId, 1,

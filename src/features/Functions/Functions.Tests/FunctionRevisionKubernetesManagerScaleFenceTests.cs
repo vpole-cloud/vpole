@@ -59,9 +59,9 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         var manager = new FunctionRevisionKubernetesManager(
             new FixedKubernetesClientProvider(kubernetes),
             (id, ct) => LookupTarget(id, NetworkPolicyReadiness.EnforcementAttested),
-            (tenantId, runtimeCellId, targetId, kubernetesNamespace, ct) =>
+(request, ct) =>
                 Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
-                    new RuntimeCellIngressBaselinePolicyUnavailable(runtimeCellId)),
+                    new RuntimeCellIngressBaselinePolicyUnavailable(request.RuntimeCellId)),
             []);
 
         var result = await manager.ApplyAsync(subject);
@@ -233,10 +233,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
             Array.Empty<IFunctionAgentTrustBundleProvider>());
 
     private static Task<EnsureRuntimeCellIngressBaselineOutcome> ReadyBaseline(
-        string tenantId,
-        string runtimeCellId,
-        string targetId,
-        string kubernetesNamespace,
+        EnsureRuntimeCellIngressBaselineRequest request,
         CancellationToken cancellationToken) =>
         Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
             new RuntimeCellIngressBaselineReady());

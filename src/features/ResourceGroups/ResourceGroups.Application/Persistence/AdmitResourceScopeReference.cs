@@ -14,10 +14,7 @@ internal sealed class MongoAdmitResourceScopeReference(
     IMongoCollection<ResourceRegistration> registrations)
 {
     public async Task<AdmitResourceScopeReferenceOutcome> InvokeAsync(
-        string tenantId,
-        string resourceGroupId,
-        string isolationScopeId,
-        ResourceScopeConsumerReference? consumer,
+        AdmitResourceScopeReferenceRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
@@ -26,7 +23,7 @@ internal sealed class MongoAdmitResourceScopeReference(
 
         var fence = await groups.UpdateOneAsync(
             session,
-            ResourceGroupFilters.Active(tenantId, resourceGroupId),
+            ResourceGroupFilters.Active(request.TenantId, request.ResourceGroupId),
             Builders<ResourceGroup>.Update.Inc(x => x.RegistrationFence, 1),
             cancellationToken: cancellationToken);
         if (fence.ModifiedCount != 1)
@@ -36,22 +33,22 @@ internal sealed class MongoAdmitResourceScopeReference(
             .Find(
                 session,
                 IsolationScopeFilters.ByTenantResourceGroupAndId(
-                    tenantId,
-                    resourceGroupId,
-                    isolationScopeId))
+                    request.TenantId,
+                    request.ResourceGroupId,
+                    request.IsolationScopeId))
             .FirstOrDefaultAsync(cancellationToken);
         if (scope?.Lifecycle is not ActiveIsolationScopeLifecycleState)
             return new ResourceScopeReferenceUnavailable();
-        if (consumer is null)
+        if (request.Consumer is null)
             return new ResourceScopeReferenceAdmitted();
 
         var exists = await registrations.Find(
             session,
             ResourceRegistrationFilters.Exact(
-                tenantId,
-                resourceGroupId,
-                consumer.ResourceType,
-                consumer.ResourceId)).AnyAsync(cancellationToken);
+                request.TenantId,
+                request.ResourceGroupId,
+                request.Consumer.ResourceType,
+                request.Consumer.ResourceId)).AnyAsync(cancellationToken);
         return exists ? new ResourceScopeReferenceAdmitted() : new ResourceScopeReferenceUnavailable();
     }
 }

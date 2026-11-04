@@ -38,10 +38,11 @@ internal sealed class MongoQueueSourceBuildJob(
             async (transaction, ct) =>
             {
                 var admitted = await admitWebService(
-                    job.TenantId,
-                    job.WebServiceId,
-                    transaction.Session,
-                    ct);
+                    new AdmitSourceBuildWebServiceRequest(
+                        TenantId: job.TenantId,
+                        WebServiceId: job.WebServiceId),
+                    session: transaction.Session,
+                    cancellationToken: ct);
                 if (admitted is SourceBuildWebServiceNotFound error)
                 {
                     QueueSourceBuildJobOutcome outcome = error;

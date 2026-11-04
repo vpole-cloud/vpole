@@ -10,12 +10,15 @@ public union AdmitResourceDeploymentReferencesOutcome(
     ResourceDeploymentReferenceUnavailable);
 
 public delegate Task<AdmitResourceDeploymentReferencesOutcome> AdmitResourceDeploymentReferences(
-    string tenantId,
-    string resourceGroupId,
-    string isolationScopeId,
-    ResourceTypeId consumerType,
-    string consumerId,
-    bool allDeployments,
-    IReadOnlyCollection<string> deploymentIds,
+    AdmitResourceDeploymentReferencesRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
+
+public sealed record AdmitResourceDeploymentReferencesRequest(
+    string TenantId,
+    string ResourceGroupId,
+    string IsolationScopeId,
+    ResourceTypeId ConsumerType,
+    string ConsumerId,
+    bool AllDeployments,
+    IReadOnlyCollection<string> DeploymentIds);

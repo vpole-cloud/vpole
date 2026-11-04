@@ -6,18 +6,19 @@ namespace Pole.Features.ResourceDeployments.Application.Common;
 
 public static class ResourceDeploymentDtoExtensions
 {
-    public static ResourceDeploymentDto ToDto(this ResourceDeployment deployment) =>
+    public static ResourceDeploymentDto ToDto(this ResourceDeployment deployment, ResourceDeploymentIsolationDto isolation) =>
         new(
             deployment.Id,
             deployment.ResourceType,
             deployment.ResourceId,
             deployment.ResourceGroupId,
-            deployment.ToPlacementSummaryDto(),
+            deployment.ToPlacementSummaryDto(isolation),
             deployment.CreatedAtUtc,
             deployment.UpdatedAtUtc);
 
     public static PlacementSummaryDto ToPlacementSummaryDto(
-        this ResourceDeployment deployment) =>
+        this ResourceDeployment deployment,
+        ResourceDeploymentIsolationDto isolation) =>
         new(
             deployment.Id,
             deployment.IsolationScopeId,
@@ -42,7 +43,7 @@ public static class ResourceDeploymentDtoExtensions
                     deployment.ResolvedPlacement.Ingress.Hostnames),
             deployment.Revision,
             deployment.DesiredOperation.ToContractOperation(),
-            new ResourceDeploymentIsolationDto("Unknown", "EnforcementRequired", "EnforcementNotEstablished", null));
+            isolation);
 
     public static ResourceDeploymentDesiredOperation ToContractOperation(this ResourceDeploymentOperation operation) => operation switch
     {

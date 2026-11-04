@@ -114,11 +114,12 @@ public sealed class UpdateFunctionAppHandler(
             return new UpdateFunctionAppError(new FunctionAppIsNotEnabled(app.Id));
 
         var deployment = await loadDeploymentPlacement(
-            app.TenantId,
-            FunctionResourceDeployment.ResourceType,
-            app.Id,
-            app.Placement.ResourceDeploymentId,
-            cancellationToken);
+            new LoadExactResourceDeploymentRuntimePlacementRequest(
+                TenantId: app.TenantId,
+                ResourceType: FunctionResourceDeployment.ResourceType,
+                ResourceId: app.Id,
+                DeploymentId: app.Placement.ResourceDeploymentId),
+            cancellationToken: cancellationToken);
         if (deployment is null ||
             !string.Equals(
                 deployment.RuntimeCellId,
@@ -159,11 +160,12 @@ public sealed class UpdateFunctionAppHandler(
         return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             FunctionQuotaAllocation,
             UpdateFunctionAppOutcome>(
-            app.TenantId,
-            FunctionAppQuotaResourceKey.Create(app.Id),
-            new UpdateQuotaMutation<FunctionQuotaAllocation>(app.AdmittedQuota, admittedQuota),
-            quotaError => new UpdateFunctionAppError(quotaError),
-            (transaction, ct) => PersistAsync(
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.Functions.Domain.FunctionQuotaAllocation, global::Pole.Features.Functions.Application.Endpoints.UpdateFunctionAppOutcome>(
+                TenantId: app.TenantId,
+                ResourceKey: FunctionAppQuotaResourceKey.Create(app.Id),
+                Mutation: new UpdateQuotaMutation<FunctionQuotaAllocation>(app.AdmittedQuota, admittedQuota),
+                QuotaError: quotaError => new UpdateFunctionAppError(quotaError),
+                MutationCallback: (transaction, ct) => PersistAsync(
                 transaction,
                 app,
                 candidate,
@@ -173,8 +175,8 @@ public sealed class UpdateFunctionAppHandler(
                 requestDeploymentApply,
                 deployment,
                 timeProvider.GetUtcNow(),
-                ct),
-            cancellationToken);
+                ct)),
+            cancellationToken: cancellationToken);
     }
 
     private static async Task<QuotaAdmissionTransactionDecision<UpdateFunctionAppOutcome>> PersistAsync(

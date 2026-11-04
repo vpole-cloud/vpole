@@ -53,11 +53,12 @@ public sealed class SourceBuildWorkspaceService(
             await using (var limitedArchive = new SizeLimitedWriteStream(archiveFile, options.MaxArchiveBytes))
             {
                 var download = await downloadSourceRepositoryArchive(
-                    tenantId,
-                    sourceRepositoryId,
-                    commitSha,
-                    limitedArchive,
-                    cancellationToken);
+                    new DownloadSourceRepositoryArchiveRequest(
+                        TenantId: tenantId,
+                        SourceRepositoryId: sourceRepositoryId,
+                        CommitSha: commitSha,
+                        Destination: limitedArchive),
+                    cancellationToken: cancellationToken);
                 if (download is DownloadSourceRepositoryArchiveError failure)
                 {
                     await DeleteWorkspaceAsync(buildRoot);

@@ -51,7 +51,10 @@ public union LoadTenantMemberOutcome(
     TenantMemberMissing);
 
 public delegate Task<LoadTenantMemberOutcome> LoadTenantMember(
-    string tenantId,
-    string userId,
+    LoadTenantMemberRequest request,
     MongoDB.Driver.IClientSessionHandle? session = null,
     CancellationToken cancellationToken = default);
+
+public sealed record LoadTenantMemberRequest(
+    string TenantId,
+    string UserId);

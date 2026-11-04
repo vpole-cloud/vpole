@@ -483,15 +483,15 @@ public sealed class RealtimeFinalExpiryFenceTests
             var registry =
                 new RealtimeTopicRegistry([new("fake", RealtimeScope.Tenant), new("platform", RealtimeScope.Platform)],
                     new());
-            var access = new RealtimeAccess(async (tenant, user, _, _) =>
+            var access = new RealtimeAccess(async (request, _, _) =>
                 {
                     if (value.BeforeMember is { } before)
                         await before();
                     if (value.BeforeMemberForUser is { } beforeUser)
-                        await beforeUser(user);
+                        await beforeUser(request.UserId);
                     return value.MemberAllowed
-                        ? new TenantMemberSnapshot(tenant, user, TenantMembershipRole.Viewer)
-                        : new TenantMemberMissing(tenant, user);
+                        ? new TenantMemberSnapshot(request.TenantId, request.UserId, TenantMembershipRole.Viewer)
+                        : new TenantMemberMissing(request.TenantId, request.UserId);
                 },
                 (tenant, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(tenant, "name")),
                 registry);

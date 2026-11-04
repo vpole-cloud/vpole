@@ -8,21 +8,18 @@ internal sealed class MongoDeleteHostnameBindingsForDeployment(
     MongoHostnameBindingCleanup cleanup)
 {
     public Task<CleanupHostnameBindingsOutcome> InvokeAsync(
-        string tenantId,
-        ResourceTypeId resourceType,
-        string resourceId,
-        string resourceDeploymentId,
+        DeleteHostnameBindingsForDeploymentRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         DomainTransactions.EnsureActive(session);
         return cleanup.DeleteAsync(
-            tenantId,
+            request.TenantId,
             DomainFilters.BindingForDeployment(
-                tenantId,
-                resourceType,
-                resourceId,
-                resourceDeploymentId),
+                request.TenantId,
+                request.ResourceType,
+                request.ResourceId,
+                request.ResourceDeploymentId),
             session,
             cancellationToken);
     }

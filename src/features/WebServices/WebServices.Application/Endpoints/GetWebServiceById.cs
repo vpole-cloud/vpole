@@ -65,11 +65,20 @@ public sealed class GetWebServiceByIdHandler(
             return new WebServiceNotFound(request.Id);
 
         var deployments = await loadResourceDeploymentSet(
-            webService.TenantId,
-            WebServiceResourceDeployment.ResourceType,
-            webService.Id,
-            cancellationToken);
-        return webService.ToDto(deployments) with { GitOps = await git.StatusAsync(webService.TenantId, "WebService", webService.Id, cancellationToken) };
+            new LoadResourceDeploymentSetRequest(
+                TenantId: webService.TenantId,
+                ResourceType: WebServiceResourceDeployment.ResourceType,
+                ResourceId: webService.Id),
+            cancellationToken: cancellationToken);
+        return webService.ToDto(deployments) with
+        {
+            GitOps = await git.StatusAsync(
+                new LoadGitResourceStatusRequest(
+                    TenantId: webService.TenantId,
+                    Kind: "WebService",
+                    ResourceId: webService.Id),
+                ct: cancellationToken)
+        };
     }
 }
 

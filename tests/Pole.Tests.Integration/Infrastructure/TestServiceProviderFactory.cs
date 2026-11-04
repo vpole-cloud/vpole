@@ -104,7 +104,7 @@ public static class TestServiceProviderFactory
         services.AddPostgresFeature(configuration);
         services.AddResourceConnectionsFeature();
         services.AddScoped<EnsureRuntimeCellIngressBaseline>(_ =>
-            (tenantId, runtimeCellId, targetId, namespaceName, cancellationToken) =>
+(request, cancellationToken) =>
                 Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
                     new RuntimeCellIngressBaselineReady()));
         services.AddSecretsFeature();

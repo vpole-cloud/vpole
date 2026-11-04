@@ -60,7 +60,15 @@ public sealed class GetResourceGroupHandler(
     {
         var group = await loadResourceGroup(request.TenantId, request.Id, cancellationToken);
         if (group is null) return new ResourceGroupNotFound(request.Id);
-        return group.ToDto(await loadResourceRegistrationCount(request.TenantId, request.Id, cancellationToken)) with { GitOps = await git.StatusAsync(request.TenantId, "ResourceGroup", group.Id, cancellationToken) };
+        return group.ToDto(await loadResourceRegistrationCount(request.TenantId, request.Id, cancellationToken)) with
+        {
+            GitOps = await git.StatusAsync(
+                new LoadGitResourceStatusRequest(
+                    TenantId: request.TenantId,
+                    Kind: "ResourceGroup",
+                    ResourceId: group.Id),
+                ct: cancellationToken)
+        };
     }
 }
 

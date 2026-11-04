@@ -14,9 +14,12 @@ public union EnsureIsolationScopeUnreferencedOutcome(
 public interface IIsolationScopeReferenceGuard
 {
     Task<EnsureIsolationScopeUnreferencedOutcome> EnsureUnreferencedAsync(
-        string tenantId,
-        string resourceGroupId,
-        string isolationScopeId,
+        EnsureIsolationScopeUnreferencedRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 }
+
+public sealed record EnsureIsolationScopeUnreferencedRequest(
+    string TenantId,
+    string ResourceGroupId,
+    string IsolationScopeId);

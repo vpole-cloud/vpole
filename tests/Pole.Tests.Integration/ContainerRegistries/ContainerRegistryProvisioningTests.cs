@@ -898,12 +898,10 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         }
 
         public Task<GetRegistryArtifactOutcome> GetArtifactAsync(
-            string projectName,
-            string repositoryName,
-            string reference,
+            GetRegistryArtifactRequest request,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<GetRegistryArtifactOutcome>(
-                new ContainerRegistryArtifactLookupError(new ContainerRegistryArtifactNotFound(reference)));
+                new ContainerRegistryArtifactLookupError(new ContainerRegistryArtifactNotFound(request.Reference)));
 
         public async Task<DeleteRegistryRobotCredentialsOutcome> DeleteRobotCredentialsAsync(
             IReadOnlyCollection<RegistryRobotCleanupTarget> targets,

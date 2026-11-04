@@ -39,18 +39,25 @@ internal sealed class MongoDeleteStoredSecret(
                 .FirstOrDefaultAsync(token);
             if (current is null)
                 return tx.Abort(new SecretMissing());
-            if (!await git.AuthorizeAsync(tenantId, "Secret", id, tx.Session, token))
+            if (!await git.AuthorizeAsync(
+                new AuthorizeGitResourceMutationRequest(
+                    TenantId: tenantId,
+                    Kind: "Secret",
+                    ResourceId: id),
+                session: tx.Session,
+                ct: token))
                 return tx.Abort(new SecretGitOwned());
             if (current.Bindings.Length != 0)
                 return tx.Abort(new SecretBindingsRemain());
 
             var unregistered = await registrar.UnregisterAsync(
-                current.TenantId,
-                current.ResourceGroupId,
-                SecretResource.Type,
-                current.Id,
-                tx.Session,
-                token);
+                new UnregisterResourceRequest(
+                    TenantId: current.TenantId,
+                    ResourceGroupId: current.ResourceGroupId,
+                    ResourceTypeId: SecretResource.Type,
+                    ResourceId: current.Id),
+                session: tx.Session,
+                cancellationToken: token);
             if (unregistered is ResourceRegistrationMutationError)
                 return tx.Abort(new SecretReferenceRejected());
             await secrets.DeleteOneAsync(

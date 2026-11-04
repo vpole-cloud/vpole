@@ -150,19 +150,17 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
         public int RegistrationCalls { get; private set; }
 
         public Task<ApplyDeploymentTargetReferenceChangesOutcome> ApplyChangesOutcomeAsync(
-            DeploymentTargetReferenceOwner owner,
-            IReadOnlyCollection<string> addedDeploymentTargetIds,
-            IReadOnlyCollection<string> removedDeploymentTargetIds,
+            ApplyDeploymentTargetReferenceChangesRequest request,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
         {
-            RegistrationCalls += addedDeploymentTargetIds.Count;
+            RegistrationCalls += request.AddedDeploymentTargetIds.Count;
             return Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(
                 RejectReference
                     ? new ApplyDeploymentTargetReferenceChangesOutcome(
                         new DeploymentTargetReferenceChangeRejected(
-                            owner,
-                            addedDeploymentTargetIds.Concat(removedDeploymentTargetIds).ToArray()))
+                            request.Owner,
+                            request.AddedDeploymentTargetIds.Concat(request.RemovedDeploymentTargetIds).ToArray()))
                     : new DeploymentTargetReferencesChanged());
         }
 

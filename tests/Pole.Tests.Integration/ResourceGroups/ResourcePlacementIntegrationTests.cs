@@ -138,9 +138,10 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         var placements = await load(
-            resourceGroup.TenantId,
-            [first.RuntimeCellId, second.RuntimeCellId, ObjectId.GenerateNewId().ToString()],
-            session);
+            new LoadResourcePlacementsInTransactionRequest(
+                TenantId: resourceGroup.TenantId,
+                RuntimeCellIds: [first.RuntimeCellId, second.RuntimeCellId, ObjectId.GenerateNewId().ToString()]),
+            session: session);
         await session.CommitTransactionAsync();
 
         Assert.Equal(
@@ -195,12 +196,13 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
         return await transaction.InvokeOutcomeAsync<ResolveResourceGroupPlacementOutcome>(async (context, ct) =>
         {
             var result = await resolve(
-                TestData.TenantId,
-                resourceGroupId,
-                isolationScopeId,
-                deploymentTargetId,
-                context.Session,
-                ct);
+                new ResolveResourceGroupPlacementRequest(
+                    TenantId: TestData.TenantId,
+                    ResourceGroupId: resourceGroupId,
+                    IsolationScopeId: isolationScopeId,
+                    DeploymentTargetId: deploymentTargetId),
+                session: context.Session,
+                cancellationToken: ct);
             return result switch
             {
                 ResourcePlacement => context.Commit(result),
@@ -220,12 +222,13 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
         return await transaction.InvokeOutcomeAsync<ResolveResourceGroupPlacementsOutcome>(async (context, ct) =>
         {
             var result = await resolve(
-                TestData.TenantId,
-                resourceGroupId,
-                isolationScopeId,
-                deploymentTargetIds,
-                context.Session,
-                ct);
+                new ResolveResourceGroupPlacementsRequest(
+                    TenantId: TestData.TenantId,
+                    ResourceGroupId: resourceGroupId,
+                    IsolationScopeId: isolationScopeId,
+                    DeploymentTargetIds: deploymentTargetIds),
+                session: context.Session,
+                cancellationToken: ct);
             return result switch
             {
                 ResourcePlacements => context.Commit(result),

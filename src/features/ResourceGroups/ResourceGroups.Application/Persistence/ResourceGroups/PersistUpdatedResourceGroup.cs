@@ -45,7 +45,13 @@ internal sealed class MongoPersistUpdatedResourceGroup(
 
         return runMongoTransaction(async (transaction, ct) =>
         {
-            if (!await git.AuthorizeAsync(current.TenantId, "ResourceGroup", current.Id, transaction.Session, ct))
+            if (!await git.AuthorizeAsync(
+                new AuthorizeGitResourceMutationRequest(
+                    TenantId: current.TenantId,
+                    Kind: "ResourceGroup",
+                    ResourceId: current.Id),
+                session: transaction.Session,
+                ct: ct))
                 return transaction.Abort(new ResourceGroupRevisionConflict(current.Id, ResourceGroupRevisionConflictReason.GitOwnedConfiguration));
             if (replacement.Revision == current.Revision) return transaction.Commit(current);
             if (replacement.Revision != current.Revision)

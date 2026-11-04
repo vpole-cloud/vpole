@@ -3,6 +3,7 @@ using Microsoft.FSharp.Core;
 using Pole.ASP.Helpers;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
+using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Application.Endpoints;
@@ -24,6 +25,27 @@ public static class TestData
     public const string DefaultComputeProfileId = "507f1f77bcf86cd799439097";
     public const string UserId = "test-user";
     public const string UserEmail = "test-user@example.test";
+
+    public static DeploymentTarget SeedDeploymentTarget(string id = DefaultDeploymentTargetId)
+    {
+        var now = DateTime.UtcNow;
+        return DeploymentTargetFactory.Create(
+            technicalName: "target-" + id,
+            displayName: "Observation target",
+            clusterIdentity: "cluster:" + id,
+            connection: DeploymentTargetConnectionFactory.CreateInCluster(1),
+            health: DeploymentTargetHealth.Healthy(1, now),
+            capabilities: DeploymentTargetCapabilities.Observed(
+                1,
+                now,
+                "v1.35.0",
+                new DeploymentTargetNamespaceCapabilities(true, true, true, true, true),
+                new DeploymentTargetNetworkPolicyCapabilities(true, true, true, true, true)),
+            workloadConfiguration: DeploymentTargetWorkloadConfiguration.Create(null, DeploymentTargetNetworkSources.None),
+            enabled: true,
+            acceptsWorkloads: true,
+            options: new DeploymentTargetFactory.CreateOptions(id, now));
+    }
 
     public static CreateResourceGroupRequest CreateResourceGroupRequest(
         string name = "alpha",

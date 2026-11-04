@@ -75,7 +75,7 @@ public sealed class ResourceConnectionPolicyKubernetesTests : KubernetesIntegrat
             ResourceTypeId.Create("pole/web-service"), ResourceId, "http", [snapshot]);
         var registrations = new ServiceCollection();
         registrations.AddSingleton<IKubernetesClientProvider>(clients);
-        registrations.AddSingleton<EnsureRuntimeCellIngressBaseline>(async (_, _, _, _, token) =>
+        registrations.AddSingleton<EnsureRuntimeCellIngressBaseline>(async (request, token) =>
         {
             Assert.IsType<Unit>((await baseline.EnsureCreatedAsync(destinationCell, token)).Value);
             return new RuntimeCellIngressBaselineReady();

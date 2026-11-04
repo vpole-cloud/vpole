@@ -17,7 +17,12 @@ type PersistRotatedPostgresCredential =
 type ManagedPersistRotatedPostgresCredential(rotateSecret : RotateManagedSecret) =
     member _.InvokeAsync(session, current : ManagedSecretValues, replacement : PreparedManagedSecret, cancellationToken : CancellationToken) =
         task {
-            let! result = rotateSecret.Invoke(replacement, current.Version, session, cancellationToken)
+            let! result = rotateSecret.Invoke(
+                RotateManagedSecretRequest(
+                    replacement,
+                    current.Version),
+                session,
+                cancellationToken)
             match result.Value with
             | :? ManagedSecretMutationSucceeded -> return PostgresSuccess ()
             | :? ManagedSecretFailure as error ->

@@ -12,13 +12,13 @@ public sealed class SecretKeyRetirementReconciler(
     {
         var secret = await loadSecret(tenantId, secretId, ct);
         if (secret is null) return;
-        foreach (var binding in secret.Bindings.Where(binding => !binding.RetainedKeys.IsEmpty))
+        foreach (var binding in secret.Bindings.Where(binding => !binding.Pins.Retained.IsEmpty))
         {
-            var observer = observers.SingleOrDefault(item => item.ResourceType.Value == binding.ConsumerType);
+            var observer = observers.SingleOrDefault(item => item.ResourceType.Value == binding.Consumer.ResourceType);
             if (observer is null) continue;
             // Native reads deliberately occur before the Mongo transaction. Persistence fences
             // the complete placement set and Secret reference identity before releasing any pin.
-            if (await observer.ObserveAsync(tenantId, binding.ConsumerId, ct) is SecretConsumerRolloutConfirmed confirmed)
+            if (await observer.ObserveAsync(tenantId, binding.Consumer.ResourceId, ct) is SecretConsumerRolloutConfirmed confirmed)
             {
                 if (!await release(tenantId, secretId, secret.Revision, secret.ReferenceFence, binding.Id, confirmed.Deployments, ct))
                     return; // Superseded metadata or proof: retry from a fresh snapshot next time.

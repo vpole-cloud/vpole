@@ -66,8 +66,11 @@ public union DownloadSourceRepositoryArchiveOutcome(
 
 public delegate Task<DownloadSourceRepositoryArchiveOutcome>
     DownloadSourceRepositoryArchive(
-        string tenantId,
-        string sourceRepositoryId,
-        string commitSha,
-        Stream destination,
-        CancellationToken cancellationToken = default);
+    DownloadSourceRepositoryArchiveRequest request,
+    CancellationToken cancellationToken = default);
+
+public sealed record DownloadSourceRepositoryArchiveRequest(
+    string TenantId,
+    string SourceRepositoryId,
+    string CommitSha,
+    Stream Destination);

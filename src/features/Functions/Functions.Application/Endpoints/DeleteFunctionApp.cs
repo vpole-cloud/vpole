@@ -95,11 +95,12 @@ public sealed class DeleteFunctionAppHandler(
             return new DeleteFunctionAppResponse(app.Id);
 
         var deployment = await loadDeploymentPlacement(
-            app.TenantId,
-            FunctionResourceDeployment.ResourceType,
-            app.Id,
-            app.Placement.ResourceDeploymentId,
-            cancellationToken);
+            new LoadExactResourceDeploymentRuntimePlacementRequest(
+                TenantId: app.TenantId,
+                ResourceType: FunctionResourceDeployment.ResourceType,
+                ResourceId: app.Id,
+                DeploymentId: app.Placement.ResourceDeploymentId),
+            cancellationToken: cancellationToken);
         if (deployment is null ||
             !string.Equals(
                 deployment.RuntimeCellId,
@@ -117,42 +118,43 @@ public sealed class DeleteFunctionAppHandler(
         return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             FunctionQuotaAllocation,
             DeleteFunctionAppOutcome>(
-            app.TenantId,
-            FunctionAppQuotaResourceKey.Create(app.Id),
-            new DeleteQuotaMutation<FunctionQuotaAllocation>(app.AdmittedQuota),
-            quotaError => new DeleteFunctionAppError(quotaError),
-            async (transaction, ct) =>
-            {
-                var deleted = await beginFunctionAppDeletion(
-                    transaction.Session,
-                    app,
-                    timeProvider.GetUtcNow(),
-                    ct);
-                if (deleted is FunctionAppDeletionChanged deletionError)
-                    return transaction.Abort(new DeleteFunctionAppError(deletionError));
-
-                var deploymentResult = await requestDeploymentDeletion(
-                    new ResourceDeploymentExactMutationRequest(
-                        app.TenantId,
-                        FunctionResourceDeployment.ResourceType,
-                        app.Id,
-                        app.Placement.ResourceDeploymentId,
-                        deployment.DeploymentRevision,
-                        new ComputeProfileReference(
-                            deployment.Compute.ComputeProfileId,
-                            deployment.Compute.ComputeProfileRevision),
-                        ResourceRevision: app.NextRevisionNumber),
-                    transaction.Session,
-                    ct);
-                if (deploymentResult is ResourceDeploymentMutationError deploymentError)
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.Functions.Domain.FunctionQuotaAllocation, global::Pole.Features.Functions.Application.Endpoints.DeleteFunctionAppOutcome>(
+                TenantId: app.TenantId,
+                ResourceKey: FunctionAppQuotaResourceKey.Create(app.Id),
+                Mutation: new DeleteQuotaMutation<FunctionQuotaAllocation>(app.AdmittedQuota),
+                QuotaError: quotaError => new DeleteFunctionAppError(quotaError),
+                MutationCallback: async (transaction, ct) =>
                 {
-                    return transaction.Abort(
-                        new DeleteFunctionAppError(deploymentError));
-                }
+                    var deleted = await beginFunctionAppDeletion(
+                        transaction.Session,
+                        app,
+                        timeProvider.GetUtcNow(),
+                        ct);
+                    if (deleted is FunctionAppDeletionChanged deletionError)
+                        return transaction.Abort(new DeleteFunctionAppError(deletionError));
 
-                return transaction.Commit(new DeleteFunctionAppResponse(app.Id));
-            },
-            cancellationToken);
+                    var deploymentResult = await requestDeploymentDeletion(
+                        new ResourceDeploymentExactMutationRequest(
+                            app.TenantId,
+                            FunctionResourceDeployment.ResourceType,
+                            app.Id,
+                            app.Placement.ResourceDeploymentId,
+                            deployment.DeploymentRevision,
+                            new ComputeProfileReference(
+                                deployment.Compute.ComputeProfileId,
+                                deployment.Compute.ComputeProfileRevision),
+                            ResourceRevision: app.NextRevisionNumber),
+                        transaction.Session,
+                        ct);
+                    if (deploymentResult is ResourceDeploymentMutationError deploymentError)
+                    {
+                        return transaction.Abort(
+                            new DeleteFunctionAppError(deploymentError));
+                    }
+
+                    return transaction.Commit(new DeleteFunctionAppResponse(app.Id));
+                }),
+            cancellationToken: cancellationToken);
     }
 }
 

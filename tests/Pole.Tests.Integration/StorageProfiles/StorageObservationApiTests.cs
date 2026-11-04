@@ -6,7 +6,6 @@ using System.Text.Json.Nodes;
 using k8s;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.StorageProfiles.Application.Observation;
@@ -147,11 +146,7 @@ public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture) :
     public async Task AdminReadUsesCurrentCommittedSnapshotWithoutNativeLists()
     {
         var id = TestData.DefaultDeploymentTargetId;
-        await Fixture.Database.GetCollection<BsonDocument>("DeploymentTargets").InsertOneAsync(new BsonDocument
-        {
-            { "_id", ObjectId.Parse(id) }, { "Enabled", true }, { "DeletionRequestedAtUtc", BsonNull.Value },
-            { "Connection", new BsonDocument("Version", 1L) }, { "ObservationFence", 0L }
-        });
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(TestData.SeedDeploymentTarget(id));
         var store = new MongoStorageObservationStore(Fixture.Database,
             new Pole.Database.MongoRunTransaction(Fixture.Client),
             (request, session, ct) =>

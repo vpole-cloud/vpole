@@ -326,28 +326,26 @@ public sealed class TestDeploymentTargetLookup
 
     public Task<ApplyDeploymentTargetReferenceChangesOutcome>
         ApplyChangesOutcomeAsync(
-            DeploymentTargetReferenceOwner owner,
-            IReadOnlyCollection<string> addedDeploymentTargetIds,
-            IReadOnlyCollection<string> removedDeploymentTargetIds,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default)
+        ApplyDeploymentTargetReferenceChangesRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default)
     {
-        if (RejectReferenceRemoval && removedDeploymentTargetIds.Count > 0)
+        if (RejectReferenceRemoval && request.RemovedDeploymentTargetIds.Count > 0)
         {
             return Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(
                 new DeploymentTargetReferenceChangeRejected(
-                    owner,
-                    addedDeploymentTargetIds
-                        .Concat(removedDeploymentTargetIds)
+                    request.Owner,
+                    request.AddedDeploymentTargetIds
+                        .Concat(request.RemovedDeploymentTargetIds)
                         .Distinct(StringComparer.Ordinal)
                         .Order(StringComparer.Ordinal)
                         .ToArray()));
         }
 
         _referenceChanges.Enqueue(new DeploymentTargetReferenceChange(
-            owner,
-            addedDeploymentTargetIds.ToArray(),
-            removedDeploymentTargetIds.ToArray()));
+            request.Owner,
+            request.AddedDeploymentTargetIds.ToArray(),
+            request.RemovedDeploymentTargetIds.ToArray()));
         return Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(
             new DeploymentTargetReferencesChanged());
     }

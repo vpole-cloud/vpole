@@ -89,7 +89,11 @@ public sealed class ResourceDeploymentCreationContractTests(
         using var session = await DbContext.Client.StartSessionAsync();
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            resourceGroupGuard(TenantId, ResourceGroupId, session));
+            resourceGroupGuard(
+                new EnsureNoUnfinishedResourceGroupDeploymentsRequest(
+                    TenantId: TenantId,
+                    ResourceGroupId: ResourceGroupId),
+                session: session));
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             computeProfileGuard("507f1f77bcf86cd799439019", session));
     }

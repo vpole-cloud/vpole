@@ -9,7 +9,8 @@ internal sealed class MongoRequestExactResourceDeploymentDeletion(
     IMongoCollection<ResourceDeployment> resourceDeployments,
     StoreOutboxWrites storeOutboxWrites,
     ResourceDeploymentConnectionGuard connectionGuard,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ResourceDeploymentIsolationProjection isolation)
 {
     public async Task<ResourceDeploymentMutationOutcome> InvokeAsync(
         ResourceDeploymentExactMutationRequest request,
@@ -57,10 +58,11 @@ internal sealed class MongoRequestExactResourceDeploymentDeletion(
             timeProvider.GetUtcNow().UtcDateTime,
             request.ResourceRevision);
         var mutation = updated.Revision == current.Revision
-            ? current.ToPlacementSummaryDto()
+            ? await isolation.ProjectAsync(current, cancellationToken)
             : await ResourceDeploymentMutationSupport.ReplaceAndEnqueueAsync(
                 resourceDeployments,
                 storeOutboxWrites,
+                isolation,
                 current,
                 updated,
                 session,

@@ -78,11 +78,12 @@ public sealed class GetWebServiceDeploymentHostnamesHandler(
         }
 
         var deployment = await loadExactResourceDeployment(
-            request.TenantId,
-            WebServiceResourceDeployment.ResourceType,
-            request.Id,
-            request.DeploymentId,
-            cancellationToken);
+            new LoadExactResourceDeploymentRequest(
+                TenantId: request.TenantId,
+                ResourceType: WebServiceResourceDeployment.ResourceType,
+                ResourceId: request.Id,
+                DeploymentId: request.DeploymentId),
+            cancellationToken: cancellationToken);
         if (deployment is null)
         {
             return new GetWebServiceDeploymentHostnamesError(
@@ -90,11 +91,12 @@ public sealed class GetWebServiceDeploymentHostnamesHandler(
         }
 
         var snapshots = await loadHostnameBindingsForDeployment(
-            request.TenantId,
-            WebServiceResourceDeployment.ResourceType,
-            request.Id,
-            request.DeploymentId,
-            cancellationToken);
+            new LoadHostnameBindingsForDeploymentRequest(
+                TenantId: request.TenantId,
+                ResourceType: WebServiceResourceDeployment.ResourceType,
+                ResourceId: request.Id,
+                ResourceDeploymentId: request.DeploymentId),
+            cancellationToken: cancellationToken);
         return new GetWebServiceDeploymentHostnamesOutcome(snapshots);
     }
 }

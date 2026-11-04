@@ -37,8 +37,13 @@ public sealed class GrantTargetReferenceTests(MongoReplicaSetFixture fixture) : 
             .InvokeOutcomeAsync<ApplyDeploymentTargetReferenceChangesOutcome>(
                 async (transaction, ct) =>
                 {
-                    var result = await apply(specialOwner, [paused.Id], [],
-                        transaction.Session, ct);
+                    var result = await apply(
+                        new ApplyDeploymentTargetReferenceChangesRequest(
+                            specialOwner,
+                            [paused.Id],
+                            []),
+                        transaction.Session,
+                        ct);
                     return result is DeploymentTargetReferencesChanged
                         ? transaction.Commit(result)
                         : transaction.Abort(result);
@@ -53,9 +58,13 @@ public sealed class GrantTargetReferenceTests(MongoReplicaSetFixture fixture) : 
                 async (transaction, ct) =>
                 {
                     var result = await apply(
-                        new DeploymentTargetReferenceOwner(
+                        new ApplyDeploymentTargetReferenceChangesRequest(
+                            new DeploymentTargetReferenceOwner(
                             "ordinary-workload", ObjectId.GenerateNewId().ToString()),
-                        [paused.Id], [], transaction.Session, ct);
+                            [paused.Id],
+                            []),
+                        transaction.Session,
+                        ct);
                     return result is DeploymentTargetReferencesChanged
                         ? transaction.Commit(result)
                         : transaction.Abort(result);
@@ -93,10 +102,14 @@ public sealed class GrantTargetReferenceTests(MongoReplicaSetFixture fixture) : 
                 async (transaction, ct) =>
                 {
                     var admission = await apply(
-                        new DeploymentTargetReferenceOwner(
+                        new ApplyDeploymentTargetReferenceChangesRequest(
+                            new DeploymentTargetReferenceOwner(
                             DeploymentTargetReferenceOwnerTypes.PrivateAccessSession,
                             ObjectId.GenerateNewId().ToString()),
-                        [target.Id], [], transaction.Session, ct);
+                            [target.Id],
+                            []),
+                        transaction.Session,
+                        ct);
                     return admission is DeploymentTargetReferencesChanged
                         ? transaction.Commit(admission)
                         : transaction.Abort(admission);
@@ -126,7 +139,11 @@ public sealed class GrantTargetReferenceTests(MongoReplicaSetFixture fixture) : 
             PrivateAccessGatewayIds.StableId(tenantId, target.Id), 1, 1);
 
         var saved = await provider.GetRequiredService<SavePrivateAccessGatewayRegistration>()(
-            identity, new string('a', 64), DateTime.UtcNow.AddDays(30), []);
+            new SavePrivateAccessGatewayRegistrationRequest(
+                Identity: identity,
+                CertificateSha256Pin: new string('a', 64),
+                CertificateNotAfterUtc: DateTime.UtcNow.AddDays(30),
+                Endpoints: []));
 
         Assert.True(saved);
         var reference = Assert.Single(await fixture.DbContext.DeploymentTargetReferences

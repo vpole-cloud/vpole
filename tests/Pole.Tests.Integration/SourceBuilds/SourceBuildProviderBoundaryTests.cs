@@ -102,19 +102,21 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
 
         await using var destination = new MemoryStream();
         var crossTenantDownload = await archive.InvokeAsync(
-            ObjectId.GenerateNewId().ToString(),
-            repository.Id,
-            "exact-commit",
-            destination);
+            new DownloadSourceRepositoryArchiveRequest(
+                TenantId: ObjectId.GenerateNewId().ToString(),
+                SourceRepositoryId: repository.Id,
+                CommitSha: "exact-commit",
+                Destination: destination));
         var missingDownload = Assert.IsType<DownloadSourceRepositoryArchiveError>(crossTenantDownload.Value);
         Assert.IsType<SourceRepositoryBuildNotFound>(missingDownload.Value);
         Assert.Equal(0, archiveDownloader.DownloadCalls);
 
         var download = await archive.InvokeAsync(
-            TestData.TenantId,
-            repository.Id,
-            "exact-commit",
-            destination);
+            new DownloadSourceRepositoryArchiveRequest(
+                TenantId: TestData.TenantId,
+                SourceRepositoryId: repository.Id,
+                CommitSha: "exact-commit",
+                Destination: destination));
         Assert.IsType<SourceRepositoryArchiveDownloaded>(download.Value);
         Assert.Equal(1, archiveDownloader.DownloadCalls);
         Assert.Equal(connection.Id, archiveDownloader.ConnectionId);
@@ -149,20 +151,22 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
         var service = new TenantRegistryArtifactLookup(loadProject, registryClient);
 
         var crossTenant = await service.InvokeAsync(
-            ObjectId.GenerateNewId().ToString(),
-            project.Id,
-            "web-services/service-1",
-            "build-1");
+            new GetTenantRegistryArtifactRequest(
+                TenantId: ObjectId.GenerateNewId().ToString(),
+                RegistryProjectId: project.Id,
+                RepositoryName: "web-services/service-1",
+                Reference: "build-1"));
 
         var crossTenantError = Assert.IsType<GetTenantRegistryArtifactError>(crossTenant.Value);
         Assert.IsType<TenantContainerRegistryProjectNotFound>(crossTenantError.Value);
         Assert.Equal(0, registryClient.ArtifactCalls);
 
         var artifact = await service.InvokeAsync(
-            TestData.TenantId,
-            project.Id,
-            "web-services/service-1",
-            "build-1");
+            new GetTenantRegistryArtifactRequest(
+                TenantId: TestData.TenantId,
+                RegistryProjectId: project.Id,
+                RepositoryName: "web-services/service-1",
+                Reference: "build-1"));
 
         var found = Assert.IsType<RegistryArtifact>(artifact.Value);
         Assert.Equal("sha256:digest", found.Digest);
@@ -203,15 +207,13 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
         public string? ProjectName { get; private set; }
 
         public Task<GetRegistryArtifactOutcome> GetArtifactAsync(
-            string projectName,
-            string repositoryName,
-            string reference,
+            GetRegistryArtifactRequest request,
             CancellationToken cancellationToken = default)
         {
             ArtifactCalls++;
-            ProjectName = projectName;
+            ProjectName = request.ProjectName;
             return Task.FromResult<GetRegistryArtifactOutcome>(
-                new RegistryArtifact(repositoryName, reference, "sha256:digest", 100));
+                new RegistryArtifact(request.RepositoryName, request.Reference, "sha256:digest", 100));
         }
 
         public Task<ProvisionRegistryProjectOutcome> ProvisionProjectAsync(

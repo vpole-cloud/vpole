@@ -8,7 +8,8 @@ namespace Pole.Features.ResourceDeployments.Application.Persistence.Reconciliati
 internal sealed class MongoRetryExactResourceDeployment(
     IMongoCollection<ResourceDeployment> resourceDeployments,
     StoreOutboxWrites storeOutboxWrites,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ResourceDeploymentIsolationProjection isolation)
 {
     public async Task<ResourceDeploymentMutationOutcome> InvokeAsync(
         ResourceDeploymentExactRetryRequest request,
@@ -69,6 +70,6 @@ internal sealed class MongoRetryExactResourceDeployment(
             session,
             [retried.ToCurrentRequestWrite()],
             cancellationToken);
-        return retried.ToPlacementSummaryDto();
+        return await isolation.ProjectAsync(retried, cancellationToken);
     }
 }

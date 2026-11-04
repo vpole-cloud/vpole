@@ -68,7 +68,12 @@ public sealed class GetResourceConnectionEndpointsHandler(LoadRegisteredResource
     {
         var type = ResourceTypeId.Create(request.ResourceType);
         var id = ObjectId.Parse(request.ResourceId).ToString();
-        var resource = await loadResource(request.TenantId, type, id, cancellationToken);
+        var resource = await loadResource(
+            new LoadRegisteredResourceRequest(
+                TenantId: request.TenantId,
+                ResourceTypeId: type,
+                ResourceId: id),
+            cancellationToken: cancellationToken);
         if (resource is null) return new ConnectionResourceMissing();
         ResourceTypeId? sourceType = null;
         string? sourceId = null;
@@ -76,7 +81,12 @@ public sealed class GetResourceConnectionEndpointsHandler(LoadRegisteredResource
         {
             sourceType = ResourceTypeId.Create(request.SourceResourceType);
             sourceId = ObjectId.Parse(request.SourceResourceId!).ToString();
-            if (await loadResource(request.TenantId, sourceType.Value, sourceId, cancellationToken) is null) return new ConnectionResourceMissing();
+            if (await loadResource(
+                new LoadRegisteredResourceRequest(
+                    TenantId: request.TenantId,
+                    ResourceTypeId: sourceType.Value,
+                    ResourceId: sourceId),
+                cancellationToken: cancellationToken) is null) return new ConnectionResourceMissing();
         }
         var supported = catalog.SupportsDestination(type);
         var published = supported ? await catalog.LoadAvailableAsync(request.TenantId, type, id, cancellationToken) : null;
@@ -88,8 +98,18 @@ public sealed class GetResourceConnectionEndpointsHandler(LoadRegisteredResource
             else if (!supported) topology = new("Ineligible", "DestinationUnsupported");
             else
             {
-                var source = await loadPlacements(request.TenantId, sourceType.Value, sourceId!, cancellationToken);
-                var destination = await loadPlacements(request.TenantId, type, id, cancellationToken);
+                var source = await loadPlacements(
+                    new LoadResourceDeploymentSetRequest(
+                        TenantId: request.TenantId,
+                        ResourceType: sourceType.Value,
+                        ResourceId: sourceId!),
+                    cancellationToken: cancellationToken);
+                var destination = await loadPlacements(
+                    new LoadResourceDeploymentSetRequest(
+                        TenantId: request.TenantId,
+                        ResourceType: type,
+                        ResourceId: id),
+                    cancellationToken: cancellationToken);
                 var assessment = ResourceConnectionTopology.Evaluate(DesiredTargets(source), DesiredTargets(destination));
                 topology = assessment.Kind == ConnectionTopologyKind.Eligible ? new("Eligible") : new("Ineligible", assessment.Kind.ToString());
             }

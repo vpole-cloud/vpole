@@ -150,16 +150,13 @@ public union EnsureComputeProfileUnreferencedOutcome(
 
 public delegate Task<EnsureResourceGroupDeploymentsSettledOutcome>
     EnsureNoUnfinishedResourceGroupDeployments(
-    string tenantId,
-    string resourceGroupId,
+    EnsureNoUnfinishedResourceGroupDeploymentsRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
 public delegate Task<EnsureIsolationScopeDeploymentsSettledOutcome>
     EnsureNoUnfinishedIsolationScopeDeployments(
-    string tenantId,
-    string resourceGroupId,
-    string isolationScopeId,
+    EnsureNoUnfinishedIsolationScopeDeploymentsRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
@@ -170,29 +167,21 @@ public delegate Task<EnsureComputeProfileUnreferencedOutcome>
     CancellationToken cancellationToken = default);
 
 public delegate Task<PlacementSummaryDto?> LoadResourceDeployment(
-    string tenantId,
-    ResourceTypeId resourceType,
-    string resourceId,
+    LoadResourceDeploymentRequest request,
     CancellationToken cancellationToken = default);
 
 public delegate Task<IReadOnlyDictionary<string, PlacementSummaryDto>>
     LoadResourceDeployments(
-        string tenantId,
-        ResourceTypeId resourceType,
-        IReadOnlyCollection<string> resourceIds,
-        CancellationToken cancellationToken = default);
+    LoadResourceDeploymentsRequest request,
+    CancellationToken cancellationToken = default);
 
 public delegate Task<LoadCurrentResourceDeploymentComputeOutcome>
     LoadCurrentResourceDeploymentCompute(
-        string tenantId,
-        ResourceTypeId resourceType,
-        string resourceId,
-        CancellationToken cancellationToken = default);
+    LoadCurrentResourceDeploymentComputeRequest request,
+    CancellationToken cancellationToken = default);
 
 public delegate Task<IReadOnlyList<PlacementSummaryDto>> LoadResourceDeploymentSet(
-    string tenantId,
-    ResourceTypeId resourceType,
-    string resourceId,
+    LoadResourceDeploymentSetRequest request,
     CancellationToken cancellationToken = default);
 
 // Internal server-resolved identity for policy construction. This is never a
@@ -206,33 +195,23 @@ public sealed record ResourceDeploymentConnectionPlacement(
 
 public delegate Task<IReadOnlyList<ResourceDeploymentConnectionPlacement>>
     LoadResourceDeploymentConnectionPlacements(
-    string tenantId,
-    ResourceTypeId resourceType,
-    string resourceId,
+    LoadResourceDeploymentConnectionPlacementsRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
 public delegate Task<PlacementSummaryDto?> LoadExactResourceDeployment(
-    string tenantId,
-    ResourceTypeId resourceType,
-    string resourceId,
-    string deploymentId,
+    LoadExactResourceDeploymentRequest request,
     CancellationToken cancellationToken = default);
 
 public delegate Task<ResourceDeploymentRuntimePlacementDto?>
     LoadExactResourceDeploymentRuntimePlacement(
-        string tenantId,
-        ResourceTypeId resourceType,
-        string resourceId,
-        string deploymentId,
-        CancellationToken cancellationToken = default);
+    LoadExactResourceDeploymentRuntimePlacementRequest request,
+    CancellationToken cancellationToken = default);
 
 public delegate Task<IReadOnlyList<ResourceDeploymentRuntimePlacementDto>>
     LoadResourceDeploymentRuntimePlacements(
-        string tenantId,
-        ResourceTypeId resourceType,
-        IReadOnlyCollection<string> resourceIds,
-        CancellationToken cancellationToken = default);
+    LoadResourceDeploymentRuntimePlacementsRequest request,
+    CancellationToken cancellationToken = default);
 
 public delegate Task<IReadOnlyList<string>> LoadResourceDeploymentTargetIds(
     ResourceTypeId resourceType,
@@ -240,7 +219,61 @@ public delegate Task<IReadOnlyList<string>> LoadResourceDeploymentTargetIds(
 
 public delegate Task<IReadOnlyDictionary<string, IReadOnlyList<PlacementSummaryDto>>>
     LoadResourceDeploymentSets(
-        string tenantId,
-        ResourceTypeId resourceType,
-        IReadOnlyCollection<string> resourceIds,
-        CancellationToken cancellationToken = default);
+    LoadResourceDeploymentSetsRequest request,
+    CancellationToken cancellationToken = default);
+
+public sealed record EnsureNoUnfinishedResourceGroupDeploymentsRequest(
+    string TenantId,
+    string ResourceGroupId);
+
+public sealed record EnsureNoUnfinishedIsolationScopeDeploymentsRequest(
+    string TenantId,
+    string ResourceGroupId,
+    string IsolationScopeId);
+
+public sealed record LoadResourceDeploymentRequest(
+    string TenantId,
+    ResourceTypeId ResourceType,
+    string ResourceId);
+
+public sealed record LoadResourceDeploymentsRequest(
+    string TenantId,
+    ResourceTypeId ResourceType,
+    IReadOnlyCollection<string> ResourceIds);
+
+public sealed record LoadCurrentResourceDeploymentComputeRequest(
+    string TenantId,
+    ResourceTypeId ResourceType,
+    string ResourceId);
+
+public sealed record LoadResourceDeploymentSetRequest(
+    string TenantId,
+    ResourceTypeId ResourceType,
+    string ResourceId);
+
+public sealed record LoadResourceDeploymentConnectionPlacementsRequest(
+    string TenantId,
+    ResourceTypeId ResourceType,
+    string ResourceId);
+
+public sealed record LoadExactResourceDeploymentRequest(
+    string TenantId,
+    ResourceTypeId ResourceType,
+    string ResourceId,
+    string DeploymentId);
+
+public sealed record LoadExactResourceDeploymentRuntimePlacementRequest(
+    string TenantId,
+    ResourceTypeId ResourceType,
+    string ResourceId,
+    string DeploymentId);
+
+public sealed record LoadResourceDeploymentRuntimePlacementsRequest(
+    string TenantId,
+    ResourceTypeId ResourceType,
+    IReadOnlyCollection<string> ResourceIds);
+
+public sealed record LoadResourceDeploymentSetsRequest(
+    string TenantId,
+    ResourceTypeId ResourceType,
+    IReadOnlyCollection<string> ResourceIds);

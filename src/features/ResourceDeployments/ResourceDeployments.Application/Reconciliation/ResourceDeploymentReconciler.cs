@@ -125,11 +125,12 @@ public sealed class ResourceDeploymentReconciler(
             }
 
             var ingressBaseline = await ensureRuntimeCellIngressBaseline(
-                claimed.TenantId,
-                claimed.RuntimeCellId,
-                claimed.ResolvedPlacement.DeploymentTargetId,
-                claimed.ResolvedPlacement.KubernetesNamespace,
-                cancellationToken);
+                new EnsureRuntimeCellIngressBaselineRequest(
+                    TenantId: claimed.TenantId,
+                    RuntimeCellId: claimed.RuntimeCellId,
+                    DeploymentTargetId: claimed.ResolvedPlacement.DeploymentTargetId,
+                    KubernetesNamespace: claimed.ResolvedPlacement.KubernetesNamespace),
+                cancellationToken: cancellationToken);
             (string Code, string Message, bool Retryable)? baselineFailure = ingressBaseline switch
             {
                 null => throw new InvalidOperationException("The ingress baseline returned no outcome."),

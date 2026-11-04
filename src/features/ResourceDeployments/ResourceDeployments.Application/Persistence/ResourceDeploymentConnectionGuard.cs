@@ -17,7 +17,12 @@ internal sealed class ResourceDeploymentConnectionGuard(
         IClientSessionHandle session,
         CancellationToken cancellationToken) =>
         await fenceRegisteredResource(
-            tenantId, resourceType, resourceId, session, cancellationToken) is not null;
+            new FenceRegisteredResourceRequest(
+                TenantId: tenantId,
+                ResourceTypeId: resourceType,
+                ResourceId: resourceId),
+            session: session,
+            cancellationToken: cancellationToken) is not null;
 
     public async Task<ResourceDeploymentConnectionConflict?> ReconcileAsync(
         string tenantId,
@@ -27,7 +32,12 @@ internal sealed class ResourceDeploymentConnectionGuard(
         CancellationToken cancellationToken)
     {
         var outcome = await reconcileConnections(
-            tenantId, resourceType, resourceId, session, cancellationToken);
+            new ReconcileConnectionsForResourceRequest(
+                TenantId: tenantId,
+                ResourceType: resourceType,
+                ResourceId: resourceId),
+            session: session,
+            cancellationToken: cancellationToken);
         return outcome switch
         {
             ResourceConnectionTopologyValid => null,

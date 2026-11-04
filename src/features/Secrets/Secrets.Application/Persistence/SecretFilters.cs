@@ -62,5 +62,5 @@ internal static class SecretFilters
             SecretIdentity.ObjectId(groupId)) &
         Builders<Secret>.Filter.ElemMatch(
             x => x.Bindings,
-            x => x.ConsumerType == resourceType && x.ConsumerId == resourceId);
+            x => x.Consumer.ResourceType == resourceType && x.Consumer.ResourceId == resourceId);
 }

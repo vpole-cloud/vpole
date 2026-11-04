@@ -32,8 +32,11 @@ public sealed class ManagePrivateAccessGrantsHandler(
         CancellationToken cancellationToken = default)
     {
         var actor = request.ActorUserId.Value;
-        if (await loadTenantMember(request.TenantId, actor,
-                cancellationToken: cancellationToken) is not
+        if (await loadTenantMember(
+            new LoadTenantMemberRequest(
+                TenantId: request.TenantId,
+                UserId: actor),
+            cancellationToken: cancellationToken) is not
                 TenantMemberSnapshot { Role: >= TenantMembershipRole.Admin })
             return new PrivateAccessManageRoleRequired();
         var grants = await loadGrants(request.TenantId, cancellationToken);

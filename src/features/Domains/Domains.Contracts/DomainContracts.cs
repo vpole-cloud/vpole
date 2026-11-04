@@ -174,20 +174,14 @@ public delegate Task<GetOrCreateGeneratedDomainZonesOutcome> GetOrCreateGenerate
 
 public delegate Task<IReadOnlyList<HostnameBindingSnapshot>>
     LoadHostnameBindingsForDeployment(
-        string tenantId,
-        ResourceTypeId resourceType,
-        string resourceId,
-        string resourceDeploymentId,
-        CancellationToken cancellationToken = default);
+    LoadHostnameBindingsForDeploymentRequest request,
+    CancellationToken cancellationToken = default);
 
 public delegate Task<IReadOnlyList<HostnameBindingSnapshot>>
     LoadHostnameBindingsForDeploymentInTransaction(
-        string tenantId,
-        ResourceTypeId resourceType,
-        string resourceId,
-        string resourceDeploymentId,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
+    LoadHostnameBindingsForDeploymentInTransactionRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
 
 public delegate Task<CreateGeneratedHostnameBindingOutcome>
     CreateGeneratedHostnameBinding(
@@ -214,18 +208,13 @@ public delegate Task<DeleteCustomHostnameBindingOutcome>
 
 public delegate Task<CleanupHostnameBindingsOutcome>
     DeleteHostnameBindingsForDeployment(
-    string tenantId,
-    ResourceTypeId resourceType,
-    string resourceId,
-    string resourceDeploymentId,
+    DeleteHostnameBindingsForDeploymentRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
 public delegate Task<CleanupHostnameBindingsOutcome>
     DeleteHostnameBindingsForResource(
-    string tenantId,
-    ResourceTypeId resourceType,
-    string resourceId,
+    DeleteHostnameBindingsForResourceRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
@@ -260,3 +249,26 @@ public union DeleteCustomHostnameBindingOutcome(
 public union CleanupHostnameBindingsOutcome(
     HostnameBindingsCleanedUp,
     HostnameBindingCleanupError);
+
+public sealed record LoadHostnameBindingsForDeploymentRequest(
+    string TenantId,
+    ResourceTypeId ResourceType,
+    string ResourceId,
+    string ResourceDeploymentId);
+
+public sealed record LoadHostnameBindingsForDeploymentInTransactionRequest(
+    string TenantId,
+    ResourceTypeId ResourceType,
+    string ResourceId,
+    string ResourceDeploymentId);
+
+public sealed record DeleteHostnameBindingsForDeploymentRequest(
+    string TenantId,
+    ResourceTypeId ResourceType,
+    string ResourceId,
+    string ResourceDeploymentId);
+
+public sealed record DeleteHostnameBindingsForResourceRequest(
+    string TenantId,
+    ResourceTypeId ResourceType,
+    string ResourceId);

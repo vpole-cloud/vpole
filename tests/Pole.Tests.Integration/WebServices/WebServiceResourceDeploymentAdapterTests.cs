@@ -18,6 +18,7 @@ using Pole.Tests.Integration.Infrastructure;
 using Pole.Tests.Integration.ResourceDeployments;
 using Pole.Workloads;
 using Xunit;
+using Pole.Features.ResourceConnections.Contracts;
 
 namespace Pole.Tests.Integration.WebServices;
 
@@ -44,10 +45,10 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         using var kubernetes = new Kubernetes(new KubernetesClientConfiguration { Host = "http://kubernetes.test" }, handler);
         var subject = new WebServiceResourceDeploymentAdapter(reader.LoadSnapshot, reader.LoadById, reader.LoadExactDeployment, UnexpectedRegistryAccess,
             new FixedKubernetesClientProvider(kubernetes), (_, _) => throw new InvalidOperationException("Unresolved references must not reach policy or workload writes."), EmptyConnectionReferences,
-            (tenant, type, consumer, deployment, references, _) =>
+(request, _) =>
             {
-                Assert.Equal(TenantId, tenant); Assert.Equal(ResourceId, consumer); Assert.Equal(DeploymentId, deployment);
-                Assert.Equal("token", Assert.Single(references).Key);
+                Assert.Equal(TenantId, request.TenantId); Assert.Equal(ResourceId, request.ConsumerId); Assert.Equal(DeploymentId, request.DeploymentId);
+                Assert.Equal("token", Assert.Single(request.References).Key);
                 return Task.FromResult<Pole.Features.Secrets.Contracts.EnsureConsumerSecretProjectionsOutcome>(pending
                     ? new Pole.Features.Secrets.Contracts.ConsumerSecretProjectionPending("secret")
                     : new ConsumerSecretReferenceUnavailable("secret", ConsumerSecretReferenceError.SecretBindingUnavailable));
@@ -58,12 +59,12 @@ public sealed class WebServiceResourceDeploymentAdapterTests
     }
 
     private static Task<Pole.Features.ResourceConnections.Contracts.ResolveResourceConnectionReferencesOutcome> EmptyConnectionReferences(
-        string tenantId, ResourceTypeId type, string sourceId, string deploymentId,
-        IReadOnlyCollection<Pole.Features.ResourceConnections.Contracts.ResourceConnectionValueReference> references, CancellationToken ct) =>
+        ResolveResourceConnectionReferencesRequest request,
+        CancellationToken ct) =>
         Task.FromResult<Pole.Features.ResourceConnections.Contracts.ResolveResourceConnectionReferencesOutcome>(new Pole.Features.ResourceConnections.Contracts.ResolvedResourceConnectionValues([]));
     private static Task<Pole.Features.Secrets.Contracts.EnsureConsumerSecretProjectionsOutcome> EmptySecretReferences(
-        string tenantId, ResourceTypeId type, string consumerId, string deploymentId,
-        IReadOnlyCollection<Pole.Features.Secrets.Contracts.ConsumerSecretKeyReference> references, CancellationToken ct) =>
+        EnsureConsumerSecretProjectionsRequest request,
+        CancellationToken ct) =>
         Task.FromResult<Pole.Features.Secrets.Contracts.EnsureConsumerSecretProjectionsOutcome>(new Pole.Features.Secrets.Contracts.ConsumerSecretProjectionKeys([]));
 
     [Theory]
@@ -867,10 +868,7 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         }
 
         public Task<PlacementSummaryDto?> LoadExactDeployment(
-            string tenantId,
-            Pole.Workloads.ResourceTypeId resourceType,
-            string resourceId,
-            string deploymentId,
+            LoadExactResourceDeploymentRequest request,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<PlacementSummaryDto?>(new PlacementSummaryDto(DeploymentId, IsolationScopeId, RuntimeCellId, TargetId, DesiredGeneration: CurrentGeneration, ObservedGeneration: 0, Status: ResourceDeploymentStatus.Pending, FailureCode: null, Compute: new ComputeConfigurationSummaryDto(new ComputeProfileReference("profile-1", 1), "test", new ComputeResourceValuesDto(100, 128), new ComputeResourceValuesDto(100, 128), []), Endpoints: [], ResourceRevision: 1, FixedReplicas: 1, Ingress: null, DeploymentRevision: 1, DesiredOperation: ResourceDeploymentDesiredOperation.Apply, Isolation: new ResourceDeploymentIsolationDto("Unknown", "EnforcementRequired", "EnforcementNotEstablished", null)));
     }

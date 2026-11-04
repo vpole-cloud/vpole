@@ -21,7 +21,12 @@ internal sealed class MongoGitOpsMutations(
             if (rejected is not null) return tx.Abort(rejected);
             var result = await mutation(tx.Session, token);
             if (!result.Applied) return tx.Abort(result);
-            await CompleteAsync(operation, result, tx.Session, token);
+            await CompleteAsync(
+                new CompleteGitOperationRequest(
+                    Operation: operation,
+                    Result: result),
+                session: tx.Session,
+                ct: token);
             return tx.Commit(result);
         }, ct);
         GitOperationResult outcome;
@@ -36,7 +41,12 @@ internal sealed class MongoGitOpsMutations(
             {
                 var rejected = await BeginAsync(operation, tx.Session, token);
                 if (rejected is not null) return tx.Abort(rejected);
-                await CompleteAsync(operation, outcome, tx.Session, token);
+                await CompleteAsync(
+                    new CompleteGitOperationRequest(
+                        Operation: operation,
+                        Result: outcome),
+                    session: tx.Session,
+                    ct: token);
                 return tx.Commit(outcome);
             }, ct);
         if (outcome.Failure is GitDeclarationOwnershipConflict)
@@ -55,15 +65,26 @@ internal sealed class MongoGitOpsMutations(
 
     public Task<GitOperationResult?> BeginAsync(GitOperation operation, IClientSessionHandle session, CancellationToken ct) =>
         ownership.BeginAsync(operation, session, ct);
-    public Task CompleteAsync(GitOperation operation, GitOperationResult result, IClientSessionHandle session, CancellationToken ct) =>
-        completion.StoreAsync(operation, result, session, ct);
-    public Task<bool> AuthorizeAsync(string tenantId, string kind, string resourceId, IClientSessionHandle session,
-        CancellationToken ct, GitMutationContext? context = null) =>
-        ownership.AuthorizeAsync(tenantId, kind, resourceId, session, ct, context);
-    public Task<string?> ResolveAsync(string tenantId, ResourceAddress address, IClientSessionHandle session, CancellationToken ct) =>
-        ownership.ResolveAsync(tenantId, address, session, ct);
-    public Task<IReadOnlyDictionary<string, GitResourceStatus>> StatusesAsync(string tenantId, string kind,
-        IReadOnlyCollection<string> resourceIds, CancellationToken ct) => statuses.StatusesAsync(tenantId, kind, resourceIds, ct);
-    public Task<GitResourceStatus?> StatusAsync(string tenantId, string kind, string resourceId, CancellationToken ct) =>
-        statuses.StatusAsync(tenantId, kind, resourceId, ct);
+    public Task CompleteAsync(
+        CompleteGitOperationRequest request,
+        IClientSessionHandle session,
+        CancellationToken ct) =>
+        completion.StoreAsync(request.Operation, request.Result, session, ct);
+    public Task<bool> AuthorizeAsync(
+        AuthorizeGitResourceMutationRequest request,
+        IClientSessionHandle session,
+        CancellationToken ct) =>
+        ownership.AuthorizeAsync(request.TenantId, request.Kind, request.ResourceId, session, ct, request.Context);
+    public Task<string?> ResolveAsync(
+        ResolveGitResourceRequest request,
+        IClientSessionHandle session,
+        CancellationToken ct) =>
+        ownership.ResolveAsync(request.TenantId, request.Address, session, ct);
+    public Task<IReadOnlyDictionary<string, GitResourceStatus>> StatusesAsync(
+        LoadGitResourceStatusesRequest request,
+        CancellationToken ct) => statuses.StatusesAsync(request.TenantId, request.Kind, request.ResourceIds, ct);
+    public Task<GitResourceStatus?> StatusAsync(
+        LoadGitResourceStatusRequest request,
+        CancellationToken ct) =>
+        statuses.StatusAsync(request.TenantId, request.Kind, request.ResourceId, ct);
 }

@@ -23,13 +23,14 @@ type PostgresCredentialRotator(prepareSecret : PrepareManagedSecret) =
             else
                 let! result =
                     prepareSecret.Invoke(
-                        tenantId,
-                        credential.SecretId,
-                        PostgresManagedSecret.owner clusterId,
-                        credential.Name,
-                        Checked.(+) credential.Version 1L,
-                        values,
-                        credential.KubernetesType,
+                        PrepareManagedSecretRequest(
+                            tenantId,
+                            credential.SecretId,
+                            PostgresManagedSecret.owner clusterId,
+                            credential.Name,
+                            Checked.(+) credential.Version 1L,
+                            values,
+                            credential.KubernetesType),
                         cancellationToken)
                 match result.Value with
                 | :? PreparedManagedSecret as prepared -> return PostgresSuccess prepared

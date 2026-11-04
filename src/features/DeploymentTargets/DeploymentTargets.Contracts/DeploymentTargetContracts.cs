@@ -341,11 +341,9 @@ public union ApplyDeploymentTargetReferenceChangesOutcome(
 
 public delegate Task<ApplyDeploymentTargetReferenceChangesOutcome>
     ApplyDeploymentTargetReferenceChanges(
-        DeploymentTargetReferenceOwner owner,
-        IReadOnlyCollection<string> addedDeploymentTargetIds,
-        IReadOnlyCollection<string> removedDeploymentTargetIds,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
+    ApplyDeploymentTargetReferenceChangesRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
 
 /// <summary>
 /// Stable owner discriminators used by target-owned reference fencing. They are deliberately
@@ -382,3 +380,8 @@ public delegate Task<FenceDeploymentTargetWorkloadConfigurationsOutcome>
         IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> requests,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
+
+public sealed record ApplyDeploymentTargetReferenceChangesRequest(
+    DeploymentTargetReferenceOwner Owner,
+    IReadOnlyCollection<string> AddedDeploymentTargetIds,
+    IReadOnlyCollection<string> RemovedDeploymentTargetIds);

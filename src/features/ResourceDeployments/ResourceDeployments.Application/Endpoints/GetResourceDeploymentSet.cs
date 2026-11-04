@@ -35,8 +35,12 @@ public sealed class GetResourceDeploymentSetHandler(LoadResourceDeploymentSet lo
 {
     public async Task<GetResourceDeploymentSetOutcome> HandleAsync(GetResourceDeploymentSetRequest request,
         CancellationToken cancellationToken = default) =>
-        (await load(request.TenantId, ResourceTypeId.Create(request.ResourceType),
-            ObjectId.Parse(request.ResourceId).ToString(), cancellationToken)).ToArray();
+        (await load(
+            new LoadResourceDeploymentSetRequest(
+                TenantId: request.TenantId,
+                ResourceType: ResourceTypeId.Create(request.ResourceType),
+                ResourceId: ObjectId.Parse(request.ResourceId).ToString()),
+            cancellationToken: cancellationToken)).ToArray();
 }
 
 public static class GetResourceDeploymentSetEndpoint

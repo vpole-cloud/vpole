@@ -79,13 +79,25 @@ public sealed class WebServiceResourceDeploymentAdapter(
                 retryable: false);
         }
         var connectionReferences = webService.Spec.Config.ConnectionEnvironmentReferences;
-        var connectionValues = await resolveConnectionReferences(context.Deployment.TenantId, WebServiceResourceDeployment.ResourceType, webService.Id, context.Deployment.Id,
-            connectionReferences.Values.Select(reference => new ResourceConnectionValueReference(reference.ConnectionId, reference.ValueKind, reference.ConfigurationKey)).ToArray(), cancellationToken);
+        var connectionValues = await resolveConnectionReferences(
+            new ResolveResourceConnectionReferencesRequest(
+                TenantId: context.Deployment.TenantId,
+                SourceType: WebServiceResourceDeployment.ResourceType,
+                SourceId: webService.Id,
+                DeploymentId: context.Deployment.Id,
+                References: connectionReferences.Values.Select(reference => new ResourceConnectionValueReference(reference.ConnectionId, reference.ValueKind, reference.ConfigurationKey)).ToArray()),
+            ct: cancellationToken);
         if (connectionValues is ResourceConnectionReferencesUnavailable)
             return ResourceDeploymentAdapterResult.Failed.Create("ConnectionConfigurationUnavailable", "A configured connection or field is no longer available for this deployment.", retryable: true);
         var secretReferences = webService.Spec.Config.SecretEnvironmentReferences;
-        var projectedSecrets = await ensureSecretProjections(context.Deployment.TenantId, WebServiceResourceDeployment.ResourceType, webService.Id, context.Deployment.Id,
-            secretReferences.Values.Select(reference => new ConsumerSecretKeyReference(reference.SecretId, reference.Key)).ToArray(), cancellationToken);
+        var projectedSecrets = await ensureSecretProjections(
+            new EnsureConsumerSecretProjectionsRequest(
+                TenantId: context.Deployment.TenantId,
+                ConsumerType: WebServiceResourceDeployment.ResourceType,
+                ConsumerId: webService.Id,
+                DeploymentId: context.Deployment.Id,
+                References: secretReferences.Values.Select(reference => new ConsumerSecretKeyReference(reference.SecretId, reference.Key)).ToArray()),
+            ct: cancellationToken);
         if (projectedSecrets is ConsumerSecretReferenceUnavailable)
             return ResourceDeploymentAdapterResult.Failed.Create("SecretConfigurationUnavailable", "A configured Secret key or binding is no longer authorized for this deployment.", retryable: true);
         if (projectedSecrets is ConsumerSecretProjectionPending)
@@ -290,11 +302,12 @@ public sealed class WebServiceResourceDeploymentAdapter(
         CancellationToken cancellationToken)
     {
         var current = await loadExactResourceDeployment(
-            context.Deployment.TenantId,
-            context.Deployment.ResourceType,
-            context.Deployment.ResourceId,
-            context.Deployment.Id,
-            cancellationToken);
+            new LoadExactResourceDeploymentRequest(
+                TenantId: context.Deployment.TenantId,
+                ResourceType: context.Deployment.ResourceType,
+                ResourceId: context.Deployment.ResourceId,
+                DeploymentId: context.Deployment.Id),
+            cancellationToken: cancellationToken);
         return current?.DesiredGeneration == context.Deployment.DesiredGeneration;
     }
 

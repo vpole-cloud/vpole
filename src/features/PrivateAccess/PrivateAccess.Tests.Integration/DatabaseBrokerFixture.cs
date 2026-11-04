@@ -112,11 +112,11 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
             https.ServerCertificate = serverCertificate));
         builder.ConfigurePrivateAccessListener();
         builder.Services.AddPrivateAccessRuntime(builder.Configuration);
-        builder.Services.AddSingleton<ClaimPrivateAccessBrokerOwner>((gateway, instance, origin, _) =>
+        builder.Services.AddSingleton<ClaimPrivateAccessBrokerOwner>((request, _) =>
         {
             lock (ownerSync)
             {
-                owner = new PrivateAccessBrokerOwnerLease(gateway, instance, origin,
+                owner = new PrivateAccessBrokerOwnerLease(request.Gateway, request.InstanceId, request.InternalOrigin,
                     ++ownerEpoch, DateTime.UtcNow.AddSeconds(10));
                 return Task.FromResult<ClaimPrivateAccessBrokerOwnerOutcome>(owner);
             }
@@ -151,14 +151,14 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
         builder.Services.AddSingleton<IKubernetesClientProvider>(new UnusedKubernetesProvider());
         builder.Services.AddSingleton<LookupDeploymentTarget>((_, _) =>
             throw new InvalidOperationException("Gateway reconciliation has no desired routes."));
-        builder.Services.AddSingleton<EnsureRuntimeCellIngressBaseline>((_, _, _, _, _) =>
+        builder.Services.AddSingleton<EnsureRuntimeCellIngressBaseline>((request, _) =>
             throw new InvalidOperationException("Gateway reconciliation has no desired routes."));
         builder.Services.AddSingleton<LoadPrivateAccessGatewayDesiredStates>(_ =>
             Task.FromResult<IReadOnlyList<PrivateAccessGatewayDesiredState>>([]));
         builder.Services.AddSingleton<LoadPrivateAccessGatewayRegistrations>(_ =>
             Task.FromResult<IReadOnlyList<
                 Pole.Features.PrivateAccess.Contracts.PrivateAccessGatewayRegistration>>([]));
-        builder.Services.AddSingleton<SavePrivateAccessGatewayRegistration>((_, _, _, _, _) =>
+        builder.Services.AddSingleton<SavePrivateAccessGatewayRegistration>((request, _) =>
             throw new InvalidOperationException("Gateway registration is not used in transport tests."));
         builder.Services.AddSingleton<RemovePrivateAccessGatewayRegistration>((_, _) =>
             throw new InvalidOperationException("Gateway registration is not used in transport tests."));

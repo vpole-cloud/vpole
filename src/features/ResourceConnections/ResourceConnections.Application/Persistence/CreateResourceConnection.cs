@@ -71,11 +71,12 @@ internal sealed class MongoCreateResourceConnection(
                 foreach (var reference in references)
                 {
                     var registered = await fenceRegistration(
-                        command.TenantId,
-                        reference.Type,
-                        reference.Id,
-                        transaction.Session,
-                        ct);
+                        new FenceRegisteredResourceRequest(
+                            TenantId: command.TenantId,
+                            ResourceTypeId: reference.Type,
+                            ResourceId: reference.Id),
+                        session: transaction.Session,
+                        cancellationToken: ct);
                     if (registered is null)
                         return transaction.Abort(new CreateResourceConnectionPersistenceOutcome(
                             new ConnectionResourceMissing()));
@@ -103,19 +104,21 @@ internal sealed class MongoCreateResourceConnection(
                     PersistResolvedEndpointAsync(ResolvedConnectionEndpoint endpoint)
                 {
                     var sourcePlacements = (await loadPlacements(
-                        command.TenantId,
-                        source.Type,
-                        source.Id,
-                        transaction.Session,
-                        ct))
+                        new LoadResourceDeploymentConnectionPlacementsRequest(
+                            TenantId: command.TenantId,
+                            ResourceType: source.Type,
+                            ResourceId: source.Id),
+                        session: transaction.Session,
+                        cancellationToken: ct))
                         .Where(item => !item.DeletionRequested)
                         .ToArray();
                     var destinationPlacements = (await loadPlacements(
-                        command.TenantId,
-                        destination.Type,
-                        destination.Id,
-                        transaction.Session,
-                        ct))
+                        new LoadResourceDeploymentConnectionPlacementsRequest(
+                            TenantId: command.TenantId,
+                            ResourceType: destination.Type,
+                            ResourceId: destination.Id),
+                        session: transaction.Session,
+                        cancellationToken: ct))
                         .Where(item => !item.DeletionRequested)
                         .ToArray();
 

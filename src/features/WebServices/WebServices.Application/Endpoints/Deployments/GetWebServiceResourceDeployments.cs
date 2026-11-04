@@ -61,9 +61,10 @@ public sealed class GetWebServiceResourceDeploymentsHandler(
             return new WebServiceNotFound(request.Id);
 
         return new GetWebServiceResourceDeploymentsOutcome(await loadResourceDeploymentSet(
-            request.TenantId,
-            WebServiceResourceDeployment.ResourceType,
-            request.Id,
-            cancellationToken));
+            new LoadResourceDeploymentSetRequest(
+                TenantId: request.TenantId,
+                ResourceType: WebServiceResourceDeployment.ResourceType,
+                ResourceId: request.Id),
+            cancellationToken: cancellationToken));
     }
 }

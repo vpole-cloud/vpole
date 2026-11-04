@@ -16,9 +16,7 @@ public union ClaimPrivateAccessBrokerOwnerOutcome(
     PrivateAccessBrokerGatewayUnavailable);
 
 public delegate Task<ClaimPrivateAccessBrokerOwnerOutcome> ClaimPrivateAccessBrokerOwner(
-    PrivateAccessGatewayIdentity gateway,
-    string instanceId,
-    string internalOrigin,
+    ClaimPrivateAccessBrokerOwnerRequest request,
     CancellationToken cancellationToken = default);
 
 public delegate Task<bool> RenewPrivateAccessBrokerOwner(
@@ -33,3 +31,8 @@ public delegate Task<PrivateAccessBrokerOwnerLease?> LoadPrivateAccessBrokerOwne
     string tenantId,
     string deploymentTargetId,
     CancellationToken cancellationToken = default);
+
+public sealed record ClaimPrivateAccessBrokerOwnerRequest(
+    PrivateAccessGatewayIdentity Gateway,
+    string InstanceId,
+    string InternalOrigin);

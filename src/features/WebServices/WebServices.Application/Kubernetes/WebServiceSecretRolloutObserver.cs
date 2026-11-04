@@ -22,12 +22,23 @@ public sealed class WebServiceSecretRolloutObserver(
     {
         var resource = await loadResource(tenantId, consumerId, ct);
         if (resource is null) return new SecretConsumerRolloutPending();
-        var deployments = await loadDeployments(tenantId, ResourceType, consumerId, ct);
+        var deployments = await loadDeployments(
+            new LoadResourceDeploymentSetRequest(
+                TenantId: tenantId,
+                ResourceType: ResourceType,
+                ResourceId: consumerId),
+            cancellationToken: ct);
         if (deployments.Count == 0) return new SecretConsumerRolloutPending();
         var proofs = new List<SecretConsumerDeploymentProof>();
         foreach (var deployment in deployments)
         {
-            var placement = await loadPlacement(tenantId, ResourceType, consumerId, deployment.DeploymentId, ct);
+            var placement = await loadPlacement(
+                new LoadExactResourceDeploymentRuntimePlacementRequest(
+                    TenantId: tenantId,
+                    ResourceType: ResourceType,
+                    ResourceId: consumerId,
+                    DeploymentId: deployment.DeploymentId),
+                cancellationToken: ct);
             if (placement is null || placement.Status != ResourceDeploymentStatus.Applied ||
                 placement.DesiredOperation != ResourceDeploymentDesiredOperation.Apply)
                 return new SecretConsumerRolloutPending();

@@ -501,8 +501,8 @@ public sealed class RealtimeRedisTests(RealtimeRedisFixture fixture) : IClassFix
         builder.Services.AddRealtimeTopic(topic, scope);
         if (disabledTopic is not null)
             builder.Services.AddRealtimeTopic(disabledTopic, RealtimeScope.Platform);
-        builder.Services.AddScoped<LoadTenantMember>(_ => (tenant, user, _, _) =>
-            Task.FromResult<LoadTenantMemberOutcome>(new TenantMemberMissing(tenant, user)));
+        builder.Services.AddScoped<LoadTenantMember>(_ => (request, _, _) =>
+            Task.FromResult<LoadTenantMemberOutcome>(new TenantMemberMissing(request.TenantId, request.UserId)));
         builder.Services.AddScoped<LoadTenantIdentity>(_ => (tenant, _) =>
             Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentityNotFound(tenant)));
         builder.Services.AddScoped<IMediator, Pole.Mediator.Mediator>();

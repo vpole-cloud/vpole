@@ -88,10 +88,11 @@ public sealed class ComputeProfileBootstrapPersistenceTests(MongoReplicaSetFixtu
         session.StartTransaction();
 
         var result = await persistence.GetRequiredService<ApplyDeploymentTargetReferenceChanges>()(
-            new DeploymentTargetReferenceOwner(ownerType, target.Id),
-            [target.Id],
-            [],
-            session);
+            new ApplyDeploymentTargetReferenceChangesRequest(
+                Owner: new DeploymentTargetReferenceOwner(ownerType, target.Id),
+                AddedDeploymentTargetIds: [target.Id],
+                RemovedDeploymentTargetIds: []),
+            session: session);
 
         Assert.IsType<DeploymentTargetReferenceChangeRejected>(result.Value);
         await session.AbortTransactionAsync();

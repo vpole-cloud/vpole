@@ -384,11 +384,12 @@ public sealed class FunctionRevisionKubernetesManager(
         CancellationToken cancellationToken)
     {
         var baseline = await ensureRuntimeCellIngressBaseline(
-            revision.App.TenantId,
-            revision.Placement.RuntimeCellId,
-            revision.Placement.DeploymentTargetId,
-            revision.Namespace,
-            cancellationToken);
+            new EnsureRuntimeCellIngressBaselineRequest(
+                TenantId: revision.App.TenantId,
+                RuntimeCellId: revision.Placement.RuntimeCellId,
+                DeploymentTargetId: revision.Placement.DeploymentTargetId,
+                KubernetesNamespace: revision.Namespace),
+            cancellationToken: cancellationToken);
         return baseline is RuntimeCellIngressBaselineReady;
     }
 

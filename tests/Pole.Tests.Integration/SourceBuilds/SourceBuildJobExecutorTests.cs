@@ -308,27 +308,21 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
     private sealed class FakeRegistryBuildService
     {
         public Task<PrepareRegistryBuildPushOutcome> PreparePushAsync(
-            string tenantId,
-            string initiatedByUserId,
-            string repositoryName,
-            string tag,
+            PrepareRegistryBuildPushRequest request,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<PrepareRegistryBuildPushOutcome>(
                 new RegistryBuildAccess(
                     "507f1f77bcf86cd799439012",
-                    new RegistryPushTarget("harbor.test", "pole-test", repositoryName, tag),
+                    new RegistryPushTarget("harbor.test", "pole-test", request.RepositoryName, request.Tag),
                     "pole-registry-507f1f77bcf86cd799439012",
                     "robot$build",
                     "build-secret"));
 
         public Task<GetTenantRegistryArtifactOutcome> GetArtifactAsync(
-            string tenantId,
-            string registryProjectId,
-            string repositoryName,
-            string reference,
+            GetTenantRegistryArtifactRequest request,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<GetTenantRegistryArtifactOutcome>(
-                new RegistryArtifact(repositoryName, reference, Digest, 100));
+                new RegistryArtifact(request.RepositoryName, request.Reference, Digest, 100));
     }
 
     private sealed class FakeBuildKitClient

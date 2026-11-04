@@ -49,7 +49,6 @@ public record GetResourceGroupsRequest
     [FromQuery] public string? Search { get; init; }
 }
 
-
 public sealed class GetResourceGroupsHandler(
     LoadResourceGroupPage loadResourceGroupPage,
     IGitOpsMutations git)
@@ -67,7 +66,12 @@ public sealed class GetResourceGroupsHandler(
                 request.Search),
             cancellationToken);
 
-        var statuses = await git.StatusesAsync(request.TenantId, "ResourceGroup", page.Items.Select(item => item.ResourceGroup.Id).ToArray(), cancellationToken);
+        var statuses = await git.StatusesAsync(
+            new LoadGitResourceStatusesRequest(
+                TenantId: request.TenantId,
+                Kind: "ResourceGroup",
+                ResourceIds: page.Items.Select(item => item.ResourceGroup.Id).ToArray()),
+            ct: cancellationToken);
         return new PaginatedResponse<ResourceGroupDto>(
             Items: page.Items.Select(x => x.ResourceGroup.ToDto(x.ResourceCount) with { GitOps = statuses.GetValueOrDefault(x.ResourceGroup.Id) }),
             TotalCount: page.TotalCount,

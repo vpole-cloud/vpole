@@ -123,10 +123,11 @@ public sealed class RollbackWebServiceHandler(
         }
 
         var deploymentInventory = await loadResourceDeploymentSet(
-            webService.TenantId,
-            WebServiceResourceDeployment.ResourceType,
-            webService.Id,
-            cancellationToken);
+            new LoadResourceDeploymentSetRequest(
+                TenantId: webService.TenantId,
+                ResourceType: WebServiceResourceDeployment.ResourceType,
+                ResourceId: webService.Id),
+            cancellationToken: cancellationToken);
         var deployments = deploymentInventory
             .Where(WebServiceDeploymentWorkflow.IsDesiredPlacement)
             .ToArray();
@@ -139,70 +140,71 @@ public sealed class RollbackWebServiceHandler(
         return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             WebServiceQuotaInput,
             RollbackWebServiceOutcome>(
-            webService.TenantId,
-            WebServiceQuotaResourceKey.Create(webService.Id),
-            new UpdateQuotaMutation<WebServiceQuotaInput>(currentQuota, targetQuota),
-            quotaError => Error(quotaError),
-            async (transaction, ct) =>
-            {
-                var updated = webService.Rollback(sourceRelease.Spec);
-                var applied = await requestResourceDeploymentSetApply(
-                    new ResourceDeploymentSetApplyRequest(
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.WebServices.Application.Common.WebServiceQuotaInput, global::Pole.Features.WebServices.Application.Endpoints.Releases.RollbackWebServiceOutcome>(
+                TenantId: webService.TenantId,
+                ResourceKey: WebServiceQuotaResourceKey.Create(webService.Id),
+                Mutation: new UpdateQuotaMutation<WebServiceQuotaInput>(currentQuota, targetQuota),
+                QuotaError: quotaError => Error(quotaError),
+                MutationCallback: async (transaction, ct) =>
+                {
+                    var updated = webService.Rollback(sourceRelease.Spec);
+                    var applied = await requestResourceDeploymentSetApply(
+                        new ResourceDeploymentSetApplyRequest(
+                            updated.TenantId,
+                            WebServiceResourceDeployment.ResourceType,
+                            updated.Id,
+                            updated.ActiveRevision,
+                            deployments.Select(deployment =>
+                                WebServiceDeploymentWorkflow.ToSetApplyItem(deployment)).ToArray()),
+                        transaction.Session,
+                        ct);
+                    if (applied is ResourceDeploymentMutationError applyFailure)
+                        return transaction.Abort(Error(
+                            new RollbackWebServiceError(applyFailure)));
+                    var updatedDeployments = ((MutatedResourceDeployments)applied.Value).Placements;
+                    var updatedEvent = updated.ToUpdatedEvent(WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments));
+
+                    var persisted = await persistUpdatedWebService(
+                        transaction.Session,
+                        webService,
+                        updated,
+                        updatedEvent,
+                        ct);
+                    if (persisted is WebServiceUpdateConflict persistenceError)
+                        return transaction.Abort(Error(
+                            new RollbackWebServiceError(persistenceError)));
+                    if (persisted is WebServiceConnectionConflict connectionConflict)
+                        return transaction.Abort(Error(
+                            new RollbackWebServiceError(connectionConflict)));
+                    if (persisted is WebServiceDependencyUnavailable dependencyUnavailable)
+                        return transaction.Abort(Error(
+                            new RollbackWebServiceError(dependencyUnavailable)));
+
+                    var release = WebServiceReleaseFactory.CreatePending(
                         updated.TenantId,
-                        WebServiceResourceDeployment.ResourceType,
                         updated.Id,
                         updated.ActiveRevision,
-                        deployments.Select(deployment =>
-                            WebServiceDeploymentWorkflow.ToSetApplyItem(deployment)).ToArray()),
-                    transaction.Session,
-                    ct);
-                if (applied is ResourceDeploymentMutationError applyFailure)
-                    return transaction.Abort(Error(
-                        new RollbackWebServiceError(applyFailure)));
-                var updatedDeployments = ((MutatedResourceDeployments)applied.Value).Placements;
-                var updatedEvent = updated.ToUpdatedEvent(WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments));
+                        WebServiceReleaseAction.Rollback,
+                        request.ActorUserId.Value,
+                        request.ActorEmail.Value,
+                        updated.Spec,
+                        WebServiceDeploymentWorkflow.ToReleaseDeployments(updatedDeployments),
+                        traceId: updatedEvent.EventCore.TraceId,
+                        correlationId: updatedEvent.EventCore.CorrelationId,
+                        new WebServiceReleaseFactory.CreateOptions(
+                            ObjectId.GenerateNewId().ToString(),
+                            timeProvider.GetUtcNow().UtcDateTime),
+                        updated.Exposure);
+                    await persistCurrentWebServiceRelease(transaction.Session, release, ct);
 
-                var persisted = await persistUpdatedWebService(
-                    transaction.Session,
-                    webService,
-                    updated,
-                    updatedEvent,
-                    ct);
-                if (persisted is WebServiceUpdateConflict persistenceError)
-                    return transaction.Abort(Error(
-                        new RollbackWebServiceError(persistenceError)));
-                if (persisted is WebServiceConnectionConflict connectionConflict)
-                    return transaction.Abort(Error(
-                        new RollbackWebServiceError(connectionConflict)));
-                if (persisted is WebServiceDependencyUnavailable dependencyUnavailable)
-                    return transaction.Abort(Error(
-                        new RollbackWebServiceError(dependencyUnavailable)));
-
-                var release = WebServiceReleaseFactory.CreatePending(
-                    updated.TenantId,
-                    updated.Id,
-                    updated.ActiveRevision,
-                    WebServiceReleaseAction.Rollback,
-                    request.ActorUserId.Value,
-                    request.ActorEmail.Value,
-                    updated.Spec,
-                    WebServiceDeploymentWorkflow.ToReleaseDeployments(updatedDeployments),
-                    traceId: updatedEvent.EventCore.TraceId,
-                    correlationId: updatedEvent.EventCore.CorrelationId,
-                    new WebServiceReleaseFactory.CreateOptions(
-                        ObjectId.GenerateNewId().ToString(),
-                        timeProvider.GetUtcNow().UtcDateTime),
-                    updated.Exposure);
-                await persistCurrentWebServiceRelease(transaction.Session, release, ct);
-
-                return transaction.Commit(new RollbackWebServiceOutcome(
-                    new RollbackWebServiceResponse(
-                        updated.Id,
-                        updated.ActiveRevision,
-                        release.Id,
-                        updatedDeployments)));
-            },
-            cancellationToken);
+                    return transaction.Commit(new RollbackWebServiceOutcome(
+                        new RollbackWebServiceResponse(
+                            updated.Id,
+                            updated.ActiveRevision,
+                            release.Id,
+                            updatedDeployments)));
+                }),
+            cancellationToken: cancellationToken);
     }
 
     private static RollbackWebServiceOutcome Error(

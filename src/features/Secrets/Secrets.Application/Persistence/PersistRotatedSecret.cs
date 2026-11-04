@@ -48,7 +48,7 @@ internal sealed class MongoPersistRotatedSecret(
                 return tx.Abort(new SecretVersionConflict());
             if (current.DeclaredKeys && !current.KeyNames.ToHashSet(StringComparer.Ordinal).SetEquals(values.Keys))
                 return tx.Abort(new SecretMappedKeysRequired());
-            if (current.Bindings.Any(x => x.KeyMappings.Keys.Concat(x.ProtectedKeys).Except(values.Keys).Any()))
+            if (current.Bindings.Any(x => x.KeyMappings.Keys.Concat(x.Pins.ProtectedKeys).Except(values.Keys).Any()))
                 return tx.Abort(new SecretMappedKeysRequired());
 
             var rotated = current.Rotate(values.Keys.Order().ToArray(), clock.GetUtcNow().UtcDateTime);

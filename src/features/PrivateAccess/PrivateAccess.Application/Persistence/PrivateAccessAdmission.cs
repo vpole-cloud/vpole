@@ -45,20 +45,32 @@ internal sealed class PrivateAccessAdmission(
             return new PrivateAccessBindingChanged();
 
         var member = await loadTenantMember(
-            accessSession.TenantId, accessSession.SubjectUserId, transactionSession,
-            cancellationToken);
+            new LoadTenantMemberRequest(
+                TenantId: accessSession.TenantId,
+                UserId: accessSession.SubjectUserId),
+            session: transactionSession,
+            cancellationToken: cancellationToken);
         if (member is not TenantMemberSnapshot)
             return new PrivateAccessSubjectMembershipRequired();
 
         var resourceType = ResourceTypeId.Create(accessSession.Grant.ResourceType);
         var registered = await fenceResource(
-            accessSession.TenantId, resourceType, accessSession.Grant.ResourceId,
-            transactionSession, cancellationToken);
+            new FenceRegisteredResourceRequest(
+                TenantId: accessSession.TenantId,
+                ResourceTypeId: resourceType,
+                ResourceId: accessSession.Grant.ResourceId),
+            session: transactionSession,
+            cancellationToken: cancellationToken);
         if (registered is null)
             return new PrivateAccessDeploymentUnavailable();
         var placement = await loadPlacement(
-            accessSession.TenantId, resourceType, accessSession.Grant.ResourceId,
-            accessSession.Grant.ResourceDeploymentId, transactionSession, cancellationToken);
+            new LoadExactResourceDeploymentAccessPlacementRequest(
+                TenantId: accessSession.TenantId,
+                ResourceType: resourceType,
+                ResourceId: accessSession.Grant.ResourceId,
+                DeploymentId: accessSession.Grant.ResourceDeploymentId),
+            session: transactionSession,
+            cancellationToken: cancellationToken);
         if (placement is null ||
             placement.ResourceGroupId != registered.ResourceGroupId ||
             placement.Status != ResourceDeploymentStatus.Applied ||

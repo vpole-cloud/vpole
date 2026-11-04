@@ -61,8 +61,13 @@ public sealed class PrivateAccessGatewayResources(
 
         foreach (var endpoint in endpoints)
         {
-            var baseline = await ensureBaseline(identity.TenantId, endpoint.RuntimeCellId,
-                identity.DeploymentTargetId, endpoint.KubernetesNamespace, cancellationToken);
+            var baseline = await ensureBaseline(
+                new EnsureRuntimeCellIngressBaselineRequest(
+                    TenantId: identity.TenantId,
+                    RuntimeCellId: endpoint.RuntimeCellId,
+                    DeploymentTargetId: identity.DeploymentTargetId,
+                    KubernetesNamespace: endpoint.KubernetesNamespace),
+                cancellationToken: cancellationToken);
             if (baseline is not RuntimeCellIngressBaselineReady)
                 return new PrivateAccessGatewayIsolationUnavailable();
         }

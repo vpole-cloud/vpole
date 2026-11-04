@@ -16,18 +16,18 @@ public sealed class PostgresCredentialSecurityTests
     [Fact]
     public async Task Create_DelegatesTenantOwnerAndBasicAuthenticationValuesToSecrets()
     {
-        var creator = new PostgresCredentialCreator((tenant, id, owner, name, version, values, type, ct) =>
+        var creator = new PostgresCredentialCreator((request, ct) =>
         {
-            Assert.Equal(TestData.TenantId, tenant);
-            Assert.True(ObjectId.TryParse(id, out _));
-            Assert.Equal(new ManagedSecretOwner("pole/postgresql", ClusterId), owner);
-            Assert.Equal($"postgres-{ClusterId}-credentials", name);
-            Assert.Equal(1, version);
-            Assert.Equal(ManagedSecretKubernetesType.BasicAuthentication, type);
-            Assert.Equal("database-user", values["username"]);
-            Assert.Equal("private-password", values["password"]);
+            Assert.Equal(TestData.TenantId, request.TenantId);
+            Assert.True(ObjectId.TryParse(request.SecretId, out _));
+            Assert.Equal(new ManagedSecretOwner("pole/postgresql", ClusterId), request.Owner);
+            Assert.Equal($"postgres-{ClusterId}-credentials", request.Name);
+            Assert.Equal(1, request.Version);
+            Assert.Equal(ManagedSecretKubernetesType.BasicAuthentication, request.KubernetesType);
+            Assert.Equal("database-user", request.Values["username"]);
+            Assert.Equal("private-password", request.Values["password"]);
             return Task.FromResult<PrepareManagedSecretOutcome>(
-                Prepared(tenant, id, owner, name, version, type));
+                Prepared(request.TenantId, request.SecretId, request.Owner, request.Name, request.Version, request.KubernetesType));
         });
 
         var result = await creator.InvokeAsync(TestData.TenantId, ClusterId, "database-user", "private-password", default);
@@ -39,18 +39,18 @@ public sealed class PostgresCredentialSecurityTests
     public async Task Rotation_PreservesSecretIdentityOwnerTypeAndUsernameAndAdvancesVersion()
     {
         var current = Values();
-        var rotator = new PostgresCredentialRotator((tenant, id, owner, name, version, values, type, ct) =>
+        var rotator = new PostgresCredentialRotator((request, ct) =>
         {
-            Assert.Equal(TestData.TenantId, tenant);
-            Assert.Equal(current.SecretId, id);
-            Assert.Equal(current.Name, name);
-            Assert.Equal(current.Version + 1, version);
-            Assert.Equal(current.KubernetesType, type);
-            Assert.Equal(new ManagedSecretOwner("pole/postgresql", ClusterId), owner);
-            Assert.Equal(current.Values["username"], values["username"]);
-            Assert.Equal("rotated-password", values["password"]);
+            Assert.Equal(TestData.TenantId, request.TenantId);
+            Assert.Equal(current.SecretId, request.SecretId);
+            Assert.Equal(current.Name, request.Name);
+            Assert.Equal(current.Version + 1, request.Version);
+            Assert.Equal(current.KubernetesType, request.KubernetesType);
+            Assert.Equal(new ManagedSecretOwner("pole/postgresql", ClusterId), request.Owner);
+            Assert.Equal(current.Values["username"], request.Values["username"]);
+            Assert.Equal("rotated-password", request.Values["password"]);
             return Task.FromResult<PrepareManagedSecretOutcome>(
-                Prepared(tenant, id, owner, name, version, type));
+                Prepared(request.TenantId, request.SecretId, request.Owner, request.Name, request.Version, request.KubernetesType));
         });
 
         var result = await rotator.InvokeAsync(TestData.TenantId, ClusterId, current, "rotated-password", default);
@@ -62,7 +62,7 @@ public sealed class PostgresCredentialSecurityTests
     [Fact]
     public async Task ProviderFailureBecomesSafeCredentialProtectionFailure()
     {
-        var creator = new PostgresCredentialCreator((_, _, _, _, _, _, _, _) =>
+        var creator = new PostgresCredentialCreator((request, _) =>
             Task.FromResult<PrepareManagedSecretOutcome>(
                 new ManagedSecretEncryptionUnavailable()));
         var result = await creator.InvokeAsync(TestData.TenantId, ClusterId, "database-user", "private-password", default);
@@ -115,7 +115,7 @@ public sealed class PostgresCredentialSecurityTests
     [Fact]
     public async Task RotationRejectsCombinedByteLimitBeforeCallingEncryptionProvider()
     {
-        var rotator = new PostgresCredentialRotator((_, _, _, _, _, _, _, _) =>
+        var rotator = new PostgresCredentialRotator((request, _) =>
             throw new Xunit.Sdk.XunitException("Oversized credentials must not reach encryption."));
         var password = new string('é', 32768);
         var request = new UpdatePostgresClusterPasswordRequest(ClusterId,

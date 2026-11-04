@@ -56,14 +56,11 @@ public sealed class SourceBuildWorkspaceServiceTests
         public (string TenantId, string SourceRepositoryId, string CommitSha)? Request { get; private set; }
 
         public async Task<DownloadSourceRepositoryArchiveOutcome> InvokeAsync(
-            string tenantId,
-            string sourceRepositoryId,
-            string commitSha,
-            Stream destination,
+            DownloadSourceRepositoryArchiveRequest request,
             CancellationToken cancellationToken = default)
         {
-            Request = (tenantId, sourceRepositoryId, commitSha);
-            await destination.WriteAsync(archive, cancellationToken);
+            Request = (request.TenantId, request.SourceRepositoryId, request.CommitSha);
+            await request.Destination.WriteAsync(archive, cancellationToken);
             return new SourceRepositoryArchiveDownloaded();
         }
     }

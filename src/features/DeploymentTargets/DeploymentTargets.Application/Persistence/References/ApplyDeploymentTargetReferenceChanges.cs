@@ -11,25 +11,23 @@ internal sealed class MongoApplyDeploymentTargetReferenceChanges(
     TimeProvider timeProvider)
 {
     public async Task<ApplyDeploymentTargetReferenceChangesOutcome> InvokeAsync(
-        DeploymentTargetReferenceOwner owner,
-        IReadOnlyCollection<string> addedDeploymentTargetIds,
-        IReadOnlyCollection<string> removedDeploymentTargetIds,
+        ApplyDeploymentTargetReferenceChangesRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
-        EnsureArguments(owner, addedDeploymentTargetIds, removedDeploymentTargetIds);
+        EnsureArguments(request.Owner, request.AddedDeploymentTargetIds, request.RemovedDeploymentTargetIds);
         EnsureTransaction(session);
-        var addedTargetIds = addedDeploymentTargetIds.ToArray();
-        var removedTargetIds = removedDeploymentTargetIds.ToArray();
+        var addedTargetIds = request.AddedDeploymentTargetIds.ToArray();
+        var removedTargetIds = request.RemovedDeploymentTargetIds.ToArray();
 
         var addedFence = await AdvanceFencesAsync(
             addedTargetIds,
-            owner,
+            request.Owner,
             session,
             requireAdmission: true,
             cancellationToken);
         if (!addedFence)
-            return Rejected(owner, addedTargetIds, removedTargetIds);
+            return Rejected(request.Owner, addedTargetIds, removedTargetIds);
 
         if (addedTargetIds.Length > 0)
         {
@@ -38,13 +36,13 @@ internal sealed class MongoApplyDeploymentTargetReferenceChanges(
             {
                 var reference = DeploymentTargetReferenceFactory.Create(
                     deploymentTargetId,
-                    owner.Type,
-                    owner.Id,
+                    request.Owner.Type,
+                    request.Owner.Id,
                     new DeploymentTargetReferenceFactory.CreateOptions(
                         ObjectId.GenerateNewId().ToString(),
                         timeProvider.GetUtcNow().UtcDateTime));
                 writes.Add(new UpdateOneModel<DeploymentTargetReference>(
-                    DeploymentTargetReferenceFilters.ByOwner(reference.DeploymentTargetId, owner),
+                    DeploymentTargetReferenceFilters.ByOwner(reference.DeploymentTargetId, request.Owner),
                     Builders<DeploymentTargetReference>.Update
                         .SetOnInsert(item => item.Id, reference.Id)
                         .SetOnInsert(item => item.DeploymentTargetId, reference.DeploymentTargetId)
@@ -63,7 +61,7 @@ internal sealed class MongoApplyDeploymentTargetReferenceChanges(
         }
 
         var removalFilter = DeploymentTargetReferenceFilters
-            .OwnedReferencesForTargets(removedTargetIds, owner);
+            .OwnedReferencesForTargets(removedTargetIds, request.Owner);
         var referencedTargetIds = removedTargetIds.Length == 0
             ? []
             : await deploymentTargetReferences
@@ -75,12 +73,12 @@ internal sealed class MongoApplyDeploymentTargetReferenceChanges(
 
         var removedFence = await AdvanceFencesAsync(
             referencedTargetIds,
-            owner,
+            request.Owner,
             session,
             requireAdmission: false,
             cancellationToken);
         if (!removedFence)
-            return Rejected(owner, addedTargetIds, removedTargetIds);
+            return Rejected(request.Owner, addedTargetIds, removedTargetIds);
 
         var deleted = await deploymentTargetReferences.DeleteManyAsync(
             session,
@@ -88,7 +86,7 @@ internal sealed class MongoApplyDeploymentTargetReferenceChanges(
             cancellationToken: cancellationToken);
         return deleted.DeletedCount == referencedTargetIds.Count
             ? new DeploymentTargetReferencesChanged()
-            : Rejected(owner, addedTargetIds, removedTargetIds);
+            : Rejected(request.Owner, addedTargetIds, removedTargetIds);
     }
 
     private async Task<bool> AdvanceFencesAsync(

@@ -305,9 +305,10 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
             fixture.DbContext.ResourceDeployments);
 
         var result = await lookup.InvokeAsync(
-            TenantId,
-            TestResourceType,
-            ResourceId);
+            new LoadCurrentResourceDeploymentComputeRequest(
+                TenantId: TenantId,
+                ResourceType: TestResourceType,
+                ResourceId: ResourceId));
 
         var compute = Assert.IsType<CurrentResourceDeploymentComputeDto>(result.Value);
         Assert.Equal(TargetId, compute.DeploymentTargetId);
@@ -560,27 +561,32 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
                 storeOutboxWrites,
                 load,
                 fence.InvokeAsync,
-                timeProvider).InvokeAsync,
+                timeProvider,
+                Services.GetRequiredService<ResourceDeploymentIsolationProjection>()).InvokeAsync,
             new MongoRequestResourceDeploymentDeletion(
                 fixture.DbContext.ResourceDeployments,
                 storeOutboxWrites,
                 connectionGuard,
-                timeProvider).InvokeAsync,
+                timeProvider,
+                Services.GetRequiredService<ResourceDeploymentIsolationProjection>()).InvokeAsync,
             new MongoRetryExactResourceDeployment(
                 fixture.DbContext.ResourceDeployments,
                 storeOutboxWrites,
-                timeProvider).InvokeAsync,
+                timeProvider,
+                Services.GetRequiredService<ResourceDeploymentIsolationProjection>()).InvokeAsync,
             new MongoRequestResourceDeploymentSetApply(
                 fixture.DbContext.ResourceDeployments,
                 storeOutboxWrites,
                 loadMany,
                 fence.InvokeAsync,
-                timeProvider).InvokeAsync,
+                timeProvider,
+                Services.GetRequiredService<ResourceDeploymentIsolationProjection>()).InvokeAsync,
             new MongoRequestResourceDeploymentSetDeletion(
                 fixture.DbContext.ResourceDeployments,
                 storeOutboxWrites,
                 connectionGuard,
-                timeProvider).InvokeAsync);
+                timeProvider,
+                Services.GetRequiredService<ResourceDeploymentIsolationProjection>()).InvokeAsync);
     }
 
     private sealed record MutationOperations(
@@ -766,23 +772,31 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
         public int FindManyCallCount { get; private set; }
 
         public Task<ResourcePlacement?> LoadAsync(
-            string tenantId,
-            string runtimeCellId,
+            LoadResourcePlacementInTransactionRequest request,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
         {
             FindCallCount++;
-            return load(tenantId, runtimeCellId, session, cancellationToken);
+            return load(
+                new LoadResourcePlacementInTransactionRequest(
+                    TenantId: request.TenantId,
+                    RuntimeCellId: request.RuntimeCellId),
+                session: session,
+                cancellationToken: cancellationToken);
         }
 
         public Task<IReadOnlyList<ResourcePlacement>> LoadManyAsync(
-            string tenantId,
-            IReadOnlyCollection<string> runtimeCellIds,
+            LoadResourcePlacementsInTransactionRequest request,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
         {
             FindManyCallCount++;
-            return loadMany(tenantId, runtimeCellIds, session, cancellationToken);
+            return loadMany(
+                new LoadResourcePlacementsInTransactionRequest(
+                    TenantId: request.TenantId,
+                    RuntimeCellIds: request.RuntimeCellIds),
+                session: session,
+                cancellationToken: cancellationToken);
         }
     }
 }

@@ -32,16 +32,14 @@ internal sealed class MongoResourceConnectionMutationProvider(
     TimeProvider timeProvider)
 {
     public async Task<ReconcileConnectionsForResourceOutcome> ReconcileAsync(
-        string tenantId,
-        ResourceTypeId resourceType,
-        string resourceId,
+        ReconcileConnectionsForResourceRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         RequireTransaction(session);
         var affected = await connections.Find(
                 session,
-                ResourceConnectionFilters.ByResource(tenantId, resourceType, resourceId))
+                ResourceConnectionFilters.ByResource(request.TenantId, request.ResourceType, request.ResourceId))
             .SortBy(item => item.Id)
             .ToListAsync(cancellationToken);
         var refreshedCount = 0;
@@ -113,16 +111,14 @@ internal sealed class MongoResourceConnectionMutationProvider(
     }
 
     public async Task<CascadeConnectionsForResourceDeletionOutcome> CascadeAsync(
-        string tenantId,
-        ResourceTypeId resourceType,
-        string resourceId,
+        CascadeConnectionsForResourceDeletionRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         RequireTransaction(session);
         var affected = await connections.Find(
                 session,
-                ResourceConnectionFilters.ByResource(tenantId, resourceType, resourceId))
+                ResourceConnectionFilters.ByResource(request.TenantId, request.ResourceType, request.ResourceId))
             .SortBy(item => item.Id)
             .ToListAsync(cancellationToken);
         var cascaded = 0;
@@ -135,7 +131,7 @@ internal sealed class MongoResourceConnectionMutationProvider(
             var result = await connections.ReplaceOneAsync(
                 session,
                 ResourceConnectionFilters.AtRevision(
-                    tenantId,
+                    request.TenantId,
                     current.Id,
                     current.Revision),
                 updated,
@@ -147,7 +143,7 @@ internal sealed class MongoResourceConnectionMutationProvider(
                 current.Id,
                 updated.Generation)
             {
-                EventCore = EventCore.Create(tenantId)
+                EventCore = EventCore.Create(request.TenantId)
             }));
         }
         if (outbox.Count > 0)
@@ -188,19 +184,21 @@ internal sealed class MongoResourceConnectionMutationProvider(
         CancellationToken cancellationToken)
     {
         var sourcePlacements = (await loadPlacements(
-            connection.TenantId,
-            sourceType,
-            connection.SourceResourceId,
-            session,
-            cancellationToken))
+            new LoadResourceDeploymentConnectionPlacementsRequest(
+                TenantId: connection.TenantId,
+                ResourceType: sourceType,
+                ResourceId: connection.SourceResourceId),
+            session: session,
+            cancellationToken: cancellationToken))
             .Where(item => !item.DeletionRequested)
             .ToArray();
         var destinationPlacements = (await loadPlacements(
-            connection.TenantId,
-            destinationType,
-            connection.DestinationResourceId,
-            session,
-            cancellationToken))
+            new LoadResourceDeploymentConnectionPlacementsRequest(
+                TenantId: connection.TenantId,
+                ResourceType: destinationType,
+                ResourceId: connection.DestinationResourceId),
+            session: session,
+            cancellationToken: cancellationToken))
             .Where(item => !item.DeletionRequested)
             .ToArray();
 

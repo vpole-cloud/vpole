@@ -73,10 +73,11 @@ internal sealed class RecoverResourceDeploymentOperation(
 
                 case WaitingForRuntimeCellResourceDeploymentState:
                     var runtimeCell = await loadResourcePlacement(
-                        current.TenantId,
-                        current.RuntimeCellId,
-                        transaction.Session,
-                        ct);
+                        new LoadResourcePlacementInTransactionRequest(
+                            TenantId: current.TenantId,
+                            RuntimeCellId: current.RuntimeCellId),
+                        session: transaction.Session,
+                        cancellationToken: ct);
                     if (runtimeCell?.State != ResourcePlacementState.Ready)
                         return transaction.Commit(0L);
 

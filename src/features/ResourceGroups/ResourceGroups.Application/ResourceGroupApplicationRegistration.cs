@@ -65,16 +65,16 @@ public static class ResourceGroupApplicationRegistration
         services.TryAddSingleton<EnsureRuntimeCellIngressBaseline>(serviceProvider =>
         {
             var scopeFactory = serviceProvider.GetRequiredService<IServiceScopeFactory>();
-            return async (tenantId, runtimeCellId, deploymentTargetId, kubernetesNamespace, cancellationToken) =>
+            return async (request, cancellationToken) =>
             {
                 await using var scope = scopeFactory.CreateAsyncScope();
                 return await scope.ServiceProvider
                     .GetRequiredService<KubernetesEnsureRuntimeCellIngressBaseline>()
                     .InvokeAsync(
-                        tenantId,
-                        runtimeCellId,
-                        deploymentTargetId,
-                        kubernetesNamespace,
+                        request.TenantId,
+                        request.RuntimeCellId,
+                        request.DeploymentTargetId,
+                        request.KubernetesNamespace,
                         cancellationToken);
             };
         });

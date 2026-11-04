@@ -309,11 +309,9 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
 
     private static Task<ApplyDeploymentTargetReferenceChangesOutcome>
         NoOpReferenceChanges(
-            DeploymentTargetReferenceOwner owner,
-            IReadOnlyCollection<string> addedDeploymentTargetIds,
-            IReadOnlyCollection<string> removedDeploymentTargetIds,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default) =>
+        ApplyDeploymentTargetReferenceChangesRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default) =>
         Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(
             new DeploymentTargetReferencesChanged());
 
@@ -359,13 +357,11 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
 
         public Task<ApplyDeploymentTargetReferenceChangesOutcome>
             ApplyChangesOutcomeAsync(
-                DeploymentTargetReferenceOwner owner,
-                IReadOnlyCollection<string> addedDeploymentTargetIds,
-                IReadOnlyCollection<string> removedDeploymentTargetIds,
-                IClientSessionHandle session,
-                CancellationToken cancellationToken = default)
+            ApplyDeploymentTargetReferenceChangesRequest request,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken = default)
         {
-            UnregisterCallCount += removedDeploymentTargetIds.Count;
+            UnregisterCallCount += request.RemovedDeploymentTargetIds.Count;
             return Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(
                 new DeploymentTargetReferencesChanged());
         }

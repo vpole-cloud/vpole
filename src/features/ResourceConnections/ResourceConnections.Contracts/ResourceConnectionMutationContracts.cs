@@ -27,9 +27,7 @@ public union ReconcileConnectionsForResourceOutcome(
 /// whole transaction, including the tentative placement or endpoint change.
 /// </summary>
 public delegate Task<ReconcileConnectionsForResourceOutcome> ReconcileConnectionsForResource(
-    string tenantId,
-    ResourceTypeId resourceType,
-    string resourceId,
+    ReconcileConnectionsForResourceRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
@@ -55,8 +53,16 @@ public static class CascadeConnectionsForResourceDeletionOutcomeExtensions
 
 /// <summary>Marks affected declarations deleting using their retained cleanup snapshots.</summary>
 public delegate Task<CascadeConnectionsForResourceDeletionOutcome> CascadeConnectionsForResourceDeletion(
-    string tenantId,
-    ResourceTypeId resourceType,
-    string resourceId,
+    CascadeConnectionsForResourceDeletionRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
+
+public sealed record ReconcileConnectionsForResourceRequest(
+    string TenantId,
+    ResourceTypeId ResourceType,
+    string ResourceId);
+
+public sealed record CascadeConnectionsForResourceDeletionRequest(
+    string TenantId,
+    ResourceTypeId ResourceType,
+    string ResourceId);

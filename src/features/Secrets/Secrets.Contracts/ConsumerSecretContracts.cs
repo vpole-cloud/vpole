@@ -49,25 +49,43 @@ public union EnsureConsumerSecretProjectionsOutcome(
     ConsumerSecretReferenceUnavailable,
     ConsumerSecretProjectionPending);
 
+public enum ConsumerSecretAvailabilityPolicy
+{
+    RequireAvailable,
+    AllowUnavailableForCleanup
+}
+
+public enum PreviousSecretReferenceRetention
+{
+    DoNotRetain,
+    KeepUntilRolloutConfirmed
+}
+
 /// <summary>Authorizes logical keys for all desired consumer placements and pins keys against concurrent rotation. No values leave Secrets.</summary>
 public delegate Task<AdmitConsumerSecretReferencesOutcome> AdmitConsumerSecretReferences(
-    string tenantId,
-    string resourceGroupId,
-    string isolationScopeId,
-    ResourceTypeId consumerType,
-    string consumerId,
-    IReadOnlyCollection<ConsumerSecretKeyReference> previousReferences,
-    IReadOnlyCollection<ConsumerSecretKeyReference> desiredReferences,
-    bool requireAvailable,
+    AdmitConsumerSecretReferencesRequest request,
     IClientSessionHandle session,
-    CancellationToken ct,
-    bool retainPreviousReferencesUntilRollout = false);
+    CancellationToken ct);
 
 /// <summary>Returns native name/key references only after rechecking current binding authority and the exact projection generation.</summary>
 public delegate Task<EnsureConsumerSecretProjectionsOutcome> EnsureConsumerSecretProjections(
-    string tenantId,
-    ResourceTypeId consumerType,
-    string consumerId,
-    string deploymentId,
-    IReadOnlyCollection<ConsumerSecretKeyReference> references,
+    EnsureConsumerSecretProjectionsRequest request,
     CancellationToken ct);
+
+public sealed record AdmitConsumerSecretReferencesRequest(
+    string TenantId,
+    string ResourceGroupId,
+    string IsolationScopeId,
+    ResourceTypeId ConsumerType,
+    string ConsumerId,
+    IReadOnlyCollection<ConsumerSecretKeyReference> PreviousReferences,
+    IReadOnlyCollection<ConsumerSecretKeyReference> DesiredReferences,
+    ConsumerSecretAvailabilityPolicy Availability,
+    PreviousSecretReferenceRetention Retention);
+
+public sealed record EnsureConsumerSecretProjectionsRequest(
+    string TenantId,
+    ResourceTypeId ConsumerType,
+    string ConsumerId,
+    string DeploymentId,
+    IReadOnlyCollection<ConsumerSecretKeyReference> References);

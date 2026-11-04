@@ -21,70 +21,71 @@ internal sealed class PrivateAccessGatewayRegistrations(
     }
 
     public async Task<bool> SaveAsync(
-        PrivateAccessGatewayIdentity identity,
-        string certificateSha256Pin,
-        DateTime certificateNotAfterUtc,
-        IReadOnlyList<PrivateAccessGatewayEndpointSnapshot> endpoints,
+        SavePrivateAccessGatewayRegistrationRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (identity.GatewayId != PrivateAccessGatewayIds.StableId(
-                identity.TenantId, identity.DeploymentTargetId) ||
-            identity.Generation < 1 || identity.Revision < 1 ||
-            certificateSha256Pin.Length != 64 ||
-            !certificateSha256Pin.All(character =>
+        if (request.Identity.GatewayId != PrivateAccessGatewayIds.StableId(
+                request.Identity.TenantId, request.Identity.DeploymentTargetId) ||
+            request.Identity.Generation < 1 || request.Identity.Revision < 1 ||
+            request.CertificateSha256Pin.Length != 64 ||
+            !request.CertificateSha256Pin.All(character =>
                 character is >= '0' and <= '9' or >= 'a' and <= 'f') ||
-            certificateNotAfterUtc.Kind != DateTimeKind.Utc)
+            request.CertificateNotAfterUtc.Kind != DateTimeKind.Utc)
             throw new ArgumentException("Invalid Private Access gateway registration.");
 
-        var routes = endpoints.Select(ToDomain).ToArray();
+        var routes = request.Endpoints.Select(ToDomain).ToArray();
         var filter = PrivateAccessGatewayFilters.ByTenantTarget(
-            identity.TenantId, identity.DeploymentTargetId);
+            request.Identity.TenantId, request.Identity.DeploymentTargetId);
         return await transactions.InvokeOutcomeAsync<bool>(async (transaction, ct) =>
         {
             var current = await gateways.Find(transaction.Session, filter)
                 .FirstOrDefaultAsync(ct);
             if (current is null)
             {
-                if (identity.Generation != 1 || identity.Revision != 1)
+                if (request.Identity.Generation != 1 || request.Identity.Revision != 1)
                     return transaction.Abort(false);
                 var reference = await targetReferences(
-                    GatewayOwner(identity), [identity.DeploymentTargetId], [],
-                    transaction.Session, ct);
+                    new ApplyDeploymentTargetReferenceChangesRequest(
+                        Owner: GatewayOwner(request.Identity),
+                        AddedDeploymentTargetIds: [request.Identity.DeploymentTargetId],
+                        RemovedDeploymentTargetIds: []),
+                    session: transaction.Session,
+                    cancellationToken: ct);
                 if (reference is DeploymentTargetReferenceChangeRejected)
                     return transaction.Abort(false);
                 var created = PrivateAccessGatewayFactory.Create(
-                    identity.GatewayId, identity.TenantId, identity.DeploymentTargetId,
-                    certificateSha256Pin, certificateNotAfterUtc, routes);
+                    request.Identity.GatewayId, request.Identity.TenantId, request.Identity.DeploymentTargetId,
+                    request.CertificateSha256Pin, request.CertificateNotAfterUtc, routes);
                 await gateways.InsertOneAsync(transaction.Session, created,
                     cancellationToken: ct);
                 var previousOwner = await owners.Find(transaction.Session,
-                        PrivateAccessBrokerOwnerFilters.ByGateway(identity.GatewayId))
+                        PrivateAccessBrokerOwnerFilters.ByGateway(request.Identity.GatewayId))
                     .FirstOrDefaultAsync(ct);
                 if (previousOwner is null)
                     await owners.InsertOneAsync(transaction.Session,
                         PrivateAccessBrokerOwnerFactory.Create(
-                            identity.GatewayId, identity.TenantId,
-                            identity.DeploymentTargetId, identity.Generation,
-                            identity.Revision), cancellationToken: ct);
+                            request.Identity.GatewayId, request.Identity.TenantId,
+                            request.Identity.DeploymentTargetId, request.Identity.Generation,
+                            request.Identity.Revision), cancellationToken: ct);
                 else
                 {
                     var reset = await owners.ReplaceOneAsync(transaction.Session,
                         PrivateAccessBrokerOwnerFilters.Current(previousOwner),
-                        previousOwner.Reset(identity.Generation, identity.Revision),
+                        previousOwner.Reset(request.Identity.Generation, request.Identity.Revision),
                         cancellationToken: ct);
                     if (reset.MatchedCount != 1)
                         return transaction.Abort(false);
                 }
                 return transaction.Commit(true);
             }
-            if (current.Id != identity.GatewayId ||
+            if (current.Id != request.Identity.GatewayId ||
                 current.State is not ActivePrivateAccessGatewayState)
                 return transaction.Abort(false);
             PrivateAccessGateway replacement;
-            if (current.Generation == identity.Generation &&
-                current.Revision == identity.Revision &&
-                current.CertificateSha256Pin == certificateSha256Pin &&
-                current.CertificateNotAfterUtc == certificateNotAfterUtc)
+            if (current.Generation == request.Identity.Generation &&
+                current.Revision == request.Identity.Revision &&
+                current.CertificateSha256Pin == request.CertificateSha256Pin &&
+                current.CertificateNotAfterUtc == request.CertificateNotAfterUtc)
             {
                 if (current.Endpoints.SequenceEqual(routes))
                     return transaction.Commit(true);
@@ -94,10 +95,10 @@ internal sealed class PrivateAccessGatewayRegistrations(
                     Revision = checked(current.Revision + 1)
                 };
             }
-            else if (identity.Generation == current.Generation + 1 &&
-                     identity.Revision == current.Revision + 1)
+            else if (request.Identity.Generation == current.Generation + 1 &&
+                     request.Identity.Revision == current.Revision + 1)
             {
-                replacement = current.Rotate(certificateSha256Pin, certificateNotAfterUtc)
+                replacement = current.Rotate(request.CertificateSha256Pin, request.CertificateNotAfterUtc)
                     with
                 { Endpoints = routes };
             }
@@ -115,7 +116,7 @@ internal sealed class PrivateAccessGatewayRegistrations(
                 return transaction.Abort(false);
 
             var owner = await owners.Find(transaction.Session,
-                    PrivateAccessBrokerOwnerFilters.ByGateway(identity.GatewayId))
+                    PrivateAccessBrokerOwnerFilters.ByGateway(request.Identity.GatewayId))
                 .FirstOrDefaultAsync(ct);
             if (owner is null || owner.GatewayGeneration != current.Generation ||
                 owner.GatewayRevision != current.Revision)
@@ -156,8 +157,12 @@ internal sealed class PrivateAccessGatewayRegistrations(
             if (reset.MatchedCount != 1)
                 return transaction.Abort(false);
             var reference = await targetReferences(
-                GatewayOwner(identity), [], [identity.DeploymentTargetId],
-                transaction.Session, ct);
+                new ApplyDeploymentTargetReferenceChangesRequest(
+                    Owner: GatewayOwner(identity),
+                    AddedDeploymentTargetIds: [],
+                    RemovedDeploymentTargetIds: [identity.DeploymentTargetId]),
+                session: transaction.Session,
+                cancellationToken: ct);
             return reference is DeploymentTargetReferencesChanged
                 ? transaction.Commit(true)
                 : transaction.Abort(false);

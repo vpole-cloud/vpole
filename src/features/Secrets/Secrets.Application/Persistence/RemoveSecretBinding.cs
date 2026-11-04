@@ -39,7 +39,13 @@ internal sealed class MongoRemoveSecretBinding(
                 .FirstOrDefaultAsync(token);
             if (current is null)
                 return tx.Abort(new SecretMissing());
-            if (!await git.AuthorizeAsync(tenantId, "SecretBinding", bindingId, tx.Session, token))
+            if (!await git.AuthorizeAsync(
+                new AuthorizeGitResourceMutationRequest(
+                    TenantId: tenantId,
+                    Kind: "SecretBinding",
+                    ResourceId: bindingId),
+                session: tx.Session,
+                ct: token))
                 return tx.Abort(new SecretGitOwned());
             if (current.Management is ProviderManagedSecret owner && owner.BindingId == bindingId)
                 return tx.Abort(new SecretManagedByProvider());

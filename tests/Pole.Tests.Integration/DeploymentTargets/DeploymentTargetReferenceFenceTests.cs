@@ -93,11 +93,12 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
             .InvokeOutcomeAsync<ApplyDeploymentTargetReferenceChangesOutcome>(async (transaction, ct) =>
             {
                 var registered = await admission(
-                    owner,
-                    [target.Id],
-                    [],
-                    transaction.Session,
-                    ct);
+                    new ApplyDeploymentTargetReferenceChangesRequest(
+                        Owner: owner,
+                        AddedDeploymentTargetIds: [target.Id],
+                        RemovedDeploymentTargetIds: []),
+                    session: transaction.Session,
+                    cancellationToken: ct);
                 if (registered is DeploymentTargetReferenceChangeRejected)
                     return transaction.Abort(registered);
 
@@ -145,10 +146,11 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
         using var session = await fixture.DbContext.Client.StartSessionAsync();
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => admission(
-            CreateOwner(),
-            [target.Id],
-            [],
-            session));
+            new ApplyDeploymentTargetReferenceChangesRequest(
+                Owner: CreateOwner(),
+                AddedDeploymentTargetIds: [target.Id],
+                RemovedDeploymentTargetIds: []),
+            session: session));
 
         Assert.Contains("inside", exception.Message, StringComparison.Ordinal);
         var persisted = await fixture.DbContext.DeploymentTargets
@@ -165,10 +167,11 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
 
         var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
             admission(
-                CreateOwner(),
-                ["not-a-mongo-object-id"],
-                [],
-                session));
+                new ApplyDeploymentTargetReferenceChangesRequest(
+                    Owner: CreateOwner(),
+                    AddedDeploymentTargetIds: ["not-a-mongo-object-id"],
+                    RemovedDeploymentTargetIds: []),
+                session: session));
 
         Assert.Contains("ObjectId", exception.Message, StringComparison.Ordinal);
         Assert.Equal(0,
@@ -327,11 +330,12 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
             .InvokeOutcomeAsync<ApplyDeploymentTargetReferenceChangesOutcome>(async (transaction, cancellationToken) =>
             {
                 var result = await admission(
-                    owner,
-                    addedDeploymentTargetIds,
-                    removedDeploymentTargetIds,
-                    transaction.Session,
-                    cancellationToken);
+                    new ApplyDeploymentTargetReferenceChangesRequest(
+                        Owner: owner,
+                        AddedDeploymentTargetIds: addedDeploymentTargetIds,
+                        RemovedDeploymentTargetIds: removedDeploymentTargetIds),
+                    session: transaction.Session,
+                    cancellationToken: cancellationToken);
                 return result is DeploymentTargetReferencesChanged
                     ? transaction.Commit(result)
                     : transaction.Abort(result);

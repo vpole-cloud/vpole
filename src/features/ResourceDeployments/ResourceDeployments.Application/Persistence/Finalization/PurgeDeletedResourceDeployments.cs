@@ -8,16 +8,14 @@ internal sealed class MongoPurgeDeletedResourceDeployments(
     IMongoCollection<ResourceDeployment> resourceDeployments)
 {
     public async Task<PurgeResourceDeploymentsOutcome> InvokeAsync(
-        string tenantId,
-        ResourceTypeId resourceType,
-        string resourceId,
+        PurgeDeletedResourceDeploymentsRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         ResourceDeploymentPersistenceGuards.EnsureActiveTransaction(
             session,
             "Resource deployment finalization");
-        var filter = ResourceDeploymentFilters.ForResource(tenantId, resourceType, resourceId);
+        var filter = ResourceDeploymentFilters.ForResource(request.TenantId, request.ResourceType, request.ResourceId);
         var states = await resourceDeployments
             .Find(session, filter)
             .Project(deployment => deployment.State)
@@ -25,7 +23,7 @@ internal sealed class MongoPurgeDeletedResourceDeployments(
         if (states.Count == 0 ||
             states.Any(state => state is not DeletedResourceDeploymentState))
         {
-            return new ResourceDeploymentFinalizationConflict(resourceId);
+            return new ResourceDeploymentFinalizationConflict(request.ResourceId);
         }
 
         var deletion = await resourceDeployments.DeleteManyAsync(
@@ -34,6 +32,6 @@ internal sealed class MongoPurgeDeletedResourceDeployments(
             cancellationToken: cancellationToken);
         return deletion.DeletedCount == states.Count
             ? new ResourceDeploymentsPurged()
-            : new ResourceDeploymentFinalizationConflict(resourceId);
+            : new ResourceDeploymentFinalizationConflict(request.ResourceId);
     }
 }

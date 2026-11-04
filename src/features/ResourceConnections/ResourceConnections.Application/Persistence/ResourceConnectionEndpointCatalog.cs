@@ -83,7 +83,11 @@ public sealed class ResourceConnectionEndpointCatalog
             return new ConnectionEndpointUnsupportedByProvider();
 
         var result = await destination.LoadAsync(
-            tenantId, resourceId, session, cancellationToken);
+            new LoadResourceConnectionDestinationRequest(
+                TenantId: tenantId,
+                ResourceId: resourceId),
+            session: session,
+            cancellationToken: cancellationToken);
         return result switch
         {
             ResourceConnectionEndpointsFound found => Resolve(found.Endpoints, endpointId),

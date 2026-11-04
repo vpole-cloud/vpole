@@ -92,9 +92,10 @@ module private UpdatePostgresClusterPasswordWorkflow =
             | Some cluster ->
                 let! currentComputeResult =
                     loadDeploymentCompute.Invoke(
-                        cluster.TenantId,
-                        PostgresResourceDeployment.ResourceType,
-                        cluster.Id,
+                        LoadCurrentResourceDeploymentComputeRequest(
+                            cluster.TenantId,
+                            PostgresResourceDeployment.ResourceType,
+                            cluster.Id),
                         cancellationToken)
 
                 match TypedResultInterop.currentResourceDeploymentCompute currentComputeResult with

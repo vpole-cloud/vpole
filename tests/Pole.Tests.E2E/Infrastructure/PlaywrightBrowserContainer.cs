@@ -23,7 +23,10 @@ internal sealed class PlaywrightBrowserContainer : IAsyncDisposable
                 $"npx -y playwright@{PlaywrightVersion} run-server --port {PlaywrightPort} --host 0.0.0.0")
             .WithPortBinding(PlaywrightPort, assignRandomHostPort: true)
             .WithCreateParameterModifier(parameters => parameters.HostConfig!.IpcMode = "host")
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(PlaywrightPort))
+            .WithWaitStrategy(Wait.ForUnixContainer()
+                .UntilHttpRequestIsSucceeded(request => request
+                    .ForPort(PlaywrightPort)
+                    .ForPath("/json")))
             .Build();
     }
 

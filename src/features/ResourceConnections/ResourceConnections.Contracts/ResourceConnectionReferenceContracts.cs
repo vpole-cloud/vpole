@@ -27,18 +27,24 @@ public union ResolveResourceConnectionReferencesOutcome(
 
 /// <summary>Fences current source ownership, provider fields and every desired source placement in the caller transaction.</summary>
 public delegate Task<AdmitResourceConnectionReferencesOutcome> AdmitResourceConnectionReferences(
-    string tenantId,
-    ResourceTypeId sourceType,
-    string sourceId,
-    IReadOnlyCollection<ResourceConnectionValueReference> references,
+    AdmitResourceConnectionReferencesRequest request,
     IClientSessionHandle session,
     CancellationToken ct);
 
 /// <summary>Resolves non-secret fields for one exact owned source deployment. Policy application remains a separate state.</summary>
 public delegate Task<ResolveResourceConnectionReferencesOutcome> ResolveResourceConnectionReferences(
-    string tenantId,
-    ResourceTypeId sourceType,
-    string sourceId,
-    string deploymentId,
-    IReadOnlyCollection<ResourceConnectionValueReference> references,
+    ResolveResourceConnectionReferencesRequest request,
     CancellationToken ct);
+
+public sealed record AdmitResourceConnectionReferencesRequest(
+    string TenantId,
+    ResourceTypeId SourceType,
+    string SourceId,
+    IReadOnlyCollection<ResourceConnectionValueReference> References);
+
+public sealed record ResolveResourceConnectionReferencesRequest(
+    string TenantId,
+    ResourceTypeId SourceType,
+    string SourceId,
+    string DeploymentId,
+    IReadOnlyCollection<ResourceConnectionValueReference> References);

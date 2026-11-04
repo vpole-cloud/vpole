@@ -51,18 +51,20 @@ public sealed class ResourceDeploymentFinalizationCapabilityTests(
             async (session, cancellationToken) =>
             {
                 var readiness = await operations.GetReadiness(
-                    TenantId,
-                    ResourceType,
-                    ResourceId,
-                    session,
-                    cancellationToken);
+                    new GetResourceDeploymentFinalizationReadinessRequest(
+                        TenantId: TenantId,
+                        ResourceType: ResourceType,
+                        ResourceId: ResourceId),
+                    session: session,
+                    cancellationToken: cancellationToken);
                 Assert.Equal(ResourceDeploymentFinalizationReadiness.Waiting, readiness);
                 return await operations.PurgeDeleted(
-                    TenantId,
-                    ResourceType,
-                    ResourceId,
-                    session,
-                    cancellationToken);
+                    new PurgeDeletedResourceDeploymentsRequest(
+                        TenantId: TenantId,
+                        ResourceType: ResourceType,
+                        ResourceId: ResourceId),
+                    session: session,
+                    cancellationToken: cancellationToken);
             });
 
         var error = Assert.IsType<ResourceDeploymentFinalizationConflict>(result.Value);
@@ -93,18 +95,20 @@ public sealed class ResourceDeploymentFinalizationCapabilityTests(
             async (session, cancellationToken) =>
             {
                 var readiness = await operations.GetReadiness(
-                    TenantId,
-                    ResourceType,
-                    ResourceId,
-                    session,
-                    cancellationToken);
+                    new GetResourceDeploymentFinalizationReadinessRequest(
+                        TenantId: TenantId,
+                        ResourceType: ResourceType,
+                        ResourceId: ResourceId),
+                    session: session,
+                    cancellationToken: cancellationToken);
                 Assert.Equal(ResourceDeploymentFinalizationReadiness.Ready, readiness);
                 return await operations.PurgeDeleted(
-                    TenantId,
-                    ResourceType,
-                    ResourceId,
-                    session,
-                    cancellationToken);
+                    new PurgeDeletedResourceDeploymentsRequest(
+                        TenantId: TenantId,
+                        ResourceType: ResourceType,
+                        ResourceId: ResourceId),
+                    session: session,
+                    cancellationToken: cancellationToken);
             });
 
         Assert.IsType<ResourceDeploymentsPurged>(result.Value);
@@ -134,20 +138,22 @@ public sealed class ResourceDeploymentFinalizationCapabilityTests(
             async (session, cancellationToken) =>
             {
                 var readiness = await operations.GetExactReadiness(
-                    TenantId,
-                    ResourceType,
-                    ResourceId,
-                    deletedDeploymentId,
-                    session,
-                    cancellationToken);
+                    new GetExactResourceDeploymentFinalizationReadinessRequest(
+                        TenantId: TenantId,
+                        ResourceType: ResourceType,
+                        ResourceId: ResourceId,
+                        ResourceDeploymentId: deletedDeploymentId),
+                    session: session,
+                    cancellationToken: cancellationToken);
                 Assert.Equal(ResourceDeploymentFinalizationReadiness.Ready, readiness);
                 return await operations.PurgeExactDeleted(
-                    TenantId,
-                    ResourceType,
-                    ResourceId,
-                    deletedDeploymentId,
-                    session,
-                    cancellationToken);
+                    new PurgeExactDeletedResourceDeploymentRequest(
+                        TenantId: TenantId,
+                        ResourceType: ResourceType,
+                        ResourceId: ResourceId,
+                        ResourceDeploymentId: deletedDeploymentId),
+                    session: session,
+                    cancellationToken: cancellationToken);
             });
 
         Assert.IsType<ResourceDeploymentsPurged>(result.Value);

@@ -9,9 +9,7 @@ internal sealed class MongoResourceRegistrationConnectionFence(
     IMongoCollection<ResourceRegistration> registrations)
 {
     public async Task<RegisteredResource?> InvokeAsync(
-        string tenantId,
-        ResourceTypeId resourceTypeId,
-        string resourceId,
+        FenceRegisteredResourceRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
@@ -20,7 +18,7 @@ internal sealed class MongoResourceRegistrationConnectionFence(
 
         var registration = await registrations.FindOneAndUpdateAsync(
             session,
-            ResourceRegistrationFilters.ByIdentity(tenantId, resourceTypeId, resourceId),
+            ResourceRegistrationFilters.ByIdentity(request.TenantId, request.ResourceTypeId, request.ResourceId),
             Builders<ResourceRegistration>.Update.Inc(item => item.ReferenceFence, 1),
             new FindOneAndUpdateOptions<ResourceRegistration>
             {

@@ -61,14 +61,20 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             provider,
             (id, ct) => Task.FromResult<LookupDeploymentTargetOutcome>(
                 new LookupDeploymentTargetOutcome(target.ToLookupDto())),
-            (tenantId, runtimeCellId, targetId, kubernetesNamespace, ct) =>
+(request, ct) =>
                 Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
                     new RuntimeCellIngressBaselineReady()),
             []);
         var loadPlacement = Services.GetRequiredService<LoadExactResourceDeploymentRuntimePlacement>();
-        var resolver = new FunctionResourcePlacementResolver(async (tenant, type, resource, deployment, ct) =>
+        var resolver = new FunctionResourcePlacementResolver(async (request, ct) =>
         {
-            var placement = await loadPlacement(tenant, type, resource, deployment, ct);
+            var placement = await loadPlacement(
+                new LoadExactResourceDeploymentRuntimePlacementRequest(
+                    TenantId: request.TenantId,
+                    ResourceType: request.ResourceType,
+                    ResourceId: request.ResourceId,
+                    DeploymentId: request.DeploymentId),
+                cancellationToken: ct);
             Assert.NotNull(placement);
             return placement with { Status = ResourceDeploymentStatus.Applied };
         });
@@ -445,15 +451,15 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
 
     private static LoadExactResourceDeploymentRuntimePlacement AppliedPlacement(
         CreateFunctionAppResponse created) =>
-        (tenantId, resourceType, resourceId, deploymentId, ct) =>
+(request, ct) =>
             Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(
-                tenantId == TestData.TenantId &&
-                resourceType == FunctionResourceDeployment.ResourceType &&
-                resourceId == created.FunctionAppId &&
-                deploymentId == created.Placement.DeploymentId
+                request.TenantId == TestData.TenantId &&
+                request.ResourceType == FunctionResourceDeployment.ResourceType &&
+                request.ResourceId == created.FunctionAppId &&
+                request.DeploymentId == created.Placement.DeploymentId
                     ? new ResourceDeploymentRuntimePlacementDto(
-                        deploymentId,
-                        resourceId,
+                        request.DeploymentId,
+                        request.ResourceId,
                         created.Placement.RuntimeCellId,
                         created.Placement.DeploymentTargetId,
                         "functions",

@@ -11,32 +11,27 @@ internal sealed class MongoLoadResourceDeploymentRuntimePlacement(
     IMongoCollection<ResourceDeployment> resourceDeployments)
 {
     public async Task<ResourceDeploymentRuntimePlacementDto?> LoadExactAsync(
-        string tenantId,
-        ResourceTypeId resourceType,
-        string resourceId,
-        string deploymentId,
+        LoadExactResourceDeploymentRuntimePlacementRequest request,
         CancellationToken cancellationToken = default)
     {
         var deployment = await resourceDeployments
             .Find(ResourceDeploymentFilters.ForExactDeployment(
-                tenantId,
-                resourceType,
-                resourceId,
-                deploymentId))
+                request.TenantId,
+                request.ResourceType,
+                request.ResourceId,
+                request.DeploymentId))
             .FirstOrDefaultAsync(cancellationToken);
         return deployment is null ? null : ToRuntimePlacement(deployment);
     }
 
     public async Task<IReadOnlyList<ResourceDeploymentRuntimePlacementDto>> LoadForResourcesAsync(
-        string tenantId,
-        ResourceTypeId resourceType,
-        IReadOnlyCollection<string> resourceIds,
+        LoadResourceDeploymentRuntimePlacementsRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (resourceIds.Count == 0)
+        if (request.ResourceIds.Count == 0)
             return [];
         var deployments = await resourceDeployments
-            .Find(ResourceDeploymentFilters.ForResources(tenantId, resourceType, resourceIds))
+            .Find(ResourceDeploymentFilters.ForResources(request.TenantId, request.ResourceType, request.ResourceIds))
             .ToListAsync(cancellationToken);
         return deployments.Select(ToRuntimePlacement).ToArray();
     }

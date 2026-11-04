@@ -107,10 +107,11 @@ public sealed class SourceBuildJobExecutor(
                 var repositoryName = $"web-services/{job.WebServiceId}";
                 var tag = $"build-{job.Id}";
                 var registryAccessResult = await prepareRegistryBuildPush(
-                    job.TenantId,
-                    actorUserId,
-                    repositoryName,
-                    tag);
+                    new PrepareRegistryBuildPushRequest(
+                        TenantId: job.TenantId,
+                        InitiatedByUserId: actorUserId,
+                        RepositoryName: repositoryName,
+                        Tag: tag));
                 if (registryAccessResult.Value is PrepareRegistryBuildPushError accessError)
                 {
                     await FailAsync(job, SourceBuildPhase.Building, accessError);
@@ -144,10 +145,11 @@ public sealed class SourceBuildJobExecutor(
                 job = pushing;
 
                 var artifactResult = await getTenantRegistryArtifact(
-                    job.TenantId,
-                    registryAccess.RegistryProjectId,
-                    repositoryName,
-                    tag);
+                    new GetTenantRegistryArtifactRequest(
+                        TenantId: job.TenantId,
+                        RegistryProjectId: registryAccess.RegistryProjectId,
+                        RepositoryName: repositoryName,
+                        Reference: tag));
                 if (artifactResult.Value is GetTenantRegistryArtifactError artifactError)
                 {
                     await FailAsync(job, SourceBuildPhase.Pushing, artifactError);

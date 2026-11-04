@@ -147,9 +147,10 @@ module private UpdatePostgresClusterWorkflow =
                     defaultArg request.Body.Storage cluster.Spec.Storage
                 let! currentComputeResult =
                     loadDeploymentCompute.Invoke(
-                        cluster.TenantId,
-                        PostgresResourceDeployment.ResourceType,
-                        cluster.Id,
+                        LoadCurrentResourceDeploymentComputeRequest(
+                            cluster.TenantId,
+                            PostgresResourceDeployment.ResourceType,
+                            cluster.Id),
                         cancellationToken)
 
                 match TypedResultInterop.currentResourceDeploymentCompute currentComputeResult with
@@ -231,51 +232,52 @@ module private UpdatePostgresClusterWorkflow =
         quotaAdmissionExecutor.ExecuteOutcomeAsync<
             PostgresQuotaInput,
             UpdatePostgresClusterOutcome>(
-            plan.Cluster.TenantId,
-            PostgresQuotaResourceKey.create plan.Cluster.Id,
-            UpdateQuotaMutation<PostgresQuotaInput>(
-                plan.CurrentQuotaInput,
-                plan.NextQuotaInput),
-            (fun error ->
-                UpdatePostgresClusterRejected(UpdateQuota error)),
-            (fun transaction ct ->
-                task {
-                    let! persisted =
-                        persistUpdatedCluster.Invoke(
-                            transaction.Session,
-                            plan.Cluster,
-                            plan.UpdatedCluster,
-                            ct)
-
-                    match persisted with
-                    | PostgresError error ->
-                        return
-                            transaction.Abort(
-                                UpdatePostgresClusterRejected(UpdateConflict error))
-                    | PostgresSuccess () ->
-                        let! deploymentResult =
-                            requestDeploymentApply.Invoke(
-                                ResourceDeploymentMutationRequest(
-                                    plan.Cluster.TenantId,
-                                    PostgresResourceDeployment.ResourceType,
-                                    plan.Cluster.Id,
-                                    plan.CurrentCompute.Compute.Profile,
-                                    plan.ReplacementDeploymentCompute |> Option.toObj),
+            ExecuteQuotaAdmissionRequest<PostgresQuotaInput, UpdatePostgresClusterOutcome>(
+                plan.Cluster.TenantId,
+                PostgresQuotaResourceKey.create plan.Cluster.Id,
+                UpdateQuotaMutation<PostgresQuotaInput>(
+                    plan.CurrentQuotaInput,
+                    plan.NextQuotaInput),
+                (fun error ->
+                    UpdatePostgresClusterRejected(UpdateQuota error)),
+                (fun transaction ct ->
+                    task {
+                        let! persisted =
+                            persistUpdatedCluster.Invoke(
                                 transaction.Session,
+                                plan.Cluster,
+                                plan.UpdatedCluster,
                                 ct)
 
-                        match TypedResultInterop.resourceDeploymentMutation deploymentResult with
-                        | Error error ->
+                        match persisted with
+                        | PostgresError error ->
                             return
                                 transaction.Abort(
-                                    UpdatePostgresClusterRejected(UpdateDeployment error))
-                        | Ok deployment ->
-                            return
-                                transaction.Commit(
-                                    PostgresClusterUpdated(
-                                        { Id = plan.Cluster.Id
-                                          Placement = deployment }))
-                }),
+                                    UpdatePostgresClusterRejected(UpdateConflict error))
+                        | PostgresSuccess () ->
+                            let! deploymentResult =
+                                requestDeploymentApply.Invoke(
+                                    ResourceDeploymentMutationRequest(
+                                        plan.Cluster.TenantId,
+                                        PostgresResourceDeployment.ResourceType,
+                                        plan.Cluster.Id,
+                                        plan.CurrentCompute.Compute.Profile,
+                                        plan.ReplacementDeploymentCompute |> Option.toObj),
+                                    transaction.Session,
+                                    ct)
+
+                            match TypedResultInterop.resourceDeploymentMutation deploymentResult with
+                            | Error error ->
+                                return
+                                    transaction.Abort(
+                                        UpdatePostgresClusterRejected(UpdateDeployment error))
+                            | Ok deployment ->
+                                return
+                                    transaction.Commit(
+                                        PostgresClusterUpdated(
+                                            { Id = plan.Cluster.Id
+                                              Placement = deployment }))
+                    })),
             cancellationToken)
 
 type UpdatePostgresClusterHandler(

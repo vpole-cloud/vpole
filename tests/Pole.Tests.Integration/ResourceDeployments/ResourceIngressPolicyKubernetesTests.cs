@@ -81,7 +81,7 @@ public sealed class ResourceIngressPolicyKubernetesTests : KubernetesIntegration
         var writer = new KubernetesResourceIngressPolicyManager(
             (_, _) => Task.FromResult<ResourceDeployment?>(deployment),
             (_, _) => Task.FromResult<LookupDeploymentTargetOutcome>(target),
-            async (_, _, _, _, cancellationToken) =>
+            async (request, cancellationToken) =>
             {
                 Assert.IsType<Unit>((await baseline.EnsureCreatedAsync(cell, cancellationToken)).Value);
                 return new RuntimeCellIngressBaselineReady();

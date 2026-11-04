@@ -71,15 +71,25 @@ public sealed class PostgresResourceDeploymentAdapterTests
         var projectionReady = false;
         IResourceDeploymentAdapter subject = new PostgresResourceDeploymentAdapter(
             new LoadPostgresClusterById(reader.LoadAsync),
-            (tenant, owner, key, ct) =>
+(request, ct) =>
             {
                 Assert.True(projectionReady);
-                return credentials.ReadAsync(tenant, owner, key, ct);
+                return credentials.ReadAsync(
+                    new ReadManagedSecretKeyRequest(
+                        TenantId: request.TenantId,
+                        Owner: request.Owner,
+                        Key: request.Key),
+                    cancellationToken: ct);
             },
-            (tenant, owner, deployment, ct) =>
+(request, ct) =>
             {
                 projectionReady = true;
-                return ProjectionReady(tenant, owner, deployment, ct);
+                return ProjectionReady(
+                    new EnsureManagedSecretProjectionRequest(
+                        TenantId: request.TenantId,
+                        Owner: request.Owner,
+                        DeploymentId: request.DeploymentId),
+                    ct: ct);
             }, manager, new RecordingKubernetesClientProvider(kubernetes), AppliedIngress);
 
         Assert.IsType<ResourceDeploymentAdapterResult.Succeeded>(await subject.ApplyAsync(CreateContext()));
@@ -216,11 +226,11 @@ public sealed class PostgresResourceDeploymentAdapterTests
         IResourceDeploymentAdapter subject = new PostgresResourceDeploymentAdapter(
             new LoadPostgresClusterById(new RecordingReader(CreateCluster(PostgresDeploymentMode.StatefulSet)).LoadAsync),
             new ReadManagedSecretKey(new RecordingCredentialService().ReadAsync),
-            (tenant, owner, deployment, ct) =>
+(request, ct) =>
             {
-                Assert.Equal(TenantId, tenant);
-                Assert.Equal(new ManagedSecretOwner("pole/postgresql", ResourceId), owner);
-                Assert.Equal(DeploymentId, deployment);
+                Assert.Equal(TenantId, request.TenantId);
+                Assert.Equal(new ManagedSecretOwner("pole/postgresql", ResourceId), request.Owner);
+                Assert.Equal(DeploymentId, request.DeploymentId);
                 return Task.FromResult<EnsureManagedSecretProjectionOutcome>(
                     new ManagedSecretUnavailable());
             }, manager, provider, AppliedIngress);
@@ -238,14 +248,12 @@ public sealed class PostgresResourceDeploymentAdapterTests
             new ResourceIngressPolicyApplied());
 
     private static Task<EnsureManagedSecretProjectionOutcome> ProjectionReady(
-        string tenantId,
-        ManagedSecretOwner owner,
-        string deploymentId,
+        EnsureManagedSecretProjectionRequest request,
         CancellationToken ct)
     {
-        Assert.Equal(TenantId, tenantId);
-        Assert.Equal(new ManagedSecretOwner("pole/postgresql", ResourceId), owner);
-        Assert.Equal(DeploymentId, deploymentId);
+        Assert.Equal(TenantId, request.TenantId);
+        Assert.Equal(new ManagedSecretOwner("pole/postgresql", ResourceId), request.Owner);
+        Assert.Equal(DeploymentId, request.DeploymentId);
         return Task.FromResult<EnsureManagedSecretProjectionOutcome>(
             new SecretProjectionReference("secret-id", "provider-generated-secret", 3));
     }
@@ -334,14 +342,12 @@ public sealed class PostgresResourceDeploymentAdapterTests
         public List<(string TenantId, string ClusterId)> ResolveRequests { get; } = [];
 
         public Task<ReadManagedSecretKeyOutcome> ReadAsync(
-            string tenantId,
-            ManagedSecretOwner owner,
-            string key,
+            ReadManagedSecretKeyRequest request,
             CancellationToken cancellationToken)
         {
-            Assert.Equal("username", key);
-            Assert.Equal("pole/postgresql", owner.ResourceType);
-            ResolveRequests.Add((tenantId, owner.ResourceId));
+            Assert.Equal("username", request.Key);
+            Assert.Equal("pole/postgresql", request.Owner.ResourceType);
+            ResolveRequests.Add((request.TenantId, request.Owner.ResourceId));
             return Task.FromResult<ReadManagedSecretKeyOutcome>(new ManagedSecretKey("postgres"));
         }
     }

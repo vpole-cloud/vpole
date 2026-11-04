@@ -7,7 +7,8 @@ namespace Pole.Features.ResourceDeployments.Application.Persistence.Requests;
 
 internal sealed class MongoAdvanceResourceDeploymentRevision(
     IMongoCollection<ResourceDeployment> resourceDeployments,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ResourceDeploymentIsolationProjection isolation)
 {
     public async Task<AdvanceResourceDeploymentRevisionOutcome> InvokeAsync(
         ResourceDeploymentResourceRevisionRequest request,
@@ -61,7 +62,7 @@ internal sealed class MongoAdvanceResourceDeploymentRevision(
                 }
             }
 
-            results.Add(updated.ToPlacementSummaryDto());
+            results.Add(await isolation.ProjectAsync(updated, cancellationToken));
         }
 
         return new MutatedResourceDeployments(results);

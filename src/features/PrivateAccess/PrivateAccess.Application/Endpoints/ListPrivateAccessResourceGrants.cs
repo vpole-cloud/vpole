@@ -49,8 +49,11 @@ public sealed class ListPrivateAccessResourceGrantsHandler(
         CancellationToken cancellationToken = default)
     {
         var subjectId = request.SubjectUserId.Value;
-        if (await loadTenantMember(request.TenantId, subjectId,
-                cancellationToken: cancellationToken) is not TenantMemberSnapshot)
+        if (await loadTenantMember(
+            new LoadTenantMemberRequest(
+                TenantId: request.TenantId,
+                UserId: subjectId),
+            cancellationToken: cancellationToken) is not TenantMemberSnapshot)
             return new PrivateAccessSubjectMembershipRequired();
 
         var resource = await resources.ResolveAsync(

@@ -26,7 +26,12 @@ internal sealed class PrivateAccessEndpointCatalog(
     {
         if (!destinations.TryGetValue(resourceType, out var destination))
             return null;
-        var result = await destination.LoadAsync(tenantId, resourceId, session, cancellationToken);
+        var result = await destination.LoadAsync(
+            new LoadResourceConnectionDestinationRequest(
+                TenantId: tenantId,
+                ResourceId: resourceId),
+            session: session,
+            cancellationToken: cancellationToken);
         return result switch
         {
             ResourceConnectionEndpointsFound found => Resolve(found.Endpoints, endpointId),

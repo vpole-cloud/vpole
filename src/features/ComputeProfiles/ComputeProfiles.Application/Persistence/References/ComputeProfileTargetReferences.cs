@@ -20,10 +20,11 @@ internal static class ComputeProfileTargetReferences
         ArgumentNullException.ThrowIfNull(addedDeploymentTargetIds);
         ArgumentNullException.ThrowIfNull(removedDeploymentTargetIds);
         return applyChanges(
-            new DeploymentTargetReferenceOwner(OwnerType, profile.Id),
-            addedDeploymentTargetIds.Distinct(StringComparer.Ordinal).ToArray(),
-            removedDeploymentTargetIds.Distinct(StringComparer.Ordinal).ToArray(),
-            session,
-            cancellationToken);
+            new ApplyDeploymentTargetReferenceChangesRequest(
+                Owner: new DeploymentTargetReferenceOwner(OwnerType, profile.Id),
+                AddedDeploymentTargetIds: addedDeploymentTargetIds.Distinct(StringComparer.Ordinal).ToArray(),
+                RemovedDeploymentTargetIds: removedDeploymentTargetIds.Distinct(StringComparer.Ordinal).ToArray()),
+            session: session,
+            cancellationToken: cancellationToken);
     }
 }

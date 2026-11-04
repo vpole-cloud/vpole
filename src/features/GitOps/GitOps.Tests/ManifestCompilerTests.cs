@@ -114,7 +114,10 @@ public sealed class ManifestCompilerTests
         };
         public JsonElement NormalizeAndValidate(JsonElement spec) => DeclarationJson.Write(DeclarationJson.Read<TestSpec>(spec));
         public IReadOnlyList<DeclarationStep> Steps(ResourceAddress address, JsonElement spec) => [new(DeclarationPhase.Prepare, [])];
-        public Task<string?> ResolveAsync(string tenantId, string name, IClientSessionHandle session, CancellationToken ct) => throw new NotSupportedException();
+        public Task<string?> ResolveAsync(
+            ResolveDeclaredResourceRequest request,
+            IClientSessionHandle session,
+            CancellationToken ct) => throw new NotSupportedException();
         public Task<GitOperationResult> ApplyAsync(GitOperation operation, CancellationToken ct) => throw new NotSupportedException();
     }
 }

@@ -121,8 +121,8 @@ public sealed class WebServiceNativeObservationTests
         }, _ => throw new InvalidOperationException("Retirement must only sample."));
         using var client = KubernetesNativeWatchTests.Client(handler);
         var observer = new WebServiceSecretRolloutObserver((_, _, _) => Task.FromResult<WebService?>(Resource),
-            (_, _, _, _) => Task.FromResult<IReadOnlyList<PlacementSummaryDto>>([new("deployment", ScopeId, "cell", "target", 2, 2, ResourceDeploymentStatus.Applied, null, new(new("profile", 1), "test", new(100, 100), new(100, 100), []), [], ResourceRevision: 1, FixedReplicas: 1, Ingress: null, DeploymentRevision: 1, DesiredOperation: ResourceDeploymentDesiredOperation.Apply, Isolation: new ResourceDeploymentIsolationDto("Unknown", "EnforcementRequired", "EnforcementNotEstablished", null))]),
-            (_, _, _, _, _) => Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(new("deployment", ResourceId,
+(request, _) => Task.FromResult<IReadOnlyList<PlacementSummaryDto>>([new("deployment", ScopeId, "cell", "target", 2, 2, ResourceDeploymentStatus.Applied, null, new(new("profile", 1), "test", new(100, 100), new(100, 100), []), [], ResourceRevision: 1, FixedReplicas: 1, Ingress: null, DeploymentRevision: 1, DesiredOperation: ResourceDeploymentDesiredOperation.Apply, Isolation: new ResourceDeploymentIsolationDto("Unknown", "EnforcementRequired", "EnforcementNotEstablished", null))]),
+(request, _) => Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(new("deployment", ResourceId,
                 "cell", "target", "owned", 3, 2, ResourceDeploymentTestData.ContractCompute("target"),
                 ResourceDeploymentStatus.Applied, ResourceDeploymentDesiredOperation.Apply, ScopeId)), new ClientProvider(client));
         Assert.Equal(confirmed, (await observer.ObserveAsync(TenantId, ResourceId, default)).Value is SecretConsumerRolloutConfirmed);

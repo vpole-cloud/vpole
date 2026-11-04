@@ -137,8 +137,11 @@ internal sealed class DeclarativeWebServiceProvider(
             new(DeclarationPhase.Configure, [new(address, DeclarationPhase.Prepare),
                 .. value.SecretEnvironment.Values.Select(reference => new DeclarationDependency(new("Secret", reference.Secret), DeclarationPhase.Prepare))])];
     }
-    public async Task<string?> ResolveAsync(string tenantId, string name, IClientSessionHandle session, CancellationToken ct) =>
-        (await services.Find(session, WebServiceFilters.ByTechnicalName(tenantId, name)).FirstOrDefaultAsync(ct))?.Id;
+    public async Task<string?> ResolveAsync(
+        ResolveDeclaredResourceRequest request,
+        IClientSessionHandle session,
+        CancellationToken ct) =>
+        (await services.Find(session, WebServiceFilters.ByTechnicalName(request.TenantId, request.Name)).FirstOrDefaultAsync(ct))?.Id;
 
     public async Task<GitOperationResult> ApplyAsync(GitOperation operation, CancellationToken ct)
     {
@@ -171,14 +174,23 @@ internal sealed class DeclarativeWebServiceProvider(
             targetId = current.DeclaredPlacement.DeploymentTargetId;
         }
 
-        var deployments = current is null ? [] : (await loadDeployments(current.TenantId,
-            WebServiceResourceDeployment.ResourceType, current.Id, ct)).ToArray();
+        var deployments = current is null ? [] : (await loadDeployments(
+            new LoadResourceDeploymentSetRequest(
+                TenantId: current.TenantId,
+                ResourceType: WebServiceResourceDeployment.ResourceType,
+                ResourceId: current.Id),
+            cancellationToken: ct)).ToArray();
         if (current is not null && (deployments.Length != 1 || deployments[0].DeploymentTargetId != targetId))
             return await BlockAsync(operation, new WebServiceDeclarationRejected(WebServiceDeclarationError.ImmutablePlacementChange), ct);
         if (operation.Phase == DeclarationPhase.Prepare && current is not null)
             return await git.ExecuteAsync(operation, async (session, token) =>
             {
-                var groupId = await git.ResolveAsync(context.TenantId, new("ResourceGroup", spec.ResourceGroup), session, token);
+                var groupId = await git.ResolveAsync(
+                    new ResolveGitResourceRequest(
+                        TenantId: context.TenantId,
+                        Address: new("ResourceGroup", spec.ResourceGroup)),
+                    session: session,
+                    ct: token);
                 return groupId == current.ResourceGroupId ? new(current.Id) : new(current.Id, new WebServiceDeclarationRejected(WebServiceDeclarationError.ImmutablePlacementChange));
             }, ct);
         if (operation.Phase == DeclarationPhase.Configure && current is null)
@@ -220,23 +232,39 @@ internal sealed class DeclarativeWebServiceProvider(
             WebServiceDeploymentWorkflow.ToQuotaInput(deployments.Select(item => item with { FixedReplicas = spec.Replicas }), domainSpec);
         QuotaMutation<WebServiceQuotaInput> quotaChange = current is null ? new CreateQuotaMutation<WebServiceQuotaInput>(nextQuota) :
             new UpdateQuotaMutation<WebServiceQuotaInput>(WebServiceDeploymentWorkflow.ToQuotaInput(deployments, current.Spec), nextQuota);
-        var outcome = await quotas.ExecuteOutcomeAsync<WebServiceQuotaInput, GitOperationResult>(context.TenantId,
-            WebServiceQuotaResourceKey.Create(operation.ResourceId), quotaChange, _ => new(operation.ResourceId, new WebServiceDeclarationRejected(WebServiceDeclarationError.QuotaUnavailable)), async (tx, token) =>
-        {
-            var rejected = await git.BeginAsync(operation, tx.Session, token);
-            if (rejected is not null) return tx.Abort(rejected);
-            var groupId = await git.ResolveAsync(context.TenantId, new("ResourceGroup", spec.ResourceGroup), tx.Session, token);
-            if (groupId is null) return tx.Abort(new(operation.ResourceId, new WebServiceDeclarationRejected(WebServiceDeclarationError.ResourceGroupUnavailable)));
-            GitOperationResult result;
-            if (current is null && await services.Find(tx.Session, WebServiceFilters.ById(context.TenantId, operation.ResourceId)).AnyAsync(token))
-                return tx.Abort(new(operation.ResourceId, new WebServiceDeclarationRejected(WebServiceDeclarationError.ExpectedRevisionConflict)));
-            if (current is null) result = await PrepareAsync(operation, spec, domainSpec, groupId, compute!, selectedTarget!, binding, tx.Session, token);
-            else if (groupId != current.ResourceGroupId) return tx.Abort(new(operation.ResourceId, new WebServiceDeclarationRejected(WebServiceDeclarationError.ImmutablePlacementChange)));
-            else result = await ConfigureAsync(operation, spec, current, deployments, compute, binding, tx.Session, token);
-            if (!result.Applied) return tx.Abort(result);
-            await git.CompleteAsync(operation, result, tx.Session, token);
-            return tx.Commit(result);
-        }, ct);
+        var outcome = await quotas.ExecuteOutcomeAsync<WebServiceQuotaInput, GitOperationResult>(
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.WebServices.Application.Common.WebServiceQuotaInput, global::Pole.Features.GitOps.Contracts.GitOperationResult>(
+                TenantId: context.TenantId,
+                ResourceKey: WebServiceQuotaResourceKey.Create(operation.ResourceId),
+                Mutation: quotaChange,
+                QuotaError: _ => new(operation.ResourceId, new WebServiceDeclarationRejected(WebServiceDeclarationError.QuotaUnavailable)),
+                MutationCallback: async (tx, token) =>
+                {
+                    var rejected = await git.BeginAsync(operation, tx.Session, token);
+                    if (rejected is not null) return tx.Abort(rejected);
+                    var groupId = await git.ResolveAsync(
+                        new ResolveGitResourceRequest(
+                            TenantId: context.TenantId,
+                            Address: new("ResourceGroup", spec.ResourceGroup)),
+                        session: tx.Session,
+                        ct: token);
+                    if (groupId is null) return tx.Abort(new(operation.ResourceId, new WebServiceDeclarationRejected(WebServiceDeclarationError.ResourceGroupUnavailable)));
+                    GitOperationResult result;
+                    if (current is null && await services.Find(tx.Session, WebServiceFilters.ById(context.TenantId, operation.ResourceId)).AnyAsync(token))
+                        return tx.Abort(new(operation.ResourceId, new WebServiceDeclarationRejected(WebServiceDeclarationError.ExpectedRevisionConflict)));
+                    if (current is null) result = await PrepareAsync(operation, spec, domainSpec, groupId, compute!, selectedTarget!, binding, tx.Session, token);
+                    else if (groupId != current.ResourceGroupId) return tx.Abort(new(operation.ResourceId, new WebServiceDeclarationRejected(WebServiceDeclarationError.ImmutablePlacementChange)));
+                    else result = await ConfigureAsync(operation, spec, current, deployments, compute, binding, tx.Session, token);
+                    if (!result.Applied) return tx.Abort(result);
+                    await git.CompleteAsync(
+                        new CompleteGitOperationRequest(
+                            Operation: operation,
+                            Result: result),
+                        session: tx.Session,
+                        ct: token);
+                    return tx.Commit(result);
+                }),
+            cancellationToken: ct);
         return outcome.Applied ? outcome : await BlockAsync(operation, outcome.Failure!, ct);
     }
     private Task<GitOperationResult> BlockAsync(GitOperation operation, IDeclarationFailure failure, CancellationToken ct) =>
@@ -250,7 +278,13 @@ internal sealed class DeclarativeWebServiceProvider(
         if (group is not ResourceGroupOwnership owned) return new(operation.ResourceId, new WebServiceDeclarationRejected(WebServiceDeclarationError.ResourceGroupUnavailable));
         var service = WebServiceFactory.Create(operation.Declaration.Address.Name, operation.Context.TenantId, groupId, owned.DefaultIsolationScopeId,
             domainSpec, WebServiceExposure.Create(), WebServiceFactory.DefaultOptions with { Id = operation.ResourceId, Tags = spec.Tags.ToImmutableHashSet(), Lifecycle = new PreparedWebServiceLifecycle() }).BindDeclaredPlacement(binding);
-        if (await registrar.RegisterAsync(service.TenantId, groupId, new(WebServiceResourceDeployment.ResourceType, service.Id, service.Name), session, ct) is ResourceRegistrationMutationError)
+        if (await registrar.RegisterAsync(
+            new RegisterResourceRequest(
+                TenantId: service.TenantId,
+                ResourceGroupId: groupId,
+                Resource: new(WebServiceResourceDeployment.ResourceType, service.Id, service.Name)),
+            session: session,
+            cancellationToken: ct) is ResourceRegistrationMutationError)
             return new(service.Id, new WebServiceDeclarationRejected(WebServiceDeclarationError.ResourceRegistrationUnavailable));
         var created = await createDeployments(new([new(ObjectId.GenerateNewId().ToString(), service.TenantId,
             WebServiceResourceDeployment.ResourceType, service.Id, groupId, service.IsolationScopeId,
@@ -270,15 +304,29 @@ internal sealed class DeclarativeWebServiceProvider(
         var references = ImmutableDictionary.CreateBuilder<string, SecretEnvironmentReference>();
         foreach (var pair in spec.SecretEnvironment)
         {
-            var secretId = await git.ResolveAsync(current.TenantId, new("Secret", pair.Value.Secret), session, ct);
+            var secretId = await git.ResolveAsync(
+                new ResolveGitResourceRequest(
+                    TenantId: current.TenantId,
+                    Address: new("Secret", pair.Value.Secret)),
+                session: session,
+                ct: ct);
             if (secretId is null) return new(current.Id, new WebServiceDeclarationRejected(WebServiceDeclarationError.SecretUnavailable));
             references.Add(pair.Key, new(secretId, pair.Value.Key));
         }
         var desired = ToSpec(spec, references.ToImmutable());
-        var admitted = await admitSecrets(current.TenantId, current.ResourceGroupId, current.IsolationScopeId,
-            WebServiceResourceDeployment.ResourceType, current.Id,
-            current.Spec.Config.SecretEnvironmentReferences.Values.Select(reference => new ConsumerSecretKeyReference(reference.SecretId, reference.Key)).ToArray(),
-            desired.Config.SecretEnvironmentReferences.Values.Select(reference => new ConsumerSecretKeyReference(reference.SecretId, reference.Key)).ToArray(), true, session, ct, retainPreviousReferencesUntilRollout: true);
+        var admitted = await admitSecrets(
+            new AdmitConsumerSecretReferencesRequest(
+                TenantId: current.TenantId,
+                ResourceGroupId: current.ResourceGroupId,
+                IsolationScopeId: current.IsolationScopeId,
+                ConsumerType: WebServiceResourceDeployment.ResourceType,
+                ConsumerId: current.Id,
+                PreviousReferences: current.Spec.Config.SecretEnvironmentReferences.Values.Select(reference => new ConsumerSecretKeyReference(reference.SecretId, reference.Key)).ToArray(),
+                DesiredReferences: desired.Config.SecretEnvironmentReferences.Values.Select(reference => new ConsumerSecretKeyReference(reference.SecretId, reference.Key)).ToArray(),
+                Availability: ConsumerSecretAvailabilityPolicy.RequireAvailable,
+                Retention: PreviousSecretReferenceRetention.KeepUntilRolloutConfirmed),
+            session: session,
+            ct: ct);
         if (admitted is ConsumerSecretReferenceUnavailable unavailable) return new(current.Id, new WebServiceSecretReferenceRejected(unavailable));
         var next = current.ActivatePrepared(desired, spec.Tags, WebServiceExposure.Create()).BindDeclaredPlacement(binding);
         var placementChanged = compute is not null || placements.Any(item => item.FixedReplicas != spec.Replicas || item.Status == ResourceDeploymentStatus.Prepared);

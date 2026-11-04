@@ -46,8 +46,7 @@ public interface IResourceConnectionDestinationCapability
     ResourceTypeId ResourceType { get; }
 
     Task<LoadResourceConnectionEndpointsOutcome> LoadAsync(
-        string tenantId,
-        string resourceId,
+        LoadResourceConnectionDestinationRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
@@ -89,3 +88,7 @@ public static class ResourceConnectionNameResolution
         return isEligible(resource) ? getId(resource) : null;
     }
 }
+
+public sealed record LoadResourceConnectionDestinationRequest(
+    string TenantId,
+    string ResourceId);

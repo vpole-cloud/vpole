@@ -220,69 +220,71 @@ public sealed class CreateFunctionAppHandler(
         return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             FunctionQuotaAllocation,
             CreateFunctionAppOutcome>(
-            request.TenantId,
-            FunctionAppQuotaResourceKey.Create(createOptions.FunctionAppId),
-            new CreateQuotaMutation<FunctionQuotaAllocation>(admittedQuota),
-            quotaError => new CreateFunctionAppError(quotaError),
-            async (transaction, ct) =>
-            {
-                var registration = await resourceRegistrar.RegisterAsync(
-                    request.TenantId,
-                    request.Body.ResourceGroupId,
-                    new ResourceRegistrationDescriptor(
-                        FunctionResourceDeployment.ResourceType,
-                        createOptions.FunctionAppId,
-                        request.Body.Name),
-                    transaction.Session,
-                    ct);
-                if (registration is ResourceRegistrationMutationError registrationError)
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.Functions.Domain.FunctionQuotaAllocation, global::Pole.Features.Functions.Application.Endpoints.CreateFunctionAppOutcome>(
+                TenantId: request.TenantId,
+                ResourceKey: FunctionAppQuotaResourceKey.Create(createOptions.FunctionAppId),
+                Mutation: new CreateQuotaMutation<FunctionQuotaAllocation>(admittedQuota),
+                QuotaError: quotaError => new CreateFunctionAppError(quotaError),
+                MutationCallback: async (transaction, ct) =>
                 {
-                    return transaction.Abort(new CreateFunctionAppError(registrationError));
-                }
-                var deploymentResult = await createResourceDeployment(
-                    new CreateResourceDeploymentRequest(
-                        deploymentId,
-                        request.TenantId,
-                        FunctionResourceDeployment.ResourceType,
-                        createOptions.FunctionAppId,
-                        request.Body.ResourceGroupId,
-                        IsolationScopeId: null,
-                        ToResolvedResourceDeploymentTarget(target),
-                        compute.ToFunctionResourceDeploymentConfiguration(spec.Resources),
-                        Storage: null,
-                        ResourcePlacementCapability.SingleTarget),
-                    transaction.Session,
-                    ct);
-                if (deploymentResult is CreateResourceDeploymentError deploymentError)
-                {
-                    return transaction.Abort(new CreateFunctionAppError(deploymentError));
-                }
-                var placement = (PlacementSummaryDto)deploymentResult.Value;
+                    var registration = await resourceRegistrar.RegisterAsync(
+                        new RegisterResourceRequest(
+                            TenantId: request.TenantId,
+                            ResourceGroupId: request.Body.ResourceGroupId,
+                            Resource: new ResourceRegistrationDescriptor(
+                            FunctionResourceDeployment.ResourceType,
+                            createOptions.FunctionAppId,
+                            request.Body.Name)),
+                        session: transaction.Session,
+                        cancellationToken: ct);
+                    if (registration is ResourceRegistrationMutationError registrationError)
+                    {
+                        return transaction.Abort(new CreateFunctionAppError(registrationError));
+                    }
+                    var deploymentResult = await createResourceDeployment(
+                        new CreateResourceDeploymentRequest(
+                            deploymentId,
+                            request.TenantId,
+                            FunctionResourceDeployment.ResourceType,
+                            createOptions.FunctionAppId,
+                            request.Body.ResourceGroupId,
+                            IsolationScopeId: null,
+                            ToResolvedResourceDeploymentTarget(target),
+                            compute.ToFunctionResourceDeploymentConfiguration(spec.Resources),
+                            Storage: null,
+                            ResourcePlacementCapability.SingleTarget),
+                        transaction.Session,
+                        ct);
+                    if (deploymentResult is CreateResourceDeploymentError deploymentError)
+                    {
+                        return transaction.Abort(new CreateFunctionAppError(deploymentError));
+                    }
+                    var placement = (PlacementSummaryDto)deploymentResult.Value;
 
-                var created = FunctionAppFactory.Create(
-                    request.TenantId,
-                    request.Body.ResourceGroupId,
-                    new FunctionPlacementIdentity(
-                        placement.DeploymentId,
-                        placement.RuntimeCellId,
-                        placement.DeploymentTargetId),
-                    request.Body.Name,
-                    request.Body.FunctionRoute,
-                    spec,
-                    request.Body.Tags,
-                    timeProvider.GetUtcNow(),
-                    createOptions);
-                await persistCreatedFunctionApp(
-                    transaction.Session,
-                    created,
-                    ct);
-                return transaction.Commit(new CreateFunctionAppResponse(
-                    created.FunctionApp.Id,
-                    created.Revision.Id,
-                    created.Revision.RevisionNumber,
-                    placement));
-            },
-            cancellationToken);
+                    var created = FunctionAppFactory.Create(
+                        request.TenantId,
+                        request.Body.ResourceGroupId,
+                        new FunctionPlacementIdentity(
+                            placement.DeploymentId,
+                            placement.RuntimeCellId,
+                            placement.DeploymentTargetId),
+                        request.Body.Name,
+                        request.Body.FunctionRoute,
+                        spec,
+                        request.Body.Tags,
+                        timeProvider.GetUtcNow(),
+                        createOptions);
+                    await persistCreatedFunctionApp(
+                        transaction.Session,
+                        created,
+                        ct);
+                    return transaction.Commit(new CreateFunctionAppResponse(
+                        created.FunctionApp.Id,
+                        created.Revision.Id,
+                        created.Revision.RevisionNumber,
+                        placement));
+                }),
+            cancellationToken: cancellationToken);
     }
 
     private static ResolvedResourceDeploymentTarget ToResolvedResourceDeploymentTarget(

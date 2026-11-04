@@ -24,13 +24,14 @@ type PostgresCredentialCreator(prepareSecret : PrepareManagedSecret) =
             values[PostgresManagedSecret.passwordKey] <- password
             let! prepared =
                 prepareSecret.Invoke(
-                    tenantId,
-                    ObjectId.GenerateNewId().ToString(),
-                    PostgresManagedSecret.owner clusterId,
-                    PostgresManagedSecret.name clusterId,
-                    1L,
-                    values,
-                    ManagedSecretKubernetesType.BasicAuthentication,
+                    PrepareManagedSecretRequest(
+                        tenantId,
+                        ObjectId.GenerateNewId().ToString(),
+                        PostgresManagedSecret.owner clusterId,
+                        PostgresManagedSecret.name clusterId,
+                        1L,
+                        values,
+                        ManagedSecretKubernetesType.BasicAuthentication),
                     cancellationToken)
             match prepared.Value with
             | :? PreparedManagedSecret as value -> return PostgresSuccess value

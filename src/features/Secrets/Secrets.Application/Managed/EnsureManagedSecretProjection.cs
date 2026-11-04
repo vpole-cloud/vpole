@@ -11,19 +11,17 @@ internal sealed class ReconcileManagedSecretProjection(
     SecretProjectionReconciler reconcile)
 {
     public async Task<EnsureManagedSecretProjectionOutcome> InvokeAsync(
-        string tenantId,
-        ManagedSecretOwner owner,
-        string deploymentId,
+        EnsureManagedSecretProjectionRequest request,
         CancellationToken ct)
     {
-        var secret = await loadSecret(tenantId, owner, ct);
+        var secret = await loadSecret(request.TenantId, request.Owner, ct);
         if (secret is null)
             return new ManagedSecretUnavailable();
         await reconcile.ReconcileAsync(secret.TenantId, secret.Id, ct);
-        var latest = await loadSecret(tenantId, owner, ct);
+        var latest = await loadSecret(request.TenantId, request.Owner, ct);
         if (latest is null || latest.Id != secret.Id)
             return new ManagedSecretUnavailable();
-        var projection = (await loadProjections(secret.TenantId, secret.Id, ct)).SingleOrDefault(x => x.DeploymentId == deploymentId);
+        var projection = (await loadProjections(secret.TenantId, secret.Id, ct)).SingleOrDefault(x => x.DeploymentId == request.DeploymentId);
         var management = (ProviderManagedSecret)latest.Management;
         return projection is { State: ReadySecretProjection } && projection.ConsumerType == management.ResourceType &&
                projection.ConsumerId == management.ResourceId && projection.BindingId == management.BindingId &&

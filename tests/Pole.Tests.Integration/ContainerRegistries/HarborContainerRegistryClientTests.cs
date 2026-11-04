@@ -138,7 +138,11 @@ public sealed class HarborContainerRegistryClientTests
         });
         var client = CreateClient(handler);
 
-        var result = await client.GetArtifactAsync("pole-test", "service/api", "build-42");
+        var result = await client.GetArtifactAsync(
+            new GetRegistryArtifactRequest(
+                ProjectName: "pole-test",
+                RepositoryName: "service/api",
+                Reference: "build-42"));
 
         var artifact = Assert.IsType<RegistryArtifact>(result.Value);
         Assert.Equal("sha256:abc", artifact.Digest);
@@ -271,7 +275,11 @@ public sealed class HarborContainerRegistryClientTests
     {
         var client = CreateClient(new ThrowingHandler());
 
-        var result = await client.GetArtifactAsync("pole-test", "service", "tag");
+        var result = await client.GetArtifactAsync(
+            new GetRegistryArtifactRequest(
+                ProjectName: "pole-test",
+                RepositoryName: "service",
+                Reference: "tag"));
 
         var failed = Assert.IsType<ContainerRegistryArtifactLookupError>(result.Value);
         var providerError = Assert.IsType<ContainerRegistryProviderError>(failed.Value);

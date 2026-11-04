@@ -47,11 +47,12 @@ internal sealed class MongoFinalizeRedisDeletion(
                 return transaction.Commit(new RedisDeletionFinalized());
 
             var readiness = await getDeploymentReadiness(
-                tenantId,
-                RedisResourceDeployment.ResourceType,
-                redisId,
-                transaction.Session,
-                transactionCancellationToken);
+                new GetResourceDeploymentFinalizationReadinessRequest(
+                    TenantId: tenantId,
+                    ResourceType: RedisResourceDeployment.ResourceType,
+                    ResourceId: redisId),
+                session: transaction.Session,
+                cancellationToken: transactionCancellationToken);
             if (readiness is not ResourceDeploymentFinalizationReadiness.Ready)
             {
                 return transaction.Commit(new RedisDeletionFinalized());
@@ -67,23 +68,25 @@ internal sealed class MongoFinalizeRedisDeletion(
             }
 
             var registration = await resourceRegistrar.UnregisterAsync(
-                tenantId,
-                redis.ResourceGroupId,
-                RedisResourceDeployment.ResourceType,
-                redisId,
-                transaction.Session,
-                transactionCancellationToken);
+                new UnregisterResourceRequest(
+                    TenantId: tenantId,
+                    ResourceGroupId: redis.ResourceGroupId,
+                    ResourceTypeId: RedisResourceDeployment.ResourceType,
+                    ResourceId: redisId),
+                session: transaction.Session,
+                cancellationToken: transactionCancellationToken);
             if (registration is ResourceRegistrationMutationError)
             {
                 return transaction.Abort(new RedisDeletionFinalizationConflict(redisId));
             }
 
             var purge = await purgeDeployments(
-                tenantId,
-                RedisResourceDeployment.ResourceType,
-                redisId,
-                transaction.Session,
-                transactionCancellationToken);
+                new PurgeDeletedResourceDeploymentsRequest(
+                    TenantId: tenantId,
+                    ResourceType: RedisResourceDeployment.ResourceType,
+                    ResourceId: redisId),
+                session: transaction.Session,
+                cancellationToken: transactionCancellationToken);
             if (purge is ResourceDeploymentFinalizationConflict)
             {
                 return transaction.Abort(new RedisDeletionFinalizationConflict(redisId));

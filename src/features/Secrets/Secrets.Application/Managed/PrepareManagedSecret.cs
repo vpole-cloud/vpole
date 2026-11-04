@@ -10,33 +10,30 @@ namespace Pole.Features.Secrets.Application.Managed;
 internal sealed class EnvelopePrepareManagedSecret(IEnvelopeEncryptionService encryption)
 {
     public async Task<PrepareManagedSecretOutcome> InvokeAsync(
-        string tenantId,
-        string secretId,
-        ManagedSecretOwner owner,
-        string name,
-        long version,
-        IReadOnlyDictionary<string, string> values,
-        ManagedSecretKubernetesType kubernetesType,
+        PrepareManagedSecretRequest request,
         CancellationToken ct)
     {
-        if (!Endpoints.SecretValuesValidation.Valid(values.ToDictionary()))
-            throw new ArgumentException("Managed Secret values are invalid.", nameof(values));
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        if (!Enum.IsDefined(kubernetesType) || kubernetesType == ManagedSecretKubernetesType.BasicAuthentication &&
-            (!values.ContainsKey("username") || !values.ContainsKey("password")))
-            throw new ArgumentException("Basic authentication requires username and password keys.", nameof(values));
-        tenantId = SecretIdentity.ObjectId(tenantId);
-        secretId = SecretIdentity.ObjectId(secretId);
-        owner = new ManagedSecretOwner(ResourceTypeId.Create(owner.ResourceType).Value, SecretIdentity.ObjectId(owner.ResourceId));
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(values);
+        if (!Endpoints.SecretValuesValidation.Valid(request.Values.ToDictionary()))
+            throw new ArgumentException("Managed Secret values are invalid.", nameof(request.Values));
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.Name);
+        if (!Enum.IsDefined(request.KubernetesType) || request.KubernetesType == ManagedSecretKubernetesType.BasicAuthentication &&
+            (!request.Values.ContainsKey("username") || !request.Values.ContainsKey("password")))
+            throw new ArgumentException("Basic authentication requires username and password keys.", nameof(request.Values));
+        request = request with
+        {
+            TenantId = SecretIdentity.ObjectId(request.TenantId),
+            SecretId = SecretIdentity.ObjectId(request.SecretId),
+            Owner = new ManagedSecretOwner(ResourceTypeId.Create(request.Owner.ResourceType).Value, SecretIdentity.ObjectId(request.Owner.ResourceId))
+        };
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(request.Values);
         try
         {
             var protectedValues = await encryption.EncryptAsync(bytes,
-                EnvelopeEncryptionContext.ForTenant(tenantId, "Secret", secretId, "values", version), ct);
+                EnvelopeEncryptionContext.ForTenant(request.TenantId, "Secret", request.SecretId, "values", request.Version), ct);
             return protectedValues switch
             {
                 EncryptedValue encrypted => new PreparedManagedSecret(
-                    secretId, tenantId, owner, name, kubernetesType, version, values.Keys.Order().ToImmutableArray(), JsonSerializer.SerializeToUtf8Bytes(encrypted).ToImmutableArray()),
+                    request.SecretId, request.TenantId, request.Owner, request.Name, request.KubernetesType, request.Version, request.Values.Keys.Order().ToImmutableArray(), JsonSerializer.SerializeToUtf8Bytes(encrypted).ToImmutableArray()),
                 EnvelopeEncryptionFailed => new ManagedSecretEncryptionUnavailable()
             };
         }

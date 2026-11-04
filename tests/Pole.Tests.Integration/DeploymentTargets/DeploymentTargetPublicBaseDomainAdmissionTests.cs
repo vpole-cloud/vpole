@@ -335,13 +335,14 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
             .InvokeOutcomeAsync<ApplyDeploymentTargetReferenceChangesOutcome>(async (transaction, cancellationToken) =>
             {
                 var result = await references.InvokeAsync(
-                    new DeploymentTargetReferenceOwner(
+                    new ApplyDeploymentTargetReferenceChangesRequest(
+                        Owner: new DeploymentTargetReferenceOwner(
                         DeploymentTargetReferenceOwnerTypes.DomainZone,
                         ObjectId.GenerateNewId().ToString()),
-                    [target.Id],
-                    [],
-                    transaction.Session,
-                    cancellationToken);
+                        AddedDeploymentTargetIds: [target.Id],
+                        RemovedDeploymentTargetIds: []),
+                    session: transaction.Session,
+                    cancellationToken: cancellationToken);
                 return result is DeploymentTargetReferencesChanged
                     ? transaction.Commit(result)
                     : transaction.Abort(result);

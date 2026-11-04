@@ -53,12 +53,21 @@ public sealed class GetSecretUsageHandler(
         foreach (var binding in secret.Bindings)
         {
             var deployments = await loadDeployments(
-                secret.TenantId,
-                ResourceTypeId.Create(binding.ConsumerType),
-                binding.ConsumerId,
-                cancellationToken);
+                new LoadResourceDeploymentSetRequest(
+                    TenantId: secret.TenantId,
+                    ResourceType: ResourceTypeId.Create(binding.Consumer.ResourceType),
+                    ResourceId: binding.Consumer.ResourceId),
+                cancellationToken: cancellationToken);
             usages.Add(new(
-                SecretBindingDto.From(binding) with { GitOps = await git.StatusAsync(request.TenantId, "SecretBinding", binding.Id, cancellationToken) },
+                SecretBindingDto.From(binding) with
+                {
+                    GitOps = await git.StatusAsync(
+                        new LoadGitResourceStatusRequest(
+                            TenantId: request.TenantId,
+                            Kind: "SecretBinding",
+                            ResourceId: binding.Id),
+                        ct: cancellationToken)
+                },
                 deployments.Where(x => x.IsolationScopeId == secret.IsolationScopeId &&
                     x.DesiredOperation != ResourceDeploymentDesiredOperation.Delete &&
                     (binding.Selection is AllSecretDeployments ||
@@ -104,8 +113,8 @@ public sealed record SecretBindingDto(
 {
     public static SecretBindingDto From(SecretBinding binding) => new(
         binding.Id,
-        binding.ConsumerType,
-        binding.ConsumerId,
+        binding.Consumer.ResourceType,
+        binding.Consumer.ResourceId,
         binding.Selection is AllSecretDeployments,
         binding.Selection is SelectedSecretDeployments selected ? selected.DeploymentIds.ToArray() : [],
         binding.KeyMappings);

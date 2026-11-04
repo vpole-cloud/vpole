@@ -29,9 +29,9 @@ public sealed class PrivateAccessGatewayReconcilerTests
             _ => Task.FromResult<IReadOnlyList<PrivateAccessGatewayDesiredState>>(
                 [new PrivateAccessGatewayDesiredState(tenantId, targetId, [endpoint])]),
             _ => Task.FromResult<IReadOnlyList<PersistedGateway>>([current]),
-            (candidate, pin, _, _, _) =>
+(request, _) =>
             {
-                saved.Add((candidate, pin));
+                saved.Add((request.Identity, request.CertificateSha256Pin));
                 return Task.FromResult(true);
             },
             (_, _) => throw new InvalidOperationException("Gateway is still desired."),
@@ -81,10 +81,10 @@ public sealed class PrivateAccessGatewayReconcilerTests
             _ => Task.FromResult<IReadOnlyList<PrivateAccessGatewayDesiredState>>(
                 [new PrivateAccessGatewayDesiredState(tenantId, targetId, [endpoint])]),
             _ => Task.FromResult<IReadOnlyList<PersistedGateway>>([]),
-            (_, pin, _, routes, _) =>
+(request, _) =>
             {
-                Assert.Equal(64, pin.Length);
-                Assert.Equal(endpoint, Assert.Single(routes));
+                Assert.Equal(64, request.CertificateSha256Pin.Length);
+                Assert.Equal(endpoint, Assert.Single(request.Endpoints));
                 reserved = true;
                 return Task.FromResult(true);
             },
@@ -131,7 +131,7 @@ public sealed class PrivateAccessGatewayReconcilerTests
             _ => Task.FromResult<IReadOnlyList<PrivateAccessGatewayDesiredState>>(
                 [new PrivateAccessGatewayDesiredState(tenantId, targetId, [endpoint])]),
             _ => Task.FromResult<IReadOnlyList<PersistedGateway>>([current]),
-            (_, _, _, _, _) => throw new InvalidOperationException(),
+(request, _) => throw new InvalidOperationException(),
             (_, _) =>
             {
                 Assert.True(deleted);
@@ -186,7 +186,7 @@ public sealed class PrivateAccessGatewayReconcilerTests
             _ => Task.FromResult<IReadOnlyList<PrivateAccessGatewayDesiredState>>(
                 [new PrivateAccessGatewayDesiredState(tenantId, targetId, desiredEndpoints)]),
             _ => Task.FromResult<IReadOnlyList<PersistedGateway>>([current]),
-            (_, _, _, routes, _) => Task.FromResult(routes.Count == 1),
+(request, _) => Task.FromResult(request.Endpoints.Count == 1),
             (_, _) => throw new InvalidOperationException(),
             (_, routes, _, _, _) =>
             {

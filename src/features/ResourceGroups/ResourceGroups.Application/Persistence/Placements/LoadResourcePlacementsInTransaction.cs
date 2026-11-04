@@ -10,13 +10,12 @@ internal sealed class MongoLoadResourcePlacementsInTransaction(
     IMongoCollection<RuntimeCell> runtimeCells)
 {
     public async Task<IReadOnlyList<ResourcePlacement>> InvokeAsync(
-        string tenantId,
-        IReadOnlyCollection<string> runtimeCellIds,
+        LoadResourcePlacementsInTransactionRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(runtimeCellIds);
-        var ids = runtimeCellIds
+        ArgumentNullException.ThrowIfNull(request.RuntimeCellIds);
+        var ids = request.RuntimeCellIds
             .Distinct(StringComparer.Ordinal)
             .ToArray();
         if (ids.Length == 0)
@@ -25,7 +24,7 @@ internal sealed class MongoLoadResourcePlacementsInTransaction(
         var runtimeCellsForTenant = await runtimeCells
             .Find(
                 session,
-                RuntimeCellFilters.ByTenantAndIds(tenantId, ids))
+                RuntimeCellFilters.ByTenantAndIds(request.TenantId, ids))
             .ToListAsync(cancellationToken);
         return runtimeCellsForTenant
             .Select(cell => cell.ToPlacement())

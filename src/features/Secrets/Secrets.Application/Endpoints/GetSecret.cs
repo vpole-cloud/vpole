@@ -39,7 +39,15 @@ public sealed class GetSecretHandler(LoadSecretById load, IGitOpsMutations git)
         CancellationToken cancellationToken = default)
     {
         var secret = await load(request.TenantId, request.Id, cancellationToken);
-        return secret is null ? new SecretMissing() : SecretMetadata.From(secret) with { GitOps = await git.StatusAsync(request.TenantId, "Secret", secret.Id, cancellationToken) };
+        return secret is null ? new SecretMissing() : SecretMetadata.From(secret) with
+        {
+            GitOps = await git.StatusAsync(
+                new LoadGitResourceStatusRequest(
+                    TenantId: request.TenantId,
+                    Kind: "Secret",
+                    ResourceId: secret.Id),
+                ct: cancellationToken)
+        };
     }
 }
 

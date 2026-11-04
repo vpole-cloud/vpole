@@ -9,46 +9,39 @@ internal sealed class BoundResourceRegistrar(
     string? owningPluginId) : IResourceRegistrar
 {
     public Task<ResourceRegistrationOutcome> RegisterAsync(
-        string tenantId,
-        string resourceGroupId,
-        ResourceRegistrationDescriptor resource,
+        RegisterResourceRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default) =>
         mutations.RegisterAsync(
             owningPluginId,
-            tenantId,
-            resourceGroupId,
-            resource,
+            request.TenantId,
+            request.ResourceGroupId,
+            request.Resource,
             session,
             cancellationToken);
 
     public Task<ResourceRegistrationOutcome> UpdateAsync(
-        string tenantId,
-        string resourceGroupId,
-        ResourceRegistrationDescriptor resource,
+        UpdateRegisteredResourceRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default) =>
         mutations.UpdateAsync(
             owningPluginId,
-            tenantId,
-            resourceGroupId,
-            resource,
+            request.TenantId,
+            request.ResourceGroupId,
+            request.Resource,
             session,
             cancellationToken);
 
     public Task<ResourceUnregistrationOutcome> UnregisterAsync(
-        string tenantId,
-        string resourceGroupId,
-        ResourceTypeId resourceTypeId,
-        string resourceId,
+        UnregisterResourceRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default) =>
         mutations.UnregisterAsync(
             owningPluginId,
-            tenantId,
-            resourceGroupId,
-            resourceTypeId,
-            resourceId,
+            request.TenantId,
+            request.ResourceGroupId,
+            request.ResourceTypeId,
+            request.ResourceId,
             session,
             cancellationToken);
 }

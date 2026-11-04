@@ -8,9 +8,7 @@ internal sealed class MongoGetResourceDeploymentFinalizationReadiness(
     IMongoCollection<ResourceDeployment> resourceDeployments)
 {
     public async Task<ResourceDeploymentFinalizationReadiness> InvokeAsync(
-        string tenantId,
-        ResourceTypeId resourceType,
-        string resourceId,
+        GetResourceDeploymentFinalizationReadinessRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
@@ -20,7 +18,7 @@ internal sealed class MongoGetResourceDeploymentFinalizationReadiness(
         var states = await resourceDeployments
             .Find(
                 session,
-                ResourceDeploymentFilters.ForResource(tenantId, resourceType, resourceId))
+                ResourceDeploymentFilters.ForResource(request.TenantId, request.ResourceType, request.ResourceId))
             .Project(deployment => deployment.State)
             .ToListAsync(cancellationToken);
         if (states.Count == 0)

@@ -29,8 +29,11 @@ public union EnsureRuntimeCellIngressBaselineOutcome(
     RuntimeCellIngressBaselineTargetConnectionUnavailable);
 
 public delegate Task<EnsureRuntimeCellIngressBaselineOutcome> EnsureRuntimeCellIngressBaseline(
-    string tenantId,
-    string runtimeCellId,
-    string deploymentTargetId,
-    string kubernetesNamespace,
+    EnsureRuntimeCellIngressBaselineRequest request,
     CancellationToken cancellationToken = default);
+
+public sealed record EnsureRuntimeCellIngressBaselineRequest(
+    string TenantId,
+    string RuntimeCellId,
+    string DeploymentTargetId,
+    string KubernetesNamespace);

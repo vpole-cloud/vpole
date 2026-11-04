@@ -10,26 +10,27 @@ public sealed class TenantRegistryArtifactLookup(
     IContainerRegistryClient registryClient)
 {
     public async Task<GetTenantRegistryArtifactOutcome> InvokeAsync(
-        string tenantId,
-        string registryProjectId,
-        string repositoryName,
-        string reference,
+        GetTenantRegistryArtifactRequest request,
         CancellationToken cancellationToken = default)
     {
-        var project = await loadProject(tenantId, cancellationToken);
-        if (project is null || project.Id != registryProjectId)
+        var project = await loadProject(request.TenantId, cancellationToken);
+        if (project is null || project.Id != request.RegistryProjectId)
         {
             return new GetTenantRegistryArtifactError(
-                new TenantContainerRegistryProjectNotFound(registryProjectId));
+                new TenantContainerRegistryProjectNotFound(request.RegistryProjectId));
         }
         if (project.State is not ReadyRegistryProject)
         {
             return new GetTenantRegistryArtifactError(
-                new TenantContainerRegistryNotReady(tenantId));
+                new TenantContainerRegistryNotReady(request.TenantId));
         }
 
         var artifact = await registryClient.GetArtifactAsync(
-            project.Name, repositoryName, reference, cancellationToken);
+            new GetRegistryArtifactRequest(
+                ProjectName: project.Name,
+                RepositoryName: request.RepositoryName,
+                Reference: request.Reference),
+            cancellationToken: cancellationToken);
         return artifact switch
         {
             RegistryArtifact success => success,

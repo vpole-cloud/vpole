@@ -146,13 +146,14 @@ internal sealed class MongoHostnameBindingCleanup(
         foreach (var zone in releasable)
         {
             var unregistered = await applyDeploymentTargetReferenceChanges(
-                new DeploymentTargetReferenceOwner(
+                new ApplyDeploymentTargetReferenceChangesRequest(
+                    Owner: new DeploymentTargetReferenceOwner(
                     DeploymentTargetReferenceOwnerTypes.DomainZone,
                     zone.Id),
-                [],
-                [zone.DeploymentTargetId],
-                session,
-                cancellationToken);
+                    AddedDeploymentTargetIds: [],
+                    RemovedDeploymentTargetIds: [zone.DeploymentTargetId]),
+                session: session,
+                cancellationToken: cancellationToken);
             if (unregistered is DeploymentTargetReferenceChangeRejected)
             {
                 return new HostnameBindingCleanupError(

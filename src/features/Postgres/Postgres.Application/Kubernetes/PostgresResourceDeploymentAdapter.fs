@@ -183,9 +183,10 @@ type PostgresResourceDeploymentAdapter(
                             | None ->
                                 let! projectionResult =
                                     ensureProjection.Invoke(
-                                        deployment.TenantId,
-                                        PostgresManagedSecret.owner cluster.Id,
-                                        deployment.Id,
+                                        EnsureManagedSecretProjectionRequest(
+                                            deployment.TenantId,
+                                            PostgresManagedSecret.owner cluster.Id,
+                                            deployment.Id),
                                         cancellationToken)
                                 match projectionResult.Value with
                                 | :? ManagedSecretUnavailable ->
@@ -212,9 +213,10 @@ type PostgresResourceDeploymentAdapter(
                                                 return Ok(StatefulSetCredentials projection)
                                             | PostgresDeploymentMode.Operator ->
                                                 let! username = readCredentialKey.Invoke(
-                                                    deployment.TenantId,
-                                                    PostgresManagedSecret.owner cluster.Id,
-                                                    PostgresManagedSecret.usernameKey,
+                                                    ReadManagedSecretKeyRequest(
+                                                        deployment.TenantId,
+                                                        PostgresManagedSecret.owner cluster.Id,
+                                                        PostgresManagedSecret.usernameKey),
                                                     cancellationToken)
                                                 return
                                                     match username.Value with

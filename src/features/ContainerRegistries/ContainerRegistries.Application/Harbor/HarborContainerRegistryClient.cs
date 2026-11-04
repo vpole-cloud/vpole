@@ -63,9 +63,7 @@ public sealed class HarborContainerRegistryClient(
     }
 
     public async Task<GetRegistryArtifactOutcome> GetArtifactAsync(
-        string projectName,
-        string repositoryName,
-        string reference,
+        GetRegistryArtifactRequest request,
         CancellationToken cancellationToken = default)
     {
         if (!options.IsConfigured)
@@ -73,17 +71,17 @@ public sealed class HarborContainerRegistryClient(
 
         try
         {
-            var path = $"api/v2.0/projects/{Encode(projectName)}/repositories/{EncodeRepositoryName(repositoryName)}/artifacts/{Encode(reference)}";
+            var path = $"api/v2.0/projects/{Encode(request.ProjectName)}/repositories/{EncodeRepositoryName(request.RepositoryName)}/artifacts/{Encode(request.Reference)}";
             using var response = await SendAsync(HttpMethod.Get, path, null, cancellationToken);
             if (response.StatusCode == HttpStatusCode.NotFound)
-                return new ContainerRegistryArtifactLookupError(new ContainerRegistryArtifactNotFound(reference));
+                return new ContainerRegistryArtifactLookupError(new ContainerRegistryArtifactNotFound(request.Reference));
             if (!response.IsSuccessStatusCode)
                 return new ContainerRegistryArtifactLookupError(Unavailable());
 
             var artifact = await response.Content.ReadFromJsonAsync<HarborArtifact>(JsonOptions, cancellationToken);
             return artifact is null || string.IsNullOrWhiteSpace(artifact.Digest)
                 ? new ContainerRegistryArtifactLookupError(Unavailable())
-                : new RegistryArtifact(repositoryName, reference, artifact.Digest, artifact.Size);
+                : new RegistryArtifact(request.RepositoryName, request.Reference, artifact.Digest, artifact.Size);
         }
         catch (HttpRequestException)
         {

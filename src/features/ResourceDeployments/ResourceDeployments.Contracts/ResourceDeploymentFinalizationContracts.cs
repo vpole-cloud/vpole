@@ -21,34 +21,46 @@ public union PurgeResourceDeploymentsOutcome(
 
 public delegate Task<ResourceDeploymentFinalizationReadiness>
     GetResourceDeploymentFinalizationReadiness(
-        string tenantId,
-        ResourceTypeId resourceType,
-        string resourceId,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
+    GetResourceDeploymentFinalizationReadinessRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
 
 public delegate Task<PurgeResourceDeploymentsOutcome>
     PurgeDeletedResourceDeployments(
-    string tenantId,
-    ResourceTypeId resourceType,
-    string resourceId,
+    PurgeDeletedResourceDeploymentsRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
 public delegate Task<ResourceDeploymentFinalizationReadiness>
     GetExactResourceDeploymentFinalizationReadiness(
-        string tenantId,
-        ResourceTypeId resourceType,
-        string resourceId,
-        string resourceDeploymentId,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
+    GetExactResourceDeploymentFinalizationReadinessRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
 
 public delegate Task<PurgeResourceDeploymentsOutcome>
     PurgeExactDeletedResourceDeployment(
-    string tenantId,
-    ResourceTypeId resourceType,
-    string resourceId,
-    string resourceDeploymentId,
+    PurgeExactDeletedResourceDeploymentRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
+
+public sealed record GetResourceDeploymentFinalizationReadinessRequest(
+    string TenantId,
+    ResourceTypeId ResourceType,
+    string ResourceId);
+
+public sealed record PurgeDeletedResourceDeploymentsRequest(
+    string TenantId,
+    ResourceTypeId ResourceType,
+    string ResourceId);
+
+public sealed record GetExactResourceDeploymentFinalizationReadinessRequest(
+    string TenantId,
+    ResourceTypeId ResourceType,
+    string ResourceId,
+    string ResourceDeploymentId);
+
+public sealed record PurgeExactDeletedResourceDeploymentRequest(
+    string TenantId,
+    ResourceTypeId ResourceType,
+    string ResourceId,
+    string ResourceDeploymentId);

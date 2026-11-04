@@ -10,8 +10,8 @@ internal static class SecretProjectionAuthority
         secret.IsolationScopeId == projection.IsolationScopeId;
 
     public static bool MatchesConsumer(SecretBinding binding, SecretProjection projection) =>
-        binding.ConsumerType == projection.ConsumerType &&
-        binding.ConsumerId == projection.ConsumerId;
+        binding.Consumer.ResourceType == projection.ConsumerType &&
+        binding.Consumer.ResourceId == projection.ConsumerId;
 
     public static bool IncludesDeployment(SecretDeploymentSelection selection, string deploymentId) => selection switch
     {

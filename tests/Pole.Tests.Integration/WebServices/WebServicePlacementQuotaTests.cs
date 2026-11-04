@@ -178,9 +178,14 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
         var remaining = created.Deployments.Single(deployment => deployment.FixedReplicas == 2);
         var removed = created.Deployments.Single(deployment => deployment.FixedReplicas == 3);
         var load = Services.GetRequiredService<LoadResourceDeploymentSet>();
-        LoadResourceDeploymentSet interleavedLoad = async (tenantId, type, resourceId, token) =>
+        LoadResourceDeploymentSet interleavedLoad = async (request, token) =>
         {
-            var stale = await load(tenantId, type, resourceId, token);
+            var stale = await load(
+                new LoadResourceDeploymentSetRequest(
+                    TenantId: request.TenantId,
+                    ResourceType: request.ResourceType,
+                    ResourceId: request.ResourceId),
+                cancellationToken: token);
             (await Mediator.Send(new DeleteWebServiceDeploymentRequest(
                 created.WebServiceId, removed.DeploymentId, TestData.TenantId)))
                 .AssertSuccess();
@@ -280,9 +285,14 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
         var load = Services.GetRequiredService<LoadResourceDeploymentSet>();
         var bothSnapshotsLoaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var readCount = 0;
-        LoadResourceDeploymentSet synchronizedLoad = async (tenantId, type, resourceId, token) =>
+        LoadResourceDeploymentSet synchronizedLoad = async (request, token) =>
         {
-            var snapshot = await load(tenantId, type, resourceId, token);
+            var snapshot = await load(
+                new LoadResourceDeploymentSetRequest(
+                    TenantId: request.TenantId,
+                    ResourceType: request.ResourceType,
+                    ResourceId: request.ResourceId),
+                cancellationToken: token);
             if (Interlocked.Increment(ref readCount) == 2)
                 bothSnapshotsLoaded.SetResult();
             await bothSnapshotsLoaded.Task.WaitAsync(TimeSpan.FromSeconds(30), token);

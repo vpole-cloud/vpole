@@ -21,33 +21,53 @@ internal sealed class MongoCreateBoundManagedSecret(
     TimeProvider clock)
 {
     public async Task<ManagedSecretMutationOutcome> InvokeAsync(
-        PreparedManagedSecret prepared,
-        string resourceGroupId,
-        string isolationScopeId,
-        string deploymentId,
+        CreateBoundManagedSecretRequest request,
         IClientSessionHandle session,
         CancellationToken ct)
     {
-        if (!session.IsInTransaction || prepared.Version != 1)
+        if (!session.IsInTransaction || request.Prepared.Version != 1)
             throw new InvalidOperationException("Managed Secret creation requires a transaction and initial version.");
-        resourceGroupId = SecretIdentity.ObjectId(resourceGroupId);
-        isolationScopeId = SecretIdentity.ObjectId(isolationScopeId);
-        deploymentId = SecretIdentity.ObjectId(deploymentId);
-        var consumerType = ResourceTypeId.Create(prepared.Owner.ResourceType);
-        if (await admitScope(prepared.TenantId, resourceGroupId, isolationScopeId,
-                new(consumerType, prepared.Owner.ResourceId), session, ct) is ResourceScopeReferenceUnavailable ||
-            await admitDeployments(prepared.TenantId, resourceGroupId, isolationScopeId, consumerType,
-                prepared.Owner.ResourceId, false, [deploymentId], session, ct) is ResourceDeploymentReferenceUnavailable)
+        request = request with
+        {
+            ResourceGroupId = SecretIdentity.ObjectId(request.ResourceGroupId),
+            IsolationScopeId = SecretIdentity.ObjectId(request.IsolationScopeId),
+            DeploymentId = SecretIdentity.ObjectId(request.DeploymentId)
+        };
+        var consumerType = ResourceTypeId.Create(request.Prepared.Owner.ResourceType);
+        if (await admitScope(
+            new AdmitResourceScopeReferenceRequest(
+                TenantId: request.Prepared.TenantId,
+                ResourceGroupId: request.ResourceGroupId,
+                IsolationScopeId: request.IsolationScopeId,
+                Consumer: new(consumerType, request.Prepared.Owner.ResourceId)),
+            session: session,
+            cancellationToken: ct) is ResourceScopeReferenceUnavailable ||
+            await admitDeployments(
+                new AdmitResourceDeploymentReferencesRequest(
+                    TenantId: request.Prepared.TenantId,
+                    ResourceGroupId: request.ResourceGroupId,
+                    IsolationScopeId: request.IsolationScopeId,
+                    ConsumerType: consumerType,
+                    ConsumerId: request.Prepared.Owner.ResourceId,
+                    AllDeployments: false,
+                    DeploymentIds: [request.DeploymentId]),
+                session: session,
+                cancellationToken: ct) is ResourceDeploymentReferenceUnavailable)
             return new ManagedSecretReferenceRejected();
         var now = clock.GetUtcNow().UtcDateTime;
-        var binding = SecretBinding.Create(ObjectId.GenerateNewId().ToString(), prepared.Owner.ResourceType,
-            prepared.Owner.ResourceId, new AllSecretDeployments(), []);
-        var secret = SecretFactory.CreateManaged(prepared.SecretId, prepared.TenantId, resourceGroupId, isolationScopeId,
-            prepared.Name, "Provider-managed credentials", prepared.Keys, binding,
-            prepared.KubernetesType == ManagedSecretKubernetesType.BasicAuthentication
+        var binding = SecretBinding.Create(ObjectId.GenerateNewId().ToString(), request.Prepared.Owner.ResourceType,
+            request.Prepared.Owner.ResourceId, new AllSecretDeployments(), []);
+        var secret = SecretFactory.CreateManaged(request.Prepared.SecretId, request.Prepared.TenantId, request.ResourceGroupId, request.IsolationScopeId,
+            request.Prepared.Name, "Provider-managed credentials", request.Prepared.Keys, binding,
+            request.Prepared.KubernetesType == ManagedSecretKubernetesType.BasicAuthentication
                 ? KubernetesSecretType.BasicAuthentication : KubernetesSecretType.Opaque, now);
-        if (await registrar.RegisterAsync(secret.TenantId, secret.ResourceGroupId,
-                new(SecretResource.Type, secret.Id, secret.Name), session, ct) is ResourceRegistrationMutationError)
+        if (await registrar.RegisterAsync(
+            new RegisterResourceRequest(
+                TenantId: secret.TenantId,
+                ResourceGroupId: secret.ResourceGroupId,
+                Resource: new(SecretResource.Type, secret.Id, secret.Name)),
+            session: session,
+            cancellationToken: ct) is ResourceRegistrationMutationError)
             return new ManagedSecretReferenceRejected();
         try
         {
@@ -58,7 +78,7 @@ internal sealed class MongoCreateBoundManagedSecret(
             return new ManagedSecretChanged();
         }
         await versions.InsertOneAsync(session, new SecretVersion($"{secret.Id}:1", secret.TenantId, secret.Id, 1,
-            JsonSerializer.Deserialize<EncryptedValue>(prepared.EncryptedValues.AsSpan())!, now), cancellationToken: ct);
+            JsonSerializer.Deserialize<EncryptedValue>(request.Prepared.EncryptedValues.AsSpan())!, now), cancellationToken: ct);
         await publish(session, secret, new SecretCreated(), ct);
         return new ManagedSecretMutationSucceeded();
     }

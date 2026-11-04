@@ -46,12 +46,12 @@ type MongoLoadPostgresConnectionEndpoints(clusters : IMongoCollection<PostgresCl
     interface IResourceConnectionDestinationCapability with
         member _.ResourceType = PostgresResourceDeployment.ResourceType
 
-        member _.LoadAsync(tenantId, resourceId, session : IClientSessionHandle, cancellationToken : CancellationToken) =
+        member _.LoadAsync(request : LoadResourceConnectionDestinationRequest, session : IClientSessionHandle, cancellationToken : CancellationToken) =
             task {
                 if not session.IsInTransaction then
                     invalidOp "Connection endpoint lookup requires a transaction."
                 let! resource =
-                    clusters.Find(session, PostgresFilters.byId tenantId resourceId)
+                    clusters.Find(session, PostgresFilters.byId request.TenantId request.ResourceId)
                         .FirstOrDefaultAsync(cancellationToken)
                 if isNull (box resource) then
                     return LoadResourceConnectionEndpointsOutcome(ResourceConnectionDestinationMissing())
