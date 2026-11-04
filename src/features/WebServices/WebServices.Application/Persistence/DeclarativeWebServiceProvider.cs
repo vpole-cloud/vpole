@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Primitives;
 using System.Text.RegularExpressions;
 using static Pole.Features.WebServices.Application.Persistence.WebServiceDeclarationRules;
 using Pole.Workloads;
@@ -58,7 +59,7 @@ public sealed record WebServiceDeclaration
     public string[] Tags { get; init; } = [];
 }
 
-internal sealed class DeclarativeWebServiceProvider(
+internal sealed partial class DeclarativeWebServiceProvider(
     IMongoCollection<WebService> services,
     IGitOpsMutations git,
     GetResourceGroupOwnership groupOwnership,
@@ -74,7 +75,7 @@ internal sealed class DeclarativeWebServiceProvider(
     PersistCreatedWebService persistCreated,
     PersistUpdatedWebServiceOutcome persistUpdated,
     PersistCurrentWebServiceRelease persistRelease,
-    TimeProvider clock) : IDeclarativeResourceProvider
+    TimeProvider clock) : IDeclarativeResourcePlanningProvider
 {
     public string Kind => "WebService";
 

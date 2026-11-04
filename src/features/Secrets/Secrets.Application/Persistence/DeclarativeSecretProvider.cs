@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Primitives;
 using Pole.Features.Secrets.Contracts;
 using System.Text.Json;
 using MongoDB.Driver;
@@ -17,14 +18,14 @@ public sealed record SecretDeclaration
     public required string[] Keys { get; init; }
 }
 
-internal sealed class DeclarativeSecretProvider(
+internal sealed partial class DeclarativeSecretProvider(
     IMongoCollection<Secret> secrets,
     IGitOpsMutations git,
     GetResourceGroupOwnership groupOwnership,
     AdmitResourceScopeReference admitScope,
     IResourceRegistrar registrar,
     StoreSecretChange publish,
-    TimeProvider clock) : IDeclarativeResourceProvider
+    TimeProvider clock) : IDeclarativeResourcePlanningProvider
 {
     public string Kind => "Secret";
 

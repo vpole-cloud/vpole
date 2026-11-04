@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Primitives;
 using Pole.Features.ResourceGroups.Events;
 using Pole.Features.Events.Abstractions;
 using System.Collections.Immutable;
@@ -16,11 +17,11 @@ public sealed record ResourceGroupDeclaration
     public string[] Tags { get; init; } = [];
 }
 
-internal sealed class DeclarativeResourceGroupProvider(
+internal sealed partial class DeclarativeResourceGroupProvider(
     IMongoCollection<ResourceGroup> groups,
     IMongoCollection<IsolationScope> scopes,
     IGitOpsMutations git,
-    StoreOutboxWrites outbox) : IDeclarativeResourceProvider
+    StoreOutboxWrites outbox) : IDeclarativeResourcePlanningProvider
 {
     public string Kind => "ResourceGroup";
 

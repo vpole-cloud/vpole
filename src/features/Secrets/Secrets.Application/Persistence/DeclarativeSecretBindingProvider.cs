@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Primitives;
 using Pole.Features.Secrets.Contracts;
 using System.Text.Json;
 using MongoDB.Driver;
@@ -19,13 +20,13 @@ public sealed record SecretBindingDeclaration
     public Dictionary<string, string> KeyMappings { get; init; } = [];
 }
 
-internal sealed class DeclarativeSecretBindingProvider(
+internal sealed partial class DeclarativeSecretBindingProvider(
     IMongoCollection<Secret> secrets,
     IGitOpsMutations git,
     AdmitResourceScopeReference admitScope,
     AdmitResourceDeploymentReferences admitDeployments,
     StoreSecretChange publish,
-    TimeProvider clock) : IDeclarativeResourceProvider
+    TimeProvider clock) : IDeclarativeResourcePlanningProvider
 {
     public string Kind => "SecretBinding";
 

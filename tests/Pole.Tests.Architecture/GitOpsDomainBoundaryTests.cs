@@ -12,7 +12,8 @@ public sealed class GitOpsDomainBoundaryTests
     {
         var project = XDocument.Load(Path.Combine(ArchitectureSources.RepositoryRoot,
             "src/features/GitOps/GitOps.Domain/GitOps.Domain.csproj"));
-        Assert.Empty(project.Descendants("ProjectReference"));
+        Assert.All(project.Descendants("ProjectReference"), reference =>
+            Assert.Equal("../GitOps.Primitives/GitOps.Primitives.csproj", reference.Attribute("Include")?.Value));
         Assert.All(project.Descendants("PackageReference"), reference =>
             Assert.Equal("MongoDB.Driver", reference.Attribute("Include")?.Value));
         var sources = ArchitectureSources.ProductionCSharp().Where(source => source.RelativePath.StartsWith(
@@ -38,6 +39,8 @@ public sealed class GitOpsDomainBoundaryTests
     [InlineData("Pole.Database", true)]
     [InlineData("System.Collections.Immutable", false)]
     [InlineData("Pole.Features.GitOps.Domain", false)]
+    [InlineData("Pole.Features.GitOps.Primitives", false)]
+    [InlineData("Pole.Features.GitOps.PrimitivesExtra", true)]
     [InlineData("Pole.Features.GitOps.Domainish", true)]
     public void Boundary_rule_distinguishes_technical_boundaries_from_pure_domain_dependencies(string name, bool forbidden)
     {
@@ -63,6 +66,9 @@ public sealed class GitOpsDomainBoundaryTests
             name.StartsWith("Microsoft.AspNetCore", StringComparison.Ordinal) ||
             name.StartsWith("Pole.Database", StringComparison.Ordinal) ||
             name.StartsWith("Pole.Features.", StringComparison.Ordinal) &&
-            !(name == "Pole.Features.GitOps.Domain" || name.StartsWith("Pole.Features.GitOps.Domain.", StringComparison.Ordinal));
+            !(name == "Pole.Features.GitOps.Domain" ||
+                name.StartsWith("Pole.Features.GitOps.Domain.", StringComparison.Ordinal) ||
+                name == "Pole.Features.GitOps.Primitives" ||
+                name.StartsWith("Pole.Features.GitOps.Primitives.", StringComparison.Ordinal));
     }
 }

@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Primitives;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 
