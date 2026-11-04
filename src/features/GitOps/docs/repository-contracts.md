@@ -2,7 +2,8 @@
 
 This is the target contract for the single #88/#98 delivery. Stage 1 provides compiled models,
 source acquisition and resource planning contracts, and read/plan implementations for four providers.
-It does **not** enable repository fetching, background synchronization, drift repair or lifecycle commands.
+Stage 2 adds the GitHub source adapter and immutable connection names. These foundations do **not**
+enable automatic repository synchronization, drift repair or lifecycle commands.
 The existing manual snapshot pipeline remains operational until repository input replaces it.
 
 ## Ownership and module boundaries
@@ -13,7 +14,7 @@ inventory and preview records. BSON attributes stay on those models; Application
 transactions, codecs and boundary mappings. The new models are not dual-written into the current
 manual snapshot collections. Collection cutover belongs to the durable-worker stage.
 
-GitOps owns source and resource extension contracts. GitProviders.Application will implement the
+GitOps owns source and resource extension contracts. GitProviders.Application implements the
 source extension; each resource provider implements its own resource extension. Generic GitOps
 must not reference concrete provider projects or branch on known resource kinds. HTTP DTOs remain
 beside endpoints. Contracts operations accept at most three parameters, counting session and cancellation.
@@ -40,7 +41,7 @@ Prune defaults to Retain in the source factory. Actual lifecycle commands arrive
 Resolve the configured branch to an immutable commit, then read only that exact commit and directory.
 The snapshot result must prove a complete successful read, including a valid empty directory.
 Access denial, repository/ref/directory absence and rejected archive/content are distinct outcomes;
-none may be converted to an empty desired set. GitHub implementation and extraction limits arrive in stage 2.
+none may be converted to an empty desired set. The stage-2 GitHub adapter implements the repository input described below; worker orchestration arrives in stage 3.
 
 Resource providers normalize desired declarations, describe dependencies, resolve names, read current
 managed configuration, project desired configuration and apply operations. The generic planner compares
@@ -137,3 +138,41 @@ transactions, retry/fencing and secret-value recovery. Architecture tests enforc
 provider boundaries, records, explicit constructors and contract parameter limits. No legacy documents exist.
 Stage 1 runs the solution build, full GitOps unit and architecture suites and full Pole.Tests.Integration.
 The final single PR still requires a fresh unfiltered publication quality gate and independent review.
+
+## Stage 2: GitHub repository input
+
+GitOps accesses public and private repositories through the current tenant's GitHub App connection
+and external repository ID. It neither links a build SourceRepository nor runs build analysis.
+Resolve the branch once and read the resulting full commit SHA. Build analysis also pins every
+contents read to its resolved SHA. Connection access is rechecked on each operation; source-author
+membership is not execution authority.
+
+Connections require an explicit immutable TechnicalName at installation setup, using the shared
+ResourceTechnicalName rule. Names are unique within a tenant. Setup state retains the name across
+installation and OAuth callbacks. Reconnecting the same installation/name retains its ID; a different
+name is a conflict. Installation ownership and connection/outbox transaction boundaries remain intact.
+
+The adapter reads .yaml and .yml recursively, case-insensitively by extension, from the configured
+case-sensitive directory. Empty directory configuration means repository root. Results contain ordinally
+sorted repository-relative paths. A complete existing directory without YAML is a successful empty
+snapshot; a missing directory or failed read never implies empty desired state.
+
+A complete Git tree at the same commit establishes directory existence and expected manifest paths.
+Truncated trees, selected submodules, missing archive files and partial archives are rejected. Selected
+symlinks/hardlinks and special entries are rejected; links outside the directory are never followed.
+All archive entry paths must be safe, unique and share one root. Sparse metadata is rejected before
+logical expansion, including outside the selected directory. Unsupported TAR metadata returns a typed
+snapshot rejection. UTF-8 is strict, with BOM allowed.
+The bounded temporary archive is read without extracting files and removed on every exit path.
+
+Server archive defaults are 100 MiB compressed, 500 MiB decompressed and 50,000 entries. Manifest
+input retains the shared limit of 256 files and 1 MiB of UTF-8 content. Limits reject rather than truncate.
+Archive redirects are bounded and allowlisted; credentials never cross origins. The HTTP client's
+configured timeout bounds the complete download, including redirects and streamed response bodies;
+caller cancellation still propagates. Expected access,
+missing repository/ref/path, snapshot rejection and temporary service failures have distinct outcomes.
+
+This stage adds no worker, webhook, polling, automatic apply, drift, lifecycle or public snapshot API.
+The manual pipeline remains active until later stages connect repository input. Verification includes
+GitProviders/GitOps/SourceBuilds unit suites, architecture, full shared integration, frontend gates and
+GitHub setup E2E. The publication gate runs after all stages of the single PR.

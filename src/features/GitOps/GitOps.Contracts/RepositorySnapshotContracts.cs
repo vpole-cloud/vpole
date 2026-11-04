@@ -34,7 +34,14 @@ public sealed record RepositoryRefNotFound(string Ref);
 
 public sealed record RepositoryDirectoryNotFound(string Path);
 
-public enum RepositorySnapshotRejection { UnsafeArchive, SizeLimit, InvalidManifestEncoding, InvalidPath }
+public enum RepositorySnapshotRejection
+{
+    UnsafeArchive,
+    SizeLimit,
+    InvalidManifestEncoding,
+    InvalidPath,
+    InvalidCommit
+}
 
 public sealed record RepositorySnapshotRejected(RepositorySnapshotRejection Reason);
 

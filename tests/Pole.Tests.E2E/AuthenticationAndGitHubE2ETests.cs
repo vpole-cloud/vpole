@@ -22,6 +22,7 @@ public sealed class AuthenticationAndGitHubE2ETests(PoleE2EFixture fixture)
             "/api/v1/git-provider-connections/github/install",
             fixture.Alpha,
             fixture.Beta.DefaultTenantId);
+        request.Content = JsonContent.Create(new { TechnicalName = "github-e2e" });
         using var response = await fixture.Api.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
@@ -43,6 +44,7 @@ public sealed class AuthenticationAndGitHubE2ETests(PoleE2EFixture fixture)
             "/api/v1/git-provider-connections/github/install",
             fixture.Alpha,
             fixture.Alpha.DefaultTenantId);
+        begin.Content = JsonContent.Create(new { TechnicalName = "github-e2e" });
         using var beginResponse = await fixture.Api.SendAsync(begin);
         beginResponse.EnsureSuccessStatusCode();
         using var beginJson = JsonDocument.Parse(await beginResponse.Content.ReadAsStreamAsync());

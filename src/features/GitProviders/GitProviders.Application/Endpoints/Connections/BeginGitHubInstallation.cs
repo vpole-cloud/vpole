@@ -1,3 +1,5 @@
+using FluentValidation;
+using Pole.Workloads;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -14,9 +16,21 @@ using static Pole.Features.GitProviders.Application.Common.GitProviderHttpMappin
 namespace Pole.Features.GitProviders.Application.Endpoints.Connections;
 
 public sealed record BeginGitHubInstallationRequest(
+    [FromBody] BeginGitHubInstallationBody Body,
     [FromTenantHeader] string TenantId,
     [FromClaim(Claims.UserId)] ClaimValue CurrentUserId)
     : IMediatorRequest<BeginGitHubInstallationOutcome>, ITenantWriteOperation;
+
+public sealed record BeginGitHubInstallationBody(string TechnicalName);
+
+public sealed class BeginGitHubInstallationValidator : AbstractValidator<BeginGitHubInstallationRequest>
+{
+    public BeginGitHubInstallationValidator()
+    {
+        RuleFor(request => request.Body.TechnicalName).Must(ResourceTechnicalName.IsValid)
+            .WithMessage("Technical name must be a lowercase DNS label beginning with a letter, up to 63 characters.");
+    }
+}
 
 public union BeginGitHubInstallationOutcome(
     BeginGitHubInstallationResponse,
@@ -41,6 +55,7 @@ public sealed class BeginGitHubInstallationHandler(
         var attempt = GitHubSetupAttemptFactory.Create(
             request.TenantId,
             request.CurrentUserId.Value,
+            request.Body.TechnicalName,
             tokenService.Hash(state),
             new GitHubSetupAttemptFactory.CreateOptions(
                 MongoDB.Bson.ObjectId.GenerateNewId().ToString(),

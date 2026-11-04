@@ -240,3 +240,42 @@ it('preserves analysis for review and blocks linking after branch discovery find
   await act(async () => state.analyze())
   expect(state.analysisStale).toBe(false)
 })
+
+it('requires an explicit name and clears its draft when tenant changes', async () => {
+  await act(async () => {
+    app.root.render(<Probe />)
+  })
+  await act(async () => {
+    await state.connectGitHub()
+  })
+  expect(api.beginGitHubInstallation).not.toHaveBeenCalled()
+  await act(async () => {
+    state.setTechnicalName('production-git')
+  })
+  expect(state.connectionNameValid).toBe(true)
+  await act(async () => {
+    app.root.render(<Probe tenant="beta" />)
+  })
+  expect(state.technicalName).toBe('')
+  expect(state.connectionNameValid).toBe(false)
+})
+
+it('sends the explicit connection name with current tenant credentials', async () => {
+  vi.mocked(api.beginGitHubInstallation).mockRejectedValue(new Error('stop before navigation'))
+  await act(async () => {
+    app.root.render(<Probe />)
+  })
+  await act(async () => {
+    state.setTechnicalName('production-git')
+  })
+  await act(async () => {
+    await state.connectGitHub()
+  })
+  expect(api.beginGitHubInstallation).toHaveBeenCalledWith(
+    '/api',
+    'production-git',
+    'token',
+    'alpha',
+    expect.any(AbortSignal),
+  )
+})

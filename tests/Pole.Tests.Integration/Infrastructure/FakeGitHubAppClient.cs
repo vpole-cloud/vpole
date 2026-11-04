@@ -5,6 +5,23 @@ namespace Pole.Tests.Integration.Infrastructure;
 
 public sealed class FakeGitHubAppClient : IGitHubAppClient
 {
+    public Task<string> ResolveCommitAsync(GitHubResolveCommitRequest request, CancellationToken cancellationToken) =>
+        Task.FromResult(Snapshot.CommitSha);
+
+    public byte[] ArchiveBytes { get; set; } = [];
+
+    public Task<GitHubCommitTree> ReadCommitTreeAsync(
+        GitHubReadTreeRequest request,
+        CancellationToken cancellationToken)
+    {
+        var directories = Snapshot.Paths.SelectMany(path => Enumerable.Range(1, path.Split('/').Length - 1)
+            .Select(count => string.Join('/', path.Split('/').Take(count)))).Distinct(StringComparer.Ordinal);
+        return Task.FromResult(new GitHubCommitTree(
+            directories.Select(path => new GitHubTreeEntry(path, "tree", "040000"))
+                .Concat(Snapshot.Paths.Select(path => new GitHubTreeEntry(path, "blob", "100644"))).ToArray(),
+            Snapshot.IsTruncated));
+    }
+
     public GitHubInstallation Installation { get; set; } = new(
         "42",
         "1001",
@@ -120,5 +137,5 @@ public sealed class FakeGitHubAppClient : IGitHubAppClient
         string commitSha,
         Stream destination,
         CancellationToken cancellationToken = default) =>
-        Task.CompletedTask;
+        destination.WriteAsync(ArchiveBytes, cancellationToken).AsTask();
 }

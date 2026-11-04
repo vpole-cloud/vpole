@@ -281,7 +281,8 @@ public sealed class DependencyBrowserE2ETests(PoleE2EFixture fixture)
     {
         var existing = await SendAsync(HttpMethod.Get, "/api/v1/git-provider-connections", null, ct);
         if (existing.GetArrayLength() > 0) return Text(existing[0], "id");
-        var begin = await SendAsync(HttpMethod.Post, "/api/v1/git-provider-connections/github/install", new { }, ct);
+        var begin = await SendAsync(HttpMethod.Post, "/api/v1/git-provider-connections/github/install",
+            new { TechnicalName = "github-e2e" }, ct);
         using var callback = await fixture.Stub.GetAsync(Text(begin, "installUrl"), ct); callback.EnsureSuccessStatusCode();
         return Text((await SendAsync(HttpMethod.Get, "/api/v1/git-provider-connections", null, ct))[0], "id");
     }

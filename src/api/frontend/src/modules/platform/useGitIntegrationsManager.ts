@@ -193,11 +193,16 @@ export function useGitIntegrationsManager({
       if (current()) setBusySource(null)
     }
   }
+  const [connectionName, setConnectionName] = useState({ identity, value: '' })
+  const technicalName = connectionName.identity === identity ? connectionName.value : ''
+  const connectionNameValid =
+    /^[a-z](?:[a-z0-9-]*[a-z0-9])?$/.test(technicalName) && technicalName.length <= 63
   const connectGitHub = async () => {
-    if (!enabled || !canManage || !current()) return
+    if (!enabled || !canManage || !current() || !connectionNameValid) return
     try {
       await mutation.run(
-        (signal) => beginGitHubInstallation(apiBaseUrl, origin.credential(), tenantId, signal),
+        (signal) =>
+          beginGitHubInstallation(apiBaseUrl, technicalName, origin.credential(), tenantId, signal),
         (installation) => {
           if (current()) window.location.assign(installation.installUrl)
         },
@@ -323,6 +328,9 @@ export function useGitIntegrationsManager({
     selectRepositoryPage,
     selectBranchPage,
     refresh,
+    technicalName,
+    connectionNameValid,
+    setTechnicalName: (value: string) => setConnectionName({ identity, value }),
     connectGitHub,
     selectConnection,
     selectRepository,

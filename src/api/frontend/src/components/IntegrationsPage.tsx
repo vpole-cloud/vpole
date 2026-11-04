@@ -16,6 +16,9 @@ const callbackErrors: Record<string, string> = {
   'contents-permission-required': 'The installation must grant read access to repository contents.',
   'github-installation-unavailable': 'GitHub could not verify the installation.',
   'installation-access-denied': 'Your GitHub user cannot access this installation.',
+  'connection-name-conflict': 'This connection name is already used in the tenant.',
+  'connection-name-mismatch':
+    'This installation is already connected with a different immutable name.',
   'installation-already-linked': 'This GitHub installation belongs to another Pole tenant.',
   'oauth-verification-failed': 'GitHub user verification failed.',
 }
@@ -82,9 +85,24 @@ export function IntegrationsPage({
           <button className="button" onClick={() => void manager.refresh()} type="button">
             Refresh
           </button>
+          <label>
+            Connection technical name
+            <input
+              value={manager.technicalName}
+              onChange={(event) => manager.setTechnicalName(event.target.value)}
+              disabled={!canManage || manager.actionStatus === 'loading'}
+              maxLength={63}
+              pattern="[a-z]([a-z0-9-]*[a-z0-9])?"
+              placeholder="production-git"
+              aria-describedby="connection-name-help"
+            />
+            <small id="connection-name-help">Immutable, tenant-unique lowercase name.</small>
+          </label>
           <button
             className="button button--primary"
-            disabled={!canManage || manager.actionStatus === 'loading'}
+            disabled={
+              !canManage || !manager.connectionNameValid || manager.actionStatus === 'loading'
+            }
             onClick={() => void manager.connectGitHub()}
             type="button"
           >
@@ -197,9 +215,10 @@ export function IntegrationsPage({
                     GH
                   </span>
                   <span>
-                    <strong>{connection.accountLogin}</strong>
+                    <strong>{connection.technicalName}</strong>
                     <small>
-                      {connection.accountType} · {connection.repositorySelection} repositories
+                      {connection.accountLogin} · {connection.accountType} ·{' '}
+                      {connection.repositorySelection} repositories
                     </small>
                   </span>
                 </button>

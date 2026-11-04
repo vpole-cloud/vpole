@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Configuration;
+using Pole.Features.GitOps.Contracts;
+using Pole.Features.GitProviders.Application.Snapshots;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -27,6 +29,13 @@ public static class GitProviderApplicationRegistration
             configuration.GetSection(GitHubAppOptions.SectionName));
         services.TryAddSingleton(serviceProvider =>
             serviceProvider.GetRequiredService<IOptions<GitHubAppOptions>>().Value);
+        services.AddOptions<RepositoryArchiveOptions>()
+            .Bind(configuration.GetSection(RepositoryArchiveOptions.SectionName))
+            .ValidateDataAnnotations().ValidateOnStart();
+        services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<RepositoryArchiveOptions>>().Value);
+        services.TryAddScoped<RepositoryManifestArchiveReader>();
+        services.TryAddEnumerable(
+            ServiceDescriptor.Scoped<IRepositorySnapshotProvider, GitHubRepositorySnapshotProvider>());
         services.AddMemoryCache();
         services.AddDataProtection().SetApplicationName("Pole");
         services.TryAddSingleton(TimeProvider.System);
@@ -43,6 +52,8 @@ public static class GitProviderApplicationRegistration
 
         services.AddCapability<GitHubAppJwtFactory, CreateGitHubAppJwt>(factory => factory.Invoke);
         services.AddCapability<MongoCreateGitHubSetupAttempt, CreateGitHubSetupAttempt>(persistence =>
+            persistence.InvokeAsync);
+        services.AddCapability<MongoFindNamedGitProviderConnection, FindNamedGitProviderConnection>(persistence =>
             persistence.InvokeAsync);
         services.AddCapability<MongoLoadGitProviderConnection, LoadGitProviderConnection>(persistence =>
             persistence.InvokeAsync);
@@ -71,7 +82,7 @@ public static class GitProviderApplicationRegistration
         services.AddHttpClient<IGitHubAppClient, GitHubAppClient>(client =>
         {
             client.DefaultRequestHeaders.UserAgent.ParseAdd("Pole/1.0");
-        });
+        }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         return services;
     }
 

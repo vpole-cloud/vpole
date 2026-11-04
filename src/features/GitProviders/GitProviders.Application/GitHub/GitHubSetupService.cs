@@ -113,15 +113,18 @@ internal sealed class GitHubSetupService(
             if (!canAccess)
                 return FrontendRedirect("error", "installation-access-denied");
 
-            var connectionId = await setupPersistence.UpsertConnectionAsync(
+            var result = await setupPersistence.UpsertConnectionAsync(
                 attempt,
                 oauthSetup.Installation,
                 now,
                 cancellationToken);
-            if (connectionId is null)
-                return FrontendRedirect("error", "installation-already-linked");
-
-            return FrontendRedirect("connected", connectionId);
+            return result switch
+            {
+                LinkedGitProviderConnection linked => FrontendRedirect("connected", linked.Id),
+                GitProviderConnectionOwnershipRejected => FrontendRedirect("error", "installation-already-linked"),
+                GitProviderConnectionNameConflict => FrontendRedirect("error", "connection-name-conflict"),
+                GitProviderConnectionNameMismatch => FrontendRedirect("error", "connection-name-mismatch")
+            };
         }
         catch (Exception exception) when (exception is GitHubApiException or System.Security.Cryptography.CryptographicException)
         {

@@ -20,9 +20,13 @@ Source IDs are server-generated and tenant-scoped. Creation is idempotent by a t
 a source URL is immutable, HTTPS, and cannot contain user info, query parameters or a fragment.
 No credentials or new permissions are provisioned or retained by this feature.
 
-Repository fetching, GitHub linking, webhooks/polling, source pause/deletion/relocation and the
-complete Git source worker remain follow-up work. The engine invokes feature-owned application
-operations directly; it does not chain HTTP endpoints or invoke build analysis.
+Stage 2 supplies a GitHub implementation of `IRepositorySnapshotProvider`: resolve an immutable commit,
+then read a complete, bounded manifest snapshot through a named tenant-owned GitHub App connection.
+This adapter is registered but is not yet connected to the active manual execution pipeline.
+Worker orchestration, webhooks/polling and source pause/deletion/relocation remain follow-up work.
+The engine invokes feature-owned application operations directly; it does not chain HTTP endpoints
+or invoke build analysis. See [repository input](docs/repository-contracts.md#stage-2-github-repository-input)
+for directory semantics, archive limits and the setup-name contract.
 
 Providers implement the platform-owned `IDeclarativeResourceProvider` contract and register
 through DI in their owning Application feature. GitOps imports no concrete provider. Each
@@ -353,6 +357,6 @@ reconstructed or silently replaced with the latest revision.
 
 ## Repository GitOps target contracts
 
-See [repository contracts](docs/repository-contracts.md) for the stage-1 model, provider boundaries,
+See [repository contracts](docs/repository-contracts.md) for the domain model, stage-2 GitHub input, provider boundaries,
 13-kind coverage matrix, target source API and confirmation rules. Repository synchronization and
 lifecycle commands remain scheduled work; the manual snapshot flow above is the current runtime.

@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Workloads;
 
 namespace Pole.Features.GitProviders.Domain;
 
@@ -26,6 +27,7 @@ public sealed record GitProviderConnection(
     [property: BsonRepresentation(BsonType.ObjectId)]
     string Id,
     string TenantId,
+    string TechnicalName,
     GitProviderKind Provider,
     string ExternalInstallationId,
     string AccountId,
@@ -48,6 +50,7 @@ public static class GitProviderConnectionFactory
 
     public static GitProviderConnection Create(
         string tenantId,
+        string technicalName,
         GitProviderKind provider,
         string externalInstallationId,
         string accountId,
@@ -59,6 +62,7 @@ public static class GitProviderConnectionFactory
         new(
             options.Id,
             tenantId,
+            ResourceTechnicalName.Require(technicalName),
             provider,
             externalInstallationId,
             accountId,
@@ -76,6 +80,7 @@ public sealed record GitHubSetupAttempt(
     string Id,
     string TenantId,
     string InitiatedByUserId,
+    string TechnicalName,
     GitHubSetupState State,
     DateTime CreatedAtUtc,
     DateTime ExpiresAtUtc);
@@ -116,12 +121,14 @@ public static class GitHubSetupAttemptFactory
     public static GitHubSetupAttempt Create(
         string tenantId,
         string initiatedByUserId,
+        string technicalName,
         string installStateHash,
         CreateOptions options) =>
         new(
             options.Id,
             tenantId,
             initiatedByUserId,
+            ResourceTechnicalName.Require(technicalName),
             new AwaitingGitHubInstallation(installStateHash),
             options.CreatedAtUtc,
             options.ExpiresAtUtc);

@@ -6,6 +6,7 @@ export type SourceBuildPlanConfidence = 'High' | 'Medium' | 'Low'
 
 export interface GitProviderConnection {
   id: string
+  technicalName: string
   provider: GitProviderKind
   accountLogin: string
   accountType: GitProviderAccountType
