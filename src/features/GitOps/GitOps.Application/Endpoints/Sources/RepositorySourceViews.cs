@@ -1,13 +1,14 @@
 using System.Text.Json.Serialization;
 using Pole.Features.GitOps.Primitives;
+using Pole.Features.GitOps.Domain;
 
 namespace Pole.Features.GitOps.Application.Endpoints.Sources;
 
 [JsonConverter(typeof(JsonStringEnumConverter<RepositoryRunStatus>))]
 public enum RepositoryRunStatus
 {
-    Queued, Resolving, Fetching, Applying, WaitingRetry, ConfigurationApplied,
-    AlreadyCurrent, Blocked, Failed, Superseded
+    Queued, Resolving, Fetching, Applying, WaitingRetry, PendingCleanup, ConfigurationApplied,
+    AlreadyCurrent, Blocked, Failed, Superseded, LifecycleCompleted, AwaitingConfirmation
 }
 
 public sealed record RepositoryLocationView(
@@ -39,7 +40,9 @@ public sealed record RepositorySourceView(
     RepositoryRunStatus Status,
     RepositorySynchronizationView Synchronization,
     RepositoryInventorySummary Inventory,
-    RepositoryRunView? LatestRun);
+    RepositoryRunView? LatestRun,
+    [property: JsonConverter(typeof(JsonStringEnumConverter<GitSourceActivity>))] GitSourceActivity Activity,
+    [property: JsonConverter(typeof(JsonStringEnumConverter<GitPrunePolicy>))] GitPrunePolicy Prune);
 
 public sealed record RepositoryRunDiagnosticView(
     string Code,
@@ -59,20 +62,22 @@ public sealed record RepositoryRunView(
     RepositoryRunStatus Status,
     DateTime CreatedAtUtc,
     IReadOnlyList<RepositoryRunDiagnosticView> Diagnostics,
-    RepositoryOperationSummary? Operations);
+    RepositoryOperationSummary? Operations,
+    RepositoryRunLifecycleView? Lifecycle);
 
 [JsonConverter(typeof(JsonStringEnumConverter<RepositoryOperationStatus>))]
-public enum RepositoryOperationStatus { Pending, Succeeded, Blocked }
+public enum RepositoryOperationStatus { Pending, Succeeded, Blocked, PendingCleanup, AwaitingConfirmation }
 
 public sealed record RepositoryOperationView(
     string Kind,
     string Name,
     string ResourceId,
-    DeclarationPhase Phase,
+    DeclarationPhase? Phase,
     RepositoryOperationStatus Status,
     string? Blocker,
     bool Changed,
-    RepositoryOperationPlanView? Plan);
+    RepositoryOperationPlanView? Plan,
+    RepositoryLifecycleOperationView? Lifecycle);
 
 public sealed record RepositoryOperationPlanView(
     [property: JsonConverter(typeof(JsonStringEnumConverter<GitPlannedAction>))]
@@ -86,7 +91,32 @@ public sealed record RepositoryOperationSummary(
     int Update,
     int NoOp,
     int Blocked,
-    int Pending);
+    int Pending,
+    RepositoryLifecycleOperationSummary? Lifecycle);
+
+[JsonConverter(typeof(JsonStringEnumConverter<RepositoryLifecycleAuthorization>))]
+public enum RepositoryLifecycleAuthorization { AwaitingConfirmation, UserConfirmed, PrunePolicy }
+
+public sealed record RepositoryRunLifecycleView(
+    string PreviewId,
+    RepositoryLifecycleAuthorization Authorization);
+
+public sealed record RepositoryLifecycleOperationView(
+    string ActionId,
+    [property: JsonConverter(typeof(JsonStringEnumConverter<GitLifecycleAction>))] GitLifecycleAction Action,
+    string? LastCompletedStep,
+    string? ReplacementResourceId,
+    string? ReplacementName,
+    IReadOnlyList<string> ChangedFields);
+
+public sealed record RepositoryLifecycleOperationSummary(
+    int Adopt,
+    int Remove,
+    int Replace,
+    int Retain,
+    int Detach,
+    int PendingCleanup,
+    int AwaitingConfirmation);
 
 public sealed record RepositoryRunPage(
     IReadOnlyList<RepositoryRunView> Items,

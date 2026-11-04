@@ -10,6 +10,8 @@ using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence.Mutations;
 using Pole.Features.Functions.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceConnections.Contracts;
+using Pole.Features.Functions.Application.Persistence.Lifecycle;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Secrets.Contracts;
 
@@ -62,7 +64,17 @@ internal sealed partial class DeclarativeFunctionProvider(
     FenceConsumerSecretPlanningSnapshot fenceSecrets,
     AdmitConsumerSecretReferences admitSecrets,
     PersistFunctionAppRevision persistRevision,
-    TimeProvider clock) : ITransactionalDeclarativeResourceProvider, IDeclarativeReferencePreparation
+    TimeProvider clock,
+    IQuotaUsageRelease releaseQuota,
+    IGitLifecyclePlanGuard lifecycleGuard,
+    LoadResourceConnectionCascadePlanning loadCascadePlanning,
+    ApplyFunctionAppDeletion deleteWorkflow) : ITransactionalDeclarativeResourceProvider,
+    IDeclarativeReferencePreparation,
+    IDeclarativeRegisteredResourceProvider,
+    IDeclarativeResourceLifecycleProvider,
+    IDeclarativeLifecycleDependencyProvider,
+    IDeclarativePreviewReferenceProvider,
+    IDeclarativeAdoptionPreviewProvider
 {
     public const string ResourceKind = "FunctionApp";
     public string Kind => ResourceKind;
@@ -70,6 +82,7 @@ internal sealed partial class DeclarativeFunctionProvider(
 
     public string DescribeFailure(IDeclarationFailure failure) => failure switch
     {
+        FunctionLifecycleDeploymentRejected => nameof(FunctionLifecycleDeploymentRejected),
         FunctionDeclarationSecretRejected rejected => ConsumerSecretReferenceErrorCodes.Code(rejected.Reason),
         FunctionDeclarationRejected rejected => rejected.Reason switch
         {

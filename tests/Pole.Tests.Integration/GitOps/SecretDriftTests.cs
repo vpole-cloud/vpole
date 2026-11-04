@@ -56,7 +56,7 @@ public sealed partial class DeclarativePipelineTests
         Assert.Equal(events, await BusinessEvents());
         var run = await queries.RunAsync(TestData.TenantId, source, unchanged.Context!.RunId, default);
         Assert.Equal(RepositoryRunStatus.AlreadyCurrent, run!.Status);
-        Assert.Equal(new RepositoryOperationSummary(0, 0, 2, 0, 0), run.Operations);
+        Assert.Equal(new RepositoryOperationSummary(0, 0, 2, 0, 0, null), run.Operations);
         var inventory = await Inventory.Find(item => item.ResourceId == secret.Id).SingleAsync();
         Assert.DoesNotContain("rotation-value", inventory.Projections.Applied!.ProjectionJson);
         Assert.DoesNotContain("currentVersion", inventory.Projections.Applied.ProjectionJson);

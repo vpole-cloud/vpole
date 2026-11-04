@@ -27,6 +27,10 @@ public static class SourceBuildApplicationRegistration
         services.AddScoped<DeclarativeSourceBuildConfigurationProvider>();
         services.AddScoped<IDeclarativeResourceProvider>(provider =>
             provider.GetRequiredService<DeclarativeSourceBuildConfigurationProvider>());
+        services.AddScoped<IDeclarativeResourceLifecycleProvider>(provider =>
+            provider.GetRequiredService<DeclarativeSourceBuildConfigurationProvider>());
+        services.AddScoped<IDeclarativeLifecycleDependencyProvider>(provider =>
+            provider.GetRequiredService<DeclarativeSourceBuildConfigurationProvider>());
         services.AddSingleton(new RealtimeTopic("source-builds", RealtimeScope.Tenant));
         services.Configure<SourceBuildExecutionOptions>(
             configuration.GetSection(SourceBuildExecutionOptions.SectionName));

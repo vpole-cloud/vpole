@@ -31,8 +31,10 @@ internal sealed partial class DeclarativeHostnameBindingProvider(
     CreateCustomHostnameBinding createBinding,
     FenceDomainZone fenceZone,
     FenceHostnameBinding fenceBinding,
-    IEnumerable<IHostnameBindingWorkloadCapability> workloadCapabilities)
-    : ITransactionalDeclarativeResourceProvider, IDeclarativeReferencePreparation
+    IEnumerable<IHostnameBindingWorkloadCapability> workloadCapabilities,
+    MongoDeleteCustomHostnameBinding deletion)
+    : ITransactionalDeclarativeResourceProvider, IDeclarativeReferencePreparation,
+        IDeclarativeResourceLifecycleProvider, IDeclarativeAdoptionPreviewProvider, IDeclarativePreviewReferenceProvider
 {
     private readonly IMongoCollection<TenantDomainZone> zones =
         database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);

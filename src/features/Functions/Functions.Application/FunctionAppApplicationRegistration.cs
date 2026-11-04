@@ -17,7 +17,17 @@ public static class FunctionAppApplicationRegistration
         this IServiceCollection services)
     {
         services.AddFunctionAppPersistence();
-        services.AddScoped<IDeclarativeResourceProvider, DeclarativeFunctionProvider>();
+        services.AddScoped<DeclarativeFunctionProvider>();
+        services.AddScoped<IDeclarativeResourceProvider>(provider =>
+            provider.GetRequiredService<DeclarativeFunctionProvider>());
+        services.AddScoped<IDeclarativeResourceLifecycleProvider>(provider =>
+            provider.GetRequiredService<DeclarativeFunctionProvider>());
+        services.AddScoped<IDeclarativeLifecycleDependencyProvider>(provider =>
+            provider.GetRequiredService<DeclarativeFunctionProvider>());
+        services.AddScoped<IDeclarativePreviewReferenceProvider>(provider =>
+            provider.GetRequiredService<DeclarativeFunctionProvider>());
+        services.AddScoped<IDeclarativeAdoptionPreviewProvider>(provider =>
+            provider.GetRequiredService<DeclarativeFunctionProvider>());
         services.AddSingleton(new SecretDeclarationConsumer(
             "FunctionApp", FunctionResourceDeployment.ResourceType, SecretBindingUsage.Runtime));
         services.AddSingleton(new ResourceConnectionDeclarationKind("FunctionApp",

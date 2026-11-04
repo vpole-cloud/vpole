@@ -58,6 +58,11 @@ internal static class SourceBuildConfigurationFilters
         Builders<SourceBuildConfiguration>.Filter.Eq(item => item.SourceRepositoryId, job.SourceRepositoryId) &
         Builders<SourceBuildConfiguration>.Filter.Eq(item => item.WebServiceId, job.WebServiceId);
 
+    public static FilterDefinition<SourceBuildConfiguration> AtPlanningVersion(SourceBuildConfiguration current) =>
+        AtRevision(current) &
+        Builders<SourceBuildConfiguration>.Filter.Eq(item => item.ReferenceFence, current.ReferenceFence) &
+        Builders<SourceBuildConfiguration>.Filter.Eq(item => item.BuildGeneration, current.BuildGeneration);
+
     public static FilterDefinition<SourceBuildConfiguration> AtRevision(
         SourceBuildConfiguration configuration) =>
         Builders<SourceBuildConfiguration>.Filter.And(

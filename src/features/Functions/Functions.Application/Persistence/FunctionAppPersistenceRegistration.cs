@@ -44,6 +44,8 @@ public static class FunctionAppPersistenceRegistration
             implementation => implementation.InvokeAsync);
         services.AddCapability<MongoPersistFunctionAppRevision, PersistFunctionAppRevision>(
             implementation => implementation.InvokeAsync);
+        services.AddCapability<FunctionAppDeletionWorkflow, ApplyFunctionAppDeletion>(
+            implementation => implementation.ExecuteAsync);
         services.AddCapability<MongoBeginFunctionAppDeletion, BeginFunctionAppDeletion>(
             implementation => implementation.InvokeAsync);
         services.AddCapability<MongoFinalizeFunctionAppDeletion, FinalizeFunctionAppDeletion>(

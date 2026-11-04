@@ -15,6 +15,14 @@ internal static class SecretPersistenceRegistration
         services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>().GetCollection<SecretVersion>("SecretVersions"));
         services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>().GetCollection<SecretProjection>("SecretProjections"));
         services.AddScoped<SecretPlanningFence>();
+        services.AddScoped<ConsumerSecretDeletionGuard>();
+        services.AddScoped<EnsureConsumerSecretBindingRemoval>(provider =>
+            provider.GetRequiredService<ConsumerSecretDeletionGuard>().InvokeAsync);
+        services.AddScoped<ManagedSecretAdoption>();
+        services.AddScoped<ReadManagedSecretAdoption>(sp =>
+            sp.GetRequiredService<ManagedSecretAdoption>().ReadAsync);
+        services.AddScoped<FenceManagedSecretAdoption>(sp =>
+            sp.GetRequiredService<ManagedSecretAdoption>().FenceAsync);
         services.AddScoped<BootstrapSecrets>();
         services.AddScoped<ReadBootstrapSecret>(sp => sp.GetRequiredService<BootstrapSecrets>().ReadAsync);
         services.AddScoped<CreateBootstrapSecret>(sp => sp.GetRequiredService<BootstrapSecrets>().CreateAsync);
@@ -62,8 +70,16 @@ internal static class SecretPersistenceRegistration
         services.AddScoped<EnvelopeEncryptSecretVersion>();
         services.AddScoped<EncryptSecretVersion>(sp => sp.GetRequiredService<EnvelopeEncryptSecretVersion>().InvokeAsync);
         services.AddScoped<IIsolationScopeReferenceGuard, SecretScopeReferenceGuard>();
-        services.AddScoped<IDeclarativeResourceProvider, DeclarativeSecretProvider>();
-        services.AddScoped<IDeclarativeResourceProvider, DeclarativeSecretBindingProvider>();
+        services.AddScoped<IDeclarativeLifecycleDependencyProvider, SecretLifecycleDependencies>();
+        services.AddScoped<DeclarativeSecretProvider>();
+        services.AddScoped<IDeclarativeResourceProvider>(sp => sp.GetRequiredService<DeclarativeSecretProvider>());
+        services.AddScoped<IDeclarativeResourceLifecycleProvider>(sp =>
+            sp.GetRequiredService<DeclarativeSecretProvider>());
+        services.AddScoped<DeclarativeSecretBindingProvider>();
+        services.AddScoped<IDeclarativeResourceProvider>(sp =>
+            sp.GetRequiredService<DeclarativeSecretBindingProvider>());
+        services.AddScoped<IDeclarativeResourceLifecycleProvider>(sp =>
+            sp.GetRequiredService<DeclarativeSecretBindingProvider>());
         return services;
     }
 }

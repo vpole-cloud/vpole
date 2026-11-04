@@ -6,7 +6,20 @@ namespace Pole.Features.ResourceConnections.Contracts;
 public sealed record ResourceConnectionPlanningVersion(
     string ConnectionId,
     long Revision,
-    long ReferenceFence);
+    long ReferenceFence)
+{
+    public static string RevisionDocumentId(string connectionId) => $"ResourceConnection/{connectionId}";
+
+    public static string ReferenceFenceDocumentId(string connectionId) => $"ResourceConnectionFence/{connectionId}";
+
+    public static ResourceConnectionPlanningVersion? FromDocuments(
+        string connectionId,
+        IReadOnlyDictionary<string, long> documents) =>
+        documents.TryGetValue(RevisionDocumentId(connectionId), out var revision) && revision > 0 &&
+        documents.TryGetValue(ReferenceFenceDocumentId(connectionId), out var fence) && fence >= 0
+            ? new(connectionId, revision, fence)
+            : null;
+}
 
 public sealed record ConnectionDestinationPlanningVersion(
     ResourceTypeId ResourceType,

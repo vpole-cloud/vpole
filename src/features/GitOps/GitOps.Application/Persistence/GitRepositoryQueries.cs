@@ -13,13 +13,13 @@ public sealed class GitRepositoryQueries(
 {
     public async Task<RepositorySourceView?> SourceAsync(string tenant, string id, CancellationToken ct)
     {
-        var source = await sources.Find(GitRepositoryFilters.Source(tenant, id)).FirstOrDefaultAsync(ct);
+        var source = await sources.Find(GitRepositoryFilters.VisibleSource(tenant, id)).FirstOrDefaultAsync(ct);
         return source is null ? null : (await ViewsAsync(tenant, [source], ct)).Single();
     }
 
     public async Task<RepositorySourcePage> ListAsync(string tenant, int page, int pageSize, CancellationToken ct)
     {
-        var items = await sources.Find(GitRepositoryFilters.Tenant(tenant)).SortBy(item => item.Id)
+        var items = await sources.Find(GitRepositoryFilters.VisibleTenant(tenant)).SortBy(item => item.Id)
             .Skip((page - 1) * pageSize).Limit(pageSize + 1).ToListAsync(ct);
         return new(await ViewsAsync(tenant, items.Take(pageSize).ToArray(), ct),
             page,
@@ -79,7 +79,8 @@ public sealed class GitRepositoryQueries(
                     state.CurrentRun?.RunId,
                     state.LatestRunId),
                 new(count?.Owned ?? 0, count?.Pending ?? 0),
-                run is null ? null : ToView(run, operations.GetValueOrDefault(run.Id)?.Summary));
+                run is null ? null : ToView(run, operations.GetValueOrDefault(run.Id)?.Summary),
+                source.Activity, source.Prune);
         }).ToArray();
     }
 
@@ -90,7 +91,7 @@ public sealed class GitRepositoryQueries(
         int pageSize,
         CancellationToken ct)
     {
-        if (!await sources.Find(GitRepositoryFilters.Source(tenant, source)).AnyAsync(ct))
+        if (!await sources.Find(GitRepositoryFilters.VisibleSource(tenant, source)).AnyAsync(ct))
             return null;
 
         var items = await runs.Find(GitRepositoryFilters.SourceRuns(tenant, source))
@@ -104,6 +105,9 @@ public sealed class GitRepositoryQueries(
 
     public async Task<RepositoryRunView?> RunAsync(string tenant, string source, string runId, CancellationToken ct)
     {
+        if (!await sources.Find(GitRepositoryFilters.VisibleSource(tenant, source)).AnyAsync(ct))
+            return null;
+
         var run = await runs.Find(GitRepositoryFilters.Run(tenant, source, runId)).FirstOrDefaultAsync(ct);
         if (run is null)
             return null;
@@ -119,10 +123,13 @@ public sealed class GitRepositoryQueries(
         int pageSize,
         CancellationToken ct)
     {
+        if (!await sources.Find(GitRepositoryFilters.VisibleSource(tenant, source)).AnyAsync(ct))
+            return null;
+
         var run = await runs.Find(GitRepositoryFilters.Run(tenant, source, runId)).FirstOrDefaultAsync(ct);
         if (run is null)
             return null;
-        if (run.Input is not GitInputAccepted accepted)
+        if (run.AcceptedSnapshot is null && run.Input is not GitInputLifecycle)
             return new([], page, pageSize, false);
 
         var report = (await reports.ReadAsync(tenant, [run], ct))[run.Id];
@@ -142,26 +149,40 @@ public sealed class GitRepositoryQueries(
         Status(run),
         run.CreatedAtUtc,
         run.Diagnostics.Select(item => new RepositoryRunDiagnosticView(item.Code, item.File, item.Document, item.Field))
-            .ToArray(), operations);
+            .ToArray(), operations, run.Input switch
+            {
+                GitInputAwaitingApproval awaiting => new(awaiting.PreviewId,
+                    RepositoryLifecycleAuthorization.AwaitingConfirmation),
+                GitInputLifecycle lifecycle => new(lifecycle.Plan.PreviewId,
+                    lifecycle.Plan.Authorization is GitPreviewPolicyAuthorized
+                        ? RepositoryLifecycleAuthorization.PrunePolicy
+                        : RepositoryLifecycleAuthorization.UserConfirmed),
+                _ => null
+            });
 
-    private static RepositoryRunStatus Status(GitReconciliationRun run) => run.State switch
-    {
-        GitRunWaiting => RepositoryRunStatus.Queued,
-        GitRunDelayed => RepositoryRunStatus.WaitingRetry,
-        GitRunClaimed => run.Input switch
+    private static RepositoryRunStatus Status(GitReconciliationRun run) => run.Input is GitInputAwaitingApproval
+        ? RepositoryRunStatus.AwaitingConfirmation : run.State switch
         {
-            GitInputUnresolved => RepositoryRunStatus.Resolving,
-            GitInputPinned => RepositoryRunStatus.Fetching,
-            GitInputAccepted => RepositoryRunStatus.Applying
-        },
-        GitRunFinished finished => finished.Completion switch
-        {
-            GitRunCompletion.ConfigurationApplied => RepositoryRunStatus.ConfigurationApplied,
-            GitRunCompletion.AlreadyCurrent => RepositoryRunStatus.AlreadyCurrent,
-            GitRunCompletion.Blocked => RepositoryRunStatus.Blocked,
-            GitRunCompletion.Failed => RepositoryRunStatus.Failed,
-            GitRunCompletion.Superseded => RepositoryRunStatus.Superseded,
-            _ => throw new ArgumentOutOfRangeException(nameof(run))
-        }
-    };
+            GitRunWaiting => RepositoryRunStatus.Queued,
+            GitRunDelayed => RepositoryRunStatus.WaitingRetry,
+            GitRunWaitingCleanup => RepositoryRunStatus.PendingCleanup,
+            GitRunClaimed => run.Input switch
+            {
+                GitInputUnresolved => RepositoryRunStatus.Resolving,
+                GitInputPinned => RepositoryRunStatus.Fetching,
+                GitInputAccepted => RepositoryRunStatus.Applying,
+                GitInputLifecycle => RepositoryRunStatus.Applying,
+                GitInputAwaitingApproval => RepositoryRunStatus.AwaitingConfirmation
+            },
+            GitRunFinished finished => finished.Completion switch
+            {
+                GitRunCompletion.ConfigurationApplied => RepositoryRunStatus.ConfigurationApplied,
+                GitRunCompletion.AlreadyCurrent => RepositoryRunStatus.AlreadyCurrent,
+                GitRunCompletion.Blocked => RepositoryRunStatus.Blocked,
+                GitRunCompletion.Failed => RepositoryRunStatus.Failed,
+                GitRunCompletion.Superseded => RepositoryRunStatus.Superseded,
+                GitRunCompletion.LifecycleCompleted => RepositoryRunStatus.LifecycleCompleted,
+                _ => throw new ArgumentOutOfRangeException(nameof(run))
+            }
+        };
 }

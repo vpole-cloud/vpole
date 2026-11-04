@@ -12,6 +12,7 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Endpoints.Sources;
 using Pole.Features.GitOps.Application.Jobs;
+using Pole.Features.GitOps.Application.Endpoints.Sources.Previews;
 using Pole.Features.GitOps.Application.Persistence;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
@@ -28,7 +29,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed class RepositorySourceApiTests(MongoReplicaSetFixture fixture) : ApiIntegrationTestBase(fixture)
+public sealed partial class RepositorySourceApiTests(MongoReplicaSetFixture fixture) : ApiIntegrationTestBase(fixture)
 {
     private const string Root = "/api/v1/gitops/sources";
     private readonly TestRepositorySnapshots repository = new();
@@ -52,6 +53,93 @@ public sealed class RepositorySourceApiTests(MongoReplicaSetFixture fixture) : A
         await new ComputeProfileHistoryMigration().Up(Fixture.Database);
         await new WebServiceDeclaredPlacementSchemaMigration().Up(Fixture.Database);
         await NamedCatalogTestData.SeedAsync(Fixture);
+    }
+
+    [Fact]
+    public async Task Preview_and_confirmation_are_bounded_sanitized_and_idempotent()
+    {
+        var source = await Create();
+        using var created = await Client.PostAsJsonAsync($"{Root}/{source.Id.ToUpperInvariant()}/previews",
+            new { intent = "Detach", expectedRevision = source.Revision });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var preview = (await created.Content.ReadFromJsonAsync<LifecyclePreviewView>())!;
+        Assert.Null(preview.Commit);
+        Assert.Equal("Detach", preview.Intent);
+        Assert.Equal(0, preview.Actions.Total);
+        var path = $"{Root}/{source.Id}/previews/{preview.Id.ToUpperInvariant()}";
+        Assert.Equal(HttpStatusCode.OK, (await Client.GetAsync(path)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Client.GetAsync(path + "?pageSize=201")).StatusCode);
+        using var approved = await Client.PostAsJsonAsync(path + "/confirm",
+            new { expectedRevision = preview.Revision });
+        Assert.Equal(HttpStatusCode.Accepted, approved.StatusCode);
+        var run = (await approved.Content.ReadFromJsonAsync<ConfirmLifecyclePreviewResponse>())!;
+        using var repeated = await Client.PostAsJsonAsync(path + "/confirm",
+            new { expectedRevision = preview.Revision });
+        Assert.Equal(run.RunId, (await repeated.Content.ReadFromJsonAsync<ConfirmLifecyclePreviewResponse>())!.RunId);
+        var json = await (await Client.GetAsync(path)).Content.ReadAsStringAsync();
+        Assert.DoesNotContain("specJson", json);
+        Assert.DoesNotContain("snapshot", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("credentials", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("Detach")]
+    [InlineData("ResourceChanges")]
+    public async Task Preview_rejects_client_authored_actions_and_confirmation_overrides(string intent)
+    {
+        var source = await Create();
+        var path = $"{Root}/{source.Id}/previews";
+        using var forged = await Client.PostAsJsonAsync(path,
+            new { intent, expectedRevision = 1, actions = new[] { "delete-all" } });
+        Assert.Equal(HttpStatusCode.BadRequest, forged.StatusCode);
+        using var created = await Client.PostAsJsonAsync(path, new { intent = "Detach", expectedRevision = 1 });
+        var preview = (await created.Content.ReadFromJsonAsync<LifecyclePreviewView>())!;
+        using var overridden = await Client.PostAsJsonAsync(path + $"/{preview.Id}/confirm",
+            new { expectedRevision = preview.Revision, allowedResourceIds = new[] { "unreviewed" } });
+        Assert.Equal(HttpStatusCode.BadRequest, overridden.StatusCode);
+        using var scope = ApiServices.CreateScope();
+        var retained = await scope.ServiceProvider.GetRequiredService<GitLifecyclePreviews>()
+            .LoadAsync(new(TestData.TenantId, source.Id), preview.Id, default);
+        Assert.IsType<GitPreviewAwaitingConfirmation>(retained!.State);
+    }
+
+    [Theory]
+    [InlineData("{\"intent\":\"Adoption\",\"expectedRevision\":1,\"resources\":[null]}", HttpStatusCode.BadRequest)]
+    [InlineData("{\"intent\":\"Removal\",\"expectedRevision\":1,\"resources\":[null]}", HttpStatusCode.BadRequest)]
+    public async Task Preview_rejects_null_selectors(string json, HttpStatusCode status)
+    {
+        var source = await Create();
+        using var response = await Client.PostAsync($"{Root}/{source.Id}/previews",
+            new StringContent(json, Encoding.UTF8, "application/json"));
+        Assert.Equal(status, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Adoption_rejects_two_ids_for_the_same_desired_address()
+    {
+        var source = await Create();
+        using var response = await Client.PostAsJsonAsync($"{Root}/{source.Id}/previews", new
+        {
+            intent = "Adoption",
+            expectedRevision = 1,
+            resources = new[]
+            {
+                new { kind = "ResourceGroup", name = "group", resourceId = ObjectId.GenerateNewId().ToString() },
+                new { kind = "ResourceGroup", name = "group", resourceId = ObjectId.GenerateNewId().ToString() }
+            }
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Preview_intent_may_follow_ordinary_json_fields()
+    {
+        var source = await Create();
+        using var response = await Client.PostAsJsonAsync($"{Root}/{source.Id}/previews",
+            new { expectedRevision = 1, intent = "Detach" });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var preview = (await response.Content.ReadFromJsonAsync<LifecyclePreviewView>())!;
+        Assert.Equal("Detach", preview.Intent);
     }
 
     [Fact]
@@ -222,7 +310,7 @@ public sealed class RepositorySourceApiTests(MongoReplicaSetFixture fixture) : A
     }
 
     [Fact]
-    public async Task Polling_update_requires_revision_and_rejects_location_prune_or_forged_authority()
+    public async Task Policy_update_requires_revision_and_rejects_location_or_forged_authority()
     {
         var source = await Create();
         using var stale = await Client.PutAsJsonAsync($"{Root}/{source.Id}",
@@ -247,6 +335,67 @@ public sealed class RepositorySourceApiTests(MongoReplicaSetFixture fixture) : A
         Assert.Equal(600, view.PollIntervalSeconds);
     }
 
+    [Fact]
+    public async Task Pause_resume_and_prune_policy_are_server_owned_and_resume_reads_current_branch()
+    {
+        var files = new[] { new ManifestFile("group.yaml",
+            "apiVersion: pole.io/v1alpha1\nkind: ResourceGroup\nmetadata: {name: demo}\nspec: {}") };
+        var source = await Create(files: files);
+        await Run(source.Id);
+        using var pausedResponse = await Client.PostAsJsonAsync($"{Root}/{source.Id}/pause",
+            new PauseRepositorySourceBody(source.Revision));
+        Assert.Equal(HttpStatusCode.OK, pausedResponse.StatusCode);
+        var paused = (await pausedResponse.Content.ReadFromJsonAsync<RepositorySourceView>())!;
+        Assert.Equal(GitSourceActivity.Paused, paused.Activity);
+        using var sync = await Client.PostAsJsonAsync($"{Root}/{source.Id}/sync",
+            new SyncRepositorySourceBody(paused.Revision, Guid.NewGuid()));
+        await AssertProblem(sync, HttpStatusCode.Conflict, "gitops.source-inactive");
+        using var retry = await Client.PostAsJsonAsync($"{Root}/{source.Id}/retry",
+            new RetryRepositorySourceBody(paused.Revision, Guid.NewGuid(), paused.Synchronization.LatestRunId!));
+        await AssertProblem(retry, HttpStatusCode.Conflict, "gitops.source-inactive");
+        using var policy = await Client.PutAsJsonAsync($"{Root}/{source.Id}",
+            new UpdateRepositorySourceBody(paused.Revision, 600, GitPrunePolicy.Prune));
+        Assert.Equal(HttpStatusCode.OK, policy.StatusCode);
+        var changed = (await policy.Content.ReadFromJsonAsync<RepositorySourceView>())!;
+        Assert.Equal(GitPrunePolicy.Prune, changed.Prune);
+        Assert.Equal(changed.Synchronization.RequestedGeneration, changed.Synchronization.CompletedGeneration);
+        var commit = repository.Publish("repo", files.Select(file => file with
+        { Content = file.Content.Replace("spec: {}", "spec: {description: changed}") }).ToArray());
+        using var resumedResponse = await Client.PostAsJsonAsync($"{Root}/{source.Id}/resume",
+            new ResumeRepositorySourceBody(changed.Revision));
+        Assert.Equal(HttpStatusCode.OK, resumedResponse.StatusCode);
+        await Run(source.Id);
+        var applied = (await Read(source.Id))!;
+        Assert.Equal(GitSourceActivity.Active, applied.Activity);
+        Assert.Equal(commit, applied.Synchronization.FullyAppliedCommit);
+    }
+
+    [Fact]
+    public async Task Delete_source_requires_detach_and_deleted_creation_key_cannot_resurrect_source()
+    {
+        var key = Guid.NewGuid();
+        var source = await Create(key, files: []);
+        using var pending = await Client.DeleteAsync($"{Root}/{source.Id}?expectedRevision=1");
+        await AssertProblem(pending, HttpStatusCode.Conflict, "gitops.source-busy");
+        using var pause = await Client.PostAsJsonAsync($"{Root}/{source.Id}/pause", new PauseRepositorySourceBody(1));
+        var paused = (await pause.Content.ReadFromJsonAsync<RepositorySourceView>())!;
+        using var deleted = await Client.DeleteAsync($"{Root}/{source.Id}?expectedRevision={paused.Revision}");
+        Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+        using var read = await Client.GetAsync($"{Root}/{source.Id}");
+        await AssertProblem(read, HttpStatusCode.NotFound, "gitops.source-not-found");
+        using var replay = await Client.PostAsJsonAsync(Root + "/", Body(key));
+        await AssertProblem(replay, HttpStatusCode.Conflict, "gitops.source-deleted");
+        Assert.Empty((await Client.GetFromJsonAsync<RepositorySourcePage>(Root + "/"))!.Items);
+
+        var owned = await Create(files:
+        [
+            new("group.yaml", "apiVersion: pole.io/v1alpha1\nkind: ResourceGroup\nmetadata: {name: owned}\nspec: {}")
+        ]);
+        await Run(owned.Id);
+        using var ownedDeletion = await Client.DeleteAsync($"{Root}/{owned.Id}?expectedRevision=1");
+        await AssertProblem(ownedDeletion, HttpStatusCode.Conflict, "gitops.detach-required");
+    }
+
     [Theory]
     [InlineData("../secret")]
     [InlineData("/root")]
@@ -267,7 +416,7 @@ public sealed class RepositorySourceApiTests(MongoReplicaSetFixture fixture) : A
         var source = await Create();
         Assert.Equal(HttpStatusCode.NotFound,
             (await Client.PutAsJsonAsync($"{Root}/{source.Id}/snapshot", new { files = new[] { "raw" } })).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound,
+        Assert.Equal(HttpStatusCode.BadRequest,
             (await Client.PostAsJsonAsync($"{Root}/{source.Id}/resume", new { expectedFence = 0 })).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await Client.GetAsync(Root + "/?pageSize=101")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest,

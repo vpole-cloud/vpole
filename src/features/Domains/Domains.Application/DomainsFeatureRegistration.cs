@@ -17,8 +17,17 @@ public static class DomainsFeatureRegistration
     {
         services.AddSingleton(new RealtimeTopic("domains", RealtimeScope.Tenant));
         services.AddDomainPersistence();
-        services.AddScoped<IDeclarativeResourceProvider, DeclarativeDomainZoneProvider>();
-        services.AddScoped<IDeclarativeResourceProvider, DeclarativeHostnameBindingProvider>();
+        services.AddScoped<DeclarativeDomainZoneProvider>();
+        services.AddScoped<DeclarativeHostnameBindingProvider>();
+        services.AddScoped<IDeclarativeResourceProvider>(provider =>
+            provider.GetRequiredService<DeclarativeDomainZoneProvider>());
+        services.AddScoped<IDeclarativeResourceProvider>(provider =>
+            provider.GetRequiredService<DeclarativeHostnameBindingProvider>());
+        services.AddScoped<IDeclarativeResourceLifecycleProvider>(provider =>
+            provider.GetRequiredService<DeclarativeDomainZoneProvider>());
+        services.AddScoped<IDeclarativeResourceLifecycleProvider>(provider =>
+            provider.GetRequiredService<DeclarativeHostnameBindingProvider>());
+        services.AddScoped<IDeclarativeLifecycleDependencyProvider, DomainLifecycleDependencies>();
         services.AddHttpProblemMappings(DomainContractHttpMappings.All);
         services.AddHttpProblemMappings(DomainHttpMappings.All);
         return services;

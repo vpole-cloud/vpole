@@ -9,7 +9,7 @@ namespace Pole.Features.GitProviders.Tests;
 public sealed class SourceRepositoryDeclarationTests
 {
     private static DeclarativeSourceRepositoryProvider Provider() =>
-        new(null!, null!, null!, null!, null!, null!, null!, TimeProvider.System);
+        new(null!, null!, null!, null!, null!, null!, null!, TimeProvider.System, null!);
 
     [Fact]
     public void NormalizesRepositoryIdentityAndOnlyContributesPrepare()

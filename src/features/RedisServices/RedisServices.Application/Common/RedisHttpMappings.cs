@@ -59,6 +59,12 @@ public static class RedisHttpMappings
         "Redis service changed concurrently while deletion was being accepted",
         ("redisId", error.RedisId));
 
+    public static HttpProblem MapSecretBindingRemovalRequired(RedisSecretBindingRemovalRequired error) => Problem(
+        HttpStatusCode.Conflict,
+        "redis-services.secret-bindings-removal-required",
+        "Remove Git-owned Secret bindings before deleting the Redis service",
+        ("redisId", error.RedisId));
+
     public static HttpProblem MapGitOwned(RedisGitOwnedConfiguration error) => Problem(
         HttpStatusCode.Conflict,
         "redis-services.git-owned-configuration",

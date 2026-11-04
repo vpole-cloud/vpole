@@ -139,7 +139,7 @@ public sealed partial class DeclarativePipelineTests
         var view = await Services.GetRequiredService<GitRepositoryQueries>().RunAsync(TestData.TenantId, source,
             stableRun.Context!.RunId, default);
         Assert.Equal(RepositoryRunStatus.AlreadyCurrent, view!.Status);
-        Assert.Equal(new RepositoryOperationSummary(0, 0, 4, 0, 0), view.Operations);
+        Assert.Equal(new RepositoryOperationSummary(0, 0, 4, 0, 0, null), view.Operations);
         var detail = await ActivatorUtilities.CreateInstance<GetRedisServiceByIdHandler>(Services)
             .HandleAsync(new(resource.Id, resource.TenantId));
         Assert.NotNull(Assert.IsType<RedisDto>(detail.Value).GitOps);

@@ -62,6 +62,8 @@ public static class GitProviderApplicationRegistration
         services.TryAddScoped<MongoSourceRepositoryReferences>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IDeclarativeResourceProvider,
             DeclarativeSourceRepositoryProvider>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IDeclarativeResourceLifecycleProvider,
+            DeclarativeSourceRepositoryProvider>());
         services.TryAddScoped<FindNamedSourceRepository>(provider =>
             provider.GetRequiredService<MongoSourceRepositoryReferences>().FindNamedAsync);
         services.TryAddScoped<LoadSourceRepositoryReference>(provider =>

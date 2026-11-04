@@ -20,7 +20,7 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
     {
         using var evidence = new TestPhaseJournal(nameof(MixedRepositoryWaitsForSecretsRepairsDriftAndThenPerformsNoOp))
             .Activate();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(18));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(25));
         var ct = timeout.Token;
         fixture.EnableGitOpsNamespaceCleanup();
         await fixture.EnsureSourceBuildInfrastructureReadyAsync(ct);
@@ -138,6 +138,59 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
         var journal = (await fixture.Stub.GetFromJsonAsync<JsonElement[]>("/__e2e/requests", ct))!;
         Assert.DoesNotContain(journal, item => item.GetProperty("path").GetString()!
             .StartsWith("/repos/pole-e2e/gitops-mixed/contents/", StringComparison.Ordinal));
+
+        var native = await fixture.CaptureGitOpsCleanupAsync(ids, ct);
+        await LifecycleActivityAsync(source, "pause", unchanged, ct);
+        await JsonAsync(HttpMethod.Put, $"{Root}/{source}", new
+        {
+            expectedRevision = await RevisionOfAsync(source, ct),
+            pollIntervalSeconds = 60,
+            prune = "Prune"
+        }, ct);
+        var emptyCommit = new string('e', 40);
+        using (var published = await fixture.Stub.PostAsJsonAsync("/__e2e/gitops-mixed", new
+        {
+            commit = emptyCommit,
+            files = new[] { new { path = "manifests/.keep", content = "" } }
+        }, ct))
+            Assert.Equal(HttpStatusCode.NoContent, published.StatusCode);
+        var paused = await JsonAsync(HttpMethod.Get, $"{Root}/{source}", null, ct);
+        await LifecycleActivityAsync(source, "resume", paused, ct);
+        var requiresApproval = await WaitMixedAsync(source, item =>
+        {
+            if (item.GetProperty("status").GetString() == "Blocked")
+            {
+                var codes = item.GetProperty("latestRun").GetProperty("diagnostics").EnumerateArray()
+                    .Select(diagnostic => diagnostic.GetProperty("code").GetString());
+                Assert.Fail("Protected prune preview stopped: " + string.Join(", ", codes));
+            }
+            return item.GetProperty("status").GetString() == "AwaitingConfirmation";
+        }, ct);
+        Assert.Equal(15, requiresApproval.GetProperty("inventory").GetProperty("owned").GetInt64());
+        await LifecycleActivityAsync(source, "pause", requiresApproval, ct);
+        var deletion = await LifecyclePreviewAsync(source, new
+        {
+            intent = "ResourceChanges",
+            expectedRevision = await RevisionOfAsync(source, ct)
+        }, ct);
+        Assert.Equal(15, deletion.GetProperty("actions").GetProperty("total").GetInt32());
+        Assert.All(deletion.GetProperty("actions").GetProperty("items").EnumerateArray(), action =>
+            Assert.Equal("Remove", action.GetProperty("action").GetString()));
+        Assert.False(deletion.GetRawText().Contains(value, StringComparison.Ordinal), "Preview leaked Secret content.");
+        await ConfirmLifecycleAsync(source, deletion, ct);
+        var cleaned = await WaitAsync(source, item =>
+            item.GetProperty("status").GetString() is "Blocked" or "Failed" ||
+            item.GetProperty("status").GetString() == "ConfigurationApplied" &&
+            item.GetProperty("inventory").GetProperty("owned").GetInt64() == 0, ct);
+        if (cleaned.GetProperty("status").GetString() is "Blocked" or "Failed")
+        {
+            var codes = cleaned.GetProperty("latestRun").GetProperty("diagnostics").EnumerateArray()
+                .Select(diagnostic => diagnostic.GetProperty("code").GetString());
+            var metadata = await fixture.WriteGitOpsLifecycleFailureMetadataAsync(source, LatestRunId(cleaned), ct);
+            Assert.Fail("Reviewed cleanup stopped: " + string.Join(", ", codes) + "; metadata=" + metadata);
+        }
+        Assert.Equal(emptyCommit, cleaned.GetProperty("synchronization").GetProperty("fullyAppliedCommit").GetString());
+        await fixture.AssertGitOpsCleanupCompletedAsync(native, ids, ct);
     }
 
     private async Task<JsonElement> MixedBuildsAsync(string webServiceId, CancellationToken ct) =>
@@ -173,7 +226,7 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
     private Task<JsonElement> OperationsAsync(string source, string run, CancellationToken ct) =>
         JsonAsync(HttpMethod.Get, $"{Root}/{source}/runs/{run}/operations?pageSize=50", null, ct);
 
-    private async Task<string> CreateMixedCatalogAsync(CancellationToken ct)
+    private async Task<string> CreateMixedCatalogAsync(CancellationToken ct, string profileName = MixedProfile)
     {
         var targets = await AdminJsonAsync(HttpMethod.Get, "/api/v1/platform/deployment-targets", null, ct);
         var target = targets.EnumerateArray().Single(item => item.GetProperty("isDefault").GetBoolean());
@@ -196,7 +249,7 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
         }, ct);
         await AdminJsonAsync(HttpMethod.Post, "/api/v1/platform/compute-profiles/", new
         {
-            technicalName = MixedProfile,
+            technicalName = profileName,
             displayName = "Mixed GitOps",
             description = "Stage six E2E",
             resources = new
@@ -216,7 +269,7 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
         }, ct);
         var storage = await AdminJsonAsync(HttpMethod.Post, "/api/v1/platform/storage/profiles", new
         {
-            technicalName = MixedProfile,
+            technicalName = profileName,
             displayName = "Mixed GitOps",
             description = "Stage six E2E",
             mediaType = "Network",

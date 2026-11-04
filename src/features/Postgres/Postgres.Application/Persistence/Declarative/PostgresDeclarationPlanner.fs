@@ -26,7 +26,8 @@ type PostgresDeclarationPlanner(
     fenceCompute : FenceComputeProfilePlanningSnapshot,
     fenceStorage : FenceStorageProfilePlanningSnapshot,
     fencePlacements : FenceResourceDeploymentPlanningSnapshot,
-    fenceCredentials : FenceConsumerSecretPlanningSnapshot) =
+    fenceCredentials : FenceConsumerSecretPlanningSnapshot,
+    fenceAdoption : FenceManagedSecretAdoption) =
 
     let currentVersion (current : PostgresCluster) (placement : ResourceDeploymentPlanningItem) =
         DeclarationVersionToken(
@@ -181,11 +182,18 @@ type PostgresDeclarationPlanner(
                             let! result = fenceCredentials.Invoke(value, session, ct)
                             return result.Value :? ConsumerSecretPlanningFenced
                         }
+                    let! adoptedCredential =
+                        match data.Adoption with
+                        | None -> Task.FromResult true
+                        | Some value -> task {
+                            let! result = fenceAdoption.Invoke(value, session, ct)
+                            return result.Value :? ManagedSecretAdoptionFenced
+                        }
                     if (scope.Value :? IsolationScopePlanningFenced)
                        && (target.Value :? DeploymentTargetPlanningFenced)
                        && (compute.Value :? ComputeProfilePlanningFenced)
                        && (storage.Value :? StorageProfilePlanningFenced)
-                       && placements && credentials then
+                       && placements && credentials && adoptedCredential then
                         return FenceDeclarationOutcome(DeclarationFenced())
                     else
                         return FenceDeclarationOutcome(DeclarationPreconditionsChanged())

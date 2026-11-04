@@ -40,6 +40,7 @@ public sealed class SnapshotSourceStatusJsonTests
             state,
             DateTime.UtcNow,
             [],
+            null,
             null);
         var json = JsonSerializer.Serialize(view, JsonSerializerOptions.Web);
         using var document = JsonDocument.Parse(json);

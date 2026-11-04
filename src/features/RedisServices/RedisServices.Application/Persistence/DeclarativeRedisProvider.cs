@@ -8,10 +8,13 @@ using Pole.Features.GitOps.Primitives;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Persistence.Mutations;
+using Pole.Features.RedisServices.Application.Persistence.Lifecycle;
+using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.StorageProfiles.Contracts;
+using Pole.Workloads;
 
 namespace Pole.Features.RedisServices.Application.Persistence;
 
@@ -76,10 +79,20 @@ internal sealed partial class DeclarativeRedisProvider(
     CreateResourceDeployment createPlacement,
     RequestResourceDeploymentSetApply applyPlacements,
     PersistCreatedRedis persistCreated,
-    PersistUpdatedRedis persistUpdated) : ITransactionalDeclarativeResourceProvider, IDeclarativeReferencePreparation
+    PersistUpdatedRedis persistUpdated,
+    BeginRedisDeletion beginDeletion,
+    RequestResourceDeploymentDeletion deletePlacement,
+    IQuotaUsageRelease releaseQuota,
+    IGitLifecyclePlanGuard lifecycleGuard,
+    LoadResourceConnectionCascadePlanning loadCascade,
+    TimeProvider clock) : ITransactionalDeclarativeResourceProvider, IDeclarativeReferencePreparation,
+    IDeclarativeResourceLifecycleProvider, IDeclarativeLifecycleDependencyProvider,
+    IDeclarativeRegisteredResourceProvider, IDeclarativeAdoptionPreviewProvider,
+    IDeclarativePreviewReferenceProvider, IDeclarativeLifecycleWarningProvider
 {
     public const string ResourceKind = "RedisService";
     public string Kind => ResourceKind;
+    public ResourceTypeId ResourceType => RedisResourceDeployment.ResourceType;
     public int MaximumNameLength => 30;
 
     public string DescribeFailure(IDeclarationFailure failure) => failure switch

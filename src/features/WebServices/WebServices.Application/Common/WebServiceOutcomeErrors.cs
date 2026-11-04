@@ -64,8 +64,13 @@ public union DeleteWebServiceStateError(
     WebServiceNotFound,
     WebServiceHasNoActiveDeployments);
 
+public sealed record WebServiceHostnameAttachmentRemovalRequired(
+    string WebServiceId,
+    string BindingId);
+
 public union DeleteWebServiceError(
     DeleteWebServiceStateError,
+    WebServiceHostnameAttachmentRemovalRequired,
     SourceBuildWebServiceHasActiveJobs,
     ResourceDeploymentMutationError,
     WebServiceUpdateConflict,

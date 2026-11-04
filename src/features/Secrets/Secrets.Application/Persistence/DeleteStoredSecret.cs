@@ -1,4 +1,5 @@
 using Pole.Features.GitOps.Contracts;
+using Pole.Features.GitOps.Primitives;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ResourceGroups.Contracts;
@@ -20,6 +21,12 @@ public union DeleteStoredSecretResult(
     SecretReferenceRejected,
     SecretGitOwned);
 
+public sealed record DeleteStoredSecretMutation(
+    string TenantId,
+    string SecretId,
+    DeclarationVersionToken? Expected,
+    GitLifecycleAuthority? Authority);
+
 internal sealed class MongoDeleteStoredSecret(
     IMongoCollection<Secret> secrets,
     IMongoCollection<SecretVersion> versions,
@@ -34,44 +41,46 @@ internal sealed class MongoDeleteStoredSecret(
         CancellationToken ct) =>
         transactions.InvokeOutcomeAsync<DeleteStoredSecretResult>(async (tx, token) =>
         {
-            var current = await secrets
-                .Find(tx.Session, SecretFilters.Identity(tenantId, id))
-                .FirstOrDefaultAsync(token);
-            if (current is null)
-                return tx.Abort(new SecretMissing());
-            if (!await git.AuthorizeAsync(
-                new AuthorizeGitResourceMutationRequest(
-                    TenantId: tenantId,
-                    Kind: "Secret",
-                    ResourceId: id),
-                session: tx.Session,
-                ct: token))
-                return tx.Abort(new SecretGitOwned());
-            if (current.Bindings.Length != 0)
-                return tx.Abort(new SecretBindingsRemain());
-
-            var unregistered = await registrar.UnregisterAsync(
-                new UnregisterResourceRequest(
-                    TenantId: current.TenantId,
-                    ResourceGroupId: current.ResourceGroupId,
-                    ResourceTypeId: SecretResource.Type,
-                    ResourceId: current.Id),
-                session: tx.Session,
-                cancellationToken: token);
-            if (unregistered is ResourceRegistrationMutationError)
-                return tx.Abort(new SecretReferenceRejected());
-            await secrets.DeleteOneAsync(
-                tx.Session,
-                SecretFilters.Identity(tenantId, id),
-                cancellationToken: token);
-            await versions.DeleteManyAsync(
-                tx.Session,
-                SecretFilters.Versions(tenantId, id),
-                cancellationToken: token);
-            await publish(tx.Session, current with
-            {
-                Revision = current.Revision + 1
-            }, new SecretDeletedChange(), token);
-            return tx.Commit(Unit.Value);
+            var outcome = await ExecuteAsync(new(tenantId, id, null, null), tx.Session, token);
+            return outcome is Unit ? tx.Commit(outcome) : tx.Abort(outcome);
         }, ct);
+
+    public async Task<DeleteStoredSecretResult> ExecuteAsync(
+        DeleteStoredSecretMutation request,
+        IClientSessionHandle session,
+        CancellationToken ct)
+    {
+        if (!session.IsInTransaction)
+            throw new InvalidOperationException("Secret deletion requires a transaction.");
+
+        var current = await secrets.Find(session, SecretFilters.Identity(request.TenantId, request.SecretId))
+            .FirstOrDefaultAsync(ct);
+        if (current is null)
+            return new SecretMissing();
+        if (request.Expected is { } expected && !SecretPlanningFence.Matches(current, expected))
+            return new SecretReferenceRejected();
+        if (!await git.AuthorizeAsync(new(request.TenantId, "Secret", request.SecretId,
+                Lifecycle: request.Authority,
+                LifecycleEffect: request.Authority is null ? null : GitLifecycleMutationEffect.Remove), session, ct))
+            return new SecretGitOwned();
+        if (current.Bindings.Length != 0)
+            return new SecretBindingsRemain();
+        if (current.Management is ProviderManagedSecret)
+            return new SecretReferenceRejected();
+
+        var unregistered = await registrar.UnregisterAsync(new(current.TenantId, current.ResourceGroupId,
+            SecretResource.Type, current.Id), session, ct);
+        if (unregistered is ResourceRegistrationMutationError)
+            return new SecretReferenceRejected();
+
+        var deleted = await secrets.DeleteOneAsync(session, SecretFilters.AtPlanningVersion(current),
+            cancellationToken: ct);
+        if (deleted.DeletedCount != 1)
+            return new SecretReferenceRejected();
+        await versions.DeleteManyAsync(session, SecretFilters.Versions(current.TenantId, current.Id),
+            cancellationToken: ct);
+        await publish(session, current with { Revision = checked(current.Revision + 1) },
+            new SecretDeletedChange(), ct);
+        return Unit.Value;
+    }
 }

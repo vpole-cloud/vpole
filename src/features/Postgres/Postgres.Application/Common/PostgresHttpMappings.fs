@@ -111,6 +111,9 @@ module PostgresHttpMappings =
 
     let private mapDeletionConflict (error : PostgresClusterDeletionConflict) =
         match error.Reason with
+        | PostgresMutationConflictReason.SecretBindingsRequireRemoval ->
+            problem HttpStatusCode.Conflict "postgres.secret-bindings-removal-required"
+                "Remove Git-owned Secret bindings before deleting the PostgreSQL cluster" error.ClusterId
         | PostgresMutationConflictReason.GitOwnedConfiguration ->
             problem HttpStatusCode.Conflict "postgres.git-owned-configuration"
                 "Git owns this PostgreSQL configuration" error.ClusterId

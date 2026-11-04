@@ -22,7 +22,7 @@ internal sealed class WebServiceHostnameAttachmentCapability(
     AdvanceResourceDeploymentRevision advanceRevision,
     PersistWebServiceHostnameAttachment persist,
     PersistCurrentWebServiceRelease persistRelease,
-    TimeProvider clock) : IHostnameBindingWorkloadCapability
+    TimeProvider clock) : IHostnameBindingRemovalCapability
 {
     public string Kind => "WebService";
 
@@ -67,6 +67,26 @@ internal sealed class WebServiceHostnameAttachmentCapability(
                 ? HostnameAttachmentAvailability.AwaitingArtifact : HostnameAttachmentAvailability.Active);
     }
 
+    public async Task<ReadHostnameAttachmentRemovalOutcome> ReadRemovalAsync(
+        ReadHostnameAttachmentRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var current = await services.Find(session, WebServiceFilters.ById(request.TenantId, request.ResourceId))
+            .FirstOrDefaultAsync(cancellationToken);
+        if (current is null)
+            return new HostnameAttachmentOwnerGone();
+        if (current.Lifecycle is DeletingWebServiceLifecycle)
+            return new HostnameAttachmentOwnerDeleting();
+
+        return await ReadAsync(request, session, cancellationToken) switch
+        {
+            HostnameAttachmentSnapshot snapshot => snapshot,
+            HostnameAttachmentUnavailable unavailable => unavailable,
+            HostnameAttachmentPlacementUnavailable unavailable => unavailable
+        };
+    }
+
     public async Task<FenceHostnameAttachmentOutcome> FenceAsync(
         HostnameAttachmentSnapshot snapshot,
         IClientSessionHandle session,
@@ -108,8 +128,22 @@ internal sealed class WebServiceHostnameAttachmentCapability(
         return new HostnameAttachmentFenced();
     }
 
-    public async Task<ApplyHostnameAttachmentOutcome> ApplyAsync(
+    public Task<ApplyHostnameAttachmentOutcome> ApplyAsync(
         ApplyHostnameAttachmentRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken) =>
+        ApplyAuthoritativeAliasesAsync(new(request.Snapshot, request.BindingId, request.Provenance,
+            HostnameAttachmentChange.Attach), session, cancellationToken);
+
+    public Task<ApplyHostnameAttachmentOutcome> RemoveAsync(
+        RemoveHostnameAttachmentRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken) =>
+        ApplyAuthoritativeAliasesAsync(new(request.Snapshot, request.BindingId, request.Provenance,
+            HostnameAttachmentChange.Remove), session, cancellationToken);
+
+    private async Task<ApplyHostnameAttachmentOutcome> ApplyAuthoritativeAliasesAsync(
+        ChangeHostnameAttachment request,
         IClientSessionHandle session,
         CancellationToken cancellationToken)
     {
@@ -128,8 +162,11 @@ internal sealed class WebServiceHostnameAttachmentCapability(
 
         var bindings = await loadBindings(new(expected.TenantId, ResourceType, expected.ResourceId,
             expected.DeploymentId), session, cancellationToken);
-        if (!bindings.Any(item => item.Id == request.BindingId && item.Hostname == expected.Hostname &&
-            item.Kind == HostnameBindingKinds.Custom && item.DeploymentTargetId == expected.DeploymentTargetId))
+        var bindingPresent = bindings.Any(item => item.Id == request.BindingId &&
+            item.Hostname == expected.Hostname && item.Kind == HostnameBindingKinds.Custom &&
+            item.DeploymentTargetId == expected.DeploymentTargetId);
+        if (request.Change == HostnameAttachmentChange.Attach ? !bindingPresent :
+            bindings.Any(item => item.Id == request.BindingId))
             return new HostnameAttachmentBindingRejected();
 
         var hostnames = bindings.Select(item => item.Hostname).Distinct().Order(StringComparer.Ordinal).ToArray();
@@ -163,7 +200,9 @@ internal sealed class WebServiceHostnameAttachmentCapability(
 
         var result = await persist(new(service, next,
             next.ToUpdatedEvent(WebServiceDeploymentWorkflow.ToEventDeployments(changed.Placements)),
-            request.BindingId),
+            request.Change == HostnameAttachmentChange.Attach
+                ? new AttachedWebServiceHostnameBinding(request.BindingId)
+                : new RemovedWebServiceHostnameBinding(request.BindingId, expected)),
             session, cancellationToken);
         if (result is not WebServiceUpdateAccepted)
             return new HostnameAttachmentPreconditionsChanged();
@@ -182,4 +221,12 @@ internal sealed class WebServiceHostnameAttachmentCapability(
 
         return new HostnameAttachmentApplied(true);
     }
+    private enum HostnameAttachmentChange { Attach, Remove }
+
+    private sealed record ChangeHostnameAttachment(
+        HostnameAttachmentSnapshot Snapshot,
+        string BindingId,
+        HostnameAttachmentProvenance Provenance,
+        HostnameAttachmentChange Change);
+
 }

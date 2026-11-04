@@ -48,7 +48,7 @@ public sealed class GitRunStore(
             {
                 var source = await sources.Find(tx.Session,
                     GitRepositoryFilters.Source(sourceId.TenantId, sourceId.SourceId)).FirstOrDefaultAsync(token);
-                if (source is null || source.Activity != GitSourceActivity.Active)
+                if (source is null || source.Activity is GitSourceActivity.Detached or GitSourceActivity.Deleted)
                     return tx.Abort(new GitNoWorkAvailable());
 
                 var state = await states.Find(tx.Session,
@@ -60,6 +60,9 @@ public sealed class GitRunStore(
                 {
                     run = await runs.Find(tx.Session,
                         GitRepositoryFilters.Run(source.TenantId, source.Id, active.RunId)).SingleAsync(token);
+                    if (source.Activity != GitSourceActivity.Active && run.Input is not GitInputLifecycle)
+                        return tx.Abort(new GitNoWorkAvailable());
+
                     var attempt = AvailableAttempt(run.State, now);
                     if (attempt is null || run.Stamp.ConfigurationRevision != source.Revision)
                         return tx.Abort(new GitNoWorkAvailable());
@@ -86,7 +89,8 @@ public sealed class GitRunStore(
                 }
                 else
                 {
-                    if (state.RequestedGeneration <= state.CompletedGeneration)
+                    if (source.Activity != GitSourceActivity.Active ||
+                        state.RequestedGeneration <= state.CompletedGeneration)
                         return tx.Abort(new GitNoWorkAvailable());
 
                     var latest = state.LatestRunId is { } latestId
@@ -160,6 +164,10 @@ public sealed class GitRunStore(
             },
             ct);
 
+    public Task<bool> WaitCleanupAsync(GitRunHandle handle, CancellationToken ct) => TransitionAsync(handle,
+        (run, state, now) => new(run.WaitCleanup(handle.Identity, now,
+            now.AddSeconds(options.Value.HeartbeatSeconds)), state), ct);
+
     public Task<bool> CompleteAsync(
         GitRunHandle handle,
         GitRunCompletion completion,
@@ -229,7 +237,20 @@ public sealed class GitRunStore(
         GitTransactionGuard.Require(session);
         var source = await sources.Find(session, GitRepositoryFilters.SourceRevision(handle.Stamp))
             .FirstOrDefaultAsync(ct);
-        if (source is null || source.Activity != GitSourceActivity.Active)
+        if (source is null || source.Activity is GitSourceActivity.Detached or GitSourceActivity.Deleted)
+            return null;
+
+        if (source.Activity != GitSourceActivity.Active &&
+            (await runs.Find(session, GitRepositoryFilters.Run(handle.Stamp.Source.TenantId,
+                handle.Stamp.Source.SourceId, handle.Stamp.RunId)).FirstOrDefaultAsync(
+                    ct))?.Input is not GitInputLifecycle)
+            return null;
+
+        var current = await runs.Find(session, GitRepositoryFilters.Run(handle.Stamp.Source.TenantId,
+            handle.Stamp.Source.SourceId, handle.Stamp.RunId)).FirstOrDefaultAsync(ct);
+        if (current?.Input is GitInputLifecycle { Plan.Authorization: GitPreviewPolicyAuthorized policy } &&
+            (source.Prune != GitPrunePolicy.Prune || policy.ConfigurationRevision != source.Revision ||
+             policy.RunId != current.Id))
             return null;
 
         var stateWrite = await states.UpdateOneAsync(session,
@@ -282,7 +303,8 @@ public sealed class GitRunStore(
 
             var decisions = await plans.Find(session, GitOperationPlanFilters.Run(handle.Stamp.Source.TenantId,
                 handle.Stamp.Source.SourceId, handle.Stamp.RunId)).ToListAsync(ct);
-            var onlyNoOps = decisions.All(item => item.Decision.Action == GitPlannedAction.NoOp);
+            var onlyNoOps = transition.Run.Input is not GitInputLifecycle &&
+                decisions.All(item => item.Decision.Action == GitPlannedAction.NoOp);
             if (finished.Completion == GitRunCompletion.AlreadyCurrent && !onlyNoOps)
                 return false;
             if (onlyNoOps && decisions.Count > 0)
@@ -309,25 +331,44 @@ public sealed class GitRunStore(
         return true;
     }
 
+    internal async Task<bool> RequiresFreshHumanApprovalAsync(GitReconciliationRun current,
+        IClientSessionHandle session, CancellationToken ct)
+    {
+        var previous = await runs.Find(session, GitRepositoryFilters.PriorHumanLifecycle(current.Stamp))
+            .SortByDescending(item => item.Stamp.Generation).FirstOrDefaultAsync(ct);
+        if (previous is not { State: GitRunFinished finished })
+            return false;
+
+        if (finished.Completion is GitRunCompletion.ConfigurationApplied or GitRunCompletion.AlreadyCurrent or
+            GitRunCompletion.LifecycleCompleted)
+            return false;
+
+        return !await HasCompleteReceiptsAsync(previous, session, ct);
+    }
+
     private async Task<bool> HasCompleteReceiptsAsync(
         GitReconciliationRun run,
         IClientSessionHandle session,
         CancellationToken ct)
     {
-        if (run.Input is not GitInputAccepted accepted)
-            return false;
-
-        var stored = await receipts.Find(session,
+        var found = await receipts.Find(session,
             GitRepositoryFilters.Receipts(run.Stamp.Source.TenantId,
                 run.Stamp.Source.SourceId,
                 run.Id)).ToListAsync(ct);
+        var stored = found.Where(item => item.Fence == run.Stamp.Fence).ToArray();
+        if (run.Input is GitInputLifecycle lifecycle &&
+            !GitLifecycleReceiptCompletion.HasCompleteActions(lifecycle.Plan, run.Stamp.Fence, stored))
+            return false;
+        if (run.AcceptedSnapshot is not { } accepted)
+            return run.Input is GitInputLifecycle { Plan.Source.Input: GitPreviewInventoryInput };
+
         var byOperation = stored.ToDictionary(item => (item.Kind, item.Name, item.Phase));
         var planned = await plans.Find(session, GitOperationPlanFilters.Run(run.Stamp.Source.TenantId,
             run.Stamp.Source.SourceId, run.Id)).ToListAsync(ct);
         var byPlan = planned.ToDictionary(item =>
             (item.Stamp.Resource.Kind, item.Stamp.Resource.Name, item.Stamp.Phase.ToString()));
-        var resources = accepted.Snapshot.Resources.ToDictionary(item => (item.Kind, item.Name));
-        return accepted.Snapshot.Operations.All(operation =>
+        var resources = accepted.Resources.ToDictionary(item => (item.Kind, item.Name));
+        return accepted.Operations.All(operation =>
             byOperation.TryGetValue((operation.Kind, operation.Name, operation.Phase.ToString()), out var receipt) &&
             receipt.Blocker is null && receipt.Fence == run.Stamp.Fence &&
             receipt.ResourceId == operation.ResourceId &&
@@ -342,6 +383,7 @@ public sealed class GitRunStore(
     {
         GitRunWaiting waiting => checked(waiting.LastAttempt + 1),
         GitRunDelayed delayed when delayed.NextAttemptAtUtc <= now => checked(delayed.LastAttempt + 1),
+        GitRunWaitingCleanup waiting when waiting.NextAttemptAtUtc <= now => checked(waiting.LastAttempt + 1),
         GitRunClaimed claimed when claimed.Lease.ExpiresAtUtc <= now => checked(claimed.Lease.Attempt + 1),
         _ => null
     };

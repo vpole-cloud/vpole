@@ -20,6 +20,7 @@ using Pole.Features.Secrets.Contracts;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Persistence.Mutations;
+using Pole.Features.WebServices.Application.Persistence.Lifecycle;
 using Pole.Features.WebServices.Application.Persistence.Releases;
 using Pole.Features.WebServices.Domain;
 
@@ -98,6 +99,10 @@ internal sealed partial class DeclarativeWebServiceProvider(
     ResolveNamedDeploymentTarget resolveTargetName,
     ResolveNamedComputeProfile resolveProfileName,
     IQuotaAdmissionExecutor quotas,
+    IQuotaUsageRelease releaseQuota,
+    IGitLifecyclePlanGuard lifecycleGuard,
+    LoadResourceConnectionCascadePlanning loadCascadePlanning,
+    ApplyWebServiceDeletion deleteWorkflow,
     IResourceRegistrar registrar,
     CreateResourceDeploymentSet createDeployments,
     RequestResourceDeploymentSetApply applyDeployments,
@@ -108,13 +113,18 @@ internal sealed partial class DeclarativeWebServiceProvider(
     GetOrCreateGeneratedDomainZones getOrCreateGeneratedDomainZones,
     LoadHostnameBindingsForDeploymentInTransaction loadHostnameBindingsForDeployment,
     CreateGeneratedHostnameBindings createGeneratedHostnameBindings,
-    TimeProvider clock) : ITransactionalDeclarativeResourceProvider, IDeclarativeReferencePreparation
+    TimeProvider clock) : ITransactionalDeclarativeResourceProvider, IDeclarativeReferencePreparation,
+    IDeclarativeResourceLifecycleProvider, IDeclarativeRegisteredResourceProvider,
+    IDeclarativeLifecycleDependencyProvider, IDeclarativeAdoptionPreviewProvider,
+    IDeclarativeResourceAdoptionProvider, IDeclarativePreviewReferenceProvider
 {
     public string Kind => "WebService";
 
     public string DescribeFailure(IDeclarationFailure failure) => failure switch
     {
         WebServiceConnectionReferenceRejected => nameof(WebServiceConnectionReferenceRejected),
+        WebServiceLifecycleBuildInProgress => nameof(WebServiceLifecycleBuildInProgress),
+        WebServiceLifecycleDeploymentRejected => nameof(WebServiceLifecycleDeploymentRejected),
         WebServiceSecretReferenceRejected rejected => ConsumerSecretReferenceErrorCodes.Code(rejected.Error.Reason),
         WebServiceDependencyRejected rejected => WebServiceDependencyDiagnostics.Code(rejected.Error),
         WebServiceDeclarationRejected rejected => rejected.Reason switch

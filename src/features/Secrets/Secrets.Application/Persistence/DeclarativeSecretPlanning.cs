@@ -20,6 +20,10 @@ internal sealed partial class DeclarativeSecretProvider
             .FirstOrDefaultAsync(cancellationToken);
         if (current is null)
             return new CurrentDeclarationMissing();
+
+        if (current.Management is ProviderManagedSecret)
+            return new DeclarationReadBlocked(
+                new SecretDeclarationRejected(SecretDeclarationError.ProviderManagedSecret));
         if (request.Operation is { } accepted && current.Id == accepted.ResourceId &&
             current.Name != request.Address.Name)
             return new DeclarationReadBlocked(new DeclarationIdentityChanged());

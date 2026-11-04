@@ -9,7 +9,7 @@ namespace Pole.Features.SourceBuilds.Tests;
 public sealed class DeclarativeBuildConfigurationTests
 {
     private readonly DeclarativeSourceBuildConfigurationProvider provider =
-        new(null!, null!, null!, null!, null!, null!, null!, null!, TimeProvider.System);
+        new(null!, null!, null!, null!, null!, null!, null!, null!, TimeProvider.System, null!);
 
     [Fact]
     public void ExplicitRecipeNeedsNeitherAnalysisCandidateNorManifestPath()

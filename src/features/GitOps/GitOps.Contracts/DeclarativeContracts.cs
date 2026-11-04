@@ -203,7 +203,9 @@ public sealed record AuthorizeGitResourceMutationRequest(
     string TenantId,
     string Kind,
     string ResourceId,
-    GitMutationContext? Context = null);
+    GitMutationContext? Context = null,
+    GitLifecycleAuthority? Lifecycle = null,
+    GitLifecycleMutationEffect? LifecycleEffect = null);
 
 public sealed record ResolveGitResourceRequest(
     string TenantId,

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.ResourceGroups.Application.Persistence.ResourceRegistrations;
 using Pole.Features.ResourceGroups.Contracts;
@@ -128,7 +129,7 @@ public sealed class ResourceRegistrationOutboxTests(MongoReplicaSetFixture fixtu
             {
                 await realStore(session, writes, ct);
                 throw new InvalidOperationException("outbox unavailable");
-            });
+            }, Services.GetRequiredService<IGitLifecycleCleanupProofRecorder>());
         using (var session = await DbContext.Client.StartSessionAsync())
         {
             session.StartTransaction();

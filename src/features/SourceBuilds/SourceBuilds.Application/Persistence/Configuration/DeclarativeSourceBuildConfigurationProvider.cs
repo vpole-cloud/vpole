@@ -26,7 +26,10 @@ internal sealed partial class DeclarativeSourceBuildConfigurationProvider(
     AdmitSourceBuildWebService admitTarget,
     MongoCreateSourceBuildConfiguration create,
     MongoUpdateSourceBuildConfiguration update,
-    TimeProvider timeProvider) : ITransactionalDeclarativeResourceProvider
+    TimeProvider timeProvider,
+    MongoDeleteSourceBuildConfiguration deletion) : ITransactionalDeclarativeResourceProvider,
+        IDeclarativeResourceLifecycleProvider, IDeclarativeLifecycleDependencyProvider,
+        IDeclarativeAdoptionPreviewProvider
 {
     public string Kind => "SourceBuildConfiguration";
 

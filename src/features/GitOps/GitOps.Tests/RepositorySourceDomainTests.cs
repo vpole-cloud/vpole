@@ -43,6 +43,58 @@ public sealed class RepositorySourceDomainTests
         RoundTrip(source);
     }
 
+    [Fact]
+    public void Detached_and_deleted_sources_are_terminal_and_keep_audit()
+    {
+        var source = RepositorySourceFactory.Create(Identity, Repository, new(TimeSpan.FromMinutes(5)),
+            new("creator", Now), "creation", "hash", "https://example.test/repository");
+        var detaching = source.BeginDetach();
+        Assert.Equal(GitSourceActivity.Detaching, detaching.Activity);
+        Assert.Throws<InvalidOperationException>(() => detaching.CompleteDetach(1));
+        Assert.Throws<InvalidOperationException>(() => detaching.Delete(0));
+        var detached = detaching.CompleteDetach(0);
+        Assert.Equal(GitSourceActivity.Detached, detached.Activity);
+        Assert.Throws<InvalidOperationException>(() => detached.Resume());
+        Assert.Throws<InvalidOperationException>(() => detached.Pause());
+        Assert.Throws<InvalidOperationException>(() => detached.BeginDetach());
+        Assert.Throws<InvalidOperationException>(() => detached.Delete(1));
+        var deleted = detached.Delete(0);
+        Assert.Equal(GitSourceActivity.Deleted, deleted.Activity);
+        Assert.Equal(source.Audit, deleted.Audit);
+        Assert.Equal(source.CreationKey, deleted.CreationKey);
+        Assert.Same(deleted, deleted.Delete(0));
+        Assert.Throws<InvalidOperationException>(() => deleted.Resume());
+        RoundTrip(detaching);
+        RoundTrip(detached);
+        RoundTrip(deleted);
+    }
+
+    [Fact]
+    public void Factory_can_explicitly_select_prune_and_initializes_inventory_revision()
+    {
+        var source = RepositorySourceFactory.Create(Identity, Repository, new(TimeSpan.FromMinutes(5)),
+            new("creator", Now), "creation", "hash", "https://example.test/repository", GitPrunePolicy.Prune);
+        Assert.Equal(GitPrunePolicy.Prune, source.Prune);
+        Assert.Throws<ArgumentOutOfRangeException>(() => RepositorySourceFactory.Create(Identity, Repository,
+            new(TimeSpan.FromMinutes(5)), new("creator", Now), "creation", "hash",
+            "https://example.test/repository", (GitPrunePolicy)99));
+        Assert.Equal(0, GitSynchronizationStateFactory.Create(Identity, Now).InventoryRevision);
+        Assert.Throws<InvalidOperationException>(() => source.Resume());
+    }
+
+    [Fact]
+    public void Pause_can_interrupt_partial_detach_without_reviving_old_authority()
+    {
+        var source = RepositorySourceFactory.Create(new("tenant", "source"),
+            new("GitHub", "connection", "repository", "main", ""), new(TimeSpan.FromMinutes(5)),
+            new("actor", DateTime.UtcNow), "key", "hash", "https://example.test/repo");
+        var detaching = source.BeginDetach();
+        var paused = detaching.Pause();
+        Assert.Equal(GitSourceActivity.Paused, paused.Activity);
+        Assert.Equal(detaching.Revision + 1, paused.Revision);
+        Assert.Equal(GitSourceActivity.Active, paused.Resume().Activity);
+    }
+
     [Theory]
     [InlineData("../outside")]
     [InlineData("/absolute")]

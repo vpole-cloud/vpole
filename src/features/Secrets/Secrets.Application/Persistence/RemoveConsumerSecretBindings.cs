@@ -1,4 +1,5 @@
 using MongoDB.Driver;
+using Pole.Features.GitOps.Contracts;
 using Pole.Database;
 using Pole.Features.Secrets.Domain;
 using Pole.Features.Secrets.Events;
@@ -18,6 +19,7 @@ internal sealed class MongoRemoveConsumerSecretBindings(
     IMongoCollection<Secret> secrets,
     MongoRunTransaction transactions,
     StoreSecretChange publish,
+    IGitOpsMutations git,
     TimeProvider clock)
 {
     public async Task InvokeAsync(
@@ -46,15 +48,27 @@ internal sealed class MongoRemoveConsumerSecretBindings(
                 if (removed.Length == 0)
                     return tx.Commit(Unit.Value);
 
-                var updated = current;
+                var removable = new List<SecretBinding>();
                 foreach (var binding in removed)
+                {
+                    if (await git.AuthorizeAsync(new(tenantId, "SecretBinding", binding.Id), tx.Session, token))
+                        removable.Add(binding);
+                }
+                if (removable.Count == 0)
+                    return tx.Commit(Unit.Value);
+
+                var updated = current;
+                foreach (var binding in removable)
                     updated = updated.Detach(binding.Id, clock.GetUtcNow().UtcDateTime);
-                await secrets.ReplaceOneAsync(
+                var result = await secrets.ReplaceOneAsync(
                     tx.Session,
-                    SecretFilters.Identity(tenantId, current.Id),
+                    SecretFilters.AtPlanningVersion(current),
                     updated,
                     cancellationToken: token);
-                foreach (var binding in removed)
+                if (result.ModifiedCount != 1)
+                    throw new InvalidOperationException("Consumer Secret binding cleanup changed concurrently.");
+
+                foreach (var binding in removable)
                     await publish(tx.Session, updated, new SecretBindingRemoved(binding.Id), token);
                 return tx.Commit(Unit.Value);
             }, ct);

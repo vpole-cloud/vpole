@@ -4,6 +4,7 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Domains.Domain;
 using Pole.ResultType;
 using Pole.Features.GitOps.Contracts;
+using Pole.Features.GitOps.Primitives;
 
 namespace Pole.Features.Domains.Application.Persistence.DomainZones;
 
@@ -32,6 +33,11 @@ public union DeleteManagedDomainZoneOutcome(
     DomainZoneGitOwned,
     ManagedDomainZoneReferenceRemovalRejected);
 
+public sealed record RemoveManagedDomainZoneRequest(
+    string TenantId,
+    string ZoneId,
+    GitLifecycleAuthority? Lifecycle = null);
+
 public delegate Task<DeleteManagedDomainZoneOutcome>
     DeleteManagedDomainZone(
         string tenantId,
@@ -51,47 +57,53 @@ internal sealed class MongoDeleteManagedDomainZone(
     private readonly IMongoCollection<HostnameBinding> bindings =
         database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
 
-    public async Task<DeleteManagedDomainZoneOutcome>
-        InvokeAsync(
-            string tenantId,
-            string zoneId,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default)
+    public Task<DeleteManagedDomainZoneOutcome> InvokeAsync(
+        string tenantId,
+        string zoneId,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default) =>
+        ExecuteAsync(new(tenantId, zoneId), session, cancellationToken);
+
+    internal async Task<DeleteManagedDomainZoneOutcome> ExecuteAsync(
+        RemoveManagedDomainZoneRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
     {
         DomainTransactions.EnsureActive(session);
         var zone = await zones.Find(
                 session,
-                DomainFilters.ZoneById(tenantId, zoneId))
+                DomainFilters.ZoneById(request.TenantId, request.ZoneId))
             .FirstOrDefaultAsync(cancellationToken);
         if (zone is null)
         {
-            return new DomainZoneNotFound(zoneId);
+            return new DomainZoneNotFound(request.ZoneId);
         }
 
         if (zone.Kind == TenantDomainZoneKind.Generated)
         {
-            return new GeneratedDomainZoneDeletionRejected(zoneId);
+            return new GeneratedDomainZoneDeletionRejected(request.ZoneId);
         }
 
-        if (!await git.AuthorizeAsync(new(tenantId, "DomainZone", zoneId), session, cancellationToken))
-            return new DomainZoneGitOwned(zoneId);
+        if (!await git.AuthorizeAsync(new(request.TenantId, "DomainZone", request.ZoneId, Lifecycle: request.Lifecycle,
+                    LifecycleEffect: GitLifecycleMutationEffect.Remove), session, cancellationToken))
+            return new DomainZoneGitOwned(request.ZoneId);
 
         var bindingCount = await bindings.CountDocumentsAsync(
             session,
-            DomainFilters.BindingsForZone(zoneId),
+            DomainFilters.BindingsForTenantZone(request.TenantId, request.ZoneId),
             cancellationToken: cancellationToken);
         if (bindingCount > 0)
         {
-            return new DomainZoneHasHostnameBindings(zoneId, bindingCount);
+            return new DomainZoneHasHostnameBindings(request.ZoneId, bindingCount);
         }
 
         var deleted = await zones.DeleteOneAsync(
             session,
-            DomainFilters.ZoneAtRevision(tenantId, zone),
+            DomainFilters.ZoneAtRevision(request.TenantId, zone),
             cancellationToken: cancellationToken);
         if (deleted.DeletedCount != 1)
         {
-            return new DomainZoneDeletionConflict(zoneId);
+            return new DomainZoneDeletionConflict(request.ZoneId);
         }
 
         var unregistered = await applyDeploymentTargetReferenceChanges(

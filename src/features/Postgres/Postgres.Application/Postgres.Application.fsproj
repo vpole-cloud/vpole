@@ -47,6 +47,8 @@
         <Compile Include="Persistence\Declarative\PostgresDeclarationPlanner.fs" />
         <Compile Include="Persistence\Declarative\PostgresDeclarationReferences.fs" />
         <Compile Include="Persistence\Declarative\PostgresDeclarationExecution.fs" />
+        <Compile Include="Persistence\Declarative\PostgresDeclarationAdoption.fs" />
+        <Compile Include="Persistence\Declarative\PostgresDeclarationLifecycle.fs" />
         <Compile Include="Persistence\Declarative\DeclarativePostgresProvider.fs" />
         <Compile Include="Persistence\PostgresPersistenceRegistration.fs" />
         <Compile Include="Kubernetes\PostgresClusterKubernetesBuilder.fs" />

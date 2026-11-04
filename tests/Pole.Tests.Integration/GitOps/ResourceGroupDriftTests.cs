@@ -67,7 +67,7 @@ public sealed partial class DeclarativePipelineTests
         Assert.Equal(beforeEvents, await BusinessEvents());
         var view = await queries.RunAsync(TestData.TenantId, source, unchanged.Context!.RunId, default);
         Assert.Equal(RepositoryRunStatus.AlreadyCurrent, view!.Status);
-        Assert.Equal(new RepositoryOperationSummary(0, 0, 1, 0, 0), view.Operations);
+        Assert.Equal(new RepositoryOperationSummary(0, 0, 1, 0, 0, null), view.Operations);
         var inventory = await Inventory.Find(item => item.ResourceId == original.Id).SingleAsync();
         Assert.Equal(GitResourceMaterialization.Created, inventory.Materialization);
         Assert.Equal(inventory.Projections.Desired, inventory.Projections.Applied);
@@ -95,6 +95,6 @@ public sealed partial class DeclarativePipelineTests
         Assert.Equal(first.Context!.Authority.Commit, (await State()).Commits.FullyApplied);
         var query = await Services.GetRequiredService<GitRepositoryQueries>().SourceAsync(TestData.TenantId, source,
             default);
-        Assert.Equal(new RepositoryOperationSummary(0, 0, 0, 1, 0), query!.LatestRun!.Operations);
+        Assert.Equal(new RepositoryOperationSummary(0, 0, 0, 1, 0, null), query!.LatestRun!.Operations);
     }
 }

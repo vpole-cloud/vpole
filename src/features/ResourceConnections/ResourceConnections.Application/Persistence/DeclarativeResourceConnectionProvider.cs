@@ -26,14 +26,18 @@ internal sealed partial class DeclarativeResourceConnectionProvider(
     ResourceConnectionEndpointCatalog endpoints,
     ResourceConnectionTopologyAdmission admission,
     MongoCreateResourceConnection creation,
+    MongoBeginResourceConnectionDeletion deletion,
     LoadResourceRegistrationPlanningSnapshot loadRegistration,
     FenceResourceRegistrationPlanningSnapshot fenceRegistration,
-    IGitOpsMutations git) : ITransactionalDeclarativeResourceProvider
+    IGitOpsMutations git) : ITransactionalDeclarativeResourceProvider, IDeclarativeResourceLifecycleProvider,
+    IDeclarativeLifecycleDependencyProvider, IDeclarativeAdoptionPreviewProvider
 {
     private readonly IReadOnlyDictionary<string, ResourceTypeId> kinds = registeredKinds
         .ToDictionary(item => item.Kind, item => item.ResourceType, StringComparer.Ordinal);
 
-    public string Kind => "ResourceConnection";
+    internal const string ResourceKind = "ResourceConnection";
+
+    public string Kind => ResourceKind;
 
     public int MaximumNameLength => 30;
 

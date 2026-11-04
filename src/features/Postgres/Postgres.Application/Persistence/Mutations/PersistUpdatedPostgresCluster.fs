@@ -14,6 +14,7 @@ open Pole.Features.ResourceGroups.Contracts
 type PostgresMutationConflictReason =
     | ExpectedRevisionConflict = 0
     | GitOwnedConfiguration = 1
+    | SecretBindingsRequireRemoval = 2
 
 type PostgresClusterUpdateConflict =
     { ClusterId : string

@@ -10,6 +10,7 @@ internal sealed class MongoGitOwnership(
     GitRunStore runs,
     GitOperationPlanning planning,
     IMongoCollection<ManagedDeclaration> inventory,
+    IMongoCollection<GitSynchronizationState> states,
     IMongoCollection<GitOperationReceipt> receipts,
     IServiceProvider services)
 {
@@ -30,6 +31,11 @@ internal sealed class MongoGitOwnership(
         if (receipt is { Blocker: null } && receipt.ResourceId == operation.ResourceId &&
             receipt.DesiredHash == operation.Declaration.Hash)
             return new(operation.ResourceId);
+
+        var approval = await services.GetRequiredService<MongoGitLifecycleGuard>()
+            .ValidateApplyAsync(operation, session, ct);
+        if (approval is not null)
+            return new(operation.ResourceId, approval);
 
         var precondition = await planning.ValidateAsync(operation, session, ct);
         if (precondition is not null)
@@ -52,6 +58,9 @@ internal sealed class MongoGitOwnership(
             null,
             false);
         if (current is null)
+        {
+            await states.UpdateOneAsync(session, GitRepositoryFilters.ActiveState(context.ToHandle().Stamp),
+                Builders<GitSynchronizationState>.Update.Inc(item => item.InventoryRevision, 1), cancellationToken: ct);
             await inventory.InsertOneAsync(session,
                 new ManagedDeclaration(
                     ManagedDeclarationFilters.AddressId(context.TenantId, operation.Declaration.Address),
@@ -71,6 +80,7 @@ internal sealed class MongoGitOwnership(
                     GitResourceMaterialization.Allocated,
                     GitManagedProjectionsFactory.Empty()),
                 cancellationToken: ct);
+        }
         else
             await inventory.UpdateOneAsync(session,
                 ManagedDeclarationFilters.Address(context.TenantId, operation.Declaration.Address),
@@ -97,8 +107,8 @@ internal sealed class MongoGitOwnership(
             return false;
 
         var run = await runs.TouchAsync(context.ToHandle(), session, ct);
-        if (run?.Input is not GitInputAccepted accepted || run.Commit != context.Authority.Commit ||
-            !accepted.Snapshot.Resources.Any(item => item.Kind == kind && item.ResourceId == resourceId &&
+        if (run?.AcceptedSnapshot is not { } accepted || run.Commit != context.Authority.Commit ||
+            !accepted.Resources.Any(item => item.Kind == kind && item.ResourceId == resourceId &&
                                                      item.Name == owner.Name))
             return false;
 

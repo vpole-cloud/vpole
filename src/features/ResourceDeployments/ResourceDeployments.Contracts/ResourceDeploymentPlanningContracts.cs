@@ -26,7 +26,9 @@ public sealed record ResourceDeploymentPlanningItem(
     ResourceDeploymentPlanningState State,
     ResourceDeploymentStorageConfiguration? Storage,
     ResourceDeploymentIngressConfiguration? Ingress,
-    long DeploymentTargetConfigurationRevision);
+    long DeploymentTargetConfigurationRevision,
+    long DesiredGeneration,
+    long ResourceRevision);
 
 public sealed record ResourceDeploymentPlanningSnapshot(
     string TenantId,

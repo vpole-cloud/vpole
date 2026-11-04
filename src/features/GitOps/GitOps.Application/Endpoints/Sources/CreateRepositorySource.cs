@@ -24,7 +24,9 @@ public sealed record CreateRepositorySourceBody(
     string ExternalRepositoryId,
     string Branch,
     string ManifestDirectory,
-    int PollIntervalSeconds = 300);
+    int PollIntervalSeconds = 300,
+    [property: JsonConverter(typeof(JsonStringEnumConverter<GitPrunePolicy>))]
+    GitPrunePolicy Prune = GitPrunePolicy.Retain);
 
 public sealed record CreateRepositorySourceRequest(
     [FromBody] CreateRepositorySourceBody Body,
@@ -35,6 +37,7 @@ public sealed record CreateRepositorySourceRequest(
 public union CreateRepositorySourceOutcome(
     RepositorySourceView,
     GitSourceIdempotencyConflict,
+    GitSourceCreationDeleted,
     RepositoryProviderUnsupported,
     RepositoryAccessDenied,
     RepositoryNotFound,
@@ -56,6 +59,7 @@ public sealed class CreateRepositorySourceValidator : AbstractValidator<CreateRe
                 RuleFor(item => item.Body.ManifestDirectory).Must(RepositoryManifestDirectory.IsValid)
                     .MaximumLength(1024);
                 RuleFor(item => item.Body.PollIntervalSeconds).GreaterThanOrEqualTo(60).LessThanOrEqualTo(86400);
+                RuleFor(item => item.Body.Prune).IsInEnum();
             });
     }
 }
@@ -96,12 +100,14 @@ public sealed class CreateRepositorySourceHandler(
                 new(TimeSpan.FromSeconds(body.PollIntervalSeconds)),
                 new(request.CurrentUserId.Value,
                     clock.GetUtcNow().UtcDateTime),
-                granted.DisplayUrl),
+                granted.DisplayUrl, body.Prune),
             cancellationToken);
         return outcome switch
         {
-            RepositorySource source => (await queries.SourceAsync(source.TenantId, source.Id, cancellationToken))!,
-            GitSourceIdempotencyConflict conflict => conflict
+            RepositorySource source => await queries.SourceAsync(source.TenantId, source.Id, cancellationToken)
+                is { } current ? current : new GitSourceCreationDeleted(),
+            GitSourceIdempotencyConflict conflict => conflict,
+            GitSourceCreationDeleted deleted => deleted
         };
     }
 }
@@ -116,6 +122,7 @@ public static class CreateRepositorySourceEndpoint
                 {
                     RepositorySourceView source => Results.Created($"/api/v1/gitops/sources/{source.Id}", source),
                     GitSourceIdempotencyConflict conflict => RepositoryHttpMappings.Map(conflict),
+                    GitSourceCreationDeleted deleted => RepositoryHttpMappings.Map(deleted),
                     RepositoryProviderUnsupported unsupported => RepositoryHttpMappings.Map(unsupported),
                     RepositoryAccessDenied denied => RepositoryHttpMappings.Map(denied),
                     RepositoryNotFound missing => RepositoryHttpMappings.Map(missing),

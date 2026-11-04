@@ -9,6 +9,12 @@ internal static class GitRepositoryFilters
     public static FilterDefinition<RepositorySource> Tenant(string tenant) =>
         Builders<RepositorySource>.Filter.Eq(item => item.TenantId, tenant);
 
+    public static FilterDefinition<RepositorySource> VisibleTenant(string tenant) =>
+        Tenant(tenant) & Builders<RepositorySource>.Filter.Ne(item => item.Activity, GitSourceActivity.Deleted);
+
+    public static FilterDefinition<RepositorySource> VisibleSource(string tenant, string source) =>
+        Source(tenant, source) & Builders<RepositorySource>.Filter.Ne(item => item.Activity, GitSourceActivity.Deleted);
+
     public static FilterDefinition<GitSynchronizationState> States(string tenant, IReadOnlyCollection<string> ids) =>
         Builders<GitSynchronizationState>.Filter.Eq(item => item.Source.TenantId, tenant) &
         Builders<GitSynchronizationState>.Filter.In(item => item.Source.SourceId, ids);
@@ -54,6 +60,13 @@ internal static class GitRepositoryFilters
     public static FilterDefinition<GitReconciliationRun> PreviousRuns(GitRunStamp stamp) =>
         SourceRuns(stamp.Source.TenantId, stamp.Source.SourceId) &
         Builders<GitReconciliationRun>.Filter.Lt(item => item.Stamp.Generation, stamp.Generation);
+
+    public static FilterDefinition<GitReconciliationRun> HumanConfirmedLifecycle() =>
+        Builders<GitReconciliationRun>.Filter.Eq("Input._t", nameof(GitInputLifecycle)) &
+        Builders<GitReconciliationRun>.Filter.Eq("Input.Plan.Authorization._t", nameof(GitPreviewConfirmed));
+
+    public static FilterDefinition<GitReconciliationRun> PriorHumanLifecycle(GitRunStamp stamp) =>
+        PreviousRuns(stamp) & HumanConfirmedLifecycle();
 
     public static FilterDefinition<RepositorySource> SourceRevision(GitRunStamp stamp) =>
         Source(stamp.Source.TenantId, stamp.Source.SourceId) &

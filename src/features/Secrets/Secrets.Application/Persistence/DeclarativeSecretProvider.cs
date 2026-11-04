@@ -6,6 +6,7 @@ using Pole.Features.GitOps.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Secrets.Domain;
 using Pole.Features.Secrets.Events;
+using Pole.Workloads;
 
 namespace Pole.Features.Secrets.Application.Persistence;
 
@@ -25,13 +26,18 @@ internal sealed partial class DeclarativeSecretProvider(
     IGitOpsMutations git,
     LoadIsolationScopePlanningSnapshot loadPlanningScope,
     FenceIsolationScopePlanningSnapshot fencePlanningScope,
+    LoadResourceRegistrationPlanningSnapshot loadRegistration,
     SecretPlanningFence planningFence,
     AdmitResourceScopeReference admitScope,
     IResourceRegistrar registrar,
+    MongoDeleteStoredSecret deletion,
     StoreSecretChange publish,
-    TimeProvider clock) : ITransactionalDeclarativeResourceProvider
+    TimeProvider clock) : ITransactionalDeclarativeResourceProvider, IDeclarativeResourceLifecycleProvider,
+    IDeclarativeRegisteredResourceProvider, IDeclarativeLifecycleWarningProvider,
+    IDeclarativeRegistrationOwnershipProvider
 {
     public string Kind => "Secret";
+    public ResourceTypeId ResourceType => SecretResource.Type;
 
     public string DescribeFailure(IDeclarationFailure failure) => failure switch
     {
@@ -43,6 +49,7 @@ internal sealed partial class DeclarativeSecretProvider(
             SecretDeclarationError.ResourceScopeUnavailable => "ResourceScopeUnavailable",
             SecretDeclarationError.ResourceRegistrationUnavailable => "ResourceRegistrationUnavailable",
             SecretDeclarationError.SecretKeysInUse => "SecretKeysInUse",
+            SecretDeclarationError.ProviderManagedSecret => "ProviderManagedSecret",
             _ => throw new ArgumentOutOfRangeException(nameof(failure))
         },
         _ => throw new ArgumentException("The failure belongs to another declaration provider.", nameof(failure))
@@ -119,6 +126,10 @@ internal sealed partial class DeclarativeSecretProvider(
             current ??= await secrets.Find(session,
                 SecretFilters.TechnicalName(context.TenantId, operation.Declaration.Address.Name))
                 .FirstOrDefaultAsync(token);
+
+            if (current?.Management is ProviderManagedSecret)
+                return new(operation.ResourceId,
+                    new SecretDeclarationRejected(SecretDeclarationError.ProviderManagedSecret));
 
             if (current is not null && current.Id != operation.ResourceId)
                 return new(

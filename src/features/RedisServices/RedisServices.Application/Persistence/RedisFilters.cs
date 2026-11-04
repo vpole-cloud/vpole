@@ -11,6 +11,12 @@ internal static class RedisFilters
     public static FilterDefinition<Redis> VisibleToTenant(string tenantId) =>
         Builders<Redis>.Filter.ForTenant(tenantId);
 
+    public static FilterDefinition<Redis> LifecycleDependencies(string tenant, string? group)
+    {
+        var filter = Builders<Redis>.Filter.Eq(item => item.TenantId, tenant);
+        return group is null ? filter : filter & Builders<Redis>.Filter.Eq(item => item.ResourceGroupId, group);
+    }
+
     public static FilterDefinition<Redis> ById(
         string tenantId,
         string redisId) =>
@@ -50,6 +56,9 @@ internal static class RedisFilters
             AtRevision(redis),
             Builders<Redis>.Filter.OfType<RedisLifecycle, ActiveRedisLifecycle>(
                 candidate => candidate.Lifecycle));
+
+    public static FilterDefinition<Redis> ActiveAtPlanningVersion(Redis redis) =>
+        ActiveAtRevision(redis) & AtPlanningVersion(redis);
 
     public static FilterDefinition<Redis> InLifecycle<TLifecycle>(
         string tenantId,

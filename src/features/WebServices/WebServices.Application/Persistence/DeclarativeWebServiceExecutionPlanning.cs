@@ -89,20 +89,24 @@ internal sealed partial class DeclarativeWebServiceProvider
         return projection with { Dependencies = new(DependencyVersions(dependencies)) };
     }
 
-    private async Task<ReadWebServicePlanningOutcome> ReadExecutionPlanningAsync(GitOperationInput operation,
+    private Task<ReadWebServicePlanningOutcome> ReadExecutionPlanningAsync(GitOperationInput operation,
+        IClientSessionHandle session, CancellationToken ct) =>
+        ReadPlanningWithReferencesAsync(new(operation.Context.TenantId, operation.ResourceId, operation.Declaration,
+            operation.Phase, address => AcceptedReferenceAsync(operation, address, session, ct)), session, ct);
+
+    private async Task<ReadWebServicePlanningOutcome> ReadPlanningWithReferencesAsync(WebServicePlanningInput operation,
         IClientSessionHandle session, CancellationToken ct)
     {
         var spec = DeclarationJson.Read<WebServiceDeclaration>(operation.Declaration.Spec);
-        var tenant = operation.Context.TenantId;
-        var groupId = await AcceptedReferenceAsync(operation, new("ResourceGroup", spec.ResourceGroup), session, ct);
+        var tenant = operation.TenantId;
+        var groupId = await operation.Reference(new("ResourceGroup", spec.ResourceGroup));
         if (groupId is null)
             return PlanningBlocked(WebServiceDeclarationError.ResourceGroupUnavailable);
 
         string? scopeId = null;
         if (spec.Placement.IsolationScope is not null)
         {
-            scopeId = await AcceptedReferenceAsync(operation,
-                new("IsolationScope", spec.Placement.IsolationScope), session, ct);
+            scopeId = await operation.Reference(new("IsolationScope", spec.Placement.IsolationScope));
             if (scopeId is null)
                 return PlanningBlocked(WebServiceDeclarationError.ResourceGroupUnavailable);
         }
@@ -110,15 +114,13 @@ internal sealed partial class DeclarativeWebServiceProvider
             is not IsolationScopePlanningSnapshot scope)
             return PlanningBlocked(WebServiceDeclarationError.ResourceGroupUnavailable);
 
-        var targetId = await AcceptedReferenceAsync(operation,
-            new("DeploymentTarget", spec.Placement.DeploymentTarget), session, ct);
+        var targetId = await operation.Reference(new("DeploymentTarget", spec.Placement.DeploymentTarget));
         if (targetId is null || await resolvePlanningTarget(new(tenant, WebServiceResourceDeployment.ResourceType,
                 scope.IsolationScopeId, targetId, RequiredCapabilities(spec)), session, ct)
             is not DeploymentTargetPlanningSnapshot target)
             return PlanningBlocked(WebServiceDeclarationError.DeploymentTargetUnavailable);
 
-        var profileId = await AcceptedReferenceAsync(operation,
-            new("ComputeProfile", spec.Placement.ComputeProfile.Name), session, ct);
+        var profileId = await operation.Reference(new("ComputeProfile", spec.Placement.ComputeProfile.Name));
         if (profileId is null)
             return PlanningBlocked(WebServiceDeclarationError.PinnedComputeProfileUnavailable);
         var resolution = await resolvePlanningCompute(new(tenant, WebServiceResourceDeployment.ResourceType,
@@ -145,7 +147,7 @@ internal sealed partial class DeclarativeWebServiceProvider
         var references = ImmutableDictionary.CreateBuilder<string, SecretEnvironmentReference>();
         foreach (var (name, reference) in spec.SecretEnvironment)
         {
-            var id = await AcceptedReferenceAsync(operation, new("Secret", reference.Secret), session, ct);
+            var id = await operation.Reference(new("Secret", reference.Secret));
             if (id is null)
                 return PlanningBlocked(WebServiceDeclarationError.SecretUnavailable);
             references.Add(name, new(id, reference.Key));
@@ -157,8 +159,7 @@ internal sealed partial class DeclarativeWebServiceProvider
             var builder = ImmutableDictionary.CreateBuilder<string, ConnectionEnvironmentReference>();
             foreach (var (name, reference) in spec.ConnectionEnvironment)
             {
-                var id = await AcceptedReferenceAsync(operation, new("ResourceConnection", reference.Connection),
-                    session, ct);
+                var id = await operation.Reference(new("ResourceConnection", reference.Connection));
                 if (id is null)
                     return new DeclarationReadBlocked(new WebServiceConnectionReferenceRejected());
 
@@ -183,8 +184,8 @@ internal sealed partial class DeclarativeWebServiceProvider
         SourceBuildConfigurationSnapshot? buildConfiguration = null;
         if (spec.Image is DeclaredSourceBuildImage image)
         {
-            buildConfigurationId = await AcceptedReferenceAsync(operation,
-                new("SourceBuildConfiguration", image.SourceBuildConfiguration), session, ct);
+            buildConfigurationId = await operation.Reference(
+                new("SourceBuildConfiguration", image.SourceBuildConfiguration));
             if (buildConfigurationId is null)
                 return new DeclarationReadBlocked(new DeclarationReferenceUnavailable(
                     new("SourceBuildConfiguration", image.SourceBuildConfiguration)));
@@ -358,3 +359,10 @@ internal sealed record WebServicePlanningDependencies(
 internal union ReadWebServicePlanningOutcome(
     WebServicePlanningDependencies,
     DeclarationReadBlocked);
+
+internal sealed record WebServicePlanningInput(
+    string TenantId,
+    string ResourceId,
+    CompiledDeclaration Declaration,
+    DeclarationPhase Phase,
+    Func<ResourceAddress, Task<string?>> Reference);

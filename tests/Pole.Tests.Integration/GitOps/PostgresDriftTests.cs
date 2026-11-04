@@ -165,7 +165,7 @@ public sealed partial class DeclarativePipelineTests
         var view = await Services.GetRequiredService<GitRepositoryQueries>().RunAsync(TestData.TenantId, source,
             stableRun.Context!.RunId, default);
         Assert.Equal(RepositoryRunStatus.AlreadyCurrent, view!.Status);
-        Assert.Equal(new RepositoryOperationSummary(0, 0, 6, 0, 0), view.Operations);
+        Assert.Equal(new RepositoryOperationSummary(0, 0, 6, 0, 0, null), view.Operations);
     }
 
     [Fact]
@@ -256,7 +256,7 @@ public sealed partial class DeclarativePipelineTests
         Assert.Equal(PostgresMutationConflictReason.GitOwnedConfiguration,
             Assert.IsType<PostgresOutcome<Unit, PostgresClusterUpdateConflict>.PostgresError>(update).Item.Reason);
         var delete = await Services.GetRequiredService<BeginPostgresClusterDeletion>().Invoke(
-            new(resource, resource.BeginDeletion(DateTime.UtcNow)), session, default);
+            new(resource, resource.BeginDeletion(DateTime.UtcNow), null, null), session, default);
         Assert.Equal(PostgresMutationConflictReason.GitOwnedConfiguration,
             Assert.IsType<PostgresOutcome<Unit, PostgresClusterDeletionConflict>.PostgresError>(delete).Item.Reason);
         await session.AbortTransactionAsync();

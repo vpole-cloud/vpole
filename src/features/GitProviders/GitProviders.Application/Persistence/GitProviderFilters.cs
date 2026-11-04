@@ -69,6 +69,10 @@ internal static class GitProviderFilters
         SourceRepositoryByTenantAndId(tenantId, sourceRepositoryId) &
         Builders<SourceRepository>.Filter.Eq(item => item.Revision, revision);
 
+    internal static FilterDefinition<SourceRepository> SourceRepositoryAtPlanningVersion(SourceRepository current) =>
+        SourceRepositoryAtRevision(current.TenantId, current.Id, current.Revision) &
+        Builders<SourceRepository>.Filter.Eq(item => item.ReferenceFence, current.ReferenceFence);
+
     internal static FilterDefinition<SourceRepository> SourceRepositoriesByTenant(string tenantId) =>
         Builders<SourceRepository>.Filter.ForTenant(tenantId);
 

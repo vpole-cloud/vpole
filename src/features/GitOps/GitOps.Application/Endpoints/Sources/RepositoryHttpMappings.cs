@@ -18,6 +18,15 @@ internal static class RepositoryHttpMappings
     public static IResult Map(GitSourceIdempotencyConflict _) =>
         Problem(409, "gitops.idempotency-conflict", "The key was already used for different input");
 
+    public static IResult Map(GitSourceInactive _) =>
+        Problem(409, "gitops.source-inactive", "Source activity does not allow this command");
+
+    public static IResult Map(GitSourceCreationDeleted _) =>
+        Problem(409, "gitops.source-deleted", "This creation key belongs to a deleted source");
+
+    public static IResult Map(GitSourceDetachRequired _) =>
+        Problem(409, "gitops.detach-required", "Detach source resources before deleting the source");
+
     public static IResult Map(GitSourceBusy _) => Problem(409, "gitops.source-busy", "Source has pending work");
 
     public static IResult Map(GitRetryNotAvailable _) =>

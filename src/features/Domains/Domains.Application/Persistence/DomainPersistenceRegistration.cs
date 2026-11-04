@@ -66,6 +66,10 @@ public static class DomainPersistenceRegistration
             provider.GetRequiredService<MongoLoadHostnameBindingsForDeploymentInTransaction>()
                 .InvokeAsync);
 
+        services.AddScoped<MongoLoadHostnameBindingsForResourceInTransaction>();
+        services.AddScoped<LoadHostnameBindingsForResourceInTransaction>(provider =>
+            provider.GetRequiredService<MongoLoadHostnameBindingsForResourceInTransaction>().InvokeAsync);
+
         services.AddScoped<MongoHostnameBindingCleanup>();
         services.AddScoped<MongoCreateGeneratedHostnameBindings>();
         services.AddScoped<CreateGeneratedHostnameBindings>(provider =>

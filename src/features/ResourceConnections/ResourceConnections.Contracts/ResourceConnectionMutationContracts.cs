@@ -65,4 +65,15 @@ public sealed record ReconcileConnectionsForResourceRequest(
 public sealed record CascadeConnectionsForResourceDeletionRequest(
     string TenantId,
     ResourceTypeId ResourceType,
+    string ResourceId,
+    IReadOnlyList<ResourceConnectionPlanningVersion>? ReviewedConnections = null);
+
+public sealed record LoadResourceConnectionCascadePlanningRequest(
+    string TenantId,
+    ResourceTypeId ResourceType,
     string ResourceId);
+
+public delegate Task<IReadOnlyList<ResourceConnectionPlanningVersion>> LoadResourceConnectionCascadePlanning(
+    LoadResourceConnectionCascadePlanningRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken);

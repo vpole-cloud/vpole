@@ -567,6 +567,7 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
             return outcome switch
             {
                 RedisDeletionStarted success => transaction.Commit(success),
+                RedisSecretBindingRemovalRequired error => transaction.Abort(error),
                 RedisDeletionConflict error => transaction.Abort(error),
                 RedisGitOwnedConfiguration error => transaction.Abort(error)
             };

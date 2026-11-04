@@ -1,4 +1,5 @@
 using Pole.Features.GitOps.Primitives;
+using Pole.Database;
 using Pole.Features.ResourceGroups.Events;
 using Pole.Features.Events.Abstractions;
 using System.Collections.Immutable;
@@ -6,6 +7,7 @@ using System.Text.Json;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.ResourceGroups.Application.Common;
+using Pole.Features.ResourceGroups.Application.Persistence.IsolationScopes;
 using Pole.Features.ResourceGroups.Domain;
 
 namespace Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
@@ -21,7 +23,12 @@ internal sealed partial class DeclarativeResourceGroupProvider(
     IMongoCollection<ResourceGroup> groups,
     IMongoCollection<IsolationScope> scopes,
     IGitOpsMutations git,
-    StoreOutboxWrites outbox) : ITransactionalDeclarativeResourceProvider
+    StoreOutboxWrites outbox,
+    MongoBeginResourceGroupDeletion deletion,
+    ResourceGroupLifecycleReferences lifecycleReferences,
+    MongoRunTransaction transactions) : ITransactionalDeclarativeResourceProvider,
+        IDeclarativeResourceLifecycleProvider, IDeclarativeAdoptionPreviewProvider,
+        IDeclarativeDerivedIdentityProvider, IDeclarativeReferencePreparation
 {
     public string Kind => "ResourceGroup";
 
@@ -102,16 +109,35 @@ internal sealed partial class DeclarativeResourceGroupProvider(
 
         if (current is null)
         {
+            var defaultScopeId = await git.ResolveAcceptedAsync(new(context, operation.ResourceId,
+                DefaultScopeAddress(declaration.Address)), session, token);
+            if (defaultScopeId is null)
+                return new ResourceGroupDeclarationRejected(ResourceGroupDeclarationError.ExpectedRevisionConflict);
+
             var created = ResourceGroupFactory.Create(context.TenantId, declaration.Address.Name, spec.Description,
                 ResourceGroupFactory.DefaultCreateOptions with
                 {
                     Id = operation.ResourceId,
+                    DefaultIsolationScopeId = defaultScopeId,
                     Tags = spec.Tags.ToImmutableHashSet()
                 });
             var scope = IsolationScopeFactory.CreateDefault(context.TenantId, created.Id,
                 new IsolationScopeFactory.CreateOptions(created.DefaultIsolationScopeId, created.CreatedAtUtc));
-            await groups.InsertOneAsync(session, created, cancellationToken: token);
-            await scopes.InsertOneAsync(session, scope, cancellationToken: token);
+            try
+            {
+                await groups.InsertOneAsync(session, created, cancellationToken: token);
+                await scopes.InsertOneAsync(session, scope, cancellationToken: token);
+            }
+            catch (MongoWriteException exception) when (
+                MongoDuplicateKey.IsForIdIndex(exception, groups.CollectionNamespace.CollectionName) ||
+                MongoDuplicateKey.IsForIndex(exception, ResourceGroupsIndexes.TechnicalName,
+                    groups.CollectionNamespace.CollectionName) ||
+                MongoDuplicateKey.IsForIdIndex(exception, scopes.CollectionNamespace.CollectionName) ||
+                MongoDuplicateKey.IsForIndex(exception, IsolationScopeIndexes.TenantName,
+                    scopes.CollectionNamespace.CollectionName))
+            {
+                return new ResourceGroupDeclarationRejected(ResourceGroupDeclarationError.ExpectedRevisionConflict);
+            }
             await outbox(session, [OutboxWrite.Create(created.ToCreateEvent())], token);
 
             return new ResourceGroupDeclarationApplied(created.Id, true);

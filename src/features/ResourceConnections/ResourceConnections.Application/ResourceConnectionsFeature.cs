@@ -34,7 +34,15 @@ public static class ResourceConnectionsFeature
                 "ResourceConnectionCleanupTombstones"));
         services.TryAddScoped<MongoCreateResourceConnection>();
         services.TryAddScoped<ResourceConnectionTopologyAdmission>();
-        services.AddScoped<IDeclarativeResourceProvider, DeclarativeResourceConnectionProvider>();
+        services.AddScoped<DeclarativeResourceConnectionProvider>();
+        services.AddScoped<IDeclarativeResourceProvider>(provider =>
+            provider.GetRequiredService<DeclarativeResourceConnectionProvider>());
+        services.AddScoped<IDeclarativeResourceLifecycleProvider>(provider =>
+            provider.GetRequiredService<DeclarativeResourceConnectionProvider>());
+        services.AddScoped<IDeclarativeLifecycleDependencyProvider>(provider =>
+            provider.GetRequiredService<DeclarativeResourceConnectionProvider>());
+        services.AddScoped<IDeclarativeAdoptionPreviewProvider>(provider =>
+            provider.GetRequiredService<DeclarativeResourceConnectionProvider>());
         services.TryAddScoped<ResourceConnectionEndpointCatalog>();
         services.AddScoped<ResourceConnectionReferenceProvider>();
         services.AddScoped<ResourceConnectionReferencePlanning>();
@@ -52,6 +60,8 @@ public static class ResourceConnectionsFeature
         services.TryAddScoped<ReconcileConnectionsForResource>(provider => provider
             .GetRequiredService<MongoResourceConnectionMutationProvider>()
             .ReconcileAsync);
+        services.TryAddScoped<LoadResourceConnectionCascadePlanning>(provider => provider
+            .GetRequiredService<MongoResourceConnectionMutationProvider>().ReadCascadePlanningAsync);
         services.TryAddScoped<CascadeConnectionsForResourceDeletion>(provider => provider
             .GetRequiredService<MongoResourceConnectionMutationProvider>()
             .CascadeAsync);

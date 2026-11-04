@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Primitives;
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using MongoDB.Driver;
@@ -20,7 +21,9 @@ public union BeginFunctionAppDeletionOutcome(
 
 public sealed record BeginFunctionAppDeletionRequest(
     FunctionApp Current,
-    DateTimeOffset NowUtc);
+    DateTimeOffset NowUtc,
+    GitLifecycleAuthority? Lifecycle = null,
+    IReadOnlyList<ResourceConnectionPlanningVersion>? ReviewedConnections = null);
 
 public delegate Task<BeginFunctionAppDeletionOutcome> BeginFunctionAppDeletion(
     BeginFunctionAppDeletionRequest request,
@@ -41,11 +44,14 @@ internal sealed class MongoBeginFunctionAppDeletion(
         IClientSessionHandle session,
         CancellationToken cancellationToken)
     {
-        var (current, nowUtc) = request;
+        var current = request.Current;
+        var nowUtc = request.NowUtc;
         if (!session.IsInTransaction)
             throw new InvalidOperationException("Function App deletion requires an active transaction.");
 
-        if (!await git.AuthorizeAsync(new(current.TenantId, "FunctionApp", current.Id), session, cancellationToken))
+        if (!await git.AuthorizeAsync(new(current.TenantId, "FunctionApp", current.Id,
+                Lifecycle: request.Lifecycle, LifecycleEffect: GitLifecycleMutationEffect.Remove),
+                session, cancellationToken))
             return new FunctionAppGitOwnedConfiguration(current.Id);
 
         var registration = await fenceRegisteredResource(
@@ -61,7 +67,8 @@ internal sealed class MongoBeginFunctionAppDeletion(
             new CascadeConnectionsForResourceDeletionRequest(
                 TenantId: current.TenantId,
                 ResourceType: FunctionResourceDeployment.ResourceType,
-                ResourceId: current.Id),
+                ResourceId: current.Id,
+                ReviewedConnections: request.ReviewedConnections),
             session: session,
             cancellationToken: cancellationToken);
         FunctionAppDeletionChanged? cascadeConflict = cascade switch
@@ -90,6 +97,7 @@ internal sealed class MongoBeginFunctionAppDeletion(
             FunctionRouteBindingFilters.ByFunctionApp(current),
             Builders<FunctionRouteBinding>.Update
                 .Set(route => route.State, FunctionRouteBindingState.Disabled)
+                .Inc(route => route.PlanningFence, 1)
                 .Set(route => route.UpdatedAtUtc, nowUtc),
             cancellationToken: cancellationToken);
         await functionTimerStates.UpdateManyAsync(

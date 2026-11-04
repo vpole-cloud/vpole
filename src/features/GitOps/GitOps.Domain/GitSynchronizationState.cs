@@ -26,7 +26,8 @@ public sealed record GitSynchronizationState(
     GitPendingRequest Pending,
     GitCommitProgress Commits,
     DateTime NextPollAtUtc,
-    long MutationVersion)
+    long MutationVersion,
+    long InventoryRevision)
 {
     public GitSynchronizationState RequestSync(GitPendingRequest request) => this with
     {
@@ -93,6 +94,7 @@ public static class GitSynchronizationStateFactory
             new(new(GitRunTrigger.Poll, null), null),
             new(null, null, null),
             nextPollAtUtc,
+            0,
             0);
     }
 }

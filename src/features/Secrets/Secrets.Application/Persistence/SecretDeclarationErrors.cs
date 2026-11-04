@@ -9,7 +9,8 @@ public enum SecretDeclarationError
     ImmutablePlacementChange,
     ResourceScopeUnavailable,
     ResourceRegistrationUnavailable,
-    SecretKeysInUse
+    SecretKeysInUse,
+    ProviderManagedSecret
 }
 
 public sealed record SecretDeclarationRejected(SecretDeclarationError Reason) : IDeclarationFailure;

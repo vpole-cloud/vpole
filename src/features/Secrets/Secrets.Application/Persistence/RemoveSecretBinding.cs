@@ -1,4 +1,5 @@
 using Pole.Features.GitOps.Contracts;
+using Pole.Features.GitOps.Primitives;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Secrets.Domain;
@@ -18,6 +19,13 @@ public union RemoveSecretBindingResult(
     SecretManagedByProvider,
     SecretGitOwned);
 
+public sealed record RemoveSecretBindingMutation(
+    string TenantId,
+    string SecretId,
+    string BindingId,
+    DeclarationVersionToken? Expected,
+    GitLifecycleAuthority? Authority);
+
 internal sealed class MongoRemoveSecretBinding(
     IMongoCollection<Secret> secrets,
     MongoRunTransaction transactions,
@@ -31,35 +39,43 @@ internal sealed class MongoRemoveSecretBinding(
         string bindingId,
         CancellationToken ct)
     {
-        bindingId = SecretIdentity.ObjectId(bindingId);
         return transactions.InvokeOutcomeAsync<RemoveSecretBindingResult>(async (tx, token) =>
         {
-            var current = await secrets
-                .Find(tx.Session, SecretFilters.Identity(tenantId, id))
-                .FirstOrDefaultAsync(token);
-            if (current is null)
-                return tx.Abort(new SecretMissing());
-            if (!await git.AuthorizeAsync(
-                new AuthorizeGitResourceMutationRequest(
-                    TenantId: tenantId,
-                    Kind: "SecretBinding",
-                    ResourceId: bindingId),
-                session: tx.Session,
-                ct: token))
-                return tx.Abort(new SecretGitOwned());
-            if (current.Management is ProviderManagedSecret owner && owner.BindingId == bindingId)
-                return tx.Abort(new SecretManagedByProvider());
-            if (current.Bindings.All(x => x.Id != bindingId))
-                return tx.Commit(current);
-
-            var detached = current.Detach(bindingId, clock.GetUtcNow().UtcDateTime);
-            await secrets.ReplaceOneAsync(
-                tx.Session,
-                SecretFilters.Identity(tenantId, id),
-                detached,
-                cancellationToken: token);
-            await publish(tx.Session, detached, new SecretBindingRemoved(bindingId), token);
-            return tx.Commit(detached);
+            var result = await ExecuteAsync(new(tenantId, id, SecretIdentity.ObjectId(bindingId), null, null),
+                tx.Session, token);
+            return result is Secret ? tx.Commit(result) : tx.Abort(result);
         }, ct);
+    }
+
+    public async Task<RemoveSecretBindingResult> ExecuteAsync(
+        RemoveSecretBindingMutation request,
+        IClientSessionHandle session,
+        CancellationToken ct)
+    {
+        if (!session.IsInTransaction)
+            throw new InvalidOperationException("Secret binding removal requires a transaction.");
+
+        var current = await secrets.Find(session, SecretFilters.Identity(request.TenantId, request.SecretId))
+            .FirstOrDefaultAsync(ct);
+        if (current is null)
+            return new SecretMissing();
+        if (request.Expected is { } expected && !SecretPlanningFence.Matches(current, expected))
+            return new SecretGitOwned();
+        if (!await git.AuthorizeAsync(new(request.TenantId, "SecretBinding", request.BindingId,
+                Lifecycle: request.Authority,
+                LifecycleEffect: request.Authority is null ? null : GitLifecycleMutationEffect.Remove), session, ct))
+            return new SecretGitOwned();
+        if (current.Management is ProviderManagedSecret owner && owner.BindingId == request.BindingId)
+            return new SecretManagedByProvider();
+        if (current.Bindings.All(item => item.Id != request.BindingId))
+            return current;
+
+        var detached = current.Detach(request.BindingId, clock.GetUtcNow().UtcDateTime);
+        var replaced = await secrets.ReplaceOneAsync(session, SecretFilters.AtPlanningVersion(current), detached,
+            cancellationToken: ct);
+        if (replaced.ModifiedCount != 1)
+            return new SecretGitOwned();
+        await publish(session, detached, new SecretBindingRemoved(request.BindingId), ct);
+        return detached;
     }
 }

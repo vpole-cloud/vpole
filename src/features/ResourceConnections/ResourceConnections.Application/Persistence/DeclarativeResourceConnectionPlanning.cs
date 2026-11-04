@@ -42,9 +42,16 @@ internal sealed partial class DeclarativeResourceConnectionProvider
     {
         var resolved = await ResolveDeclarationAsync(request.TenantId, request.Declaration, request.Operation,
             session, cancellationToken);
-        if (resolved is null)
-            return new DeclarationReadBlocked(new ConnectionDeclarationUnavailable());
+        return resolved is null
+            ? new DeclarationReadBlocked(new ConnectionDeclarationUnavailable())
+            : await ProjectResolvedAsync(resolved, session, cancellationToken);
+    }
 
+    private async Task<ProjectDesiredDeclarationOutcome> ProjectResolvedAsync(
+        ResolvedDeclaration resolved,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
         var topology = await admission.ReadAsync(resolved.Command, session, cancellationToken);
         return topology switch
         {

@@ -7,7 +7,14 @@ namespace Pole.Features.GitOps.Application.Persistence;
 
 internal static class GitSchedulingFilters
 {
+    public static FilterDefinition<RepositorySource> EligibleSources(GitSchedulingEligibility eligibility) =>
+        eligibility == GitSchedulingEligibility.Active
+            ? Builders<RepositorySource>.Filter.Eq(item => item.Activity, GitSourceActivity.Active)
+            : Builders<RepositorySource>.Filter.In(item => item.Activity,
+                [GitSourceActivity.Active, GitSourceActivity.Paused, GitSourceActivity.Detaching]);
+
     public static FilterDefinition<RepositorySource> Repository(RepositorySyncSignal signal) =>
+        Builders<RepositorySource>.Filter.Eq(item => item.Activity, GitSourceActivity.Active) &
         Builders<RepositorySource>.Filter.Eq(item => item.TenantId, signal.TenantId) &
         Builders<RepositorySource>.Filter.Eq(item => item.Repository.Provider, signal.Provider) &
         Builders<RepositorySource>.Filter.Eq(item => item.Repository.ConnectionId, signal.ConnectionId) &
@@ -33,6 +40,11 @@ internal static class GitSchedulingFilters
                 new BsonDocument
                 {
                     { "State._t", nameof(GitRunDelayed) },
+                    { "$expr", new BsonDocument("$lte", new BsonArray { "$State.NextAttemptAtUtc", "$$NOW" }) }
+                },
+                new BsonDocument
+                {
+                    { "State._t", nameof(GitRunWaitingCleanup) },
                     { "$expr", new BsonDocument("$lte", new BsonArray { "$State.NextAttemptAtUtc", "$$NOW" }) }
                 },
                 new BsonDocument

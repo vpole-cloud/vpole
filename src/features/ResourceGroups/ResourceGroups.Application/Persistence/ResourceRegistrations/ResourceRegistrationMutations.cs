@@ -1,6 +1,7 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
@@ -12,7 +13,8 @@ internal sealed class MongoResourceRegistrationMutations(
     IMongoCollection<ResourceGroup> resourceGroups,
     IMongoCollection<ResourceRegistration> registrations,
     TimeProvider timeProvider,
-    StoreOutboxWrites storeOutboxWrites)
+    StoreOutboxWrites storeOutboxWrites,
+    IGitLifecycleCleanupProofRecorder cleanupProofs)
 {
     public async Task<ResourceRegistrationOutcome> RegisterAsync(
         string? owningPluginId,
@@ -173,13 +175,13 @@ internal sealed class MongoResourceRegistrationMutations(
                 new ResourceRegistrationIdentityConflict(resourceTypeId, resourceId));
         }
 
-        var admission = await AdvanceFenceAsync(
-            tenantId,
-            resourceGroupId,
-            session,
+        var before = await resourceGroups.FindOneAndUpdateAsync(session,
+            ResourceGroupFilters.Active(tenantId, resourceGroupId),
+            Builders<ResourceGroup>.Update.Inc(group => group.RegistrationFence, 1),
+            new FindOneAndUpdateOptions<ResourceGroup> { ReturnDocument = ReturnDocument.Before },
             cancellationToken);
-        if (admission is { } admissionError)
-            return admissionError;
+        if (before is null)
+            return await UnavailableGroupAsync(tenantId, resourceGroupId, session, cancellationToken);
 
         var deletion = await registrations.DeleteOneAsync(
             session,
@@ -190,6 +192,11 @@ internal sealed class MongoResourceRegistrationMutations(
                 resourceId),
             cancellationToken: cancellationToken);
         if (deletion.DeletedCount == 1)
+        {
+            await cleanupProofs.RecordAsync(new(tenantId, new GitRegisteredCleanupResource(resourceTypeId, resourceId),
+                $"ResourceRegistration/{current.Id}/Unregistered",
+                [new($"ResourceGroupFence/{resourceGroupId}", before.RegistrationFence,
+                    checked(before.RegistrationFence + 1))]), session, cancellationToken);
             await storeOutboxWrites(
                 session,
                 [
@@ -200,6 +207,7 @@ internal sealed class MongoResourceRegistrationMutations(
                         })
                 ],
                 cancellationToken);
+        }
         return deletion.DeletedCount == 1
             ? new ResourceUnregistered()
             : new ResourceRegistrationMutationError(
@@ -220,6 +228,15 @@ internal sealed class MongoResourceRegistrationMutations(
         if (write.ModifiedCount == 1)
             return null;
 
+        return await UnavailableGroupAsync(tenantId, resourceGroupId, session, cancellationToken);
+    }
+
+    private async Task<ResourceRegistrationMutationError> UnavailableGroupAsync(
+        string tenantId,
+        string resourceGroupId,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
         var exists = await resourceGroups
             .Find(session, ResourceGroupFilters.ByTenantAndId(tenantId, resourceGroupId))
             .AnyAsync(cancellationToken);

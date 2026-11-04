@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Pole.Features.GitOps.Application.Endpoints.Sources.Previews;
 using Pole.Features.GitOps.Application.Endpoints.Sources;
 using Pole.Features.GitOps.Domain;
 using Microsoft.AspNetCore.Http;
@@ -17,6 +18,8 @@ public static class GitOpsFeature
 {
     public static IServiceCollection AddGitOpsFeature(this IServiceCollection services)
     {
+        services.ConfigureHttpJsonOptions(options =>
+            options.SerializerOptions.AllowOutOfOrderMetadataProperties = true);
         services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>()
             .GetCollection<ManagedDeclaration>(GitOpsCollections.Inventory));
         services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>()
@@ -35,6 +38,7 @@ public static class GitOpsFeature
         services.AddSingleton(sp => sp.GetRequiredService<IOptions<GitOpsWorkerOptions>>().Value);
         services.AddScoped<RepositoryProviderRegistry>();
         services.AddScoped<GitRepositorySources>();
+        services.AddScoped<GitSourceLifecycleStore>();
         services.AddScoped<GitSourceScheduling>();
         services.AddScoped<IGitSourceScheduler>(sp => sp.GetRequiredService<GitSourceScheduling>());
         services.AddScoped<GitSourceRecoveryScanner>();
@@ -42,6 +46,20 @@ public static class GitOpsFeature
             sp.GetRequiredService<IBackgroundJobClient>().Enqueue<RepositorySourceJob>(job =>
                 job.ExecuteAsync(source.TenantId, source.SourceId, CancellationToken.None)));
         services.AddScoped<GitRunStore>();
+        services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>()
+            .GetCollection<GitOperationPreview>(RepositoryCollections.Previews));
+        services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>()
+            .GetCollection<GitLifecycleCleanupProof>(GitOpsCollections.CleanupProofs));
+        services.AddScoped<GitLifecycleCleanupProofs>();
+        services.AddScoped<IGitLifecycleCleanupProofRecorder>(sp => sp.GetRequiredService<GitLifecycleCleanupProofs>());
+        services.AddScoped<GitLifecycleResources>();
+        services.AddScoped<GitLifecyclePreviewReferences>();
+        services.AddScoped<GitLifecycleSnapshotReader>();
+        services.AddScoped<GitLifecyclePreviewBuilder>();
+        services.AddScoped<GitPrunePlanning>();
+        services.AddScoped<GitLifecyclePreviews>();
+        services.AddScoped<GitLifecycleExecutor>();
+        services.AddScoped<GitAcceptedSnapshotExecutor>();
         services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>()
             .GetCollection<GitPlannedOperation>(GitOpsCollections.Plans));
         services.AddScoped<GitOperationPlanning>();
@@ -56,6 +74,8 @@ public static class GitOpsFeature
         services.AddScoped<ManifestCompiler>();
         services.AddScoped<DeclarativeResourcePlanner>();
         services.AddScoped<MongoGitOwnership>();
+        services.AddScoped<MongoGitLifecycleGuard>();
+        services.AddScoped<IGitLifecyclePlanGuard>(sp => sp.GetRequiredService<MongoGitLifecycleGuard>());
         services.AddScoped<GitDeclarationCompletion>();
         services.AddScoped<GitOperationReceipts>();
         services.AddScoped<GitOwnershipStatuses>();
@@ -69,6 +89,9 @@ public static class GitOpsFeature
         app.MapGroup("/gitops/sources").WithTags("GitOpsSources")
             .MapCreateRepositorySourceEndpoint().MapGetRepositorySourceEndpoint().MapListRepositorySourcesEndpoint()
             .MapUpdateRepositorySourceEndpoint().MapSyncRepositorySourceEndpoint().MapRetryRepositorySourceEndpoint()
+            .MapPauseRepositorySourceEndpoint().MapResumeRepositorySourceEndpoint().MapDeleteRepositorySourceEndpoint()
+            .MapCreateLifecyclePreviewEndpoint().MapConfirmLifecyclePreviewEndpoint()
+            .MapGetLifecyclePreviewEndpoint().MapListLifecyclePreviewEndpoint()
             .MapListRepositoryRunsEndpoint().MapGetRepositoryRunEndpoint().MapListRepositoryOperationsEndpoint();
 
         return app;

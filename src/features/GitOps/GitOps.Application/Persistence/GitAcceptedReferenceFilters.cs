@@ -15,4 +15,9 @@ internal static class GitAcceptedReferenceFilters
         Builders<GitAcceptedReference>.Filter.Eq(item => item.Source.TenantId, tenant) &
         Builders<GitAcceptedReference>.Filter.Eq(item => item.Target.Kind, kind) &
         Builders<GitAcceptedReference>.Filter.Eq(item => item.Target.ResourceId, resource);
+
+    public static FilterDefinition<GitAcceptedReference> Consumer(GitSourceIdentity source, string consumer) =>
+        Builders<GitAcceptedReference>.Filter.Eq(item => item.Source.TenantId, source.TenantId) &
+        Builders<GitAcceptedReference>.Filter.Eq(item => item.Source.SourceId, source.SourceId) &
+        Builders<GitAcceptedReference>.Filter.Eq(item => item.ConsumerResourceId, consumer);
 }

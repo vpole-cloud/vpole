@@ -32,7 +32,8 @@ public union SyncRepositorySourceOutcome(
     GitSourceScheduled,
     GitSourceNotFound,
     GitSourceRevisionConflict,
-    GitSourceIdempotencyConflict);
+    GitSourceIdempotencyConflict,
+    GitSourceInactive);
 
 public sealed class SyncRepositorySourceValidator : AbstractValidator<SyncRepositorySourceRequest>
 {
@@ -70,6 +71,7 @@ public sealed class SyncRepositorySourceHandler(GitRepositorySources sources)
             GitSourceScheduled value => value,
             GitSourceNotFound value => value,
             GitSourceRevisionConflict value => value,
+            GitSourceInactive inactive => inactive,
             GitSourceIdempotencyConflict value => value
         };
     }
@@ -87,6 +89,7 @@ public static class SyncRepositorySourceEndpoint
                         GitSourceScheduled value => Results.Accepted(value: value),
                         GitSourceNotFound value => RepositoryHttpMappings.Map(value),
                         GitSourceRevisionConflict value => RepositoryHttpMappings.Map(value),
+                        GitSourceInactive inactive => RepositoryHttpMappings.Map(inactive),
                         GitSourceIdempotencyConflict value => RepositoryHttpMappings.Map(value)
                     })).WithName("SyncGitRepositorySource")
             .WithMetadata(new RequestSizeLimitAttribute(SnapshotHttpLimits.MaximumSourceRequestBytes));

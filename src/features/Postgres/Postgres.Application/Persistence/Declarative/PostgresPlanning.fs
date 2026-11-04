@@ -30,10 +30,15 @@ type PostgresPlanningDependencies =
       BootstrapSecretId : string
       DeploymentMode : PostgresDeploymentMode
       Bootstrap : BootstrapSecretReady option
-      Credentials : ConsumerSecretPlanningSnapshot option }
+      Credentials : ConsumerSecretPlanningSnapshot option
+      Adoption : ManagedSecretAdoptionSnapshot option }
 
 type private PostgresPlanningInput =
-    { Operation : GitOperationInput
+    { TenantId : string
+      ResourceId : string
+      Declaration : CompiledDeclaration
+      Phase : DeclarationPhase
+      Resolve : string -> string -> Task<string>
       Spec : PostgresDeclaration
       Session : IClientSessionHandle
       CancellationToken : CancellationToken }
@@ -84,6 +89,12 @@ module PostgresPlanning =
                for secret in credentials.Secrets do
                    DeclarationDocumentVersion($"Secret/{secret.SecretId}", secret.Revision)
                    DeclarationDocumentVersion($"Secret/{secret.SecretId}/ReferenceFence", secret.ReferenceFence)
+           | None -> ()
+           match data.Adoption with
+           | Some credential ->
+               DeclarationDocumentVersion($"Secret/{credential.SecretId}", credential.Revision)
+               DeclarationDocumentVersion($"Secret/{credential.SecretId}/ReferenceFence", credential.ReferenceFence)
+               DeclarationDocumentVersion($"Secret/{credential.SecretId}/ValueVersion", credential.ValueVersion)
            | None -> () |]
 
 type PostgresPlanningReader(
@@ -95,14 +106,12 @@ type PostgresPlanningReader(
     loadStorage : ResolveStorageProfilePlanningSnapshot,
     loadPlacements : LoadResourceDeploymentPlanningSnapshot,
     readBootstrap : ReadBootstrapSecret,
+    readAdoption : ReadManagedSecretAdoption,
     loadCredentials : LoadConsumerSecretPlanningSnapshot,
     settings : PostgresSettings) =
 
     let accepted (input : PostgresPlanningInput) kind name =
-        git.ResolveAcceptedAsync(
-            ResolveAcceptedGitReferenceRequest(
-                input.Operation.Context, input.Operation.ResourceId, ResourceAddress(kind, name)),
-            input.Session, input.CancellationToken)
+        input.Resolve kind name
 
     let readScope (input : PostgresPlanningInput) =
         task {
@@ -117,7 +126,7 @@ type PostgresPlanningReader(
                 return PostgresPlanning.rejected PostgresDeclarationError.IsolationScopeUnavailable
             else
                 let! loaded = loadScope.Invoke(
-                    IsolationScopePlanningRequest(input.Operation.Context.TenantId, groupId, scopeId),
+                    IsolationScopePlanningRequest(input.TenantId, groupId, scopeId),
                     input.Session, input.CancellationToken)
                 match loaded.Value with
                 | :? IsolationScopePlanningSnapshot as scope -> return Ok scope
@@ -133,7 +142,7 @@ type PostgresPlanningReader(
                 return PostgresPlanning.rejected PostgresDeclarationError.DeploymentTargetUnavailable
             else
                 let! loaded = loadTarget.Invoke(
-                    DeploymentTargetAdmissionRequest(input.Operation.Context.TenantId,
+                    DeploymentTargetAdmissionRequest(input.TenantId,
                         PostgresResourceDeployment.ResourceType, scope.IsolationScopeId, targetId,
                         DeploymentTargetRequiredCapabilities.None), input.Session, input.CancellationToken)
                 match loaded.Value with
@@ -150,7 +159,7 @@ type PostgresPlanningReader(
                 return PostgresPlanning.rejected PostgresDeclarationError.ComputeProfileUnavailable
             else
                 let! loaded = loadCompute.Invoke(
-                    ComputeProfilePlanningRequest(input.Operation.Context.TenantId,
+                    ComputeProfilePlanningRequest(input.TenantId,
                         PostgresResourceDeployment.ResourceType, id, target.Target.Id,
                         input.Spec.Placement.ComputeProfile.Revision), input.Session, input.CancellationToken)
                 match loaded.Value with
@@ -167,7 +176,7 @@ type PostgresPlanningReader(
                 return PostgresPlanning.rejected PostgresDeclarationError.StorageProfileUnavailable
             else
                 let! loaded = loadStorage.Invoke(
-                    StorageProfilePlanningRequest(input.Operation.Context.TenantId,
+                    StorageProfilePlanningRequest(input.TenantId,
                         PostgresResourceDeployment.ResourceType, id, target.Target.Id,
                         input.Spec.Storage.SizeGb, input.Spec.Storage.Profile.Revision),
                     input.Session, input.CancellationToken)
@@ -184,7 +193,7 @@ type PostgresPlanningReader(
             let! found =
                 clusters
                     .Find(input.Session,
-                        PostgresFilters.byId input.Operation.Context.TenantId input.Operation.ResourceId)
+                        PostgresFilters.byId input.TenantId input.ResourceId)
                     .FirstOrDefaultAsync(input.CancellationToken)
             let current = if isNull (box found) then None else Some found
             let! sourceId = accepted input "Secret" input.Spec.BootstrapPassword.Secret
@@ -205,17 +214,15 @@ type PostgresPlanningReader(
             match current, placement with
             | Some resource, _ when (resource.Lifecycle :? DeletingPostgresClusterLifecycle) ->
                 return PostgresPlanning.rejected PostgresDeclarationError.ResourceDeleting
-            | Some resource, _ when resource.Name <> input.Operation.Declaration.Address.Name ->
+            | Some resource, _ when resource.Name <> input.Declaration.Address.Name ->
                 return Error(DeclarationIdentityChanged() :> IDeclarationFailure)
-            | Some resource, _ when PostgresPlanning.bootstrap resource |> Option.isNone ->
-                return PostgresPlanning.rejected PostgresDeclarationError.ExplicitAdoptionRequired
             | Some _, None -> return PostgresPlanning.rejected PostgresDeclarationError.PlacementUnavailable
             | Some resource, Some placed when placed.Items.Count <> 1
                 || placed.Items[0].ResourceGroupId <> resource.GroupId
                 || placed.Items[0].State = ResourceDeploymentPlanningState.Deleting
                 || isNull placed.Items[0].Storage ->
                 return PostgresPlanning.rejected PostgresDeclarationError.PlacementUnavailable
-            | None, _ when input.Operation.Phase <> DeclarationPhase.Prepare ->
+            | None, _ when input.Phase <> DeclarationPhase.Prepare ->
                 return PostgresPlanning.rejected PostgresDeclarationError.PlacementUnavailable
             | _ when isNull sourceId ->
                 return PostgresPlanning.rejected PostgresDeclarationError.BootstrapSecretUnavailable
@@ -228,7 +235,8 @@ type PostgresPlanningReader(
                       DeploymentMode = current |> Option.map _.Spec.DeploymentMode
                           |> Option.defaultValue settings.DefaultDeploymentMode
                       Bootstrap = None
-                      Credentials = None }
+                      Credentials = None
+                      Adoption = None }
         }
 
     let checkIdentity (input : PostgresPlanningInput) (data : PostgresPlanningDependencies) =
@@ -236,7 +244,13 @@ type PostgresPlanningReader(
             match data.Current, data.Placements with
             | Some current, Some placements ->
                 let placement = placements.Items[0]
-                let bootstrap = PostgresPlanning.bootstrap current |> Option.get
+                let bootstrapChanged =
+                    match PostgresPlanning.bootstrap current with
+                    | None -> false
+                    | Some bootstrap ->
+                        bootstrap.SourceSecretId <> data.BootstrapSecretId
+                        || bootstrap.SourceKey <> input.Spec.BootstrapPassword.Key
+                        || bootstrap.Username <> input.Spec.Username
                 let changed =
                     current.GroupId <> data.Catalog.Scope.ResourceGroupId
                     || placement.IsolationScopeId <> data.Catalog.Scope.IsolationScopeId
@@ -244,9 +258,7 @@ type PostgresPlanningReader(
                     || current.Spec.Version <> input.Spec.Version
                     || current.Spec.StorageProfileId <> data.Catalog.Storage.Storage.ProfileId
                     || placement.Storage <> PostgresResourceDeploymentMappings.storage data.Catalog.Storage.Storage
-                    || bootstrap.SourceSecretId <> data.BootstrapSecretId
-                    || bootstrap.SourceKey <> input.Spec.BootstrapPassword.Key
-                    || bootstrap.Username <> input.Spec.Username
+                    || bootstrapChanged
 
                 if changed then
                     return Error(DeclarationReplacementRequired() :> IDeclarationFailure)
@@ -296,7 +308,23 @@ type PostgresPlanningReader(
 
     let readCredential (input : PostgresPlanningInput) (data : PostgresPlanningDependencies) =
         task {
-            match input.Operation.Phase, data.Current, data.Placements with
+            match input.Phase, data.Current, data.Placements with
+            | _, Some current, Some _ when (current.Provisioning :? DirectPostgresProvisioning) ->
+                let! loaded = readAdoption.Invoke(
+                    ReadManagedSecretAdoptionRequest(current.TenantId, PostgresManagedSecret.owner current.Id,
+                        current.GroupId, data.Catalog.Scope.IsolationScopeId,
+                        ManagedSecretIdentityExpectation(PostgresManagedSecret.usernameKey, input.Spec.Username)),
+                    input.Session, input.CancellationToken)
+                match loaded.Value with
+                | :? ManagedSecretAdoptionSnapshot as credential ->
+                    return Ok { data with Adoption = Some credential }
+                | :? ManagedSecretIdentityMismatch ->
+                    return Error(DeclarationReplacementRequired() :> IDeclarationFailure)
+                | :? ManagedSecretUnavailable ->
+                    return PostgresPlanning.rejected PostgresDeclarationError.BootstrapCredentialUnavailable
+                | :? ManagedSecretEncryptionUnavailable ->
+                    return PostgresPlanning.rejected PostgresDeclarationError.BootstrapProtectionUnavailable
+                | _ -> return invalidOp "Unsupported managed credential adoption outcome."
             | DeclarationPhase.Configure, Some current, Some placements when current.IsPrepared ->
                 let request =
                     PostgresBootstrapRequests.create
@@ -321,12 +349,7 @@ type PostgresPlanningReader(
             | _ -> return Ok data
         }
 
-    member _.ReadAsync(operation : GitOperationInput, session : IClientSessionHandle, ct : CancellationToken) =
-        let input =
-            { Operation = operation
-              Spec = DeclarationJson.Read<PostgresDeclaration> operation.Declaration.Spec
-              Session = session
-              CancellationToken = ct }
+    let read input =
         readScope input
         |> PostgresPlanning.bind (readTarget input)
         |> PostgresPlanning.bind (readCompute input)
@@ -335,3 +358,33 @@ type PostgresPlanningReader(
         |> PostgresPlanning.bind (checkIdentity input)
         |> PostgresPlanning.bind (checkCapacity input)
         |> PostgresPlanning.bind (readCredential input)
+
+
+    member _.ReadAsync(operation : GitOperationInput, session : IClientSessionHandle, ct : CancellationToken) =
+        read
+            { TenantId = operation.Context.TenantId
+              ResourceId = operation.ResourceId
+              Declaration = operation.Declaration
+              Phase = operation.Phase
+              Resolve = fun kind name -> git.ResolveAcceptedAsync(
+                  ResolveAcceptedGitReferenceRequest(operation.Context, operation.ResourceId,
+                      ResourceAddress(kind, name)), session, ct)
+              Spec = DeclarationJson.Read<PostgresDeclaration> operation.Declaration.Spec
+              Session = session
+              CancellationToken = ct }
+
+    member _.ReadAdoptionAsync(
+        request : PreviewLifecycleAdoptionRequest, session : IClientSessionHandle, ct : CancellationToken) =
+        read
+            { TenantId = request.TenantId
+              ResourceId = request.ResourceId
+              Declaration = request.Declaration
+              Phase = DeclarationPhase.Configure
+              Resolve = fun kind name -> Task.FromResult(
+                  request.References
+                  |> Seq.tryFind (fun reference -> reference.Address = ResourceAddress(kind, name))
+                  |> Option.map _.ResourceId
+                  |> Option.defaultValue null)
+              Spec = DeclarationJson.Read<PostgresDeclaration> request.Declaration.Spec
+              Session = session
+              CancellationToken = ct }

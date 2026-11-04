@@ -18,6 +18,7 @@ internal sealed class TestRepositorySnapshots : IRepositorySnapshotProvider
         new();
 
     public CheckRepositoryAccessOutcome Access { get; set; } = new RepositoryAccessGranted(DisplayUrl);
+    public Func<Task>? BeforeAccess { get; set; }
     public ConcurrentQueue<string> ReadCommits { get; } = new();
 
     public Func<ReadRepositorySnapshotRequest, CancellationToken, Task<ReadRepositorySnapshotOutcome>>? ReadOverride
@@ -36,9 +37,14 @@ internal sealed class TestRepositorySnapshots : IRepositorySnapshotProvider
         return commit;
     }
 
-    public Task<CheckRepositoryAccessOutcome> CheckAccessAsync(
+    public async Task<CheckRepositoryAccessOutcome> CheckAccessAsync(
         RepositorySourceReference repository,
-        CancellationToken cancellationToken) => Task.FromResult(Access);
+        CancellationToken cancellationToken)
+    {
+        if (BeforeAccess is { } before)
+            await before();
+        return Access;
+    }
 
     public Task<ResolveRepositoryCommitOutcome> ResolveCommitAsync(
         ResolveRepositoryCommitRequest request,
