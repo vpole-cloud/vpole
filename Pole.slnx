@@ -37,6 +37,7 @@
   <Folder Name="/features/GitOps/">
     <Project Path="src/features/GitOps/GitOps.Primitives/GitOps.Primitives.csproj" />
     <Project Path="src/features/GitOps/GitOps.Domain/GitOps.Domain.csproj" />
+    <Project Path="src/features/GitOps/GitOps.Events/GitOps.Events.csproj" />
     <Project Path="src/features/GitOps/GitOps.Contracts/GitOps.Contracts.csproj" />
     <Project Path="src/features/GitOps/GitOps.Application/GitOps.Application.csproj" />
     <Project Path="src/features/GitOps/GitOps.Tests/GitOps.Tests.csproj" />

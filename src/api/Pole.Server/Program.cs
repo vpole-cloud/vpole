@@ -146,7 +146,7 @@ app.UsePoleTenantPipeline();
 
 app.UseHangfire();
 app.Services
-    .ScheduleGitSnapshotRecurringJobs()
+    .ScheduleGitOpsRecurringJobs()
     .ScheduleOutboxRecurringJobs()
     .ScheduleSourceBuildRecurringJobs()
     .ScheduleResourceGroupRecurringJobs()

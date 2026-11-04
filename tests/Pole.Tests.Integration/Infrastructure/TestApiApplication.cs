@@ -81,6 +81,7 @@ namespace Pole.Tests.Integration.Infrastructure;
 
 public sealed class TestApiApplication : IAsyncDisposable
 {
+    public const string GitHubWebhookSecret = "synthetic-api-integration-webhook-key";
     private readonly WebApplication _app;
     private readonly string _encryptionKeyDirectory;
 
@@ -122,6 +123,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         Client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, TestData.TenantId);
     }
 
+    public IServiceProvider Services => _app.Services;
     public HttpClient Client { get; }
     public FakeGitHubAppClient GitHubClient { get; }
     private TestDeploymentTargetLookup DeploymentTargetLookup { get; }
@@ -144,7 +146,9 @@ public sealed class TestApiApplication : IAsyncDisposable
         bool deletionRequested,
         NetworkPolicyReadiness readiness) =>
         DeploymentTargetLookup.SetPrivateAccessTargetState(
-            enabled, deletionRequested, readiness);
+            enabled,
+            deletionRequested,
+            readiness);
 
     public static async Task<TestApiApplication> StartAsync(
         MongoReplicaSetFixture fixture,
@@ -180,6 +184,7 @@ public sealed class TestApiApplication : IAsyncDisposable
             ["EnvelopeEncryption:LocalKeyFile:Keys:0:Version"] = "1",
             ["EnvelopeEncryption:LocalKeyFile:Keys:0:Path"] = encryptionKeyPath,
             ["DeploymentTargets:Bootstrap:Enabled"] = "false",
+            ["GitHubWebhook:Secret"] = GitHubWebhookSecret,
             ["PrivateAccess:Enabled"] = privateAccessEnabled.ToString(),
             ["kubernetes:NamespaceNamePrefix"] = "test"
         });
@@ -206,7 +211,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddResourceGroupsFeature(builder.Configuration);
         builder.Services.AddResourceConnectionsFeature();
         builder.Services.AddScoped<EnsureRuntimeCellIngressBaseline>(_ =>
-(request, cancellationToken) =>
+            (request, cancellationToken) =>
                 Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
                     new RuntimeCellIngressBaselineReady()));
         builder.Services.AddRedisServicesFeature();
@@ -297,16 +302,18 @@ public sealed class TestApiApplication : IAsyncDisposable
                 _ => { });
         builder.Services.AddAuthorization(options =>
         {
-            options.AddPolicy(Policy.Admin, policy =>
-                policy.RequireClaim(Claims.Roles, Roles.Admin));
+            options.AddPolicy(Policy.Admin,
+                policy =>
+                    policy.RequireClaim(Claims.Roles, Roles.Admin));
         });
         builder.Services.AddCors(options =>
         {
-            options.AddPolicy("frontend-dev", policy =>
-                policy.WithOrigins("http://localhost:5173")
-                    .AllowAnyHeader()
-                    .AllowAnyMethod()
-                    .WithExposedHeaders(TraceHeaders.CorrelationId, TraceHeaders.TraceId));
+            options.AddPolicy("frontend-dev",
+                policy =>
+                    policy.WithOrigins("http://localhost:5173")
+                        .AllowAnyHeader()
+                        .AllowAnyMethod()
+                        .WithExposedHeaders(TraceHeaders.CorrelationId, TraceHeaders.TraceId));
         });
 
         configureTestServices?.Invoke(builder.Services);
@@ -342,7 +349,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         var api = app.MapGroup("/api/v1").RequireTenantContext()
             .RequireAuthorization();
         api
-            .MapGitSnapshotEndpoints().MapSecretEndpoints()
+            .MapGitOpsEndpoints().MapSecretEndpoints()
             .MapPrivateAccessEndpoints()
             .MapResourceGroupEndpoints()
             .MapContainerRegistryEndpoints()
@@ -393,5 +400,4 @@ public sealed class TestApiApplication : IAsyncDisposable
         await _app.DisposeAsync();
         Directory.Delete(_encryptionKeyDirectory, recursive: true);
     }
-
 }

@@ -72,6 +72,7 @@ public static class PolePlatform
 
     public static Assembly[] EventAssemblies =>
     [
+        typeof(Pole.Features.GitOps.Events.GitSourceWorkRequested).Assembly,
         typeof(Pole.Features.Domains.Events.DomainMetadataChangedEvent).Assembly,
         typeof(Pole.Features.GitProviders.Events.GitProviderConnectionChangedEvent).Assembly,
         typeof(Pole.Features.ComputeProfiles.Events.ComputeProfileCatalogChangedEvent).Assembly,

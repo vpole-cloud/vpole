@@ -10,8 +10,8 @@ public sealed record DeclarationOwnership(
     string? AppliedHash,
     bool PendingRemoval)
 {
-    public bool CanBeMutatedBy(ExecutionStamp stamp, string resourceId) =>
-        TenantId == stamp.TenantId && SourceId == stamp.SourceId && ResourceId == resourceId;
+    public bool CanBeMutatedBy(GitSourceIdentity source, string resourceId) =>
+        TenantId == source.TenantId && SourceId == source.SourceId && ResourceId == resourceId;
 
     public DeclarationOwnership ObserveDesired(string hash) => this with { DesiredHash = hash, PendingRemoval = false };
 

@@ -1,76 +1,41 @@
 using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Domain;
+using Pole.Features.GitOps.Primitives;
 using Xunit;
 
 namespace Pole.Features.GitOps.Tests;
 
 public sealed class SnapshotDomainTests
 {
-    private static readonly ExecutionStamp Stamp = new("tenant", "source", "run", 3, 2);
-    private static readonly AcceptedResourceBinding Binding = new("Widget", "demo", "resource", "desired");
-    private static SnapshotExecution Execution() => SnapshotExecutionFactory.Create(
-        Stamp, "https://example.test/source", "new-commit", "working-commit", [Binding], new ApplyingSnapshot());
-    private static DeclarationOwnership Ownership() => new("tenant", "source", "Widget", "demo", "resource", "desired", "working", false);
+    private static DeclarationOwnership Ownership() =>
+        new("tenant", "source", "Widget", "demo", "resource", "desired", "working", false);
 
     [Fact]
-    public void Acceptance_rejects_stale_fences_and_implicit_source_relocation()
+    public void Ownership_requires_tenant_source_and_the_accepted_resource_identity()
     {
-        var current = Execution();
-        Assert.Equal(SnapshotAcceptance.Accepted, current.EvaluateAcceptance(3, current.SourceUrl));
-        Assert.Equal(SnapshotAcceptance.StaleExecution, current.EvaluateAcceptance(2, current.SourceUrl));
-        Assert.Equal(SnapshotAcceptance.SourceRelocationRequired, current.EvaluateAcceptance(3, "https://example.test/other"));
-    }
-
-    [Fact]
-    public void Every_execution_identity_component_and_accepted_binding_is_required()
-    {
-        var current = Execution();
-        Assert.True(current.AllowsOperation(Stamp, Binding));
-        Assert.False(current.AllowsOperation(Stamp with { TenantId = "other" }, Binding));
-        Assert.False(current.AllowsOperation(Stamp with { SourceId = "other" }, Binding));
-        Assert.False(current.AllowsOperation(Stamp with { RunId = "other" }, Binding));
-        Assert.False(current.AllowsOperation(Stamp with { Fence = 2 }, Binding));
-        Assert.False(current.AllowsOperation(Stamp with { Attempt = 1 }, Binding));
-        Assert.False(current.AllowsOperation(Stamp, Binding with { Kind = "Other" }));
-        Assert.False(current.AllowsOperation(Stamp, Binding with { Name = "renamed" }));
-        Assert.False(current.AllowsOperation(Stamp, Binding with { ResourceId = "replacement" }));
-        Assert.False(current.AllowsOperation(Stamp, Binding with { DesiredHash = "unaccepted" }));
-    }
-
-    [Fact]
-    public void Resource_mutation_requires_both_ownership_and_an_accepted_binding()
-    {
-        Assert.True(Execution().AllowsResourceMutation(Stamp, Ownership()));
-        Assert.False(Execution().AllowsResourceMutation(Stamp, Ownership() with { TenantId = "other" }));
-        Assert.False(Execution().AllowsResourceMutation(Stamp, Ownership() with { SourceId = "other" }));
-        Assert.False(Execution().AllowsResourceMutation(Stamp, Ownership() with { ResourceId = "other" }));
-        Assert.False(Execution().AllowsResourceMutation(Stamp, Ownership() with { Name = "other" }));
+        Assert.True(Ownership().CanBeMutatedBy(new("tenant", "source"), "resource"));
+        Assert.False(Ownership().CanBeMutatedBy(new("foreign", "source"), "resource"));
+        Assert.False(Ownership().CanBeMutatedBy(new("tenant", "other"), "resource"));
+        Assert.False(Ownership().CanBeMutatedBy(new("tenant", "source"), "replacement"));
     }
 
     [Theory]
-    [InlineData(SnapshotApplyOutcome.Blocked)]
-    [InlineData(SnapshotApplyOutcome.StaleExecution)]
-    public void An_unsuccessful_configuration_preserves_the_last_applied_commit(SnapshotApplyOutcome outcome)
+    [InlineData(GitRunCompletion.Blocked)]
+    [InlineData(GitRunCompletion.Failed)]
+    [InlineData(GitRunCompletion.Superseded)]
+    public void Unsuccessful_runs_preserve_the_fully_applied_commit(GitRunCompletion completion)
     {
-        var result = Execution().Complete(outcome);
-        Assert.Equal("working-commit", result.AppliedCommit);
-        Assert.Equal("new-commit", result.AttemptedCommit);
-    }
-
-    [Fact]
-    public void Configuration_application_advances_applied_commit_without_runtime_readiness()
-    {
-        var result = Execution().Complete(SnapshotApplyOutcome.Applied);
-        Assert.IsType<AppliedSnapshot>(result.Progress);
-        Assert.Equal("new-commit", result.AppliedCommit);
-    }
-
-    [Fact]
-    public void Unsupported_schema_preserves_the_working_commit_and_has_its_own_progress()
-    {
-        var rejected = Execution().RejectStoredSchema();
-        Assert.IsType<UnsupportedSnapshotSchema>(rejected.Progress);
-        Assert.Equal("working-commit", rejected.AppliedCommit);
+        var stamp = new GitRunStamp(new("tenant", "source"), "run", 1, 1, 1);
+        var state = GitSynchronizationStateFactory.Create(stamp.Source, DateTime.UtcNow)
+                .RequestSync(new(new(GitRunTrigger.Poll, null), null)).BeginRun(stamp.RunId) with
+        {
+            Commits = new("new", "new", "working")
+        };
+        var completed = state.CompleteRun(stamp, completion);
+        Assert.Equal(new("new", "new", "working"), completed.Commits);
+        Assert.Equal(1, completed.CompletedGeneration);
+        Assert.Equal("new", state.CompleteRun(stamp, GitRunCompletion.ConfigurationApplied).Commits.FullyApplied);
+        Assert.Throws<InvalidOperationException>(() => state.CompleteRun(stamp with { Fence = 2 }, completion));
     }
 
     [Fact]
@@ -100,23 +65,39 @@ public sealed class SnapshotDomainTests
     }
 
     [Fact]
-    public void Invalid_or_duplicate_accepted_bindings_cannot_create_an_execution()
+    public void Acceptance_rejects_duplicate_resources_and_operations_with_rebound_ids()
     {
-        Assert.Throws<ArgumentException>(() => SnapshotExecutionFactory.Create(Stamp, "origin", "commit", null,
-            [Binding, Binding with { ResourceId = "second" }], new ApplyingSnapshot()));
-        Assert.Throws<ArgumentException>(() => SnapshotExecutionFactory.Create(Stamp, "origin", "commit", null,
-            [Binding with { DesiredHash = "" }], new ApplyingSnapshot()));
-        Assert.Throws<ArgumentException>(() => SnapshotExecutionFactory.Create(Stamp with { Attempt = -1 }, "origin", "commit", null,
-            [Binding], new ApplyingSnapshot()));
+        const string commit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        var run = GitReconciliationRunFactory.Create(new(new("tenant", "source"), "run", 1, 1, 1),
+            new("Example", "connection", "repository", "main", ""),
+            new(GitRunTrigger.Poll, null),
+            DateTime.UtcNow,
+            new GitInputUnresolved(),
+            null).Pin(commit);
+        var resource = new AcceptedDeclaration("Widget", "demo", "hash", "{}", "resource");
+        var snapshot = new GitAcceptedSnapshot(commit,
+            "desired",
+            SnapshotSchema.ApiVersion,
+            [resource],
+            [new("Widget", "demo", "resource", DeclarationPhase.Prepare)]);
+        Assert.IsType<GitInputAccepted>(run.Accept(snapshot).Input);
+        Assert.Throws<InvalidOperationException>(() => run.Accept(snapshot with { Resources = [resource, resource] }));
+        Assert.Throws<InvalidOperationException>(() => run.Accept(snapshot with
+        {
+            Operations = [new("Widget", "demo", "replacement", DeclarationPhase.Prepare)]
+        }));
+        Assert.Throws<InvalidOperationException>(() => run.Accept(snapshot with { Operations = [] }));
+        Assert.Throws<ArgumentException>(() => run.Accept(snapshot with
+        {
+            Resources = [resource with { Hash = "" }]
+        }));
     }
 
-    [Fact]
-    public void Retry_policy_keeps_inflight_lease_blocked_retry_and_terminal_schema_distinct()
-    {
-        var now = new DateTime(2026, 10, 23, 0, 0, 0, DateTimeKind.Utc);
-        Assert.Equal(now + SnapshotExecutionPolicy.RecoveryLease, SnapshotExecutionPolicy.NextAttemptAt(new ApplyingSnapshot(), now));
-        Assert.Equal(now + SnapshotExecutionPolicy.RetryDelay, SnapshotExecutionPolicy.NextAttemptAt(new BlockedSnapshot(), now));
-        Assert.Null(SnapshotExecutionPolicy.NextAttemptAt(new AppliedSnapshot(), now));
-        Assert.Null(SnapshotExecutionPolicy.NextAttemptAt(new UnsupportedSnapshotSchema(), now));
-    }
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(2, 2)]
+    [InlineData(3, 4)]
+    [InlineData(4, 5)]
+    public void Temporary_failures_use_the_bounded_backoff(int failure, int minutes) =>
+        Assert.Equal(TimeSpan.FromMinutes(minutes), new GitOpsWorkerOptions().RetryDelay(failure));
 }

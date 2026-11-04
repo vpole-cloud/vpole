@@ -38,6 +38,7 @@ public static class GitProviderEndpoints
         {
             CompleteGitHubInstallationSetup.MapEndpoint(app);
             CompleteGitHubOAuthVerification.MapEndpoint(app);
+            ReceiveGitHubWebhook.MapEndpoint(app);
             return app;
         }
     }

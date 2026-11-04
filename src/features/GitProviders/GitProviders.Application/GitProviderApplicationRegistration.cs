@@ -1,3 +1,5 @@
+using Pole.Features.GitProviders.Application.Endpoints.Callbacks;
+using Pole.Features.GitProviders.Application.Persistence.Webhooks;
 using Microsoft.Extensions.Configuration;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitProviders.Application.Snapshots;
@@ -36,6 +38,14 @@ public static class GitProviderApplicationRegistration
         services.TryAddScoped<RepositoryManifestArchiveReader>();
         services.TryAddEnumerable(
             ServiceDescriptor.Scoped<IRepositorySnapshotProvider, GitHubRepositorySnapshotProvider>());
+        services.AddOptions<GitHubWebhookOptions>()
+            .Bind(configuration.GetSection(GitHubWebhookOptions.SectionName))
+            .Validate(value => !configuration.GetValue<bool>("GitHubApp:Enabled") ||
+                               !string.IsNullOrWhiteSpace(value.Secret),
+                "GitHubWebhook:Secret is required when GitHub is enabled.")
+            .ValidateOnStart();
+        services.AddScoped<GitHubWebhookPersistence>();
+        services.AddScoped<ReceiveGitHubWebhookHandler>();
         services.AddMemoryCache();
         services.AddDataProtection().SetApplicationName("Pole");
         services.TryAddSingleton(TimeProvider.System);

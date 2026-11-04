@@ -20,20 +20,29 @@ public abstract class ApiIntegrationTestBase : IAsyncLifetime
 
     protected MongoReplicaSetFixture Fixture { get; }
     protected HttpClient Client => _application!.Client;
+    protected IServiceProvider ApiServices => _application!.Services;
     protected virtual bool PrivateAccessEnabled => false;
-    protected virtual void ConfigureTestServices(IServiceCollection services) { }
+
+    protected virtual void ConfigureTestServices(IServiceCollection services)
+    {
+    }
+
     protected Task StopApiAsync(CancellationToken cancellationToken) => _application!.StopAsync(cancellationToken);
     protected FakeGitHubAppClient GitHubClient => _application!.GitHubClient;
+
     protected void RejectNewDeploymentTargetWorkloads() =>
         _application!.RejectNewDeploymentTargetWorkloads();
+
     protected void AddEligibleDeploymentTarget(
         string deploymentTargetId,
         string publicBaseDomain) =>
         _application!.AddEligibleDeploymentTarget(
             deploymentTargetId,
             publicBaseDomain);
+
     protected void RejectDeploymentTargetReferenceRemoval() =>
         _application!.RejectDeploymentTargetReferenceRemoval();
+
     protected void SetPrivateAccessTargetState(
         bool enabled,
         bool deletionRequested,

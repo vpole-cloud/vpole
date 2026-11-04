@@ -109,6 +109,8 @@ export interface WebServiceRelease {
     deploymentTokenName: string | null
     buildJobId: string | null
     sourceRepositoryId: string | null
+    gitOpsSourceId: string | null
+    gitOpsRunId: string | null
   } | null
 }
 

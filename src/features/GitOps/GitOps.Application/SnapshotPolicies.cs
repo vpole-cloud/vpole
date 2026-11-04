@@ -33,23 +33,3 @@ public static class SnapshotHttpLimits
 
     public const int MaximumCommitLength = 128;
 }
-
-public static class SnapshotExecutionPolicy
-{
-    public const int RecoveryBatchSize = 32;
-
-    public const int RecoveryLeaseSeconds = 300;
-
-    public const int RetryDelaySeconds = 60;
-
-    public static TimeSpan RecoveryLease => TimeSpan.FromSeconds(RecoveryLeaseSeconds);
-
-    public static TimeSpan RetryDelay => TimeSpan.FromSeconds(RetryDelaySeconds);
-
-    public static DateTime? NextAttemptAt(SnapshotProgress progress, DateTime now) => progress switch
-    {
-        ApplyingSnapshot => now + RecoveryLease,
-        BlockedSnapshot or StaleSnapshotExecution => now + RetryDelay,
-        AppliedSnapshot or UnsupportedSnapshotSchema => null
-    };
-}

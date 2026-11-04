@@ -20,13 +20,17 @@ public sealed class DeclarativeResourcePlannerTests
     [InlineData("removed", typeof(BlockedDeclarationPlan))]
     [InlineData("blocked", typeof(BlockedDeclarationPlan))]
     public async Task Registered_provider_controls_projections_without_engine_kind_switch(
-        string scenario, Type expected)
+        string scenario,
+        Type expected)
     {
         var provider = new WidgetProvider(scenario);
         var planner = new DeclarativeResourcePlanner(new([provider]), new Ownership(scenario));
-        var result = await planner.PlanAsync(new(new("tenant", "source",
-            scenario is "rebound" or "removed" ? "accepted-id" : null),
-            new(new("ThirdPartyWidget", "demo"), Json("{}"), "hash", [], "test.yaml", 1)), null!, default);
+        var result = await planner.PlanAsync(new(new("tenant",
+                    "source",
+                    scenario is "rebound" or "removed" ? "accepted-id" : null),
+                new(new("ThirdPartyWidget", "demo"), Json("{}"), "hash", [], "test.yaml", 1)),
+            null!,
+            default);
         Assert.IsType(expected, result);
     }
 
@@ -56,18 +60,22 @@ public sealed class DeclarativeResourcePlannerTests
             Assert.Equal("tenant", request.TenantId);
             return Task.FromResult<ReadCurrentDeclarationOutcome>(scenario is "create" or "removed"
                 ? new CurrentDeclarationMissing()
-                : new CurrentDeclaration("id", new([new("Widget/id", 7)]),
-                    new(Json("{}"), Json("{\"b\":2,\"a\":1}")), scenario == "prepared"
-                        ? DeclarationConfigurationState.Prepared : DeclarationConfigurationState.Configured));
+                : new CurrentDeclaration("id",
+                    new([new("Widget/id", 7)]),
+                    new(Json("{}"), Json("{\"b\":2,\"a\":1}")),
+                    scenario == "prepared"
+                        ? DeclarationConfigurationState.Prepared
+                        : DeclarationConfigurationState.Configured));
         }
 
         public Task<ProjectDesiredDeclarationOutcome> ProjectDesiredAsync(
             ProjectDesiredDeclarationRequest request,
             IClientSessionHandle session,
             CancellationToken cancellationToken) => Task.FromResult<ProjectDesiredDeclarationOutcome>(
-                scenario == "blocked" ? new DeclarationReadBlocked(new DeclarationReferenceUnavailable(new("X", "y")))
-                    : new DeclarationProjection(Json(scenario == "replace" ? "{\"parent\":\"new\"}" : "{}"),
-                        Json(scenario == "update" ? "{\"a\":3,\"b\":2}" : "{\"a\":1,\"b\":2}")));
+            scenario == "blocked"
+                ? new DeclarationReadBlocked(new DeclarationReferenceUnavailable(new("X", "y")))
+                : new DeclarationProjection(Json(scenario == "replace" ? "{\"parent\":\"new\"}" : "{}"),
+                    Json(scenario == "update" ? "{\"a\":3,\"b\":2}" : "{\"a\":1,\"b\":2}")));
     }
 
     private sealed class Ownership(string scenario) : IGitOpsMutations
@@ -75,31 +83,51 @@ public sealed class DeclarativeResourcePlannerTests
         public Task<GitResourceStatus?> StatusAsync(LoadGitResourceStatusRequest request, CancellationToken ct)
         {
             Assert.Equal("tenant", request.TenantId);
-            return Task.FromResult<GitResourceStatus?>(scenario == "adopt" ? null
+            return Task.FromResult<GitResourceStatus?>(scenario == "adopt"
+                ? null
                 : new(scenario == "foreign" ? "other" : "source", "url", null, false, true));
         }
 
         public Task<GitOperationResult> ExecuteAsync(GitOperation operation,
-            Func<IClientSessionHandle, CancellationToken, Task<GitOperationResult>> mutation, CancellationToken ct) =>
+            Func<IClientSessionHandle, CancellationToken, Task<GitOperationResult>> mutation,
+            CancellationToken ct) =>
             throw new NotSupportedException();
 
         public Task<GitOperationResult?> BeginAsync(
-            GitOperation operation, IClientSessionHandle session, CancellationToken ct) =>
+            GitOperation operation,
+            IClientSessionHandle session,
+            CancellationToken ct) =>
             throw new NotSupportedException();
 
-        public Task CompleteAsync(
-            CompleteGitOperationRequest request, IClientSessionHandle session, CancellationToken ct) =>
+        public Task<GitOperationResult> CompleteAsync(
+            CompleteGitOperationRequest request,
+            IClientSessionHandle session,
+            CancellationToken ct) =>
             throw new NotSupportedException();
 
         public Task<bool> AuthorizeAsync(
-            AuthorizeGitResourceMutationRequest request, IClientSessionHandle session, CancellationToken ct) =>
+            AuthorizeGitResourceMutationRequest request,
+            IClientSessionHandle session,
+            CancellationToken ct) =>
             throw new NotSupportedException();
 
         public Task<string?> ResolveAsync(
-            ResolveGitResourceRequest request, IClientSessionHandle session, CancellationToken ct) =>
+            ResolveGitResourceRequest request,
+            IClientSessionHandle session,
+            CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Task<string?> ResolveAcceptedAsync(
+            ResolveAcceptedGitReferenceRequest request,
+            IClientSessionHandle session,
+            CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Task<PinGitReferenceOutcome> PinReferenceAsync(PinGitReferenceRequest request, CancellationToken ct) =>
             throw new NotSupportedException();
 
         public Task<IReadOnlyDictionary<string, GitResourceStatus>> StatusesAsync(
-            LoadGitResourceStatusesRequest request, CancellationToken ct) => throw new NotSupportedException();
+            LoadGitResourceStatusesRequest request,
+            CancellationToken ct) => throw new NotSupportedException();
     }
 }

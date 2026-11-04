@@ -71,6 +71,8 @@ function release(revision: number): WebServiceRelease {
             deploymentTokenName: null,
             buildJobId: 'build-11',
             sourceRepositoryId: 'source',
+            gitOpsSourceId: null,
+            gitOpsRunId: null,
           }
         : null,
     deployments: [

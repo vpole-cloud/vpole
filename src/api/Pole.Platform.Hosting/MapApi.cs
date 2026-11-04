@@ -30,7 +30,7 @@ public static class MapApi
         var group = app.MapGroup("/api/v1").RequireTenantContext()
             .RequireAuthorization();
 
-        group.MapGitSnapshotEndpoints().MapSecretEndpoints()
+        group.MapGitOpsEndpoints().MapSecretEndpoints()
             .MapPrivateAccessEndpoints()
             .MapResourceGroupEndpoints()
             .MapContainerRegistryEndpoints()

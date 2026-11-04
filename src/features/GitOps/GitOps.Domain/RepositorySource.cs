@@ -1,4 +1,5 @@
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.GitOps.Primitives;
 
 namespace Pole.Features.GitOps.Domain;
 
@@ -7,6 +8,7 @@ public sealed record GitSourceIdentity(
     string SourceId);
 
 public sealed record GitRepositoryLocation(
+    string Provider,
     string ConnectionId,
     string ExternalRepositoryId,
     string Branch,
@@ -31,19 +33,26 @@ public sealed record RepositorySource(
     GitSyncPolicy Sync,
     GitSourceActivity Activity,
     GitPrunePolicy Prune,
-    GitSourceAudit Audit)
+    GitSourceAudit Audit,
+    string CreationKey,
+    string CreationHash,
+    string DisplayUrl)
 {
-    public RepositorySource Pause() => Activity == GitSourceActivity.Paused ? this : this with
-    {
-        Activity = GitSourceActivity.Paused,
-        Revision = checked(Revision + 1)
-    };
+    public RepositorySource Pause() => Activity == GitSourceActivity.Paused
+        ? this
+        : this with
+        {
+            Activity = GitSourceActivity.Paused,
+            Revision = checked(Revision + 1)
+        };
 
-    public RepositorySource Resume() => Activity == GitSourceActivity.Active ? this : this with
-    {
-        Activity = GitSourceActivity.Active,
-        Revision = checked(Revision + 1)
-    };
+    public RepositorySource Resume() => Activity == GitSourceActivity.Active
+        ? this
+        : this with
+        {
+            Activity = GitSourceActivity.Active,
+            Revision = checked(Revision + 1)
+        };
 
     public SourceDeletionEligibility EvaluateDeletion(long ownedResourceCount)
     {
@@ -60,9 +69,16 @@ public static class RepositorySourceFactory
         GitSourceIdentity identity,
         GitRepositoryLocation repository,
         GitSyncPolicy sync,
-        GitSourceAudit audit)
+        GitSourceAudit audit,
+        string creationKey,
+        string creationHash,
+        string displayUrl)
     {
         GitSourceGuards.Identity(identity);
+        GitSourceGuards.Required(repository.Provider, nameof(repository.Provider));
+        GitSourceGuards.Required(creationKey, nameof(creationKey));
+        GitSourceGuards.Required(creationHash, nameof(creationHash));
+        GitSourceGuards.Required(displayUrl, nameof(displayUrl));
         GitSourceGuards.Required(repository.ConnectionId, nameof(repository.ConnectionId));
         GitSourceGuards.Required(repository.ExternalRepositoryId, nameof(repository.ExternalRepositoryId));
         GitSourceGuards.Required(repository.Branch, nameof(repository.Branch));
@@ -70,16 +86,22 @@ public static class RepositorySourceFactory
         GitSourceGuards.Utc(audit.CreatedAtUtc);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(sync.PollInterval, TimeSpan.Zero);
 
-        var directory = repository.ManifestDirectory;
-        if (directory is null || directory.Contains('\\') || directory.StartsWith('/') ||
-            directory.Split('/').Any(segment => segment is "." or "..") ||
-            directory.Any(char.IsControl))
-            throw new ArgumentException("A repository-relative manifest directory is required.", nameof(repository));
+        if (!RepositoryManifestDirectory.IsValid(repository.ManifestDirectory))
+            throw new ArgumentException(
+                "A safe repository-relative manifest directory is required.",
+                nameof(repository));
 
-        return new(identity.SourceId, identity.TenantId, repository with
-        {
-            ManifestDirectory = directory.TrimEnd('/')
-        }, 1, sync, GitSourceActivity.Active, GitPrunePolicy.Retain, audit);
+        return new(identity.SourceId,
+            identity.TenantId,
+            repository,
+            1,
+            sync,
+            GitSourceActivity.Active,
+            GitPrunePolicy.Retain,
+            audit,
+            creationKey,
+            creationHash,
+            displayUrl);
     }
 }
 

@@ -115,59 +115,76 @@ internal sealed partial class DeclarativeWebServiceProvider(
     {
         var value = DeclarationJson.Read<WebServiceDeclaration>(spec);
 
-        return new(new("ResourceGroup", value.ResourceGroup), [], value.SecretEnvironment.Select(pair =>
+        return new(new("ResourceGroup", value.ResourceGroup),
+            [],
+            value.SecretEnvironment.Select(pair =>
                 new DeclaredReference(
                     new("Secret", pair.Value.Secret),
                     $"spec.secretEnvironment.{pair.Key}",
                     pair.Value.Key,
-                    RequiresAccess: true)).ToArray(), [], []);
+                    RequiresAccess: true)).ToArray(),
+            [],
+            []);
     }
 
     public JsonElement NormalizeAndValidate(JsonElement spec)
     {
         var value = DeclarationJson.Read<WebServiceDeclaration>(spec);
         DeclarationJson.Require(DeclarationNames.Valid(value.ResourceGroup) && value.Image is not null &&
-            value.Image.Server is { Length: > 0 and <= MaximumImageComponentLength }
-            && value.Image.Name is { Length: > 0 and <= MaximumImageComponentLength } &&
-            value.Image.Tag is { Length: > 0 and <= MaximumImageTagLength }
-            && !value.Image.Server.Any(char.IsWhiteSpace) && !value.Image.Name.Any(char.IsWhiteSpace)
-            && !value.Image.Tag.Any(char.IsWhiteSpace), "spec.image");
+                                value.Image.Server is { Length: > 0 and <= MaximumImageComponentLength }
+                                && value.Image.Name is { Length: > 0 and <= MaximumImageComponentLength } &&
+                                value.Image.Tag is { Length: > 0 and <= MaximumImageTagLength }
+                                && !value.Image.Server.Any(char.IsWhiteSpace) &&
+                                !value.Image.Name.Any(char.IsWhiteSpace)
+                                && !value.Image.Tag.Any(char.IsWhiteSpace),
+            "spec.image");
         DeclarationJson.Require(value.Placement is not null
-            && ResourceTechnicalName.IsValid(value.Placement.DeploymentTarget) &&
-            value.Placement.ComputeProfile is not null
-            && ResourceTechnicalName.IsValid(value.Placement.ComputeProfile.Name) &&
-            value.Placement.ComputeProfile.Revision > 0, "spec.placement");
+                                && ResourceTechnicalName.IsValid(value.Placement.DeploymentTarget) &&
+                                value.Placement.ComputeProfile is not null
+                                && ResourceTechnicalName.IsValid(value.Placement.ComputeProfile.Name) &&
+                                value.Placement.ComputeProfile.Revision > 0,
+            "spec.placement");
         DeclarationJson.Require(value.Exposure == PrivateExposure, "spec.exposure");
         DeclarationJson.Require(
             value.Replicas is >= DefaultReplicas and <= MaximumReplicas && value.Tags is not null
-            && value.Tags.All(tag =>
-                tag is { Length: > 0 and <= MaximumTagLength } && !string.IsNullOrWhiteSpace(tag)),
+                                                                        && value.Tags.All(tag =>
+                                                                            tag is
+                                                                            {
+                                                                                Length: > 0 and <= MaximumTagLength
+                                                                            } && !string.IsNullOrWhiteSpace(tag)),
             "spec.replicas");
         DeclarationJson.Require(value.Ports is { Count: > 0 and <= MaximumPorts } && value.Ports.All(port =>
-                port is not null &&
-                port.ServicePort is >= MinimumPort and <= MaximumPort
-                && port.TargetPort is { Length: > 0 and <= MaximumPortTextLength } && int.TryParse(
-                    port.TargetPort,
-                    out var number) && number is >= MinimumPort and <= MaximumPort &&
-                port.Protocol is TcpProtocol or UdpProtocol && port.Name is { Length: <= MaximumPortNameLength }
-                && DeclarationNames.Valid(port.Name)) &&
-            value.Ports.Select(port => port.Name).Distinct().Count() == value.Ports.Count &&
-            value.Ports.Select(port => (port.ServicePort, port.Protocol)).Distinct()
-                .Count() == value.Ports.Count, "spec.ports");
+                                    port is not null &&
+                                    port.ServicePort is >= MinimumPort and <= MaximumPort
+                                    && port.TargetPort is { Length: > 0 and <= MaximumPortTextLength } && int.TryParse(
+                                        port.TargetPort,
+                                        out var number) && number is >= MinimumPort and <= MaximumPort &&
+                                    port.Protocol is TcpProtocol or UdpProtocol && port.Name is
+                                    { Length: <= MaximumPortNameLength }
+                                    && DeclarationNames.Valid(port.Name)) &&
+                                value.Ports.Select(port => port.Name).Distinct().Count() == value.Ports.Count &&
+                                value.Ports.Select(port => (port.ServicePort, port.Protocol)).Distinct()
+                                    .Count() == value.Ports.Count,
+            "spec.ports");
         DeclarationJson.Require(value.Probes is not null && ValidProbe(value.Probes.Startup)
-            && value.Probes.Startup.SuccessThreshold == RequiredLivenessSuccessThreshold &&
-            ValidProbe(value.Probes.Liveness)
-            && value.Probes.Liveness.SuccessThreshold == RequiredLivenessSuccessThreshold
-            && ValidProbe(value.Probes.Readiness), "spec.probes");
+                                                         && value.Probes.Startup.SuccessThreshold ==
+                                                         RequiredLivenessSuccessThreshold &&
+                                                         ValidProbe(value.Probes.Liveness)
+                                                         && value.Probes.Liveness.SuccessThreshold ==
+                                                         RequiredLivenessSuccessThreshold
+                                                         && ValidProbe(value.Probes.Readiness),
+            "spec.probes");
         DeclarationJson.Require(value.Environment is not null && value.SecretEnvironment is not null &&
-            value.Environment.Count + value.SecretEnvironment.Count <= MaximumEnvironmentEntries
-            && value.Environment.Values.All(item => item is not null) &&
-            value.Environment.Keys.Concat(value.SecretEnvironment.Keys)
-                .All(name => name.Length <= MaximumEnvironmentNameLength && EnvironmentName.IsMatch(name)) &&
-            !value.Environment.Keys.Intersect(value.SecretEnvironment.Keys).Any() &&
-            value.SecretEnvironment.Values.All(reference =>
-                reference is not null && DeclarationNames.Valid(reference.Secret) &&
-                SecretKeyReferenceRules.ValidKey(reference.Key)), "spec.environment");
+                                value.Environment.Count + value.SecretEnvironment.Count <= MaximumEnvironmentEntries
+                                && value.Environment.Values.All(item => item is not null) &&
+                                value.Environment.Keys.Concat(value.SecretEnvironment.Keys)
+                                    .All(name =>
+                                        name.Length <= MaximumEnvironmentNameLength && EnvironmentName.IsMatch(name)) &&
+                                !value.Environment.Keys.Intersect(value.SecretEnvironment.Keys).Any() &&
+                                value.SecretEnvironment.Values.All(reference =>
+                                    reference is not null && DeclarationNames.Valid(reference.Secret) &&
+                                    SecretKeyReferenceRules.ValidKey(reference.Key)),
+            "spec.environment");
 
         return DeclarationJson.Write(value with
         {
@@ -178,27 +195,33 @@ internal sealed partial class DeclarativeWebServiceProvider(
 
     private static bool ValidProbe(ProbeConfigDto? probe) =>
         probe is not null && probe.Path is { Length: > 0 and <= MaximumProbePathLength }
-        && probe.Path.StartsWith('/') &&
-        probe.Port is { Length: > 0 and <= MaximumPortTextLength } && int.TryParse(
-            probe.Port,
-            out var port) && port is >= MinimumPort and <= MaximumPort
-        && probe.InitialDelaySeconds is >= 0 and <= MaximumProbeInitialDelaySeconds &&
-        probe.PeriodSeconds is >= 1 and <= MaximumProbePeriodSeconds
-        && probe.TimeoutSeconds is >= 1 and <= MaximumProbeTimeoutSeconds
-        && probe.FailureThreshold is >= 1 and <= MaximumProbeThreshold
-        && probe.SuccessThreshold is >= 1 and <= MaximumProbeThreshold;
+                          && probe.Path.StartsWith('/') &&
+                          probe.Port is { Length: > 0 and <= MaximumPortTextLength } && int.TryParse(
+                              probe.Port,
+                              out var port) && port is >= MinimumPort and <= MaximumPort
+                          && probe.InitialDelaySeconds is >= 0 and <= MaximumProbeInitialDelaySeconds &&
+                          probe.PeriodSeconds is >= 1 and <= MaximumProbePeriodSeconds
+                          && probe.TimeoutSeconds is >= 1 and <= MaximumProbeTimeoutSeconds
+                          && probe.FailureThreshold is >= 1 and <= MaximumProbeThreshold
+                          && probe.SuccessThreshold is >= 1 and <= MaximumProbeThreshold;
 
     public IReadOnlyList<DeclarationStep> Steps(ResourceAddress address, JsonElement spec)
     {
         var value = DeclarationJson.Read<WebServiceDeclaration>(spec);
 
-        return [new(
+        return
+        [
+            new(
                 DeclarationPhase.Prepare,
                 [new(new("ResourceGroup", value.ResourceGroup), DeclarationPhase.Prepare)]),
-            new(DeclarationPhase.Configure, [new(address, DeclarationPhase.Prepare),
-                    .. value.SecretEnvironment.Values.Select(reference => new DeclarationDependency(
-                            new("Secret", reference.Secret),
-                            DeclarationPhase.Prepare))])];
+            new(DeclarationPhase.Configure,
+            [
+                new(address, DeclarationPhase.Prepare),
+                .. value.SecretEnvironment.Values.Select(reference => new DeclarationDependency(
+                    new("Secret", reference.Secret),
+                    DeclarationPhase.Prepare))
+            ])
+        ];
     }
 
     public async Task<string?> ResolveAsync(
@@ -214,8 +237,8 @@ internal sealed partial class DeclarativeWebServiceProvider(
         var spec = DeclarationJson.Read<WebServiceDeclaration>(operation.Declaration.Spec);
         var context = operation.Context;
         var current = await services.Find(WebServiceFilters.ByTechnicalName(
-                context.TenantId,
-                operation.Declaration.Address.Name)).FirstOrDefaultAsync(ct);
+            context.TenantId,
+            operation.Declaration.Address.Name)).FirstOrDefaultAsync(ct);
 
         if (current is not null && current.Id != operation.ResourceId)
             return await BlockAsync(
@@ -234,13 +257,27 @@ internal sealed partial class DeclarativeWebServiceProvider(
 
         if (current is null)
         {
-            var target = await resolveTargetName(new(context.TenantId, WebServiceResourceDeployment.ResourceType,
-                    spec.Placement.DeploymentTarget), ct);
+            var target = await resolveTargetName(new(context.TenantId,
+                    WebServiceResourceDeployment.ResourceType,
+                    spec.Placement.DeploymentTarget),
+                ct);
 
             if (target is not DeploymentTargetLookupDto resolvedTarget)
-                return await BlockAsync(operation, target is NamedDeploymentTargetAmbiguous
-                    ? new WebServiceDeclarationRejected(WebServiceDeclarationError.DeploymentTargetNameAmbiguous)
-                    : new WebServiceDeclarationRejected(WebServiceDeclarationError.DeploymentTargetUnavailable),
+                return await BlockAsync(operation,
+                    target is NamedDeploymentTargetAmbiguous
+                        ? new WebServiceDeclarationRejected(WebServiceDeclarationError.DeploymentTargetNameAmbiguous)
+                        : new WebServiceDeclarationRejected(WebServiceDeclarationError.DeploymentTargetUnavailable),
+                    ct);
+
+            var pin = await git.PinReferenceAsync(new(context,
+                    operation.ResourceId,
+                    new(new("DeploymentTarget", spec.Placement.DeploymentTarget), resolvedTarget.Id)),
+                ct);
+            if (pin is StaleGitExecution stale)
+                return new(operation.ResourceId, stale);
+            if (((GitReferencePinned)pin.Value).ResourceId != resolvedTarget.Id)
+                return await BlockAsync(operation,
+                    new WebServiceDeclarationRejected(WebServiceDeclarationError.DeploymentTargetUnavailable),
                     ct);
 
             selectedTarget = resolvedTarget;
@@ -263,12 +300,14 @@ internal sealed partial class DeclarativeWebServiceProvider(
             targetId = current.DeclaredPlacement.DeploymentTargetId;
         }
 
-        var deployments = current is null ? [] : (await loadDeployments(
-            new LoadResourceDeploymentSetRequest(
-                TenantId: current.TenantId,
-                ResourceType: WebServiceResourceDeployment.ResourceType,
-                ResourceId: current.Id),
-            cancellationToken: ct)).ToArray();
+        var deployments = current is null
+            ? []
+            : (await loadDeployments(
+                new LoadResourceDeploymentSetRequest(
+                    TenantId: current.TenantId,
+                    ResourceType: WebServiceResourceDeployment.ResourceType,
+                    ResourceId: current.Id),
+                cancellationToken: ct)).ToArray();
 
         if (current is not null && (deployments.Length != 1 || deployments[0].DeploymentTargetId != targetId))
             return await BlockAsync(
@@ -277,19 +316,24 @@ internal sealed partial class DeclarativeWebServiceProvider(
                 ct);
 
         if (operation.Phase == DeclarationPhase.Prepare && current is not null)
-            return await git.ExecuteAsync(operation, async (session, token) =>
+            return await git.ExecuteAsync(operation,
+                async (session, token) =>
                 {
-                    var groupId = await git.ResolveAsync(
-                        new ResolveGitResourceRequest(
-                            TenantId: context.TenantId,
+                    var groupId = await git.ResolveAcceptedAsync(
+                        new ResolveAcceptedGitReferenceRequest(
+                            Context: context,
+                            ConsumerResourceId: operation.ResourceId,
                             Address: new("ResourceGroup", spec.ResourceGroup)),
                         session: session,
                         ct: token);
 
-                    return groupId == current.ResourceGroupId ? new(current.Id) : new(
-                        current.Id,
-                        new WebServiceDeclarationRejected(WebServiceDeclarationError.ImmutablePlacementChange));
-                }, ct);
+                    return groupId == current.ResourceGroupId
+                        ? new(current.Id)
+                        : new(
+                            current.Id,
+                            new WebServiceDeclarationRejected(WebServiceDeclarationError.ImmutablePlacementChange));
+                },
+                ct);
 
         if (operation.Phase == DeclarationPhase.Configure && current is null)
             return await BlockAsync(
@@ -305,42 +349,61 @@ internal sealed partial class DeclarativeWebServiceProvider(
             profileId = bound.ComputeProfileId;
         else
         {
-            var named = await resolveProfileName(new(context.TenantId, WebServiceResourceDeployment.ResourceType,
-                    desiredProfile.Name, targetId, desiredProfile.Revision), ct);
+            var named = await resolveProfileName(new(context.TenantId,
+                    WebServiceResourceDeployment.ResourceType,
+                    desiredProfile.Name,
+                    targetId,
+                    desiredProfile.Revision),
+                ct);
 
             if (named is not ResolvedComputeProfile resolved)
-                return await BlockAsync(operation, named switch
-                {
-                    NamedComputeProfileAmbiguous =>
-                    new WebServiceDeclarationRejected(WebServiceDeclarationError.ComputeProfileNameAmbiguous),
-                    ComputeProfileUnavailable { Reason: ComputeProfileUnavailableReason.RevisionUnavailable } =>
-                    new WebServiceDeclarationRejected(
-                        WebServiceDeclarationError.ComputeProfileRevisionUnavailable),
-                    _ => new WebServiceDeclarationRejected(
-                        WebServiceDeclarationError.PinnedComputeProfileUnavailable)
-                }, ct);
+                return await BlockAsync(operation,
+                    named switch
+                    {
+                        NamedComputeProfileAmbiguous =>
+                            new WebServiceDeclarationRejected(WebServiceDeclarationError.ComputeProfileNameAmbiguous),
+                        ComputeProfileUnavailable { Reason: ComputeProfileUnavailableReason.RevisionUnavailable } =>
+                            new WebServiceDeclarationRejected(
+                                WebServiceDeclarationError.ComputeProfileRevisionUnavailable),
+                        _ => new WebServiceDeclarationRejected(
+                            WebServiceDeclarationError.PinnedComputeProfileUnavailable)
+                    },
+                    ct);
 
             compute = resolved;
             profileId = compute.ComputeProfileId;
+            var pin = await git.PinReferenceAsync(new(context,
+                    operation.ResourceId,
+                    new(new("ComputeProfile", desiredProfile.Name), profileId)),
+                ct);
+            if (pin is StaleGitExecution stale)
+                return new(operation.ResourceId, stale);
+            if (((GitReferencePinned)pin.Value).ResourceId != profileId)
+                return await BlockAsync(operation,
+                    new WebServiceDeclarationRejected(WebServiceDeclarationError.PinnedComputeProfileUnavailable),
+                    ct);
         }
 
         if (compute is null && (current is null || deployments[0].Compute.Profile.ComputeProfileId != profileId ||
-            deployments[0].Compute.Profile.ComputeProfileRevision != desiredProfile.Revision))
+                                deployments[0].Compute.Profile.ComputeProfileRevision != desiredProfile.Revision))
         {
-            var resolution = await resolveCompute(new(context.TenantId, WebServiceResourceDeployment.ResourceType,
-                    [new(targetId, profileId, desiredProfile.Revision)]), ct);
+            var resolution = await resolveCompute(new(context.TenantId,
+                    WebServiceResourceDeployment.ResourceType,
+                    [new(targetId, profileId, desiredProfile.Revision)]),
+                ct);
 
             if (resolution is not IReadOnlyList<ResolvedComputeProfile> resolved)
-                return await BlockAsync(operation, resolution is ComputeProfileResolutionError error &&
+                return await BlockAsync(operation,
+                    resolution is ComputeProfileResolutionError error &&
                     error.Value is ComputeProfileUnavailable
                     {
-                        Reason
-                    : ComputeProfileUnavailableReason.RevisionUnavailable
+                        Reason: ComputeProfileUnavailableReason.RevisionUnavailable
                     }
-                    ? new WebServiceDeclarationRejected(
-                        WebServiceDeclarationError.ComputeProfileRevisionUnavailable)
-                    : new WebServiceDeclarationRejected(
-                        WebServiceDeclarationError.PinnedComputeProfileUnavailable), ct);
+                        ? new WebServiceDeclarationRejected(
+                            WebServiceDeclarationError.ComputeProfileRevisionUnavailable)
+                        : new WebServiceDeclarationRejected(
+                            WebServiceDeclarationError.PinnedComputeProfileUnavailable),
+                    ct);
 
             compute = resolved.Single();
         }
@@ -351,20 +414,21 @@ internal sealed partial class DeclarativeWebServiceProvider(
             desiredProfile.Name,
             profileId);
         var domainSpec = ToSpec(spec, ImmutableDictionary<string, SecretEnvironmentReference>.Empty);
-        var nextQuota = compute is not null ? WebServiceDeploymentWorkflow.ToQuotaInput(
-            [(compute, spec.Replicas)],
-            domainSpec) :
-        WebServiceDeploymentWorkflow.ToQuotaInput(
-            deployments.Select(item => item with { FixedReplicas = spec.Replicas }),
-            domainSpec);
+        var nextQuota = compute is not null
+            ? WebServiceDeploymentWorkflow.ToQuotaInput(
+                [(compute, spec.Replicas)],
+                domainSpec)
+            : WebServiceDeploymentWorkflow.ToQuotaInput(
+                deployments.Select(item => item with { FixedReplicas = spec.Replicas }),
+                domainSpec);
         QuotaMutation<WebServiceQuotaInput> quotaChange = current is null
-        ? new CreateQuotaMutation<WebServiceQuotaInput>(nextQuota) :
-        new UpdateQuotaMutation<WebServiceQuotaInput>(
-            WebServiceDeploymentWorkflow.ToQuotaInput(deployments, current.Spec),
-            nextQuota);
+            ? new CreateQuotaMutation<WebServiceQuotaInput>(nextQuota)
+            : new UpdateQuotaMutation<WebServiceQuotaInput>(
+                WebServiceDeploymentWorkflow.ToQuotaInput(deployments, current.Spec),
+                nextQuota);
         var outcome = await quotas.ExecuteOutcomeAsync<WebServiceQuotaInput, GitOperationResult>(
             new ExecuteQuotaAdmissionRequest<global::Pole.Features.WebServices.Application.Common
-                    .WebServiceQuotaInput, global::Pole.Features.GitOps.Contracts.GitOperationResult>(
+                .WebServiceQuotaInput, global::Pole.Features.GitOps.Contracts.GitOperationResult>(
                 TenantId: context.TenantId,
                 ResourceKey: WebServiceQuotaResourceKey.Create(operation.ResourceId),
                 Mutation: quotaChange,
@@ -378,18 +442,19 @@ internal sealed partial class DeclarativeWebServiceProvider(
                     if (rejected is not null)
                         return tx.Abort(rejected);
 
-                    var groupId = await git.ResolveAsync(
-                        new ResolveGitResourceRequest(
-                            TenantId: context.TenantId,
+                    var groupId = await git.ResolveAcceptedAsync(
+                        new ResolveAcceptedGitReferenceRequest(
+                            Context: context,
+                            ConsumerResourceId: operation.ResourceId,
                             Address: new("ResourceGroup", spec.ResourceGroup)),
                         session: tx.Session,
                         ct: token);
 
                     if (groupId is null)
                         return tx.Abort(new(
-                                operation.ResourceId,
-                                new WebServiceDeclarationRejected(
-                                    WebServiceDeclarationError.ResourceGroupUnavailable)));
+                            operation.ResourceId,
+                            new WebServiceDeclarationRejected(
+                                WebServiceDeclarationError.ResourceGroupUnavailable)));
 
                     GitOperationResult result;
 
@@ -397,9 +462,9 @@ internal sealed partial class DeclarativeWebServiceProvider(
                             tx.Session,
                             WebServiceFilters.ById(context.TenantId, operation.ResourceId)).AnyAsync(token))
                         return tx.Abort(new(
-                                operation.ResourceId,
-                                new WebServiceDeclarationRejected(
-                                    WebServiceDeclarationError.ExpectedRevisionConflict)));
+                            operation.ResourceId,
+                            new WebServiceDeclarationRejected(
+                                WebServiceDeclarationError.ExpectedRevisionConflict)));
 
                     if (current is null)
                         result = await PrepareAsync(
@@ -414,10 +479,11 @@ internal sealed partial class DeclarativeWebServiceProvider(
                             token);
                     else if (groupId != current.ResourceGroupId)
                         return tx.Abort(new(
-                                operation.ResourceId,
-                                new WebServiceDeclarationRejected(
-                                    WebServiceDeclarationError.ImmutablePlacementChange)));
-                    else result = await ConfigureAsync(
+                            operation.ResourceId,
+                            new WebServiceDeclarationRejected(
+                                WebServiceDeclarationError.ImmutablePlacementChange)));
+                    else
+                        result = await ConfigureAsync(
                             operation,
                             spec,
                             current,
@@ -430,14 +496,14 @@ internal sealed partial class DeclarativeWebServiceProvider(
                     if (!result.Applied)
                         return tx.Abort(result);
 
-                    await git.CompleteAsync(
+                    var completed = await git.CompleteAsync(
                         new CompleteGitOperationRequest(
                             Operation: operation,
                             Result: result),
                         session: tx.Session,
                         ct: token);
 
-                    return tx.Commit(result);
+                    return completed.Applied ? tx.Commit(completed) : tx.Abort(completed);
                 }),
             cancellationToken: ct);
 
@@ -453,11 +519,15 @@ internal sealed partial class DeclarativeWebServiceProvider(
             (_, _) => Task.FromResult(new GitOperationResult(operation.ResourceId, failure)),
             ct);
 
-    private async Task<GitOperationResult> PrepareAsync(GitOperation operation, WebServiceDeclaration spec,
+    private async Task<GitOperationResult> PrepareAsync(GitOperation operation,
+        WebServiceDeclaration spec,
         WebServiceSpec domainSpec,
-        string groupId, ResolvedComputeProfile compute, DeploymentTargetLookupDto target,
+        string groupId,
+        ResolvedComputeProfile compute,
+        DeploymentTargetLookupDto target,
         WebServiceDeclaredPlacement binding,
-        IClientSessionHandle session, CancellationToken ct)
+        IClientSessionHandle session,
+        CancellationToken ct)
     {
         var group = await groupOwnership(operation.Context.TenantId, groupId, ct);
 
@@ -466,9 +536,13 @@ internal sealed partial class DeclarativeWebServiceProvider(
                 operation.ResourceId,
                 new WebServiceDeclarationRejected(WebServiceDeclarationError.ResourceGroupUnavailable));
 
-        var service = WebServiceFactory.Create(operation.Declaration.Address.Name, operation.Context.TenantId,
-            groupId, owned.DefaultIsolationScopeId,
-            domainSpec, WebServiceExposure.Create(), WebServiceFactory.DefaultOptions with
+        var service = WebServiceFactory.Create(operation.Declaration.Address.Name,
+            operation.Context.TenantId,
+            groupId,
+            owned.DefaultIsolationScopeId,
+            domainSpec,
+            WebServiceExposure.Create(),
+            WebServiceFactory.DefaultOptions with
             {
                 Id = operation.ResourceId,
                 Tags = spec.Tags.ToImmutableHashSet(),
@@ -486,14 +560,27 @@ internal sealed partial class DeclarativeWebServiceProvider(
                 service.Id,
                 new WebServiceDeclarationRejected(WebServiceDeclarationError.ResourceRegistrationUnavailable));
 
-        var created = await createDeployments(new([new(ObjectId.GenerateNewId().ToString(), service.TenantId,
-                        WebServiceResourceDeployment.ResourceType, service.Id, groupId, service.IsolationScopeId,
-                        new(
-                            target.Id,
-                            target.WorkloadConfiguration.Revision,
-                            null), compute.ToResourceDeploymentConfiguration(), null,
-                        ResourcePlacementCapability.MultiTarget, spec.Replicas, service.ActiveRevision,
-                        DeferredActivation: true, PinnedCompute: true)]), session, ct);
+        var created = await createDeployments(new([
+                new(ObjectId.GenerateNewId().ToString(),
+                    service.TenantId,
+                    WebServiceResourceDeployment.ResourceType,
+                    service.Id,
+                    groupId,
+                    service.IsolationScopeId,
+                    new(
+                        target.Id,
+                        target.WorkloadConfiguration.Revision,
+                        null),
+                    compute.ToResourceDeploymentConfiguration(),
+                    null,
+                    ResourcePlacementCapability.MultiTarget,
+                    spec.Replicas,
+                    service.ActiveRevision,
+                    DeferredActivation: true,
+                    PinnedCompute: true)
+            ]),
+            session,
+            ct);
 
         if (created is not CreatedResourceDeployments)
             return new(service.Id, new WebServiceDeclarationRejected(WebServiceDeclarationError.PlacementUnavailable));
@@ -508,11 +595,14 @@ internal sealed partial class DeclarativeWebServiceProvider(
         return new(service.Id, Changed: true);
     }
 
-    private async Task<GitOperationResult> ConfigureAsync(GitOperation operation, WebServiceDeclaration spec,
+    private async Task<GitOperationResult> ConfigureAsync(GitOperation operation,
+        WebServiceDeclaration spec,
         WebService current,
-        IReadOnlyList<PlacementSummaryDto> placements, ResolvedComputeProfile? compute,
+        IReadOnlyList<PlacementSummaryDto> placements,
+        ResolvedComputeProfile? compute,
         WebServiceDeclaredPlacement binding,
-        IClientSessionHandle session, CancellationToken ct)
+        IClientSessionHandle session,
+        CancellationToken ct)
     {
         var authoritative = await services.Find(
             session,
@@ -526,9 +616,10 @@ internal sealed partial class DeclarativeWebServiceProvider(
         var references = ImmutableDictionary.CreateBuilder<string, SecretEnvironmentReference>();
         foreach (var pair in spec.SecretEnvironment)
         {
-            var secretId = await git.ResolveAsync(
-                new ResolveGitResourceRequest(
-                    TenantId: current.TenantId,
+            var secretId = await git.ResolveAcceptedAsync(
+                new ResolveAcceptedGitReferenceRequest(
+                    Context: operation.Context,
+                    ConsumerResourceId: operation.ResourceId,
                     Address: new("Secret", pair.Value.Secret)),
                 session: session,
                 ct: ct);
@@ -538,6 +629,7 @@ internal sealed partial class DeclarativeWebServiceProvider(
 
             references.Add(pair.Key, new(secretId, pair.Value.Key));
         }
+
         var desired = ToSpec(spec, references.ToImmutable());
         var admitted = await admitSecrets(
             new AdmitConsumerSecretReferencesRequest(
@@ -575,11 +667,19 @@ internal sealed partial class DeclarativeWebServiceProvider(
         if (next == current)
             next = current.AdvancePlacementDesiredState();
 
-        var applied = await applyDeployments(new(current.TenantId, WebServiceResourceDeployment.ResourceType,
-                current.Id, next.ActiveRevision,
-                placements.Select(item => new ResourceDeploymentSetApplyItem(item.DeploymentId, item.DeploymentRevision,
-                        item.Compute.Profile, new PreserveIngress(), compute?.ToResourceDeploymentConfiguration(),
-                        spec.Replicas, PinnedCompute: true)).ToArray()), session, ct);
+        var applied = await applyDeployments(new(current.TenantId,
+                WebServiceResourceDeployment.ResourceType,
+                current.Id,
+                next.ActiveRevision,
+                placements.Select(item => new ResourceDeploymentSetApplyItem(item.DeploymentId,
+                    item.DeploymentRevision,
+                    item.Compute.Profile,
+                    new PreserveIngress(),
+                    compute?.ToResourceDeploymentConfiguration(),
+                    spec.Replicas,
+                    PinnedCompute: true)).ToArray()),
+            session,
+            ct);
 
         if (applied is not MutatedResourceDeployments updated)
             return new(current.Id, new WebServiceDeclarationRejected(WebServiceDeclarationError.PlacementChanged));
@@ -601,13 +701,25 @@ internal sealed partial class DeclarativeWebServiceProvider(
                 new WebServiceDeclarationRejected(WebServiceDeclarationError.ExpectedRevisionConflict));
 
         var eventCore = EventCore.Create(current.TenantId);
-        var release = WebServiceReleaseFactory.CreatePending(current.TenantId, current.Id, next.ActiveRevision,
-            current.Lifecycle is PreparedWebServiceLifecycle ? WebServiceReleaseAction.Create
-            : WebServiceReleaseAction.Update,
-            operation.Context.ActorUserId, operation.Context.ActorEmail, next.Spec,
-            WebServiceDeploymentWorkflow.ToReleaseDeployments(updated.Placements), eventCore.TraceId,
+        var release = WebServiceReleaseFactory.CreatePending(current.TenantId,
+            current.Id,
+            next.ActiveRevision,
+            current.Lifecycle is PreparedWebServiceLifecycle
+                ? WebServiceReleaseAction.Create
+                : WebServiceReleaseAction.Update,
+            null,
+            null,
+            next.Spec,
+            WebServiceDeploymentWorkflow.ToReleaseDeployments(updated.Placements),
+            eventCore.TraceId,
             eventCore.CorrelationId,
-            new(ObjectId.GenerateNewId().ToString(), clock.GetUtcNow().UtcDateTime), next.Exposure);
+            new(ObjectId.GenerateNewId().ToString(), clock.GetUtcNow().UtcDateTime),
+            next.Exposure,
+            new GitOpsReleaseProvenance(operation.Context.SourceId,
+                operation.Context.RunId,
+                operation.Context.Authority.Commit,
+                current.Spec.Image.Tag,
+                next.Spec.Image.Tag));
         await persistRelease(session, release, ct);
 
         return new(current.Id, Changed: true);
@@ -616,25 +728,31 @@ internal sealed partial class DeclarativeWebServiceProvider(
     private static WebServiceSpec ToSpec(
         WebServiceDeclaration value,
         ImmutableDictionary<string, SecretEnvironmentReference> references) =>
-        new(new(value.Image.Server, value.Image.Name, value.Image.Tag,
+        new(new(value.Image.Server,
+                value.Image.Name,
+                value.Image.Tag,
                 SecretName: null),
             new WebServiceConfig()
             {
                 EnvironmentVariables = value.Environment,
                 PortMappings = value.Ports.Select(port => new PortMapping(
-                        port.ServicePort,
-                        port.TargetPort,
-                        port.Protocol,
-                        port.Name)).ToImmutableList(),
+                    port.ServicePort,
+                    port.TargetPort,
+                    port.Protocol,
+                    port.Name)).ToImmutableList(),
                 ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty,
                 SecretEnvironmentReferences = references
-            }, null,
-            new WebServiceSpecDto(value.Image, new()
-            {
-                EnvironmentVariables = value.Environment,
-                PortMappings = value.Ports,
-                ConnectionEnvironmentReferences = ImmutableDictionary<string,
+            },
+            null,
+            new WebServiceSpecDto(value.Image,
+                new()
+                {
+                    EnvironmentVariables = value.Environment,
+                    PortMappings = value.Ports,
+                    ConnectionEnvironmentReferences = ImmutableDictionary<string,
                         ConnectionEnvironmentReferenceDto>.Empty,
-                SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReferenceDto>.Empty
-            }, null, value.Probes).ToDomain().Probes);
+                    SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReferenceDto>.Empty
+                },
+                null,
+                value.Probes).ToDomain().Probes);
 }
