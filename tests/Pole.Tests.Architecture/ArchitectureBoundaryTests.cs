@@ -170,15 +170,10 @@ public sealed class ArchitectureBoundaryTests
     }
 
     [Fact]
-    public void FSharpApplicationSources_KeepRawMongoQueriesInsidePersistenceOrMigrations()
+    public void FSharpApplicationSources_KeepRawMongoQueriesInsideMongo()
     {
-        var applicationSources = ArchitectureSources.ProductionFSharp()
-            .Where(source => source.RelativePath.Contains(
-                ".Application/",
-                StringComparison.Ordinal));
-        var violations = applicationSources
-            .Where(source =>
-                !source.RelativePath.Contains("/Persistence/", StringComparison.Ordinal))
+        var violations = ArchitectureSources.ProductionFSharp()
+            .Where(source => MongoApplicationPaths.Classify(source.RelativePath) == MongoApplicationPath.Application)
             .SelectMany(source => FindFSharpSymbols(
                 [source],
                 RawMongoQuerySymbols,
@@ -188,8 +183,11 @@ public sealed class ArchitectureBoundaryTests
         AssertNoViolations(violations);
     }
 
-    [Fact]
-    public async Task MongoApplicationBoundaryAnalyzer_ReportsRawMongoQueryTypesOutsidePersistence()
+    [Theory]
+    [InlineData("Endpoints/Example.cs")]
+    [InlineData("Endpoints/Mongo/Example.cs")]
+    [InlineData("Runs/Example.cs")]
+    public async Task MongoApplicationBoundaryAnalyzer_ReportsRawMongoQueryTypesOutsideMongo(string path)
     {
         var diagnostics = await AnalyzeAsync(
             """
@@ -200,7 +198,7 @@ public sealed class ArchitectureBoundaryTests
                 public FilterDefinition<string> FindAll() => Builders<string>.Filter.Empty;
             }
             """,
-            "/src/features/Example/Example.Application/Endpoints/Example.cs");
+            $"/src/features/Example/Example.Application/{path}");
 
         Assert.Equal(3, diagnostics.Count(diagnostic =>
             diagnostic.Id == MongoApplicationBoundaryAnalyzer.DiagnosticId));
@@ -247,8 +245,11 @@ public sealed class ArchitectureBoundaryTests
         AssertNoViolations(csharpViolations.Concat(fsharpViolations).ToArray());
     }
 
-    [Fact]
-    public async Task MongoApplicationBoundaryAnalyzer_AllowsPersistenceSources()
+    [Theory]
+    [InlineData("Mongo/ExampleFilters.cs")]
+    [InlineData("Runs/Mongo/RunStore.cs")]
+    [InlineData("Persistence/ExampleFilters.cs")]
+    public async Task MongoApplicationBoundaryAnalyzer_AllowsMongoImplementations(string path)
     {
         var diagnostics = await AnalyzeAsync(
             """
@@ -259,7 +260,7 @@ public sealed class ArchitectureBoundaryTests
                 public FilterDefinition<string> FindAll() => Builders<string>.Filter.Empty;
             }
             """,
-            "/src/features/Example/Example.Application/Persistence/ExampleFilters.cs");
+            $"/src/features/Example/Example.Application/{path}");
 
         Assert.DoesNotContain(diagnostics, diagnostic =>
             diagnostic.Id == MongoApplicationBoundaryAnalyzer.DiagnosticId);

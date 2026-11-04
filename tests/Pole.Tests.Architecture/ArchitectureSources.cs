@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Pole.ArchitectureAnalyzers;
 
 namespace Pole.Tests.Architecture;
 
@@ -39,13 +40,11 @@ internal static class ArchitectureSources
 
     public static IEnumerable<ArchitectureSource> RuntimeMongoPersistenceCSharp() =>
         ProductionCSharp().Where(source =>
-            source.RelativePath.Contains(".Application/Persistence/", StringComparison.Ordinal) &&
-            !IsInDirectory(source, "Migrations"));
+            MongoApplicationPaths.Classify(source.RelativePath) == MongoApplicationPath.Mongo);
 
     public static IEnumerable<ArchitectureTextSource> RuntimeMongoPersistenceFSharp() =>
         ProductionFSharp().Where(source =>
-            source.RelativePath.Contains(".Application/Persistence/", StringComparison.Ordinal) &&
-            !source.RelativePath.Contains("/Migrations/", StringComparison.Ordinal));
+            MongoApplicationPaths.Classify(source.RelativePath) == MongoApplicationPath.Mongo);
 
     public static ArchitectureSource ServerProgram() =>
         LoadSource(Path.Combine(RepositoryRoot, "src/api/Pole.Server/Program.cs"));
@@ -84,9 +83,6 @@ internal static class ArchitectureSources
                 Path.GetRelativePath(RepositoryRoot, path)
                     .Replace(Path.DirectorySeparatorChar, '/'),
                 File.ReadAllText(path)));
-
-    private static bool IsInDirectory(ArchitectureSource source, string directory) =>
-        source.RelativePath.Contains($"/{directory}/", StringComparison.Ordinal);
 
     internal static IEnumerable<string> SourceFiles(string directory, string searchPattern)
     {
