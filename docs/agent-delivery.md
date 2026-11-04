@@ -55,7 +55,9 @@ artificial new endpoint or a duplicated review ceremony.
 
 The repository compiler diagnostics complement review:
 
-- `POLE001`: raw Mongo APIs stay in Application persistence/migrations.
+- `POLE001`: Application raw Mongo query APIs stay in root or workflow `Mongo/` folders.
+  Existing root `Persistence/` folders remain supported during the transition. F# uses the same
+  path rule through architecture tests. Schema migrations live in separate `Feature.Migrations` projects.
 - `POLE002`: each endpoint handler owns a colocated outcome.
 - `POLE003`: entities with a matching domain factory are constructed through it.
 - `POLE004`: those entities do not expose mutable collection APIs.

@@ -216,6 +216,13 @@ history identities. Moving a migration must preserve its ID, scope and schema/in
 `Feature.Application` owns orchestration, persistence implementations, endpoint flows,
 integration-event mapping, consumers, and infrastructure adapters.
 
+Group Application code by feature workflow. Put Mongo implementations under
+`Feature.Application/<Workflow>/Mongo/` and shared feature collections, indexes, mappings and
+filters under `Feature.Application/Mongo/`. Keep raw Mongo query APIs in those implementations.
+Endpoints and workflow orchestration call narrow operations. During the folder transition,
+existing `Feature.Application/Persistence/` implementations remain covered by the same checks.
+`Feature.Migrations` retains its separate project boundary.
+
 Application may reference its own Domain, Contracts, and Events. It may reference another
 feature's Contracts for synchronous capabilities and another feature's Events to consume its
 published facts. Its HTTP endpoints may call typed methods in another feature's Contracts.HttpMapping.

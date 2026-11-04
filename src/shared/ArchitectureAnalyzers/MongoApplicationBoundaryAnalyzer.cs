@@ -44,20 +44,13 @@ public sealed class MongoApplicationBoundaryAnalyzer : DiagnosticAnalyzer
     private static void AnalyzeSimpleName(SyntaxNodeAnalysisContext context)
     {
         var name = (SimpleNameSyntax)context.Node;
-        if (!context.Node.SyntaxTree.FilePath.Replace('\\', '/').Contains(".Application/", StringComparison.Ordinal) ||
-            !RawMongoQuerySymbols.Contains(name.Identifier.ValueText) ||
-            IsPersistenceSource(context.Node.SyntaxTree.FilePath))
+        if (!RawMongoQuerySymbols.Contains(name.Identifier.ValueText) ||
+            MongoApplicationPaths.Classify(name.SyntaxTree.FilePath) != MongoApplicationPath.Application)
             return;
 
         context.ReportDiagnostic(Diagnostic.Create(
             Rule,
             name.GetLocation(),
             name.Identifier.ValueText));
-    }
-
-    private static bool IsPersistenceSource(string filePath)
-    {
-        var normalizedPath = filePath.Replace('\\', '/');
-        return normalizedPath.Contains(".Application/Persistence/", StringComparison.Ordinal);
     }
 }
