@@ -31,10 +31,14 @@ type PostgresDeclarationPlanner(
 
     let currentVersion (current : PostgresCluster) (placement : ResourceDeploymentPlanningItem) =
         DeclarationVersionToken(
-            [| DeclarationDocumentVersion($"PostgresCluster/{current.Id}", current.Revision)
+            [| DeclarationDocumentVersion(
+                   DeclarationVersionKeys.Resource(PostgresDeclarations.Kind, current.Id),
+                   current.Revision)
                DeclarationDocumentVersion(
                    DeclarationVersionKeys.PlanningFence(PostgresDeclarations.Kind, current.Id), current.PlanningFence)
-               DeclarationDocumentVersion($"ResourceDeployment/{placement.DeploymentId}", placement.Revision) |])
+               DeclarationDocumentVersion(
+                   DeclarationVersionKeys.ResourceDeployment(placement.DeploymentId),
+                   placement.Revision) |])
 
     let currentProjection phase (current : PostgresCluster) (placement : ResourceDeploymentPlanningItem) bootstrap =
         PostgresDeclarations.project phase
@@ -146,7 +150,8 @@ type PostgresDeclarationPlanner(
             | Ok data ->
                 let versionsMatch = PostgresPlanning.versions data |> Array.forall request.Expected.Documents.Contains
                 let expectedRoot = request.Expected.Documents |> Seq.tryFind (fun version ->
-                    version.DocumentId = $"PostgresCluster/{request.Operation.ResourceId}")
+                    version.DocumentId =
+                        DeclarationVersionKeys.Resource(PostgresDeclarations.Kind, request.Operation.ResourceId))
                 let! rootFenced =
                     match data.Current, expectedRoot with
                     | None, None -> Task.FromResult true

@@ -194,8 +194,8 @@ internal sealed class MongoResourceRegistrationMutations(
         if (deletion.DeletedCount == 1)
         {
             await cleanupProofs.RecordAsync(new(tenantId, new GitRegisteredCleanupResource(resourceTypeId, resourceId),
-                $"ResourceRegistration/{current.Id}/Unregistered",
-                [new($"ResourceGroupFence/{resourceGroupId}", before.RegistrationFence,
+                UnregisteredCleanupKey(current.Id),
+                [new(DeclarationVersionKeys.ResourceGroupFence(resourceGroupId), before.RegistrationFence,
                     checked(before.RegistrationFence + 1))]), session, cancellationToken);
             await storeOutboxWrites(
                 session,
@@ -282,4 +282,6 @@ internal sealed class MongoResourceRegistrationMutations(
                 "Resource registration changes require the resource owner's active MongoDB transaction.");
         }
     }
+
+    private static string UnregisteredCleanupKey(string id) => $"ResourceRegistration/{id}/Unregistered";
 }

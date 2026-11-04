@@ -123,8 +123,10 @@ internal sealed class WebServiceDeclarationReferences(
                 spec.Placement.IsolationScope is { } expectedName && actualScope.Name != expectedName)
                 return new DeclarationReadBlocked(new DeclarationReferenceUnavailable(scopeAddress));
             scope = new(scopeAddress, actualScope.IsolationScopeId, new([
-                new($"ResourceGroup/{actualScope.ResourceGroupId}", actualScope.ResourceGroupRevision),
-                new($"IsolationScope/{actualScope.IsolationScopeId}", actualScope.ScopeRevision)]));
+                new(
+                    DeclarationVersionKeys.ResourceGroup(actualScope.ResourceGroupId),
+                    actualScope.ResourceGroupRevision),
+                new(DeclarationVersionKeys.IsolationScope(actualScope.IsolationScopeId), actualScope.ScopeRevision)]));
         }
         else if (scope is not { State: GitPreviewReferenceState.Planned })
             return PlanningBlocked(WebServiceDeclarationError.ResourceGroupUnavailable);

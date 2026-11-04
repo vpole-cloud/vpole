@@ -201,25 +201,41 @@ internal static class FunctionDeclarations
     internal static IEnumerable<FunctionRevision> ConfigurationRevisions(FunctionPlanningCurrent current) =>
         new[] { current.Latest, current.Active }.OfType<FunctionRevision>().DistinctBy(revision => revision.Id);
 
+    private static string ManagedVersionKey(string id, string hash) => $"{Kind}/{id}/Managed/{hash}";
+
+    private static string PlacementsVersionKey(string id, string hash) => $"{Kind}/{id}/Placements/{hash}";
+
+    private static string RevisionPointersVersionKey(string id, string? activeRevisionId, string? pendingRevisionId) =>
+        $"{Kind}/{id}/Pointers/{activeRevisionId}/{pendingRevisionId}";
+
+    private static string ConfigurationRevisionKey(string id, string hash) => $"FunctionRevision/{id}/{hash}";
+
+    private static string RouteVersionKey(string route, FunctionRouteBindingState? state, string? activeRevisionId) =>
+        $"FunctionRoute/{route}/{state}/{activeRevisionId}";
+
     internal static DeclarationDocumentVersion[] CurrentVersions(FunctionPlanningCurrent current) =>
     [
-        new($"FunctionApp/{current.Root.Id}", current.Root.NextRevisionNumber),
+        new(DeclarationVersionKeys.Resource(Kind, current.Root.Id), current.Root.NextRevisionNumber),
         new(DeclarationVersionKeys.PlanningFence(Kind, current.Root.Id), current.Root.PlanningFence),
-        new($"FunctionApp/{current.Root.Id}/Managed/{PlanningRootHash(current.Root)}", 0),
-        new($"FunctionApp/{current.Root.Id}/Pointers/{current.Root.ActiveRevisionId}/{current.Root.PendingRevisionId}",
+        new(ManagedVersionKey(current.Root.Id, PlanningRootHash(current.Root)), 0),
+        new(RevisionPointersVersionKey(current.Root.Id, current.Root.ActiveRevisionId, current.Root.PendingRevisionId),
             0),
-        new($"FunctionRoute/{current.Route.NormalizedRoute}/{current.Route.State}/{current.Route.ActiveRevisionId}",
+        new(RouteVersionKey(current.Route.NormalizedRoute, current.Route.State, current.Route.ActiveRevisionId),
             current.Route.PlanningFence),
         .. ConfigurationRevisions(current).Select(revision => new DeclarationDocumentVersion(
-            $"FunctionRevision/{revision.Id}/{ManagedSpecHash(revision.Spec)}", revision.PlanningFence)),
+            ConfigurationRevisionKey(revision.Id, ManagedSpecHash(revision.Spec)), revision.PlanningFence)),
         .. current.Placements.Items.Select(item =>
-            new DeclarationDocumentVersion($"ResourceDeployment/{item.DeploymentId}", item.Revision))
+            new DeclarationDocumentVersion(DeclarationVersionKeys.ResourceDeployment(item.DeploymentId), item.Revision))
     ];
 
     internal static DeclarationDocumentVersion[] DependencyVersions(FunctionPlanningDependencies dependencies) =>
     [
-        new($"ResourceGroup/{dependencies.Scope.ResourceGroupId}", dependencies.Scope.ResourceGroupRevision),
-        new($"IsolationScope/{dependencies.Scope.IsolationScopeId}", dependencies.Scope.ScopeRevision),
+        new(
+            DeclarationVersionKeys.ResourceGroup(dependencies.Scope.ResourceGroupId),
+            dependencies.Scope.ResourceGroupRevision),
+        new(
+            DeclarationVersionKeys.IsolationScope(dependencies.Scope.IsolationScopeId),
+            dependencies.Scope.ScopeRevision),
         new(
             DeclarationVersionKeys.DeploymentTarget(dependencies.Target.Target.Id),
             dependencies.Target.Target.Revision),
@@ -229,22 +245,22 @@ internal static class FunctionDeclarations
             dependencies.Compute.PolicyRevision),
         .. dependencies.Secrets?.Secrets.SelectMany(version => new DeclarationDocumentVersion[]
         {
-            new($"Secret/{version.SecretId}", version.Revision),
-            new($"Secret/{version.SecretId}/ReferenceFence", version.ReferenceFence)
+            new(DeclarationVersionKeys.Secret(version.SecretId), version.Revision),
+            new(DeclarationVersionKeys.SecretReferenceFence(version.SecretId), version.ReferenceFence)
         }) ?? []
     ];
 
     internal static DeclarationDocumentVersion[] LifecycleVersions(FunctionLifecycleState state) =>
     [
-        new($"FunctionApp/{state.Root.Id}", state.Root.NextRevisionNumber),
+        new(DeclarationVersionKeys.Resource(Kind, state.Root.Id), state.Root.NextRevisionNumber),
         new(DeclarationVersionKeys.PlanningFence(Kind, state.Root.Id), state.Root.PlanningFence),
-        new($"FunctionApp/{state.Root.Id}/Managed/{PlanningRootHash(state.Root)}", 0),
-        new($"FunctionApp/{state.Root.Id}/Placements/{LifecyclePlacementHash(state.Placements)}", 0),
-        new($"FunctionApp/{state.Root.Id}/Pointers/{state.Root.ActiveRevisionId}/{state.Root.PendingRevisionId}", 0),
-        new($"FunctionRoute/{state.Root.FunctionRoute}/{state.Route?.State}/{state.Route?.ActiveRevisionId}",
+        new(ManagedVersionKey(state.Root.Id, PlanningRootHash(state.Root)), 0),
+        new(PlacementsVersionKey(state.Root.Id, LifecyclePlacementHash(state.Placements)), 0),
+        new(RevisionPointersVersionKey(state.Root.Id, state.Root.ActiveRevisionId, state.Root.PendingRevisionId), 0),
+        new(RouteVersionKey(state.Root.FunctionRoute, state.Route?.State, state.Route?.ActiveRevisionId),
             state.Route?.PlanningFence ?? 0),
         .. state.Configuration.Select(item => new DeclarationDocumentVersion(
-            $"FunctionRevision/{item.Id}/{ManagedSpecHash(item.Spec)}", item.PlanningFence)),
+            ConfigurationRevisionKey(item.Id, ManagedSpecHash(item.Spec)), item.PlanningFence)),
         .. state.Placements.SelectMany(item => LifecyclePlacementVersions(item,
             state.Root.DesiredState == FunctionAppDesiredState.Deleting))
     ];
@@ -267,8 +283,8 @@ internal static class FunctionDeclarations
         bool deleting)
     {
         if (!deleting || item.State != ResourceDeploymentPlanningState.Deleting)
-            return [new($"ResourceDeployment/{item.DeploymentId}/DesiredGeneration", item.DesiredGeneration),
-                new($"ResourceDeployment/{item.DeploymentId}/ResourceRevision", item.ResourceRevision)];
+            return [new(DeclarationVersionKeys.DeploymentDesiredGeneration(item.DeploymentId), item.DesiredGeneration),
+                new(DeclarationVersionKeys.DeploymentResourceRevision(item.DeploymentId), item.ResourceRevision)];
         var intent = new
         {
             item.ResourceGroupId,
@@ -291,7 +307,7 @@ internal static class FunctionDeclarations
             item.ResourceRevision
         };
         var hash = Hash(DeclarationJson.Write(intent));
-        return [new($"ResourceDeployment/{item.DeploymentId}/DeleteIntent/{hash}", item.DesiredGeneration)];
+        return [new(DeclarationVersionKeys.DeploymentDeleteIntent(item.DeploymentId, hash), item.DesiredGeneration)];
     }
 
     internal static bool SameLifecycleVersions(IEnumerable<DeclarationDocumentVersion> current,

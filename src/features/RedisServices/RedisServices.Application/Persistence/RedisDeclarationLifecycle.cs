@@ -159,7 +159,7 @@ internal sealed class RedisDeclarationLifecycle(
 
     private static DeclarationVersionToken LifecycleVersions(Redis resource,
         LoadResourceDeploymentPlanningSnapshotOutcome placements) => new(
-        [new($"RedisService/{resource.Id}", resource.Revision),
+        [new(DeclarationVersionKeys.Resource(RedisDeclarations.Kind, resource.Id), resource.Revision),
             new(DeclarationVersionKeys.PlanningFence(RedisDeclarations.Kind, resource.Id), resource.PlanningFence),
             .. placements is ResourceDeploymentPlanningSnapshot found
                 ? found.Items.SelectMany(item => LifecyclePlacementVersions(item, resource))
@@ -170,8 +170,8 @@ internal sealed class RedisDeclarationLifecycle(
         Redis resource)
     {
         if (resource.Lifecycle is not DeletingRedisLifecycle || item.State != ResourceDeploymentPlanningState.Deleting)
-            return [new($"ResourceDeployment/{item.DeploymentId}/DesiredGeneration", item.DesiredGeneration),
-                new($"ResourceDeployment/{item.DeploymentId}/ResourceRevision", item.ResourceRevision)];
+            return [new(DeclarationVersionKeys.DeploymentDesiredGeneration(item.DeploymentId), item.DesiredGeneration),
+                new(DeclarationVersionKeys.DeploymentResourceRevision(item.DeploymentId), item.ResourceRevision)];
         var intent = new
         {
             item.ResourceGroupId,
@@ -200,7 +200,7 @@ internal sealed class RedisDeclarationLifecycle(
             item.ResourceRevision
         };
         var hash = Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(intent)));
-        return [new($"ResourceDeployment/{item.DeploymentId}/DeleteIntent/{hash}", item.DesiredGeneration)];
+        return [new(DeclarationVersionKeys.DeploymentDeleteIntent(item.DeploymentId, hash), item.DesiredGeneration)];
     }
 
     private static bool SameLifecycleVersions(DeclarationVersionToken left, DeclarationVersionToken right) =>

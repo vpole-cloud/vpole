@@ -8,8 +8,8 @@ internal sealed class SecretPlanningFence(IMongoCollection<Secret> secrets)
 {
     public static DeclarationDocumentVersion[] Versions(Secret secret) =>
     [
-        new($"Secret/{secret.Id}", secret.Revision),
-        new($"Secret/{secret.Id}/ReferenceFence", secret.ReferenceFence)
+        new(DeclarationVersionKeys.Secret(secret.Id), secret.Revision),
+        new(DeclarationVersionKeys.SecretReferenceFence(secret.Id), secret.ReferenceFence)
     ];
 
     public static bool Matches(Secret secret, DeclarationVersionToken expected) =>

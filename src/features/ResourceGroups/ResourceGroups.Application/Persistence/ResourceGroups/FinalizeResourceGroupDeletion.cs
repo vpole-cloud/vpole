@@ -92,8 +92,8 @@ internal sealed class MongoFinalizeResourceGroupDeletion(
                 ? new GitDeclaredCleanupResource("IsolationScope", scope.Id)
                 : new GitDeclaredCleanupResource("ResourceGroup", resourceGroup.Id);
             await cleanupProofs.RecordAsync(new(tenantId, subject,
-                $"ScopeFinalization/{isolationScopeId}/{resourceGroup.Revision}",
-                [new($"ResourceGroup/{resourceGroupId}", resourceGroup.Revision,
+                ScopeFinalizationCleanupKey(isolationScopeId, resourceGroup.Revision),
+                [new(DeclarationVersionKeys.ResourceGroup(resourceGroupId), resourceGroup.Revision,
                     checked(resourceGroup.Revision + 1))]), transaction.Session, ct);
 
             if (scope is not null)
@@ -158,4 +158,6 @@ internal sealed class MongoFinalizeResourceGroupDeletion(
 
             return transaction.Commit(Unit.Value);
         }, cancellationToken);
+
+    private static string ScopeFinalizationCleanupKey(string id, long revision) => $"ScopeFinalization/{id}/{revision}";
 }

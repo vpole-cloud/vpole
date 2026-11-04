@@ -334,7 +334,8 @@ internal sealed class DeclarativeResourceGroupProvider(
                 Description = current.Description,
                 Tags = current.Tags.ToArray()
             })));
-        return new CurrentDeclaration(current.Id, new([new($"ResourceGroup/{current.Id}", current.Revision)]),
+        return new CurrentDeclaration(current.Id,
+            new([new(DeclarationVersionKeys.ResourceGroup(current.Id), current.Revision)]),
             projection, DeclarationConfigurationState.Configured);
     }
 
@@ -350,7 +351,7 @@ internal sealed class DeclarativeResourceGroupProvider(
             ResourceGroupFilters.ByTenantAndId(request.Operation.Context.TenantId, request.Operation.ResourceId))
             .FirstOrDefaultAsync(cancellationToken);
         var expected = request.Expected.Documents.SingleOrDefault(item =>
-            item.DocumentId == $"ResourceGroup/{request.Operation.ResourceId}");
+            item.DocumentId == DeclarationVersionKeys.ResourceGroup(request.Operation.ResourceId));
         if (current is null)
             return expected is null ? new DeclarationFenced() : new DeclarationPreconditionsChanged();
         if (expected is null || expected.Revision != current.Revision)

@@ -63,9 +63,11 @@ module PostgresPlanning =
 
     let versions (data : PostgresPlanningDependencies) =
         let catalog = data.Catalog
-        [| DeclarationDocumentVersion($"ResourceGroup/{catalog.Scope.ResourceGroupId}",
+        [| DeclarationDocumentVersion(DeclarationVersionKeys.ResourceGroup(catalog.Scope.ResourceGroupId),
                 catalog.Scope.ResourceGroupRevision)
-           DeclarationDocumentVersion($"IsolationScope/{catalog.Scope.IsolationScopeId}", catalog.Scope.ScopeRevision)
+           DeclarationDocumentVersion(
+               DeclarationVersionKeys.IsolationScope(catalog.Scope.IsolationScopeId),
+               catalog.Scope.ScopeRevision)
            DeclarationDocumentVersion(
                DeclarationVersionKeys.DeploymentTarget(catalog.Target.Target.Id), catalog.Target.Target.Revision)
            DeclarationDocumentVersion(DeclarationVersionKeys.TargetWorkloadConfiguration(catalog.Target.Target.Id),
@@ -78,25 +80,37 @@ module PostgresPlanning =
            match data.Placements with
            | Some placements ->
                for placement in placements.Items do
-                   DeclarationDocumentVersion($"ResourceDeployment/{placement.DeploymentId}", placement.Revision)
+                   DeclarationDocumentVersion(
+                       DeclarationVersionKeys.ResourceDeployment(placement.DeploymentId),
+                       placement.Revision)
            | None -> ()
            match data.Bootstrap with
            | Some ready ->
-               DeclarationDocumentVersion($"Secret/{ready.Source.SecretId}", ready.Source.Revision)
-               DeclarationDocumentVersion($"Secret/{ready.Source.SecretId}/ReferenceFence", ready.Source.ReferenceFence)
-               DeclarationDocumentVersion($"Secret/{ready.Source.SecretId}/ValueVersion", ready.ValueVersion)
+               DeclarationDocumentVersion(DeclarationVersionKeys.Secret(ready.Source.SecretId), ready.Source.Revision)
+               DeclarationDocumentVersion(
+                   DeclarationVersionKeys.SecretReferenceFence(ready.Source.SecretId),
+                   ready.Source.ReferenceFence)
+               DeclarationDocumentVersion(
+                   DeclarationVersionKeys.SecretValueVersion(ready.Source.SecretId),
+                   ready.ValueVersion)
            | None -> ()
            match data.Credentials with
            | Some credentials ->
                for secret in credentials.Secrets do
-                   DeclarationDocumentVersion($"Secret/{secret.SecretId}", secret.Revision)
-                   DeclarationDocumentVersion($"Secret/{secret.SecretId}/ReferenceFence", secret.ReferenceFence)
+                   DeclarationDocumentVersion(DeclarationVersionKeys.Secret(secret.SecretId), secret.Revision)
+                   DeclarationDocumentVersion(
+                       DeclarationVersionKeys.SecretReferenceFence(secret.SecretId),
+                       secret.ReferenceFence)
            | None -> ()
            match data.Adoption with
            | Some credential ->
-               DeclarationDocumentVersion($"Secret/{credential.SecretId}", credential.Revision)
-               DeclarationDocumentVersion($"Secret/{credential.SecretId}/ReferenceFence", credential.ReferenceFence)
-               DeclarationDocumentVersion($"Secret/{credential.SecretId}/ValueVersion", credential.ValueVersion)
+               DeclarationDocumentVersion(DeclarationVersionKeys.Secret(credential.SecretId), credential.Revision)
+               DeclarationDocumentVersion(
+                   DeclarationVersionKeys.SecretReferenceFence(credential.SecretId),
+                   credential.ReferenceFence)
+               DeclarationDocumentVersion(
+                   DeclarationVersionKeys.SecretValueVersion(credential.SecretId),
+                   credential.ValueVersion)
            | None -> () |]
 
 type PostgresPlanningReader(

@@ -255,8 +255,8 @@ internal sealed class DeclarativeDomainZoneProvider(
             return new DeclarationReadBlocked(new DeclarationIdentityChanged());
 
         return new CurrentDeclaration(current.Id,
-            new([new($"DomainZone/{current.Id}", current.Revision),
-                new($"DomainZone/{current.Id}/ReferenceFence", current.ReferenceFence)]),
+            new([new(DeclarationVersionKeys.DomainZone(current.Id), current.Revision),
+                new(DeclarationVersionKeys.DomainZoneReferenceFence(current.Id), current.ReferenceFence)]),
             Project(current.DeploymentTargetId, current.Label), DeclarationConfigurationState.Configured);
     }
 
@@ -292,9 +292,9 @@ internal sealed class DeclarativeDomainZoneProvider(
                 DomainFilters.ZoneById(operation.Context.TenantId, operation.ResourceId))
             .FirstOrDefaultAsync(cancellationToken);
         var expected = request.Expected.Documents.SingleOrDefault(item =>
-            item.DocumentId == $"DomainZone/{operation.ResourceId}");
+            item.DocumentId == DeclarationVersionKeys.DomainZone(operation.ResourceId));
         var expectedFence = request.Expected.Documents.SingleOrDefault(item =>
-            item.DocumentId == $"DomainZone/{operation.ResourceId}/ReferenceFence");
+            item.DocumentId == DeclarationVersionKeys.DomainZoneReferenceFence(operation.ResourceId));
         if (current is null ? expected is not null || expectedFence is not null :
             expected?.Revision != current.Revision || expectedFence?.Revision != current.ReferenceFence)
             return new DeclarationPreconditionsChanged();

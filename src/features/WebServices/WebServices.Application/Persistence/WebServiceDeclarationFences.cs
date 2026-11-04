@@ -39,7 +39,8 @@ internal sealed class WebServiceDeclarationFences(
             return new DeclarationPreconditionsChanged();
         if (dependencies.Current is { } current)
         {
-            if (!request.Expected.Documents.Contains(new($"WebService/{current.Id}", current.Revision)) ||
+            if (!request.Expected.Documents.Contains(new(
+                    DeclarationVersionKeys.WebService(current.Id), current.Revision)) ||
                 !request.Expected.Documents.Contains(
                     new(
                         DeclarationVersionKeys.PlanningFence(WebServiceDeclarations.Kind, current.Id),

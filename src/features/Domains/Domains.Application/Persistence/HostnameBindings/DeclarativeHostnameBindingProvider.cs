@@ -270,8 +270,8 @@ internal sealed class DeclarativeHostnameBindingProvider(
 
         var dependencies = new DeclarationVersionToken(
         [
-            new($"DomainZone/{zone.Id}", zone.Revision),
-            new($"DomainZone/{zone.Id}/ReferenceFence", zone.ReferenceFence),
+            new(DeclarationVersionKeys.DomainZone(zone.Id), zone.Revision),
+            new(DeclarationVersionKeys.DomainZoneReferenceFence(zone.Id), zone.ReferenceFence),
             .. targetVersion.Documents,
             .. workload.DocumentVersions.Select(item => new DeclarationDocumentVersion(item.DocumentId, item.Version))
         ]);
@@ -341,7 +341,7 @@ internal sealed class DeclarativeHostnameBindingProvider(
                 DomainFilters.BindingById(operation.Context.TenantId, operation.ResourceId))
             .FirstOrDefaultAsync(cancellationToken);
         var expected = request.Expected.Documents.SingleOrDefault(item =>
-            item.DocumentId == $"HostnameBinding/{operation.ResourceId}");
+            item.DocumentId == DeclarationVersionKeys.HostnameBinding(operation.ResourceId));
         if (current is null ? expected is not null : expected != BindingVersion(current))
             return new DeclarationPreconditionsChanged();
 
@@ -364,12 +364,12 @@ internal sealed class DeclarativeHostnameBindingProvider(
     }
 
     private static DeclarationDocumentVersion BindingVersion(HostnameBinding binding) =>
-        new($"HostnameBinding/{binding.Id}", binding.ReferenceFence);
+        new(DeclarationVersionKeys.HostnameBinding(binding.Id), binding.ReferenceFence);
 
     private static DeclarationDocumentVersion[] Versions(ResolvedHostname context) =>
     [
-        new($"DomainZone/{context.Zone.Id}", context.Zone.Revision),
-        new($"DomainZone/{context.Zone.Id}/ReferenceFence", context.Zone.ReferenceFence),
+        new(DeclarationVersionKeys.DomainZone(context.Zone.Id), context.Zone.Revision),
+        new(DeclarationVersionKeys.DomainZoneReferenceFence(context.Zone.Id), context.Zone.ReferenceFence),
         .. TargetVersions(context.Target),
         .. context.Workload.DocumentVersions.Select(item =>
             new DeclarationDocumentVersion(item.DocumentId, item.Version))

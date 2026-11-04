@@ -138,8 +138,8 @@ internal sealed class DeclarativeSourceBuildConfigurationProvider(
     }
 
     private static DeclarationDocumentVersion[] Versions(References references) =>
-        [new($"SourceRepository/{references.Repository.Id}", references.Repository.Revision),
-            new($"WebService/{references.Target.WebServiceId}", references.Target.Revision)];
+        [new(DeclarationVersionKeys.SourceRepository(references.Repository.Id), references.Repository.Revision),
+            new(DeclarationVersionKeys.WebService(references.Target.WebServiceId), references.Target.Revision)];
 
     private static DeclarationProjection Project(string repositoryId, string webServiceId, string dockerfile) =>
         new(DeclarationJson.Write(new { repositoryId, webServiceId }), DeclarationJson.Write(new { dockerfile }));
@@ -262,15 +262,15 @@ internal sealed class DeclarativeSourceBuildConfigurationProvider(
 
         return new GitLifecycleAdoptionPreview(found, Project(source.Id, web.WebServiceId, spec.Recipe.Dockerfile) with
         {
-            Dependencies = new([new($"SourceRepository/{source.Id}", source.Revision),
-            new($"WebService/{web.WebServiceId}", web.Revision)])
+            Dependencies = new([new(DeclarationVersionKeys.SourceRepository(source.Id), source.Revision),
+            new(DeclarationVersionKeys.WebService(web.WebServiceId), web.Revision)])
         }, request.References);
     }
 
     private static DeclarationVersionToken LifecycleVersions(SourceBuildConfiguration current) => new(
-        [new($"SourceBuildConfiguration/{current.Id}", current.Revision),
-            new($"SourceBuildConfigurationFence/{current.Id}", current.ReferenceFence),
-            new($"SourceBuildGeneration/{current.Id}", current.BuildGeneration)]);
+        [new(DeclarationVersionKeys.SourceBuildConfiguration(current.Id), current.Revision),
+            new(DeclarationVersionKeys.SourceBuildConfigurationFence(current.Id), current.ReferenceFence),
+            new(DeclarationVersionKeys.SourceBuildGeneration(current.Id), current.BuildGeneration)]);
 
     private static bool SameVersions(DeclarationVersionToken left, DeclarationVersionToken right) =>
         left.Documents.OrderBy(item => item.DocumentId, StringComparer.Ordinal)
@@ -295,7 +295,7 @@ internal sealed class DeclarativeSourceBuildConfigurationProvider(
             return new DeclarationReadBlocked(new DeclarationIdentityChanged());
 
         return new CurrentDeclaration(current.Id,
-            new([new($"SourceBuildConfiguration/{current.Id}", current.Revision)]),
+            new([new(DeclarationVersionKeys.SourceBuildConfiguration(current.Id), current.Revision)]),
             Project(current.SourceRepositoryId, current.WebServiceId, current.Recipe.Dockerfile),
             DeclarationConfigurationState.Configured);
     }
@@ -333,7 +333,7 @@ internal sealed class DeclarativeSourceBuildConfigurationProvider(
             SourceBuildConfigurationFilters.ById(operation.Context.TenantId, operation.ResourceId))
             .FirstOrDefaultAsync(cancellationToken);
         var expected = request.Expected.Documents.SingleOrDefault(item =>
-            item.DocumentId == $"SourceBuildConfiguration/{operation.ResourceId}");
+            item.DocumentId == DeclarationVersionKeys.SourceBuildConfiguration(operation.ResourceId));
         if (current is null ? expected is not null : expected?.Revision != current.Revision)
             return new DeclarationPreconditionsChanged();
 
