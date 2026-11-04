@@ -47,7 +47,8 @@ internal sealed class DeclarativeDomainZoneProvider(
     public JsonElement NormalizeAndValidate(JsonElement spec)
     {
         var declaration = DeclarationJson.Read<DomainZoneDeclaration>(spec);
-        DeclarationJson.Require(ResourceTechnicalName.IsValid(declaration.DeploymentTarget), "spec.deploymentTarget");
+        DeclarationJson.Require(ResourceTechnicalName.IsValid(declaration.DeploymentTarget),
+            DeclarationFieldPaths.DeploymentTarget);
         DeclarationJson.Require(DnsLabel.IsValid(declaration.Label) &&
             TenantDomainZoneLabelPolicy.IsManagedLabelAllowed(declaration.Label), "spec.label");
         return DeclarationJson.Write(declaration with { Label = DnsLabel.Create(declaration.Label).Value });

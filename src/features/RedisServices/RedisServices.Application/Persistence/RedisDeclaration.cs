@@ -76,19 +76,20 @@ internal static class RedisDeclarations
     public static JsonElement NormalizeAndValidate(JsonElement spec)
     {
         var value = DeclarationJson.Read<RedisDeclaration>(spec);
-        DeclarationJson.Require(DeclarationNames.Valid(value.ResourceGroup), "spec.resourceGroup");
-        DeclarationJson.Require(value.Placement is not null, "spec.placement");
+        DeclarationJson.Require(DeclarationNames.Valid(value.ResourceGroup), DeclarationFieldPaths.ResourceGroup);
+        DeclarationJson.Require(value.Placement is not null, DeclarationFieldPaths.Placement);
         DeclarationJson.Require(DeclarationNames.Valid(value.Placement.DeploymentTarget),
-            "spec.placement.deploymentTarget");
+            DeclarationFieldPaths.PlacementDeploymentTarget);
         DeclarationJson.Require(value.Placement.IsolationScope is null ||
             DeclarationNames.Valid(value.Placement.IsolationScope) && value.Placement.IsolationScope != "default",
-            "spec.placement.isolationScope");
-        DeclarationJson.Require(ValidProfile(value.Placement.ComputeProfile), "spec.placement.computeProfile");
+            DeclarationFieldPaths.PlacementIsolationScope);
+        DeclarationJson.Require(ValidProfile(value.Placement.ComputeProfile),
+            DeclarationFieldPaths.PlacementComputeProfile);
         DeclarationJson.Require(value.Storage is not null && value.Storage.SizeGb is >= 1 and <= 1000,
-            "spec.storage.sizeGb");
-        DeclarationJson.Require(ValidProfile(value.Storage.Profile), "spec.storage.profile");
+            DeclarationFieldPaths.StorageSizeGb);
+        DeclarationJson.Require(ValidProfile(value.Storage.Profile), DeclarationFieldPaths.StorageProfile);
         DeclarationJson.Require(value.Tags is not null && value.Tags.All(tag => !string.IsNullOrWhiteSpace(tag)),
-            "spec.tags");
+            DeclarationFieldPaths.Tags);
         return DeclarationJson.Write(value with
         { Tags = value.Tags.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray() });
     }
@@ -98,7 +99,7 @@ internal static class RedisDeclarations
         var value = DeclarationJson.Read<RedisDeclaration>(spec);
         return new(new("ResourceGroup", value.ResourceGroup), [],
             value.Placement.IsolationScope is { } scope
-                ? [new(new("IsolationScope", scope), "spec.placement.isolationScope")]
+                ? [new(new("IsolationScope", scope), DeclarationFieldPaths.PlacementIsolationScope)]
                 : [], [], []);
     }
 
