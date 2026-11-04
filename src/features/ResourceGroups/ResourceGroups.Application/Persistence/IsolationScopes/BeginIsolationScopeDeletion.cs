@@ -143,7 +143,9 @@ internal sealed class MongoBeginIsolationScopeDeletion(
             {
                 return transaction.Abort(new BeginIsolationScopeDeletionOutcome(
                     new IsolationScopeDeletionError(
-                        new ResourceGroupRevisionConflict(resourceGroupId))));
+                        new ResourceGroupRevisionConflict(
+                            resourceGroupId,
+                            ResourceGroupRevisionConflictReason.ExpectedRevisionConflict))));
             }
 
             var cells = await runtimeCells
@@ -193,7 +195,9 @@ internal sealed class MongoBeginIsolationScopeDeletion(
             {
                 return transaction.Abort(new BeginIsolationScopeDeletionOutcome(
                     new IsolationScopeDeletionError(
-                        new ResourceGroupRevisionConflict(resourceGroupId))));
+                        new ResourceGroupRevisionConflict(
+                            resourceGroupId,
+                            ResourceGroupRevisionConflictReason.ExpectedRevisionConflict))));
             }
 
             var outboxWrites = new List<OutboxWrite>();
@@ -215,7 +219,9 @@ internal sealed class MongoBeginIsolationScopeDeletion(
                 {
                     return transaction.Abort(new BeginIsolationScopeDeletionOutcome(
                         new IsolationScopeDeletionError(
-                            new ResourceGroupRevisionConflict(resourceGroupId))));
+                            new ResourceGroupRevisionConflict(
+                                resourceGroupId,
+                                ResourceGroupRevisionConflictReason.ExpectedRevisionConflict))));
                 }
 
                 outboxWrites.Add(OutboxWrite.Create(

@@ -217,9 +217,11 @@ public sealed class ResourceDeploymentFinalizationCapabilityTests(
                 CreatedAtUtc),
             ResourcePlacementCapability.SingleTarget,
             runtimeCellReady: true,
-            new ResourceDeploymentFactory.CreateOptions(
-                deploymentId,
-                CreatedAtUtc));
+            ResourceDeploymentFactory.DefaultOptions with
+            {
+                Id = deploymentId,
+                CreatedAtUtc = CreatedAtUtc
+            });
         if (!deleted)
             return deployment;
 

@@ -92,7 +92,8 @@ public sealed class WebServiceMultiTargetDomainTests
             "api", ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString(),
             ObjectId.GenerateNewId().ToString(),
             new WebServiceSpec(
-                new ImageInfo("registry.example.test", "team/api", "latest"),
+                new ImageInfo("registry.example.test", "team/api", "latest",
+                    SecretName: null),
                 new WebServiceConfig()
                 {
                     EnvironmentVariables = ImmutableDictionary<string, string>.Empty,

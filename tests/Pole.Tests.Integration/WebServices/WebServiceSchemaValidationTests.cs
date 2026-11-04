@@ -30,7 +30,10 @@ public sealed class WebServiceSchemaValidationTests(MongoReplicaSetFixture fixtu
             {
                 Config = service.Spec.Config with
                 {
-                    ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty.Add("HOST", new(ObjectId.GenerateNewId().ToString(), "Host")),
+                    ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty
+                .Add("HOST",
+                    new(ObjectId.GenerateNewId().ToString(), "Host",
+                        ConfigurationKey: null)),
                     SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty.Add("PASSWORD", new(ObjectId.GenerateNewId().ToString(), "password"))
                 }
             }

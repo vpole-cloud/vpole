@@ -4,6 +4,12 @@ Outbox owns durable event writes and at-least-once publication. Feature persiste
 its mutation and `OutboxWrite` records in the same Mongo transaction. The processor preserves
 pending-message CAS, capped retries, structural abandonment and bounded terminal cleanup.
 
+## Model ownership
+
+`Outbox.Domain` owns the durable message, its lifecycle states, factory and value guards.
+`Outbox.Application` owns Mongo operations, migrations, scheduling, publication and delivery
+orchestration. Integration event payloads remain provider-owned Events contracts.
+
 ## Dispatch configuration
 
 `Outbox:ProcessingCronExpression` keeps the recurring Hangfire recovery schedule (default:

@@ -236,7 +236,11 @@ public sealed class ResourceDeploymentHealthApiTests(MongoReplicaSetFixture fixt
                 now),
             ResourcePlacementCapability.SingleTarget,
             true,
-            new ResourceDeploymentFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now));
+            ResourceDeploymentFactory.DefaultOptions with
+            {
+                Id = ObjectId.GenerateNewId().ToString(),
+                CreatedAtUtc = now
+            });
         return deployment with
         {
             State = new AppliedResourceDeploymentState(1, now),

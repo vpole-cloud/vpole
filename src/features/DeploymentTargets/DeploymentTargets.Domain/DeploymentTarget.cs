@@ -22,7 +22,7 @@ public sealed record DeploymentTarget(
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
     string TechnicalName,
-    long ObservationFence = 0)
+    long ObservationFence)
 {
     [BsonIgnore] public long NextConnectionVersion => checked(Connection.Version + 1);
 
@@ -370,7 +370,8 @@ public static class DeploymentTargetFactory
             DeletionRequestedAtUtc: null,
             normalizedCreatedAtUtc,
             normalizedCreatedAtUtc,
-            ResourceTechnicalName.Require(technicalName));
+            ResourceTechnicalName.Require(technicalName),
+            ObservationFence: 0L);
     }
 }
 

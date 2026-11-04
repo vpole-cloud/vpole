@@ -15,4 +15,7 @@
       <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj" />
     </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="../../../shared/Observation.Primitives/Observation.Primitives.csproj" />
+  </ItemGroup>
 </Project>

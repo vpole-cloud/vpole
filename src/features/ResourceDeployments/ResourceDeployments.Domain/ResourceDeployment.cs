@@ -34,7 +34,7 @@ public sealed record ResourceDeployment(
     ImmutableList<ResourceDeploymentEndpoint> Endpoints,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
-    long ReferenceFence = 0)
+    long ReferenceFence)
 {
     public ResourceDeployment RequestReconciliation(
         ResolvedResourcePlacement resolvedPlacement,
@@ -717,9 +717,16 @@ public static class ResourceDeploymentFactory
     public sealed record CreateOptions(
     string Id,
     DateTime CreatedAtUtc,
-    long ResourceRevision = 1,
-    int FixedReplicas = 1,
-    bool DeferredActivation = false);
+    long ResourceRevision,
+    int FixedReplicas,
+    bool DeferredActivation);
+
+    public static CreateOptions DefaultOptions => new(
+        ObjectId.GenerateNewId().ToString(),
+        DateTime.UtcNow,
+        ResourceRevision: 1,
+        FixedReplicas: 1,
+        DeferredActivation: false);
 
     public static ResourceDeployment Create(
         string tenantId,
@@ -802,7 +809,8 @@ public static class ResourceDeploymentFactory
                     createdAtUtc),
             ImmutableList<ResourceDeploymentEndpoint>.Empty,
             createdAtUtc,
-            createdAtUtc);
+            createdAtUtc,
+            ReferenceFence: 0L);
     }
 }
 

@@ -59,7 +59,9 @@ public sealed class WebServiceNativeObservationTests
         TenantId,
         GroupId,
         ScopeId,
-        new WebServiceSpec(new ImageInfo("registry", "application"),
+        new WebServiceSpec(new ImageInfo("registry", "application",
+            Tag: "latest",
+            SecretName: null),
             new WebServiceConfig()
             {
                 EnvironmentVariables = ImmutableDictionary<string, string>.Empty,

@@ -2,6 +2,7 @@ using System.Text.Json;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.DeploymentTargets.Application.Persistence;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Persistence.Bootstrap;
 using Pole.Features.DeploymentTargets.Application.Persistence.Credentials;
@@ -275,6 +276,96 @@ public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture f
         Assert.Equal("private-target", hint.ResourceId);
         Assert.Equal(8, hint.Revision);
         Assert.Equal(new[] { "deployment-target-eligibility", "compute-eligibility", "storage-eligibility" }, topics);
+    }
+
+    [Theory]
+    [InlineData("identity")]
+    [InlineData("technical-name")]
+    [InlineData("cluster-identity")]
+    [InlineData("public-domain")]
+    public async Task Create_classifies_its_indexes_using_the_injected_collection_name(string conflict)
+    {
+        var targets = fixture.Database.GetCollection<DeploymentTarget>("RenamedDeploymentTargets");
+        var original = CreateTarget();
+        var candidate = CreateTarget();
+        var index = conflict switch
+        {
+            "technical-name" => DeploymentTargetIndexes.TechnicalName,
+            "cluster-identity" => DeploymentTargetIndexes.ClusterIdentity,
+            "public-domain" => DeploymentTargetIndexes.ActivePublicBaseDomain,
+            _ => null
+        };
+        if (index is not null)
+        {
+            var keys = conflict switch
+            {
+                "technical-name" => Builders<DeploymentTarget>.IndexKeys.Ascending(target => target.TechnicalName),
+                "cluster-identity" => Builders<DeploymentTarget>.IndexKeys.Ascending(target => target.ClusterIdentity),
+                _ => Builders<DeploymentTarget>.IndexKeys.Ascending(
+                    target => target.WorkloadConfiguration.Ingress!.PublicBaseDomain)
+            };
+            await targets.Indexes.CreateOneAsync(
+                new CreateIndexModel<DeploymentTarget>(keys,
+                    new CreateIndexOptions { Unique = true, Name = index }));
+        }
+        if (conflict == "public-domain")
+        {
+            original = original.Reconfigure(original.DisplayName, true, true,
+                DeploymentTargetIngressConfiguration.Create("traefik", "letsencrypt", "example.test"),
+                original.WorkloadConfiguration.NetworkSources, Now.AddSeconds(1));
+            candidate = candidate.Reconfigure(candidate.DisplayName, true, true,
+                DeploymentTargetIngressConfiguration.Create("traefik", "letsencrypt", "example.test"),
+                candidate.WorkloadConfiguration.NetworkSources, Now.AddSeconds(1));
+        }
+        candidate = conflict switch
+        {
+            "identity" => candidate with { Id = original.Id },
+            "technical-name" => candidate with { TechnicalName = original.TechnicalName },
+            "cluster-identity" => candidate with { ClusterIdentity = original.ClusterIdentity },
+            _ => candidate
+        };
+        await targets.InsertOneAsync(original);
+        var persistence = new MongoPersistCreatedDeploymentTarget(targets,
+            NoOverlap(), Run().InvokeOutcomeAsync<PersistCreatedDeploymentTargetOutcome>, Store());
+
+        var outcome = await persistence.InvokeAsync(candidate);
+        var error = Assert.IsType<PersistCreatedDeploymentTargetError>(outcome.Value);
+        if (conflict == "technical-name")
+            Assert.IsType<DeploymentTargetTechnicalNameConflict>(error.Value);
+        else if (conflict == "public-domain")
+            Assert.IsType<DeploymentTargetPublicBaseDomainConflict>(error.Value);
+        else
+            Assert.IsType<DeploymentTargetIdentityConflict>(error.Value);
+        Assert.Equal(1, await targets.CountDocumentsAsync(FilterDefinition<DeploymentTarget>.Empty));
+        Assert.Equal(0, await CountEventsAsync());
+    }
+
+    [Theory]
+    [InlineData("_id_")]
+    [InlineData(DeploymentTargetIndexes.TechnicalName)]
+    [InlineData(DeploymentTargetIndexes.ClusterIdentity)]
+    [InlineData(DeploymentTargetIndexes.ActivePublicBaseDomain)]
+    public async Task Duplicate_indexes_in_another_transaction_collection_are_not_target_conflicts(string index)
+    {
+        var target = CreateTarget();
+        var other = fixture.Database.GetCollection<BsonDocument>("OtherTransactionWrites");
+        if (index != "_id_")
+            await other.Indexes.CreateOneAsync(
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys.Ascending("Value"),
+                    new CreateIndexOptions { Unique = true, Name = index }));
+        await other.InsertOneAsync(new BsonDocument { ["_id"] = "occupied", ["Value"] = "duplicate" });
+        StoreOutboxWrites failInOtherCollection = async (session, _, ct) =>
+            await other.InsertOneAsync(session,
+                new BsonDocument { ["_id"] = index == "_id_" ? "occupied" : "other", ["Value"] = "duplicate" },
+                cancellationToken: ct);
+
+        await Assert.ThrowsAsync<MongoWriteException>(() =>
+            CreatePersistence(failInOtherCollection).InvokeAsync(target));
+
+        Assert.Null(await fixture.DbContext.DeploymentTargets
+            .Find(item => item.Id == target.Id).SingleOrDefaultAsync());
+        Assert.Equal(0, await CountEventsAsync());
     }
 
     private MongoPersistCreatedDeploymentTarget CreatePersistence(StoreOutboxWrites? store = null) => new(

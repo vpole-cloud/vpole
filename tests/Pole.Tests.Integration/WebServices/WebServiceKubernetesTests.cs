@@ -50,7 +50,8 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
     private WebService BuildSourceBuildE2eWebService()
     {
         var spec = new WebServiceSpec(
-            new ImageInfo("docker.io", "library/nginx", "1.27"),
+            new ImageInfo("docker.io", "library/nginx", "1.27",
+                SecretName: null),
             Config: new WebServiceConfig()
             {
                 EnvironmentVariables = ImmutableDictionary<string, string>.Empty,
@@ -144,7 +145,8 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
     {
         var spec = TestData.ValidWebServiceSpec().ToDomain() with
         {
-            Image = new ImageInfo("docker.io", "nginx", "1.27"),
+            Image = new ImageInfo("docker.io", "nginx", "1.27",
+                SecretName: null),
             Config = new WebServiceConfig()
             {
                 EnvironmentVariables = new Dictionary<string, string>

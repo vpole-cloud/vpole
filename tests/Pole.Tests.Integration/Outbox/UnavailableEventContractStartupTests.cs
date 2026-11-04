@@ -1,6 +1,6 @@
 using MongoDB.Driver;
 using Pole.Features.Outbox.Application;
-using Pole.Features.Outbox.Application.Model;
+using Pole.Features.Outbox.Domain;
 using Pole.Features.Outbox.Application.Persistence.Delivery;
 using MassTransit;
 using Pole.Features.Events.Abstractions;

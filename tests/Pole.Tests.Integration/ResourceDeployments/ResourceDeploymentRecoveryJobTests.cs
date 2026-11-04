@@ -83,9 +83,11 @@ public sealed class ResourceDeploymentRecoveryJobTests(
                     createdAtUtc),
                 ResourcePlacementCapability.SingleTarget,
                 runtimeCellReady: true,
-                new ResourceDeploymentFactory.CreateOptions(
-                    DeploymentId,
-                    createdAtUtc))
+                ResourceDeploymentFactory.DefaultOptions with
+                {
+                    Id = DeploymentId,
+                    CreatedAtUtc = createdAtUtc
+                })
             .Start(
                 expectedGeneration: 1,
                 ResourceDeploymentOperation.Apply,
@@ -213,7 +215,11 @@ public sealed class ResourceDeploymentRecoveryJobTests(
                     RuntimeCellId, TargetId, "pole-verification-test", 1, 1,
                     null, null, ResourceDeploymentTestData.Compute(), createdAtUtc),
                 ResourcePlacementCapability.SingleTarget, true,
-                new ResourceDeploymentFactory.CreateOptions(id, createdAtUtc))
+                ResourceDeploymentFactory.DefaultOptions with
+                {
+                    Id = id,
+                    CreatedAtUtc = createdAtUtc
+                })
             .Start(1, ResourceDeploymentOperation.Apply, ClaimId, createdAtUtc, completedAtUtc.AddMinutes(1))
             .Complete(1, ResourceDeploymentOperation.Apply, ClaimId, [], completedAtUtc);
     }

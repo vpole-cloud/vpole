@@ -1,3 +1,4 @@
+using Pole.Features.ResourceDeployments.Domain.Observation;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Pole.Features.Core.Kubernetes;

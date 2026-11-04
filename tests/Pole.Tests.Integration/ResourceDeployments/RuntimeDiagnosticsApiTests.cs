@@ -32,7 +32,11 @@ public sealed class RuntimeDiagnosticsApiTests(MongoReplicaSetFixture fixture) :
         var deployment = ResourceDeploymentFactory.Create(tenant ?? TestData.TenantId, ResourceTypeId.Create("pole/runtime-test"), ObjectId.GenerateNewId().ToString(),
             ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString(),
             ResolvedResourcePlacement.Create(ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString(), "private-namespace-canary", 1, 1, null, null, ResourceDeploymentTestData.Compute(), now),
-            ResourcePlacementCapability.SingleTarget, true, new ResourceDeploymentFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now));
+            ResourcePlacementCapability.SingleTarget, true, ResourceDeploymentFactory.DefaultOptions with
+            {
+                Id = ObjectId.GenerateNewId().ToString(),
+                CreatedAtUtc = now
+            });
         await Fixture.DbContext.ResourceDeployments.InsertOneAsync(deployment);
         return deployment;
     }

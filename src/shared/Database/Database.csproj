@@ -18,4 +18,7 @@
       <ProjectReference Include="..\Request\Request.csproj" />
     </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="../Observation.Primitives/Observation.Primitives.csproj" />
+  </ItemGroup>
 </Project>

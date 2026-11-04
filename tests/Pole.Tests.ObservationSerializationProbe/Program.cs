@@ -4,7 +4,7 @@ using System.Text.Json;
 using MongoDB.Bson;
 using MongoDB.Bson.IO;
 using MongoDB.Bson.Serialization;
-using Pole.Features.ResourceDeployments.Application.Observation;
+using Pole.Features.ResourceDeployments.Domain.Observation;
 
 try
 {
@@ -19,9 +19,7 @@ try
     }
 
     var bytes = Convert.FromBase64String(input.ToString());
-    var type = typeof(IResourceDeploymentObservationStore).Assembly.GetType(
-        "Pole.Features.ResourceDeployments.Application.Persistence.Observation.ObservationSnapshotDocument",
-        throwOnError: true)!;
+    var type = typeof(ObservationSnapshotDocument);
     // No serialization or instance construction of this type precedes the cold read.
     var original = BsonSerializer.Deserialize<BsonDocument>(bytes);
     using var reader = new BsonDocumentReader(original);

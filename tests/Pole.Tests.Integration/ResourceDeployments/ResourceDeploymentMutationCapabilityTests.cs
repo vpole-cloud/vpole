@@ -99,7 +99,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
         Assert.Equal(
             0,
             await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
-                FilterDefinition<Pole.Features.Outbox.Application.Model.OutboxMessage>.Empty));
+                FilterDefinition<Pole.Features.Outbox.Domain.OutboxMessage>.Empty));
     }
 
     [Fact]
@@ -350,7 +350,7 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
         Assert.Equal(
             0,
             await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
-                FilterDefinition<Pole.Features.Outbox.Application.Model.OutboxMessage>.Empty));
+                FilterDefinition<Pole.Features.Outbox.Domain.OutboxMessage>.Empty));
     }
 
     [Fact]
@@ -730,9 +730,11 @@ public sealed class ResourceDeploymentMutationCapabilityTests(
             placement,
             ResourcePlacementCapability.MultiTarget,
             runtimeCellReady,
-            new ResourceDeploymentFactory.CreateOptions(
-                deploymentId,
-                CreatedAtUtc));
+            ResourceDeploymentFactory.DefaultOptions with
+            {
+                Id = deploymentId,
+                CreatedAtUtc = CreatedAtUtc
+            });
         return (runtimeCell, deployment);
     }
 

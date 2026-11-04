@@ -92,7 +92,9 @@ public sealed record FunctionRevisionRequest(
 {
     public FunctionRevisionSpecInput ToDomain() =>
         new(
-            new FunctionImage(Image.Server, Image.Name, Image.Tag),
+            new FunctionImage(Image.Server, Image.Name, Image.Tag,
+                Digest: null,
+                PullSecretName: null),
             PoleFunctionProtocol.Version,
             Configuration,
             Resources,

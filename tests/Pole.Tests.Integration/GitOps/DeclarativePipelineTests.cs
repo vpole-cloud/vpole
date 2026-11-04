@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 using System.Collections.Immutable;
 using System.Text.Json;
@@ -220,12 +221,14 @@ public sealed class DeclarativePipelineTests(MongoReplicaSetFixture fixture) : M
         var version = (await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync()).CurrentVersion;
         Assert.Equal(1, version);
         var before = await DbContext.ResourceDeployments.Find(item => item.ResourceId == active.Id).SingleAsync();
-        var outbox = await DbContext.OutboxMessages.CountDocumentsAsync(Builders<Pole.Features.Outbox.Application.Model.OutboxMessage>.Filter.Empty);
+        var outbox = await DbContext.OutboxMessages.CountDocumentsAsync(
+            Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Empty);
         var replay = await Apply(1);
         Assert.Equal(SnapshotApplicationStatus.ConfigurationApplied, replay.Status);
         Assert.Equal(active.Revision, (await Service()).Revision); Assert.Equal(1, await Releases());
         Assert.Equal(before.DesiredGeneration, (await DbContext.ResourceDeployments.Find(item => item.Id == before.Id).SingleAsync()).DesiredGeneration);
-        Assert.Equal(outbox, await DbContext.OutboxMessages.CountDocumentsAsync(Builders<Pole.Features.Outbox.Application.Model.OutboxMessage>.Filter.Empty));
+        Assert.Equal(outbox, await DbContext.OutboxMessages.CountDocumentsAsync(
+            Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Empty));
     }
 
     [Fact]
@@ -242,7 +245,7 @@ public sealed class DeclarativePipelineTests(MongoReplicaSetFixture fixture) : M
         Assert.Equal("2", (await Service()).Spec.Image.Tag); Assert.Equal(updated.ActiveRevision, (await Service()).ActiveRevision);
         var state = await Fixture.Database.GetCollection<GitSourceExecution>("GitSourceExecutions").Find(item => item.SourceId == source).SingleAsync();
         Assert.Equal("blocked-commit", state.ObservedCommit); Assert.Equal("blocked-commit", state.AttemptedCommit);
-        Assert.Equal("image-commit", state.AppliedCommit); Assert.Equal("Blocked", state.Status);
+        Assert.Equal("image-commit", state.AppliedCommit); Assert.IsType<BlockedSnapshot>(state.Status);
         Assert.Equal(2, await Releases());
         await Supply("synthetic-next"); Assert.Equal(SnapshotApplicationStatus.ConfigurationApplied, (await Pipeline.ResumeAsync(blocked.Context!)).Status);
         Assert.Equal("3", (await Service()).Spec.Image.Tag);
@@ -399,7 +402,9 @@ public sealed class DeclarativePipelineTests(MongoReplicaSetFixture fixture) : M
     public async Task Manual_updates_and_centrally_persisted_image_changes_are_rejected_with_no_outbox_or_release()
     {
         var initial = await Apply(); await Supply(); await Pipeline.ResumeAsync(initial.Context!);
-        var current = await Service(); var outbox = await DbContext.OutboxMessages.CountDocumentsAsync(Builders<Pole.Features.Outbox.Application.Model.OutboxMessage>.Filter.Empty);
+        var current = await Service();
+        var outbox = await DbContext.OutboxMessages.CountDocumentsAsync(
+            Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Empty);
         var result = await Mediator.Send(new UpdateWebServiceRequest(current.Id,
             new(current.Spec.ToDto() with { Image = new("docker.io", "nginx", "manual") }, [], WebServiceExposureMode.Private, current.ActiveRevision), current.TenantId));
         var error = Assert.IsType<UpdateWebServiceError>(result.AssertHandlerOutcome().Value);
@@ -410,7 +415,8 @@ public sealed class DeclarativePipelineTests(MongoReplicaSetFixture fixture) : M
         Assert.Equal(ResourceGroupRevisionConflictReason.GitOwnedConfiguration,
             Assert.IsType<ResourceGroupRevisionConflict>(groupError.Value).Reason);
         Assert.Equal(current.Revision, (await Service()).Revision); Assert.Equal(1, await Releases());
-        Assert.Equal(outbox, await DbContext.OutboxMessages.CountDocumentsAsync(Builders<Pole.Features.Outbox.Application.Model.OutboxMessage>.Filter.Empty));
+        Assert.Equal(outbox, await DbContext.OutboxMessages.CountDocumentsAsync(
+            Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Empty));
         var secret = await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync();
         Assert.IsType<SecretGitOwned>((await Services.GetRequiredService<DeleteStoredSecret>()(current.TenantId, secret.Id, default)).Value);
         Assert.IsType<SecretGitOwned>((await Services.GetRequiredService<RemoveSecretBinding>()(current.TenantId, secret.Id, secret.Bindings.Single().Id, default)).Value);
@@ -506,7 +512,8 @@ public sealed class DeclarativePipelineTests(MongoReplicaSetFixture fixture) : M
         var initial = await Apply(); await Supply(); await Pipeline.ResumeAsync(initial.Context!);
         var current = await Service();
         var before = await DbContext.ResourceDeployments.Find(item => item.ResourceId == current.Id).SingleAsync();
-        var outboxCount = await DbContext.OutboxMessages.CountDocumentsAsync(Builders<Pole.Features.Outbox.Application.Model.OutboxMessage>.Filter.Empty);
+        var outboxCount = await DbContext.OutboxMessages.CountDocumentsAsync(
+            Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Empty);
         var build = await Services.GetRequiredService<DeploySourceBuildWebService>()(new(current.TenantId, current.Id,
             "synthetic-build", "synthetic-repository", "commit", TestData.UserId, TestData.UserEmail,
             new("docker.io", "nginx", "build", "sha256:synthetic", "synthetic-pull")));
@@ -523,7 +530,8 @@ public sealed class DeclarativePipelineTests(MongoReplicaSetFixture fixture) : M
         Assert.Null(token.LastUsedAtUtc);
         Assert.Equal(current.Revision, (await Service()).Revision); Assert.Equal(1, await Releases());
         Assert.Equal(before.DesiredGeneration, (await DbContext.ResourceDeployments.Find(item => item.Id == before.Id).SingleAsync()).DesiredGeneration);
-        Assert.Equal(outboxCount, await DbContext.OutboxMessages.CountDocumentsAsync(Builders<Pole.Features.Outbox.Application.Model.OutboxMessage>.Filter.Empty));
+        Assert.Equal(outboxCount, await DbContext.OutboxMessages.CountDocumentsAsync(
+            Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Empty));
     }
 
     [Fact]
@@ -543,7 +551,8 @@ public sealed class DeclarativePipelineTests(MongoReplicaSetFixture fixture) : M
             TestData.UserId, TestData.UserEmail, [new("group.yaml", "apiVersion: pole.io/v1alpha1\nkind: ResourceGroup\nmetadata: {name: demo}\nspec: {}")]));
         Assert.Equal(0, await Inventory.CountDocumentsAsync(Builders<ManagedDeclaration>.Filter.Empty));
         Assert.Equal(0, await DbContext.ResourceGroups.CountDocumentsAsync(Builders<Pole.Features.ResourceGroups.Domain.ResourceGroup>.Filter.Empty));
-        Assert.Equal(0, await DbContext.OutboxMessages.CountDocumentsAsync(Builders<Pole.Features.Outbox.Application.Model.OutboxMessage>.Filter.Empty));
+        Assert.Equal(0, await DbContext.OutboxMessages.CountDocumentsAsync(
+            Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Empty));
         Assert.Equal(0, await Fixture.Database.GetCollection<GitOperationReceipt>("GitOperationReceipts").CountDocumentsAsync(Builders<GitOperationReceipt>.Filter.Empty));
         var run = await Fixture.Database.GetCollection<GitSourceExecution>("GitSourceExecutions").Find(item => item.SourceId == source).SingleAsync();
         var allocated = JsonSerializer.Deserialize<AcceptedDeclaration[]>(run.SnapshotJson)!.Single().ResourceId;
@@ -694,7 +703,7 @@ public sealed class DeclarativePipelineTests(MongoReplicaSetFixture fixture) : M
         finally { paused.Release.TrySetResult(); }
         Assert.Equal(SnapshotApplicationStatus.StaleExecution, (await oldAttempt).Status);
         var run = await Fixture.Database.GetCollection<GitSourceExecution>("GitSourceExecutions").Find(item => item.SourceId == source).SingleAsync();
-        Assert.Equal("ConfigurationApplied", run.Status);
+        Assert.IsType<AppliedSnapshot>(run.Status);
         var owner = await Inventory.Find(item => item.Kind == "WebService").SingleAsync();
         Assert.Null(owner.Blocker); Assert.Equal(owner.DesiredHash, owner.AppliedHash); Assert.Equal(1, await Releases());
     }
@@ -762,7 +771,9 @@ public sealed class DeclarativePipelineTests(MongoReplicaSetFixture fixture) : M
         var before = (await Service()).Revision;
         Assert.Equal(SnapshotApplicationStatus.UnsupportedStoredSchema, (await Pipeline.ResumeAsync(initial.Context!)).Status);
         var stored = await sources.Find(item => item.SourceId == source).SingleAsync();
-        Assert.Equal("UnsupportedStoredSchema", stored.Status); Assert.Null(stored.NextAttemptAtUtc); Assert.Equal(before, (await Service()).Revision);
+        Assert.IsType<UnsupportedSnapshotSchema>(stored.Status);
+        Assert.Null(stored.NextAttemptAtUtc);
+        Assert.Equal(before, (await Service()).Revision);
     }
 
     private sealed class PauseAfterBlockedConfigure(IDeclarativeResourceProvider inner) : IDeclarativeResourceProvider

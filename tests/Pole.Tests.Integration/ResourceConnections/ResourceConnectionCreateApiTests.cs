@@ -511,7 +511,11 @@ public sealed class ResourceConnectionCreateApiTests(MongoReplicaSetFixture fixt
             placement,
             ResourcePlacementCapability.MultiTarget,
             runtimeCellReady: true,
-            new ResourceDeploymentFactory.CreateOptions(Id(), now));
+            ResourceDeploymentFactory.DefaultOptions with
+            {
+                Id = Id(),
+                CreatedAtUtc = now
+            });
         await Fixture.DbContext.ResourceDeployments.InsertOneAsync(deployment);
         return deployment;
     }

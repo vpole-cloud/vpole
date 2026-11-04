@@ -99,7 +99,11 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             placement,
             ResourcePlacementCapability.SingleTarget,
             runtimeCellReady: true,
-            new ResourceDeploymentFactory.CreateOptions(DeploymentId, now));
+            ResourceDeploymentFactory.DefaultOptions with
+            {
+                Id = DeploymentId,
+                CreatedAtUtc = now
+            });
         await fixture.DbContext.RuntimeCells.InsertOneAsync(runtimeCell);
         await fixture.DbContext.ResourceDeployments.InsertOneAsync(deployment);
 
@@ -211,9 +215,11 @@ public sealed class ResourceDeploymentTargetRoutingTests(
                 now.AddSeconds(1)),
             ResourcePlacementCapability.SingleTarget,
             runtimeCellReady: true,
-            new ResourceDeploymentFactory.CreateOptions(
-                DeploymentId,
-                now.AddSeconds(1)));
+            ResourceDeploymentFactory.DefaultOptions with
+            {
+                Id = DeploymentId,
+                CreatedAtUtc = now.AddSeconds(1)
+            });
         await fixture.DbContext.RuntimeCells.InsertOneAsync(runtimeCell);
         await fixture.DbContext.ResourceDeployments.InsertOneAsync(deployment);
 

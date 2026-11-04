@@ -121,7 +121,8 @@ public sealed class WebServiceMultiTargetKubernetesTests(KubernetesClusterFixtur
             resourceGroupId: "507f1f77bcf86cd799439012",
             isolationScopeId: "507f1f77bcf86cd799439013",
             spec: new WebServiceSpec(
-                new ImageInfo("docker.io", "library/nginx", "1.27.5-alpine"),
+                new ImageInfo("docker.io", "library/nginx", "1.27.5-alpine",
+                    SecretName: null),
                 new WebServiceConfig()
                 {
                     EnvironmentVariables = ImmutableDictionary<string, string>.Empty,

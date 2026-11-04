@@ -47,7 +47,7 @@ internal static class NamedCatalogTestData
         Assert.Equal(ProfileName, profile.TechnicalName);
         await fixture.Database.GetCollection<ComputeProfileRevision>("ComputeProfileRevisions").ReplaceOneAsync(
             item => item.Id == $"{profile.Id}/{profile.Revision}",
-            new ComputeProfileRevision($"{profile.Id}/{profile.Revision}", profile.Id, profile.Revision, profile),
+            ComputeProfileRevisionFactory.Create(profile),
             new ReplaceOptions { IsUpsert = true });
         await fixture.Database.GetCollection<DeploymentTarget>("DeploymentTargets").ReplaceOneAsync(
             item => item.Id == TestData.DefaultDeploymentTargetId,

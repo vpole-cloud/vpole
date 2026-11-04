@@ -67,7 +67,9 @@ internal sealed class MongoPersistRuntimeCellRetry(
             if (replacement.ModifiedCount != 1)
             {
                 return transaction.Abort(new RetryRuntimeCellResult(
-                    new ResourceGroupRevisionConflict(resourceGroupId)));
+                    new ResourceGroupRevisionConflict(
+                        resourceGroupId,
+                        ResourceGroupRevisionConflictReason.ExpectedRevisionConflict)));
             }
 
             var write = failed.Operation == RuntimeCellOperation.Reconciliation

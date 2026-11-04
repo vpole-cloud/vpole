@@ -42,7 +42,11 @@ public sealed class ObservationMetricsTests
                 DateTime.UtcNow),
             ResourcePlacementCapability.SingleTarget,
             true,
-            new("bbbbbbbbbbbbbbbbbbbbbbbb", DateTime.UtcNow));
+            ResourceDeploymentFactory.DefaultOptions with
+            {
+                Id = "bbbbbbbbbbbbbbbbbbbbbbbb",
+                CreatedAtUtc = DateTime.UtcNow
+            });
         var context =
             new ResourceDeploymentObservationContext(deployment.ToReconciliationSnapshot(), deployment.Revision, 1);
         var store = new Store();

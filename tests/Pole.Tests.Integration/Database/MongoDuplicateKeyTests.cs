@@ -48,9 +48,17 @@ public sealed class MongoDuplicateKeyTests
     public void Identity_index_retry_also_requires_the_expected_collection()
     {
         var error = Error("E11000 duplicate key error collection: db.Resources index: _id_ dup key: {}");
-        Assert.True(MongoDuplicateKey.IsForIndex(error, "_id_", "Resources"));
-        Assert.False(MongoDuplicateKey.IsForIndex(error, "_id_", "OtherResources"));
-        Assert.False(MongoDuplicateKey.IsForIndex(Error("index: _id_ dup key: {}"), "_id_", "Resources"));
+        Assert.True(MongoDuplicateKey.IsForIdIndex(error, "Resources"));
+        Assert.False(MongoDuplicateKey.IsForIdIndex(error, "OtherResources"));
+        Assert.False(MongoDuplicateKey.IsForIdIndex(Error("index: _id_ dup key: {}"), "Resources"));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void Identity_conflicts_require_an_explicit_collection(string collection)
+    {
+        Assert.Throws<ArgumentException>(() => MongoDuplicateKey.IsForIdIndex(new Exception(), collection));
     }
 
     [Fact]

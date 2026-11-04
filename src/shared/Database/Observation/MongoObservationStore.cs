@@ -1,3 +1,4 @@
+using Pole.Observation;
 using MongoDB.Driver;
 
 namespace Pole.Database.Observation;
@@ -10,9 +11,9 @@ public sealed class MongoObservationStore<TContext, TControl, TDemand, TSnapshot
     string demandsCollection,
     string snapshotsCollection,
     IMongoObservationDefinition<TContext, TControl, TDemand, TSnapshot> definition)
-    where TControl : class, IMongoObservationControl
-    where TDemand : class, IMongoObservationDemand
-    where TSnapshot : class, IMongoObservationSnapshot
+    where TControl : class, IObservationControl
+    where TDemand : class, IObservationDemand
+    where TSnapshot : class, IObservationSnapshot
 {
     private readonly IMongoCollection<TControl> controls = database.GetCollection<TControl>(controlsCollection);
     private readonly IMongoCollection<TDemand> demands = database.GetCollection<TDemand>(demandsCollection);

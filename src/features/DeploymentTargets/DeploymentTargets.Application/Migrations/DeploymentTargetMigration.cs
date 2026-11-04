@@ -19,13 +19,13 @@ public sealed class DeploymentTargetMigration : IMigration
         [
             new CreateIndexModel<BsonDocument>(
                 Builders<BsonDocument>.IndexKeys.Ascending("TechnicalName"),
-                new CreateIndexOptions { Unique = true, Name = DeploymentTargetTechnicalNames.UniqueIndexName }),
+                new CreateIndexOptions { Unique = true, Name = DeploymentTargetIndexes.TechnicalName }),
             new CreateIndexModel<BsonDocument>(
                 Builders<BsonDocument>.IndexKeys.Ascending("ClusterIdentity"),
                 new CreateIndexOptions<BsonDocument>
                 {
                     Unique = true,
-                    Name = "UX_DeploymentTargets_ClusterIdentity"
+                    Name = DeploymentTargetIndexes.ClusterIdentity
                 }),
             new CreateIndexModel<BsonDocument>(
                 Builders<BsonDocument>.IndexKeys
@@ -34,7 +34,7 @@ public sealed class DeploymentTargetMigration : IMigration
                     .Ascending("DisplayName"),
                 new CreateIndexOptions
                 {
-                    Name = "IX_DeploymentTargets_WorkloadAdmission_DisplayName"
+                    Name = DeploymentTargetIndexes.WorkloadAdmissionDisplayName
                 }),
             new CreateIndexModel<BsonDocument>(
                 Builders<BsonDocument>.IndexKeys
@@ -48,7 +48,7 @@ public sealed class DeploymentTargetMigration : IMigration
                             new BsonDocument("$type", "string"),
                         ["DeletionRequestedAtUtc"] = BsonNull.Value
                     },
-                    Name = "UX_DeploymentTargets_Active_PublicBaseDomain"
+                    Name = DeploymentTargetIndexes.ActivePublicBaseDomain
                 })
         ], cancellationToken);
 
@@ -78,7 +78,7 @@ public sealed class DeploymentTargetMigration : IMigration
                 new CreateIndexOptions
                 {
                     Unique = true,
-                    Name = "UX_DeploymentTargetSettings_DefaultDeploymentTargetId"
+                    Name = DeploymentTargetIndexes.DefaultDeploymentTarget
                 }),
             cancellationToken: cancellationToken);
     }

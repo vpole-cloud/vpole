@@ -158,7 +158,11 @@ public sealed class ResourceDeploymentRealtimePersistenceTests(MongoReplicaSetFi
                 now),
             ResourcePlacementCapability.SingleTarget,
             true,
-            new(ObjectId.GenerateNewId().ToString(), now));
+            ResourceDeploymentFactory.DefaultOptions with
+            {
+                Id = ObjectId.GenerateNewId().ToString(),
+                CreatedAtUtc = now
+            });
         return operation == ResourceDeploymentOperation.Delete
             ? deployment.RequestDeletion(now.AddSeconds(1))
             : deployment;

@@ -96,9 +96,11 @@ public sealed class ResourceDeploymentSchemaValidationTests(MongoReplicaSetFixtu
                 CreatedAtUtc),
             ResourcePlacementCapability.MultiTarget,
             runtimeCellReady: true,
-            new ResourceDeploymentFactory.CreateOptions(
-                "507f1f77bcf86cd799439017",
-                CreatedAtUtc,
-                ResourceRevision: 2,
-                FixedReplicas: 3));
+            ResourceDeploymentFactory.DefaultOptions with
+            {
+                Id = "507f1f77bcf86cd799439017",
+                CreatedAtUtc = CreatedAtUtc,
+                ResourceRevision = 2,
+                FixedReplicas = 3
+            });
 }

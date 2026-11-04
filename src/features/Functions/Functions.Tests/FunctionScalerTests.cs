@@ -514,7 +514,9 @@ public sealed class FunctionScalerTests
         IReadOnlyDictionary<string, int>? durableDemand)
     {
         var spec = new FunctionRevisionSpecInput(
-            new FunctionImage("registry.example", "team/functions", "v1"),
+            new FunctionImage("registry.example", "team/functions", "v1",
+                Digest: null,
+                PullSecretName: null),
             PoleFunctionProtocol.Version,
             new FunctionConfiguration(
                 ImmutableDictionary<string, string>.Empty,

@@ -1,7 +1,7 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
-namespace Pole.Features.Outbox.Application.Model;
+namespace Pole.Features.Outbox.Domain;
 
 public sealed record OutboxMessage(
     [property: BsonId]

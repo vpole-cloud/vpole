@@ -139,7 +139,8 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         Assert.IsType<PrivateAccessResourceUnavailable>(outcome.Value);
         Assert.Equal(0, await fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants").CountDocumentsAsync(Builders<PrivateAccessGrant>.Filter.Empty));
         Assert.Equal(0, await fixture.Database.GetCollection<PrivateAccessAudit>("PrivateAccessAudit").CountDocumentsAsync(Builders<PrivateAccessAudit>.Filter.Empty));
-        Assert.Equal(0, await fixture.DbContext.OutboxMessages.CountDocumentsAsync(Builders<Pole.Features.Outbox.Application.Model.OutboxMessage>.Filter.Empty));
+        Assert.Equal(0, await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
+            Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Empty));
     }
 
     [Fact]
@@ -162,7 +163,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         Assert.False(storedAudit.Contains("Action"));
         Assert.False(storedAudit.Contains("Reason"));
         Assert.Equal(1, await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
-            Builders<Pole.Features.Outbox.Application.Model.OutboxMessage>.Filter.Empty));
+            Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Empty));
         var roundTrip = BsonSerializer.Deserialize<PrivateAccessGrant>(grant.ToBson());
         Assert.IsType<ActivePrivateAccessGrant>(roundTrip.State);
         Assert.IsType<RevokedPrivateAccessGrant>(
@@ -182,7 +183,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         Assert.Equal(0, await fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
             .CountDocumentsAsync(Builders<PrivateAccessGrant>.Filter.Empty));
         Assert.Equal(0, await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
-            Builders<Pole.Features.Outbox.Application.Model.OutboxMessage>.Filter.Empty));
+            Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Empty));
     }
 
     [Fact]
@@ -616,7 +617,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
             { Reason: PrivateAccessAuditReason.SubjectMismatch });
         Assert.All(audit, item => Assert.Null(item.SessionId));
         Assert.Equal(1, await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
-            Builders<Pole.Features.Outbox.Application.Model.OutboxMessage>.Filter.Empty));
+            Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Empty));
     }
 
     [Fact]

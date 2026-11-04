@@ -67,6 +67,13 @@ Those are separate delivery capabilities. Explicit DI composition is sufficient 
 transitions. Domain types are internal implementation details of the feature boundary even when
 their CLR visibility is public for persistence or application use.
 
+A feature's own persisted models also belong to Domain: collection roots, revisions,
+history, stored snapshots and projections, retained cleanup records, and their owned nested data.
+Application owns their persistence operations and boundary serialization mappings.
+MongoDB BSON attributes may live with the stored Domain models. A type does
+not become a Contracts or Events model solely because its data is saved in a database; payload
+contracts retain their boundary and are mapped by Application when necessary.
+
 A Domain project may depend on dependency-free thematic primitives and technical leaf libraries.
 It must not reference Contracts, Events, Application, or another feature project.
 

@@ -3,7 +3,7 @@ using Pole.Features.ContainerRegistries.Domain;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.Functions.Domain;
 using Pole.Features.GitProviders.Domain;
-using Pole.Features.Outbox.Application.Model;
+using Pole.Features.Outbox.Domain;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Domain;

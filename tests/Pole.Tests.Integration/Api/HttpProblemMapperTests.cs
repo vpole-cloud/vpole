@@ -49,6 +49,21 @@ namespace Pole.Tests.Integration.Api;
 
 public sealed class HttpProblemMapperTests
 {
+    [Theory]
+    [InlineData(ResourceGroupRevisionConflictReason.ExpectedRevisionConflict, "resource-groups.revision-conflict")]
+    [InlineData(ResourceGroupRevisionConflictReason.GitOwnedConfiguration, "resource-groups.git-owned")]
+    public void Explicit_resource_group_conflict_reasons_preserve_HTTP_mapping(
+        ResourceGroupRevisionConflictReason reason,
+        string expectedCode)
+    {
+        var mapper = new HttpProblemMapper(ResourceGroupHttpMappings.All);
+
+        var problem = mapper.Map(new ResourceGroupRevisionConflict("group", reason));
+
+        Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
+        Assert.Equal(expectedCode, problem.Code);
+        Assert.Equal("group", problem.Extensions["resourceGroupId"]);
+    }
 
     [Fact]
     public void StorageProfileCreateOutcomeMapsTargetValidationErrors()
@@ -78,7 +93,6 @@ public sealed class HttpProblemMapperTests
         Assert.Equal("storage-profiles.discovery-unavailable", problem.Code);
         Assert.Equal("target-1", problem.Extensions["deploymentTargetId"]);
     }
-
 
     [Fact]
     public void StorageResolutionContractMappingPreservesSizeDetails()

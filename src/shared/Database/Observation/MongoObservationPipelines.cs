@@ -8,9 +8,9 @@ namespace Pole.Database.Observation;
 // Each control transition remains ONE server-side $set stage, including the clock and fences.
 internal sealed class MongoObservationPipelines<TContext, TControl, TDemand, TSnapshot>(
     IMongoObservationDefinition<TContext, TControl, TDemand, TSnapshot> definition)
-    where TControl : class, IMongoObservationControl
-    where TDemand : class, IMongoObservationDemand
-    where TSnapshot : class, IMongoObservationSnapshot
+    where TControl : class, IObservationControl
+    where TDemand : class, IObservationDemand
+    where TSnapshot : class, IObservationSnapshot
 {
     private static UpdateDefinitionBuilder<TControl> Control => Builders<TControl>.Update;
 

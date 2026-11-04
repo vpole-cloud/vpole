@@ -1,4 +1,4 @@
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Domain;
 
 public sealed record AcceptedDeclaration(
     string Kind,

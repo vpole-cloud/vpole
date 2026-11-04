@@ -157,8 +157,8 @@ public sealed record FunctionImage(
     string Server,
     string Name,
     string Tag,
-    string? Digest = null,
-    string? PullSecretName = null)
+    string? Digest,
+    string? PullSecretName)
 {
     [BsonIgnore]
     public string Reference => Digest is null

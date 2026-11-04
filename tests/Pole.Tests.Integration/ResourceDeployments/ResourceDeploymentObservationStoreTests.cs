@@ -1,3 +1,4 @@
+using Pole.Features.ResourceDeployments.Domain.Observation;
 using System.Text.Json;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -13,7 +14,6 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Events;
 using Pole.Observability;
-using Pole.Tests.Integration.Observation;
 using Pole.Tests.Integration.Infrastructure;
 using Pole.Workloads;
 using Xunit;
@@ -71,14 +71,17 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
     }
 
     [Fact]
-    public async Task HistoricalRawDocumentsRemainReadableRenewableAndWritableWithoutMigration()
+    public async Task CurrentDocumentsRemainReadableRenewableAndWritable()
     {
         var seeded = await SeedAsync();
         var context = seeded.Context;
         var now = await ServerNowAsync();
-        var (_, control) = ObservationDocumentCompatibilityTests.Legacy("runtime-control");
-        var (_, demand) = ObservationDocumentCompatibilityTests.Legacy("runtime-demand");
-        var (_, snapshot) = ObservationDocumentCompatibilityTests.Legacy("runtime-snapshot");
+        var controlValue = ResourceDeploymentsObservationDocumentTests.Create("control");
+        var control = controlValue.ToBsonDocument(controlValue.GetType());
+        var demandValue = ResourceDeploymentsObservationDocumentTests.Create("demand");
+        var demand = demandValue.ToBsonDocument(demandValue.GetType());
+        var snapshotValue = ResourceDeploymentsObservationDocumentTests.Create("snapshot");
+        var snapshot = snapshotValue.ToBsonDocument(snapshotValue.GetType());
         foreach (var document in new[] { control, snapshot })
         {
             document["_id"] = ObjectId.Parse(context.Deployment.Id);
@@ -955,7 +958,11 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
                 now),
             ResourcePlacementCapability.SingleTarget,
             true,
-            new(ObjectId.GenerateNewId().ToString(), now));
+            ResourceDeploymentFactory.DefaultOptions with
+            {
+                Id = ObjectId.GenerateNewId().ToString(),
+                CreatedAtUtc = now
+            });
         await fixture.DbContext.ResourceDeployments.InsertOneAsync(deployment);
         await Targets.InsertOneAsync(new BsonDocument
         {

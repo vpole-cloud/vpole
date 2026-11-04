@@ -65,7 +65,9 @@ internal sealed class MongoPersistCreatedIsolationScope(
             if (fence.ModifiedCount != 1)
             {
                 return transaction.Abort(new PersistCreatedIsolationScopeError(
-                    new ResourceGroupRevisionConflict(resourceGroup.Id)));
+                    new ResourceGroupRevisionConflict(
+                        resourceGroup.Id,
+                        ResourceGroupRevisionConflictReason.ExpectedRevisionConflict)));
             }
 
             await isolationScopes.InsertOneAsync(

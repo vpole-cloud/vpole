@@ -217,12 +217,14 @@ internal sealed class MongoCreateResourceDeploymentSet(
                         now),
                     item.PlacementCapability,
                     runtimeCellReady: placement.State == ResourcePlacementState.Ready,
-                    new ResourceDeploymentFactory.CreateOptions(
-                        item.DeploymentId,
-                        now,
-                        item.ResourceRevision,
-                        item.FixedReplicas,
-                        item.DeferredActivation));
+                    ResourceDeploymentFactory.DefaultOptions with
+                    {
+                        Id = item.DeploymentId,
+                        CreatedAtUtc = now,
+                        ResourceRevision = item.ResourceRevision,
+                        FixedReplicas = item.FixedReplicas,
+                        DeferredActivation = item.DeferredActivation
+                    });
             })
             .ToArray();
         await resourceDeployments.InsertManyAsync(
