@@ -2,6 +2,7 @@ using Pole.Features.GitOps.Primitives;
 using System.Text.RegularExpressions;
 using static Pole.Features.WebServices.Application.Persistence.WebServiceDeclarationRules;
 using Pole.Workloads;
+using Pole.Database;
 using System.Collections.Immutable;
 using System.Text.Json;
 using MongoDB.Bson;
@@ -63,6 +64,17 @@ internal sealed partial class DeclarativeWebServiceProvider(
     IMongoCollection<WebService> services,
     IGitOpsMutations git,
     GetResourceGroupOwnership groupOwnership,
+    MongoRunTransaction planningTransactions,
+    LoadResourceGroupPlanningSnapshot loadPlanningGroup,
+    FenceResourceGroupPlanningSnapshot fencePlanningGroup,
+    LoadResourceDeploymentPlanningSnapshot loadPlanningPlacements,
+    FenceResourceDeploymentPlanningSnapshot fencePlanningPlacements,
+    ResolveComputeProfilePlanningSnapshot resolvePlanningCompute,
+    FenceComputeProfilePlanningSnapshot fencePlanningCompute,
+    ResolveDeploymentTargetPlanningSnapshot resolvePlanningTarget,
+    FenceDeploymentTargetPlanningSnapshot fencePlanningTarget,
+    LoadConsumerSecretPlanningSnapshot loadPlanningSecrets,
+    FenceConsumerSecretPlanningSnapshot fencePlanningSecrets,
     ResolveNamedDeploymentTarget resolveTargetName,
     ResolveNamedComputeProfile resolveProfileName,
     ResolveComputeProfiles resolveCompute,
@@ -75,7 +87,7 @@ internal sealed partial class DeclarativeWebServiceProvider(
     PersistCreatedWebService persistCreated,
     PersistUpdatedWebServiceOutcome persistUpdated,
     PersistCurrentWebServiceRelease persistRelease,
-    TimeProvider clock) : IDeclarativeResourcePlanningProvider
+    TimeProvider clock) : ITransactionalDeclarativeResourceProvider, IDeclarativeReferencePreparation
 {
     public string Kind => "WebService";
 
@@ -236,196 +248,26 @@ internal sealed partial class DeclarativeWebServiceProvider(
     {
         var spec = DeclarationJson.Read<WebServiceDeclaration>(operation.Declaration.Spec);
         var context = operation.Context;
-        var current = await services.Find(WebServiceFilters.ByTechnicalName(
-            context.TenantId,
-            operation.Declaration.Address.Name)).FirstOrDefaultAsync(ct);
+        var loaded = await planningTransactions.InvokeOutcomeAsync<ReadWebServicePlanningOutcome>(async (tx, token) =>
+            tx.Commit(await ReadExecutionPlanningAsync(operation.Input, tx.Session, token)), ct);
+        if (loaded is DeclarationReadBlocked blocked)
+            return await BlockAsync(operation, blocked.Failure, ct);
 
-        if (current is not null && current.Id != operation.ResourceId)
-            return await BlockAsync(
-                operation,
-                new WebServiceDeclarationRejected(WebServiceDeclarationError.ExplicitAdoptionRequired),
-                ct);
-
-        if (current is not null && current.Lifecycle is DeletingWebServiceLifecycle)
-            return await BlockAsync(
-                operation,
-                new WebServiceDeclarationRejected(WebServiceDeclarationError.ResourceDeleting),
-                ct);
-
-        DeploymentTargetLookupDto? selectedTarget = null;
-        string targetId;
-
-        if (current is null)
-        {
-            var target = await resolveTargetName(new(context.TenantId,
-                    WebServiceResourceDeployment.ResourceType,
-                    spec.Placement.DeploymentTarget),
-                ct);
-
-            if (target is not DeploymentTargetLookupDto resolvedTarget)
-                return await BlockAsync(operation,
-                    target is NamedDeploymentTargetAmbiguous
-                        ? new WebServiceDeclarationRejected(WebServiceDeclarationError.DeploymentTargetNameAmbiguous)
-                        : new WebServiceDeclarationRejected(WebServiceDeclarationError.DeploymentTargetUnavailable),
-                    ct);
-
-            var pin = await git.PinReferenceAsync(new(context,
-                    operation.ResourceId,
-                    new(new("DeploymentTarget", spec.Placement.DeploymentTarget), resolvedTarget.Id)),
-                ct);
-            if (pin is StaleGitExecution stale)
-                return new(operation.ResourceId, stale);
-            if (((GitReferencePinned)pin.Value).ResourceId != resolvedTarget.Id)
-                return await BlockAsync(operation,
-                    new WebServiceDeclarationRejected(WebServiceDeclarationError.DeploymentTargetUnavailable),
-                    ct);
-
-            selectedTarget = resolvedTarget;
-            targetId = selectedTarget.Id;
-        }
-        else
-        {
-            if (current.DeclaredPlacement is null)
-                return await BlockAsync(
-                    operation,
-                    new WebServiceDeclarationRejected(WebServiceDeclarationError.PreparedPlacementIdentityUnavailable),
-                    ct);
-
-            if (current.DeclaredPlacement.DeploymentTargetName != spec.Placement.DeploymentTarget)
-                return await BlockAsync(
-                    operation,
-                    new WebServiceDeclarationRejected(WebServiceDeclarationError.ImmutablePlacementChange),
-                    ct);
-
-            targetId = current.DeclaredPlacement.DeploymentTargetId;
-        }
-
-        var deployments = current is null
-            ? []
-            : (await loadDeployments(
-                new LoadResourceDeploymentSetRequest(
-                    TenantId: current.TenantId,
-                    ResourceType: WebServiceResourceDeployment.ResourceType,
-                    ResourceId: current.Id),
-                cancellationToken: ct)).ToArray();
-
-        if (current is not null && (deployments.Length != 1 || deployments[0].DeploymentTargetId != targetId))
-            return await BlockAsync(
-                operation,
-                new WebServiceDeclarationRejected(WebServiceDeclarationError.ImmutablePlacementChange),
-                ct);
-
-        if (operation.Phase == DeclarationPhase.Prepare && current is not null)
-            return await git.ExecuteAsync(operation,
-                async (session, token) =>
-                {
-                    var groupId = await git.ResolveAcceptedAsync(
-                        new ResolveAcceptedGitReferenceRequest(
-                            Context: context,
-                            ConsumerResourceId: operation.ResourceId,
-                            Address: new("ResourceGroup", spec.ResourceGroup)),
-                        session: session,
-                        ct: token);
-
-                    return groupId == current.ResourceGroupId
-                        ? new(current.Id)
-                        : new(
-                            current.Id,
-                            new WebServiceDeclarationRejected(WebServiceDeclarationError.ImmutablePlacementChange));
-                },
-                ct);
-
-        if (operation.Phase == DeclarationPhase.Configure && current is null)
-            return await BlockAsync(
-                operation,
-                new WebServiceDeclarationRejected(WebServiceDeclarationError.PreparedResourceUnavailable),
-                ct);
-
-        ResolvedComputeProfile? compute = null;
-        var desiredProfile = spec.Placement.ComputeProfile;
-        string profileId;
-
-        if (current?.DeclaredPlacement is { } bound && bound.ComputeProfileName == desiredProfile.Name)
-            profileId = bound.ComputeProfileId;
-        else
-        {
-            var named = await resolveProfileName(new(context.TenantId,
-                    WebServiceResourceDeployment.ResourceType,
-                    desiredProfile.Name,
-                    targetId,
-                    desiredProfile.Revision),
-                ct);
-
-            if (named is not ResolvedComputeProfile resolved)
-                return await BlockAsync(operation,
-                    named switch
-                    {
-                        NamedComputeProfileAmbiguous =>
-                            new WebServiceDeclarationRejected(WebServiceDeclarationError.ComputeProfileNameAmbiguous),
-                        ComputeProfileUnavailable { Reason: ComputeProfileUnavailableReason.RevisionUnavailable } =>
-                            new WebServiceDeclarationRejected(
-                                WebServiceDeclarationError.ComputeProfileRevisionUnavailable),
-                        _ => new WebServiceDeclarationRejected(
-                            WebServiceDeclarationError.PinnedComputeProfileUnavailable)
-                    },
-                    ct);
-
-            compute = resolved;
-            profileId = compute.ComputeProfileId;
-            var pin = await git.PinReferenceAsync(new(context,
-                    operation.ResourceId,
-                    new(new("ComputeProfile", desiredProfile.Name), profileId)),
-                ct);
-            if (pin is StaleGitExecution stale)
-                return new(operation.ResourceId, stale);
-            if (((GitReferencePinned)pin.Value).ResourceId != profileId)
-                return await BlockAsync(operation,
-                    new WebServiceDeclarationRejected(WebServiceDeclarationError.PinnedComputeProfileUnavailable),
-                    ct);
-        }
-
-        if (compute is null && (current is null || deployments[0].Compute.Profile.ComputeProfileId != profileId ||
-                                deployments[0].Compute.Profile.ComputeProfileRevision != desiredProfile.Revision))
-        {
-            var resolution = await resolveCompute(new(context.TenantId,
-                    WebServiceResourceDeployment.ResourceType,
-                    [new(targetId, profileId, desiredProfile.Revision)]),
-                ct);
-
-            if (resolution is not IReadOnlyList<ResolvedComputeProfile> resolved)
-                return await BlockAsync(operation,
-                    resolution is ComputeProfileResolutionError error &&
-                    error.Value is ComputeProfileUnavailable
-                    {
-                        Reason: ComputeProfileUnavailableReason.RevisionUnavailable
-                    }
-                        ? new WebServiceDeclarationRejected(
-                            WebServiceDeclarationError.ComputeProfileRevisionUnavailable)
-                        : new WebServiceDeclarationRejected(
-                            WebServiceDeclarationError.PinnedComputeProfileUnavailable),
-                    ct);
-
-            compute = resolved.Single();
-        }
-
-        var binding = new WebServiceDeclaredPlacement(
-            spec.Placement.DeploymentTarget,
-            targetId,
-            desiredProfile.Name,
-            profileId);
-        var domainSpec = ToSpec(spec, ImmutableDictionary<string, SecretEnvironmentReference>.Empty);
-        var nextQuota = compute is not null
-            ? WebServiceDeploymentWorkflow.ToQuotaInput(
-                [(compute, spec.Replicas)],
-                domainSpec)
-            : WebServiceDeploymentWorkflow.ToQuotaInput(
-                deployments.Select(item => item with { FixedReplicas = spec.Replicas }),
-                domainSpec);
+        var dependencies = (WebServicePlanningDependencies)loaded.Value;
+        var current = dependencies.Current;
+        var deployments = dependencies.Placements?.Items ?? [];
+        var compute = dependencies.Compute.Compute;
+        var selectedTarget = dependencies.Target.Target;
+        var binding = new WebServiceDeclaredPlacement(spec.Placement.DeploymentTarget, selectedTarget.Id,
+            spec.Placement.ComputeProfile.Name, compute.ComputeProfileId);
+        var domainSpec = ToSpec(spec, ImmutableDictionary<string, SecretEnvironmentReference>.Empty, current?.Spec);
+        var nextQuota = WebServiceDeploymentWorkflow.ToQuotaInput([(compute, spec.Replicas)], domainSpec);
         QuotaMutation<WebServiceQuotaInput> quotaChange = current is null
             ? new CreateQuotaMutation<WebServiceQuotaInput>(nextQuota)
             : new UpdateQuotaMutation<WebServiceQuotaInput>(
-                WebServiceDeploymentWorkflow.ToQuotaInput(deployments, current.Spec),
-                nextQuota);
+                WebServiceQuotaInput.Create(deployments.Select(item => WebServiceDeploymentQuotaInput.Create(
+                    item.Compute.Requests.CpuMillis, item.Compute.Requests.MemoryMi,
+                    current.Spec.Autoscaling?.MaxReplicas ?? item.FixedReplicas))), nextQuota);
         var outcome = await quotas.ExecuteOutcomeAsync<WebServiceQuotaInput, GitOperationResult>(
             new ExecuteQuotaAdmissionRequest<global::Pole.Features.WebServices.Application.Common
                 .WebServiceQuotaInput, global::Pole.Features.GitOps.Contracts.GitOperationResult>(
@@ -463,8 +305,7 @@ internal sealed partial class DeclarativeWebServiceProvider(
                             WebServiceFilters.ById(context.TenantId, operation.ResourceId)).AnyAsync(token))
                         return tx.Abort(new(
                             operation.ResourceId,
-                            new WebServiceDeclarationRejected(
-                                WebServiceDeclarationError.ExpectedRevisionConflict)));
+                            new DeclarationPreconditionsChanged()));
 
                     if (current is null)
                         result = await PrepareAsync(
@@ -507,7 +348,8 @@ internal sealed partial class DeclarativeWebServiceProvider(
                 }),
             cancellationToken: ct);
 
-        return outcome.Applied ? outcome : await BlockAsync(operation, outcome.Failure!, ct);
+        return outcome.Applied || outcome.Failure is DeclarationPreconditionsChanged or StaleGitExecution
+            ? outcome : await BlockAsync(operation, outcome.Failure!, ct);
     }
 
     private Task<GitOperationResult> BlockAsync(
@@ -529,9 +371,9 @@ internal sealed partial class DeclarativeWebServiceProvider(
         IClientSessionHandle session,
         CancellationToken ct)
     {
-        var group = await groupOwnership(operation.Context.TenantId, groupId, ct);
+        var group = await loadPlanningGroup(new(operation.Context.TenantId, groupId), session, ct);
 
-        if (group is not ResourceGroupOwnership owned)
+        if (group is not ResourceGroupPlanningSnapshot owned)
             return new(
                 operation.ResourceId,
                 new WebServiceDeclarationRejected(WebServiceDeclarationError.ResourceGroupUnavailable));
@@ -598,8 +440,8 @@ internal sealed partial class DeclarativeWebServiceProvider(
     private async Task<GitOperationResult> ConfigureAsync(GitOperation operation,
         WebServiceDeclaration spec,
         WebService current,
-        IReadOnlyList<PlacementSummaryDto> placements,
-        ResolvedComputeProfile? compute,
+        IReadOnlyList<ResourceDeploymentPlanningItem> placements,
+        ResolvedComputeProfile compute,
         WebServiceDeclaredPlacement binding,
         IClientSessionHandle session,
         CancellationToken ct)
@@ -611,8 +453,9 @@ internal sealed partial class DeclarativeWebServiceProvider(
         if (authoritative is null || authoritative.Revision != current.Revision)
             return new(
                 current.Id,
-                new WebServiceDeclarationRejected(WebServiceDeclarationError.ExpectedRevisionConflict));
+                new DeclarationPreconditionsChanged());
 
+        current = authoritative;
         var references = ImmutableDictionary.CreateBuilder<string, SecretEnvironmentReference>();
         foreach (var pair in spec.SecretEnvironment)
         {
@@ -630,7 +473,7 @@ internal sealed partial class DeclarativeWebServiceProvider(
             references.Add(pair.Key, new(secretId, pair.Value.Key));
         }
 
-        var desired = ToSpec(spec, references.ToImmutable());
+        var desired = ToSpec(spec, references.ToImmutable(), current.Spec);
         var admitted = await admitSecrets(
             new AdmitConsumerSecretReferencesRequest(
                 TenantId: current.TenantId,
@@ -658,8 +501,12 @@ internal sealed partial class DeclarativeWebServiceProvider(
             desired,
             spec.Tags,
             WebServiceExposure.Create()).BindDeclaredPlacement(binding);
-        var placementChanged = compute is not null || placements.Any(item =>
-            item.FixedReplicas != spec.Replicas || item.Status == ResourceDeploymentStatus.Prepared);
+        var replacementCompute = compute.ToResourceDeploymentConfiguration();
+        var placementChanged = placements.Any(item => item.FixedReplicas != spec.Replicas ||
+            item.State == ResourceDeploymentPlanningState.Prepared ||
+            item.Compute.ComputeProfileId != replacementCompute.ComputeProfileId ||
+            item.Compute.ComputeProfileRevision != replacementCompute.ComputeProfileRevision ||
+            !JsonElement.DeepEquals(ComputeProjection(item.Compute), ComputeProjection(replacementCompute)));
 
         if (next == current && !placementChanged)
             return new(current.Id);
@@ -672,14 +519,21 @@ internal sealed partial class DeclarativeWebServiceProvider(
                 current.Id,
                 next.ActiveRevision,
                 placements.Select(item => new ResourceDeploymentSetApplyItem(item.DeploymentId,
-                    item.DeploymentRevision,
-                    item.Compute.Profile,
+                    item.Revision,
+                    new(item.Compute.ComputeProfileId, item.Compute.ComputeProfileRevision),
                     new PreserveIngress(),
-                    compute?.ToResourceDeploymentConfiguration(),
+                    replacementCompute,
                     spec.Replicas,
                     PinnedCompute: true)).ToArray()),
             session,
             ct);
+
+        if (applied is ResourceDeploymentMutationError
+            {
+                Value: ResourceDeploymentChanged or
+                ResourceDeploymentComputeConfigurationChanged or ResourceDeploymentIngressConfigurationChanged
+            })
+            return new(current.Id, new DeclarationPreconditionsChanged());
 
         if (applied is not MutatedResourceDeployments updated)
             return new(current.Id, new WebServiceDeclarationRejected(WebServiceDeclarationError.PlacementChanged));
@@ -695,10 +549,12 @@ internal sealed partial class DeclarativeWebServiceProvider(
         if (persisted is WebServiceDependencyUnavailable dependency)
             return new(current.Id, new WebServiceDependencyRejected(dependency));
 
-        if (persisted is not WebServiceUpdateAccepted)
-            return new(
-                current.Id,
-                new WebServiceDeclarationRejected(WebServiceDeclarationError.ExpectedRevisionConflict));
+        if (persisted is WebServiceUpdateConflict conflict)
+            return new(current.Id, conflict.Reason == WebServiceUpdateConflictReason.ExpectedRevisionConflict
+                ? new DeclarationPreconditionsChanged() : new GitDeclarationOwnershipConflict());
+
+        if (persisted is WebServiceConnectionConflict)
+            return new(current.Id, new WebServiceDeclarationRejected(WebServiceDeclarationError.PlacementChanged));
 
         var eventCore = EventCore.Create(current.TenantId);
         var release = WebServiceReleaseFactory.CreatePending(current.TenantId,
@@ -727,11 +583,12 @@ internal sealed partial class DeclarativeWebServiceProvider(
 
     private static WebServiceSpec ToSpec(
         WebServiceDeclaration value,
-        ImmutableDictionary<string, SecretEnvironmentReference> references) =>
+        ImmutableDictionary<string, SecretEnvironmentReference> references,
+        WebServiceSpec? previous) =>
         new(new(value.Image.Server,
                 value.Image.Name,
                 value.Image.Tag,
-                SecretName: null),
+                SecretName: previous?.Image.SecretName),
             new WebServiceConfig()
             {
                 EnvironmentVariables = value.Environment,
@@ -740,7 +597,8 @@ internal sealed partial class DeclarativeWebServiceProvider(
                     port.TargetPort,
                     port.Protocol,
                     port.Name)).ToImmutableList(),
-                ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty,
+                ConnectionEnvironmentReferences = previous?.Config.ConnectionEnvironmentReferences ??
+                    ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty,
                 SecretEnvironmentReferences = references
             },
             null,

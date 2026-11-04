@@ -12,6 +12,15 @@ public static class DeclarationFailureDiagnostics
     public static string? Code(IDeclarationFailure? failure, IDeclarativeResourceProvider provider) => failure switch
     {
         null => null,
+        DeclarationDependencyBlocked => nameof(DeclarationDependencyBlocked),
+        DeclarationPreconditionsChanged => nameof(DeclarationPreconditionsChanged),
+        DeclarationManagedResourceMissing => nameof(DeclarationManagedResourceMissing),
+        DeclarationAdoptionRequired => nameof(DeclarationAdoptionRequired),
+        DeclarationReplacementRequired => nameof(DeclarationReplacementRequired),
+        DeclarationPostconditionFailed => nameof(DeclarationPostconditionFailed),
+        DeclarationIdentityChanged => nameof(DeclarationIdentityChanged),
+        DeclarationPlanningUnsupported => nameof(DeclarationPlanningUnsupported),
+        DeclarationReferenceUnavailable => nameof(DeclarationReferenceUnavailable),
         StaleGitExecution => "StaleExecution",
         GitDeclarationOwnershipConflict => "OwnershipConflict",
         _ => provider.DescribeFailure(failure)

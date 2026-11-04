@@ -19,7 +19,7 @@ public sealed class GitOpsRepositoryFlowE2ETests(PoleE2EFixture fixture)
     {
         using var evidence = new TestPhaseJournal(nameof(RepositorySourceAppliesThroughOutboxWorkerWebhookAndPolling))
             .Activate();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(7));
         var ct = timeout.Token;
         var connection = await ConnectAsync(ct);
         await RevisionAsync("v1", ct);
@@ -43,7 +43,7 @@ public sealed class GitOpsRepositoryFlowE2ETests(PoleE2EFixture fixture)
         var operations = await JsonAsync(HttpMethod.Get, $"{Root}/{source}/runs/{runId}/operations", null, ct);
         var operation = Assert.Single(operations.GetProperty("items").EnumerateArray());
         Assert.Equal("Succeeded", operation.GetProperty("status").GetString());
-        var resource = operation.GetProperty("resourceId").GetString();
+        var resource = operation.GetProperty("resourceId").GetString()!;
         await JsonAsync(HttpMethod.Get, $"/api/v1/resource-groups/{resource}", null, ct);
 
         await RevisionAsync("v2", ct);
@@ -64,6 +64,36 @@ public sealed class GitOpsRepositoryFlowE2ETests(PoleE2EFixture fixture)
         runId = polled.GetProperty("synchronization").GetProperty("latestRunId").GetString();
         var pollRun = await JsonAsync(HttpMethod.Get, $"{Root}/{source}/runs/{runId}", null, ct);
         Assert.Equal("Poll", pollRun.GetProperty("trigger").GetString());
+
+        var groupBefore = await JsonAsync(HttpMethod.Get, $"/api/v1/resource-groups/{resource}", null, ct);
+        await fixture.InjectResourceGroupDriftAsync(resource, ct);
+        var repaired = await WaitAsync(source, item =>
+            item.GetProperty("synchronization").GetProperty("latestRunId").GetString() != runId &&
+            item.GetProperty("status").GetString() == "ConfigurationApplied" &&
+            item.GetProperty("latestRun").GetProperty("operations").GetProperty("update").GetInt32() == 1, ct);
+        var repairId = repaired.GetProperty("synchronization").GetProperty("latestRunId").GetString();
+        var repairRun = await JsonAsync(HttpMethod.Get, $"{Root}/{source}/runs/{repairId}", null, ct);
+        Assert.Equal("Poll", repairRun.GetProperty("trigger").GetString());
+        Assert.Equal(new string('c', 40), repaired.GetProperty("synchronization")
+            .GetProperty("fullyAppliedCommit").GetString());
+        var groupAfter = await JsonAsync(HttpMethod.Get, $"/api/v1/resource-groups/{resource}", null, ct);
+        Assert.Equal(groupBefore.GetProperty("description").GetString(),
+            groupAfter.GetProperty("description").GetString());
+        var repairOperations = await JsonAsync(HttpMethod.Get,
+            $"{Root}/{source}/runs/{repairId}/operations", null, ct);
+        var repairPlan = Assert.Single(repairOperations.GetProperty("items").EnumerateArray()).GetProperty("plan");
+        Assert.Equal("Update", repairPlan.GetProperty("action").GetString());
+        Assert.Equal("configuration.description", Assert.Single(repairPlan.GetProperty("changedFields")
+            .EnumerateArray()).GetString());
+
+        await JsonAsync(HttpMethod.Post, $"{Root}/{source}/sync",
+            new { expectedRevision = 2, idempotencyKey = Guid.NewGuid() }, ct);
+        await WaitAsync(source, item =>
+            item.GetProperty("synchronization").GetProperty("latestRunId").GetString() != repairId &&
+            item.GetProperty("status").GetString() == "AlreadyCurrent" &&
+            item.GetProperty("latestRun").GetProperty("operations").GetProperty("noOp").GetInt32() == 1, ct);
+        var stable = await JsonAsync(HttpMethod.Get, $"/api/v1/resource-groups/{resource}", null, ct);
+        Assert.Equal(groupAfter.GetProperty("revision").GetInt64(), stable.GetProperty("revision").GetInt64());
 
         await RevisionAsync("deleted", ct);
         await PushAsync(new string('0', 40), ct);

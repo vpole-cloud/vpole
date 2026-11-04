@@ -37,7 +37,8 @@ internal sealed class GitOperationReceipts(IMongoCollection<GitOperationReceipt>
             DiagnosticCode(
                 operation,
                 result),
-            result.Changed);
+            result.Changed,
+            operation.Plan.Revision);
 
         return receipts.ReplaceOneAsync(
             session,
@@ -47,7 +48,9 @@ internal sealed class GitOperationReceipts(IMongoCollection<GitOperationReceipt>
             ct);
     }
 
-    internal static string ReceiptId(GitOperation operation)
+    internal static string ReceiptId(GitOperation operation) => ReceiptId(operation.Input);
+
+    internal static string ReceiptId(GitOperationInput operation)
     {
         var context = operation.Context;
         var address = operation.Declaration.Address;

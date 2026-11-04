@@ -160,7 +160,8 @@ public sealed record GitReconciliationRun(
     public GitReconciliationRun Complete(GitClaimIdentity claim, GitRunCompletion completion, DateTime now)
     {
         RequireClaim(claim, now);
-        if (completion == GitRunCompletion.ConfigurationApplied && Input is not GitInputAccepted)
+        if (completion is GitRunCompletion.ConfigurationApplied or GitRunCompletion.AlreadyCurrent &&
+            Input is not GitInputAccepted)
             throw new InvalidOperationException("Only an accepted snapshot can be applied.");
 
         return this with { State = new GitRunFinished(completion, now) };

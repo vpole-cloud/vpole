@@ -1,9 +1,11 @@
 # Repository GitOps
 
 Pole synchronizes a tenant-owned GitHub repository source through ResourceGroup, Secret,
-SecretBinding and WebService providers. Stage 3 includes the source API, durable execution,
-polling, signed push webhooks and dependency recovery. It remains one part of the #88/#98 PR;
-drift reconciliation, the other nine providers and lifecycle commands are later stages.
+SecretBinding and WebService providers. The source API, durable worker, polling, signed push
+webhooks and dependency recovery now use phase-aware managed configuration planning. Every poll
+and Sync checks drift, including unchanged commits, repairs mutable configuration and records
+verified no-op without business revisions, resource events or releases. This remains one part of
+the #88/#98 PR; the other nine providers and lifecycle commands belong to later stages.
 
 The [canonical repository contract](docs/repository-contracts.md) defines all thirteen kinds,
 source/run/inventory boundaries, YAML identity and the remaining delivery stages.
@@ -243,12 +245,22 @@ remains operation truth and `GitAcceptedReference` retains resolved identities. 
 belong to Domain with BSON attributes; Application owns filters, transactions and boundary mappings.
 There are no compatibility readers, backfills or dual writes: Pole has not been deployed.
 
-Stage 4 connects the projection planner and drift reconciliation. Additional providers, source
+Stage 4 stores revisioned operation plans and desired/applied projections in the existing inventory.
+Allocated IDs may be created; a missing previously created resource or changed identity blocks.
+Accepted references remain pinned. Preconditions use owner-provided transactional reads and real
+fences. Three immediate conflicts fall back to persisted recovery; API summaries count operations
+and expose actions and field paths without projection values. WebService Prepare does not mark the
+full configuration applied; Configure verifies managed fields while preserving connection references
+and server credentials.
+
+Additional providers, source
 pause/resume, detach/delete, adoption, replacement, relocation and preview confirmation remain
-later work. Prune stays `Retain`. Projection inventory models are not populated with fabricated
-stage-3 values. No new GitOps UI is included.
+later work. Prune stays `Retain`; there is no parallel ownership inventory or fabricated projection
+state. Live Kubernetes drift and runtime readiness remain the runtime reconcilers' responsibility.
+No new GitOps UI is included.
 
 Stage verification includes solution build, full GitOps/GitProviders/SourceBuilds and architecture
-suites, full Integration, frontend gates and GitHub setup/repository-flow Aspire E2E. The E2E fixture
+suites, full Integration and GitHub setup/repository-flow/drift Aspire E2E. Frontend gates apply when
+frontend transports or types change. The E2E fixture
 uses its isolated service graph and the existing full Kubernetes lab. The complete publication gate
 runs after all stages before the single PR; stage evidence does not replace it.

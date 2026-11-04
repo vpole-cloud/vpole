@@ -182,26 +182,20 @@ public sealed class RepositorySourceDomainTests
     {
         var resource = new GitResourceIdentity("Widget", "demo", "id");
         var expected = new GitResourcePreconditions(resource, "source", [new("Widget/id", 4)], "hash");
-        var operation = new GitPlannedOperation("operation",
-            new(Identity, "run", 1, 1, 1),
-            resource,
-            GitPlannedAction.Update,
-            DeclarationPhase.Configure,
-            expected,
-            "desired",
-            new GitOperationPending());
+        var stamp = new GitPlanStamp(new(Identity, "run", 1, 1, 1), resource, DeclarationPhase.Configure);
+        var decision = new GitPlanDecision(GitPlannedAction.Update, expected,
+            new("desired", "{}"), [], ["tags", "description", "tags"]);
+        var operation = GitPlannedOperationFactory.Create(stamp, decision, Now);
+        Assert.Equal<string>(["description", "tags"], operation.Decision.ChangedFields);
         RoundTrip(operation);
-        RoundTrip(operation with { State = new GitOperationSucceeded() });
-        RoundTrip(operation with { State = new GitOperationBlocked(new("spec", "Unavailable")) });
-        var inventory = new GitManagedResourceState("inventory",
-            Identity,
-            resource,
-            new("desired", "{}"),
-            null,
-            false).RetainRemoved();
-        Assert.Equal(Identity, inventory.Owner);
-        Assert.True(inventory.PendingRemoval);
-        RoundTrip(inventory);
+        var next = GitPlannedOperationFactory.Replan(operation, decision, Now.AddSeconds(1));
+        Assert.Equal(2, next.Revision);
+        Assert.Equal(operation.Id, next.Id);
+        RoundTrip(next);
+        var projections = GitManagedProjectionsFactory.Empty();
+        Assert.Null(projections.Desired);
+        Assert.Null(projections.Applied);
+        Assert.Equal(projections, BsonSerializer.Deserialize<GitManagedProjections>(projections.ToBson()));
     }
 
     private static void RoundTrip<T>(T value) where T : notnull

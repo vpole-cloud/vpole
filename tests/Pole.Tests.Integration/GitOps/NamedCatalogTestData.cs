@@ -9,7 +9,10 @@ using Pole.Features.ComputeProfiles.Application.Validation;
 using Pole.Features.DeploymentTargets.Application.Migrations;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.DeploymentTargets.Application.Persistence.Admission;
+using Pole.Features.DeploymentTargets.Application.Persistence.Reads;
 using Pole.Tests.Integration.ComputeProfiles;
+using Pole.Tests.Integration.DeploymentTargets;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -22,6 +25,25 @@ internal static class NamedCatalogTestData
 
     public static void ConfigureIsolatedApi(IServiceCollection services)
     {
+        foreach (var descriptor in services.Where(item =>
+                     item.ServiceType == typeof(FenceDeploymentTargetWorkloadConfigurations) &&
+                     item.Lifetime == ServiceLifetime.Singleton).ToArray())
+            services.Remove(descriptor);
+
+        services.RemoveAll<LookupDeploymentTarget>();
+        services.AddSingleton<LookupDeploymentTarget>(provider =>
+            provider.GetRequiredService<MongoLookupDeploymentTarget>().InvokeAsync);
+        services.RemoveAll<AdmitDeploymentTargetForWorkload>();
+        services.AddScoped<AdmitDeploymentTargetForWorkload>(provider =>
+            provider.GetRequiredService<MongoAdmitDeploymentTargetForWorkload>().InvokeAsync);
+        services.RemoveAll<AdmitDeploymentTargetForNewWorkload>();
+        services.AddScoped<AdmitDeploymentTargetForNewWorkload>(provider =>
+            provider.GetRequiredService<MongoAdmitDeploymentTargetForNewWorkload>().InvokeAsync);
+
+        services.RemoveAll<ListEligibleDeploymentTargetsForNewWorkload>();
+        services.AddScoped<ListEligibleDeploymentTargetsForNewWorkload>(provider =>
+            provider.GetRequiredService<MongoListEligibleDeploymentTargetsForNewWorkload>().InvokeAsync);
+
         services.RemoveAll<ValidateComputeProfileTargetMappings>();
         services.AddSingleton<ValidateComputeProfileTargetMappings>((_, _) =>
             Task.FromResult<ValidateComputeProfileTargetMappingsOutcome>(new ComputeProfileTargetMappingsValid()));
@@ -51,7 +73,7 @@ internal static class NamedCatalogTestData
             new ReplaceOptions { IsUpsert = true });
         await fixture.Database.GetCollection<DeploymentTarget>("DeploymentTargets").ReplaceOneAsync(
             item => item.Id == TestData.DefaultDeploymentTargetId,
-            ComputeProfileTestData.CreateTarget(TestData.DefaultDeploymentTargetId),
+            TestData.SeedDeploymentTarget().AttestForTests() with { TechnicalName = TargetName },
             new ReplaceOptions { IsUpsert = true });
     }
 }

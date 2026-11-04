@@ -3,6 +3,7 @@ using MongoDB.Driver;
 using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Contracts;
 using Xunit;
+using Pole.Features.GitOps.Primitives;
 
 namespace Pole.Features.GitOps.Tests;
 
@@ -32,6 +33,24 @@ public sealed class DeclarativeResourcePlannerTests
             null!,
             default);
         Assert.IsType(expected, result);
+    }
+
+    [Theory]
+    [InlineData(GitResourceMaterialization.Allocated, typeof(CreateDeclarationPlan))]
+    [InlineData(GitResourceMaterialization.Created, typeof(BlockedDeclarationPlan))]
+    public async Task Accepted_identity_distinguishes_first_creation_from_missing_managed_resource(
+        GitResourceMaterialization materialization, Type expected)
+    {
+        var declaration = new CompiledDeclaration(new("ThirdPartyWidget", "demo"), Json("{}"), "hash", [],
+            "test.yaml", 1);
+        var input = new GitOperationInput(new("tenant", "source", "run", 1, "https://example.test/repository",
+            new(1, 1, "worker", 1, new string('a', 40))), declaration, DeclarationPhase.Prepare, "id");
+        var planner = new DeclarativeResourcePlanner(new([new WidgetProvider("create")]), new Ownership("same"));
+        var result = await planner.PlanAsync(new(new("tenant", "source", "id",
+            new(input, "source", materialization)), declaration), null!, default);
+        Assert.IsType(expected, result);
+        if (result is BlockedDeclarationPlan blocked)
+            Assert.IsType<DeclarationManagedResourceMissing>(blocked.Failure);
     }
 
     private static JsonElement Json(string json) => JsonDocument.Parse(json).RootElement.Clone();

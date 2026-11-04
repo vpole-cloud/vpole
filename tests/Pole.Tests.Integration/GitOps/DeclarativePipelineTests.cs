@@ -47,10 +47,33 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
 {
     private readonly string source = ObjectId.GenerateNewId().ToString();
     private readonly TestRepositorySnapshots repository = new();
+    private bool rejectNextWebServiceRevision;
     private RepositoryPipelineDriver Pipeline => new(Services, Fixture, repository);
 
-    protected override void ConfigureServices(IServiceCollection services) =>
+    protected override void ConfigureServices(IServiceCollection services)
+    {
         services.AddSingleton<IRepositorySnapshotProvider>(repository);
+        var originalPersistence = services.Last(item =>
+            item.ServiceType == typeof(PersistUpdatedWebServiceOutcome)).ImplementationFactory!;
+        services.AddScoped<PersistUpdatedWebServiceOutcome>(provider =>
+        {
+            var persist = (PersistUpdatedWebServiceOutcome)originalPersistence(provider);
+            return async (session, current, next, changed, ct, mutation) =>
+            {
+                if (rejectNextWebServiceRevision)
+                {
+                    rejectNextWebServiceRevision = false;
+                    return new WebServiceUpdateConflict(current.Id);
+                }
+
+                return await persist(session, current, next, changed, ct, mutation);
+            };
+        });
+        foreach (var descriptor in services.Where(item => item.ServiceType ==
+                     typeof(Pole.Features.DeploymentTargets.Contracts.FenceDeploymentTargetWorkloadConfigurations) &&
+                     item.Lifetime == ServiceLifetime.Singleton).ToArray())
+            services.Remove(descriptor);
+    }
 
     private IMongoCollection<WebService> WebServices => Fixture.Database.GetCollection<WebService>("WebServices");
     private IMongoCollection<Secret> Secrets => Fixture.Database.GetCollection<Secret>("Secrets");
@@ -838,10 +861,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("demo"));
         var result = await Apply();
         Assert.Contains(result.Operations,
-            item => item.Failure is ResourceGroupDeclarationRejected
-            {
-                Reason: ResourceGroupDeclarationError.ExplicitAdoptionRequired
-            });
+            item => item.Failure is DeclarationAdoptionRequired);
         var gate = Services.GetRequiredService<IGitOpsMutations>();
         Assert.Null(await gate.StatusAsync(
             new LoadGitResourceStatusRequest(
@@ -1012,11 +1032,8 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
     public async Task A_late_blocked_attempt_cannot_overwrite_a_newer_successful_resume()
     {
         var initial = await Apply();
-        var paused = new PauseAfterBlockedConfigure(Services.GetServices<IDeclarativeResourceProvider>()
-            .Single(item => item.Kind == "WebService"));
-        var registry = new DeclarativeProviderRegistry(Services.GetServices<IDeclarativeResourceProvider>()
-            .Select(item => item.Kind == "WebService" ? paused : item));
-        var pipeline = new RepositoryPipelineDriver(Services, Fixture, repository, registry);
+        var paused = new PauseAfterBlockedConfigure(Services.GetRequiredService<IGitOpsMutations>());
+        var pipeline = new RepositoryPipelineDriver(Services, Fixture, repository, customMutations: paused);
         var oldAttempt = pipeline.ResumeAsync(initial.Context!);
         await paused.Reached.Task.WaitAsync(TimeSpan.FromSeconds(15));
         try
@@ -1121,36 +1138,17 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         Assert.Equal(before, (await Service()).Revision);
     }
 
-    private sealed class PauseAfterBlockedConfigure(IDeclarativeResourceProvider inner) : IDeclarativeResourceProvider
+    private sealed class PauseAfterBlockedConfigure(IGitOpsMutations inner) : DelegatingGitOpsMutations(inner)
     {
         public TaskCompletionSource Reached { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public string Kind => inner.Kind;
-        public string DescribeFailure(IDeclarationFailure failure) => inner.DescribeFailure(failure);
-        public int MaximumNameLength => inner.MaximumNameLength;
-        public DeclarationFacts Facts(JsonElement spec) => inner.Facts(spec);
-        public JsonElement NormalizeAndValidate(JsonElement spec) => inner.NormalizeAndValidate(spec);
 
-        public IReadOnlyList<DeclarationStep> Steps(ResourceAddress address, JsonElement spec) =>
-            inner.Steps(address, spec);
-
-        public Task<string?> ResolveAsync(
-            ResolveDeclaredResourceRequest request,
-            IClientSessionHandle session,
-            CancellationToken ct) => inner.ResolveAsync(
-            new ResolveDeclaredResourceRequest(
-                TenantId: request.TenantId,
-                Name: request.Name),
-            session: session,
-            ct: ct);
-
-        public async Task<GitOperationResult> ApplyAsync(GitOperation operation, CancellationToken ct)
+        public override async Task<GitOperationResult> ExecuteAsync(GitOperation operation,
+            Func<IClientSessionHandle, CancellationToken, Task<GitOperationResult>> mutation, CancellationToken ct)
         {
-            var result = await inner.ApplyAsync(operation, ct);
+            var result = await base.ExecuteAsync(operation, mutation, ct);
             if (operation.Phase == DeclarationPhase.Configure && result.Failure is WebServiceSecretReferenceRejected
-                {
-                    Error.Reason: ConsumerSecretReferenceError.SecretValuesMissing
-                })
+                { Error.Reason: ConsumerSecretReferenceError.SecretValuesMissing })
             {
                 Reached.TrySetResult();
                 await Release.Task.WaitAsync(ct);

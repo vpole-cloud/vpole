@@ -19,7 +19,8 @@ public sealed record WebService(
     ImmutableList<ServiceEvent> Events,
     long Revision,
     WebServiceLifecycle Lifecycle,
-    [property: BsonIgnoreIfNull] WebServiceDeclaredPlacement? DeclaredPlacement)
+    [property: BsonIgnoreIfNull] WebServiceDeclaredPlacement? DeclaredPlacement,
+    long PlanningFence)
 {
     public WebService BindDeclaredPlacement(WebServiceDeclaredPlacement placement)
     {
@@ -262,7 +263,8 @@ public static class WebServiceFactory
             options.Events ?? ImmutableList<ServiceEvent>.Empty,
             Positive(options.Revision, nameof(options.Revision)),
             options.Lifecycle ?? throw new ArgumentNullException(nameof(options.Lifecycle)),
-            DeclaredPlacement: null);
+            DeclaredPlacement: null,
+            PlanningFence: 0);
     }
 
     internal static ImmutableHashSet<string> NormalizeTags(IEnumerable<string> tags) =>

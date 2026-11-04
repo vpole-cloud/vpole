@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Pole.Features.GitOps.Primitives;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Contracts;
 
@@ -18,9 +19,14 @@ public sealed class DeclarativeResourcePlanner(DeclarativeProviderRegistry provi
 
         declaration = declaration with { Spec = provider.NormalizeAndValidate(declaration.Spec) };
         var current = await provider.ReadCurrentAsync(
-            new(request.Scope.TenantId, declaration.Address), session, cancellationToken);
+            new(request.Scope.TenantId, declaration.Address, request.Scope.Authority?.Operation),
+            session, cancellationToken);
         var desired = await provider.ProjectDesiredAsync(
-            new(request.Scope.TenantId, declaration), session, cancellationToken);
+            new(request.Scope.TenantId, declaration, request.Scope.Authority?.Operation),
+            session, cancellationToken);
+
+        if (request.Scope.Authority?.OwnerSourceId is { } owner && owner != request.Scope.SourceId)
+            return new BlockedDeclarationPlan(new GitDeclarationOwnershipConflict());
 
         return desired switch
         {
@@ -28,9 +34,13 @@ public sealed class DeclarativeResourcePlanner(DeclarativeProviderRegistry provi
             DeclarationProjection projection => current switch
             {
                 DeclarationReadBlocked blocked => new BlockedDeclarationPlan(blocked.Failure),
-                CurrentDeclarationMissing => request.Scope.AcceptedResourceId is null
-                    ? new CreateDeclarationPlan(projection)
-                    : new BlockedDeclarationPlan(new DeclarationIdentityChanged()),
+                CurrentDeclarationMissing => request.Scope.Authority is { } authority
+                    ? authority.Materialization == GitResourceMaterialization.Created
+                        ? new BlockedDeclarationPlan(new DeclarationManagedResourceMissing())
+                        : new CreateDeclarationPlan(projection)
+                    : request.Scope.AcceptedResourceId is null
+                        ? new CreateDeclarationPlan(projection)
+                        : new BlockedDeclarationPlan(new DeclarationIdentityChanged()),
                 CurrentDeclaration found => await PlanExistingAsync(request, found, projection, cancellationToken)
             }
         };
@@ -43,14 +53,19 @@ public sealed class DeclarativeResourcePlanner(DeclarativeProviderRegistry provi
         CancellationToken cancellationToken)
     {
         if (request.Scope.AcceptedResourceId is { } id && id != current.ResourceId)
-            return new BlockedDeclarationPlan(new DeclarationIdentityChanged());
+            return request.Scope.Authority is
+            { OwnerSourceId: null, Materialization: GitResourceMaterialization.Allocated }
+                ? new AdoptionDeclarationPlan(current, desired)
+                : new BlockedDeclarationPlan(new DeclarationIdentityChanged());
 
-        var status = await ownership.StatusAsync(new(request.Scope.TenantId, request.Declaration.Address.Kind,
-            current.ResourceId), cancellationToken);
-        if (status is null)
+        var owner = request.Scope.Authority is { } authority
+            ? authority.OwnerSourceId
+            : (await ownership.StatusAsync(new(request.Scope.TenantId, request.Declaration.Address.Kind,
+                current.ResourceId), cancellationToken))?.SourceId;
+        if (owner is null)
             return new AdoptionDeclarationPlan(current, desired);
 
-        if (status.SourceId != request.Scope.SourceId)
+        if (owner != request.Scope.SourceId)
             return new BlockedDeclarationPlan(new GitDeclarationOwnershipConflict());
 
         if (!JsonElement.DeepEquals(current.Projection.Identity, desired.Identity))
@@ -58,7 +73,7 @@ public sealed class DeclarativeResourcePlanner(DeclarativeProviderRegistry provi
 
         return current.State == DeclarationConfigurationState.Configured &&
             JsonElement.DeepEquals(current.Projection.Configuration, desired.Configuration)
-            ? new NoOpDeclarationPlan(current)
+            ? new NoOpDeclarationPlan(current, desired)
             : new UpdateDeclarationPlan(current, desired);
     }
 }

@@ -58,7 +58,8 @@ public sealed record RepositoryRunView(
     string? RequestedByUserId,
     RepositoryRunStatus Status,
     DateTime CreatedAtUtc,
-    IReadOnlyList<RepositoryRunDiagnosticView> Diagnostics);
+    IReadOnlyList<RepositoryRunDiagnosticView> Diagnostics,
+    RepositoryOperationSummary? Operations);
 
 [JsonConverter(typeof(JsonStringEnumConverter<RepositoryOperationStatus>))]
 public enum RepositoryOperationStatus { Pending, Succeeded, Blocked }
@@ -70,7 +71,22 @@ public sealed record RepositoryOperationView(
     DeclarationPhase Phase,
     RepositoryOperationStatus Status,
     string? Blocker,
-    bool Changed);
+    bool Changed,
+    RepositoryOperationPlanView? Plan);
+
+public sealed record RepositoryOperationPlanView(
+    [property: JsonConverter(typeof(JsonStringEnumConverter<GitPlannedAction>))]
+    GitPlannedAction Action,
+    long Revision,
+    DateTime EvaluatedAtUtc,
+    IReadOnlyList<string> ChangedFields);
+
+public sealed record RepositoryOperationSummary(
+    int Create,
+    int Update,
+    int NoOp,
+    int Blocked,
+    int Pending);
 
 public sealed record RepositoryRunPage(
     IReadOnlyList<RepositoryRunView> Items,

@@ -56,6 +56,10 @@ public static class ResourceGroupApplicationRegistration
             .Value);
 
         services.AddResourceGroupPersistence();
+        services.AddCapability<MongoResourceGroupPlanningSnapshots, LoadResourceGroupPlanningSnapshot>(
+            implementation => implementation.ReadAsync);
+        services.AddCapability<MongoResourceGroupPlanningSnapshots, FenceResourceGroupPlanningSnapshot>(
+            implementation => implementation.FenceAsync);
         services.AddCapability<MongoAdmitResourceScopeReference, AdmitResourceScopeReference>(implementation =>
             implementation.InvokeAsync);
         services.AddCapability<RuntimeCellNamespaceNameGenerator,

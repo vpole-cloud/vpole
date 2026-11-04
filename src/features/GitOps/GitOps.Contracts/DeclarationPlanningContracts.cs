@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Pole.Features.GitOps.Primitives;
 using MongoDB.Driver;
 
 namespace Pole.Features.GitOps.Contracts;
@@ -7,7 +8,8 @@ namespace Pole.Features.GitOps.Contracts;
 // References in both projections are resolved IDs, never values from secret storage.
 public sealed record DeclarationProjection(
     JsonElement Identity,
-    JsonElement Configuration);
+    JsonElement Configuration,
+    DeclarationVersionToken? Dependencies = null);
 
 public sealed record DeclarationDocumentVersion(
     string DocumentId,
@@ -38,11 +40,13 @@ public union ProjectDesiredDeclarationOutcome(
 
 public sealed record ReadCurrentDeclarationRequest(
     string TenantId,
-    ResourceAddress Address);
+    ResourceAddress Address,
+    GitOperationInput? Operation = null);
 
 public sealed record ProjectDesiredDeclarationRequest(
     string TenantId,
-    CompiledDeclaration Declaration);
+    CompiledDeclaration Declaration,
+    GitOperationInput? Operation = null);
 
 public interface IDeclarativeResourcePlanningProvider : IDeclarativeResourceProvider
 {
@@ -60,7 +64,8 @@ public interface IDeclarativeResourcePlanningProvider : IDeclarativeResourceProv
 public sealed record DeclarationPlanningScope(
     string TenantId,
     string SourceId,
-    string? AcceptedResourceId);
+    string? AcceptedResourceId,
+    DeclarationPlanningAuthority? Authority = null);
 
 public sealed record PlanDeclarationRequest(
     DeclarationPlanningScope Scope,
@@ -74,7 +79,9 @@ public sealed record UpdateDeclarationPlan(
     CurrentDeclaration Current,
     DeclarationProjection Desired) : ResourceDeclarationPlan;
 
-public sealed record NoOpDeclarationPlan(CurrentDeclaration Current) : ResourceDeclarationPlan;
+public sealed record NoOpDeclarationPlan(
+    CurrentDeclaration Current,
+    DeclarationProjection Desired) : ResourceDeclarationPlan;
 
 public sealed record BlockedDeclarationPlan(IDeclarationFailure Failure) : ResourceDeclarationPlan;
 
@@ -94,3 +101,61 @@ public sealed record DeclarationPlanningUnsupported(string Kind) : IDeclarationF
 public sealed record DeclarationIdentityChanged : IDeclarationFailure;
 
 public sealed record DeclarationReferenceUnavailable(ResourceAddress Address) : IDeclarationFailure;
+
+// An advisory name lookup has no execution authority. Accepted execution always supplies this context.
+public sealed record DeclarationPlanningAuthority(
+    GitOperationInput Operation,
+    string? OwnerSourceId,
+    GitResourceMaterialization Materialization);
+
+public sealed record DeclarationExecutionPlan(
+    long Revision,
+    ResourceDeclarationPlan Decision);
+
+public sealed record FenceDeclarationRequest(
+    GitOperationInput Operation,
+    DeclarationVersionToken Expected);
+
+public sealed record DeclarationFenced;
+
+public sealed record DeclarationPreconditionsChanged : IDeclarationFailure;
+
+public union FenceDeclarationOutcome(
+    DeclarationFenced,
+    DeclarationPreconditionsChanged,
+    DeclarationReadBlocked);
+
+public interface ITransactionalDeclarativeResourceProvider : IDeclarativeResourcePlanningProvider
+{
+    Task<FenceDeclarationOutcome> FenceAsync(
+        FenceDeclarationRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken);
+}
+
+public sealed record DeclarationDependencyBlocked(
+    ResourceAddress Address,
+    DeclarationPhase Phase) : IDeclarationFailure;
+
+public sealed record DeclarationManagedResourceMissing : IDeclarationFailure;
+
+public sealed record DeclarationAdoptionRequired : IDeclarationFailure;
+
+public sealed record DeclarationReplacementRequired : IDeclarationFailure;
+
+public sealed record DeclarationPostconditionFailed : IDeclarationFailure;
+
+public sealed record DeclarationReferencesPrepared;
+
+public union PrepareDeclarationReferencesOutcome(
+    DeclarationReferencesPrepared,
+    DeclarationReadBlocked,
+    StaleGitExecution);
+
+// Providers with technical references pin them before the planning transaction starts.
+public interface IDeclarativeReferencePreparation
+{
+    Task<PrepareDeclarationReferencesOutcome> PrepareReferencesAsync(
+        GitOperationInput operation,
+        CancellationToken cancellationToken);
+}

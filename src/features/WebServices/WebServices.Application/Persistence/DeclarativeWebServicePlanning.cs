@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Text.Json;
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
@@ -16,6 +17,9 @@ internal sealed partial class DeclarativeWebServiceProvider
         IClientSessionHandle session,
         CancellationToken cancellationToken)
     {
+        if (request.Operation is not null)
+            return await ReadAcceptedCurrentAsync(request, session, cancellationToken);
+
         var current = await services.Find(session,
             WebServiceFilters.ByTechnicalName(request.TenantId, request.Address.Name))
             .FirstOrDefaultAsync(cancellationToken);
@@ -38,7 +42,7 @@ internal sealed partial class DeclarativeWebServiceProvider
         var projection = Project(current.Spec, current.Tags, current.Exposure.Mode.ToString(),
             new(current.ResourceGroupId, current.IsolationScopeId, placement.DeploymentTargetId),
             new(placement.Compute.Profile.ComputeProfileId, placement.Compute.Profile.ComputeProfileRevision,
-                placement.FixedReplicas));
+                placement.FixedReplicas, null));
         return new CurrentDeclaration(current.Id, new([
                 new($"WebService/{current.Id}", current.Revision),
                 new($"ResourceDeployment/{placement.DeploymentId}", placement.DeploymentRevision)]),
@@ -51,6 +55,9 @@ internal sealed partial class DeclarativeWebServiceProvider
         IClientSessionHandle session,
         CancellationToken cancellationToken)
     {
+        if (request.Operation is not null)
+            return await ProjectAcceptedDesiredAsync(request.Operation, session, cancellationToken);
+
         var spec = DeclarationJson.Read<WebServiceDeclaration>(NormalizeAndValidate(request.Declaration.Spec));
         var groupAddress = new ResourceAddress("ResourceGroup", spec.ResourceGroup);
         var groupId = await git.ResolveAsync(new(request.TenantId, groupAddress), session, cancellationToken);
@@ -111,9 +118,9 @@ internal sealed partial class DeclarativeWebServiceProvider
             references.Add(name, new(id, reference.Key));
         }
 
-        return Project(ToSpec(spec, references.ToImmutable()), spec.Tags, spec.Exposure,
+        return Project(ToSpec(spec, references.ToImmutable(), current?.Spec), spec.Tags, spec.Exposure,
             new(groupId, group.DefaultIsolationScopeId, targetId),
-            new(profileId, spec.Placement.ComputeProfile.Revision, spec.Replicas));
+            new(profileId, spec.Placement.ComputeProfile.Revision, spec.Replicas, null));
     }
 
     private sealed record PlanningPlacement(
@@ -124,7 +131,8 @@ internal sealed partial class DeclarativeWebServiceProvider
     private sealed record PlanningCompute(
         string ProfileId,
         long Revision,
-        int Replicas);
+        int Replicas,
+        JsonElement? Resolution);
 
     private static DeclarationProjection Project(
         WebServiceSpec spec,
@@ -137,7 +145,6 @@ internal sealed partial class DeclarativeWebServiceProvider
             ports = spec.Config.PortMappings.OrderBy(port => port.Name, StringComparer.Ordinal).ToArray(),
             environment = spec.Config.EnvironmentVariables,
             secretEnvironment = spec.Config.SecretEnvironmentReferences,
-            connectionEnvironment = spec.Config.ConnectionEnvironmentReferences,
             probes = spec.Probes,
             autoscaling = spec.Autoscaling,
             tags = tags.Select(tag => tag.Trim()).Distinct().Order(StringComparer.Ordinal).ToArray(),

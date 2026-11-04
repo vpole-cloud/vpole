@@ -70,7 +70,7 @@ public sealed record GitSynchronizationState(
         {
             CurrentRun = null,
             CompletedGeneration = stamp.Generation,
-            Commits = completion == GitRunCompletion.ConfigurationApplied
+            Commits = completion is GitRunCompletion.ConfigurationApplied or GitRunCompletion.AlreadyCurrent
                 ? Commits with { FullyApplied = Commits.Attempted }
                 : Commits
         };

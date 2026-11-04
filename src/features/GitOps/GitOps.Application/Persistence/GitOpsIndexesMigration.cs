@@ -48,6 +48,10 @@ public sealed class GitOpsIndexesMigration : IMigration
                 new(Builders<BsonDocument>.IndexKeys.Ascending("TenantId").Ascending("SourceId"))
             ],
             cancellationToken);
+        await context.GetCollection<GitPlannedOperation>(GitOpsCollections.Plans)
+            .Indexes.CreateOneAsync(new CreateIndexModel<GitPlannedOperation>(
+                    Builders<GitPlannedOperation>.IndexKeys.Ascending(item => item.Stamp.Run.Source.TenantId)
+                        .Ascending(item => item.Stamp.Run.RunId)), cancellationToken: cancellationToken);
         await context.GetCollection<BsonDocument>(GitOpsCollections.Receipts)
             .Indexes.CreateOneAsync(new CreateIndexModel<BsonDocument>(
                     Builders<BsonDocument>.IndexKeys.Ascending("TenantId").Ascending("SourceId")

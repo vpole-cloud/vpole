@@ -21,7 +21,7 @@ internal sealed partial class DeclarativeResourceGroupProvider(
     IMongoCollection<ResourceGroup> groups,
     IMongoCollection<IsolationScope> scopes,
     IGitOpsMutations git,
-    StoreOutboxWrites outbox) : IDeclarativeResourcePlanningProvider
+    StoreOutboxWrites outbox) : ITransactionalDeclarativeResourceProvider
 {
     public string Kind => "ResourceGroup";
 

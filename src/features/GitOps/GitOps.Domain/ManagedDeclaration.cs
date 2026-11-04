@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Primitives;
 using MongoDB.Bson.Serialization.Attributes;
 
 namespace Pole.Features.GitOps.Domain;
@@ -16,4 +17,6 @@ public sealed record ManagedDeclaration(
     bool PendingRemoval,
     string LastRunId,
     string LastPhase,
-    long MutationFence);
+    long MutationFence,
+    GitResourceMaterialization Materialization,
+    GitManagedProjections Projections);

@@ -14,4 +14,5 @@ public sealed record GitOperationReceipt(
     string ResourceId,
     string DesiredHash,
     string? Blocker,
-    bool Changed);
+    bool Changed,
+    long PlanRevision);

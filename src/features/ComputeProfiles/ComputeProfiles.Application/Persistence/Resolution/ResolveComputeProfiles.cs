@@ -147,7 +147,7 @@ internal sealed class MongoResolveComputeProfiles(
                 .ToImmutableList(),
             mapping.RuntimeClassName);
 
-    private static void EnsureValid(
+    internal static void EnsureValid(
         ComputeProfileBatchResolutionRequest request)
     {
         if (!ObjectId.TryParse(request.TenantId, out _))

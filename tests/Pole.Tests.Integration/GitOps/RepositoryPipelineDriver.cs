@@ -27,7 +27,8 @@ internal sealed class RepositoryPipelineDriver(
     IServiceProvider services,
     MongoReplicaSetFixture fixture,
     TestRepositorySnapshots repository,
-    DeclarativeProviderRegistry? customProviders = null)
+    DeclarativeProviderRegistry? customProviders = null,
+    IGitOpsMutations? customMutations = null)
 {
     private GitRepositorySources Sources => services.GetRequiredService<GitRepositorySources>();
 
@@ -89,11 +90,16 @@ internal sealed class RepositoryPipelineDriver(
 
     public async Task<RepositoryPipelineResult> RecoverAsync(GitSourceIdentity identity)
     {
-        var worker = customProviders is null
-            ? services.GetRequiredService<RepositorySourceJob>()
-            : ActivatorUtilities.CreateInstance<RepositorySourceJob>(services,
-                customProviders,
-                new ManifestCompiler(customProviders));
+        var overrides = new List<object>();
+        if (customProviders is not null)
+        {
+            overrides.Add(customProviders);
+            overrides.Add(new ManifestCompiler(customProviders));
+        }
+        if (customMutations is not null)
+            overrides.Add(customMutations);
+        var worker = overrides.Count == 0 ? services.GetRequiredService<RepositorySourceJob>() :
+            ActivatorUtilities.CreateInstance<RepositorySourceJob>(services, overrides.ToArray());
         var report = await worker.ProcessAsync(identity, default);
         var state = await Sources.StateAsync(identity.TenantId, identity.SourceId, default);
         var run = (await Sources.RunAsync(identity.TenantId, identity.SourceId, state.LatestRunId!, default))!;

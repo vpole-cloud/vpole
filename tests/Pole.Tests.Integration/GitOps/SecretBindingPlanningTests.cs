@@ -23,7 +23,11 @@ public sealed partial class DeclarativePipelineTests
         var before = Assert.IsType<NoOpDeclarationPlan>(await planner.PlanAsync(request, session, default));
         var secret = await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync();
         var binding = Assert.Single(secret.Bindings);
-        Assert.Equal($"Secret/{secret.Id}", Assert.Single(before.Current.Version.Documents).DocumentId);
+        Assert.Equal(2, before.Current.Version.Documents.Count);
+        Assert.Contains(new DeclarationDocumentVersion($"Secret/{secret.Id}", secret.Revision),
+            before.Current.Version.Documents);
+        Assert.Contains(new DeclarationDocumentVersion($"Secret/{secret.Id}/ReferenceFence", secret.ReferenceFence),
+            before.Current.Version.Documents);
         await Secrets.ReplaceOneAsync(item => item.Id == secret.Id, secret with
         {
             Bindings = [binding with { Pins = new(["API_TOKEN"], ["PREVIOUS_TOKEN"]) }],

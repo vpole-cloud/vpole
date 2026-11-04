@@ -23,10 +23,15 @@ public sealed record SecretBindingDeclaration
 internal sealed partial class DeclarativeSecretBindingProvider(
     IMongoCollection<Secret> secrets,
     IGitOpsMutations git,
+    LoadResourceGroupPlanningSnapshot loadPlanningGroup,
+    FenceResourceGroupPlanningSnapshot fencePlanningGroup,
+    LoadResourceDeploymentPlanningSnapshot loadPlanningPlacements,
+    FenceResourceDeploymentPlanningSnapshot fencePlanningPlacements,
+    SecretPlanningFence planningFence,
     AdmitResourceScopeReference admitScope,
     AdmitResourceDeploymentReferences admitDeployments,
     StoreSecretChange publish,
-    TimeProvider clock) : IDeclarativeResourcePlanningProvider
+    TimeProvider clock) : ITransactionalDeclarativeResourceProvider
 {
     public string Kind => "SecretBinding";
 
