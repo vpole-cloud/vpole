@@ -65,7 +65,11 @@ public sealed class ProviderConnectionEndpointTests(MongoReplicaSetFixture fixtu
         await fixture.Database.GetCollection<WebService>("WebServices").InsertOneAsync(session, web);
         var lookup = Destination("pole/web-service");
 
-        var result = await lookup.LoadAsync(web.TenantId, web.Id, session);
+        var result = await lookup.LoadAsync(
+            new LoadResourceConnectionDestinationRequest(
+                TenantId: web.TenantId,
+                ResourceId: web.Id),
+            session: session);
 
         var found = Assert.IsType<ResourceConnectionEndpointsFound>(result.Value);
         var endpoint = Assert.Single(found.Endpoints);
@@ -76,7 +80,11 @@ public sealed class ProviderConnectionEndpointTests(MongoReplicaSetFixture fixtu
         Assert.Equal("HTTP", endpoint.DisplayName);
         Assert.Equal("tcp", endpoint.Protocol);
         Assert.Empty(endpoint.Configuration);
-        Assert.IsType<ResourceConnectionDestinationMissing>((await lookup.LoadAsync(Id(), web.Id, session)).Value);
+        Assert.IsType<ResourceConnectionDestinationMissing>((await lookup.LoadAsync(
+            new LoadResourceConnectionDestinationRequest(
+                TenantId: Id(),
+                ResourceId: web.Id),
+            session: session)).Value);
         await session.AbortTransactionAsync();
         Assert.Equal(0, await fixture.Database.GetCollection<WebService>("WebServices")
             .CountDocumentsAsync(item => item.Id == web.Id));
@@ -92,7 +100,11 @@ public sealed class ProviderConnectionEndpointTests(MongoReplicaSetFixture fixtu
         var lookup = Destination("pole/redis");
         using var session = await fixture.Client.StartSessionAsync();
         session.StartTransaction();
-        var found = Assert.IsType<ResourceConnectionEndpointsFound>((await lookup.LoadAsync(redis.TenantId, redis.Id, session)).Value);
+        var found = Assert.IsType<ResourceConnectionEndpointsFound>((await lookup.LoadAsync(
+            new LoadResourceConnectionDestinationRequest(
+                TenantId: redis.TenantId,
+                ResourceId: redis.Id),
+            session: session)).Value);
         var endpoint = Assert.Single(found.Endpoints);
         Assert.Equal("redis", endpoint.Id);
         Assert.Equal("cache-svc", endpoint.ServiceName);
@@ -100,9 +112,17 @@ public sealed class ProviderConnectionEndpointTests(MongoReplicaSetFixture fixtu
         Assert.Equal(6379, endpoint.TargetPort.Value);
         Assert.Equal("redis", endpoint.Protocol);
         Assert.Equal("0", Assert.Single(endpoint.Configuration).Value);
-        Assert.IsType<ResourceConnectionDestinationMissing>((await lookup.LoadAsync(Id(), redis.Id, session)).Value);
+        Assert.IsType<ResourceConnectionDestinationMissing>((await lookup.LoadAsync(
+            new LoadResourceConnectionDestinationRequest(
+                TenantId: Id(),
+                ResourceId: redis.Id),
+            session: session)).Value);
         await collection.ReplaceOneAsync(session, item => item.Id == redis.Id, redis.BeginDeletion(DateTime.UtcNow));
-        Assert.IsType<ResourceConnectionDestinationDeleting>((await lookup.LoadAsync(redis.TenantId, redis.Id, session)).Value);
+        Assert.IsType<ResourceConnectionDestinationDeleting>((await lookup.LoadAsync(
+            new LoadResourceConnectionDestinationRequest(
+                TenantId: redis.TenantId,
+                ResourceId: redis.Id),
+            session: session)).Value);
         await session.AbortTransactionAsync();
     }
 
@@ -118,7 +138,11 @@ public sealed class ProviderConnectionEndpointTests(MongoReplicaSetFixture fixtu
         var lookup = Destination("pole/postgresql");
         using var session = await fixture.Client.StartSessionAsync();
         session.StartTransaction();
-        var found = Assert.IsType<ResourceConnectionEndpointsFound>((await lookup.LoadAsync(postgres.TenantId, postgres.Id, session)).Value);
+        var found = Assert.IsType<ResourceConnectionEndpointsFound>((await lookup.LoadAsync(
+            new LoadResourceConnectionDestinationRequest(
+                TenantId: postgres.TenantId,
+                ResourceId: postgres.Id),
+            session: session)).Value);
         var endpoint = Assert.Single(found.Endpoints);
         Assert.Equal("postgres", endpoint.Id);
         Assert.Equal(PostgresClusterKubernetesBuilder.buildReadWriteServiceName(postgres.Id), endpoint.ServiceName);
@@ -126,9 +150,17 @@ public sealed class ProviderConnectionEndpointTests(MongoReplicaSetFixture fixtu
         Assert.Equal(5432, endpoint.TargetPort.Value);
         Assert.Equal("postgresql", endpoint.Protocol);
         Assert.Equal(postgres.Id, Assert.Single(endpoint.Configuration).Value);
-        Assert.IsType<ResourceConnectionDestinationMissing>((await lookup.LoadAsync(Id(), postgres.Id, session)).Value);
+        Assert.IsType<ResourceConnectionDestinationMissing>((await lookup.LoadAsync(
+            new LoadResourceConnectionDestinationRequest(
+                TenantId: Id(),
+                ResourceId: postgres.Id),
+            session: session)).Value);
         await collection.ReplaceOneAsync(session, item => item.Id == postgres.Id, postgres.BeginDeletion(DateTime.UtcNow));
-        Assert.IsType<ResourceConnectionDestinationDeleting>((await lookup.LoadAsync(postgres.TenantId, postgres.Id, session)).Value);
+        Assert.IsType<ResourceConnectionDestinationDeleting>((await lookup.LoadAsync(
+            new LoadResourceConnectionDestinationRequest(
+                TenantId: postgres.TenantId,
+                ResourceId: postgres.Id),
+            session: session)).Value);
         await session.AbortTransactionAsync();
     }
 

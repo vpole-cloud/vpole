@@ -8,15 +8,13 @@ internal sealed class SecretScopeReferenceGuard(IMongoCollection<Secret> secrets
     : IIsolationScopeReferenceGuard
 {
     public async Task<EnsureIsolationScopeUnreferencedOutcome> EnsureUnreferencedAsync(
-        string tenantId,
-        string resourceGroupId,
-        string isolationScopeId,
+        EnsureIsolationScopeUnreferencedRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         var exists = await secrets.Find(
             session,
-            SecretFilters.Scope(tenantId, resourceGroupId, isolationScopeId)).AnyAsync(cancellationToken);
-        return exists ? new IsolationScopeReferenced(isolationScopeId) : new IsolationScopeUnreferenced();
+            SecretFilters.Scope(request.TenantId, request.ResourceGroupId, request.IsolationScopeId)).AnyAsync(cancellationToken);
+        return exists ? new IsolationScopeReferenced(request.IsolationScopeId) : new IsolationScopeUnreferenced();
     }
 }

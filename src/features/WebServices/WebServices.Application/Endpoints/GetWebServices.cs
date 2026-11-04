@@ -62,12 +62,18 @@ public sealed class GetWebServicesHandler(
                 request.PageSize),
             cancellationToken);
         var placements = await loadResourceDeploymentSets(
-            request.TenantId,
-            WebServiceResourceDeployment.ResourceType,
-            page.Items.Select(service => service.Id).ToArray(),
-            cancellationToken);
+            new LoadResourceDeploymentSetsRequest(
+                TenantId: request.TenantId,
+                ResourceType: WebServiceResourceDeployment.ResourceType,
+                ResourceIds: page.Items.Select(service => service.Id).ToArray()),
+            cancellationToken: cancellationToken);
 
-        var statuses = await git.StatusesAsync(request.TenantId, "WebService", page.Items.Select(item => item.Id).ToArray(), cancellationToken);
+        var statuses = await git.StatusesAsync(
+            new LoadGitResourceStatusesRequest(
+                TenantId: request.TenantId,
+                Kind: "WebService",
+                ResourceIds: page.Items.Select(item => item.Id).ToArray()),
+            ct: cancellationToken);
         return new PaginatedResponse<WebServiceDto>(
             Items: page.Items.Select(service => service.ToDto(
                 placements.GetValueOrDefault(service.Id)) with

@@ -39,8 +39,12 @@ internal sealed class MongoRevokePrivateAccessGrant(
         CancellationToken cancellationToken = default) =>
         transactions(async (transaction, ct) =>
         {
-            var actor = await loadTenantMember(tenantId, actorUserId,
-                transaction.Session, ct);
+            var actor = await loadTenantMember(
+                new LoadTenantMemberRequest(
+                    TenantId: tenantId,
+                    UserId: actorUserId),
+                session: transaction.Session,
+                cancellationToken: ct);
             if (actor is not TenantMemberSnapshot { Role: >= TenantMembershipRole.Admin })
                 return transaction.Abort(new PersistRevokePrivateAccessGrantOutcome(
                     new PrivateAccessManageRoleRequired()));

@@ -48,7 +48,7 @@ public sealed class PostgresFeatureHostTests(MongoReplicaSetFixture fixture)
             services.AddSingleton(fixture.Client);
             services.AddSingleton(fixture.Database);
             services.AddScoped<EnsureRuntimeCellIngressBaseline>(_ =>
-                (tenantId, runtimeCellId, targetId, namespaceName, ct) =>
+(request, ct) =>
                     Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
                         new RuntimeCellIngressBaselineReady()));
             services.AddTestDeploymentTargets();

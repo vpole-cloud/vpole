@@ -129,8 +129,13 @@ public sealed class PrivateAccessGatewayReconciler(
             {
                 // Record every destination before creating its policy. If provisioning
                 // fails or the grant disappears, cleanup still knows what to remove.
-                if (!await save(identity, current.CertificateSha256Pin,
-                        current.CertificateNotAfterUtc, state.Endpoints, cancellationToken))
+                if (!await save(
+                    new SavePrivateAccessGatewayRegistrationRequest(
+                        Identity: identity,
+                        CertificateSha256Pin: current.CertificateSha256Pin,
+                        CertificateNotAfterUtc: current.CertificateNotAfterUtc,
+                        Endpoints: state.Endpoints),
+                    cancellationToken: cancellationToken))
                     return;
                 identity = identity with { Revision = checked(identity.Revision + 1) };
                 current = current with { Identity = identity, Endpoints = state.Endpoints };
@@ -171,8 +176,13 @@ public sealed class PrivateAccessGatewayReconciler(
             if (!string.Equals(ready.CertificateSha256Pin, current.CertificateSha256Pin,
                     StringComparison.Ordinal))
                 return;
-            if (!await save(identity, ready.CertificateSha256Pin,
-                    ready.CertificateNotAfter.UtcDateTime, state.Endpoints, cancellationToken))
+            if (!await save(
+                new SavePrivateAccessGatewayRegistrationRequest(
+                    Identity: identity,
+                    CertificateSha256Pin: ready.CertificateSha256Pin,
+                    CertificateNotAfterUtc: ready.CertificateNotAfter.UtcDateTime,
+                    Endpoints: state.Endpoints),
+                cancellationToken: cancellationToken))
                 logger.LogWarning("Private Access gateway registration changed concurrently; ensure will retry.");
         }
         finally
@@ -203,7 +213,13 @@ public sealed class PrivateAccessGatewayReconciler(
         var pin = certificate.GetCertHashString(HashAlgorithmName.SHA256)
             .ToLowerInvariant();
         var expiry = certificate.NotAfter.ToUniversalTime();
-        if (!await save(identity, pin, expiry, state.Endpoints, cancellationToken))
+        if (!await save(
+            new SavePrivateAccessGatewayRegistrationRequest(
+                Identity: identity,
+                CertificateSha256Pin: pin,
+                CertificateNotAfterUtc: expiry,
+                Endpoints: state.Endpoints),
+            cancellationToken: cancellationToken))
             return null;
         return new PersistedGateway(identity, pin, expiry, state.Endpoints);
     }

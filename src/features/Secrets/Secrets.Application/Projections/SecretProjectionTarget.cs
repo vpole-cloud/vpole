@@ -196,7 +196,13 @@ internal sealed class KubernetesSecretProjectionTarget(
                 SecretProjectionAuthority.MatchesConsumer(binding, projection) &&
                 SecretProjectionAuthority.IncludesDeployment(binding.Selection, projection.DeploymentId)))
             return false;
-        var placement = await loadPlacement(projection.TenantId, ResourceTypeId.Create(projection.ConsumerType), projection.ConsumerId, projection.DeploymentId, ct);
+        var placement = await loadPlacement(
+            new LoadExactResourceDeploymentRuntimePlacementRequest(
+                TenantId: projection.TenantId,
+                ResourceType: ResourceTypeId.Create(projection.ConsumerType),
+                ResourceId: projection.ConsumerId,
+                DeploymentId: projection.DeploymentId),
+            cancellationToken: ct);
         return placement is not null && SecretProjectionAuthority.MatchesPlacement(placement, projection);
     }
 

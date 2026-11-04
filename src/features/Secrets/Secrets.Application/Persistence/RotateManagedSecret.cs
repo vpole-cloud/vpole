@@ -14,26 +14,25 @@ internal sealed class MongoRotateManagedSecret(
     TimeProvider clock)
 {
     public async Task<ManagedSecretMutationOutcome> InvokeAsync(
-        PreparedManagedSecret prepared,
-        long expectedVersion,
+        RotateManagedSecretRequest request,
         IClientSessionHandle session,
         CancellationToken ct)
     {
-        if (!session.IsInTransaction || prepared.Version != checked(expectedVersion + 1))
+        if (!session.IsInTransaction || request.Prepared.Version != checked(request.ExpectedVersion + 1))
             throw new InvalidOperationException("Managed Secret rotation requires a transaction and consecutive version.");
-        var current = await secrets.Find(session, ManagedSecretFilters.Owner(prepared.TenantId, prepared.Owner)).FirstOrDefaultAsync(ct);
+        var current = await secrets.Find(session, ManagedSecretFilters.Owner(request.Prepared.TenantId, request.Prepared.Owner)).FirstOrDefaultAsync(ct);
         if (current is null)
             return new ManagedSecretUnavailable();
         var kubernetesType = ((ProviderManagedSecret)current.Management).KubernetesType == KubernetesSecretType.BasicAuthentication
             ? ManagedSecretKubernetesType.BasicAuthentication : ManagedSecretKubernetesType.Opaque;
-        if (kubernetesType != prepared.KubernetesType || current.Id != prepared.SecretId || current.CurrentVersion != expectedVersion || current.Name != prepared.Name ||
-            current.Bindings.Any(x => x.KeyMappings.Keys.Concat(x.ProtectedKeys).Except(prepared.Keys).Any()))
+        if (kubernetesType != request.Prepared.KubernetesType || current.Id != request.Prepared.SecretId || current.CurrentVersion != request.ExpectedVersion || current.Name != request.Prepared.Name ||
+            current.Bindings.Any(x => x.KeyMappings.Keys.Concat(x.Pins.ProtectedKeys).Except(request.Prepared.Keys).Any()))
             return new ManagedSecretChanged();
         var now = clock.GetUtcNow().UtcDateTime;
-        var rotated = current.Rotate(prepared.Keys, now);
+        var rotated = current.Rotate(request.Prepared.Keys, now);
         await secrets.ReplaceOneAsync(session, SecretFilters.Identity(current.TenantId, current.Id), rotated, cancellationToken: ct);
-        await versions.InsertOneAsync(session, new SecretVersion($"{current.Id}:{prepared.Version}", current.TenantId,
-            current.Id, prepared.Version, JsonSerializer.Deserialize<EncryptedValue>(prepared.EncryptedValues.AsSpan())!, now), cancellationToken: ct);
+        await versions.InsertOneAsync(session, new SecretVersion($"{current.Id}:{request.Prepared.Version}", current.TenantId,
+            current.Id, request.Prepared.Version, JsonSerializer.Deserialize<EncryptedValue>(request.Prepared.EncryptedValues.AsSpan())!, now), cancellationToken: ct);
         await publish(session, rotated, new SecretRotated(), ct);
         return new ManagedSecretMutationSucceeded();
     }

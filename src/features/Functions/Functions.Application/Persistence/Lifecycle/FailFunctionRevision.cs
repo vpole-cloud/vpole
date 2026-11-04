@@ -63,55 +63,56 @@ internal sealed class MongoFailFunctionRevision(
         return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             FunctionQuotaAllocation,
             FunctionRevisionLifecycleOutcome>(
-            tenantId,
-            FunctionAppQuotaResourceKey.Create(functionAppId),
-            new UpdateQuotaMutation<FunctionQuotaAllocation>(state.App.AdmittedQuota, targetAllocation),
-            quotaError => quotaError,
-            async (transaction, transactionCancellationToken) =>
-            {
-                var now = timeProvider.GetUtcNow();
-                var failedRevision = state.Revision.Fail(failure);
-                var revisionUpdate = await functionRevisions.UpdateOneAsync(
-                    transaction.Session,
-                    FunctionRevisionLifecycleFilters.RevisionInOneOfStatuses(
-                        tenantId,
-                        functionAppId,
-                        revisionId,
-                        FunctionRevisionLifecycleFilters.ProvisioningStatus(),
-                        FunctionRevisionLifecycleFilters.ReadyStatus()),
-                    Builders<FunctionRevision>.Update
-                        .Set(revision => revision.Status, failedRevision.Status),
-                    cancellationToken: transactionCancellationToken);
-                if (revisionUpdate.MatchedCount != 1)
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.Functions.Domain.FunctionQuotaAllocation, global::Pole.Features.Functions.Application.Common.FunctionRevisionLifecycleOutcome>(
+                TenantId: tenantId,
+                ResourceKey: FunctionAppQuotaResourceKey.Create(functionAppId),
+                Mutation: new UpdateQuotaMutation<FunctionQuotaAllocation>(state.App.AdmittedQuota, targetAllocation),
+                QuotaError: quotaError => quotaError,
+                MutationCallback: async (transaction, transactionCancellationToken) =>
                 {
-                    return transaction.Abort(new FunctionRevisionConcurrencyConflict(
-                        functionAppId,
-                        revisionId));
-                }
+                    var now = timeProvider.GetUtcNow();
+                    var failedRevision = state.Revision.Fail(failure);
+                    var revisionUpdate = await functionRevisions.UpdateOneAsync(
+                        transaction.Session,
+                        FunctionRevisionLifecycleFilters.RevisionInOneOfStatuses(
+                            tenantId,
+                            functionAppId,
+                            revisionId,
+                            FunctionRevisionLifecycleFilters.ProvisioningStatus(),
+                            FunctionRevisionLifecycleFilters.ReadyStatus()),
+                        Builders<FunctionRevision>.Update
+                            .Set(revision => revision.Status, failedRevision.Status),
+                        cancellationToken: transactionCancellationToken);
+                    if (revisionUpdate.MatchedCount != 1)
+                    {
+                        return transaction.Abort(new FunctionRevisionConcurrencyConflict(
+                            functionAppId,
+                            revisionId));
+                    }
 
-                var appUpdate = await functionApps.UpdateOneAsync(
-                    transaction.Session,
-                    FunctionRevisionLifecycleFilters.PendingApp(
-                        tenantId,
-                        functionAppId,
-                        revisionId),
-                    Builders<FunctionApp>.Update
-                        .Set(app => app.PendingRevisionId, null)
-                        .Set(app => app.Status, state.App.ActiveRevisionId is null
-                            ? FunctionAppStatus.Failed
-                            : FunctionAppStatus.Ready)
-                        .Set(app => app.AdmittedQuota, targetAllocation)
-                        .Set(app => app.UpdatedAtUtc, now),
-                    cancellationToken: transactionCancellationToken);
-                if (appUpdate.MatchedCount != 1)
-                    return transaction.Abort(new FunctionAppConcurrencyConflict(functionAppId));
+                    var appUpdate = await functionApps.UpdateOneAsync(
+                        transaction.Session,
+                        FunctionRevisionLifecycleFilters.PendingApp(
+                            tenantId,
+                            functionAppId,
+                            revisionId),
+                        Builders<FunctionApp>.Update
+                            .Set(app => app.PendingRevisionId, null)
+                            .Set(app => app.Status, state.App.ActiveRevisionId is null
+                                ? FunctionAppStatus.Failed
+                                : FunctionAppStatus.Ready)
+                            .Set(app => app.AdmittedQuota, targetAllocation)
+                            .Set(app => app.UpdatedAtUtc, now),
+                        cancellationToken: transactionCancellationToken);
+                    if (appUpdate.MatchedCount != 1)
+                        return transaction.Abort(new FunctionAppConcurrencyConflict(functionAppId));
 
-                await storeOutboxWrites(
-                    transaction.Session,
-                    [OutboxWrite.Create(state.Revision.ToFailedEvent(state.App, failure))],
-                    transactionCancellationToken);
-                return transaction.Commit(new FunctionRevisionLifecycleCompleted());
-            },
-            cancellationToken);
+                    await storeOutboxWrites(
+                        transaction.Session,
+                        [OutboxWrite.Create(state.Revision.ToFailedEvent(state.App, failure))],
+                        transactionCancellationToken);
+                    return transaction.Commit(new FunctionRevisionLifecycleCompleted());
+                }),
+            cancellationToken: cancellationToken);
     }
 }

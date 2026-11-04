@@ -27,10 +27,11 @@ public delegate Task<long> LoadResourceRegistrationCount(
 internal sealed class MongoResourceRegistrationReads(
     IMongoCollection<ResourceRegistration> registrations)
 {
-    public async Task<RegisteredResource?> LoadOneAsync(string tenantId, ResourceTypeId type, string resourceId,
+    public async Task<RegisteredResource?> LoadOneAsync(
+        LoadRegisteredResourceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var registration = await registrations.Find(ResourceRegistrationFilters.ByIdentity(tenantId, type, resourceId))
+        var registration = await registrations.Find(ResourceRegistrationFilters.ByIdentity(request.TenantId, request.ResourceTypeId, request.ResourceId))
             .FirstOrDefaultAsync(cancellationToken);
         return registration is null ? null : new RegisteredResource(registration.Id, registration.TenantId,
             registration.ResourceGroupId, ResourceTypeId.Create(registration.ResourceTypeId), registration.ResourceId,

@@ -701,11 +701,7 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
     {
         await StorageObservationIndexes.CreateAsync(fixture.Database);
         var id = ObjectId.GenerateNewId().ToString();
-        await Targets.InsertOneAsync(new BsonDocument
-        {
-            { "_id", ObjectId.Parse(id) }, { "Enabled", true }, { "DeletionRequestedAtUtc", BsonNull.Value },
-            { "Connection", new BsonDocument("Version", 1L) }, { "ObservationFence", 0L }, { "ReferenceFence", 0L }
-        });
+        await fixture.DbContext.DeploymentTargets.InsertOneAsync(TestData.SeedDeploymentTarget(id));
         return new(new(id, 1),
             new(new(id, Guid.NewGuid().ToString("N"), "connection-a", "session-a"),
                 DateTimeOffset.UtcNow.AddMinutes(20)));

@@ -59,7 +59,13 @@ internal sealed class MongoBeginResourceGroupDeletion(
                     new ResourceGroupDeletionError(
                         new ResourceGroupNotFound(resourceGroupId))));
             }
-            if (!await git.AuthorizeAsync(tenantId, "ResourceGroup", resourceGroupId, transaction.Session, ct))
+            if (!await git.AuthorizeAsync(
+                new AuthorizeGitResourceMutationRequest(
+                    TenantId: tenantId,
+                    Kind: "ResourceGroup",
+                    ResourceId: resourceGroupId),
+                session: transaction.Session,
+                ct: ct))
                 return transaction.Abort(new BeginResourceGroupDeletionOutcome(new ResourceGroupDeletionError(new ResourceGroupRevisionConflict(resourceGroupId, ResourceGroupRevisionConflictReason.GitOwnedConfiguration))));
             if (resourceGroup.Lifecycle is not ActiveResourceGroupLifecycleState &&
                 resourceGroup.Lifecycle is not DeletingResourceGroupLifecycleState)
@@ -79,10 +85,11 @@ internal sealed class MongoBeginResourceGroupDeletion(
             }
 
             var deploymentGuard = await ensureNoUnfinishedDeployments(
-                tenantId,
-                resourceGroupId,
-                transaction.Session,
-                ct);
+                new EnsureNoUnfinishedResourceGroupDeploymentsRequest(
+                    TenantId: tenantId,
+                    ResourceGroupId: resourceGroupId),
+                session: transaction.Session,
+                cancellationToken: ct);
             if (deploymentGuard is ResourceGroupHasUnfinishedDeployments)
             {
                 return transaction.Abort(new BeginResourceGroupDeletionOutcome(

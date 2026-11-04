@@ -9,7 +9,8 @@ namespace Pole.Features.ResourceDeployments.Application.Persistence.Reconciliati
 internal sealed class ResourceDeploymentRetryPersistence(
     IMongoCollection<ResourceDeployment> resourceDeployments,
     StoreOutboxWrites storeOutboxWrites,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ResourceDeploymentIsolationProjection isolation)
 {
     public async Task<RetryResourceDeploymentOutcome>
         RetryAsync(
@@ -64,6 +65,6 @@ internal sealed class ResourceDeploymentRetryPersistence(
             session,
             [retried.ToCurrentRequestWrite()],
             cancellationToken);
-        return retried.ToDto();
+        return await isolation.ProjectDtoAsync(retried, cancellationToken);
     }
 }

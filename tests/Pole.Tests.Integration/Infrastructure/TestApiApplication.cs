@@ -206,7 +206,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddResourceGroupsFeature(builder.Configuration);
         builder.Services.AddResourceConnectionsFeature();
         builder.Services.AddScoped<EnsureRuntimeCellIngressBaseline>(_ =>
-            (tenantId, runtimeCellId, targetId, namespaceName, cancellationToken) =>
+(request, cancellationToken) =>
                 Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
                     new RuntimeCellIngressBaselineReady()));
         builder.Services.AddRedisServicesFeature();

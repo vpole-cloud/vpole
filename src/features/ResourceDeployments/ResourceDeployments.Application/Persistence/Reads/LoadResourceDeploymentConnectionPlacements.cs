@@ -8,9 +8,7 @@ internal sealed class MongoLoadResourceDeploymentConnectionPlacements(
     IMongoCollection<ResourceDeployment> deployments)
 {
     public async Task<IReadOnlyList<ResourceDeploymentConnectionPlacement>> InvokeAsync(
-        string tenantId,
-        ResourceTypeId resourceType,
-        string resourceId,
+        LoadResourceDeploymentConnectionPlacementsRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
@@ -18,7 +16,7 @@ internal sealed class MongoLoadResourceDeploymentConnectionPlacements(
             throw new InvalidOperationException("Connection placement reads require an active transaction.");
 
         var found = await deployments
-            .Find(session, ResourceDeploymentFilters.ForResource(tenantId, resourceType, resourceId))
+            .Find(session, ResourceDeploymentFilters.ForResource(request.TenantId, request.ResourceType, request.ResourceId))
             .SortBy(item => item.Id)
             .ToListAsync(cancellationToken);
         return found

@@ -36,11 +36,12 @@ public sealed class FunctionResourcePlacementResolver(
             CancellationToken cancellationToken = default)
     {
         var placement = await loadPlacement(
-            app.TenantId,
-            FunctionResourceDeployment.ResourceType,
-            app.Id,
-            app.Placement.ResourceDeploymentId,
-            cancellationToken);
+            new LoadExactResourceDeploymentRuntimePlacementRequest(
+                TenantId: app.TenantId,
+                ResourceType: FunctionResourceDeployment.ResourceType,
+                ResourceId: app.Id,
+                DeploymentId: app.Placement.ResourceDeploymentId),
+            cancellationToken: cancellationToken);
         if (placement is null ||
             !string.Equals(
                 placement.RuntimeCellId,

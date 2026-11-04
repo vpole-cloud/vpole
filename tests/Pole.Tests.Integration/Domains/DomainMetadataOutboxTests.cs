@@ -88,7 +88,12 @@ public sealed class DomainMetadataOutboxTests(MongoReplicaSetFixture fixture) : 
         {
             session.StartTransaction();
             Assert.IsType<HostnameBindingsCleanedUp>(
-                (await delete.InvokeAsync(tenant, request.ResourceType, request.ResourceId, session)).Value);
+                (await delete.InvokeAsync(
+                    new DeleteHostnameBindingsForResourceRequest(
+                        TenantId: tenant,
+                        ResourceType: request.ResourceType,
+                        ResourceId: request.ResourceId),
+                    session: session)).Value);
             await session.AbortTransactionAsync();
         }
 
@@ -98,8 +103,18 @@ public sealed class DomainMetadataOutboxTests(MongoReplicaSetFixture fixture) : 
         using (var session = await Fixture.Client.StartSessionAsync())
         {
             session.StartTransaction();
-            await delete.InvokeAsync(tenant, request.ResourceType, request.ResourceId, session);
-            await delete.InvokeAsync(tenant, request.ResourceType, request.ResourceId, session);
+            await delete.InvokeAsync(
+                new DeleteHostnameBindingsForResourceRequest(
+                    TenantId: tenant,
+                    ResourceType: request.ResourceType,
+                    ResourceId: request.ResourceId),
+                session: session);
+            await delete.InvokeAsync(
+                new DeleteHostnameBindingsForResourceRequest(
+                    TenantId: tenant,
+                    ResourceType: request.ResourceType,
+                    ResourceId: request.ResourceId),
+                session: session);
             await session.CommitTransactionAsync();
         }
 
@@ -138,9 +153,8 @@ public sealed class DomainMetadataOutboxTests(MongoReplicaSetFixture fixture) : 
                 throw new InvalidOperationException("Injected outbox failure.");
         });
 
-    private static Task<ApplyDeploymentTargetReferenceChangesOutcome> References(DeploymentTargetReferenceOwner owner,
-        IReadOnlyCollection<string> added,
-        IReadOnlyCollection<string> removed,
+    private static Task<ApplyDeploymentTargetReferenceChangesOutcome> References(
+        ApplyDeploymentTargetReferenceChangesRequest request,
         IClientSessionHandle session,
         CancellationToken ct = default) =>
         Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(new DeploymentTargetReferencesChanged());

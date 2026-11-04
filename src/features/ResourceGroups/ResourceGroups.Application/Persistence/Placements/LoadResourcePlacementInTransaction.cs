@@ -10,13 +10,12 @@ internal sealed class MongoLoadResourcePlacementInTransaction(
     IMongoCollection<RuntimeCell> runtimeCells)
 {
     public async Task<ResourcePlacement?> InvokeAsync(
-        string tenantId,
-        string runtimeCellId,
+        LoadResourcePlacementInTransactionRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         var runtimeCell = await runtimeCells
-            .Find(session, RuntimeCellFilters.ByTenantAndId(tenantId, runtimeCellId))
+            .Find(session, RuntimeCellFilters.ByTenantAndId(request.TenantId, request.RuntimeCellId))
             .FirstOrDefaultAsync(cancellationToken);
         return runtimeCell?.ToPlacement();
     }

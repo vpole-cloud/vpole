@@ -167,13 +167,14 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
             using var session = await DbContext.Client.StartSessionAsync();
             session.StartTransaction();
             Assert.IsType<RegisteredResource>((await registrar.RegisterAsync(
-                resourceGroup.TenantId,
-                resourceGroup.Id,
-                new ResourceRegistrationDescriptor(
+                new RegisterResourceRequest(
+                    TenantId: resourceGroup.TenantId,
+                    ResourceGroupId: resourceGroup.Id,
+                    Resource: new ResourceRegistrationDescriptor(
                     ResourceTypeId.Create("pole/web-service"),
                     "racing-resource",
-                    "Racing resource"),
-                session)).Value);
+                    "Racing resource")),
+                session: session)).Value);
             await session.CommitTransactionAsync();
         }
         finally
@@ -266,13 +267,12 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
         public void Release() => _release.TrySetResult();
 
         public async Task<EnsureResourceGroupDeploymentsSettledOutcome> InvokeAsync(
-            string tenantId,
-            string resourceGroupId,
+            EnsureNoUnfinishedResourceGroupDeploymentsRequest request,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
         {
-            _ = tenantId;
-            _ = resourceGroupId;
+            _ = request.TenantId;
+            _ = request.ResourceGroupId;
             _ = session;
             if (Interlocked.Increment(ref _invocationCount) == 1)
             {

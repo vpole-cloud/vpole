@@ -12,21 +12,18 @@ public sealed class SourceRepositoryArchiveDownloader(
     DownloadProviderRepositoryArchive downloadProviderRepositoryArchive)
 {
     public async Task<DownloadSourceRepositoryArchiveOutcome> InvokeAsync(
-        string tenantId,
-        string sourceRepositoryId,
-        string commitSha,
-        Stream destination,
+        DownloadSourceRepositoryArchiveRequest request,
         CancellationToken cancellationToken = default)
     {
-        var repository = await loadSourceRepository(tenantId, sourceRepositoryId, cancellationToken);
+        var repository = await loadSourceRepository(request.TenantId, request.SourceRepositoryId, cancellationToken);
         if (repository is null)
         {
             return new DownloadSourceRepositoryArchiveError(
-                new SourceRepositoryBuildNotFound(sourceRepositoryId));
+                new SourceRepositoryBuildNotFound(request.SourceRepositoryId));
         }
 
         var connection = await loadGitProviderConnection(
-            tenantId,
+            request.TenantId,
             repository.ConnectionId,
             cancellationToken);
         if (connection is null)
@@ -40,8 +37,8 @@ public sealed class SourceRepositoryArchiveDownloader(
         var downloaded = await downloadProviderRepositoryArchive(
             connection,
             repository.ExternalRepositoryId,
-            commitSha,
-            destination,
+            request.CommitSha,
+            request.Destination,
             cancellationToken);
         return downloaded switch
         {

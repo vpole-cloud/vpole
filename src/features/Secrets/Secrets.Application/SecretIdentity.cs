@@ -14,8 +14,9 @@ internal static class SecretIdentity
     internal static SecretBinding Binding(SecretBinding binding) => binding with
     {
         Id = ObjectId(binding.Id),
-        ConsumerType = ResourceTypeId.Create(binding.ConsumerType).Value,
-        ConsumerId = ObjectId(binding.ConsumerId),
+        Consumer = new SecretConsumerIdentity(
+            ResourceTypeId.Create(binding.Consumer.ResourceType).Value,
+            ObjectId(binding.Consumer.ResourceId)),
         Selection = binding.Selection switch
         {
             AllSecretDeployments => new AllSecretDeployments(),

@@ -41,7 +41,7 @@ internal sealed class MongoRemoveConsumerSecretBindings(
                     return tx.Commit(Unit.Value);
 
                 var removed = current.Bindings
-                    .Where(x => x.ConsumerType == resourceType && x.ConsumerId == resourceId)
+                    .Where(x => x.Consumer.ResourceType == resourceType && x.Consumer.ResourceId == resourceId)
                     .ToArray();
                 if (removed.Length == 0)
                     return tx.Commit(Unit.Value);

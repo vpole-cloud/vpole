@@ -13,18 +13,15 @@ internal sealed class MongoLoadHostnameBindingsForDeployment(IMongoDatabase data
         database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
 
     public async Task<IReadOnlyList<HostnameBindingSnapshot>> InvokeAsync(
-        string tenantId,
-        ResourceTypeId resourceType,
-        string resourceId,
-        string resourceDeploymentId,
+        LoadHostnameBindingsForDeploymentRequest request,
         CancellationToken cancellationToken = default)
     {
         var persistedBindings = await bindings.Find(
                 DomainFilters.BindingForDeployment(
-                    tenantId,
-                    resourceType,
-                    resourceId,
-                    resourceDeploymentId))
+                    request.TenantId,
+                    request.ResourceType,
+                    request.ResourceId,
+                    request.ResourceDeploymentId))
             .SortBy(item => item.Hostname)
             .ThenBy(item => item.Id)
             .ToListAsync(cancellationToken);

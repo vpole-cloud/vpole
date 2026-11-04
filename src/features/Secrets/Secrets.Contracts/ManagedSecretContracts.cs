@@ -74,21 +74,12 @@ public union EnsureManagedSecretProjectionOutcome(
 
 /// <summary>Prepares an encrypted version, without persistence or external side effects.</summary>
 public delegate Task<PrepareManagedSecretOutcome> PrepareManagedSecret(
-    string tenantId,
-    string secretId,
-    ManagedSecretOwner owner,
-    string name,
-    long version,
-    IReadOnlyDictionary<string, string> values,
-    ManagedSecretKubernetesType kubernetesType,
+    PrepareManagedSecretRequest request,
     CancellationToken ct);
 
 /// <summary>Joins the caller transaction after its resource registration and deployment are staged.</summary>
 public delegate Task<ManagedSecretMutationOutcome> CreateBoundManagedSecret(
-    PreparedManagedSecret prepared,
-    string resourceGroupId,
-    string isolationScopeId,
-    string deploymentId,
+    CreateBoundManagedSecretRequest request,
     IClientSessionHandle session,
     CancellationToken ct);
 
@@ -99,15 +90,13 @@ public delegate Task<ReadManagedSecretOutcome> ReadManagedSecret(
     CancellationToken ct);
 
 public delegate Task<ManagedSecretMutationOutcome> RotateManagedSecret(
-    PreparedManagedSecret prepared,
-    long expectedVersion,
+    RotateManagedSecretRequest request,
     IClientSessionHandle session,
     CancellationToken ct);
 
 /// <summary>Removes the owner; shared Secrets remain as ordinary tenant Secrets.</summary>
 public delegate Task<ManagedSecretMutationOutcome> ReleaseManagedSecret(
-    string tenantId,
-    ManagedSecretOwner owner,
+    ReleaseManagedSecretRequest request,
     IClientSessionHandle session,
     CancellationToken ct);
 
@@ -117,14 +106,46 @@ public sealed record SecretProjectionReference(
     long AppliedVersion);
 
 public delegate Task<EnsureManagedSecretProjectionOutcome> EnsureManagedSecretProjection(
-    string tenantId,
-    ManagedSecretOwner owner,
-    string deploymentId,
+    EnsureManagedSecretProjectionRequest request,
     CancellationToken ct);
 
 /// <summary>Reads one provider-owned credential field without exposing the remaining values to the caller.</summary>
 public delegate Task<ReadManagedSecretKeyOutcome> ReadManagedSecretKey(
-    string tenantId,
-    ManagedSecretOwner owner,
-    string key,
+    ReadManagedSecretKeyRequest request,
     CancellationToken ct);
+
+public sealed record PrepareManagedSecretRequest(
+    string TenantId,
+    string SecretId,
+    ManagedSecretOwner Owner,
+    string Name,
+    long Version,
+    IReadOnlyDictionary<string, string> Values,
+    ManagedSecretKubernetesType KubernetesType)
+{
+    public override string ToString() => $"PrepareManagedSecretRequest({SecretId}, {Version}, [REDACTED])";
+}
+
+public sealed record CreateBoundManagedSecretRequest(
+    PreparedManagedSecret Prepared,
+    string ResourceGroupId,
+    string IsolationScopeId,
+    string DeploymentId);
+
+public sealed record RotateManagedSecretRequest(
+    PreparedManagedSecret Prepared,
+    long ExpectedVersion);
+
+public sealed record ReleaseManagedSecretRequest(
+    string TenantId,
+    ManagedSecretOwner Owner);
+
+public sealed record EnsureManagedSecretProjectionRequest(
+    string TenantId,
+    ManagedSecretOwner Owner,
+    string DeploymentId);
+
+public sealed record ReadManagedSecretKeyRequest(
+    string TenantId,
+    ManagedSecretOwner Owner,
+    string Key);

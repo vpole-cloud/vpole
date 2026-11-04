@@ -18,7 +18,8 @@ internal sealed class MongoCreateResourceDeploymentSet(
     FenceResolvedComputeProfiles fenceResolvedComputeProfiles,
     FenceStorageProfileResolution fenceStorageProfileResolution,
     ResourceDeploymentConnectionGuard connectionGuard,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ResourceDeploymentIsolationProjection isolation)
 {
     public async Task<CreateResourceDeploymentSetOutcome> InvokeAsync(
         CreateResourceDeploymentSetRequest request,
@@ -144,14 +145,15 @@ internal sealed class MongoCreateResourceDeploymentSet(
         }
 
         var placementResult = await resolveResourceGroupPlacements(
-            first.TenantId,
-            first.ResourceGroupId,
-            first.IsolationScopeId,
-            request.Deployments
+            new ResolveResourceGroupPlacementsRequest(
+                TenantId: first.TenantId,
+                ResourceGroupId: first.ResourceGroupId,
+                IsolationScopeId: first.IsolationScopeId,
+                DeploymentTargetIds: request.Deployments
                 .Select(item => item.Target.DeploymentTargetId)
-                .ToArray(),
-            session,
-            cancellationToken);
+                .ToArray()),
+            session: session,
+            cancellationToken: cancellationToken);
         return placementResult switch
         {
             ResourceGroupPlacementError placementFailure =>
@@ -242,9 +244,7 @@ internal sealed class MongoCreateResourceDeploymentSet(
             cancellationToken);
 
         return new CreatedResourceDeployments(
-            deployments
-                .Select(deployment => deployment.ToPlacementSummaryDto())
-            .ToArray());
+            await isolation.ProjectAsync(deployments, cancellationToken));
     }
 
     private static CreateResourceDeploymentError MapPlacementFailure(

@@ -37,7 +37,7 @@ public sealed class ComputeProfileProductionDiTests(MongoReplicaSetFixture fixtu
         services.AddSingleton<AdmitDeploymentTargetForWorkload>((_, _) =>
             Task.FromException<AdmitDeploymentTargetForWorkloadOutcome>(
                 new NotSupportedException("The DI graph test does not invoke admission.")));
-        services.AddSingleton<ApplyDeploymentTargetReferenceChanges>((_, _, _, _, _) =>
+        services.AddSingleton<ApplyDeploymentTargetReferenceChanges>((request, _, _) =>
             Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(new DeploymentTargetReferencesChanged()));
         services.AddSingleton<EnsureComputeProfileUnreferenced>((_, _, _) =>
             Task.FromResult<EnsureComputeProfileUnreferencedOutcome>(

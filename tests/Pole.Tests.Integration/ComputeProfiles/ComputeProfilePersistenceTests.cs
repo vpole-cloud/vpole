@@ -111,12 +111,12 @@ public sealed class ComputeProfilePersistenceTests(MongoReplicaSetFixture fixtur
         var target = ComputeProfileTestData.CreateTarget();
         await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         ApplyDeploymentTargetReferenceChanges rejectReferences =
-            (owner, added, removed, session, cancellationToken) =>
+(request, session, cancellationToken) =>
                 Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(
                     new ApplyDeploymentTargetReferenceChangesOutcome(
                         new DeploymentTargetReferenceChangeRejected(
-                            owner,
-                            added.Concat(removed).ToArray())));
+                            request.Owner,
+                            request.AddedDeploymentTargetIds.Concat(request.RemovedDeploymentTargetIds).ToArray())));
         using var host = new ComputeProfilePersistenceTestHost(
             fixture,
             rejectReferences);

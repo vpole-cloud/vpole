@@ -8,9 +8,7 @@ internal sealed class MongoEnsureNoUnfinishedIsolationScopeDeployments(
     IMongoCollection<ResourceDeployment> resourceDeployments)
 {
     public async Task<EnsureIsolationScopeDeploymentsSettledOutcome> InvokeAsync(
-        string tenantId,
-        string resourceGroupId,
-        string isolationScopeId,
+        EnsureNoUnfinishedIsolationScopeDeploymentsRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
@@ -21,13 +19,13 @@ internal sealed class MongoEnsureNoUnfinishedIsolationScopeDeployments(
             .Find(
                 session,
                 ResourceDeploymentFilters.UnfinishedForIsolationScope(
-                    tenantId,
-                    resourceGroupId,
-                    isolationScopeId))
+                    request.TenantId,
+                    request.ResourceGroupId,
+                    request.IsolationScopeId))
             .Limit(1)
             .AnyAsync(cancellationToken);
         return hasUnfinished
-            ? new IsolationScopeHasUnfinishedDeployments(resourceGroupId, isolationScopeId)
+            ? new IsolationScopeHasUnfinishedDeployments(request.ResourceGroupId, request.IsolationScopeId)
             : new IsolationScopeDeploymentsSettled();
     }
 }

@@ -26,13 +26,23 @@ type MongoBeginPostgresClusterDeletion(
             PostgresPersistenceGuards.deletionTransition current replacement
             let! registration =
                 fenceRegisteredResource.Invoke(
-                    current.TenantId, PostgresResourceDeployment.ResourceType, current.Id, session, cancellationToken)
+                    FenceRegisteredResourceRequest(
+                        current.TenantId,
+                        PostgresResourceDeployment.ResourceType,
+                        current.Id),
+                    session,
+                    cancellationToken)
             if isNull (box registration) then
                 return PostgresError { ClusterId = current.Id }
             else
                 let! cascade =
                     cascadeConnections.Invoke(
-                        current.TenantId, PostgresResourceDeployment.ResourceType, current.Id, session, cancellationToken)
+                        CascadeConnectionsForResourceDeletionRequest(
+                            current.TenantId,
+                            PostgresResourceDeployment.ResourceType,
+                            current.Id),
+                        session,
+                        cancellationToken)
                 let onCascaded =
                     Func<ResourceConnectionsCascaded, Task<PostgresOutcome<unit, PostgresClusterDeletionConflict>>>(
                         fun _ -> task {

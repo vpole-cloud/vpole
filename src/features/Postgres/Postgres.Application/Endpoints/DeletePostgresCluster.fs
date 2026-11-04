@@ -96,9 +96,10 @@ module private DeletePostgresClusterWorkflow =
             | Some cluster ->
                 let! currentComputeResult =
                     loadDeploymentCompute.Invoke(
-                        cluster.TenantId,
-                        PostgresResourceDeployment.ResourceType,
-                        cluster.Id,
+                        LoadCurrentResourceDeploymentComputeRequest(
+                            cluster.TenantId,
+                            PostgresResourceDeployment.ResourceType,
+                            cluster.Id),
                         cancellationToken)
 
                 match TypedResultInterop.currentResourceDeploymentCompute currentComputeResult with
@@ -130,54 +131,55 @@ module private DeletePostgresClusterWorkflow =
         quotaAdmissionExecutor.ExecuteOutcomeAsync<
             PostgresQuotaInput,
             DeletePostgresClusterOutcome>(
-            plan.Cluster.TenantId,
-            PostgresQuotaResourceKey.create plan.Cluster.Id,
-            DeleteQuotaMutation<PostgresQuotaInput>(plan.QuotaInput),
-            (fun quotaError ->
-                DeletePostgresClusterRejected(
-                    DeletePostgresClusterQuota quotaError)),
-            (fun transaction transactionCancellationToken ->
-                task {
-                    let deleting =
-                        plan.Cluster.BeginDeletion(
-                            timeProvider.GetUtcNow().UtcDateTime)
-                    let! persisted =
-                        beginDeletion.Invoke(
-                            transaction.Session,
-                            plan.Cluster,
-                            deleting,
-                            transactionCancellationToken)
-
-                    match persisted with
-                    | PostgresError conflict ->
-                        return
-                            transaction.Abort(
-                                DeletePostgresClusterRejected(
-                                    DeletePostgresClusterPersistence conflict))
-                    | PostgresSuccess () ->
-                        let! deploymentResult =
-                            requestDeploymentDeletion.Invoke(
-                                ResourceDeploymentMutationRequest(
-                                    plan.Cluster.TenantId,
-                                    PostgresResourceDeployment.ResourceType,
-                                    plan.Cluster.Id,
-                                    plan.CurrentCompute.Compute.Profile),
+            ExecuteQuotaAdmissionRequest<PostgresQuotaInput, DeletePostgresClusterOutcome>(
+                plan.Cluster.TenantId,
+                PostgresQuotaResourceKey.create plan.Cluster.Id,
+                DeleteQuotaMutation<PostgresQuotaInput>(plan.QuotaInput),
+                (fun quotaError ->
+                    DeletePostgresClusterRejected(
+                        DeletePostgresClusterQuota quotaError)),
+                (fun transaction transactionCancellationToken ->
+                    task {
+                        let deleting =
+                            plan.Cluster.BeginDeletion(
+                                timeProvider.GetUtcNow().UtcDateTime)
+                        let! persisted =
+                            beginDeletion.Invoke(
                                 transaction.Session,
+                                plan.Cluster,
+                                deleting,
                                 transactionCancellationToken)
 
-                        match TypedResultInterop.resourceDeploymentMutation deploymentResult with
-                        | Error error ->
+                        match persisted with
+                        | PostgresError conflict ->
                             return
                                 transaction.Abort(
                                     DeletePostgresClusterRejected(
-                                        DeletePostgresClusterDeployment error))
-                        | Ok deployment ->
-                            return
-                                transaction.Commit(
-                                    PostgresClusterDeletionAccepted(
-                                        { Id = plan.Cluster.Id
-                                          Placement = deployment }))
-                }),
+                                        DeletePostgresClusterPersistence conflict))
+                        | PostgresSuccess () ->
+                            let! deploymentResult =
+                                requestDeploymentDeletion.Invoke(
+                                    ResourceDeploymentMutationRequest(
+                                        plan.Cluster.TenantId,
+                                        PostgresResourceDeployment.ResourceType,
+                                        plan.Cluster.Id,
+                                        plan.CurrentCompute.Compute.Profile),
+                                    transaction.Session,
+                                    transactionCancellationToken)
+
+                            match TypedResultInterop.resourceDeploymentMutation deploymentResult with
+                            | Error error ->
+                                return
+                                    transaction.Abort(
+                                        DeletePostgresClusterRejected(
+                                            DeletePostgresClusterDeployment error))
+                            | Ok deployment ->
+                                return
+                                    transaction.Commit(
+                                        PostgresClusterDeletionAccepted(
+                                            { Id = plan.Cluster.Id
+                                              Placement = deployment }))
+                    })),
             cancellationToken)
 
 type DeletePostgresClusterHandler(

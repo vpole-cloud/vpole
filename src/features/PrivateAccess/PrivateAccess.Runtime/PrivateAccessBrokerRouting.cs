@@ -28,8 +28,12 @@ public sealed class PrivateAccessBrokerRouting(
             gateway.DeploymentTargetId, cancellationToken);
         if (current is not null && !IsLocal(current))
             return current;
-        var result = await claim(gateway, configured.Value.InstanceId,
-            configured.Value.InternalOrigin, cancellationToken);
+        var result = await claim(
+            new ClaimPrivateAccessBrokerOwnerRequest(
+                Gateway: gateway,
+                InstanceId: configured.Value.InstanceId,
+                InternalOrigin: configured.Value.InternalOrigin),
+            cancellationToken: cancellationToken);
         return result switch
         {
             PrivateAccessBrokerOwnerLease owned => owned,

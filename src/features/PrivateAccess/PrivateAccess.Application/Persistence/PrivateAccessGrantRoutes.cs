@@ -36,7 +36,11 @@ internal sealed class PrivateAccessGrantRoutes(
         {
             cancellationToken.ThrowIfCancellationRequested();
             var placements = await loadPlacements(
-                tenantId, resourceType, batch, cancellationToken);
+                new LoadResourceDeploymentRuntimePlacementsRequest(
+                    TenantId: tenantId,
+                    ResourceType: resourceType,
+                    ResourceIds: batch),
+                cancellationToken: cancellationToken);
             var applied = placements
                 .Where(placement => placement is { Status: ResourceDeploymentStatus.Applied, DesiredOperation: ResourceDeploymentDesiredOperation.Apply })
                 .ToDictionary(placement => (placement.ResourceId, placement.DeploymentId));

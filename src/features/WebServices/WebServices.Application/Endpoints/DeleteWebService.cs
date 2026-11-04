@@ -73,10 +73,11 @@ public sealed class DeleteWebServiceHandler(
         if (webService.Lifecycle is DeletingWebServiceLifecycle)
         {
             var deletingPlacements = await loadResourceDeploymentSet(
-                request.TenantId,
-                WebServiceResourceDeployment.ResourceType,
-                request.Id,
-                cancellationToken);
+                new LoadResourceDeploymentSetRequest(
+                    TenantId: request.TenantId,
+                    ResourceType: WebServiceResourceDeployment.ResourceType,
+                    ResourceId: request.Id),
+                cancellationToken: cancellationToken);
             return deletingPlacements.Count == 0
                 ? Error(new DeleteWebServiceStateError(
                     new WebServiceHasNoActiveDeployments(request.Id)))
@@ -85,10 +86,11 @@ public sealed class DeleteWebServiceHandler(
         }
 
         var deployments = await loadResourceDeploymentSet(
-            webService.TenantId,
-            WebServiceResourceDeployment.ResourceType,
-            webService.Id,
-            cancellationToken);
+            new LoadResourceDeploymentSetRequest(
+                TenantId: webService.TenantId,
+                ResourceType: WebServiceResourceDeployment.ResourceType,
+                ResourceId: webService.Id),
+            cancellationToken: cancellationToken);
         if (deployments.Count == 0)
             return Error(new DeleteWebServiceStateError(
                 new WebServiceHasNoActiveDeployments(webService.Id)));
@@ -97,56 +99,58 @@ public sealed class DeleteWebServiceHandler(
         return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             WebServiceQuotaInput,
             DeleteWebServiceOutcome>(
-            webService.TenantId,
-            WebServiceQuotaResourceKey.Create(webService.Id),
-            new DeleteQuotaMutation<WebServiceQuotaInput>(quotaInput),
-            quotaError => Error(new DeleteWebServiceError(quotaError)),
-            async (transaction, transactionCancellationToken) =>
-            {
-                var deleting = webService.BeginDeletion(
-                    timeProvider.GetUtcNow().UtcDateTime);
-                var replace = await beginWebServiceDeletion(
-                    transaction.Session,
-                    webService,
-                    deleting,
-                    transactionCancellationToken);
-                if (replace is WebServiceUpdateConflict replaceError)
-                    return transaction.Abort(
-                        Error(new DeleteWebServiceError(replaceError)));
-
-                var buildGuard = await ensureNoActiveSourceBuilds(
-                    request.TenantId,
-                    request.Id,
-                    transaction.Session,
-                    transactionCancellationToken);
-                if (buildGuard is SourceBuildWebServiceHasActiveJobs buildError)
-                    return transaction.Abort(Error(new DeleteWebServiceError(buildError)));
-
-                var deploymentResult = await requestResourceDeploymentSetDeletion(
-                    new ResourceDeploymentSetDeletionRequest(
-                        webService.TenantId,
-                        WebServiceResourceDeployment.ResourceType,
-                        webService.Id,
-                        webService.ActiveRevision,
-                        deployments.Select(deployment => new ResourceDeploymentSetDeletionItem(
-                            deployment.DeploymentId,
-                            deployment.DeploymentRevision,
-                            deployment.Compute.Profile)).ToArray()),
-                    transaction.Session,
-                    transactionCancellationToken);
-                if (deploymentResult is ResourceDeploymentMutationError deploymentError)
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.WebServices.Application.Common.WebServiceQuotaInput, global::Pole.Features.WebServices.Application.Endpoints.DeleteWebServiceOutcome>(
+                TenantId: webService.TenantId,
+                ResourceKey: WebServiceQuotaResourceKey.Create(webService.Id),
+                Mutation: new DeleteQuotaMutation<WebServiceQuotaInput>(quotaInput),
+                QuotaError: quotaError => Error(new DeleteWebServiceError(quotaError)),
+                MutationCallback: async (transaction, transactionCancellationToken) =>
                 {
-                    return transaction.Abort(
-                        Error(new DeleteWebServiceError(deploymentError)));
-                }
-                var updatedDeployments = ((MutatedResourceDeployments)deploymentResult.Value).Placements;
+                    var deleting = webService.BeginDeletion(
+                        timeProvider.GetUtcNow().UtcDateTime);
+                    var replace = await beginWebServiceDeletion(
+                        transaction.Session,
+                        webService,
+                        deleting,
+                        transactionCancellationToken);
+                    if (replace is WebServiceUpdateConflict replaceError)
+                        return transaction.Abort(
+                            Error(new DeleteWebServiceError(replaceError)));
 
-                return transaction.Commit(new DeleteWebServiceOutcome(
-                    new DeleteWebServiceResponse(
-                        request.Id,
-                        updatedDeployments)));
-            },
-            cancellationToken);
+                    var buildGuard = await ensureNoActiveSourceBuilds(
+                        new EnsureNoWebServiceActiveSourceBuildsRequest(
+                            TenantId: request.TenantId,
+                            WebServiceId: request.Id),
+                        session: transaction.Session,
+                        cancellationToken: transactionCancellationToken);
+                    if (buildGuard is SourceBuildWebServiceHasActiveJobs buildError)
+                        return transaction.Abort(Error(new DeleteWebServiceError(buildError)));
+
+                    var deploymentResult = await requestResourceDeploymentSetDeletion(
+                        new ResourceDeploymentSetDeletionRequest(
+                            webService.TenantId,
+                            WebServiceResourceDeployment.ResourceType,
+                            webService.Id,
+                            webService.ActiveRevision,
+                            deployments.Select(deployment => new ResourceDeploymentSetDeletionItem(
+                                deployment.DeploymentId,
+                                deployment.DeploymentRevision,
+                                deployment.Compute.Profile)).ToArray()),
+                        transaction.Session,
+                        transactionCancellationToken);
+                    if (deploymentResult is ResourceDeploymentMutationError deploymentError)
+                    {
+                        return transaction.Abort(
+                            Error(new DeleteWebServiceError(deploymentError)));
+                    }
+                    var updatedDeployments = ((MutatedResourceDeployments)deploymentResult.Value).Placements;
+
+                    return transaction.Commit(new DeleteWebServiceOutcome(
+                        new DeleteWebServiceResponse(
+                            request.Id,
+                            updatedDeployments)));
+                }),
+            cancellationToken: cancellationToken);
     }
 
     private static DeleteWebServiceOutcome Error(DeleteWebServiceError error) =>
@@ -179,7 +183,6 @@ public sealed record DeleteWebServiceRequest(
     [FromRoute] string Id,
     [FromTenantHeader] string TenantId
 ) : IMediatorRequest<DeleteWebServiceOutcome>, ITenantWriteOperation;
-
 
 public sealed record DeleteWebServiceResponse(
     string Id,

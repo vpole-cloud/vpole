@@ -88,10 +88,11 @@ public sealed class RedeployWebServiceHandler(
                 new WebServiceUpdateUnavailable(webService.Id)));
 
         var deploymentInventory = await loadResourceDeploymentSet(
-            webService.TenantId,
-            WebServiceResourceDeployment.ResourceType,
-            webService.Id,
-            cancellationToken);
+            new LoadResourceDeploymentSetRequest(
+                TenantId: webService.TenantId,
+                ResourceType: WebServiceResourceDeployment.ResourceType,
+                ResourceId: webService.Id),
+            cancellationToken: cancellationToken);
         var deployments = deploymentInventory
             .Where(WebServiceDeploymentWorkflow.IsDesiredPlacement)
             .ToArray();

@@ -115,13 +115,14 @@ internal sealed class MongoPrivateAccessSessionCleanup(
 
                 var now = timeProvider.GetUtcNow().UtcDateTime;
                 var reference = await targetReferences(
-                    new DeploymentTargetReferenceOwner(
+                    new ApplyDeploymentTargetReferenceChangesRequest(
+                        Owner: new DeploymentTargetReferenceOwner(
                         DeploymentTargetReferenceOwnerTypes.PrivateAccessSession,
                         current.Id),
-                    [],
-                    [current.Route.DeploymentTargetId],
-                    transaction.Session,
-                    ct);
+                        AddedDeploymentTargetIds: [],
+                        RemovedDeploymentTargetIds: [current.Route.DeploymentTargetId]),
+                    session: transaction.Session,
+                    cancellationToken: ct);
                 if (reference is DeploymentTargetReferenceChangeRejected)
                     throw new InvalidOperationException(
                         "Private access target reference could not be released.");

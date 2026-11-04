@@ -141,19 +141,13 @@ public sealed record RegistryBuildAccess(
 
 public delegate Task<PrepareRegistryBuildPushOutcome>
     PrepareRegistryBuildPush(
-        string tenantId,
-        string initiatedByUserId,
-        string repositoryName,
-        string tag,
-        CancellationToken cancellationToken = default);
+    PrepareRegistryBuildPushRequest request,
+    CancellationToken cancellationToken = default);
 
 public delegate Task<GetTenantRegistryArtifactOutcome>
     GetTenantRegistryArtifact(
-        string tenantId,
-        string registryProjectId,
-        string repositoryName,
-        string reference,
-        CancellationToken cancellationToken = default);
+    GetTenantRegistryArtifactRequest request,
+    CancellationToken cancellationToken = default);
 
 public interface IContainerRegistryClient
 {
@@ -162,9 +156,7 @@ public interface IContainerRegistryClient
         CancellationToken cancellationToken = default);
 
     Task<GetRegistryArtifactOutcome> GetArtifactAsync(
-        string projectName,
-        string repositoryName,
-        string reference,
+        GetRegistryArtifactRequest request,
         CancellationToken cancellationToken = default);
 
     Task<DeleteRegistryRobotCredentialsOutcome> DeleteRobotCredentialsAsync(
@@ -191,3 +183,20 @@ public delegate Task<ResolveRuntimeRegistryAccessOutcome>
     ResolveRuntimeRegistryAccess(
         string tenantId,
         CancellationToken cancellationToken = default);
+
+public sealed record PrepareRegistryBuildPushRequest(
+    string TenantId,
+    string InitiatedByUserId,
+    string RepositoryName,
+    string Tag);
+
+public sealed record GetTenantRegistryArtifactRequest(
+    string TenantId,
+    string RegistryProjectId,
+    string RepositoryName,
+    string Reference);
+
+public sealed record GetRegistryArtifactRequest(
+    string ProjectName,
+    string RepositoryName,
+    string Reference);

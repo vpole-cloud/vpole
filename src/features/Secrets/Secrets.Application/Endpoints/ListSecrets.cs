@@ -43,7 +43,12 @@ public sealed class ListSecretsHandler(LoadSecretPage load, IGitOpsMutations git
         CancellationToken cancellationToken = default)
     {
         var page = await load(request.TenantId, request.After, request.PageSize ?? 50, cancellationToken);
-        var statuses = await git.StatusesAsync(request.TenantId, "Secret", page.Items.Select(item => item.Id).ToArray(), cancellationToken);
+        var statuses = await git.StatusesAsync(
+            new LoadGitResourceStatusesRequest(
+                TenantId: request.TenantId,
+                Kind: "Secret",
+                ResourceIds: page.Items.Select(item => item.Id).ToArray()),
+            ct: cancellationToken);
         return new SecretPage(page.Items.Select(item => SecretMetadata.From(item) with { GitOps = statuses.GetValueOrDefault(item.Id) }).ToArray(), page.NextCursor);
     }
 }

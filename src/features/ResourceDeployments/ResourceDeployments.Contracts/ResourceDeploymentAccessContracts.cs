@@ -21,9 +21,12 @@ public sealed record ResourceDeploymentAccessPlacement(
 
 /// <summary>Reads and fences the deployment in the caller's Mongo transaction.</summary>
 public delegate Task<ResourceDeploymentAccessPlacement?> LoadExactResourceDeploymentAccessPlacement(
-    string tenantId,
-    ResourceTypeId resourceType,
-    string resourceId,
-    string deploymentId,
+    LoadExactResourceDeploymentAccessPlacementRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
+
+public sealed record LoadExactResourceDeploymentAccessPlacementRequest(
+    string TenantId,
+    ResourceTypeId ResourceType,
+    string ResourceId,
+    string DeploymentId);

@@ -29,7 +29,7 @@ type GetPostgresClusterByIdRequest =
     interface IMediatorRequest<GetPostgresClusterByIdOutcome>
     interface ITenantReadOperation with
         member this.TenantId = this.TenantId
-    
+
 type GetPostgresClusterHandler(
     loadCluster : LoadPostgresClusterById,
     loadDeployment : LoadResourceDeployment) =
@@ -50,9 +50,10 @@ type GetPostgresClusterHandler(
                 | Some cluster ->
                     let! placement =
                         loadDeployment.Invoke(
-                            cluster.TenantId,
-                            PostgresResourceDeployment.ResourceType,
-                            cluster.Id,
+                            LoadResourceDeploymentRequest(
+                                cluster.TenantId,
+                                PostgresResourceDeployment.ResourceType,
+                                cluster.Id),
                             cancellationToken)
 
                     if isNull placement then
@@ -64,7 +65,7 @@ type GetPostgresClusterHandler(
                             PostgresClusterDto.create cluster placement
                             |> PostgresClusterFound
             }
-            
+
 type GetPostgresClusterByIdRequestValidator() as this =
     inherit AbstractValidator<GetPostgresClusterByIdRequest>()
     do

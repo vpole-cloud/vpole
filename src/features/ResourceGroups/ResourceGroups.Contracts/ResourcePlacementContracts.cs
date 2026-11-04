@@ -67,21 +67,15 @@ public union ResolveResourceGroupPlacementsOutcome(
 
 public delegate Task<ResolveResourceGroupPlacementOutcome>
     ResolveResourceGroupPlacement(
-        string tenantId,
-        string resourceGroupId,
-        string? isolationScopeId,
-        string? deploymentTargetId,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
+    ResolveResourceGroupPlacementRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
 
 public delegate Task<ResolveResourceGroupPlacementsOutcome>
     ResolveResourceGroupPlacements(
-        string tenantId,
-        string resourceGroupId,
-        string? isolationScopeId,
-        IReadOnlyList<string> deploymentTargetIds,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
+    ResolveResourceGroupPlacementsRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
 
 public delegate Task<ResourcePlacement?> LoadResourcePlacement(
     string tenantId,
@@ -89,13 +83,31 @@ public delegate Task<ResourcePlacement?> LoadResourcePlacement(
     CancellationToken cancellationToken = default);
 
 public delegate Task<ResourcePlacement?> LoadResourcePlacementInTransaction(
-    string tenantId,
-    string runtimeCellId,
+    LoadResourcePlacementInTransactionRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
 public delegate Task<IReadOnlyList<ResourcePlacement>> LoadResourcePlacementsInTransaction(
-    string tenantId,
-    IReadOnlyCollection<string> runtimeCellIds,
+    LoadResourcePlacementsInTransactionRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
+
+public sealed record ResolveResourceGroupPlacementRequest(
+    string TenantId,
+    string ResourceGroupId,
+    string? IsolationScopeId,
+    string? DeploymentTargetId);
+
+public sealed record ResolveResourceGroupPlacementsRequest(
+    string TenantId,
+    string ResourceGroupId,
+    string? IsolationScopeId,
+    IReadOnlyList<string> DeploymentTargetIds);
+
+public sealed record LoadResourcePlacementInTransactionRequest(
+    string TenantId,
+    string RuntimeCellId);
+
+public sealed record LoadResourcePlacementsInTransactionRequest(
+    string TenantId,
+    IReadOnlyCollection<string> RuntimeCellIds);

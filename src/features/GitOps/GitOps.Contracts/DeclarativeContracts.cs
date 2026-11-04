@@ -99,7 +99,10 @@ public interface IDeclarativeResourceProvider
     DeclarationFacts Facts(JsonElement spec) => new(null, [], [], [], []);
     JsonElement NormalizeAndValidate(JsonElement spec);
     IReadOnlyList<DeclarationStep> Steps(ResourceAddress address, JsonElement spec);
-    Task<string?> ResolveAsync(string tenantId, string name, IClientSessionHandle session, CancellationToken ct);
+    Task<string?> ResolveAsync(
+        ResolveDeclaredResourceRequest request,
+        IClientSessionHandle session,
+        CancellationToken ct);
     Task<GitOperationResult> ApplyAsync(GitOperation operation, CancellationToken ct);
 }
 
@@ -110,12 +113,24 @@ public interface IGitOpsMutations
     Task<GitOperationResult> ExecuteAsync(GitOperation operation,
         Func<IClientSessionHandle, CancellationToken, Task<GitOperationResult>> mutation, CancellationToken ct);
     Task<GitOperationResult?> BeginAsync(GitOperation operation, IClientSessionHandle session, CancellationToken ct);
-    Task CompleteAsync(GitOperation operation, GitOperationResult result, IClientSessionHandle session, CancellationToken ct);
-    Task<bool> AuthorizeAsync(string tenantId, string kind, string resourceId, IClientSessionHandle session,
-        CancellationToken ct, GitMutationContext? context = null);
-    Task<string?> ResolveAsync(string tenantId, ResourceAddress address, IClientSessionHandle session, CancellationToken ct);
-    Task<IReadOnlyDictionary<string, GitResourceStatus>> StatusesAsync(string tenantId, string kind, IReadOnlyCollection<string> resourceIds, CancellationToken ct);
-    Task<GitResourceStatus?> StatusAsync(string tenantId, string kind, string resourceId, CancellationToken ct);
+    Task CompleteAsync(
+        CompleteGitOperationRequest request,
+        IClientSessionHandle session,
+        CancellationToken ct);
+    Task<bool> AuthorizeAsync(
+        AuthorizeGitResourceMutationRequest request,
+        IClientSessionHandle session,
+        CancellationToken ct);
+    Task<string?> ResolveAsync(
+        ResolveGitResourceRequest request,
+        IClientSessionHandle session,
+        CancellationToken ct);
+    Task<IReadOnlyDictionary<string, GitResourceStatus>> StatusesAsync(
+        LoadGitResourceStatusesRequest request,
+        CancellationToken ct);
+    Task<GitResourceStatus?> StatusAsync(
+        LoadGitResourceStatusRequest request,
+        CancellationToken ct);
 }
 
 public static class DeclarationJson
@@ -139,3 +154,31 @@ public sealed class DeclarationSchemaException(string field) : Exception
 {
     public string Field { get; } = field;
 }
+
+public sealed record ResolveDeclaredResourceRequest(
+    string TenantId,
+    string Name);
+
+public sealed record CompleteGitOperationRequest(
+    GitOperation Operation,
+    GitOperationResult Result);
+
+public sealed record AuthorizeGitResourceMutationRequest(
+    string TenantId,
+    string Kind,
+    string ResourceId,
+    GitMutationContext? Context = null);
+
+public sealed record ResolveGitResourceRequest(
+    string TenantId,
+    ResourceAddress Address);
+
+public sealed record LoadGitResourceStatusesRequest(
+    string TenantId,
+    string Kind,
+    IReadOnlyCollection<string> ResourceIds);
+
+public sealed record LoadGitResourceStatusRequest(
+    string TenantId,
+    string Kind,
+    string ResourceId);

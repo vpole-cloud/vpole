@@ -50,24 +50,17 @@ public union ResourceUnregistrationOutcome(
 public interface IResourceRegistrar
 {
     Task<ResourceRegistrationOutcome> RegisterAsync(
-        string tenantId,
-        string resourceGroupId,
-        ResourceRegistrationDescriptor resource,
+        RegisterResourceRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
     Task<ResourceRegistrationOutcome> UpdateAsync(
-        string tenantId,
-        string resourceGroupId,
-        ResourceRegistrationDescriptor resource,
+        UpdateRegisteredResourceRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
     Task<ResourceUnregistrationOutcome> UnregisterAsync(
-        string tenantId,
-        string resourceGroupId,
-        ResourceTypeId resourceTypeId,
-        string resourceId,
+        UnregisterResourceRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 }
@@ -75,15 +68,37 @@ public interface IResourceRegistrar
 // Acquires a write on the tenant's resource registration in the caller's Mongo
 // transaction, so a connection can resolve placements against a stable owner.
 public delegate Task<RegisteredResource?> FenceRegisteredResource(
-    string tenantId,
-    ResourceTypeId resourceTypeId,
-    string resourceId,
+    FenceRegisteredResourceRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
 /// <summary>Tenant-scoped advisory identity read. Does not acquire a mutation fence.</summary>
 public delegate Task<RegisteredResource?> LoadRegisteredResource(
-    string tenantId,
-    ResourceTypeId resourceTypeId,
-    string resourceId,
+    LoadRegisteredResourceRequest request,
     CancellationToken cancellationToken = default);
+
+public sealed record RegisterResourceRequest(
+    string TenantId,
+    string ResourceGroupId,
+    ResourceRegistrationDescriptor Resource);
+
+public sealed record UpdateRegisteredResourceRequest(
+    string TenantId,
+    string ResourceGroupId,
+    ResourceRegistrationDescriptor Resource);
+
+public sealed record UnregisterResourceRequest(
+    string TenantId,
+    string ResourceGroupId,
+    ResourceTypeId ResourceTypeId,
+    string ResourceId);
+
+public sealed record FenceRegisteredResourceRequest(
+    string TenantId,
+    ResourceTypeId ResourceTypeId,
+    string ResourceId);
+
+public sealed record LoadRegisteredResourceRequest(
+    string TenantId,
+    ResourceTypeId ResourceTypeId,
+    string ResourceId);

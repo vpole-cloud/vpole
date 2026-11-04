@@ -136,8 +136,8 @@ an application has consumed a new credential or restart workloads.
 The provider-owned `AdmitConsumerSecretReferences` and `EnsureConsumerSecretProjections` contracts
 let WebServices configure explicit logical Secret/key references. Admission requires a current
 binding, the same tenant/group/scope, every desired consumer deployment and authorized source keys.
-Consumer bindings pin current `RequiredKeys`. Declarative reference changes move retired keys to durable
-`RetainedKeys`; rotation, metadata edits and alias changes protect both sets. The minute-based recovery
+Consumer bindings pin current `Pins.Required`. Declarative reference changes move retired keys to durable
+`Pins.Retained`; rotation, metadata edits and alias changes protect both sets. The minute-based recovery
 job releases retained pins only after the consumer-owned observer confirms complete current native
 rollouts on every placement, with no old or terminating pods or truncated observations. The Mongo
 release transaction fences the Secret revision/reference fence and the complete physical deployment

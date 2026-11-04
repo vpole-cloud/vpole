@@ -78,9 +78,9 @@ public sealed class FeatureTestHost : IAsyncDisposable
             builder.Services.AddSingleton<IBackgroundJobClient>(sp =>
                 sp.GetRequiredService<RecordedBackgroundJobs>());
             builder.Services.TryAddSingleton<SourceBuildWebServiceExists>((_, _, _) => Task.FromResult(false));
-            builder.Services.TryAddSingleton<AdmitSourceBuildWebService>((_, webServiceId, _, _) =>
+            builder.Services.TryAddSingleton<AdmitSourceBuildWebService>((request, _, _) =>
                 Task.FromResult<AdmitSourceBuildWebServiceOutcome>(
-                    new SourceBuildWebServiceNotFound(webServiceId)));
+                    new SourceBuildWebServiceNotFound(request.WebServiceId)));
             builder.Services.TryAddSingleton<DeploySourceBuildWebService>((request, _) =>
                 Task.FromResult<DeploySourceBuildWebServiceOutcome>(
                     new SourceBuildWebServiceDeploymentError(

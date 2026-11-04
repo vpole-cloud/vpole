@@ -119,13 +119,14 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
             foreach (var candidate in missing)
             {
                 var registered = await applyDeploymentTargetReferenceChanges(
-                    new DeploymentTargetReferenceOwner(
+                    new ApplyDeploymentTargetReferenceChangesRequest(
+                        Owner: new DeploymentTargetReferenceOwner(
                         DeploymentTargetReferenceOwnerTypes.DomainZone,
                         candidate.Id),
-                    [candidate.DeploymentTargetId],
-                    [],
-                    session,
-                    cancellationToken);
+                        AddedDeploymentTargetIds: [candidate.DeploymentTargetId],
+                        RemovedDeploymentTargetIds: []),
+                    session: session,
+                    cancellationToken: cancellationToken);
                 if (registered is DeploymentTargetReferenceChangeRejected)
                 {
                     return new GeneratedDomainZoneError(

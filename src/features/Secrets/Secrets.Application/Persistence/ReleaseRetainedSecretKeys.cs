@@ -30,16 +30,29 @@ internal sealed class MongoReleaseRetainedSecretKeys(
             if (current is null || current.Revision != revision || current.ReferenceFence != referenceFence)
                 return tx.Abort(false);
             var binding = current.Bindings.SingleOrDefault(item => item.Id == bindingId);
-            if (binding is null || binding.RetainedKeys.IsEmpty) return tx.Abort(false);
-            var type = ResourceTypeId.Create(binding.ConsumerType);
-            var placements = await loadPlacements(tenantId, type, binding.ConsumerId, tx.Session, token);
+            if (binding is null || binding.Pins.Retained.IsEmpty) return tx.Abort(false);
+            var type = ResourceTypeId.Create(binding.Consumer.ResourceType);
+            var placements = await loadPlacements(
+                new LoadResourceDeploymentConnectionPlacementsRequest(
+                    TenantId: tenantId,
+                    ResourceType: type,
+                    ResourceId: binding.Consumer.ResourceId),
+                session: tx.Session,
+                cancellationToken: token);
             if (placements.Count == 0 || placements.Any(item => item.DeletionRequested) ||
                 proofs.Count != placements.Count || proofs.Select(item => item.DeploymentId).Distinct().Count() != proofs.Count ||
                 !placements.Select(item => item.DeploymentId).ToHashSet(StringComparer.Ordinal).SetEquals(proofs.Select(item => item.DeploymentId)))
                 return tx.Abort(false);
             foreach (var proof in proofs)
             {
-                var placement = await loadAndFence(tenantId, type, binding.ConsumerId, proof.DeploymentId, tx.Session, token);
+                var placement = await loadAndFence(
+                    new LoadExactResourceDeploymentAccessPlacementRequest(
+                        TenantId: tenantId,
+                        ResourceType: type,
+                        ResourceId: binding.Consumer.ResourceId,
+                        DeploymentId: proof.DeploymentId),
+                    session: tx.Session,
+                    cancellationToken: token);
                 if (placement is null || placement.ResourceGroupId != current.ResourceGroupId || placement.IsolationScopeId != current.IsolationScopeId ||
                     placement.DeploymentRevision != proof.DeploymentRevision || placement.DesiredGeneration != proof.DesiredGeneration ||
                     placement.Status != ResourceDeploymentStatus.Applied || placement.DesiredOperation != ResourceDeploymentDesiredOperation.Apply)

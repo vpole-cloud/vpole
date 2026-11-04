@@ -133,7 +133,7 @@ public sealed class ResourceDeploymentHealthApiTests(MongoReplicaSetFixture fixt
         });
         using var services = new ServiceCollection().AddSingleton(fake).BuildServiceProvider();
         var persistence = new ResourceDeploymentOperationsPersistence(Fixture.DbContext.ResourceDeployments,
-            (_, _, _, _) => Task.FromResult<RegisteredResource?>(null),
+(request, _) => Task.FromResult<RegisteredResource?>(null),
             (id, _) =>
                 Task.FromResult<LookupDeploymentTargetOutcome>(
                     new DeploymentTargetLookupError(new DeploymentTargetNotFound(id))),
@@ -184,7 +184,7 @@ public sealed class ResourceDeploymentHealthApiTests(MongoReplicaSetFixture fixt
         });
         using var services = new ServiceCollection().AddSingleton(fake).BuildServiceProvider();
         var persistence = new ResourceDeploymentOperationsPersistence(Fixture.DbContext.ResourceDeployments,
-            (_, _, _, _) => Task.FromResult<RegisteredResource?>(null),
+(request, _) => Task.FromResult<RegisteredResource?>(null),
             (id, _) =>
                 Task.FromResult<LookupDeploymentTargetOutcome>(
                     new DeploymentTargetLookupError(new DeploymentTargetNotFound(id))),

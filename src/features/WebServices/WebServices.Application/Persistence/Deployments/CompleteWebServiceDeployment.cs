@@ -93,20 +93,35 @@ internal sealed class MongoCompleteWebServiceDeployment(
                 completion.Succeeded)
             {
                 var readiness = await getExactResourceDeploymentFinalizationReadiness(
-                    tenantId, WebServiceResourceDeployment.ResourceType, webServiceId,
-                    completion.ResourceDeploymentId, transaction.Session, ct);
+                    new GetExactResourceDeploymentFinalizationReadinessRequest(
+                        TenantId: tenantId,
+                        ResourceType: WebServiceResourceDeployment.ResourceType,
+                        ResourceId: webServiceId,
+                        ResourceDeploymentId: completion.ResourceDeploymentId),
+                    session: transaction.Session,
+                    cancellationToken: ct);
                 if (readiness == ResourceDeploymentFinalizationReadiness.Ready)
                 {
                     var bindings = await deleteHostnameBindingsForDeployment(
-                        tenantId, WebServiceResourceDeployment.ResourceType, webServiceId,
-                        completion.ResourceDeploymentId, transaction.Session, ct);
+                        new DeleteHostnameBindingsForDeploymentRequest(
+                            TenantId: tenantId,
+                            ResourceType: WebServiceResourceDeployment.ResourceType,
+                            ResourceId: webServiceId,
+                            ResourceDeploymentId: completion.ResourceDeploymentId),
+                        session: transaction.Session,
+                        cancellationToken: ct);
                     if (bindings is HostnameBindingCleanupError bindingCleanupError)
                     {
                         return transaction.Abort(new WebServiceFinalizationError(bindingCleanupError));
                     }
                     var purge = await purgeExactDeletedResourceDeployment(
-                        tenantId, WebServiceResourceDeployment.ResourceType, webServiceId,
-                        completion.ResourceDeploymentId, transaction.Session, ct);
+                        new PurgeExactDeletedResourceDeploymentRequest(
+                            TenantId: tenantId,
+                            ResourceType: WebServiceResourceDeployment.ResourceType,
+                            ResourceId: webServiceId,
+                            ResourceDeploymentId: completion.ResourceDeploymentId),
+                        session: transaction.Session,
+                        cancellationToken: ct);
                     if (purge is ResourceDeploymentFinalizationConflict conflict)
                     {
                         return transaction.Abort(new WebServiceFinalizationError(conflict));
@@ -125,12 +140,13 @@ internal sealed class MongoCompleteWebServiceDeployment(
                     current.ActiveRevision == completion.ResourceRevision)
                 {
                     var bindings = await loadHostnameBindingsForDeployment(
-                        tenantId,
-                        WebServiceResourceDeployment.ResourceType,
-                        webServiceId,
-                        completion.ResourceDeploymentId,
-                        transaction.Session,
-                        ct);
+                        new LoadHostnameBindingsForDeploymentInTransactionRequest(
+                            TenantId: tenantId,
+                            ResourceType: WebServiceResourceDeployment.ResourceType,
+                            ResourceId: webServiceId,
+                            ResourceDeploymentId: completion.ResourceDeploymentId),
+                        session: transaction.Session,
+                        cancellationToken: ct);
                     if (bindings.Count > 0)
                     {
                         var fence = await webServices.UpdateOneAsync(
@@ -144,12 +160,13 @@ internal sealed class MongoCompleteWebServiceDeployment(
                         if (fence.ModifiedCount == 1)
                         {
                             var cleanup = await deleteHostnameBindingsForDeployment(
-                                tenantId,
-                                WebServiceResourceDeployment.ResourceType,
-                                webServiceId,
-                                completion.ResourceDeploymentId,
-                                transaction.Session,
-                                ct);
+                                new DeleteHostnameBindingsForDeploymentRequest(
+                                    TenantId: tenantId,
+                                    ResourceType: WebServiceResourceDeployment.ResourceType,
+                                    ResourceId: webServiceId,
+                                    ResourceDeploymentId: completion.ResourceDeploymentId),
+                                session: transaction.Session,
+                                cancellationToken: ct);
                             if (cleanup is HostnameBindingCleanupError cleanupError)
                             {
                                 return transaction.Abort(

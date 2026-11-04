@@ -135,7 +135,7 @@ public sealed class SourceBuildConfigurationOutboxTests(MongoReplicaSetFixture f
         var services = new ServiceCollection().AddSingleton(Fixture.Database).AddSingleton(Fixture.Client)
             .AddSingleton<MongoRunTransaction>();
         services.AddSourceBuildsFeature(new ConfigurationBuilder().Build());
-        services.AddSingleton<AdmitSourceBuildWebService>((_, _, session, _) =>
+        services.AddSingleton<AdmitSourceBuildWebService>((request, session, _) =>
         {
             Assert.True(session.IsInTransaction);
             return Task.FromResult<AdmitSourceBuildWebServiceOutcome>(new SourceBuildWebServiceAdmitted());

@@ -37,11 +37,21 @@ internal sealed class MongoBeginRedisDeletion(
         RedisPersistenceGuards.EnsureDeletionTransition(current, replacement);
 
         var registration = await fenceRegisteredResource(
-            current.TenantId, RedisResourceDeployment.ResourceType, current.Id, session, cancellationToken);
+            new FenceRegisteredResourceRequest(
+                TenantId: current.TenantId,
+                ResourceTypeId: RedisResourceDeployment.ResourceType,
+                ResourceId: current.Id),
+            session: session,
+            cancellationToken: cancellationToken);
         if (registration is null)
             return new RedisDeletionConflict(current.Id);
         var cascade = await cascadeConnections(
-            current.TenantId, RedisResourceDeployment.ResourceType, current.Id, session, cancellationToken);
+            new CascadeConnectionsForResourceDeletionRequest(
+                TenantId: current.TenantId,
+                ResourceType: RedisResourceDeployment.ResourceType,
+                ResourceId: current.Id),
+            session: session,
+            cancellationToken: cancellationToken);
         RedisDeletionConflict? cascadeConflict = cascade switch
         {
             ResourceConnectionsCascaded => null,

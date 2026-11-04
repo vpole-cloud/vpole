@@ -10,17 +10,15 @@ internal sealed class MongoLoadResourceDeployments(
     ResourceDeploymentIsolationProjection isolation)
 {
     public async Task<IReadOnlyDictionary<string, PlacementSummaryDto>> InvokeAsync(
-        string tenantId,
-        ResourceTypeId resourceType,
-        IReadOnlyCollection<string> resourceIds,
+        LoadResourceDeploymentsRequest request,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(resourceIds);
-        if (resourceIds.Count == 0)
+        ArgumentNullException.ThrowIfNull(request.ResourceIds);
+        if (request.ResourceIds.Count == 0)
             return new Dictionary<string, PlacementSummaryDto>();
 
         var deployments = await resourceDeployments
-            .Find(ResourceDeploymentFilters.ForResources(tenantId, resourceType, resourceIds))
+            .Find(ResourceDeploymentFilters.ForResources(request.TenantId, request.ResourceType, request.ResourceIds))
             .ToListAsync(cancellationToken);
         var policies = await isolation.LoadAsync(
             deployments.Select(item => item.ResolvedPlacement.DeploymentTargetId),
@@ -33,10 +31,7 @@ internal sealed class MongoLoadResourceDeployments(
                 {
                     var candidates = group.Take(2).ToArray();
                     return candidates.Length == 1
-                        ? candidates[0].ToPlacementSummaryDto() with
-                        {
-                            Isolation = policies[candidates[0].ResolvedPlacement.DeploymentTargetId]
-                        }
+                        ? candidates[0].ToPlacementSummaryDto(policies[candidates[0].ResolvedPlacement.DeploymentTargetId])
                         : throw new InvalidOperationException(
                             $"Single-target resource '{group.Key}' has multiple deployments.");
                 },

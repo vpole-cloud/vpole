@@ -52,9 +52,10 @@ type GetPostgresClustersHandler(
                     |> Seq.toArray
                 let! placements =
                     loadDeployments.Invoke(
-                        request.TenantId,
-                        PostgresResourceDeployment.ResourceType,
-                        clusterIds,
+                        LoadResourceDeploymentsRequest(
+                            request.TenantId,
+                            PostgresResourceDeployment.ResourceType,
+                            clusterIds),
                         cancellationToken)
 
                 let toDto (cluster : PostgresCluster) =

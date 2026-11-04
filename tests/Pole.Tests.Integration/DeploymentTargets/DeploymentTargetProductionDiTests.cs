@@ -207,7 +207,7 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
                 provider,
                 (id, ct) => Task.FromResult<LookupDeploymentTargetOutcome>(
                     new LookupDeploymentTargetOutcome(configuredTarget)),
-                (tenantId, runtimeCellId, targetId, kubernetesNamespace, ct) =>
+(request, ct) =>
                     Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
                         new RuntimeCellIngressBaselineReady()),
                 []).ApplyAsync(

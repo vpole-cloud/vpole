@@ -128,14 +128,18 @@ public union QuotaExecutionError(
 public interface IQuotaAdmissionExecutor
 {
     Task<TOutcome> ExecuteOutcomeAsync<TSpec, TOutcome>(
-        string tenantId,
-        QuotaResourceKey resourceKey,
-        QuotaMutation<TSpec> mutation,
-        Func<QuotaExecutionError, TOutcome> quotaError,
-        Func<
-            QuotaAdmissionTransactionContext<TOutcome>,
-            CancellationToken,
-            Task<QuotaAdmissionTransactionDecision<TOutcome>>> mutationCallback,
+        ExecuteQuotaAdmissionRequest<TSpec, TOutcome> request,
         CancellationToken cancellationToken = default)
         where TOutcome : notnull;
 }
+
+public sealed record ExecuteQuotaAdmissionRequest<TSpec, TOutcome>(
+    string TenantId,
+    QuotaResourceKey ResourceKey,
+    QuotaMutation<TSpec> Mutation,
+    Func<QuotaExecutionError, TOutcome> QuotaError,
+    Func<
+        QuotaAdmissionTransactionContext<TOutcome>,
+        CancellationToken,
+        Task<QuotaAdmissionTransactionDecision<TOutcome>>> MutationCallback)
+    where TOutcome : notnull;

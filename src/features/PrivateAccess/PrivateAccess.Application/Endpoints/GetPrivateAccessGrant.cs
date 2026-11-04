@@ -35,7 +35,10 @@ public sealed class GetPrivateAccessGrantHandler(
         CancellationToken cancellationToken = default)
     {
         var actor = request.ActorUserId.Value;
-        var member = await loadTenantMember(request.TenantId, actor,
+        var member = await loadTenantMember(
+            new LoadTenantMemberRequest(
+                TenantId: request.TenantId,
+                UserId: actor),
             cancellationToken: cancellationToken);
         if (member is not TenantMemberSnapshot membership)
             return new PrivateAccessSubjectMembershipRequired();

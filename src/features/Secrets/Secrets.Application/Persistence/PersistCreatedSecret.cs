@@ -60,15 +60,23 @@ internal sealed class MongoPersistCreatedSecret(
             return new SecretEncryptionFailed();
         return await transactions.InvokeOutcomeAsync<PersistCreatedSecretResult>(async (tx, token) =>
         {
-            if (await admitScope(tenantId, groupId, scopeId, null, tx.Session, token) is ResourceScopeReferenceUnavailable)
+            if (await admitScope(
+                new AdmitResourceScopeReferenceRequest(
+                    TenantId: tenantId,
+                    ResourceGroupId: groupId,
+                    IsolationScopeId: scopeId,
+                    Consumer: null),
+                session: tx.Session,
+                cancellationToken: token) is ResourceScopeReferenceUnavailable)
                 return tx.Abort(new SecretReferenceRejected());
 
             var registration = await registrar.RegisterAsync(
-                tenantId,
-                groupId,
-                new(SecretResource.Type, secret.Id, secret.Name),
-                tx.Session,
-                token);
+                new RegisterResourceRequest(
+                    TenantId: tenantId,
+                    ResourceGroupId: groupId,
+                    Resource: new(SecretResource.Type, secret.Id, secret.Name)),
+                session: tx.Session,
+                cancellationToken: token);
             if (registration is ResourceRegistrationMutationError)
                 return tx.Abort(new SecretReferenceRejected());
             try

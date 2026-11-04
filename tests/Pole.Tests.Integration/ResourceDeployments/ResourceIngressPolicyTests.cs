@@ -47,7 +47,7 @@ public sealed class ResourceIngressPolicyTests
                 throw new InvalidOperationException("Invalid ports must not load deployment state.");
             },
             (_, _) => throw new InvalidOperationException("Invalid ports must not load a target."),
-            (_, _, _, _, _) => throw new InvalidOperationException("Invalid ports must not check baseline."),
+(request, _) => throw new InvalidOperationException("Invalid ports must not check baseline."),
             null!,
             Catalog());
 
@@ -125,7 +125,7 @@ public sealed class ResourceIngressPolicyTests
             (request, ct) => Task.FromResult<ResourceDeployment?>(Deployment()),
             (id, ct) => Task.FromResult<LookupDeploymentTargetOutcome>(
                 Target(revision: 2, source: PodSource("traefik-new"))),
-            (tenantId, cellId, targetId, kubernetesNamespace, ct) =>
+(request, ct) =>
                 Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
                     new RuntimeCellIngressBaselineReady()),
             new FixedClientProvider(kubernetes), Catalog());
@@ -158,7 +158,7 @@ public sealed class ResourceIngressPolicyTests
             (value, ct) => Task.FromResult<ResourceDeployment?>(Deployment()),
             (id, ct) => Task.FromResult<LookupDeploymentTargetOutcome>(
                 Target(revision: 2, source: null)),
-            (tenantId, cellId, targetId, kubernetesNamespace, ct) =>
+(request, ct) =>
             {
                 baselineCalled = true;
                 return Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
@@ -190,7 +190,7 @@ public sealed class ResourceIngressPolicyTests
             (value, ct) => Task.FromResult<ResourceDeployment?>(Deployment()),
             (id, ct) => Task.FromResult<LookupDeploymentTargetOutcome>(
                 Target(revision: 1, source: PodSource())),
-            (tenantId, cellId, targetId, kubernetesNamespace, ct) =>
+(request, ct) =>
                 Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
                     new RuntimeCellIngressBaselineReady()),
             new FixedClientProvider(kubernetes), Catalog());
@@ -220,7 +220,7 @@ public sealed class ResourceIngressPolicyTests
             (value, ct) => Task.FromResult<ResourceDeployment?>(deployment),
             (id, ct) => Task.FromResult<LookupDeploymentTargetOutcome>(
                 Target(revision: 1, source: null)),
-            (tenantId, cellId, targetId, kubernetesNamespace, ct) =>
+(request, ct) =>
                 throw new InvalidOperationException("Cleanup does not require a Ready cell."),
             new FixedClientProvider(kubernetes), Catalog());
 
@@ -256,7 +256,7 @@ public sealed class ResourceIngressPolicyTests
         var subject = new KubernetesResourceIngressPolicyManager(
             (_, _) => Task.FromResult<ResourceDeployment?>(Deployment(type)),
             (_, _) => Task.FromResult<LookupDeploymentTargetOutcome>(Target(2, null)),
-            (_, _, _, _, _) => throw new InvalidOperationException("Revocation needs no baseline."),
+(request, _) => throw new InvalidOperationException("Revocation needs no baseline."),
             new FixedClientProvider(kubernetes),
             new ResourceIngressPolicyCatalog([definition]));
 

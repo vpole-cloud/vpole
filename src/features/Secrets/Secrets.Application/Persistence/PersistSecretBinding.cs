@@ -47,29 +47,31 @@ internal sealed class MongoPersistSecretBinding(
                 return tx.Abort(new SecretMissing());
             if (current.Bindings.Length >= Secret.MaximumBindings)
                 return tx.Abort(new SecretBindingLimitReached());
-            if (current.Bindings.Any(x => x.ConsumerType == binding.ConsumerType && x.ConsumerId == binding.ConsumerId))
+            if (current.Bindings.Any(x => x.Consumer.ResourceType == binding.Consumer.ResourceType && x.Consumer.ResourceId == binding.Consumer.ResourceId))
                 return tx.Abort(new SecretConsumerAlreadyBound());
             if (binding.KeyMappings.Keys.Except(current.KeyNames).Any())
                 return tx.Abort(new SecretUnknownKeys());
 
-            var type = ResourceTypeId.Create(binding.ConsumerType);
+            var type = ResourceTypeId.Create(binding.Consumer.ResourceType);
             if (await admitScope(
-                current.TenantId,
-                current.ResourceGroupId,
-                current.IsolationScopeId,
-                new ResourceScopeConsumerReference(type, binding.ConsumerId),
-                tx.Session,
-                token) is ResourceScopeReferenceUnavailable ||
+                new AdmitResourceScopeReferenceRequest(
+                    TenantId: current.TenantId,
+                    ResourceGroupId: current.ResourceGroupId,
+                    IsolationScopeId: current.IsolationScopeId,
+                    Consumer: new ResourceScopeConsumerReference(type, binding.Consumer.ResourceId)),
+                session: tx.Session,
+                cancellationToken: token) is ResourceScopeReferenceUnavailable ||
                 await admitDeployments(
-                    current.TenantId,
-                    current.ResourceGroupId,
-                    current.IsolationScopeId,
-                    type,
-                    binding.ConsumerId,
-                    binding.Selection is AllSecretDeployments,
-                    binding.Selection is SelectedSecretDeployments selected ? selected.DeploymentIds.ToArray() : [],
-                    tx.Session,
-                    token) is ResourceDeploymentReferenceUnavailable)
+                    new AdmitResourceDeploymentReferencesRequest(
+                        TenantId: current.TenantId,
+                        ResourceGroupId: current.ResourceGroupId,
+                        IsolationScopeId: current.IsolationScopeId,
+                        ConsumerType: type,
+                        ConsumerId: binding.Consumer.ResourceId,
+                        AllDeployments: binding.Selection is AllSecretDeployments,
+                        DeploymentIds: binding.Selection is SelectedSecretDeployments selected ? selected.DeploymentIds.ToArray() : []),
+                    session: tx.Session,
+                    cancellationToken: token) is ResourceDeploymentReferenceUnavailable)
                 return tx.Abort(new SecretReferenceRejected());
 
             var bound = current.Bind(binding, clock.GetUtcNow().UtcDateTime);

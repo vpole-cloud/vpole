@@ -125,13 +125,14 @@ public sealed class RuntimeCellLifecyclePersistence(
                 return transaction.Commit(true);
 
             var unregister = await applyDeploymentTargetReferenceChanges(
-                new DeploymentTargetReferenceOwner(
+                new ApplyDeploymentTargetReferenceChangesRequest(
+                    Owner: new DeploymentTargetReferenceOwner(
                     ResourcePlacementReferenceOwnerTypes.RuntimeCell,
                     runtimeCell.Id),
-                [],
-                [runtimeCell.DeploymentTargetId],
-                transaction.Session,
-                ct);
+                    AddedDeploymentTargetIds: [],
+                    RemovedDeploymentTargetIds: [runtimeCell.DeploymentTargetId]),
+                session: transaction.Session,
+                cancellationToken: ct);
             if (unregister is DeploymentTargetReferenceChangeRejected)
                 return transaction.Abort(false);
 

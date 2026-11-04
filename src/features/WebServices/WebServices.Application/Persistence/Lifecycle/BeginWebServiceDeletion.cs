@@ -36,14 +36,30 @@ internal sealed class MongoBeginWebServiceDeletion(
     {
         WebServicePersistenceGuards.EnsureTransaction(session, "Web service deletion start");
         WebServicePersistenceGuards.EnsureSameIdentity(current, replacement);
-        if (!await git.AuthorizeAsync(current.TenantId, "WebService", current.Id, session, cancellationToken))
+        if (!await git.AuthorizeAsync(
+            new AuthorizeGitResourceMutationRequest(
+                TenantId: current.TenantId,
+                Kind: "WebService",
+                ResourceId: current.Id),
+            session: session,
+            ct: cancellationToken))
             return new WebServiceUpdateConflict(current.Id, WebServiceUpdateConflictReason.GitOwnedConfiguration);
         var registration = await fenceRegisteredResource(
-            current.TenantId, WebServiceResourceDeployment.ResourceType, current.Id, session, cancellationToken);
+            new FenceRegisteredResourceRequest(
+                TenantId: current.TenantId,
+                ResourceTypeId: WebServiceResourceDeployment.ResourceType,
+                ResourceId: current.Id),
+            session: session,
+            cancellationToken: cancellationToken);
         if (registration is null)
             return new WebServiceUpdateConflict(current.Id);
         var cascade = await cascadeConnections(
-            current.TenantId, WebServiceResourceDeployment.ResourceType, current.Id, session, cancellationToken);
+            new CascadeConnectionsForResourceDeletionRequest(
+                TenantId: current.TenantId,
+                ResourceType: WebServiceResourceDeployment.ResourceType,
+                ResourceId: current.Id),
+            session: session,
+            cancellationToken: cancellationToken);
         WebServiceUpdateConflict? cascadeConflict = cascade switch
         {
             ResourceConnectionsCascaded => null,

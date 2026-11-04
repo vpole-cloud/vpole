@@ -129,10 +129,11 @@ public sealed class UpdateRedisServiceHandler(
         if (nextSpec.Storage.SizeGb != redis.Spec.Storage.SizeGb)
             return new RedisStorageResizeUnsupported(redis.Id);
         var currentComputeResult = await loadDeploymentCompute(
-            redis.TenantId,
-            RedisResourceDeployment.ResourceType,
-            redis.Id,
-            cancellationToken);
+            new LoadCurrentResourceDeploymentComputeRequest(
+                TenantId: redis.TenantId,
+                ResourceType: RedisResourceDeployment.ResourceType,
+                ResourceId: redis.Id),
+            cancellationToken: cancellationToken);
         if (currentComputeResult is LoadCurrentResourceDeploymentComputeError currentComputeError)
         {
             return currentComputeError;
@@ -170,46 +171,47 @@ public sealed class UpdateRedisServiceHandler(
         return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             RedisQuotaInput,
             UpdateRedisServiceOutcome>(
-            redis.TenantId,
-            RedisQuotaResourceKey.Create(redis.Id),
-            new UpdateQuotaMutation<RedisQuotaInput>(
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.RedisServices.Application.Common.RedisQuotaInput, global::Pole.Features.RedisServices.Application.Endpoints.UpdateRedisServiceOutcome>(
+                TenantId: redis.TenantId,
+                ResourceKey: RedisQuotaResourceKey.Create(redis.Id),
+                Mutation: new UpdateQuotaMutation<RedisQuotaInput>(
                 currentQuotaInput,
                 nextQuotaInput),
-            quotaError => quotaError,
-            async (transaction, transactionCancellationToken) =>
-            {
-                var updatedRedis = redis.UpdateDesiredState(
-                    nextSpec,
-                    request.Body.Tags);
-                var persistenceResult = await persistUpdatedRedis(
-                    transaction.Session,
-                    redis,
-                    updatedRedis,
-                    transactionCancellationToken);
-                if (persistenceResult is RedisUpdateConflict persistenceError)
+                QuotaError: quotaError => quotaError,
+                MutationCallback: async (transaction, transactionCancellationToken) =>
                 {
-                    return transaction.Abort(persistenceError);
-                }
+                    var updatedRedis = redis.UpdateDesiredState(
+                        nextSpec,
+                        request.Body.Tags);
+                    var persistenceResult = await persistUpdatedRedis(
+                        transaction.Session,
+                        redis,
+                        updatedRedis,
+                        transactionCancellationToken);
+                    if (persistenceResult is RedisUpdateConflict persistenceError)
+                    {
+                        return transaction.Abort(persistenceError);
+                    }
 
-                var deploymentResult = await requestDeploymentApply(
-                    new ResourceDeploymentMutationRequest(
-                        redis.TenantId,
-                        RedisResourceDeployment.ResourceType,
-                        redis.Id,
-                        currentCompute.Compute.Profile,
-                        replacementCompute?.ToResourceDeploymentConfiguration()),
-                    transaction.Session,
-                    transactionCancellationToken);
-                if (deploymentResult is ResourceDeploymentMutationError deploymentError)
-                {
-                    return transaction.Abort(deploymentError);
-                }
-                var deployment = (PlacementSummaryDto)deploymentResult.Value;
+                    var deploymentResult = await requestDeploymentApply(
+                        new ResourceDeploymentMutationRequest(
+                            redis.TenantId,
+                            RedisResourceDeployment.ResourceType,
+                            redis.Id,
+                            currentCompute.Compute.Profile,
+                            replacementCompute?.ToResourceDeploymentConfiguration()),
+                        transaction.Session,
+                        transactionCancellationToken);
+                    if (deploymentResult is ResourceDeploymentMutationError deploymentError)
+                    {
+                        return transaction.Abort(deploymentError);
+                    }
+                    var deployment = (PlacementSummaryDto)deploymentResult.Value;
 
-                return transaction.Commit(new UpdateRedisServiceOutcome(
-                    new UpdateRedisServiceResponse(redis.Id, deployment)));
-            },
-            cancellationToken);
+                    return transaction.Commit(new UpdateRedisServiceOutcome(
+                        new UpdateRedisServiceResponse(redis.Id, deployment)));
+                }),
+            cancellationToken: cancellationToken);
     }
 }
 

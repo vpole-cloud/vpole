@@ -363,11 +363,7 @@ internal static class StorageMetricFixtures
     internal static async Task<StorageObservationContext> SeedAsync(MongoReplicaSetFixture fixture)
     {
         var id = TestData.DefaultDeploymentTargetId;
-        await fixture.Database.GetCollection<BsonDocument>("DeploymentTargets").InsertOneAsync(new BsonDocument
-        {
-            { "_id", ObjectId.Parse(id) }, { "Enabled", true }, { "DeletionRequestedAtUtc", BsonNull.Value },
-            { "Connection", new BsonDocument("Version", 1L) }, { "ObservationFence", 0L }
-        });
+        await fixture.DbContext.DeploymentTargets.InsertOneAsync(TestData.SeedDeploymentTarget(id));
         var context = new StorageObservationContext(id, 1);
         await Store(fixture)
             .PutDemandAsync(

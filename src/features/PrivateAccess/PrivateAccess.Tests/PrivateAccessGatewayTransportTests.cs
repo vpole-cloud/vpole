@@ -487,19 +487,17 @@ public sealed class PrivateAccessGatewayTransportTests
         private long epoch;
 
         public Task<ClaimPrivateAccessBrokerOwnerOutcome> ClaimAsync(
-            PrivateAccessGatewayIdentity gateway,
-            string candidateId,
-            string candidateOrigin,
+            ClaimPrivateAccessBrokerOwnerRequest request,
             CancellationToken cancellationToken)
         {
             lock (owners)
             {
-                if (candidateId != instanceId || candidateOrigin != origin)
+                if (request.InstanceId != instanceId || request.InternalOrigin != origin)
                     return Task.FromResult<ClaimPrivateAccessBrokerOwnerOutcome>(
                         new PrivateAccessBrokerOwnerBusy());
-                var lease = new PrivateAccessBrokerOwnerLease(gateway, instanceId,
+                var lease = new PrivateAccessBrokerOwnerLease(request.Gateway, instanceId,
                     origin, Interlocked.Increment(ref epoch), DateTime.UtcNow.AddSeconds(10));
-                owners[(gateway.TenantId, gateway.DeploymentTargetId)] = lease;
+                owners[(request.Gateway.TenantId, request.Gateway.DeploymentTargetId)] = lease;
                 return Task.FromResult<ClaimPrivateAccessBrokerOwnerOutcome>(lease);
             }
         }
@@ -559,18 +557,16 @@ public sealed class PrivateAccessGatewayTransportTests
         }
 
         public Task<ClaimPrivateAccessBrokerOwnerOutcome> ClaimAsync(
-            PrivateAccessGatewayIdentity gateway,
-            string instanceId,
-            string origin,
+            ClaimPrivateAccessBrokerOwnerRequest request,
             CancellationToken cancellationToken)
         {
             lock (this)
             {
                 if (owner is { } current && current.ExpiresAtUtc > DateTime.UtcNow &&
-                    current.InstanceId != instanceId)
+                    current.InstanceId != request.InstanceId)
                     return Task.FromResult<ClaimPrivateAccessBrokerOwnerOutcome>(
                         new PrivateAccessBrokerOwnerBusy());
-                owner = new PrivateAccessBrokerOwnerLease(gateway, instanceId, origin,
+                owner = new PrivateAccessBrokerOwnerLease(request.Gateway, request.InstanceId, request.InternalOrigin,
                     ++epoch, DateTime.UtcNow.AddSeconds(10));
                 return Task.FromResult<ClaimPrivateAccessBrokerOwnerOutcome>(owner);
             }

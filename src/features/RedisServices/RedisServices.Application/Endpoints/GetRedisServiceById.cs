@@ -68,10 +68,11 @@ public sealed class GetRedisServiceByIdHandler(
             return new RedisServiceNotFound(request.Id);
 
         var placement = await loadDeployment(
-            redis.TenantId,
-            RedisResourceDeployment.ResourceType,
-            redis.Id,
-            cancellationToken);
+            new LoadResourceDeploymentRequest(
+                TenantId: redis.TenantId,
+                ResourceType: RedisResourceDeployment.ResourceType,
+                ResourceId: redis.Id),
+            cancellationToken: cancellationToken);
         return redis.ToDto(placement);
     }
 }

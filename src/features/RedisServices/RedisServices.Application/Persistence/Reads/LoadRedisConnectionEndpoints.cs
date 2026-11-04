@@ -31,14 +31,13 @@ internal sealed class MongoLoadRedisConnectionEndpoints(IMongoCollection<Redis> 
     }
 
     public async Task<LoadResourceConnectionEndpointsOutcome> LoadAsync(
-        string tenantId,
-        string resourceId,
+        LoadResourceConnectionDestinationRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         if (!session.IsInTransaction)
             throw new InvalidOperationException("Connection endpoint lookup requires a transaction.");
-        var resource = await services.Find(session, RedisFilters.ById(tenantId, resourceId))
+        var resource = await services.Find(session, RedisFilters.ById(request.TenantId, request.ResourceId))
             .FirstOrDefaultAsync(cancellationToken);
         if (resource is null)
             return new ResourceConnectionDestinationMissing();

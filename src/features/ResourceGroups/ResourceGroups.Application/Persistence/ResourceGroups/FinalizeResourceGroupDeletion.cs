@@ -67,11 +67,12 @@ internal sealed class MongoFinalizeResourceGroupDeletion(
                 return transaction.Commit(Unit.Value);
 
             var deploymentGuard = await ensureNoUnfinishedDeployments(
-                tenantId,
-                resourceGroupId,
-                isolationScopeId,
-                transaction.Session,
-                ct);
+                new EnsureNoUnfinishedIsolationScopeDeploymentsRequest(
+                    TenantId: tenantId,
+                    ResourceGroupId: resourceGroupId,
+                    IsolationScopeId: isolationScopeId),
+                session: transaction.Session,
+                cancellationToken: ct);
             if (deploymentGuard is IsolationScopeHasUnfinishedDeployments)
                 return transaction.Commit(Unit.Value);
 

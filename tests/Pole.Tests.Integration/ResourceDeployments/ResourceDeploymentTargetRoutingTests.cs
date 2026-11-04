@@ -128,15 +128,15 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             Services.GetRequiredService<LoadResourcePlacement>(),
             _ => (adapter, ResourcePlacementCapability.SingleTarget),
             (id, ct) => LookupTarget(id, ct, readiness, targetEnabled),
-            (tenantId, cellId, targetId, kubernetesNamespace, ct) =>
+(request, ct) =>
             {
                 baselineCalls++;
                 return Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
                     targetConnectionUnavailable
-                        ? new RuntimeCellIngressBaselineTargetConnectionUnavailable(cellId)
+                        ? new RuntimeCellIngressBaselineTargetConnectionUnavailable(request.RuntimeCellId)
                         : baselineReady
                             ? new RuntimeCellIngressBaselineReady()
-                            : new RuntimeCellIngressBaselinePolicyUnavailable(cellId));
+                            : new RuntimeCellIngressBaselinePolicyUnavailable(request.RuntimeCellId));
             },
             metrics,
             NullLogger<ResourceDeploymentReconciler>.Instance);
@@ -239,7 +239,7 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             Services.GetRequiredService<LoadResourcePlacement>(),
             _ => (adapter, ResourcePlacementCapability.SingleTarget),
             (id, ct) => LookupTarget(id, ct),
-            (tenantId, cellId, targetId, kubernetesNamespace, ct) =>
+(request, ct) =>
                 Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
                     new RuntimeCellIngressBaselineReady()),
             metrics,

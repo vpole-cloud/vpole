@@ -87,13 +87,14 @@ internal sealed class MongoDeleteManagedDomainZone(
         }
 
         var unregistered = await applyDeploymentTargetReferenceChanges(
-            new DeploymentTargetReferenceOwner(
+            new ApplyDeploymentTargetReferenceChangesRequest(
+                Owner: new DeploymentTargetReferenceOwner(
                 DeploymentTargetReferenceOwnerTypes.DomainZone,
                 zone.Id),
-            [],
-            [zone.DeploymentTargetId],
-            session,
-            cancellationToken);
+                AddedDeploymentTargetIds: [],
+                RemovedDeploymentTargetIds: [zone.DeploymentTargetId]),
+            session: session,
+            cancellationToken: cancellationToken);
         if (unregistered is not DeploymentTargetReferencesChanged)
             return new ManagedDomainZoneReferenceRemovalRejected(zone.Id, zone.DeploymentTargetId);
         await outbox(session,

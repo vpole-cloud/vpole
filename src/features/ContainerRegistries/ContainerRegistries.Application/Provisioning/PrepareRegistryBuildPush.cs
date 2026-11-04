@@ -11,13 +11,10 @@ internal sealed class ContainerRegistryBuildPushPreparer(
     HarborOptions options)
 {
     public async Task<PrepareRegistryBuildPushOutcome> InvokeAsync(
-        string tenantId,
-        string initiatedByUserId,
-        string repositoryName,
-        string tag,
+        PrepareRegistryBuildPushRequest request,
         CancellationToken cancellationToken = default)
     {
-        var projectResult = await ensureProject(tenantId, initiatedByUserId, cancellationToken);
+        var projectResult = await ensureProject(request.TenantId, request.InitiatedByUserId, cancellationToken);
         if (projectResult is TenantContainerRegistryProvisioningConflict conflict)
             return new PrepareRegistryBuildPushError(conflict);
         if (projectResult is ContainerRegistryProviderError provider)
@@ -26,10 +23,10 @@ internal sealed class ContainerRegistryBuildPushPreparer(
             return new PrepareRegistryBuildPushError(failed);
         var project = (RegistryProject)projectResult.Value;
         if (project.State is not ReadyRegistryProject)
-            return new PrepareRegistryBuildPushError(new TenantContainerRegistryNotReady(tenantId));
+            return new PrepareRegistryBuildPushError(new TenantContainerRegistryNotReady(request.TenantId));
 
         var credential = await resolveCredential(
-            tenantId,
+            request.TenantId,
             project.Id,
             RegistryCredentialPurpose.BuildPushPull,
             cancellationToken);
@@ -38,7 +35,7 @@ internal sealed class ContainerRegistryBuildPushPreparer(
         var resolved = (ResolvedRegistryCredential)credential.Value;
         return new RegistryBuildAccess(
             project.Id,
-            new RegistryPushTarget(options.RegistryHost, project.Name, repositoryName, tag),
+            new RegistryPushTarget(options.RegistryHost, project.Name, request.RepositoryName, request.Tag),
             RegistryKubernetesSecretNames.ForProject(project.Id),
             resolved.Username,
             resolved.Secret);

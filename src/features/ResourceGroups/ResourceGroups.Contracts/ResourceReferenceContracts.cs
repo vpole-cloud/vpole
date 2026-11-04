@@ -17,9 +17,12 @@ public union AdmitResourceScopeReferenceOutcome(
     ResourceScopeReferenceUnavailable);
 
 public delegate Task<AdmitResourceScopeReferenceOutcome> AdmitResourceScopeReference(
-    string tenantId,
-    string resourceGroupId,
-    string isolationScopeId,
-    ResourceScopeConsumerReference? consumer,
+    AdmitResourceScopeReferenceRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
+
+public sealed record AdmitResourceScopeReferenceRequest(
+    string TenantId,
+    string ResourceGroupId,
+    string IsolationScopeId,
+    ResourceScopeConsumerReference? Consumer);

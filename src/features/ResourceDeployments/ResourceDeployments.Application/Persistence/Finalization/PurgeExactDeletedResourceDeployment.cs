@@ -8,10 +8,7 @@ internal sealed class MongoPurgeExactDeletedResourceDeployment(
     IMongoCollection<ResourceDeployment> resourceDeployments)
 {
     public async Task<PurgeResourceDeploymentsOutcome> InvokeAsync(
-        string tenantId,
-        ResourceTypeId resourceType,
-        string resourceId,
-        string resourceDeploymentId,
+        PurgeExactDeletedResourceDeploymentRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
@@ -22,27 +19,27 @@ internal sealed class MongoPurgeExactDeletedResourceDeployment(
             .Find(
                 session,
                 ResourceDeploymentFilters.ForExactDeployment(
-                    tenantId,
-                    resourceType,
-                    resourceId,
-                    resourceDeploymentId))
+                    request.TenantId,
+                    request.ResourceType,
+                    request.ResourceId,
+                    request.ResourceDeploymentId))
             .FirstOrDefaultAsync(cancellationToken);
         if (deployment is null || deployment.State is not DeletedResourceDeploymentState)
         {
-            return new ResourceDeploymentFinalizationConflict(resourceId, resourceDeploymentId);
+            return new ResourceDeploymentFinalizationConflict(request.ResourceId, request.ResourceDeploymentId);
         }
 
         var deletion = await resourceDeployments.DeleteManyAsync(
             session,
             ResourceDeploymentFilters.ForExactDeploymentAtRevision(
-                tenantId,
-                resourceType,
-                resourceId,
-                resourceDeploymentId,
+                request.TenantId,
+                request.ResourceType,
+                request.ResourceId,
+                request.ResourceDeploymentId,
                 deployment.Revision),
             cancellationToken: cancellationToken);
         return deletion.DeletedCount == 1
             ? new ResourceDeploymentsPurged()
-            : new ResourceDeploymentFinalizationConflict(resourceId, resourceDeploymentId);
+            : new ResourceDeploymentFinalizationConflict(request.ResourceId, request.ResourceDeploymentId);
     }
 }

@@ -33,6 +33,21 @@ public sealed class SecretValueContractTests
     }
 
     [Fact]
+    public void Preparation_request_diagnostics_redact_values_even_when_the_dictionary_prints_them()
+    {
+        var request = new PrepareManagedSecretRequest(
+            "tenant", "secret", new("pole/postgresql", "cluster"), "credentials", 1,
+            new DiagnosticValues { ["password"] = "synthetic-sensitive-value" }, ManagedSecretKubernetesType.BasicAuthentication);
+        Assert.DoesNotContain("synthetic-sensitive-value", request.ToString());
+        Assert.Contains("[REDACTED]", request.ToString());
+    }
+
+    private sealed class DiagnosticValues : Dictionary<string, string>
+    {
+        public override string ToString() => this["password"];
+    }
+
+    [Fact]
     public void Value_budget_counts_UTF8_bytes_instead_of_characters()
     {
         var atLimit = new string('é', 32768);

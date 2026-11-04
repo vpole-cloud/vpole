@@ -12,12 +12,10 @@ internal sealed class EnvelopeReadManagedSecretKey(
     IEnvelopeEncryptionService encryption)
 {
     public async Task<ReadManagedSecretKeyOutcome> InvokeAsync(
-        string tenantId,
-        ManagedSecretOwner owner,
-        string key,
+        ReadManagedSecretKeyRequest request,
         CancellationToken ct)
     {
-        var secret = await loadSecret(tenantId, owner, ct);
+        var secret = await loadSecret(request.TenantId, request.Owner, ct);
         if (secret is null)
             return new ManagedSecretUnavailable();
         var version = await loadVersion(secret.TenantId, secret.Id, secret.CurrentVersion, ct);
@@ -30,7 +28,7 @@ internal sealed class EnvelopeReadManagedSecretKey(
         try
         {
             using var document = JsonDocument.Parse(decrypted);
-            return document.RootElement.TryGetProperty(key, out var value)
+            return document.RootElement.TryGetProperty(request.Key, out var value)
                 ? new ManagedSecretKey(value.GetString()!)
                 : new ManagedSecretUnavailable();
         }

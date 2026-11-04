@@ -168,14 +168,15 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             {
                 var registration = await Services.GetRequiredService<IResourceRegistrar>()
                     .RegisterAsync(
-                        webService.TenantId,
-                        group.Id,
-                        new ResourceRegistrationDescriptor(
+                    new RegisterResourceRequest(
+                        TenantId: webService.TenantId,
+                        ResourceGroupId: group.Id,
+                        Resource: new ResourceRegistrationDescriptor(
                             WebServiceResourceDeployment.ResourceType,
                             webService.Id,
-                            webService.Name),
-                        transaction.Session,
-                        cancellationToken);
+                            webService.Name)),
+                    session: transaction.Session,
+                    cancellationToken: cancellationToken);
                 var registered = Assert.IsType<RegisteredResource>(registration.Value);
                 await Fixture.Database.WebServices().InsertOneAsync(
                     transaction.Session,
@@ -254,9 +255,7 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
     private sealed class FixedSetQueryService(IReadOnlyList<PlacementSummaryDto> deployments)
     {
         public Task<IReadOnlyList<PlacementSummaryDto>> LoadAsync(
-            string tenantId,
-            ResourceTypeId resourceType,
-            string resourceId,
+            LoadResourceDeploymentSetRequest request,
             CancellationToken cancellationToken = default) => Task.FromResult(deployments);
     }
 }

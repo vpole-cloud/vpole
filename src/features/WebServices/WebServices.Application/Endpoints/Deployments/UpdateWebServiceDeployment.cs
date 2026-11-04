@@ -90,10 +90,11 @@ public sealed class UpdateWebServiceDeploymentHandler(
                 new WebServiceNotFound(request.Id)));
 
         var deployments = await loadResourceDeploymentSet(
-            request.TenantId,
-            WebServiceResourceDeployment.ResourceType,
-            request.Id,
-            cancellationToken);
+            new LoadResourceDeploymentSetRequest(
+                TenantId: request.TenantId,
+                ResourceType: WebServiceResourceDeployment.ResourceType,
+                ResourceId: request.Id),
+            cancellationToken: cancellationToken);
         var current = deployments.SingleOrDefault(deployment =>
             deployment.DeploymentId == request.DeploymentId);
         if (current is null)
@@ -137,77 +138,78 @@ public sealed class UpdateWebServiceDeploymentHandler(
         return await quotaAdmission.ExecuteOutcomeAsync<
             WebServiceQuotaInput,
             UpdateWebServiceDeploymentOutcome>(
-            webService.TenantId,
-            WebServiceQuotaResourceKey.Create(webService.Id),
-            new UpdateQuotaMutation<WebServiceQuotaInput>(currentQuota, nextQuota),
-            quotaError => Error(quotaError),
-            async (transaction, token) =>
-            {
-                var updated = webService.AdvancePlacementDesiredState();
-                var result = await requestExactResourceDeploymentApply(
-                    WebServiceDeploymentWorkflow.ToExactApplyRequest(
-                        webService.TenantId,
-                        webService.Id,
-                        current,
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.WebServices.Application.Common.WebServiceQuotaInput, global::Pole.Features.WebServices.Application.Endpoints.Deployments.UpdateWebServiceDeploymentOutcome>(
+                TenantId: webService.TenantId,
+                ResourceKey: WebServiceQuotaResourceKey.Create(webService.Id),
+                Mutation: new UpdateQuotaMutation<WebServiceQuotaInput>(currentQuota, nextQuota),
+                QuotaError: quotaError => Error(quotaError),
+                MutationCallback: async (transaction, token) =>
+                {
+                    var updated = webService.AdvancePlacementDesiredState();
+                    var result = await requestExactResourceDeploymentApply(
+                        WebServiceDeploymentWorkflow.ToExactApplyRequest(
+                            webService.TenantId,
+                            webService.Id,
+                            current,
+                            updated.ActiveRevision,
+                            replacement,
+                            fixedReplicas: request.Body.FixedReplicas),
+                        transaction.Session,
+                        token);
+                    if (result is ResourceDeploymentMutationError failure)
+                        return transaction.Abort(Error(
+                            new UpdateWebServiceDeploymentError(failure)));
+                    var changed = (PlacementSummaryDto)result.Value;
+
+                    var advanced = await advanceResourceDeploymentRevision(
+                        new ResourceDeploymentResourceRevisionRequest(
+                            webService.TenantId,
+                            WebServiceResourceDeployment.ResourceType,
+                            webService.Id,
+                            updated.ActiveRevision),
+                        transaction.Session,
+                        token);
+                    if (advanced is AdvanceResourceDeploymentRevisionError revisionFailure)
+                        return transaction.Abort(Error(
+                            new UpdateWebServiceDeploymentError(revisionFailure)));
+                    var snapshots = ((MutatedResourceDeployments)advanced.Value).Placements;
+
+                    var saved = await persistWebService(
+                        transaction.Session,
+                        webService,
+                        updated,
+                        updated.ToUpdatedEvent(
+                            WebServiceDeploymentWorkflow.ToEventDeployments(snapshots)),
+                        token);
+                    if (saved is WebServiceUpdateConflict persistenceError)
+                        return transaction.Abort(Error(
+                            new UpdateWebServiceDeploymentError(persistenceError)));
+                    if (saved is WebServiceConnectionConflict connectionConflict)
+                        return transaction.Abort(Error(
+                            new UpdateWebServiceDeploymentError(connectionConflict)));
+                    if (saved is WebServiceDependencyUnavailable dependencyUnavailable)
+                        return transaction.Abort(Error(
+                            new UpdateWebServiceDeploymentError(dependencyUnavailable)));
+
+                    var release = WebServiceReleaseFactory.CreatePending(
+                        updated.TenantId,
+                        updated.Id,
                         updated.ActiveRevision,
-                        replacement,
-                        fixedReplicas: request.Body.FixedReplicas),
-                    transaction.Session,
-                    token);
-                if (result is ResourceDeploymentMutationError failure)
-                    return transaction.Abort(Error(
-                        new UpdateWebServiceDeploymentError(failure)));
-                var changed = (PlacementSummaryDto)result.Value;
-
-                var advanced = await advanceResourceDeploymentRevision(
-                    new ResourceDeploymentResourceRevisionRequest(
-                        webService.TenantId,
-                        WebServiceResourceDeployment.ResourceType,
-                        webService.Id,
-                        updated.ActiveRevision),
-                    transaction.Session,
-                    token);
-                if (advanced is AdvanceResourceDeploymentRevisionError revisionFailure)
-                    return transaction.Abort(Error(
-                        new UpdateWebServiceDeploymentError(revisionFailure)));
-                var snapshots = ((MutatedResourceDeployments)advanced.Value).Placements;
-
-                var saved = await persistWebService(
-                    transaction.Session,
-                    webService,
-                    updated,
-                    updated.ToUpdatedEvent(
-                        WebServiceDeploymentWorkflow.ToEventDeployments(snapshots)),
-                    token);
-                if (saved is WebServiceUpdateConflict persistenceError)
-                    return transaction.Abort(Error(
-                        new UpdateWebServiceDeploymentError(persistenceError)));
-                if (saved is WebServiceConnectionConflict connectionConflict)
-                    return transaction.Abort(Error(
-                        new UpdateWebServiceDeploymentError(connectionConflict)));
-                if (saved is WebServiceDependencyUnavailable dependencyUnavailable)
-                    return transaction.Abort(Error(
-                        new UpdateWebServiceDeploymentError(dependencyUnavailable)));
-
-                var release = WebServiceReleaseFactory.CreatePending(
-                    updated.TenantId,
-                    updated.Id,
-                    updated.ActiveRevision,
-                    WebServiceReleaseAction.UpdateDeployment,
-                    null,
-                    null,
-                    updated.Spec,
-                    WebServiceDeploymentWorkflow.ToReleaseDeployments(snapshots),
-                    null,
-                    null,
-                    new WebServiceReleaseFactory.CreateOptions(
-                        ObjectId.GenerateNewId().ToString(),
-                        timeProvider.GetUtcNow().UtcDateTime),
-                    updated.Exposure);
-                await persistRelease(transaction.Session, release, token);
-                return transaction.Commit(new UpdateWebServiceDeploymentOutcome(changed));
-            },
-            cancellationToken);
+                        WebServiceReleaseAction.UpdateDeployment,
+                        null,
+                        null,
+                        updated.Spec,
+                        WebServiceDeploymentWorkflow.ToReleaseDeployments(snapshots),
+                        null,
+                        null,
+                        new WebServiceReleaseFactory.CreateOptions(
+                            ObjectId.GenerateNewId().ToString(),
+                            timeProvider.GetUtcNow().UtcDateTime),
+                        updated.Exposure);
+                    await persistRelease(transaction.Session, release, token);
+                    return transaction.Commit(new UpdateWebServiceDeploymentOutcome(changed));
+                }),
+            cancellationToken: cancellationToken);
     }
 
     private async Task<ReplacementComputeOutcome>

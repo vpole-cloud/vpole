@@ -61,9 +61,10 @@ type GetPostgresClusterConnectionStringHandler(
                 | Some cluster ->
                     let! placement =
                         loadDeployment.Invoke(
-                            cluster.TenantId,
-                            PostgresResourceDeployment.ResourceType,
-                            cluster.Id,
+                            LoadResourceDeploymentRequest(
+                                cluster.TenantId,
+                                PostgresResourceDeployment.ResourceType,
+                                cluster.Id),
                             cancellationToken)
 
                     if isNull placement ||

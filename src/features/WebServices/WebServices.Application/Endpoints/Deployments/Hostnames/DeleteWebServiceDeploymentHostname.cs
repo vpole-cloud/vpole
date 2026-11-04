@@ -90,11 +90,12 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
         }
 
         var deployment = await loadExactResourceDeployment(
-            request.TenantId,
-            WebServiceResourceDeployment.ResourceType,
-            request.Id,
-            request.DeploymentId,
-            cancellationToken);
+            new LoadExactResourceDeploymentRequest(
+                TenantId: request.TenantId,
+                ResourceType: WebServiceResourceDeployment.ResourceType,
+                ResourceId: request.Id,
+                DeploymentId: request.DeploymentId),
+            cancellationToken: cancellationToken);
         if (deployment is null)
         {
             return Error(new WebServiceDeploymentMutationStateError(
@@ -134,12 +135,13 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
             return Abort(transaction, new WebServiceDeploymentHostnameError(deletedError));
 
         var currentBindings = await loadHostnameBindingsForDeploymentInTransaction(
-            request.TenantId,
-            WebServiceResourceDeployment.ResourceType,
-            request.Id,
-            request.DeploymentId,
-            transaction.Session,
-            cancellationToken);
+            new LoadHostnameBindingsForDeploymentInTransactionRequest(
+                TenantId: request.TenantId,
+                ResourceType: WebServiceResourceDeployment.ResourceType,
+                ResourceId: request.Id,
+                ResourceDeploymentId: request.DeploymentId),
+            session: transaction.Session,
+            cancellationToken: cancellationToken);
         var updated = webService.AdvancePlacementDesiredState();
         var applied = await requestExactResourceDeploymentApply(
             WebServiceDeploymentWorkflow.ToExactApplyRequest(

@@ -8,8 +8,7 @@ internal sealed class MongoAdmitSourceBuildWebService(
     IMongoCollection<WebService> webServices)
 {
     public async Task<AdmitSourceBuildWebServiceOutcome> InvokeAsync(
-        string tenantId,
-        string webServiceId,
+        AdmitSourceBuildWebServiceRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
@@ -20,11 +19,11 @@ internal sealed class MongoAdmitSourceBuildWebService(
         // the persistence fence; ActiveRevision and the desired deployment stay unchanged.
         var result = await webServices.UpdateOneAsync(
             session,
-            WebServiceFilters.InLifecycle<ActiveWebServiceLifecycle>(tenantId, webServiceId),
+            WebServiceFilters.InLifecycle<ActiveWebServiceLifecycle>(request.TenantId, request.WebServiceId),
             Builders<WebService>.Update.Inc(item => item.Revision, 1),
             cancellationToken: cancellationToken);
         return result.ModifiedCount == 1
             ? new SourceBuildWebServiceAdmitted()
-            : new SourceBuildWebServiceNotFound(webServiceId);
+            : new SourceBuildWebServiceNotFound(request.WebServiceId);
     }
 }

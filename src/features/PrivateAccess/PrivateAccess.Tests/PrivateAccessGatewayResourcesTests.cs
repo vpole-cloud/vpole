@@ -36,7 +36,7 @@ public sealed class PrivateAccessGatewayResourcesTests
         var resources = new PrivateAccessGatewayResources(
             new FixedKubernetesProvider(client),
             (id, _) => Task.FromResult<LookupDeploymentTargetOutcome>(Target(id)),
-            (_, _, _, _, _) => Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
+(request, _) => Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
                 new RuntimeCellIngressBaselineReady()));
         var settings = new PrivateAccessGatewaySettings("pole/gateway:1",
             new Uri("https://broker.example:9444"), [IPAddress.Parse("192.0.2.8")]);
@@ -78,7 +78,7 @@ public sealed class PrivateAccessGatewayResourcesTests
         var resources = new PrivateAccessGatewayResources(
             new FixedKubernetesProvider(client),
             (id, _) => Task.FromResult<LookupDeploymentTargetOutcome>(Target(id)),
-            (_, _, _, _, _) => Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
+(request, _) => Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
                 new RuntimeCellIngressBaselineReady()));
         using var key = RSA.Create(2048);
         var request = new CertificateRequest("CN=pole-access-gateway", key,
@@ -109,7 +109,7 @@ public sealed class PrivateAccessGatewayResourcesTests
         var resources = new PrivateAccessGatewayResources(
             new FixedKubernetesProvider(client),
             (id, _) => Task.FromResult<LookupDeploymentTargetOutcome>(Target(id)),
-            (_, _, _, _, _) => Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
+(request, _) => Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
                 new RuntimeCellIngressBaselineReady()));
 
         var outcome = await resources.EnsureAsync(identity, [],

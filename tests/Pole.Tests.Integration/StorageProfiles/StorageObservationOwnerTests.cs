@@ -262,11 +262,7 @@ public sealed class StorageObservationOwnerTests(MongoReplicaSetFixture fixture)
     private async Task<StorageObservationContext> SeedAsync()
     {
         var id = TestData.DefaultDeploymentTargetId;
-        await fixture.Database.GetCollection<BsonDocument>("DeploymentTargets").InsertOneAsync(new BsonDocument
-        {
-            { "_id", ObjectId.Parse(id) }, { "Enabled", true }, { "DeletionRequestedAtUtc", BsonNull.Value },
-            { "Connection", new BsonDocument("Version", 1L) }, { "ObservationFence", 0L }
-        });
+        await fixture.DbContext.DeploymentTargets.InsertOneAsync(TestData.SeedDeploymentTarget(id));
         var context = new StorageObservationContext(id, 1);
         await Store().PutDemandAsync(new(new(id, "subscription", "connection", "session"),
                 DateTimeOffset.UtcNow.AddMinutes(20)),

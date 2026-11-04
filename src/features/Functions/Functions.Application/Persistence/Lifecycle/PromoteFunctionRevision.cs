@@ -63,98 +63,99 @@ internal sealed class MongoPromoteFunctionRevision(
         var promotion = await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             FunctionQuotaAllocation,
             FunctionRevisionLifecycleOutcome>(
-            tenantId,
-            FunctionAppQuotaResourceKey.Create(functionAppId),
-            new UpdateQuotaMutation<FunctionQuotaAllocation>(state.App.AdmittedQuota, targetAllocation),
-            quotaError => quotaError,
-            async (transaction, transactionCancellationToken) =>
-            {
-                var now = timeProvider.GetUtcNow();
-                if (state.App.ActiveRevisionId is not null)
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.Functions.Domain.FunctionQuotaAllocation, global::Pole.Features.Functions.Application.Common.FunctionRevisionLifecycleOutcome>(
+                TenantId: tenantId,
+                ResourceKey: FunctionAppQuotaResourceKey.Create(functionAppId),
+                Mutation: new UpdateQuotaMutation<FunctionQuotaAllocation>(state.App.AdmittedQuota, targetAllocation),
+                QuotaError: quotaError => quotaError,
+                MutationCallback: async (transaction, transactionCancellationToken) =>
                 {
-                    var drainingRevision = state.ActiveRevision!.Drain();
-                    var previousUpdate = await functionRevisions.UpdateOneAsync(
+                    var now = timeProvider.GetUtcNow();
+                    if (state.App.ActiveRevisionId is not null)
+                    {
+                        var drainingRevision = state.ActiveRevision!.Drain();
+                        var previousUpdate = await functionRevisions.UpdateOneAsync(
+                            transaction.Session,
+                            FunctionRevisionLifecycleFilters.RevisionInStatus<ActiveFunctionRevisionStatus>(
+                                tenantId,
+                                functionAppId,
+                                state.App.ActiveRevisionId),
+                            Builders<FunctionRevision>.Update
+                                .Set(revision => revision.Status, drainingRevision.Status),
+                            cancellationToken: transactionCancellationToken);
+                        if (previousUpdate.MatchedCount != 1)
+                        {
+                            return transaction.Abort(new FunctionRevisionConcurrencyConflict(
+                                functionAppId,
+                                state.App.ActiveRevisionId));
+                        }
+                    }
+
+                    // Retire the old active revision first. The partial unique index permits only
+                    // one Active revision per app, including inside a Mongo transaction.
+                    var activeRevision = state.Revision.Activate();
+                    var revisionUpdate = await functionRevisions.UpdateOneAsync(
                         transaction.Session,
-                        FunctionRevisionLifecycleFilters.RevisionInStatus<ActiveFunctionRevisionStatus>(
+                        FunctionRevisionLifecycleFilters.RevisionInStatus<ReadyFunctionRevisionStatus>(
                             tenantId,
                             functionAppId,
-                            state.App.ActiveRevisionId),
+                            revisionId),
                         Builders<FunctionRevision>.Update
-                            .Set(revision => revision.Status, drainingRevision.Status),
+                            .Set(revision => revision.Status, activeRevision.Status),
                         cancellationToken: transactionCancellationToken);
-                    if (previousUpdate.MatchedCount != 1)
+                    if (revisionUpdate.MatchedCount != 1)
                     {
                         return transaction.Abort(new FunctionRevisionConcurrencyConflict(
                             functionAppId,
-                            state.App.ActiveRevisionId));
+                            revisionId));
                     }
-                }
 
-                // Retire the old active revision first. The partial unique index permits only
-                // one Active revision per app, including inside a Mongo transaction.
-                var activeRevision = state.Revision.Activate();
-                var revisionUpdate = await functionRevisions.UpdateOneAsync(
-                    transaction.Session,
-                    FunctionRevisionLifecycleFilters.RevisionInStatus<ReadyFunctionRevisionStatus>(
-                        tenantId,
-                        functionAppId,
-                        revisionId),
-                    Builders<FunctionRevision>.Update
-                        .Set(revision => revision.Status, activeRevision.Status),
-                    cancellationToken: transactionCancellationToken);
-                if (revisionUpdate.MatchedCount != 1)
-                {
-                    return transaction.Abort(new FunctionRevisionConcurrencyConflict(
-                        functionAppId,
-                        revisionId));
-                }
+                    var appUpdate = await functionApps.UpdateOneAsync(
+                        transaction.Session,
+                        FunctionRevisionLifecycleFilters.PendingEnabledApp(
+                            tenantId,
+                            functionAppId,
+                            revisionId),
+                        Builders<FunctionApp>.Update
+                            .Set(app => app.ActiveRevisionId, revisionId)
+                            .Set(app => app.PendingRevisionId, null)
+                            .Set(app => app.Status, FunctionAppStatus.Ready)
+                            .Set(app => app.AdmittedQuota, targetAllocation)
+                            .Set(app => app.UpdatedAtUtc, now),
+                        cancellationToken: transactionCancellationToken);
+                    if (appUpdate.MatchedCount != 1)
+                        return transaction.Abort(new FunctionAppConcurrencyConflict(functionAppId));
 
-                var appUpdate = await functionApps.UpdateOneAsync(
-                    transaction.Session,
-                    FunctionRevisionLifecycleFilters.PendingEnabledApp(
-                        tenantId,
-                        functionAppId,
-                        revisionId),
-                    Builders<FunctionApp>.Update
-                        .Set(app => app.ActiveRevisionId, revisionId)
-                        .Set(app => app.PendingRevisionId, null)
-                        .Set(app => app.Status, FunctionAppStatus.Ready)
-                        .Set(app => app.AdmittedQuota, targetAllocation)
-                        .Set(app => app.UpdatedAtUtc, now),
-                    cancellationToken: transactionCancellationToken);
-                if (appUpdate.MatchedCount != 1)
-                    return transaction.Abort(new FunctionAppConcurrencyConflict(functionAppId));
+                    var routeUpdate = await functionRouteBindings.UpdateOneAsync(
+                        transaction.Session,
+                        FunctionRevisionLifecycleFilters.AvailableRoute(state.App),
+                        Builders<FunctionRouteBinding>.Update
+                            .Set(route => route.HttpRoutes, CreateHttpRoutes(state.Revision))
+                            .Set(route => route.State, FunctionRouteBindingState.Active)
+                            .Set(route => route.ActiveRevisionId, revisionId)
+                            .Set(route => route.ActiveRevisionNumber, state.Revision.RevisionNumber)
+                            .Set(route => route.UpdatedAtUtc, now),
+                        cancellationToken: transactionCancellationToken);
+                    if (routeUpdate.MatchedCount != 1)
+                        return transaction.Abort(new FunctionRouteBindingUnavailable(functionAppId));
 
-                var routeUpdate = await functionRouteBindings.UpdateOneAsync(
-                    transaction.Session,
-                    FunctionRevisionLifecycleFilters.AvailableRoute(state.App),
-                    Builders<FunctionRouteBinding>.Update
-                        .Set(route => route.HttpRoutes, CreateHttpRoutes(state.Revision))
-                        .Set(route => route.State, FunctionRouteBindingState.Active)
-                        .Set(route => route.ActiveRevisionId, revisionId)
-                        .Set(route => route.ActiveRevisionNumber, state.Revision.RevisionNumber)
-                        .Set(route => route.UpdatedAtUtc, now),
-                    cancellationToken: transactionCancellationToken);
-                if (routeUpdate.MatchedCount != 1)
-                    return transaction.Abort(new FunctionRouteBindingUnavailable(functionAppId));
+                    await lifecycleStore.ReconcileTimersAsync(
+                        transaction.Session,
+                        state.App,
+                        state.Revision,
+                        now,
+                        transactionCancellationToken);
 
-                await lifecycleStore.ReconcileTimersAsync(
-                    transaction.Session,
-                    state.App,
-                    state.Revision,
-                    now,
-                    transactionCancellationToken);
-
-                await storeOutboxWrites(
-                    transaction.Session,
-                    [OutboxWrite.Create(
-                        state.Revision.ToPromotedEvent(
-                            state.App,
-                            state.App.ActiveRevisionId))],
-                    transactionCancellationToken);
-                return transaction.Commit(new FunctionRevisionLifecycleCompleted());
-            },
-            cancellationToken);
+                    await storeOutboxWrites(
+                        transaction.Session,
+                        [OutboxWrite.Create(
+                            state.Revision.ToPromotedEvent(
+                                state.App,
+                                state.App.ActiveRevisionId))],
+                        transactionCancellationToken);
+                    return transaction.Commit(new FunctionRevisionLifecycleCompleted());
+                }),
+            cancellationToken: cancellationToken);
         if (promotion is FunctionRevisionLifecycleCompleted)
             return promotion;
 

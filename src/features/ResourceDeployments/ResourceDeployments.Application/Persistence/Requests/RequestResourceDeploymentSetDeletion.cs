@@ -9,7 +9,8 @@ internal sealed class MongoRequestResourceDeploymentSetDeletion(
     IMongoCollection<ResourceDeployment> resourceDeployments,
     StoreOutboxWrites storeOutboxWrites,
     ResourceDeploymentConnectionGuard connectionGuard,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ResourceDeploymentIsolationProjection isolation)
 {
     public async Task<ResourceDeploymentSetMutationOutcome> InvokeAsync(
         ResourceDeploymentSetDeletionRequest request,
@@ -103,6 +104,6 @@ internal sealed class MongoRequestResourceDeploymentSetDeletion(
             cancellationToken);
 
         return new MutatedResourceDeployments(
-            updated.Select(deployment => deployment.ToPlacementSummaryDto()).ToArray());
+            await isolation.ProjectAsync(updated, cancellationToken));
     }
 }

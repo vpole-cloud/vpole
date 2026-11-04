@@ -202,7 +202,7 @@ public sealed class ResourceConnectionPolicyTargetTests
             collection.AddResourceConnectionsFeature();
             collection.AddSingleton<IKubernetesClientProvider>(new ClientProvider(client));
             collection.AddScoped<EnsureRuntimeCellIngressBaseline>(_ =>
-                (tenantId, runtimeCellId, targetId, namespaceName, ct) =>
+(request, ct) =>
                     Task.FromResult(BaselineOutcome));
             collection.AddScoped<LoadResourceConnection>(_ =>
                 (tenantId, connectionId, ct) =>

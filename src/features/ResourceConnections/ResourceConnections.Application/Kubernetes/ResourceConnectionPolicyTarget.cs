@@ -74,11 +74,12 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
         try
         {
             var baseline = await ensureBaseline(
-                connection.TenantId,
-                snapshot.DestinationRuntimeCellId,
-                snapshot.TargetId,
-                snapshot.DestinationNamespace,
-                cancellationToken);
+                new EnsureRuntimeCellIngressBaselineRequest(
+                    TenantId: connection.TenantId,
+                    RuntimeCellId: snapshot.DestinationRuntimeCellId,
+                    DeploymentTargetId: snapshot.TargetId,
+                    KubernetesNamespace: snapshot.DestinationNamespace),
+                cancellationToken: cancellationToken);
             var baselineFailure = BaselineFailure(baseline);
             if (baselineFailure is { } failure)
                 return failure;

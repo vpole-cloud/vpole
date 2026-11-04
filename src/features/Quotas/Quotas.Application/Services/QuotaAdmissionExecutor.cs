@@ -18,21 +18,14 @@ internal sealed class QuotaAdmissionExecutor(
     ILogger<QuotaAdmissionExecutor> logger) : IQuotaAdmissionExecutor
 {
     public async Task<TOutcome> ExecuteOutcomeAsync<TSpec, TOutcome>(
-        string tenantId,
-        QuotaResourceKey resourceKey,
-        QuotaMutation<TSpec> mutation,
-        Func<QuotaExecutionError, TOutcome> quotaError,
-        Func<
-            QuotaAdmissionTransactionContext<TOutcome>,
-            CancellationToken,
-            Task<QuotaAdmissionTransactionDecision<TOutcome>>> mutationCallback,
+        ExecuteQuotaAdmissionRequest<TSpec, TOutcome> request,
         CancellationToken cancellationToken = default)
         where TOutcome : notnull
     {
-        ArgumentNullException.ThrowIfNull(quotaError);
-        ArgumentNullException.ThrowIfNull(mutationCallback);
+        ArgumentNullException.ThrowIfNull(request.QuotaError);
+        ArgumentNullException.ThrowIfNull(request.MutationCallback);
 
-        var delta = CalculateDelta(catalog, mutation);
+        var delta = CalculateDelta(catalog, request.Mutation);
         var positiveDelta = QuotaDelta.PositivePart(delta);
         var negativeDelta = QuotaDelta.NegativePart(delta);
 
@@ -40,9 +33,9 @@ internal sealed class QuotaAdmissionExecutor(
         if (!positiveDelta.IsEmpty)
         {
             var reservationResult = await reserveQuotaReservation(
-                tenantId,
+                request.TenantId,
                 positiveDelta,
-                resourceKey,
+                request.ResourceKey,
                 cancellationToken);
             switch (reservationResult)
             {
@@ -50,9 +43,9 @@ internal sealed class QuotaAdmissionExecutor(
                     reservation = lease;
                     break;
                 case QuotaExceeded error:
-                    return quotaError(new QuotaExecutionError(new QuotaReservationError(error)));
+                    return request.QuotaError(new QuotaExecutionError(new QuotaReservationError(error)));
                 case QuotaReservationConflict error:
-                    return quotaError(new QuotaExecutionError(new QuotaReservationError(error)));
+                    return request.QuotaError(new QuotaExecutionError(new QuotaReservationError(error)));
             }
         }
 
@@ -74,13 +67,13 @@ internal sealed class QuotaAdmissionExecutor(
                             case QuotaReservationCommitted:
                                 break;
                             case QuotaReservationNotFound error:
-                                return transaction.Abort(quotaError(
+                                return transaction.Abort(request.QuotaError(
                                     new QuotaExecutionError(new QuotaReservationCommitError(error))));
                             case QuotaReservationCancelled error:
-                                return transaction.Abort(quotaError(
+                                return transaction.Abort(request.QuotaError(
                                     new QuotaExecutionError(new QuotaReservationCommitError(error))));
                             case QuotaReservationExpired error:
-                                return transaction.Abort(quotaError(
+                                return transaction.Abort(request.QuotaError(
                                     new QuotaExecutionError(new QuotaReservationCommitError(error))));
                         }
                     }
@@ -88,13 +81,13 @@ internal sealed class QuotaAdmissionExecutor(
                     if (!negativeDelta.IsEmpty)
                     {
                         await applyQuotaUsageDelta(
-                            tenantId,
+                            request.TenantId,
                             negativeDelta,
                             transaction.Session,
                             transactionCancellationToken);
                     }
 
-                    var decision = await mutationCallback(
+                    var decision = await request.MutationCallback(
                         new QuotaAdmissionTransactionContext<TOutcome>(transaction.Session),
                         transactionCancellationToken);
                     committed = decision is QuotaAdmissionTransactionCommit<TOutcome>;

@@ -33,9 +33,11 @@ public sealed class RealtimeAccess(
             return false;
         if (admin)
             return await loadTenant(request.TenantId!, cancellationToken) is TenantIdentitySnapshot;
-        return await loadMember(request.TenantId!,
-                principal.FindFirstValue(Claims.UserId)!,
-                cancellationToken: cancellationToken)
+        return await loadMember(
+            new LoadTenantMemberRequest(
+                request.TenantId!,
+                principal.FindFirstValue(Claims.UserId)!),
+            cancellationToken: cancellationToken)
             is TenantMemberSnapshot;
     }
 }

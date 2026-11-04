@@ -18,9 +18,9 @@ public sealed class RealtimeHubTests
         var registry =
             new RealtimeTopicRegistry([new("fake.one", RealtimeScope.Tenant), new("fake.two", RealtimeScope.Tenant)],
                 new());
-        var access = new RealtimeAccess((id, user, _, _) =>
+        var access = new RealtimeAccess((request, _, _) =>
                 Task.FromResult<LoadTenantMemberOutcome>(
-                    new TenantMemberSnapshot(id, user, TenantMembershipRole.Viewer)),
+                    new TenantMemberSnapshot(request.TenantId, request.UserId, TenantMembershipRole.Viewer)),
             (id, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(id, "name")),
             registry);
         var tickets = new MemoryTickets();

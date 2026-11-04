@@ -103,18 +103,24 @@ internal sealed class MongoBeginIsolationScopeDeletion(
             foreach (var guard in referenceGuards)
             {
                 var reference = await guard.EnsureUnreferencedAsync(
-                    tenantId, resourceGroupId, isolationScopeId, transaction.Session, ct);
+                    new EnsureIsolationScopeUnreferencedRequest(
+                        TenantId: tenantId,
+                        ResourceGroupId: resourceGroupId,
+                        IsolationScopeId: isolationScopeId),
+                    session: transaction.Session,
+                    cancellationToken: ct);
                 if (reference is IsolationScopeReferenced referenced)
                     return transaction.Abort(new BeginIsolationScopeDeletionOutcome(
                         new IsolationScopeDeletionError(referenced)));
             }
 
             var deploymentGuard = await ensureNoUnfinishedDeployments(
-                tenantId,
-                resourceGroupId,
-                isolationScopeId,
-                transaction.Session,
-                ct);
+                new EnsureNoUnfinishedIsolationScopeDeploymentsRequest(
+                    TenantId: tenantId,
+                    ResourceGroupId: resourceGroupId,
+                    IsolationScopeId: isolationScopeId),
+                session: transaction.Session,
+                cancellationToken: ct);
             if (deploymentGuard is IsolationScopeHasUnfinishedDeployments)
             {
                 return transaction.Abort(new BeginIsolationScopeDeletionOutcome(

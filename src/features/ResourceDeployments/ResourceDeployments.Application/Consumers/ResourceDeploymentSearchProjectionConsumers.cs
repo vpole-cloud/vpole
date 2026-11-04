@@ -28,10 +28,11 @@ public class ResourceDeploymentSearchProjectionConsumer(
         }
 
         var deployments = await loadResourceDeploymentSet(
-            tenantId,
-            resourceTypeId,
-            resourceId,
-            cancellationToken);
+            new LoadResourceDeploymentSetRequest(
+                TenantId: tenantId,
+                ResourceType: resourceTypeId,
+                ResourceId: resourceId),
+            cancellationToken: cancellationToken);
         var eventDeployment = deployments.FirstOrDefault(deployment =>
             string.Equals(
                 deployment.DeploymentId,

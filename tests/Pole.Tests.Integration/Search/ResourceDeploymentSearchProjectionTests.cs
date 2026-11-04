@@ -215,9 +215,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
         public int LoadCount { get; private set; }
 
         public Task<IReadOnlyList<PlacementSummaryDto>> LoadAsync(
-            string tenantId,
-            ResourceTypeId resourceType,
-            string resourceId,
+            LoadResourceDeploymentSetRequest request,
             CancellationToken cancellationToken = default)
         {
             LoadCount++;

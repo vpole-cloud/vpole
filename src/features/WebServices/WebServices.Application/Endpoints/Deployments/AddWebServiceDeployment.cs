@@ -159,10 +159,11 @@ public sealed class AddWebServiceDeploymentHandler(
         }
 
         var deployments = await loadResourceDeploymentSet(
-            request.TenantId,
-            WebServiceResourceDeployment.ResourceType,
-            request.Id,
-            cancellationToken);
+            new LoadResourceDeploymentSetRequest(
+                TenantId: request.TenantId,
+                ResourceType: WebServiceResourceDeployment.ResourceType,
+                ResourceId: request.Id),
+            cancellationToken: cancellationToken);
         var deploymentTargetId = request.Body.DeploymentTargetId!.Trim();
         if (deployments.Any(deployment => string.Equals(
                 deployment.DeploymentTargetId,
@@ -274,18 +275,19 @@ public sealed class AddWebServiceDeploymentHandler(
         return quotaAdmissionExecutor.ExecuteOutcomeAsync<
             WebServiceQuotaInput,
             AddWebServiceDeploymentOutcome>(
-            state.WebService.TenantId,
-            WebServiceQuotaResourceKey.Create(state.WebService.Id),
-            new UpdateQuotaMutation<WebServiceQuotaInput>(currentQuota, nextQuota),
-            quotaError => Error(
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.WebServices.Application.Common.WebServiceQuotaInput, global::Pole.Features.WebServices.Application.Endpoints.Deployments.AddWebServiceDeploymentOutcome>(
+                TenantId: state.WebService.TenantId,
+                ResourceKey: WebServiceQuotaResourceKey.Create(state.WebService.Id),
+                Mutation: new UpdateQuotaMutation<WebServiceQuotaInput>(currentQuota, nextQuota),
+                QuotaError: quotaError => Error(
                 new AddWebServiceDeploymentError(quotaError)),
-            (transaction, ct) => PersistAsync(
+                MutationCallback: (transaction, ct) => PersistAsync(
                 request,
                 state,
                 placement,
                 transaction,
-                ct),
-            cancellationToken);
+                ct)),
+            cancellationToken: cancellationToken);
     }
 
     private async Task<QuotaAdmissionTransactionDecision<AddWebServiceDeploymentOutcome>>

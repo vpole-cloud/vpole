@@ -77,10 +77,22 @@ internal sealed class MongoPersistUpdatedWebService(
                 "A web service update event must preserve tenant and resource identity.");
         }
 
-        if (!await git.AuthorizeAsync(current.TenantId, "WebService", current.Id, session, cancellationToken, mutation))
+        if (!await git.AuthorizeAsync(
+            new AuthorizeGitResourceMutationRequest(
+                TenantId: current.TenantId,
+                Kind: "WebService",
+                ResourceId: current.Id,
+                Context: mutation),
+            session: session,
+            ct: cancellationToken))
             return new WebServiceUpdateConflict(current.Id, WebServiceUpdateConflictReason.GitOwnedConfiguration);
         var registration = await fenceRegisteredResource(
-            current.TenantId, WebServiceResourceDeployment.ResourceType, current.Id, session, cancellationToken);
+            new FenceRegisteredResourceRequest(
+                TenantId: current.TenantId,
+                ResourceTypeId: WebServiceResourceDeployment.ResourceType,
+                ResourceId: current.Id),
+            session: session,
+            cancellationToken: cancellationToken);
         if (registration is null)
             return new WebServiceUpdateConflict(current.Id);
 
@@ -95,7 +107,12 @@ internal sealed class MongoPersistUpdatedWebService(
         }
 
         var connections = await reconcileConnections(
-            current.TenantId, WebServiceResourceDeployment.ResourceType, current.Id, session, cancellationToken);
+            new ReconcileConnectionsForResourceRequest(
+                TenantId: current.TenantId,
+                ResourceType: WebServiceResourceDeployment.ResourceType,
+                ResourceId: current.Id),
+            session: session,
+            cancellationToken: cancellationToken);
         var connectionConflict = connections switch
         {
             ResourceConnectionTopologyValid => null,
@@ -120,15 +137,30 @@ internal sealed class MongoPersistUpdatedWebService(
             current.Spec.Config.SecretEnvironmentReferences.OrderBy(pair => pair.Key).SequenceEqual(replacement.Spec.Config.SecretEnvironmentReferences.OrderBy(pair => pair.Key));
         if (!cleanup)
         {
-            var admittedConnections = await admitConnectionReferences(current.TenantId, WebServiceResourceDeployment.ResourceType, current.Id,
-                replacement.Spec.Config.ConnectionEnvironmentReferences.Values.Select(reference => new ResourceConnectionValueReference(reference.ConnectionId, reference.ValueKind, reference.ConfigurationKey)).ToArray(), session, cancellationToken);
+            var admittedConnections = await admitConnectionReferences(
+                new AdmitResourceConnectionReferencesRequest(
+                    TenantId: current.TenantId,
+                    SourceType: WebServiceResourceDeployment.ResourceType,
+                    SourceId: current.Id,
+                    References: replacement.Spec.Config.ConnectionEnvironmentReferences.Values.Select(reference => new ResourceConnectionValueReference(reference.ConnectionId, reference.ValueKind, reference.ConfigurationKey)).ToArray()),
+                session: session,
+                ct: cancellationToken);
             if (admittedConnections is ResourceConnectionReferencesUnavailable unavailable)
                 return new WebServiceDependencyUnavailable(current.Id, unavailable);
         }
-        var admittedSecrets = await admitSecretReferences(current.TenantId, current.ResourceGroupId, current.IsolationScopeId, WebServiceResourceDeployment.ResourceType, current.Id,
-            current.Spec.Config.SecretEnvironmentReferences.Values.Select(reference => new ConsumerSecretKeyReference(reference.SecretId, reference.Key)).ToArray(),
-            replacement.Spec.Config.SecretEnvironmentReferences.Values.Select(reference => new ConsumerSecretKeyReference(reference.SecretId, reference.Key)).ToArray(),
-            !cleanup, session, cancellationToken, retainPreviousReferencesUntilRollout: mutation is not null);
+        var admittedSecrets = await admitSecretReferences(
+            new AdmitConsumerSecretReferencesRequest(
+                TenantId: current.TenantId,
+                ResourceGroupId: current.ResourceGroupId,
+                IsolationScopeId: current.IsolationScopeId,
+                ConsumerType: WebServiceResourceDeployment.ResourceType,
+                ConsumerId: current.Id,
+                PreviousReferences: current.Spec.Config.SecretEnvironmentReferences.Values.Select(reference => new ConsumerSecretKeyReference(reference.SecretId, reference.Key)).ToArray(),
+                DesiredReferences: replacement.Spec.Config.SecretEnvironmentReferences.Values.Select(reference => new ConsumerSecretKeyReference(reference.SecretId, reference.Key)).ToArray(),
+                Availability: cleanup ? ConsumerSecretAvailabilityPolicy.AllowUnavailableForCleanup : ConsumerSecretAvailabilityPolicy.RequireAvailable,
+                Retention: mutation is null ? PreviousSecretReferenceRetention.DoNotRetain : PreviousSecretReferenceRetention.KeepUntilRolloutConfirmed),
+            session: session,
+            ct: cancellationToken);
         if (admittedSecrets is ConsumerSecretReferenceUnavailable secretUnavailable)
             return new WebServiceDependencyUnavailable(current.Id, secretUnavailable);
 

@@ -214,83 +214,86 @@ module private CreatePostgresClusterWorkflow =
         quotaAdmissionExecutor.ExecuteOutcomeAsync<
             PostgresQuotaInput,
             CreatePostgresClusterOutcome>(
-            plan.Cluster.TenantId,
-            PostgresQuotaResourceKey.create plan.Cluster.Id,
-            CreateQuotaMutation<PostgresQuotaInput>(plan.QuotaInput),
-            (fun error ->
-                CreatePostgresClusterRejected(CreateQuota error)),
-            (fun transaction ct ->
-                task {
-                    let! persisted =
-                        persistCreatedCluster.Invoke(
-                            transaction.Session,
-                            plan.Cluster,
-                            ct)
-
-                    match persisted with
-                    | PostgresError error ->
-                        return transaction.Abort(
-                            CreatePostgresClusterRejected(CreateNameAlreadyExists error))
-                    | PostgresSuccess () ->
-                        let! registrationResult =
-                            resourceRegistrar.RegisterAsync(
-                                plan.Cluster.TenantId,
-                                plan.Cluster.GroupId,
-                                ResourceRegistrationDescriptor(
-                                    PostgresResourceDeployment.ResourceType,
-                                    plan.Cluster.Id,
-                                    plan.Cluster.Name),
+            ExecuteQuotaAdmissionRequest<PostgresQuotaInput, CreatePostgresClusterOutcome>(
+                plan.Cluster.TenantId,
+                PostgresQuotaResourceKey.create plan.Cluster.Id,
+                CreateQuotaMutation<PostgresQuotaInput>(plan.QuotaInput),
+                (fun error ->
+                    CreatePostgresClusterRejected(CreateQuota error)),
+                (fun transaction ct ->
+                    task {
+                        let! persisted =
+                            persistCreatedCluster.Invoke(
                                 transaction.Session,
+                                plan.Cluster,
                                 ct)
 
-                        match TypedResultInterop.resourceRegistration registrationResult with
-                        | Error error ->
-                            return
-                                transaction.Abort(
-                                    CreatePostgresClusterRejected(CreateRegistration error))
-                        | Ok _ ->
-                            let! deploymentResult =
-                                createResourceDeployment.Invoke(
-                                    CreateResourceDeploymentRequest(
-                                        plan.DeploymentId,
+                        match persisted with
+                        | PostgresError error ->
+                            return transaction.Abort(
+                                CreatePostgresClusterRejected(CreateNameAlreadyExists error))
+                        | PostgresSuccess () ->
+                            let! registrationResult =
+                                resourceRegistrar.RegisterAsync(
+                                    RegisterResourceRequest(
                                         plan.Cluster.TenantId,
-                                        PostgresResourceDeployment.ResourceType,
-                                        plan.Cluster.Id,
                                         plan.Cluster.GroupId,
-                                        plan.IsolationScopeId |> Option.toObj,
-                                        plan.Target,
-                                        plan.Compute,
-                                        plan.Storage,
-                                        ResourcePlacementCapability.SingleTarget),
+                                        ResourceRegistrationDescriptor(
+                                            PostgresResourceDeployment.ResourceType,
+                                            plan.Cluster.Id,
+                                            plan.Cluster.Name)),
                                     transaction.Session,
                                     ct)
 
-                            match TypedResultInterop.createResourceDeployment deploymentResult with
+                            match TypedResultInterop.resourceRegistration registrationResult with
                             | Error error ->
                                 return
                                     transaction.Abort(
-                                        CreatePostgresClusterRejected(CreateDeployment error))
-                            | Ok deployment ->
-                                let! secretResult =
-                                    createBoundSecret.Invoke(
-                                        plan.Credential,
-                                        plan.Cluster.GroupId,
-                                        deployment.IsolationScopeId,
-                                        deployment.DeploymentId,
+                                        CreatePostgresClusterRejected(CreateRegistration error))
+                            | Ok _ ->
+                                let! deploymentResult =
+                                    createResourceDeployment.Invoke(
+                                        CreateResourceDeploymentRequest(
+                                            plan.DeploymentId,
+                                            plan.Cluster.TenantId,
+                                            PostgresResourceDeployment.ResourceType,
+                                            plan.Cluster.Id,
+                                            plan.Cluster.GroupId,
+                                            plan.IsolationScopeId |> Option.toObj,
+                                            plan.Target,
+                                            plan.Compute,
+                                            plan.Storage,
+                                            ResourcePlacementCapability.SingleTarget),
                                         transaction.Session,
                                         ct)
-                                match secretResult.Value with
-                                | :? ManagedSecretFailure as error ->
-                                    return transaction.Abort(
-                                        CreatePostgresClusterRejected(
-                                            CreateCredential(PostgresCredentialErrors.fromManaged plan.Cluster.Id error)))
-                                | :? ManagedSecretMutationSucceeded ->
+
+                                match TypedResultInterop.createResourceDeployment deploymentResult with
+                                | Error error ->
                                     return
-                                        transaction.Commit(
-                                            PostgresClusterDto.create plan.Cluster deployment
-                                            |> PostgresClusterCreated)
-                                | _ -> return invalidOp "Unexpected managed Secret creation outcome."
-                }),
+                                        transaction.Abort(
+                                            CreatePostgresClusterRejected(CreateDeployment error))
+                                | Ok deployment ->
+                                    let! secretResult =
+                                        createBoundSecret.Invoke(
+                                            CreateBoundManagedSecretRequest(
+                                                plan.Credential,
+                                                plan.Cluster.GroupId,
+                                                deployment.IsolationScopeId,
+                                                deployment.DeploymentId),
+                                            transaction.Session,
+                                            ct)
+                                    match secretResult.Value with
+                                    | :? ManagedSecretFailure as error ->
+                                        return transaction.Abort(
+                                            CreatePostgresClusterRejected(
+                                                CreateCredential(PostgresCredentialErrors.fromManaged plan.Cluster.Id error)))
+                                    | :? ManagedSecretMutationSucceeded ->
+                                        return
+                                            transaction.Commit(
+                                                PostgresClusterDto.create plan.Cluster deployment
+                                                |> PostgresClusterCreated)
+                                    | _ -> return invalidOp "Unexpected managed Secret creation outcome."
+                    })),
             cancellationToken)
 
 type CreatePostgresClusterHandler(

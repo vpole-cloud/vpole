@@ -40,11 +40,21 @@ internal sealed class MongoBeginFunctionAppDeletion(
         if (!session.IsInTransaction)
             throw new InvalidOperationException("Function App deletion requires an active transaction.");
         var registration = await fenceRegisteredResource(
-            current.TenantId, FunctionResourceDeployment.ResourceType, current.Id, session, cancellationToken);
+            new FenceRegisteredResourceRequest(
+                TenantId: current.TenantId,
+                ResourceTypeId: FunctionResourceDeployment.ResourceType,
+                ResourceId: current.Id),
+            session: session,
+            cancellationToken: cancellationToken);
         if (registration is null)
             return new FunctionAppDeletionChanged(current.Id);
         var cascade = await cascadeConnections(
-            current.TenantId, FunctionResourceDeployment.ResourceType, current.Id, session, cancellationToken);
+            new CascadeConnectionsForResourceDeletionRequest(
+                TenantId: current.TenantId,
+                ResourceType: FunctionResourceDeployment.ResourceType,
+                ResourceId: current.Id),
+            session: session,
+            cancellationToken: cancellationToken);
         FunctionAppDeletionChanged? cascadeConflict = cascade switch
         {
             ResourceConnectionsCascaded => null,

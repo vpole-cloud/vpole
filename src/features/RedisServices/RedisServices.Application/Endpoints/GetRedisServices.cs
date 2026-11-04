@@ -60,10 +60,11 @@ public sealed class GetRedisServicesHandler(
                 request.PageSize),
             cancellationToken);
         var placements = await loadDeployments(
-            request.TenantId,
-            RedisResourceDeployment.ResourceType,
-            page.Items.Select(redis => redis.Id).ToArray(),
-            cancellationToken);
+            new LoadResourceDeploymentsRequest(
+                TenantId: request.TenantId,
+                ResourceType: RedisResourceDeployment.ResourceType,
+                ResourceIds: page.Items.Select(redis => redis.Id).ToArray()),
+            cancellationToken: cancellationToken);
 
         return new GetRedisServicesOutcome(new PaginatedResponse<RedisDto>(
             Items: page.Items.Select(redis => redis.ToDto(

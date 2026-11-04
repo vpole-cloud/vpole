@@ -54,13 +54,21 @@ internal sealed class DeclarativeSecretProvider(
     }
     public IReadOnlyList<DeclarationStep> Steps(ResourceAddress address, JsonElement spec) =>
         [new(DeclarationPhase.Prepare, [new(new("ResourceGroup", DeclarationJson.Read<SecretDeclaration>(spec).ResourceGroup), DeclarationPhase.Prepare)])];
-    public async Task<string?> ResolveAsync(string tenantId, string name, IClientSessionHandle session, CancellationToken ct) =>
-        (await secrets.Find(session, SecretFilters.TechnicalName(tenantId, name)).FirstOrDefaultAsync(ct))?.Id;
+    public async Task<string?> ResolveAsync(
+        ResolveDeclaredResourceRequest request,
+        IClientSessionHandle session,
+        CancellationToken ct) =>
+        (await secrets.Find(session, SecretFilters.TechnicalName(request.TenantId, request.Name)).FirstOrDefaultAsync(ct))?.Id;
     public Task<GitOperationResult> ApplyAsync(GitOperation operation, CancellationToken ct) => git.ExecuteAsync(operation, async (session, token) =>
     {
         var context = operation.Context;
         var spec = DeclarationJson.Read<SecretDeclaration>(operation.Declaration.Spec);
-        var groupId = await git.ResolveAsync(context.TenantId, new("ResourceGroup", spec.ResourceGroup), session, token);
+        var groupId = await git.ResolveAsync(
+            new ResolveGitResourceRequest(
+                TenantId: context.TenantId,
+                Address: new("ResourceGroup", spec.ResourceGroup)),
+            session: session,
+            ct: token);
         if (groupId is null) return new(operation.ResourceId, new SecretDeclarationRejected(SecretDeclarationError.ResourceGroupUnavailable));
         var group = await groupOwnership(context.TenantId, groupId, token);
         if (group is not ResourceGroupOwnership owned) return new(operation.ResourceId, new SecretDeclarationRejected(SecretDeclarationError.ResourceGroupUnavailable));
@@ -68,13 +76,26 @@ internal sealed class DeclarativeSecretProvider(
         if (current is not null && current.Id != operation.ResourceId) return new(operation.ResourceId, new SecretDeclarationRejected(SecretDeclarationError.ExplicitAdoptionRequired));
         if (current is not null && (current.ResourceGroupId != groupId || current.IsolationScopeId != owned.DefaultIsolationScopeId))
             return new(current.Id, new SecretDeclarationRejected(SecretDeclarationError.ImmutablePlacementChange));
-        if (await admitScope(context.TenantId, groupId, owned.DefaultIsolationScopeId, null, session, token) is ResourceScopeReferenceUnavailable)
+        if (await admitScope(
+            new AdmitResourceScopeReferenceRequest(
+                TenantId: context.TenantId,
+                ResourceGroupId: groupId,
+                IsolationScopeId: owned.DefaultIsolationScopeId,
+                Consumer: null),
+            session: session,
+            cancellationToken: token) is ResourceScopeReferenceUnavailable)
             return new(operation.ResourceId, new SecretDeclarationRejected(SecretDeclarationError.ResourceScopeUnavailable));
         if (current is null)
         {
             var created = SecretFactory.CreateMetadata(operation.ResourceId, context.TenantId, groupId, owned.DefaultIsolationScopeId,
                 operation.Declaration.Address.Name, spec.Purpose, spec.Keys, clock.GetUtcNow().UtcDateTime);
-            if (await registrar.RegisterAsync(context.TenantId, groupId, new(SecretResource.Type, created.Id, created.Name), session, token) is ResourceRegistrationMutationError)
+            if (await registrar.RegisterAsync(
+                new RegisterResourceRequest(
+                    TenantId: context.TenantId,
+                    ResourceGroupId: groupId,
+                    Resource: new(SecretResource.Type, created.Id, created.Name)),
+                session: session,
+                cancellationToken: token) is ResourceRegistrationMutationError)
                 return new(created.Id, new SecretDeclarationRejected(SecretDeclarationError.ResourceRegistrationUnavailable));
             await secrets.InsertOneAsync(session, created, cancellationToken: token);
             await publish(session, created, new SecretCreated(), token);

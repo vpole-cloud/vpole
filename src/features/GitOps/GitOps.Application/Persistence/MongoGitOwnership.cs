@@ -62,5 +62,10 @@ internal sealed class MongoGitOwnership(
     }
 
     public async Task<string?> ResolveAsync(string tenantId, ResourceAddress address, IClientSessionHandle session, CancellationToken ct) =>
-        services.GetRequiredService<DeclarativeProviderRegistry>().Find(address.Kind) is { } provider ? await provider.ResolveAsync(tenantId, address.Name, session, ct) : null;
+        services.GetRequiredService<DeclarativeProviderRegistry>().Find(address.Kind) is { } provider ? await provider.ResolveAsync(
+            new ResolveDeclaredResourceRequest(
+                TenantId: tenantId,
+                Name: address.Name),
+            session: session,
+            ct: ct) : null;
 }

@@ -29,10 +29,21 @@ public sealed class SecretProjectionReconciler(
         {
             foreach (var binding in secret.Bindings)
             {
-                var deployments = await loadDeployments(tenantId, ResourceTypeId.Create(binding.ConsumerType), binding.ConsumerId, ct);
+                var deployments = await loadDeployments(
+                    new LoadResourceDeploymentSetRequest(
+                        TenantId: tenantId,
+                        ResourceType: ResourceTypeId.Create(binding.Consumer.ResourceType),
+                        ResourceId: binding.Consumer.ResourceId),
+                    cancellationToken: ct);
                 foreach (var deployment in deployments.Where(x => Selected(secret, binding, x)))
                 {
-                    var placement = await loadPlacement(tenantId, ResourceTypeId.Create(binding.ConsumerType), binding.ConsumerId, deployment.DeploymentId, ct);
+                    var placement = await loadPlacement(
+                        new LoadExactResourceDeploymentRuntimePlacementRequest(
+                            TenantId: tenantId,
+                            ResourceType: ResourceTypeId.Create(binding.Consumer.ResourceType),
+                            ResourceId: binding.Consumer.ResourceId,
+                            DeploymentId: deployment.DeploymentId),
+                        cancellationToken: ct);
                     if (placement is null || placement.DesiredOperation == ResourceDeploymentDesiredOperation.Delete || placement.IsolationScopeId != secret.IsolationScopeId)
                         continue;
                     var projection = SecretProjectionFactory.Create(secret, binding, placement.DeploymentId, placement.RuntimeCellId, placement.DeploymentTargetId, placement.KubernetesNamespace);
@@ -63,7 +74,13 @@ public sealed class SecretProjectionReconciler(
             return null;
         if (!SecretProjectionAuthority.IncludesDeployment(binding.Selection, projection.DeploymentId))
             return null;
-        var placement = await loadPlacement(projection.TenantId, ResourceTypeId.Create(binding.ConsumerType), binding.ConsumerId, projection.DeploymentId, ct);
+        var placement = await loadPlacement(
+            new LoadExactResourceDeploymentRuntimePlacementRequest(
+                TenantId: projection.TenantId,
+                ResourceType: ResourceTypeId.Create(binding.Consumer.ResourceType),
+                ResourceId: binding.Consumer.ResourceId,
+                DeploymentId: projection.DeploymentId),
+            cancellationToken: ct);
         return placement is not null && SecretProjectionAuthority.MatchesPlacement(placement, projection)
             ? binding : null;
     }
@@ -91,7 +108,7 @@ public sealed class SecretProjectionReconciler(
             await complete(owned.Failed("DesiredStateChanged"), ct);
             return;
         }
-        if (current.CurrentVersion == Secret.MetadataOnlyVersion || binding.KeyMappings.Keys.Concat(binding.ProtectedKeys).Any(key => !current.HasValue(key)))
+        if (current.CurrentVersion == Secret.MetadataOnlyVersion || binding.KeyMappings.Keys.Concat(binding.Pins.ProtectedKeys).Any(key => !current.HasValue(key)))
         {
             await complete(owned.Failed("SecretValuesMissing"), ct);
             return;

@@ -10,16 +10,14 @@ internal sealed class MongoLoadResourceDeployment(
     ResourceDeploymentIsolationProjection isolation)
 {
     public async Task<PlacementSummaryDto?> InvokeAsync(
-        string tenantId,
-        ResourceTypeId resourceType,
-        string resourceId,
+        LoadResourceDeploymentRequest request,
         CancellationToken cancellationToken = default)
     {
         var deployment = await resourceDeployments
-            .Find(ResourceDeploymentFilters.ForResource(tenantId, resourceType, resourceId))
+            .Find(ResourceDeploymentFilters.ForResource(request.TenantId, request.ResourceType, request.ResourceId))
             .FirstOrDefaultAsync(cancellationToken);
         return deployment is null
             ? null
-            : await isolation.ProjectAsync(deployment.ToPlacementSummaryDto(), cancellationToken);
+            : await isolation.ProjectAsync(deployment, cancellationToken);
     }
 }

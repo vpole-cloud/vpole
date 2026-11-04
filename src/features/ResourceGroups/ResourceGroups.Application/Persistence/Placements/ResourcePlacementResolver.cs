@@ -28,25 +28,22 @@ internal sealed class MongoResourcePlacementResolver(
     TimeProvider timeProvider)
 {
     public async Task<ResolveResourceGroupPlacementOutcome> InvokeAsync(
-        string tenantId,
-        string resourceGroupId,
-        string? isolationScopeId,
-        string? deploymentTargetId,
+        ResolveResourceGroupPlacementRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
         var context = await LoadContextAsync(
-            tenantId,
-            resourceGroupId,
-            isolationScopeId,
+            request.TenantId,
+            request.ResourceGroupId,
+            request.IsolationScopeId,
             session,
             cancellationToken);
         if (context.Error is not null)
             return context.Error.Value;
 
         var requested = await ResolveRequestedTargetAsync(
-            deploymentTargetId,
+            request.DeploymentTargetId,
             cancellationToken);
         if (requested.Error is not null)
             return requested.Error.Value;
@@ -71,7 +68,7 @@ internal sealed class MongoResourcePlacementResolver(
                 : fenceError.Value;
         }
 
-        var admitted = await AdmitTargetAsync(deploymentTargetId, cancellationToken);
+        var admitted = await AdmitTargetAsync(request.DeploymentTargetId, cancellationToken);
         if (admitted.Error is not null)
             return admitted.Error.Value;
 
@@ -119,13 +116,14 @@ internal sealed class MongoResourcePlacementResolver(
             return runtimeCell.Cell.ToPlacement();
 
         var reference = await applyDeploymentTargetReferenceChanges(
-            new DeploymentTargetReferenceOwner(
+            new ApplyDeploymentTargetReferenceChangesRequest(
+                Owner: new DeploymentTargetReferenceOwner(
                 ResourcePlacementReferenceOwnerTypes.RuntimeCell,
                 runtimeCell.Cell.Id),
-            [runtimeCell.Cell.DeploymentTargetId],
-            [],
-            session,
-            cancellationToken);
+                AddedDeploymentTargetIds: [runtimeCell.Cell.DeploymentTargetId],
+                RemovedDeploymentTargetIds: []),
+            session: session,
+            cancellationToken: cancellationToken);
         if (reference is DeploymentTargetReferenceChangeRejected)
         {
             return new ResourceGroupPlacementError(
@@ -146,16 +144,13 @@ internal sealed class MongoResourcePlacementResolver(
 
     public async Task<ResolveResourceGroupPlacementsOutcome>
         InvokeManyAsync(
-            string tenantId,
-            string resourceGroupId,
-            string? isolationScopeId,
-            IReadOnlyList<string> deploymentTargetIds,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default)
+        ResolveResourceGroupPlacementsRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default)
     {
         EnsureTransaction(session);
-        ArgumentNullException.ThrowIfNull(deploymentTargetIds);
-        var normalizedTargetIds = deploymentTargetIds
+        ArgumentNullException.ThrowIfNull(request.DeploymentTargetIds);
+        var normalizedTargetIds = request.DeploymentTargetIds
             .Select(targetId => string.IsNullOrWhiteSpace(targetId)
                 ? string.Empty
                 : targetId.Trim())
@@ -167,13 +162,13 @@ internal sealed class MongoResourcePlacementResolver(
         {
             throw new ArgumentException(
                 "At least one unique deployment target ID is required.",
-                nameof(deploymentTargetIds));
+                nameof(request.DeploymentTargetIds));
         }
 
         var context = await LoadContextAsync(
-            tenantId,
-            resourceGroupId,
-            isolationScopeId,
+            request.TenantId,
+            request.ResourceGroupId,
+            request.IsolationScopeId,
             session,
             cancellationToken);
         if (context.Error is not null)
@@ -183,7 +178,7 @@ internal sealed class MongoResourcePlacementResolver(
             .Find(
                 session,
                 RuntimeCellFilters.ByTenantScopeAndDeploymentTargets(
-                    tenantId,
+                    request.TenantId,
                     context.ResourceGroup!.Id,
                     context.Scope!.Id,
                     normalizedTargetIds))
@@ -233,13 +228,14 @@ internal sealed class MongoResourcePlacementResolver(
                 continue;
 
             var reference = await applyDeploymentTargetReferenceChanges(
-                new DeploymentTargetReferenceOwner(
+                new ApplyDeploymentTargetReferenceChangesRequest(
+                    Owner: new DeploymentTargetReferenceOwner(
                     ResourcePlacementReferenceOwnerTypes.RuntimeCell,
                     runtimeCell.Cell.Id),
-                [runtimeCell.Cell.DeploymentTargetId],
-                [],
-                session,
-                cancellationToken);
+                    AddedDeploymentTargetIds: [runtimeCell.Cell.DeploymentTargetId],
+                    RemovedDeploymentTargetIds: []),
+                session: session,
+                cancellationToken: cancellationToken);
             if (reference is DeploymentTargetReferenceChangeRejected)
             {
                 return new ResourceGroupPlacementError(

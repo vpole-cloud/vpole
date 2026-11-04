@@ -124,12 +124,13 @@ public sealed class RedisQuotaAdmissionTests(MongoReplicaSetFixture fixture)
         var executor = Services.GetRequiredService<IQuotaAdmissionExecutor>();
 
         var outcome = await executor.ExecuteOutcomeAsync<RedisQuotaInput, TestQuotaOutcome>(
-            RedisTestData.TenantId,
-            QuotaResourceKey.Create("test", "typed-abort"),
-            new CreateQuotaMutation<RedisQuotaInput>(new RedisQuotaInput(100, 128, 1)),
-            error => new TestQuotaOutcome(error),
-            (transaction, _) => Task.FromResult(
-                transaction.Abort(new TestQuotaOutcome(new TestMutationRejected()))));
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.RedisServices.Application.Common.RedisQuotaInput, global::Pole.Features.RedisServices.Tests.Integration.RedisServices.TestQuotaOutcome>(
+                TenantId: RedisTestData.TenantId,
+                ResourceKey: QuotaResourceKey.Create("test", "typed-abort"),
+                Mutation: new CreateQuotaMutation<RedisQuotaInput>(new RedisQuotaInput(100, 128, 1)),
+                QuotaError: error => new TestQuotaOutcome(error),
+                MutationCallback: (transaction, _) => Task.FromResult(
+                transaction.Abort(new TestQuotaOutcome(new TestMutationRejected())))));
 
         Assert.IsType<TestMutationRejected>(outcome.Value);
         Assert.Equal(0, QuotaValues.GetValue(

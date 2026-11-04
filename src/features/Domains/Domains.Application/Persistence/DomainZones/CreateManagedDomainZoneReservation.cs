@@ -88,13 +88,14 @@ internal sealed class MongoCreateManagedDomainZoneReservation(
         }
 
         var registered = await applyDeploymentTargetReferenceChanges(
-            new DeploymentTargetReferenceOwner(
+            new ApplyDeploymentTargetReferenceChangesRequest(
+                Owner: new DeploymentTargetReferenceOwner(
                 DeploymentTargetReferenceOwnerTypes.DomainZone,
                 zone.Id),
-            [zone.DeploymentTargetId],
-            [],
-            session,
-            cancellationToken);
+                AddedDeploymentTargetIds: [zone.DeploymentTargetId],
+                RemovedDeploymentTargetIds: []),
+            session: session,
+            cancellationToken: cancellationToken);
         if (registered is not DeploymentTargetReferencesChanged)
             return new ManagedDomainZoneReferenceRejected(deploymentTargetId);
         await outbox(session, [OutboxWrite.Create(zone.ToChangedEvent())], cancellationToken);

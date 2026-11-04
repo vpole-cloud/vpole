@@ -33,7 +33,12 @@ public sealed class ResourceRegistrationOutboxTests(MongoReplicaSetFixture fixtu
         {
             session.StartTransaction();
             Assert.IsType<RegisteredResource>(
-                (await registrar.RegisterAsync(group.TenantId, group.Id, Descriptor, session)).Value);
+                (await registrar.RegisterAsync(
+                    new RegisterResourceRequest(
+                        TenantId: group.TenantId,
+                        ResourceGroupId: group.Id,
+                        Resource: Descriptor),
+                    session: session)).Value);
             // The event and registration are both invisible outside the uncommitted transaction.
             Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(Registered));
             await session.CommitTransactionAsync();
@@ -43,23 +48,37 @@ public sealed class ResourceRegistrationOutboxTests(MongoReplicaSetFixture fixtu
         {
             session.StartTransaction();
             Assert.IsType<RegisteredResource>(
-                (await registrar.RegisterAsync(group.TenantId, group.Id, Descriptor, session)).Value);
+                (await registrar.RegisterAsync(
+                    new RegisterResourceRequest(
+                        TenantId: group.TenantId,
+                        ResourceGroupId: group.Id,
+                        Resource: Descriptor),
+                    session: session)).Value);
             Assert.IsType<RegisteredResource>(
-                (await registrar.UpdateAsync(group.TenantId, group.Id, Descriptor, session)).Value);
-            Assert.IsType<RegisteredResource>((await registrar.UpdateAsync(group.TenantId,
-                group.Id,
-                Descriptor with
-                {
-                    DisplayName = "After"
-                },
-                session)).Value);
-            Assert.IsType<RegisteredResource>((await registrar.UpdateAsync(group.TenantId,
-                group.Id,
-                Descriptor with
-                {
-                    DisplayName = "After"
-                },
-                session)).Value);
+                (await registrar.UpdateAsync(
+                    new UpdateRegisteredResourceRequest(
+                        TenantId: group.TenantId,
+                        ResourceGroupId: group.Id,
+                        Resource: Descriptor),
+                    session: session)).Value);
+            Assert.IsType<RegisteredResource>((await registrar.UpdateAsync(
+                new UpdateRegisteredResourceRequest(
+                    TenantId: group.TenantId,
+                    ResourceGroupId: group.Id,
+                    Resource: Descriptor with
+                    {
+                        DisplayName = "After"
+                    }),
+                session: session)).Value);
+            Assert.IsType<RegisteredResource>((await registrar.UpdateAsync(
+                new UpdateRegisteredResourceRequest(
+                    TenantId: group.TenantId,
+                    ResourceGroupId: group.Id,
+                    Resource: Descriptor with
+                    {
+                        DisplayName = "After"
+                    }),
+                session: session)).Value);
             await session.CommitTransactionAsync();
         }
 
@@ -90,7 +109,12 @@ public sealed class ResourceRegistrationOutboxTests(MongoReplicaSetFixture fixtu
             using var seed = await DbContext.Client.StartSessionAsync();
             seed.StartTransaction();
             await Services.GetRequiredService<IResourceRegistrar>()
-                .RegisterAsync(group.TenantId, group.Id, Descriptor, seed);
+                .RegisterAsync(
+                new RegisterResourceRequest(
+                    TenantId: group.TenantId,
+                    ResourceGroupId: group.Id,
+                    Resource: Descriptor),
+                session: seed);
             await seed.CommitTransactionAsync();
         }
 
@@ -142,7 +166,12 @@ public sealed class ResourceRegistrationOutboxTests(MongoReplicaSetFixture fixtu
         using (var session = await DbContext.Client.StartSessionAsync())
         {
             session.StartTransaction();
-            await registrar.RegisterAsync(group.TenantId, group.Id, Descriptor, session);
+            await registrar.RegisterAsync(
+                new RegisterResourceRequest(
+                    TenantId: group.TenantId,
+                    ResourceGroupId: group.Id,
+                    Resource: Descriptor),
+                session: session);
             await session.CommitTransactionAsync();
         }
 
@@ -150,16 +179,28 @@ public sealed class ResourceRegistrationOutboxTests(MongoReplicaSetFixture fixtu
         {
             session.StartTransaction();
             Assert.IsType<ResourceRegistrationMutationError>(
-                (await registrar.RegisterAsync(other.TenantId, other.Id, Descriptor, session)).Value);
+                (await registrar.RegisterAsync(
+                    new RegisterResourceRequest(
+                        TenantId: other.TenantId,
+                        ResourceGroupId: other.Id,
+                        Resource: Descriptor),
+                    session: session)).Value);
             Assert.IsType<ResourceRegistrationMutationError>(
-                (await registrar.UpdateAsync(other.TenantId, other.Id, Descriptor, session)).Value);
-            Assert.IsType<ResourceRegistrationMutationError>((await registrar.UpdateAsync(group.TenantId,
-                group.Id,
-                Descriptor with
-                {
-                    ResourceId = "missing"
-                },
-                session)).Value);
+                (await registrar.UpdateAsync(
+                    new UpdateRegisteredResourceRequest(
+                        TenantId: other.TenantId,
+                        ResourceGroupId: other.Id,
+                        Resource: Descriptor),
+                    session: session)).Value);
+            Assert.IsType<ResourceRegistrationMutationError>((await registrar.UpdateAsync(
+                new UpdateRegisteredResourceRequest(
+                    TenantId: group.TenantId,
+                    ResourceGroupId: group.Id,
+                    Resource: Descriptor with
+                    {
+                        ResourceId = "missing"
+                    }),
+                session: session)).Value);
             await session.CommitTransactionAsync();
         }
 

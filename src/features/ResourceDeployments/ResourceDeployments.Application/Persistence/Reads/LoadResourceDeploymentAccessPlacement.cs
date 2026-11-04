@@ -10,10 +10,7 @@ internal sealed class MongoLoadResourceDeploymentAccessPlacement(
     IMongoCollection<ResourceDeployment> resourceDeployments)
 {
     public async Task<ResourceDeploymentAccessPlacement?> InvokeAsync(
-        string tenantId,
-        ResourceTypeId resourceType,
-        string resourceId,
-        string deploymentId,
+        LoadExactResourceDeploymentAccessPlacementRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
@@ -23,7 +20,7 @@ internal sealed class MongoLoadResourceDeploymentAccessPlacement(
         var deployment = await resourceDeployments.FindOneAndUpdateAsync(
             session,
             ResourceDeploymentFilters.ForExactDeployment(
-                tenantId, resourceType, resourceId, deploymentId),
+                request.TenantId, request.ResourceType, request.ResourceId, request.DeploymentId),
             Builders<ResourceDeployment>.Update.Inc(item => item.ReferenceFence, 1),
             new FindOneAndUpdateOptions<ResourceDeployment> { ReturnDocument = ReturnDocument.After },
             cancellationToken);

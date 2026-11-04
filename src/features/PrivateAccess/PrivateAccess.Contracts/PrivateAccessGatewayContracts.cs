@@ -76,12 +76,15 @@ public delegate Task<IReadOnlyList<PrivateAccessGatewayRegistration>>
     LoadPrivateAccessGatewayRegistrations(CancellationToken cancellationToken = default);
 
 public delegate Task<bool> SavePrivateAccessGatewayRegistration(
-    PrivateAccessGatewayIdentity identity,
-    string certificateSha256Pin,
-    DateTime certificateNotAfterUtc,
-    IReadOnlyList<PrivateAccessGatewayEndpointSnapshot> endpoints,
+    SavePrivateAccessGatewayRegistrationRequest request,
     CancellationToken cancellationToken = default);
 
 public delegate Task<bool> RemovePrivateAccessGatewayRegistration(
     PrivateAccessGatewayIdentity identity,
     CancellationToken cancellationToken = default);
+
+public sealed record SavePrivateAccessGatewayRegistrationRequest(
+    PrivateAccessGatewayIdentity Identity,
+    string CertificateSha256Pin,
+    DateTime CertificateNotAfterUtc,
+    IReadOnlyList<PrivateAccessGatewayEndpointSnapshot> Endpoints);

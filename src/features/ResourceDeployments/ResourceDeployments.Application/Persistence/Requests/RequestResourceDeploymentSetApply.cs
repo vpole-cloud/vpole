@@ -12,7 +12,8 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
     StoreOutboxWrites storeOutboxWrites,
     LoadResourcePlacementsInTransaction loadResourcePlacements,
     FenceResolvedComputeProfiles fenceResolvedComputeProfiles,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ResourceDeploymentIsolationProjection isolation)
 {
     public async Task<ResourceDeploymentSetMutationOutcome> InvokeAsync(
         ResourceDeploymentSetApplyRequest request,
@@ -95,10 +96,11 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
         }
 
         var runtimeCells = await loadResourcePlacements(
-            request.TenantId,
-            current.Select(deployment => deployment.RuntimeCellId).ToArray(),
-            session,
-            cancellationToken);
+            new LoadResourcePlacementsInTransactionRequest(
+                TenantId: request.TenantId,
+                RuntimeCellIds: current.Select(deployment => deployment.RuntimeCellId).ToArray()),
+            session: session,
+            cancellationToken: cancellationToken);
         var runtimeCellsById = runtimeCells.ToDictionary(
             placement => placement.RuntimeCellId,
             StringComparer.Ordinal);
@@ -205,6 +207,6 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
                 .ToArray(),
             cancellationToken);
         return new MutatedResourceDeployments(
-            updated.Select(deployment => deployment.ToPlacementSummaryDto()).ToArray());
+            await isolation.ProjectAsync(updated, cancellationToken));
     }
 }

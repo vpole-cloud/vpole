@@ -53,9 +53,10 @@ type MongoFinalizePostgresClusterDeletion(
                         else
                             let! readiness =
                                 getDeploymentReadiness.Invoke(
-                                    tenantId,
-                                    PostgresResourceDeployment.ResourceType,
-                                    clusterId,
+                                    GetResourceDeploymentFinalizationReadinessRequest(
+                                        tenantId,
+                                        PostgresResourceDeployment.ResourceType,
+                                        clusterId),
                                     transaction.Session,
                                     transactionCancellationToken)
                             if readiness <> ResourceDeploymentFinalizationReadiness.Ready then
@@ -63,8 +64,9 @@ type MongoFinalizePostgresClusterDeletion(
                             else
                                 let! released =
                                     releaseSecret.Invoke(
-                                        tenantId,
-                                        PostgresManagedSecret.owner clusterId,
+                                        ReleaseManagedSecretRequest(
+                                            tenantId,
+                                            PostgresManagedSecret.owner clusterId),
                                         transaction.Session,
                                         transactionCancellationToken)
                                 match released.Value with
@@ -86,10 +88,11 @@ type MongoFinalizePostgresClusterDeletion(
                                     else
                                         let! registrationResult =
                                             resourceRegistrar.UnregisterAsync(
-                                                tenantId,
-                                                cluster.GroupId,
-                                                PostgresResourceDeployment.ResourceType,
-                                                clusterId,
+                                                UnregisterResourceRequest(
+                                                    tenantId,
+                                                    cluster.GroupId,
+                                                    PostgresResourceDeployment.ResourceType,
+                                                    clusterId),
                                                 transaction.Session,
                                                 transactionCancellationToken)
 
@@ -102,9 +105,10 @@ type MongoFinalizePostgresClusterDeletion(
                                         | Ok _ ->
                                             let! purged =
                                                 purgeDeployments.Invoke(
-                                                    tenantId,
-                                                    PostgresResourceDeployment.ResourceType,
-                                                    clusterId,
+                                                    PurgeDeletedResourceDeploymentsRequest(
+                                                        tenantId,
+                                                        PostgresResourceDeployment.ResourceType,
+                                                        clusterId),
                                                     transaction.Session,
                                                     transactionCancellationToken)
                                             match purged.Value with

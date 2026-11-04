@@ -69,7 +69,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         services.AddTenantsFeature();
         services.AddPrivateAccessFeature();
         services.AddSingleton<FenceRegisteredResource>(
-            (_, _, _, session, _) =>
+(request, session, _) =>
             {
                 Assert.True(session.IsInTransaction);
                 return Task.FromResult<RegisteredResource?>(new RegisteredResource(
@@ -77,29 +77,29 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
                     "Redis", null, DateTime.UtcNow, DateTime.UtcNow));
             });
         services.AddSingleton<LoadExactResourceDeploymentAccessPlacement>(
-            (tenantId, _, _, _, session, _) =>
+(request, session, _) =>
             {
                 Assert.True(session.IsInTransaction);
                 return Task.FromResult<ResourceDeploymentAccessPlacement?>(
-                    tenantId == TenantId ? new ResourceDeploymentAccessPlacement(
+                    request.TenantId == TenantId ? new ResourceDeploymentAccessPlacement(
                         TenantId, ResourceType.Value, ResourceId, GroupId, DeploymentId,
                         "target", "cell", "scope", "namespace", deploymentRevision, 1,
                         accessPlacementStatus, ResourceDeploymentDesiredOperation.Apply) : null);
             });
         services.AddSingleton<LoadExactResourceDeploymentRuntimePlacement>(
-            (tenantId, _, resourceId, deploymentId, _) =>
+(request, _) =>
                 Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(
-                    tenantId == TenantId && resourceId == ResourceId && deploymentId == DeploymentId
+                    request.TenantId == TenantId && request.ResourceId == ResourceId && request.DeploymentId == DeploymentId
                         ? new ResourceDeploymentRuntimePlacementDto(
                             DeploymentId, ResourceId, "cell", "target", "namespace",
                             deploymentRevision, 1, null!, ResourceDeploymentStatus.Applied, ResourceDeploymentDesiredOperation.Apply, "scope")
                         : null));
         services.AddSingleton<LoadResourceDeploymentRuntimePlacements>(
-            (tenantId, _, resourceIds, _) =>
+(request, _) =>
             {
                 placementBatchReads++;
                 return Task.FromResult<IReadOnlyList<ResourceDeploymentRuntimePlacementDto>>(
-                    tenantId == TenantId && resourceIds.Contains(ResourceId)
+                    request.TenantId == TenantId && request.ResourceIds.Contains(ResourceId)
                         ? [new ResourceDeploymentRuntimePlacementDto(
                             DeploymentId, ResourceId, "cell", "target", "namespace",
                             deploymentRevision, 1, null!, ResourceDeploymentStatus.Applied, ResourceDeploymentDesiredOperation.Apply, "scope")]
@@ -115,7 +115,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
                         : new PrivateAccessDeploymentTargetUnavailable());
             });
         services.AddSingleton<ApplyDeploymentTargetReferenceChanges>(
-            (_, _, _, session, _) =>
+(request, session, _) =>
             {
                 Assert.True(session.IsInTransaction);
                 return Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(
@@ -442,13 +442,28 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         var oldPin = new string('a', 64);
         var newPin = new string('b', 64);
 
-        Assert.True(await save(identity, oldPin, expiry, [endpoint]));
-        Assert.True(await save(identity, oldPin, expiry, [endpoint]));
+        Assert.True(await save(
+            new SavePrivateAccessGatewayRegistrationRequest(
+                Identity: identity,
+                CertificateSha256Pin: oldPin,
+                CertificateNotAfterUtc: expiry,
+                Endpoints: [endpoint])));
+        Assert.True(await save(
+            new SavePrivateAccessGatewayRegistrationRequest(
+                Identity: identity,
+                CertificateSha256Pin: oldPin,
+                CertificateNotAfterUtc: expiry,
+                Endpoints: [endpoint])));
         Assert.Equal(identity, await resolve(oldPin));
         Assert.Equal(endpoint, Assert.Single(Assert.Single(await load()).Endpoints));
 
         var rotated = identity with { Generation = 2, Revision = 2 };
-        Assert.True(await save(rotated, newPin, expiry, [endpoint]));
+        Assert.True(await save(
+            new SavePrivateAccessGatewayRegistrationRequest(
+                Identity: rotated,
+                CertificateSha256Pin: newPin,
+                CertificateNotAfterUtc: expiry,
+                Endpoints: [endpoint])));
         Assert.Null(await resolve(oldPin));
         Assert.Equal(rotated, await resolve(newPin));
         Assert.False(await remove(identity));
@@ -472,10 +487,19 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         var remove = provider.GetRequiredService<RemovePrivateAccessGatewayRegistration>();
         var pin = new string('a', 64);
         var expiry = DateTime.UnixEpoch.AddDays(30000);
-        Assert.True(await save(gateway, pin, expiry, [endpoint]));
+        Assert.True(await save(
+            new SavePrivateAccessGatewayRegistrationRequest(
+                Identity: gateway,
+                CertificateSha256Pin: pin,
+                CertificateNotAfterUtc: expiry,
+                Endpoints: [endpoint])));
 
         var attempts = await Task.WhenAll(Enumerable.Range(0, 8).Select(index =>
-            claim(gateway, $"replica-{index}", $"https://replica-{index}.internal:9445")));
+            claim(
+                new ClaimPrivateAccessBrokerOwnerRequest(
+                    Gateway: gateway,
+                    InstanceId: $"replica-{index}",
+                    InternalOrigin: $"https://replica-{index}.internal:9445"))));
         var first = Assert.Single(attempts.Select(result => result.Value)
             .OfType<PrivateAccessBrokerOwnerLease>());
         Assert.Equal(7, attempts.Count(result => result.Value is PrivateAccessBrokerOwnerBusy));
@@ -487,8 +511,11 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         Assert.InRange(Math.Abs((loaded.ExpiresAtUtc - first.ExpiresAtUtc).TotalMilliseconds),
             0, 1);
         Assert.True(await renew(first));
-        Assert.IsType<PrivateAccessBrokerOwnerBusy>((await claim(gateway,
-            "other", "https://other.internal:9445")).Value);
+        Assert.IsType<PrivateAccessBrokerOwnerBusy>((await claim(
+            new ClaimPrivateAccessBrokerOwnerRequest(
+                Gateway: gateway,
+                InstanceId: "other",
+                InternalOrigin: "https://other.internal:9445"))).Value);
 
         var owners = fixture.Database.GetCollection<PrivateAccessBrokerOwner>(
             "PrivateAccessBrokerOwners");
@@ -497,26 +524,48 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
                 item => item.LeaseExpiresAtUtc, DateTime.UtcNow.AddSeconds(-1)));
         Assert.False(await renew(first));
         var recovered = Assert.IsType<PrivateAccessBrokerOwnerLease>((await claim(
-            gateway, "replacement", "https://replacement.internal:9445")).Value);
+            new ClaimPrivateAccessBrokerOwnerRequest(
+                Gateway: gateway,
+                InstanceId: "replacement",
+                InternalOrigin: "https://replacement.internal:9445"))).Value);
         Assert.True(recovered.Epoch > first.Epoch);
         await release(first);
         Assert.Equal(recovered.Epoch, (await load(TenantId, targetId))?.Epoch);
 
         var rotated = gateway with { Generation = 2, Revision = 2 };
-        Assert.True(await save(rotated, new string('b', 64), expiry, [endpoint]));
+        Assert.True(await save(
+            new SavePrivateAccessGatewayRegistrationRequest(
+                Identity: rotated,
+                CertificateSha256Pin: new string('b', 64),
+                CertificateNotAfterUtc: expiry,
+                Endpoints: [endpoint])));
         Assert.False(await renew(recovered));
         Assert.Null(await load(TenantId, targetId));
         Assert.IsType<PrivateAccessBrokerGatewayUnavailable>((await claim(
-            gateway, "stale", "https://stale.internal:9445")).Value);
+            new ClaimPrivateAccessBrokerOwnerRequest(
+                Gateway: gateway,
+                InstanceId: "stale",
+                InternalOrigin: "https://stale.internal:9445"))).Value);
         var current = Assert.IsType<PrivateAccessBrokerOwnerLease>((await claim(
-            rotated, "replacement", "https://replacement.internal:9445")).Value);
+            new ClaimPrivateAccessBrokerOwnerRequest(
+                Gateway: rotated,
+                InstanceId: "replacement",
+                InternalOrigin: "https://replacement.internal:9445"))).Value);
         Assert.True(current.Epoch > recovered.Epoch);
         Assert.True(await remove(rotated));
         Assert.Null(await load(TenantId, targetId));
         Assert.False(await renew(current));
-        Assert.True(await save(gateway, new string('c', 64), expiry, [endpoint]));
+        Assert.True(await save(
+            new SavePrivateAccessGatewayRegistrationRequest(
+                Identity: gateway,
+                CertificateSha256Pin: new string('c', 64),
+                CertificateNotAfterUtc: expiry,
+                Endpoints: [endpoint])));
         var recreated = Assert.IsType<PrivateAccessBrokerOwnerLease>((await claim(
-            gateway, "replacement", "https://replacement.internal:9445")).Value);
+            new ClaimPrivateAccessBrokerOwnerRequest(
+                Gateway: gateway,
+                InstanceId: "replacement",
+                InternalOrigin: "https://replacement.internal:9445"))).Value);
         Assert.True(recreated.Epoch > current.Epoch);
         await release(current);
         Assert.Equal(recreated.Epoch, (await load(TenantId, targetId))?.Epoch);
@@ -624,8 +673,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         public ResourceTypeId ResourceType => GrantPersistenceTests.ResourceType;
 
         public Task<LoadResourceConnectionEndpointsOutcome> LoadAsync(
-            string tenantId,
-            string resourceId,
+            LoadResourceConnectionDestinationRequest request,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
         {

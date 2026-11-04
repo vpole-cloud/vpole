@@ -14,30 +14,35 @@ internal sealed class MongoReleaseManagedSecret(
     TimeProvider clock)
 {
     public async Task<ManagedSecretMutationOutcome> InvokeAsync(
-        string tenantId,
-        ManagedSecretOwner owner,
+        ReleaseManagedSecretRequest request,
         IClientSessionHandle session,
         CancellationToken ct)
     {
         if (!session.IsInTransaction)
             throw new InvalidOperationException("Managed Secret release requires the owner transaction.");
-        var current = await secrets.Find(session, ManagedSecretFilters.Owner(tenantId, owner)).FirstOrDefaultAsync(ct);
+        var current = await secrets.Find(session, ManagedSecretFilters.Owner(request.TenantId, request.Owner)).FirstOrDefaultAsync(ct);
         if (current is null)
             return new ManagedSecretMutationSucceeded();
         var management = (ProviderManagedSecret)current.Management;
         var released = current.Detach(management.BindingId, clock.GetUtcNow().UtcDateTime);
         if (!released.Bindings.IsEmpty)
         {
-            await secrets.ReplaceOneAsync(session, SecretFilters.Identity(tenantId, current.Id), released, cancellationToken: ct);
+            await secrets.ReplaceOneAsync(session, SecretFilters.Identity(request.TenantId, current.Id), released, cancellationToken: ct);
             await publish(session, released, new SecretBindingRemoved(management.BindingId), ct);
         }
         else
         {
-            if (await registrar.UnregisterAsync(tenantId, current.ResourceGroupId, SecretResource.Type,
-                    current.Id, session, ct) is ResourceRegistrationMutationError)
+            if (await registrar.UnregisterAsync(
+                new UnregisterResourceRequest(
+                    TenantId: request.TenantId,
+                    ResourceGroupId: current.ResourceGroupId,
+                    ResourceTypeId: SecretResource.Type,
+                    ResourceId: current.Id),
+                session: session,
+                cancellationToken: ct) is ResourceRegistrationMutationError)
                 return new ManagedSecretReferenceRejected();
-            await secrets.DeleteOneAsync(session, SecretFilters.Identity(tenantId, current.Id), cancellationToken: ct);
-            await versions.DeleteManyAsync(session, SecretFilters.Versions(tenantId, current.Id), cancellationToken: ct);
+            await secrets.DeleteOneAsync(session, SecretFilters.Identity(request.TenantId, current.Id), cancellationToken: ct);
+            await versions.DeleteManyAsync(session, SecretFilters.Versions(request.TenantId, current.Id), cancellationToken: ct);
             await publish(session, released, new SecretDeletedChange(), ct);
         }
         return new ManagedSecretMutationSucceeded();

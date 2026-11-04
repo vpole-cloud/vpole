@@ -83,11 +83,21 @@ public sealed class GetDomainZoneBindingsHandler(
             var key = (binding.ResourceType, binding.ResourceId);
             if (!owners.TryGetValue(key, out var owner))
             {
-                owner = await loadResource(request.TenantId, resourceType, binding.ResourceId, cancellationToken);
+                owner = await loadResource(
+                    new LoadRegisteredResourceRequest(
+                        TenantId: request.TenantId,
+                        ResourceTypeId: resourceType,
+                        ResourceId: binding.ResourceId),
+                    cancellationToken: cancellationToken);
                 owners.Add(key, owner);
             }
             var deployment = owner is null ? null : await loadDeployment(
-                request.TenantId, resourceType, binding.ResourceId, binding.ResourceDeploymentId, cancellationToken);
+                new LoadExactResourceDeploymentRequest(
+                    TenantId: request.TenantId,
+                    ResourceType: resourceType,
+                    ResourceId: binding.ResourceId,
+                    DeploymentId: binding.ResourceDeploymentId),
+                cancellationToken: cancellationToken);
             if (deployment?.DeploymentTargetId != binding.DeploymentTargetId) deployment = null;
             items.Add(new DomainZoneBindingUsage(binding, owner?.DisplayName, owner?.ResourceGroupId, deployment));
         }

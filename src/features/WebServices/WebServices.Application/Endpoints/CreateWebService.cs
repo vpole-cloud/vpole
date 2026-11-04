@@ -150,11 +150,12 @@ public sealed class CreateWebServiceHandler(
         return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             WebServiceQuotaInput,
             CreateWebServiceOutcome>(
-            request.TenantId,
-            WebServiceQuotaResourceKey.Create(options.Id),
-            new CreateQuotaMutation<WebServiceQuotaInput>(quotaInput),
-            quotaError => Error(new CreateWebServiceError(quotaError)),
-            (transaction, ct) => PersistAsync(
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.WebServices.Application.Common.WebServiceQuotaInput, global::Pole.Features.WebServices.Application.Endpoints.CreateWebServiceOutcome>(
+                TenantId: request.TenantId,
+                ResourceKey: WebServiceQuotaResourceKey.Create(options.Id),
+                Mutation: new CreateQuotaMutation<WebServiceQuotaInput>(quotaInput),
+                QuotaError: quotaError => Error(new CreateWebServiceError(quotaError)),
+                MutationCallback: (transaction, ct) => PersistAsync(
                 request,
                 isolationScopeId,
                 spec,
@@ -162,8 +163,8 @@ public sealed class CreateWebServiceHandler(
                 targets,
                 computeByTarget,
                 transaction,
-                ct),
-            cancellationToken);
+                ct)),
+            cancellationToken: cancellationToken);
     }
 
     private async Task<ResolveTargetsOutcome> ResolveTargetsAsync(
@@ -349,14 +350,15 @@ public sealed class CreateWebServiceHandler(
         var deploymentRequests =
             (IReadOnlyList<CreateResourceDeploymentRequest>)deploymentRequestsResult.Value;
         var registration = await resourceRegistrar.RegisterAsync(
-            webService.TenantId,
-            webService.ResourceGroupId,
-            new ResourceRegistrationDescriptor(
+            new RegisterResourceRequest(
+                TenantId: webService.TenantId,
+                ResourceGroupId: webService.ResourceGroupId,
+                Resource: new ResourceRegistrationDescriptor(
                 WebServiceResourceDeployment.ResourceType,
                 webService.Id,
-                webService.Name),
-            transaction.Session,
-            cancellationToken);
+                webService.Name)),
+            session: transaction.Session,
+            cancellationToken: cancellationToken);
         if (registration is ResourceRegistrationMutationError registrationError)
             return Abort(transaction, new CreateWebServiceError(registrationError));
 

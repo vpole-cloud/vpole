@@ -195,13 +195,12 @@ public sealed class ResourceConnectionCapabilityTests
         public IClientSessionHandle? LastSession { get; private set; }
 
         public Task<LoadResourceConnectionEndpointsOutcome> LoadAsync(
-            string tenantId,
-            string resourceId,
+            LoadResourceConnectionDestinationRequest request,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
         {
-            LastTenantId = tenantId;
-            LastResourceId = resourceId;
+            LastTenantId = request.TenantId;
+            LastResourceId = request.ResourceId;
             LastSession = session;
             return Task.FromResult<LoadResourceConnectionEndpointsOutcome>(
                 new ResourceConnectionEndpointsFound(

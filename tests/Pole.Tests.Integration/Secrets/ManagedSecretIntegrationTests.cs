@@ -48,24 +48,26 @@ public sealed class ManagedSecretIntegrationTests(MongoReplicaSetFixture fixture
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var owner = new ManagedSecretOwner("pole/postgresql", Id());
         var prepared = Assert.IsType<PreparedManagedSecret>((await Services.GetRequiredService<PrepareManagedSecret>()(
-            group.TenantId,
-            Id(),
-            owner,
-            "database-credentials",
-            1,
-            new Dictionary<string, string> { ["password"] = "private-value" },
-            ManagedSecretKubernetesType.Opaque,
-            default)).Value);
+            new PrepareManagedSecretRequest(
+                TenantId: group.TenantId,
+                SecretId: Id(),
+                Owner: owner,
+                Name: "database-credentials",
+                Version: 1,
+                Values: new Dictionary<string, string> { ["password"] = "private-value" },
+                KubernetesType: ManagedSecretKubernetesType.Opaque),
+            ct: default)).Value);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         var deployment = await StageConsumer(group, owner, session);
         Assert.IsType<ManagedSecretMutationSucceeded>((await Services.GetRequiredService<CreateBoundManagedSecret>()(
-            prepared,
-            group.Id,
-            group.DefaultIsolationScopeId,
-            deployment.Id,
-            session,
-            default)).Value);
+            new CreateBoundManagedSecretRequest(
+                Prepared: prepared,
+                ResourceGroupId: group.Id,
+                IsolationScopeId: group.DefaultIsolationScopeId,
+                DeploymentId: deployment.Id),
+            session: session,
+            ct: default)).Value);
         await session.CommitTransactionAsync();
         var secret =
             Assert.IsType<Secret>(
@@ -119,24 +121,26 @@ public sealed class ManagedSecretIntegrationTests(MongoReplicaSetFixture fixture
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var owner = new ManagedSecretOwner("pole/postgresql", Id());
         var prepared = Assert.IsType<PreparedManagedSecret>((await Services.GetRequiredService<PrepareManagedSecret>()(
-            group.TenantId,
-            Id(),
-            owner,
-            "abort-credentials",
-            1,
-            new Dictionary<string, string> { ["password"] = "private-value" },
-            ManagedSecretKubernetesType.Opaque,
-            default)).Value);
+            new PrepareManagedSecretRequest(
+                TenantId: group.TenantId,
+                SecretId: Id(),
+                Owner: owner,
+                Name: "abort-credentials",
+                Version: 1,
+                Values: new Dictionary<string, string> { ["password"] = "private-value" },
+                KubernetesType: ManagedSecretKubernetesType.Opaque),
+            ct: default)).Value);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         var deployment = await StageConsumer(group, owner, session);
         Assert.IsType<ManagedSecretMutationSucceeded>((await Services.GetRequiredService<CreateBoundManagedSecret>()(
-            prepared,
-            group.Id,
-            group.DefaultIsolationScopeId,
-            deployment.Id,
-            session,
-            default)).Value);
+            new CreateBoundManagedSecretRequest(
+                Prepared: prepared,
+                ResourceGroupId: group.Id,
+                IsolationScopeId: group.DefaultIsolationScopeId,
+                DeploymentId: deployment.Id),
+            session: session,
+            ct: default)).Value);
         await session.AbortTransactionAsync();
         Assert.Null(await Services.GetRequiredService<LoadManagedSecret>()(group.TenantId, owner, default));
         Assert.Equal(0,
@@ -154,24 +158,26 @@ public sealed class ManagedSecretIntegrationTests(MongoReplicaSetFixture fixture
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var owner = new ManagedSecretOwner("pole/postgresql", Id());
         var prepared = Assert.IsType<PreparedManagedSecret>((await Services.GetRequiredService<PrepareManagedSecret>()(
-            group.TenantId,
-            Id(),
-            owner,
-            "shared-credentials",
-            1,
-            new Dictionary<string, string> { ["password"] = "private-value" },
-            ManagedSecretKubernetesType.Opaque,
-            default)).Value);
+            new PrepareManagedSecretRequest(
+                TenantId: group.TenantId,
+                SecretId: Id(),
+                Owner: owner,
+                Name: "shared-credentials",
+                Version: 1,
+                Values: new Dictionary<string, string> { ["password"] = "private-value" },
+                KubernetesType: ManagedSecretKubernetesType.Opaque),
+            ct: default)).Value);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         var deployment = await StageConsumer(group, owner, session);
         Assert.IsType<ManagedSecretMutationSucceeded>((await Services.GetRequiredService<CreateBoundManagedSecret>()(
-            prepared,
-            group.Id,
-            group.DefaultIsolationScopeId,
-            deployment.Id,
-            session,
-            default)).Value);
+            new CreateBoundManagedSecretRequest(
+                Prepared: prepared,
+                ResourceGroupId: group.Id,
+                IsolationScopeId: group.DefaultIsolationScopeId,
+                DeploymentId: deployment.Id),
+            session: session,
+            ct: default)).Value);
         var consumer = new ManagedSecretOwner("pole/web-service", Id());
         await StageConsumer(group, consumer, session);
         await session.CommitTransactionAsync();
@@ -182,14 +188,19 @@ public sealed class ManagedSecretIntegrationTests(MongoReplicaSetFixture fixture
                 default)).Value);
         session.StartTransaction();
         Assert.IsType<ManagedSecretMutationSucceeded>(
-            (await Services.GetRequiredService<ReleaseManagedSecret>()(group.TenantId, owner, session, default)).Value);
+            (await Services.GetRequiredService<ReleaseManagedSecret>()(
+                new ReleaseManagedSecretRequest(
+                    TenantId: group.TenantId,
+                    Owner: owner),
+                session: session,
+                ct: default)).Value);
         await session.CommitTransactionAsync();
         var secret = await Services.GetRequiredService<LoadSecretById>()(group.TenantId, prepared.SecretId, default);
         if (shared)
         {
             Assert.NotNull(secret);
             Assert.IsType<UnmanagedSecret>(secret.Management);
-            Assert.Equal(consumer.ResourceId, Assert.Single(secret.Bindings).ConsumerId);
+            Assert.Equal(consumer.ResourceId, Assert.Single(secret.Bindings).Consumer.ResourceId);
             Assert.IsType<Secret>((await Services.GetRequiredService<PersistRotatedSecret>()(group.TenantId,
                 secret.Id,
                 1,
@@ -211,24 +222,26 @@ public sealed class ManagedSecretIntegrationTests(MongoReplicaSetFixture fixture
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var owner = new ManagedSecretOwner("pole/postgresql", Id());
         var prepared = Assert.IsType<PreparedManagedSecret>((await Services.GetRequiredService<PrepareManagedSecret>()(
-            group.TenantId,
-            Id(),
-            owner,
-            "owner-credentials",
-            1,
-            new Dictionary<string, string> { ["password"] = "value" },
-            ManagedSecretKubernetesType.Opaque,
-            default)).Value);
+            new PrepareManagedSecretRequest(
+                TenantId: group.TenantId,
+                SecretId: Id(),
+                Owner: owner,
+                Name: "owner-credentials",
+                Version: 1,
+                Values: new Dictionary<string, string> { ["password"] = "value" },
+                KubernetesType: ManagedSecretKubernetesType.Opaque),
+            ct: default)).Value);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         var deployment = await StageConsumer(group, owner, session);
         Assert.IsType<ManagedSecretMutationSucceeded>((await Services.GetRequiredService<CreateBoundManagedSecret>()(
-            prepared,
-            group.Id,
-            group.DefaultIsolationScopeId,
-            deployment.Id,
-            session,
-            default)).Value);
+            new CreateBoundManagedSecretRequest(
+                Prepared: prepared,
+                ResourceGroupId: group.Id,
+                IsolationScopeId: group.DefaultIsolationScopeId,
+                DeploymentId: deployment.Id),
+            session: session,
+            ct: default)).Value);
         await session.CommitTransactionAsync();
         var secret =
             Assert.IsType<Secret>(
@@ -243,18 +256,20 @@ public sealed class ManagedSecretIntegrationTests(MongoReplicaSetFixture fixture
         collection.AddSingleton<StoreOutboxWrites>(Fixture.StoreOutboxWrites);
         collection.AddSingleton(TimeProvider.System);
         collection.AddSingleton(Services.GetRequiredService<IEnvelopeEncryptionService>());
-        collection.AddSingleton<LoadResourceDeploymentSet>((_, _, _, _) =>
+        collection.AddSingleton<LoadResourceDeploymentSet>((request, _) =>
             Task.FromResult<IReadOnlyList<PlacementSummaryDto>>([]));
-        collection.AddSingleton<LoadExactResourceDeploymentRuntimePlacement>((_, _, _, _, _) =>
+        collection.AddSingleton<LoadExactResourceDeploymentRuntimePlacement>((request, _) =>
             Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(null));
         collection.AddSingleton<ClaimSecretProjection>((_, _, _, _) => Task.FromResult<SecretProjection?>(null));
         collection.AddSingleton<ISecretProjectionTarget>(new UnusedTarget());
         using var isolated = collection.BuildServiceProvider();
         var result =
-            await isolated.GetRequiredService<EnsureManagedSecretProjection>()(group.TenantId,
-                owner,
-                other.DeploymentId,
-                default);
+            await isolated.GetRequiredService<EnsureManagedSecretProjection>()(
+                new EnsureManagedSecretProjectionRequest(
+                    TenantId: group.TenantId,
+                    Owner: owner,
+                    DeploymentId: other.DeploymentId),
+                ct: default);
         Assert.IsType<ManagedSecretUnavailable>(result.Value);
     }
 
@@ -292,17 +307,19 @@ public sealed class ManagedSecretIntegrationTests(MongoReplicaSetFixture fixture
         collection.AddSingleton<LoadSecretById>((_, _, _) => Task.FromResult<Secret?>(null));
         collection.AddSingleton<LoadSecretProjections>((_, _, _) =>
             Task.FromResult<IReadOnlyList<SecretProjection>>([projection]));
-        collection.AddSingleton<LoadResourceDeploymentSet>((_, _, _, _) =>
+        collection.AddSingleton<LoadResourceDeploymentSet>((request, _) =>
             Task.FromResult<IReadOnlyList<PlacementSummaryDto>>([]));
-        collection.AddSingleton<LoadExactResourceDeploymentRuntimePlacement>((_, _, _, _, _) =>
+        collection.AddSingleton<LoadExactResourceDeploymentRuntimePlacement>((request, _) =>
             Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(null));
         collection.AddSingleton<ClaimSecretProjection>((_, _, _, _) => Task.FromResult<SecretProjection?>(null));
         collection.AddSingleton<ISecretProjectionTarget>(new UnusedTarget());
         using var isolated = collection.BuildServiceProvider();
-        var result = await isolated.GetRequiredService<EnsureManagedSecretProjection>()(original.TenantId,
-            new(binding.ConsumerType, binding.ConsumerId),
-            projection.DeploymentId,
-            default);
+        var result = await isolated.GetRequiredService<EnsureManagedSecretProjection>()(
+            new EnsureManagedSecretProjectionRequest(
+                TenantId: original.TenantId,
+                Owner: new(binding.Consumer.ResourceType, binding.Consumer.ResourceId),
+                DeploymentId: projection.DeploymentId),
+            ct: default);
         Assert.IsType<ManagedSecretUnavailable>(result.Value);
         Assert.Equal(2, loads);
     }
@@ -313,39 +330,54 @@ public sealed class ManagedSecretIntegrationTests(MongoReplicaSetFixture fixture
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var owner = new ManagedSecretOwner("pole/postgresql", Id());
         var prepare = Services.GetRequiredService<PrepareManagedSecret>();
-        var first = Assert.IsType<PreparedManagedSecret>((await prepare(group.TenantId,
-            Id(),
-            owner,
-            "rotate-managed",
-            1,
-            new Dictionary<string, string> { ["username"] = "user", ["password"] = "first" },
-            ManagedSecretKubernetesType.BasicAuthentication,
-            default)).Value);
+        var first = Assert.IsType<PreparedManagedSecret>((await prepare(
+            new PrepareManagedSecretRequest(
+                TenantId: group.TenantId,
+                SecretId: Id(),
+                Owner: owner,
+                Name: "rotate-managed",
+                Version: 1,
+                Values: new Dictionary<string, string> { ["username"] = "user", ["password"] = "first" },
+                KubernetesType: ManagedSecretKubernetesType.BasicAuthentication),
+            ct: default)).Value);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         var deployment = await StageConsumer(group, owner, session);
         Assert.IsType<ManagedSecretMutationSucceeded>((await Services.GetRequiredService<CreateBoundManagedSecret>()(
-            first,
-            group.Id,
-            group.DefaultIsolationScopeId,
-            deployment.Id,
-            session,
-            default)).Value);
+            new CreateBoundManagedSecretRequest(
+                Prepared: first,
+                ResourceGroupId: group.Id,
+                IsolationScopeId: group.DefaultIsolationScopeId,
+                DeploymentId: deployment.Id),
+            session: session,
+            ct: default)).Value);
         await session.CommitTransactionAsync();
-        var replacement = Assert.IsType<PreparedManagedSecret>((await prepare(group.TenantId,
-            first.SecretId,
-            owner,
-            first.Name,
-            2,
-            new Dictionary<string, string> { ["username"] = "user", ["password"] = "second" },
-            ManagedSecretKubernetesType.BasicAuthentication,
-            default)).Value);
+        var replacement = Assert.IsType<PreparedManagedSecret>((await prepare(
+            new PrepareManagedSecretRequest(
+                TenantId: group.TenantId,
+                SecretId: first.SecretId,
+                Owner: owner,
+                Name: first.Name,
+                Version: 2,
+                Values: new Dictionary<string, string> { ["username"] = "user", ["password"] = "second" },
+                KubernetesType: ManagedSecretKubernetesType.BasicAuthentication),
+            ct: default)).Value);
         session.StartTransaction();
         Assert.IsType<ManagedSecretMutationSucceeded>(
-            (await Services.GetRequiredService<RotateManagedSecret>()(replacement, 1, session, default)).Value);
+            (await Services.GetRequiredService<RotateManagedSecret>()(
+                new RotateManagedSecretRequest(
+                    Prepared: replacement,
+                    ExpectedVersion: 1),
+                session: session,
+                ct: default)).Value);
         await session.CommitTransactionAsync();
         session.StartTransaction();
-        var stale = await Services.GetRequiredService<RotateManagedSecret>()(replacement, 1, session, default);
+        var stale = await Services.GetRequiredService<RotateManagedSecret>()(
+            new RotateManagedSecretRequest(
+                Prepared: replacement,
+                ExpectedVersion: 1),
+            session: session,
+            ct: default);
         Assert.IsType<ManagedSecretChanged>(stale.Value);
         await session.AbortTransactionAsync();
         Assert.Equal(2,
@@ -355,26 +387,40 @@ public sealed class ManagedSecretIntegrationTests(MongoReplicaSetFixture fixture
             (await Services.GetRequiredService<ReadManagedSecret>()(group.TenantId, owner, default)).Value);
         Assert.Equal("second", read.Values["password"]);
         var username =
-            await Services.GetRequiredService<ReadManagedSecretKey>()(group.TenantId, owner, "username", default);
+            await Services.GetRequiredService<ReadManagedSecretKey>()(
+                new ReadManagedSecretKeyRequest(
+                    TenantId: group.TenantId,
+                    Owner: owner,
+                    Key: "username"),
+                ct: default);
         Assert.Equal("user", Assert.IsType<ManagedSecretKey>(username.Value).Value);
         Assert.IsType<ManagedSecretUnavailable>(
-            (await Services.GetRequiredService<ReadManagedSecretKey>()(group.TenantId, owner, "missing-key", default))
+            (await Services.GetRequiredService<ReadManagedSecretKey>()(
+                new ReadManagedSecretKeyRequest(
+                    TenantId: group.TenantId,
+                    Owner: owner,
+                    Key: "missing-key"),
+                ct: default))
             .Value);
-        var duplicate = Assert.IsType<PreparedManagedSecret>((await prepare(group.TenantId,
-            Id(),
-            owner,
-            "duplicate-owner",
-            1,
-            new Dictionary<string, string> { ["password"] = "value" },
-            ManagedSecretKubernetesType.Opaque,
-            default)).Value);
+        var duplicate = Assert.IsType<PreparedManagedSecret>((await prepare(
+            new PrepareManagedSecretRequest(
+                TenantId: group.TenantId,
+                SecretId: Id(),
+                Owner: owner,
+                Name: "duplicate-owner",
+                Version: 1,
+                Values: new Dictionary<string, string> { ["password"] = "value" },
+                KubernetesType: ManagedSecretKubernetesType.Opaque),
+            ct: default)).Value);
         session.StartTransaction();
-        var duplicateResult = await Services.GetRequiredService<CreateBoundManagedSecret>()(duplicate,
-            group.Id,
-            group.DefaultIsolationScopeId,
-            deployment.Id,
-            session,
-            default);
+        var duplicateResult = await Services.GetRequiredService<CreateBoundManagedSecret>()(
+            new CreateBoundManagedSecretRequest(
+                Prepared: duplicate,
+                ResourceGroupId: group.Id,
+                IsolationScopeId: group.DefaultIsolationScopeId,
+                DeploymentId: deployment.Id),
+            session: session,
+            ct: default);
         Assert.IsType<ManagedSecretChanged>(duplicateResult.Value);
         await session.AbortTransactionAsync();
     }
@@ -387,14 +433,15 @@ public sealed class ManagedSecretIntegrationTests(MongoReplicaSetFixture fixture
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var owner = new ManagedSecretOwner("pole/postgresql", Id());
         var prepared = Assert.IsType<PreparedManagedSecret>((await Services.GetRequiredService<PrepareManagedSecret>()(
-            group.TenantId,
-            Id(),
-            owner,
-            "integrity",
-            1,
-            new Dictionary<string, string> { ["password"] = "private-value" },
-            ManagedSecretKubernetesType.Opaque,
-            default)).Value);
+            new PrepareManagedSecretRequest(
+                TenantId: group.TenantId,
+                SecretId: Id(),
+                Owner: owner,
+                Name: "integrity",
+                Version: 1,
+                Values: new Dictionary<string, string> { ["password"] = "private-value" },
+                KubernetesType: ManagedSecretKubernetesType.Opaque),
+            ct: default)).Value);
         if (changeContext)
             prepared = prepared with
             {
@@ -417,17 +464,23 @@ public sealed class ManagedSecretIntegrationTests(MongoReplicaSetFixture fixture
         session.StartTransaction();
         var deployment = await StageConsumer(group, owner, session);
         Assert.IsType<ManagedSecretMutationSucceeded>((await Services.GetRequiredService<CreateBoundManagedSecret>()(
-            prepared,
-            group.Id,
-            group.DefaultIsolationScopeId,
-            deployment.Id,
-            session,
-            default)).Value);
+            new CreateBoundManagedSecretRequest(
+                Prepared: prepared,
+                ResourceGroupId: group.Id,
+                IsolationScopeId: group.DefaultIsolationScopeId,
+                DeploymentId: deployment.Id),
+            session: session,
+            ct: default)).Value);
         await session.CommitTransactionAsync();
         var result = await Services.GetRequiredService<ReadManagedSecret>()(group.TenantId, owner, default);
         Assert.IsType<ManagedSecretEncryptionUnavailable>(result.Value);
         var keyResult =
-            await Services.GetRequiredService<ReadManagedSecretKey>()(group.TenantId, owner, "password", default);
+            await Services.GetRequiredService<ReadManagedSecretKey>()(
+                new ReadManagedSecretKeyRequest(
+                    TenantId: group.TenantId,
+                    Owner: owner,
+                    Key: "password"),
+                ct: default);
         Assert.IsType<ManagedSecretEncryptionUnavailable>(keyResult.Value);
     }
 
@@ -447,10 +500,11 @@ public sealed class ManagedSecretIntegrationTests(MongoReplicaSetFixture fixture
         IClientSessionHandle session)
     {
         Assert.IsType<RegisteredResource>((await Services.GetRequiredService<IResourceRegistrar>().RegisterAsync(
-            group.TenantId,
-            group.Id,
-            new(ResourceTypeId.Create(owner.ResourceType), owner.ResourceId, "consumer"),
-            session)).Value);
+            new RegisterResourceRequest(
+                TenantId: group.TenantId,
+                ResourceGroupId: group.Id,
+                Resource: new(ResourceTypeId.Create(owner.ResourceType), owner.ResourceId, "consumer")),
+            session: session)).Value);
         var now = DateTime.UtcNow;
         var placement = ResolvedResourcePlacement.Create(Id(),
             TestData.DefaultDeploymentTargetId,

@@ -106,10 +106,11 @@ public sealed class UpdateWebServiceHandler(
                 new WebServiceUpdateUnavailable(webService.Id)));
 
         var deploymentInventory = await loadResourceDeploymentSet(
-            webService.TenantId,
-            WebServiceResourceDeployment.ResourceType,
-            webService.Id,
-            cancellationToken);
+            new LoadResourceDeploymentSetRequest(
+                TenantId: webService.TenantId,
+                ResourceType: WebServiceResourceDeployment.ResourceType,
+                ResourceId: webService.Id),
+            cancellationToken: cancellationToken);
         var deployments = deploymentInventory
             .Where(WebServiceDeploymentWorkflow.IsDesiredPlacement)
             .ToArray();
@@ -161,119 +162,120 @@ public sealed class UpdateWebServiceHandler(
         return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             WebServiceQuotaInput,
             UpdateWebServiceOutcome>(
-            webService.TenantId,
-            WebServiceQuotaResourceKey.Create(webService.Id),
-            new UpdateQuotaMutation<WebServiceQuotaInput>(currentQuota, nextQuota),
-            quotaError => Error(quotaError),
-            async (transaction, ct) =>
-            {
-                var physicalChanges = !webService.Spec.HasSameConfiguration(nextSpec) ||
-                    webService.Exposure.Mode != nextWebService.Exposure.Mode;
-                IReadOnlyList<PlacementSummaryDto> updatedDeployments;
-                if (physicalChanges)
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.WebServices.Application.Common.WebServiceQuotaInput, global::Pole.Features.WebServices.Application.Endpoints.UpdateWebServiceOutcome>(
+                TenantId: webService.TenantId,
+                ResourceKey: WebServiceQuotaResourceKey.Create(webService.Id),
+                Mutation: new UpdateQuotaMutation<WebServiceQuotaInput>(currentQuota, nextQuota),
+                QuotaError: quotaError => Error(quotaError),
+                MutationCallback: async (transaction, ct) =>
                 {
-                    var ingressItemsResult = await CreateExposureApplyItemsAsync(
+                    var physicalChanges = !webService.Spec.HasSameConfiguration(nextSpec) ||
+                        webService.Exposure.Mode != nextWebService.Exposure.Mode;
+                    IReadOnlyList<PlacementSummaryDto> updatedDeployments;
+                    if (physicalChanges)
+                    {
+                        var ingressItemsResult = await CreateExposureApplyItemsAsync(
+                            transaction.Session,
+                            webService,
+                            nextWebService,
+                            deployments,
+                            publicTargets,
+                            ct);
+                        if (ingressItemsResult is GeneratedDomainZoneError zonesError)
+                        {
+                            return transaction.Abort(
+                                Error(new UpdateWebServiceError(zonesError)));
+                        }
+                        if (ingressItemsResult is GeneratedHostnameBindingError bindingsError)
+                        {
+                            return transaction.Abort(
+                                Error(new UpdateWebServiceError(bindingsError)));
+                        }
+                        var deploymentsResult = await requestResourceDeploymentSetApply(
+                            new ResourceDeploymentSetApplyRequest(
+                                webService.TenantId,
+                                WebServiceResourceDeployment.ResourceType,
+                                webService.Id,
+                                nextWebService.ActiveRevision,
+                                (ResourceDeploymentSetApplyItem[])ingressItemsResult.Value),
+                            transaction.Session,
+                            ct);
+                        if (deploymentsResult is ResourceDeploymentMutationError deploymentError)
+                        {
+                            return transaction.Abort(
+                                Error(new UpdateWebServiceError(deploymentError)));
+                        }
+                        var physicalDeployments = ((MutatedResourceDeployments)deploymentsResult.Value).Placements;
+                        updatedDeployments = physicalDeployments;
+                    }
+                    else
+                    {
+                        var deploymentsResult = await advanceResourceDeploymentRevision(
+                            new ResourceDeploymentResourceRevisionRequest(
+                                webService.TenantId,
+                                WebServiceResourceDeployment.ResourceType,
+                                webService.Id,
+                                nextWebService.ActiveRevision),
+                            transaction.Session,
+                            ct);
+                        if (deploymentsResult is AdvanceResourceDeploymentRevisionError revisionError)
+                        {
+                            return transaction.Abort(
+                                Error(new UpdateWebServiceError(revisionError)));
+                        }
+                        var revisionDeployments = ((MutatedResourceDeployments)deploymentsResult.Value).Placements;
+                        updatedDeployments = revisionDeployments
+                            .Where(WebServiceDeploymentWorkflow.IsDesiredPlacement)
+                            .ToArray();
+                    }
+
+                    var persisted = await persistUpdatedWebService(
                         transaction.Session,
                         webService,
                         nextWebService,
-                        deployments,
-                        publicTargets,
+                        nextWebService.ToUpdatedEvent(
+                            WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments)),
                         ct);
-                    if (ingressItemsResult is GeneratedDomainZoneError zonesError)
+                    if (persisted is WebServiceUpdateConflict persistenceError)
                     {
                         return transaction.Abort(
-                            Error(new UpdateWebServiceError(zonesError)));
+                            Error(new UpdateWebServiceError(persistenceError)));
                     }
-                    if (ingressItemsResult is GeneratedHostnameBindingError bindingsError)
+                    if (persisted is WebServiceConnectionConflict connectionConflict)
                     {
                         return transaction.Abort(
-                            Error(new UpdateWebServiceError(bindingsError)));
+                            Error(new UpdateWebServiceError(connectionConflict)));
                     }
-                    var deploymentsResult = await requestResourceDeploymentSetApply(
-                        new ResourceDeploymentSetApplyRequest(
-                            webService.TenantId,
-                            WebServiceResourceDeployment.ResourceType,
-                            webService.Id,
-                            nextWebService.ActiveRevision,
-                            (ResourceDeploymentSetApplyItem[])ingressItemsResult.Value),
-                        transaction.Session,
-                        ct);
-                    if (deploymentsResult is ResourceDeploymentMutationError deploymentError)
+                    if (persisted is WebServiceDependencyUnavailable dependencyUnavailable)
                     {
                         return transaction.Abort(
-                            Error(new UpdateWebServiceError(deploymentError)));
+                            Error(new UpdateWebServiceError(dependencyUnavailable)));
                     }
-                    var physicalDeployments = ((MutatedResourceDeployments)deploymentsResult.Value).Placements;
-                    updatedDeployments = physicalDeployments;
-                }
-                else
-                {
-                    var deploymentsResult = await advanceResourceDeploymentRevision(
-                        new ResourceDeploymentResourceRevisionRequest(
-                            webService.TenantId,
-                            WebServiceResourceDeployment.ResourceType,
-                            webService.Id,
-                            nextWebService.ActiveRevision),
-                        transaction.Session,
-                        ct);
-                    if (deploymentsResult is AdvanceResourceDeploymentRevisionError revisionError)
-                    {
-                        return transaction.Abort(
-                            Error(new UpdateWebServiceError(revisionError)));
-                    }
-                    var revisionDeployments = ((MutatedResourceDeployments)deploymentsResult.Value).Placements;
-                    updatedDeployments = revisionDeployments
-                        .Where(WebServiceDeploymentWorkflow.IsDesiredPlacement)
-                        .ToArray();
-                }
 
-                var persisted = await persistUpdatedWebService(
-                    transaction.Session,
-                    webService,
-                    nextWebService,
-                    nextWebService.ToUpdatedEvent(
-                        WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments)),
-                    ct);
-                if (persisted is WebServiceUpdateConflict persistenceError)
-                {
-                    return transaction.Abort(
-                        Error(new UpdateWebServiceError(persistenceError)));
-                }
-                if (persisted is WebServiceConnectionConflict connectionConflict)
-                {
-                    return transaction.Abort(
-                        Error(new UpdateWebServiceError(connectionConflict)));
-                }
-                if (persisted is WebServiceDependencyUnavailable dependencyUnavailable)
-                {
-                    return transaction.Abort(
-                        Error(new UpdateWebServiceError(dependencyUnavailable)));
-                }
-
-                var release = WebServiceReleaseFactory.CreatePending(
-                    nextWebService.TenantId,
-                    nextWebService.Id,
-                    nextWebService.ActiveRevision,
-                    WebServiceReleaseAction.Update,
-                    request.ActorUserId.Value,
-                    request.ActorEmail.Value,
-                    nextWebService.Spec,
-                    WebServiceDeploymentWorkflow.ToReleaseDeployments(updatedDeployments),
-                    traceId: null,
-                    correlationId: null,
-                    new WebServiceReleaseFactory.CreateOptions(
-                        MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
-                        timeProvider.GetUtcNow().UtcDateTime),
-                    exposure: nextWebService.Exposure);
-                await persistCurrentWebServiceRelease(transaction.Session, release, ct);
-
-                return transaction.Commit(new UpdateWebServiceOutcome(
-                    new UpdateWebServiceResponse(
+                    var release = WebServiceReleaseFactory.CreatePending(
+                        nextWebService.TenantId,
                         nextWebService.Id,
                         nextWebService.ActiveRevision,
-                        updatedDeployments)));
-            },
-            cancellationToken);
+                        WebServiceReleaseAction.Update,
+                        request.ActorUserId.Value,
+                        request.ActorEmail.Value,
+                        nextWebService.Spec,
+                        WebServiceDeploymentWorkflow.ToReleaseDeployments(updatedDeployments),
+                        traceId: null,
+                        correlationId: null,
+                        new WebServiceReleaseFactory.CreateOptions(
+                            MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
+                            timeProvider.GetUtcNow().UtcDateTime),
+                        exposure: nextWebService.Exposure);
+                    await persistCurrentWebServiceRelease(transaction.Session, release, ct);
+
+                    return transaction.Commit(new UpdateWebServiceOutcome(
+                        new UpdateWebServiceResponse(
+                            nextWebService.Id,
+                            nextWebService.ActiveRevision,
+                            updatedDeployments)));
+                }),
+            cancellationToken: cancellationToken);
     }
 
     private async Task<ResolvePublicTargetsOutcome> ResolvePublicTargetsAsync(
@@ -364,12 +366,13 @@ public sealed class UpdateWebServiceHandler(
         foreach (var deployment in deployments)
         {
             var existingBindings = await loadHostnameBindingsForDeployment(
-                updated.TenantId,
-                WebServiceResourceDeployment.ResourceType,
-                updated.Id,
-                deployment.DeploymentId,
-                session,
-                cancellationToken);
+                new LoadHostnameBindingsForDeploymentInTransactionRequest(
+                    TenantId: updated.TenantId,
+                    ResourceType: WebServiceResourceDeployment.ResourceType,
+                    ResourceId: updated.Id,
+                    ResourceDeploymentId: deployment.DeploymentId),
+                session: session,
+                cancellationToken: cancellationToken);
             var generatedBinding = existingBindings.SingleOrDefault(binding =>
                 string.Equals(binding.Kind, HostnameBindingKinds.Generated, StringComparison.Ordinal));
             if (generatedBinding is not null)

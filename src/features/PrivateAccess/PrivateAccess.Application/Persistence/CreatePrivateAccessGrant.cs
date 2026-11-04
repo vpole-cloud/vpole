@@ -57,27 +57,44 @@ internal sealed class MongoCreatePrivateAccessGrant(
         transactions(async (transaction, ct) =>
         {
             var actor = await loadTenantMember(
-                command.TenantId, command.ActorUserId, transaction.Session, ct);
+                new LoadTenantMemberRequest(
+                    TenantId: command.TenantId,
+                    UserId: command.ActorUserId),
+                session: transaction.Session,
+                cancellationToken: ct);
             if (actor is not TenantMemberSnapshot { Role: >= TenantMembershipRole.Admin })
                 return transaction.Abort(new CreatePrivateAccessGrantPersistenceOutcome(
                     new PrivateAccessManageRoleRequired()));
 
             var subject = await loadTenantMember(
-                command.TenantId, command.SubjectUserId, transaction.Session, ct);
+                new LoadTenantMemberRequest(
+                    TenantId: command.TenantId,
+                    UserId: command.SubjectUserId),
+                session: transaction.Session,
+                cancellationToken: ct);
             if (subject is not TenantMemberSnapshot)
                 return transaction.Abort(new CreatePrivateAccessGrantPersistenceOutcome(
                     new PrivateAccessSubjectNotMember()));
 
             var registered = await fenceResource(
-                command.TenantId, command.ResourceType, command.ResourceId,
-                transaction.Session, ct);
+                new FenceRegisteredResourceRequest(
+                    TenantId: command.TenantId,
+                    ResourceTypeId: command.ResourceType,
+                    ResourceId: command.ResourceId),
+                session: transaction.Session,
+                cancellationToken: ct);
             if (registered is null)
                 return transaction.Abort(new CreatePrivateAccessGrantPersistenceOutcome(
                     new PrivateAccessResourceUnavailable()));
 
             var placement = await loadPlacement(
-                command.TenantId, command.ResourceType, command.ResourceId,
-                command.ResourceDeploymentId, transaction.Session, ct);
+                new LoadExactResourceDeploymentAccessPlacementRequest(
+                    TenantId: command.TenantId,
+                    ResourceType: command.ResourceType,
+                    ResourceId: command.ResourceId,
+                    DeploymentId: command.ResourceDeploymentId),
+                session: transaction.Session,
+                cancellationToken: ct);
             if (placement is null ||
                 placement.ResourceGroupId != registered.ResourceGroupId ||
                 placement.Status != ResourceDeploymentStatus.Applied ||

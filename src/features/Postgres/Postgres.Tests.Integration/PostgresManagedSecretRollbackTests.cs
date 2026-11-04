@@ -21,12 +21,19 @@ public sealed class PostgresManagedSecretRollbackTests(MongoReplicaSetFixture fi
         services.AddScoped<CreateBoundManagedSecret>(provider =>
         {
             var create = (CreateBoundManagedSecret)providerRegistration.ImplementationFactory!(provider);
-            return async (prepared, group, scope, deployment, session, ct) =>
+            return async (request, session, ct) =>
             {
-                var written = await create(prepared, group, scope, deployment, session, ct);
+                var written = await create(
+                    new CreateBoundManagedSecretRequest(
+                        Prepared: request.Prepared,
+                        ResourceGroupId: request.ResourceGroupId,
+                        IsolationScopeId: request.IsolationScopeId,
+                        DeploymentId: request.DeploymentId),
+                    session: session,
+                    ct: ct);
                 Assert.IsType<ManagedSecretMutationSucceeded>(written.Value);
                 Assert.Equal(1, await Fixture.Database.GetCollection<Secret>("Secrets")
-                    .CountDocumentsAsync(session, secret => secret.Id == prepared.SecretId, cancellationToken: ct));
+                    .CountDocumentsAsync(session, secret => secret.Id == request.Prepared.SecretId, cancellationToken: ct));
                 return new ManagedSecretChanged();
             };
         });

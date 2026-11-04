@@ -107,6 +107,7 @@ internal static class ResourceDeploymentMutationSupport
         ReplaceAndEnqueueAsync(
             IMongoCollection<ResourceDeployment> resourceDeployments,
             StoreOutboxWrites storeOutboxWrites,
+            ResourceDeploymentIsolationProjection isolation,
             ResourceDeployment current,
             ResourceDeployment updated,
             IClientSessionHandle session,
@@ -132,7 +133,7 @@ internal static class ResourceDeploymentMutationSupport
                 cancellationToken);
         }
 
-        return updated.ToPlacementSummaryDto();
+        return await isolation.ProjectAsync(updated, cancellationToken);
     }
 
     public static void EnsureSetIsNonEmptyAndUnique<T>(

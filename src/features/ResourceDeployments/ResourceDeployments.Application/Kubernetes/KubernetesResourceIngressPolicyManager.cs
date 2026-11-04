@@ -66,11 +66,12 @@ internal sealed class KubernetesResourceIngressPolicyManager(
                 return new ResourceIngressPolicyUnavailable();
 
             var baseline = await ensureRuntimeCellIngressBaseline(
-                request.TenantId,
-                request.RuntimeCellId,
-                request.DeploymentTargetId,
-                request.KubernetesNamespace,
-                cancellationToken);
+                new EnsureRuntimeCellIngressBaselineRequest(
+                    TenantId: request.TenantId,
+                    RuntimeCellId: request.RuntimeCellId,
+                    DeploymentTargetId: request.DeploymentTargetId,
+                    KubernetesNamespace: request.KubernetesNamespace),
+                cancellationToken: cancellationToken);
             ReconcileResourceIngressPolicyOutcome? baselineFailure = baseline switch
             {
                 null => throw new InvalidOperationException("The ingress baseline returned no outcome."),

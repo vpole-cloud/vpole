@@ -43,8 +43,11 @@ internal sealed class DeclarativeResourceGroupProvider(
         return DeclarationJson.Write(value with { Description = value.Description.Trim(), Tags = value.Tags.Select(tag => tag.Trim()).Distinct().Order(StringComparer.Ordinal).ToArray() });
     }
     public IReadOnlyList<DeclarationStep> Steps(ResourceAddress address, JsonElement spec) => [new(DeclarationPhase.Prepare, [])];
-    public async Task<string?> ResolveAsync(string tenantId, string name, IClientSessionHandle session, CancellationToken ct) =>
-        (await groups.Find(session, ResourceGroupFilters.ByTechnicalName(tenantId, name)).FirstOrDefaultAsync(ct))?.Id;
+    public async Task<string?> ResolveAsync(
+        ResolveDeclaredResourceRequest request,
+        IClientSessionHandle session,
+        CancellationToken ct) =>
+        (await groups.Find(session, ResourceGroupFilters.ByTechnicalName(request.TenantId, request.Name)).FirstOrDefaultAsync(ct))?.Id;
     public Task<GitOperationResult> ApplyAsync(GitOperation operation, CancellationToken ct) =>
         git.ExecuteAsync(operation, async (session, token) => (await ApplyDeclarationAsync(operation, session, token)) switch
         {

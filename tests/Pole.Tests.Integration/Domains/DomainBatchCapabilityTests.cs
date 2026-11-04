@@ -236,12 +236,13 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
                 cancellationToken) => CompleteAsync(
                 transactionContext,
                 capabilities.DeleteAllForDeploymentAsync(
-                    tenantId,
-                    WebServiceType,
-                    resourceId,
-                    deploymentId,
-                    transactionContext.Session,
-                    cancellationToken),
+                    new DeleteHostnameBindingsForDeploymentRequest(
+                        TenantId: tenantId,
+                        ResourceType: WebServiceType,
+                        ResourceId: resourceId,
+                        ResourceDeploymentId: deploymentId),
+                    session: transactionContext.Session,
+                    cancellationToken: cancellationToken),
                 outcome => outcome is HostnameBindingsCleanedUp))).Value);
 
         Assert.Equal(0,
@@ -300,12 +301,13 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
                 cancellationToken) => CompleteAsync(
                 transactionContext,
                 capabilities.DeleteAllForDeploymentAsync(
-                    tenantId,
-                    WebServiceType,
-                    resourceId,
-                    deploymentId,
-                    transactionContext.Session,
-                    cancellationToken),
+                    new DeleteHostnameBindingsForDeploymentRequest(
+                        TenantId: tenantId,
+                        ResourceType: WebServiceType,
+                        ResourceId: resourceId,
+                        ResourceDeploymentId: deploymentId),
+                    session: transactionContext.Session,
+                    cancellationToken: cancellationToken),
                 outcome => outcome is HostnameBindingsCleanedUp));
 
         var error = Assert.IsType<HostnameBindingCleanupError>(cleanup.Value).Value;
@@ -367,12 +369,13 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
                 cancellationToken) => CompleteAsync(
                 transactionContext,
                 capabilities.DeleteAllForDeploymentAsync(
-                    tenantId,
-                    WebServiceType,
-                    firstResourceId,
-                    firstDeploymentId,
-                    transactionContext.Session,
-                    cancellationToken),
+                    new DeleteHostnameBindingsForDeploymentRequest(
+                        TenantId: tenantId,
+                        ResourceType: WebServiceType,
+                        ResourceId: firstResourceId,
+                        ResourceDeploymentId: firstDeploymentId),
+                    session: transactionContext.Session,
+                    cancellationToken: cancellationToken),
                 outcome => outcome is HostnameBindingsCleanedUp))).Value);
 
         Assert.Equal(1,
@@ -485,22 +488,20 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
         }
 
         public Task<ApplyDeploymentTargetReferenceChangesOutcome> ApplyChangesOutcomeAsync(
-            DeploymentTargetReferenceOwner owner,
-            IReadOnlyCollection<string> addedDeploymentTargetIds,
-            IReadOnlyCollection<string> removedDeploymentTargetIds,
+            ApplyDeploymentTargetReferenceChangesRequest request,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
         {
             Assert.True(session.IsInTransaction);
-            Registrations.AddRange(addedDeploymentTargetIds.Select(id => (id, owner)));
-            Unregistrations.AddRange(removedDeploymentTargetIds.Select(id => (id, owner)));
-            if (RejectReferenceRemoval && removedDeploymentTargetIds.Count > 0)
+            Registrations.AddRange(request.AddedDeploymentTargetIds.Select(id => (id, request.Owner)));
+            Unregistrations.AddRange(request.RemovedDeploymentTargetIds.Select(id => (id, request.Owner)));
+            if (RejectReferenceRemoval && request.RemovedDeploymentTargetIds.Count > 0)
             {
                 return Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(
                     new ApplyDeploymentTargetReferenceChangesOutcome(
                         new DeploymentTargetReferenceChangeRejected(
-                            owner,
-                            removedDeploymentTargetIds.ToArray())));
+                            request.Owner,
+                            request.RemovedDeploymentTargetIds.ToArray())));
             }
 
             return Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(

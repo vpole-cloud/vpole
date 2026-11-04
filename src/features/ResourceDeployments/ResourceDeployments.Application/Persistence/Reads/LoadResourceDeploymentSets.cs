@@ -10,17 +10,15 @@ internal sealed class MongoLoadResourceDeploymentSets(
     ResourceDeploymentIsolationProjection isolation)
 {
     public async Task<IReadOnlyDictionary<string, IReadOnlyList<PlacementSummaryDto>>> InvokeAsync(
-        string tenantId,
-        ResourceTypeId resourceType,
-        IReadOnlyCollection<string> resourceIds,
+        LoadResourceDeploymentSetsRequest request,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(resourceIds);
-        if (resourceIds.Count == 0)
+        ArgumentNullException.ThrowIfNull(request.ResourceIds);
+        if (request.ResourceIds.Count == 0)
             return new Dictionary<string, IReadOnlyList<PlacementSummaryDto>>();
 
         var deployments = await resourceDeployments
-            .Find(ResourceDeploymentFilters.ForResources(tenantId, resourceType, resourceIds))
+            .Find(ResourceDeploymentFilters.ForResources(request.TenantId, request.ResourceType, request.ResourceIds))
             .SortBy(deployment => deployment.ResourceId)
             .ThenBy(deployment => deployment.Id)
             .ToListAsync(cancellationToken);
@@ -32,10 +30,7 @@ internal sealed class MongoLoadResourceDeploymentSets(
             .ToDictionary(
                 group => group.Key,
                 group => (IReadOnlyList<PlacementSummaryDto>)group
-                    .Select(deployment => deployment.ToPlacementSummaryDto() with
-                    {
-                        Isolation = policies[deployment.ResolvedPlacement.DeploymentTargetId]
-                    })
+                    .Select(deployment => deployment.ToPlacementSummaryDto(policies[deployment.ResolvedPlacement.DeploymentTargetId]))
                     .ToArray(),
                 StringComparer.Ordinal);
     }

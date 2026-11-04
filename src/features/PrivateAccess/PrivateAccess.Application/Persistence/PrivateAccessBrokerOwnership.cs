@@ -14,38 +14,36 @@ internal sealed class MongoPrivateAccessBrokerOwnership(
     private const int LeaseSeconds = 10;
 
     public Task<ClaimPrivateAccessBrokerOwnerOutcome> ClaimAsync(
-        PrivateAccessGatewayIdentity gateway,
-        string instanceId,
-        string internalOrigin,
+        ClaimPrivateAccessBrokerOwnerRequest request,
         CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(instanceId);
-        PrivateAccessBrokerOwner.ValidateOrigin(internalOrigin);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.InstanceId);
+        PrivateAccessBrokerOwner.ValidateOrigin(request.InternalOrigin);
         return transactions.InvokeOutcomeAsync<ClaimPrivateAccessBrokerOwnerOutcome>(
             async (transaction, ct) =>
             {
                 var registration = await gateways.Find(transaction.Session,
                         PrivateAccessGatewayFilters.Current(
-                            gateway.TenantId, gateway.DeploymentTargetId,
-                            gateway.GatewayId, gateway.Generation, gateway.Revision))
+                            request.Gateway.TenantId, request.Gateway.DeploymentTargetId,
+                            request.Gateway.GatewayId, request.Gateway.Generation, request.Gateway.Revision))
                     .FirstOrDefaultAsync(ct);
                 if (registration is null)
                     return transaction.Abort(new ClaimPrivateAccessBrokerOwnerOutcome(
                         new PrivateAccessBrokerGatewayUnavailable()));
 
                 var owner = await owners.Find(transaction.Session,
-                        PrivateAccessBrokerOwnerFilters.ByGateway(gateway.GatewayId))
+                        PrivateAccessBrokerOwnerFilters.ByGateway(request.Gateway.GatewayId))
                     .FirstOrDefaultAsync(ct);
-                if (owner is null || owner.TenantId != gateway.TenantId ||
-                    owner.DeploymentTargetId != gateway.DeploymentTargetId ||
-                    owner.GatewayGeneration != gateway.Generation ||
-                    owner.GatewayRevision != gateway.Revision)
+                if (owner is null || owner.TenantId != request.Gateway.TenantId ||
+                    owner.DeploymentTargetId != request.Gateway.DeploymentTargetId ||
+                    owner.GatewayGeneration != request.Gateway.Generation ||
+                    owner.GatewayRevision != request.Gateway.Revision)
                     return transaction.Abort(new ClaimPrivateAccessBrokerOwnerOutcome(
                         new PrivateAccessBrokerGatewayUnavailable()));
 
                 var claimed = await owners.FindOneAndUpdateAsync(transaction.Session,
-                    PrivateAccessBrokerOwnerFilters.Claimable(owner, instanceId),
-                    LeaseUpdate(instanceId, internalOrigin, incrementEpoch: true),
+                    PrivateAccessBrokerOwnerFilters.Claimable(owner, request.InstanceId),
+                    LeaseUpdate(request.InstanceId, request.InternalOrigin, incrementEpoch: true),
                     new FindOneAndUpdateOptions<PrivateAccessBrokerOwner>
                     {
                         ReturnDocument = ReturnDocument.After

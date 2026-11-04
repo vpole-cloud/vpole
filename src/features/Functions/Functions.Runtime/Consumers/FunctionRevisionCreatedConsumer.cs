@@ -60,11 +60,12 @@ public sealed class FunctionRevisionCreatedConsumer(
             return;
 
         var deployment = await loadDeploymentPlacement(
-            tenantId,
-            FunctionResourceDeployment.ResourceType,
-            app.Id,
-            message.ResourceDeploymentId,
-            cancellationToken);
+            new LoadExactResourceDeploymentRuntimePlacementRequest(
+                TenantId: tenantId,
+                ResourceType: FunctionResourceDeployment.ResourceType,
+                ResourceId: app.Id,
+                DeploymentId: message.ResourceDeploymentId),
+            cancellationToken: cancellationToken);
         if (deployment is null ||
             deployment.Status != ResourceDeploymentStatus.Applied ||
             deployment.DesiredOperation != ResourceDeploymentDesiredOperation.Apply ||

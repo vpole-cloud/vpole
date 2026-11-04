@@ -42,7 +42,7 @@ public sealed class SecretTests
     public async Task One_recovery_pass_can_release_independent_consumers_without_reusing_the_old_reference_fence()
     {
         SecretBinding Retained(string id) => SecretBinding.Create(id, "pole/web-service", id, new AllSecretDeployments(), [])
-            .PinReferences(["password"], true).PinReferences(["user"], true);
+            .RequireKeysThroughRollout(["password"]).RequireKeysThroughRollout(["user"]);
         var current = NewSecret().Bind(Retained("first"), DateTime.UtcNow).Bind(Retained("second"), DateTime.UtcNow);
         var originalFence = current.ReferenceFence;
         var reconciler = new SecretKeyRetirementReconciler((_, _, _) => Task.FromResult<Secret?>(current),
@@ -53,7 +53,7 @@ public sealed class SecretTests
                 return Task.FromResult(true);
             }, [new ConfirmedRolloutObserver()]);
         await reconciler.ReconcileAsync(current.TenantId, current.Id);
-        Assert.All(current.Bindings, binding => Assert.Empty(binding.RetainedKeys));
+        Assert.All(current.Bindings, binding => Assert.Empty(binding.Pins.Retained));
         Assert.Equal(originalFence + 2, current.ReferenceFence);
     }
 
@@ -68,7 +68,7 @@ public sealed class SecretTests
     public void Declaration_metadata_preserves_values_and_rejects_keys_protected_by_old_rollouts()
     {
         var binding = SecretBinding.Create("binding", "pole/web-service", "consumer", new AllSecretDeployments(), [])
-            .PinReferences(["password"], true).PinReferences(["user"], true);
+            .RequireKeysThroughRollout(["password"]).RequireKeysThroughRollout(["user"]);
         var secret = NewSecret().Bind(binding, DateTime.UtcNow);
         Assert.IsType<SecretDeclaredKeysInUse>(secret.UpdateDeclaredMetadata("changed", ["user"], DateTime.UtcNow).Value);
         Assert.Throws<InvalidOperationException>(() => secret.Rotate(["user"], DateTime.UtcNow));
@@ -83,30 +83,50 @@ public sealed class SecretTests
     [Fact]
     public void Declarative_binding_updates_preserve_required_and_retained_aliases_and_return_typed_conflicts()
     {
-        var binding = (Binding("a", "one") with { KeyMappings = Binding("a", "one").KeyMappings.Add("user", "USER") }).PinReferences(["password"], true).PinReferences(["user"], true);
+        var binding = (Binding("a", "one") with { KeyMappings = Binding("a", "one").KeyMappings.Add("user", "USER") }).RequireKeysThroughRollout(["password"]).RequireKeysThroughRollout(["user"]);
         var secret = NewSecret().Bind(binding, DateTime.UtcNow);
         var changed = binding with { KeyMappings = binding.KeyMappings.SetItem("password", "NEW") };
-        var rejected = Assert.IsType<SecretBindingRejected>(secret.DeclareBinding(changed, DateTime.UtcNow).Value);
-        Assert.Equal(SecretBindingRejection.KeysInUse, rejected.Reason);
-        Assert.Equal(SecretBindingRejection.ImmutableConsumer,
-            Assert.IsType<SecretBindingRejected>(secret.DeclareBinding(binding with { ConsumerId = "other" }, DateTime.UtcNow).Value).Reason);
+        var rejected = Assert.IsType<SecretBindingKeysInUse>(secret.DeclareBinding(changed, DateTime.UtcNow).Value);
+        Assert.Equal(["password"], rejected.Keys.ToArray());
+        var changedConsumer = Assert.IsType<SecretBindingConsumerChanged>(
+            secret.DeclareBinding(binding with { Consumer = binding.Consumer with { ResourceId = "other" } }, DateTime.UtcNow).Value);
+        Assert.Equal(binding.Consumer, changedConsumer.Current);
+        Assert.Equal("other", changedConsumer.Desired.ResourceId);
         Assert.Same(secret, secret.DeclareBinding(binding, DateTime.UtcNow).Value);
         var released = secret.ReleaseRetainedKeys(binding.Id);
         var updated = Assert.IsType<Secret>(released.DeclareBinding(changed, DateTime.UtcNow).Value);
         Assert.Equal("NEW", Assert.Single(updated.Bindings).KeyMappings["password"]);
-        Assert.Equal(["user"], Assert.Single(updated.Bindings).RequiredKeys.ToArray());
-        Assert.Empty(Assert.Single(updated.Bindings).RetainedKeys);
+        Assert.Equal(["user"], Assert.Single(updated.Bindings).Pins.Required.ToArray());
+        Assert.Empty(Assert.Single(updated.Bindings).Pins.Retained);
+    }
+
+    [Fact]
+    public void Binding_declaration_failures_carry_the_conflicting_consumer_keys_or_limit()
+    {
+        var now = DateTime.UtcNow;
+        var bound = NewSecret().Bind(Binding("existing", "consumer"), now);
+        var duplicate = Assert.IsType<SecretBindingConsumerConflict>(bound.DeclareBinding(Binding("other", "consumer"), now).Value);
+        Assert.Equal(new SecretConsumerIdentity("pole/web-service", "consumer"), duplicate.Consumer);
+
+        var unknown = Binding("other", "other") with { KeyMappings = ImmutableDictionary<string, string>.Empty.Add("missing", "MISSING") };
+        Assert.Equal(["missing"], Assert.IsType<UnknownSecretBindingKeys>(bound.DeclareBinding(unknown, now).Value).Keys.ToArray());
+
+        var full = NewSecret() with
+        {
+            Bindings = Enumerable.Range(0, Secret.MaximumBindings).Select(index => Binding(index.ToString(), index.ToString())).ToImmutableArray()
+        };
+        Assert.Equal(Secret.MaximumBindings, Assert.IsType<SecretBindingCapacityExceeded>(full.DeclareBinding(Binding("extra", "extra"), now).Value).Maximum);
     }
 
     [Fact]
     public void Consecutive_reference_changes_retain_all_earlier_keys_until_release()
     {
         var binding = SecretBinding.Create("a", "pole/web-service", "one", new AllSecretDeployments(), [])
-            .PinReferences(["first"], true).PinReferences(["second"], true).PinReferences(["third"], true);
-        Assert.Equal(["first", "second"], binding.RetainedKeys.ToArray());
-        Assert.Equal(["third"], binding.RequiredKeys.ToArray());
-        Assert.Equal(["first", "second"], binding.PinReferences([], false).RetainedKeys.ToArray());
-        Assert.Equal(["second", "third"], binding.PinReferences(["first"], true).RetainedKeys.ToArray());
+            .RequireKeysThroughRollout(["first"]).RequireKeysThroughRollout(["second"]).RequireKeysThroughRollout(["third"]);
+        Assert.Equal(["first", "second"], binding.Pins.Retained.ToArray());
+        Assert.Equal(["third"], binding.Pins.Required.ToArray());
+        Assert.Equal(["first", "second"], binding.RequireKeys([]).Pins.Retained.ToArray());
+        Assert.Equal(["second", "third"], binding.RequireKeysThroughRollout(["first"]).Pins.Retained.ToArray());
     }
 
     [Fact]
@@ -122,7 +142,7 @@ public sealed class SecretTests
         Assert.Throws<InvalidOperationException>(() => old.Rotate(["user"], DateTime.UtcNow));
 
         var detached = rotated.Detach("a", DateTime.UtcNow);
-        Assert.Equal("two", Assert.Single(detached.Bindings).ConsumerId);
+        Assert.Equal("two", Assert.Single(detached.Bindings).Consumer.ResourceId);
         Assert.Equal(2, rotated.Bindings.Length);
     }
 
@@ -272,6 +292,18 @@ public sealed class SecretTests
         Assert.Equal("deployment", Assert.Single(selected.DeploymentIds));
         Assert.Equal("USER", restored.Bindings[1].KeyMappings["user"]);
         Assert.Throws<InvalidOperationException>(() => restored.Rotate(["password"], DateTime.UtcNow));
+    }
+
+    [Fact]
+    public void Binding_submodels_round_trip_identity_and_all_key_pins()
+    {
+        var binding = Binding("binding", "consumer").RequireKeysThroughRollout(["password"]).RequireKeysThroughRollout(["user"]);
+        var restored = BsonSerializer.Deserialize<SecretBinding>(binding.ToBson());
+        Assert.Equal(binding.Consumer, restored.Consumer);
+        Assert.Equal(binding.Pins.Required.ToArray(), restored.Pins.Required.ToArray());
+        Assert.Equal(binding.Pins.Retained.ToArray(), restored.Pins.Retained.ToArray());
+        Assert.Equal(["password", "user"], restored.Pins.ProtectedKeys.Order().ToArray());
+        Assert.Empty(Binding("fresh", "other").Pins.ProtectedKeys);
     }
 
     [Fact]

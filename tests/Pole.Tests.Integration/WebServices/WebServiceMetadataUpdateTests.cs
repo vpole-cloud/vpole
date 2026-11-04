@@ -30,11 +30,16 @@ public sealed class WebServiceMetadataUpdateTests(MongoReplicaSetFixture fixture
         var requestedBefore = await DbContext.CountOutboxMessagesAsync(ApplyRequested);
         var load = Services.GetRequiredService<LoadResourceDeploymentSet>();
         ResourceDeployment? claimed = null;
-        LoadResourceDeploymentSet interleavedLoad = async (tenantId, type, id, ct) =>
+        LoadResourceDeploymentSet interleavedLoad = async (request, ct) =>
         {
-            var snapshot = await load(tenantId, type, id, ct);
+            var snapshot = await load(
+                new LoadResourceDeploymentSetRequest(
+                    TenantId: request.TenantId,
+                    ResourceType: request.ResourceType,
+                    ResourceId: request.ResourceId),
+                cancellationToken: ct);
             var lease = await Services.GetRequiredService<ClaimResourceDeployment>()(
-                tenantId, pending.Id, pending.RuntimeCellId, pending.DesiredGeneration,
+                request.TenantId, pending.Id, pending.RuntimeCellId, pending.DesiredGeneration,
                 ResourceDeploymentOperation.Apply, ct);
             Assert.NotNull(lease);
             claimed = await LoadDeploymentAsync(service.Id, ct);

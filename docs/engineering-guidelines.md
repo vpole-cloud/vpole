@@ -16,6 +16,19 @@ contracts. Shipping a provider with Pole does not make its rules part of generic
 The complete dependency matrix, Mongo transaction exception, event evolution policy, and
 architecture-test rules are defined in [Module boundaries](module-boundaries.md).
 
+### Cross-feature contract parameter limit
+
+Public contract delegates and interface operations accept at most **three total parameters**,
+including an explicit Mongo session and cancellation token. Put business inputs into a named,
+provider-owned request record: `(request, cancellationToken)` or
+`(request, session, cancellationToken)`. Keep optional input defaults on that request model;
+do not add compatibility overloads with the old parameter list.
+
+Group fields into smaller models when they form a coherent concept with shared invariants.
+The parameter limit applies to contract operations, not DTO constructors, dependency injection
+constructors, or pure model factories. `ContractOperationParameterTests` enforces the limit across
+all feature Contracts projects without feature exemptions.
+
 ## Validation boundaries
 
 Separate validation by the kind of information required to evaluate a rule.

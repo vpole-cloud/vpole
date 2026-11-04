@@ -16,9 +16,10 @@ module ResourceDeploymentQueryExtensions =
             task {
                 let! placement =
                     this.Invoke(
-                        tenantId,
-                        resourceType,
-                        resourceId,
+                        LoadResourceDeploymentRequest(
+                            tenantId,
+                            resourceType,
+                            resourceId),
                         cancellationToken)
 
                 return Option.ofObj placement

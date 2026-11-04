@@ -111,7 +111,7 @@ public sealed class DeclarativePipelineTests(MongoReplicaSetFixture fixture) : M
         await Apply(1, Snapshot(keys: ["API_TOKEN", "NEXT_TOKEN"]));
         var secret = await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync();
         var binding = Assert.Single(secret.Bindings);
-        Assert.Equal(["API_TOKEN"], binding.RetainedKeys.ToArray());
+        Assert.Equal(["API_TOKEN"], binding.Pins.Retained.ToArray());
         var deployment = await DbContext.ResourceDeployments.Find(Builders<ResourceDeployment>.Filter.Empty).SingleAsync();
         await DbContext.ResourceDeployments.ReplaceOneAsync(item => item.Id == deployment.Id, deployment with
         { State = new AppliedResourceDeploymentState(deployment.DesiredGeneration, DateTime.UtcNow), ObservedGeneration = deployment.DesiredGeneration });
@@ -142,7 +142,7 @@ public sealed class DeclarativePipelineTests(MongoReplicaSetFixture fixture) : M
             scenario == "wrong-tenant" ? Id() : secret.TenantId, secret.Id, originalRevision, originalFence, binding.Id, proofs, default);
         Assert.Equal(released, result);
         secret = await Secrets.Find(item => item.Id == secret.Id).SingleAsync();
-        Assert.Equal(released, Assert.Single(secret.Bindings).RetainedKeys.IsEmpty);
+        Assert.Equal(released, Assert.Single(secret.Bindings).Pins.Retained.IsEmpty);
         if (released)
         {
             Assert.Equal(originalRevision, secret.Revision);
@@ -266,7 +266,7 @@ public sealed class DeclarativePipelineTests(MongoReplicaSetFixture fixture) : M
         var before = await Service();
         var beforeSecret = await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync();
         var previousBinding = Assert.Single(beforeSecret.Bindings);
-        Assert.Equal(["API_TOKEN"], previousBinding.RequiredKeys.ToArray());
+        Assert.Equal(["API_TOKEN"], previousBinding.Pins.Required.ToArray());
         var bindingEvents = await DbContext.OutboxMessages.CountDocumentsAsync(item =>
             item.EventType == "pole.secrets/v1/secret-changed" && item.PayloadJson.Contains("binding-added"));
         Assert.True(bindingEvents > 0);
@@ -279,7 +279,7 @@ public sealed class DeclarativePipelineTests(MongoReplicaSetFixture fixture) : M
         var retained = await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync();
         var binding = Assert.Single(retained.Bindings);
         Assert.Equal(previousBinding.KeyMappings.OrderBy(pair => pair.Key).ToArray(), binding.KeyMappings.OrderBy(pair => pair.Key).ToArray());
-        Assert.Equal(previousBinding.RequiredKeys.ToArray(), binding.RequiredKeys.ToArray());
+        Assert.Equal(previousBinding.Pins.Required.ToArray(), binding.Pins.Required.ToArray());
         var projection = SecretProjectionFactory.Create(retained, binding, "placement", "cell", "target", "namespace");
         var manifest = SecretProjectionManifest.Create(projection, binding,
             new Dictionary<string, string> { ["API_TOKEN"] = "synthetic" });
@@ -309,7 +309,7 @@ public sealed class DeclarativePipelineTests(MongoReplicaSetFixture fixture) : M
             }))
         }).ToArray();
         Assert.Equal(SnapshotApplicationStatus.ConfigurationApplied, (await Apply(2, files)).Status);
-        Assert.Empty(Assert.Single((await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync()).Bindings).RequiredKeys);
+        Assert.Empty(Assert.Single((await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync()).Bindings).Pins.Required);
         files = files.Select(file => file with { Content = file.Content.Replace("\"API_TOKEN\":\"API_TOKEN\"", "\"API_TOKEN\":\"NEW\"") }).ToArray();
         var premature = await Apply(3, files);
         Assert.Equal(SnapshotApplicationStatus.Blocked, premature.Status);
@@ -557,7 +557,12 @@ public sealed class DeclarativePipelineTests(MongoReplicaSetFixture fixture) : M
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("demo"));
         var result = await Apply(); Assert.Contains(result.Operations, item => item.Failure is ResourceGroupDeclarationRejected { Reason: ResourceGroupDeclarationError.ExplicitAdoptionRequired });
         var gate = Services.GetRequiredService<IGitOpsMutations>();
-        Assert.Null(await gate.StatusAsync(group.TenantId, "ResourceGroup", group.Id, default));
+        Assert.Null(await gate.StatusAsync(
+            new LoadGitResourceStatusRequest(
+                TenantId: group.TenantId,
+                Kind: "ResourceGroup",
+                ResourceId: group.Id),
+            ct: default));
         var current = await DbContext.ResourceGroups.Find(item => item.Id == group.Id).SingleAsync();
         Assert.Equal(group.Name, current.Name); Assert.Equal(group.Description, current.Description);
     }
@@ -599,7 +604,12 @@ public sealed class DeclarativePipelineTests(MongoReplicaSetFixture fixture) : M
         var applied = await Apply(files: [new("second.yaml", string.Join("\n---\n", second))], sourceId: secondSource);
         Assert.Equal(missingValues ? SnapshotApplicationStatus.Blocked : SnapshotApplicationStatus.ConfigurationApplied, applied.Status);
         var secret = await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync();
-        var status = await Services.GetRequiredService<IGitOpsMutations>().StatusAsync(secret.TenantId, "Secret", secret.Id, default);
+        var status = await Services.GetRequiredService<IGitOpsMutations>().StatusAsync(
+            new LoadGitResourceStatusRequest(
+                TenantId: secret.TenantId,
+                Kind: "Secret",
+                ResourceId: secret.Id),
+            ct: default);
         Assert.Equal(source, status!.SourceId); Assert.Equal(2, secret.Bindings.Length);
         var secondService = await WebServices.Find(item => item.Name == "second-api").SingleAsync();
         Assert.NotEqual((await WebServices.Find(item => item.Name == "demo-api").SingleAsync()).Id, secondService.Id);
@@ -634,19 +644,35 @@ public sealed class DeclarativePipelineTests(MongoReplicaSetFixture fixture) : M
         var operation = Assert.Single(operations.Items);
         Assert.Equal("Prepared", operation.Phase); Assert.False(operation.Retryable); Assert.Equal(1, operations.Counts.Waiting);
         var runtime = await Services.GetRequiredService<Pole.Features.ResourceDeployments.Contracts.LoadExactResourceDeploymentRuntimePlacement>()(
-            service.TenantId, WebServiceResourceDeployment.ResourceType, service.Id, placement.Id, default);
+            new LoadExactResourceDeploymentRuntimePlacementRequest(
+                TenantId: service.TenantId,
+                ResourceType: WebServiceResourceDeployment.ResourceType,
+                ResourceId: service.Id,
+                DeploymentId: placement.Id),
+            cancellationToken: default);
         Assert.Equal(ResourceDeploymentStatus.Prepared, runtime!.Status);
         var access = await Services.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync<Pole.Features.ResourceDeployments.Contracts.ResourceDeploymentAccessPlacement>(async (tx, ct) =>
         {
             var result = await Services.GetRequiredService<Pole.Features.ResourceDeployments.Contracts.LoadExactResourceDeploymentAccessPlacement>()(
-                service.TenantId, WebServiceResourceDeployment.ResourceType, service.Id, placement.Id, tx.Session, ct);
+                new LoadExactResourceDeploymentAccessPlacementRequest(
+                    TenantId: service.TenantId,
+                    ResourceType: WebServiceResourceDeployment.ResourceType,
+                    ResourceId: service.Id,
+                    DeploymentId: placement.Id),
+                session: tx.Session,
+                cancellationToken: ct);
             return tx.Abort(result!);
         });
         Assert.Equal(ResourceDeploymentStatus.Prepared, access.Status); // Existing private-access admission accepts Applied only.
         var listed = await Mediator.Send(new GetWebServicesRequest { TenantId = service.TenantId });
         var services = Assert.IsType<Pole.Features.Request.PaginatedResponse<WebServiceDto>>(listed.AssertHandlerOutcome().Value);
         Assert.Equal("SecretValuesMissing", Assert.Single(services.Items).GitOps!.Blocker);
-        Assert.Empty((await Services.GetRequiredService<IGitOpsMutations>().StatusesAsync(Id(), "WebService", [service.Id], default)));
+        Assert.Empty((await Services.GetRequiredService<IGitOpsMutations>().StatusesAsync(
+            new LoadGitResourceStatusesRequest(
+                TenantId: Id(),
+                Kind: "WebService",
+                ResourceIds: [service.Id]),
+            ct: default)));
     }
 
     [Fact]
@@ -713,7 +739,12 @@ public sealed class DeclarativePipelineTests(MongoReplicaSetFixture fixture) : M
             TestData.UserId, TestData.UserEmail, Snapshot());
         var service = await Service();
         Assert.Equal(TestData.TenantId, initial.Context!.TenantId);
-        Assert.NotNull(await Services.GetRequiredService<IGitOpsMutations>().StatusAsync(service.TenantId, "WebService", service.Id, default));
+        Assert.NotNull(await Services.GetRequiredService<IGitOpsMutations>().StatusAsync(
+            new LoadGitResourceStatusRequest(
+                TenantId: service.TenantId,
+                Kind: "WebService",
+                ResourceId: service.Id),
+            ct: default));
         await Supply();
         var resumed = await Pipeline.ResumeAsync(initial.Context with { TenantId = TestData.TenantId.ToUpperInvariant(), SourceId = source.ToUpperInvariant() });
         Assert.Equal(SnapshotApplicationStatus.ConfigurationApplied, resumed.Status);
@@ -743,7 +774,15 @@ public sealed class DeclarativePipelineTests(MongoReplicaSetFixture fixture) : M
         public DeclarationFacts Facts(JsonElement spec) => inner.Facts(spec);
         public JsonElement NormalizeAndValidate(JsonElement spec) => inner.NormalizeAndValidate(spec);
         public IReadOnlyList<DeclarationStep> Steps(ResourceAddress address, JsonElement spec) => inner.Steps(address, spec);
-        public Task<string?> ResolveAsync(string tenantId, string name, IClientSessionHandle session, CancellationToken ct) => inner.ResolveAsync(tenantId, name, session, ct);
+        public Task<string?> ResolveAsync(
+            ResolveDeclaredResourceRequest request,
+            IClientSessionHandle session,
+            CancellationToken ct) => inner.ResolveAsync(
+                new ResolveDeclaredResourceRequest(
+                    TenantId: request.TenantId,
+                    Name: request.Name),
+                session: session,
+                ct: ct);
         public async Task<GitOperationResult> ApplyAsync(GitOperation operation, CancellationToken ct)
         {
             var result = await inner.ApplyAsync(operation, ct);

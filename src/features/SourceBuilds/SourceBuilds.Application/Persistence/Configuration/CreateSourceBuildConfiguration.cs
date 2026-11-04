@@ -32,10 +32,11 @@ internal sealed class MongoCreateSourceBuildConfiguration(
             async (transaction, ct) =>
             {
                 var admitted = await admitWebService(
-                    configuration.TenantId,
-                    configuration.WebServiceId,
-                    transaction.Session,
-                    ct);
+                    new AdmitSourceBuildWebServiceRequest(
+                        TenantId: configuration.TenantId,
+                        WebServiceId: configuration.WebServiceId),
+                    session: transaction.Session,
+                    cancellationToken: ct);
                 if (admitted is SourceBuildWebServiceNotFound)
                 {
                     PersistCreatedSourceBuildConfigurationOutcome rejected =

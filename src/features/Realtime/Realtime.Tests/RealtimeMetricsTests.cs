@@ -224,7 +224,7 @@ public sealed class RealtimeMetricsTests
         Assert.Equal(0, subscriptions.RemoveCalls);
     }
 
-    private static RealtimeAccess Access(RealtimeTopicRegistry registry) => new((_, _, _, _) =>
+    private static RealtimeAccess Access(RealtimeTopicRegistry registry) => new((request, _, _) =>
             throw new InvalidOperationException("Metrics cannot authorize a tenant."),
         (_, _) => throw new InvalidOperationException("Metrics cannot load a tenant."),
         registry);

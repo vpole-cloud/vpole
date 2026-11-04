@@ -88,11 +88,12 @@ public sealed class RetryWebServiceDeploymentHandler(
                 new WebServiceNotFound(request.Id)));
 
         var deployment = await loadExactResourceDeployment(
-            request.TenantId,
-            WebServiceResourceDeployment.ResourceType,
-            request.Id,
-            request.DeploymentId,
-            cancellationToken);
+            new LoadExactResourceDeploymentRequest(
+                TenantId: request.TenantId,
+                ResourceType: WebServiceResourceDeployment.ResourceType,
+                ResourceId: request.Id,
+                DeploymentId: request.DeploymentId),
+            cancellationToken: cancellationToken);
         if (deployment is null)
         {
             return Error(new WebServiceDeploymentMutationStateError(

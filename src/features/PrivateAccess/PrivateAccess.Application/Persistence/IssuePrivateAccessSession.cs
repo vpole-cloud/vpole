@@ -73,18 +73,33 @@ internal sealed class MongoIssuePrivateAccessSession(
             if (grant.SubjectUserId != subjectUserId)
                 return await DenyAsync(new PrivateAccessSessionSubjectMismatch(), PrivateAccessAuditReason.SubjectMismatch);
 
-            var member = await loadTenantMember(tenantId, subjectUserId, transaction.Session, ct);
+            var member = await loadTenantMember(
+                new LoadTenantMemberRequest(
+                    TenantId: tenantId,
+                    UserId: subjectUserId),
+                session: transaction.Session,
+                cancellationToken: ct);
             if (member is not TenantMemberSnapshot)
                 return await DenyAsync(new PrivateAccessSubjectMembershipRequired(), PrivateAccessAuditReason.MembershipRequired);
 
             var resourceType = ResourceTypeId.Create(grant.ResourceType);
             var registered = await fenceResource(
-                tenantId, resourceType, grant.ResourceId, transaction.Session, ct);
+                new FenceRegisteredResourceRequest(
+                    TenantId: tenantId,
+                    ResourceTypeId: resourceType,
+                    ResourceId: grant.ResourceId),
+                session: transaction.Session,
+                cancellationToken: ct);
             if (registered is null)
                 return await DenyAsync(new PrivateAccessDeploymentUnavailable(), PrivateAccessAuditReason.DeploymentUnavailable);
             var placement = await loadPlacement(
-                tenantId, resourceType, grant.ResourceId, grant.ResourceDeploymentId,
-                transaction.Session, ct);
+                new LoadExactResourceDeploymentAccessPlacementRequest(
+                    TenantId: tenantId,
+                    ResourceType: resourceType,
+                    ResourceId: grant.ResourceId,
+                    DeploymentId: grant.ResourceDeploymentId),
+                session: transaction.Session,
+                cancellationToken: ct);
             if (placement is null ||
                 placement.ResourceGroupId != registered.ResourceGroupId ||
                 placement.Status != ResourceDeploymentStatus.Applied ||
@@ -129,13 +144,14 @@ internal sealed class MongoIssuePrivateAccessSession(
             }
 
             var reference = await targetReferences(
-                new DeploymentTargetReferenceOwner(
+                new ApplyDeploymentTargetReferenceChangesRequest(
+                    Owner: new DeploymentTargetReferenceOwner(
                     DeploymentTargetReferenceOwnerTypes.PrivateAccessSession,
                     accessSession.Id),
-                [accessSession.Route.DeploymentTargetId],
-                [],
-                transaction.Session,
-                ct);
+                    AddedDeploymentTargetIds: [accessSession.Route.DeploymentTargetId],
+                    RemovedDeploymentTargetIds: []),
+                session: transaction.Session,
+                cancellationToken: ct);
             if (reference is DeploymentTargetReferenceChangeRejected)
                 return await DenyAsync(new PrivateAccessDeploymentUnavailable(), PrivateAccessAuditReason.DeploymentUnavailable);
 

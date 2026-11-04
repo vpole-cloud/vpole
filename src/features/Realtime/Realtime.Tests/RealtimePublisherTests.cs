@@ -20,12 +20,12 @@ public sealed class RealtimePublisherTests
             new RealtimeTopicRegistry(
                 [new("eligibility", RealtimeScope.Tenant), new("private", RealtimeScope.Platform)],
                 new());
-        var access = new RealtimeAccess((id, user, _, _) =>
+        var access = new RealtimeAccess((request, _, _) =>
             {
-                checkedTenants.Add(id);
-                return Task.FromResult<LoadTenantMemberOutcome>(id == alpha
-                    ? new TenantMemberSnapshot(id, user, TenantMembershipRole.Viewer)
-                    : new TenantMemberMissing(id, user));
+                checkedTenants.Add(request.TenantId);
+                return Task.FromResult<LoadTenantMemberOutcome>(request.TenantId == alpha
+                    ? new TenantMemberSnapshot(request.TenantId, request.UserId, TenantMembershipRole.Viewer)
+                    : new TenantMemberMissing(request.TenantId, request.UserId));
             },
             (id, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(id, "name")),
             registry);
@@ -60,7 +60,7 @@ public sealed class RealtimePublisherTests
     public async Task UserHintsCannotBroadcastMissingSubjectsOrRevealAnotherSubjectsDiscovery()
     {
         var registry = new RealtimeTopicRegistry([new("user-discovery", RealtimeScope.User)], new());
-        var access = new RealtimeAccess((_, _, _, _) => throw new InvalidOperationException("Not a tenant scope."),
+        var access = new RealtimeAccess((request, _, _) => throw new InvalidOperationException("Not a tenant scope."),
             (_, _) => throw new InvalidOperationException("Not a tenant scope."),
             registry);
         var tickets = new MemoryTickets();
@@ -97,8 +97,8 @@ public sealed class RealtimePublisherTests
     {
         const string tenant = "000000000000000000000001";
         var registry = new RealtimeTopicRegistry([new("fake", RealtimeScope.Tenant)], new());
-        var access = new RealtimeAccess((id, user, _, _) => Task.FromResult<LoadTenantMemberOutcome>(
-                new TenantMemberSnapshot(id, user, TenantMembershipRole.Viewer)),
+        var access = new RealtimeAccess((request, _, _) => Task.FromResult<LoadTenantMemberOutcome>(
+                new TenantMemberSnapshot(request.TenantId, request.UserId, TenantMembershipRole.Viewer)),
             (id, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(id, "name")),
             registry);
         var subscriptions = new MemorySubscriptions();
@@ -121,8 +121,8 @@ public sealed class RealtimePublisherTests
     {
         const string tenant = "000000000000000000000001";
         var registry = new RealtimeTopicRegistry([new("fake", RealtimeScope.Tenant)], new());
-        var access = new RealtimeAccess((id, user, _, _) => Task.FromResult<LoadTenantMemberOutcome>(
-                new TenantMemberSnapshot(id, user, TenantMembershipRole.Viewer)),
+        var access = new RealtimeAccess((request, _, _) => Task.FromResult<LoadTenantMemberOutcome>(
+                new TenantMemberSnapshot(request.TenantId, request.UserId, TenantMembershipRole.Viewer)),
             (id, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(id, "name")),
             registry);
         var tickets = new MemoryTickets();
@@ -150,9 +150,9 @@ public sealed class RealtimePublisherTests
         const string tenant = "000000000000000000000001";
         var checks = 0;
         var registry = new RealtimeTopicRegistry([new("fake", RealtimeScope.Tenant)], new());
-        var access = new RealtimeAccess((id, user, _, _) => Task.FromResult<LoadTenantMemberOutcome>(++checks == 1
-                ? new TenantMemberSnapshot(id, user, TenantMembershipRole.Viewer)
-                : new TenantMemberMissing(id, user)),
+        var access = new RealtimeAccess((request, _, _) => Task.FromResult<LoadTenantMemberOutcome>(++checks == 1
+                ? new TenantMemberSnapshot(request.TenantId, request.UserId, TenantMembershipRole.Viewer)
+                : new TenantMemberMissing(request.TenantId, request.UserId)),
             (id, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(id, "name")),
             registry);
         var expiry = DateTimeOffset.UtcNow.AddMinutes(1);
@@ -183,9 +183,9 @@ public sealed class RealtimePublisherTests
         const string tenant = "000000000000000000000001";
         var allowed = true;
         var registry = new RealtimeTopicRegistry([new("fake", RealtimeScope.Tenant)], new());
-        var access = new RealtimeAccess((id, user, _, _) => Task.FromResult<LoadTenantMemberOutcome>(allowed
-                ? new TenantMemberSnapshot(id, user, TenantMembershipRole.Viewer)
-                : new TenantMemberMissing(id, user)),
+        var access = new RealtimeAccess((request, _, _) => Task.FromResult<LoadTenantMemberOutcome>(allowed
+                ? new TenantMemberSnapshot(request.TenantId, request.UserId, TenantMembershipRole.Viewer)
+                : new TenantMemberMissing(request.TenantId, request.UserId)),
             (id, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(id, "name")),
             registry);
         var tickets = new MemoryTickets();

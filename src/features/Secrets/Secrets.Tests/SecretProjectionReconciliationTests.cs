@@ -107,10 +107,10 @@ public sealed class SecretProjectionReconciliationTests
             (_, _, _) => Task.FromResult<Secret?>(Secret),
             (_, _, version, _) => Task.FromResult<SecretVersion?>(new("version", "tenant", "secret", version, null!, DateTime.UtcNow)),
             (_, _, _) => Task.FromResult<IReadOnlyList<SecretProjection>>(Rows.Values.ToArray()),
-            (_, _, resource, _) => Task.FromResult<IReadOnlyList<PlacementSummaryDto>>([
-                new("deployment-" + resource[^1], "scope", "cell", "target-" + resource[^1], 1, 0, ResourceDeploymentStatus.Pending, null, null!, [], ResourceRevision: 1, FixedReplicas: 1, Ingress: null, DeploymentRevision: 1, DesiredOperation: ResourceDeploymentDesiredOperation.Apply, Isolation: new ResourceDeploymentIsolationDto("Unknown", "EnforcementRequired", "EnforcementNotEstablished", null))]),
-            (_, _, resource, deployment, _) => Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(Removed.Contains(deployment) ? null :
-                new(deployment, resource, "cell", "target-" + resource[^1], "namespace-" + resource[^1], 1, 1, null!, ResourceDeploymentStatus.Pending, ResourceDeploymentDesiredOperation.Apply, ForeignScope.Contains(deployment) ? "foreign" : "scope")),
+(request, _) => Task.FromResult<IReadOnlyList<PlacementSummaryDto>>([
+                new("deployment-" + request.ResourceId[^1], "scope", "cell", "target-" + request.ResourceId[^1], 1, 0, ResourceDeploymentStatus.Pending, null, null!, [], ResourceRevision: 1, FixedReplicas: 1, Ingress: null, DeploymentRevision: 1, DesiredOperation: ResourceDeploymentDesiredOperation.Apply, Isolation: new ResourceDeploymentIsolationDto("Unknown", "EnforcementRequired", "EnforcementNotEstablished", null))]),
+(request, _) => Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(Removed.Contains(request.DeploymentId) ? null :
+                new(request.DeploymentId, request.ResourceId, "cell", "target-" + request.ResourceId[^1], "namespace-" + request.ResourceId[^1], 1, 1, null!, ResourceDeploymentStatus.Pending, ResourceDeploymentDesiredOperation.Apply, ForeignScope.Contains(request.DeploymentId) ? "foreign" : "scope")),
             (desired, claim, now, _) => Task.FromResult<SecretProjection?>(desired.Claim(claim, now)),
             (row, _) => { Rows[row.DeploymentId] = row; return Task.CompletedTask; },
             Encryption, Target, TimeProvider.System).ReconcileAsync("tenant", "secret", default);

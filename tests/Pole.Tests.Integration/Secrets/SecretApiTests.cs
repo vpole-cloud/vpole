@@ -345,11 +345,12 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         await serviceScope.ServiceProvider.GetRequiredService<IResourceRegistrar>().UnregisterAsync(
-            group.TenantId,
-            group.Id,
-            ResourceTypeId.Create("pole/web-service"),
-            consumer.WebServiceId,
-            session);
+            new UnregisterResourceRequest(
+                TenantId: group.TenantId,
+                ResourceGroupId: group.Id,
+                ResourceTypeId: ResourceTypeId.Create("pole/web-service"),
+                ResourceId: consumer.WebServiceId),
+            session: session);
         await session.CommitTransactionAsync();
         var cleanup = new RemoveSecretBindingsOnResourceUnregistered(serviceScope.ServiceProvider.GetRequiredService<RemoveConsumerSecretBindings>());
         await cleanup.Handle(new ResourceUnregisteredEvent(group.Id, "pole/web-service", consumer.WebServiceId)

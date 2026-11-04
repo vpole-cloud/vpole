@@ -12,7 +12,8 @@ internal sealed class MongoRequestExactResourceDeploymentApply(
     StoreOutboxWrites storeOutboxWrites,
     LoadResourcePlacementInTransaction loadResourcePlacement,
     FenceResolvedComputeProfiles fenceResolvedComputeProfiles,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ResourceDeploymentIsolationProjection isolation)
 {
     public async Task<ResourceDeploymentMutationOutcome> InvokeAsync(
         ResourceDeploymentExactMutationRequest request,
@@ -53,10 +54,11 @@ internal sealed class MongoRequestExactResourceDeploymentApply(
         }
 
         var runtimeCell = await loadResourcePlacement(
-            request.TenantId,
-            current.RuntimeCellId,
-            session,
-            cancellationToken);
+            new LoadResourcePlacementInTransactionRequest(
+                TenantId: request.TenantId,
+                RuntimeCellId: current.RuntimeCellId),
+            session: session,
+            cancellationToken: cancellationToken);
         if (runtimeCell is null ||
             !string.Equals(
                 runtimeCell.DeploymentTargetId,
@@ -130,6 +132,7 @@ internal sealed class MongoRequestExactResourceDeploymentApply(
         return await ResourceDeploymentMutationSupport.ReplaceAndEnqueueAsync(
             resourceDeployments,
             storeOutboxWrites,
+            isolation,
             current,
             updated,
             session,

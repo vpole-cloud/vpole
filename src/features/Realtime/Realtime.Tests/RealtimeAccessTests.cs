@@ -16,7 +16,7 @@ public sealed class RealtimeAccessTests
     public async Task UserTopicsRequireExactlyTheAuthenticatedSubjectEvenForPlatformAdmins(bool admin)
     {
         var registry = new RealtimeTopicRegistry([new("user-discovery", RealtimeScope.User)], new());
-        var access = new RealtimeAccess((_, _, _, _) =>
+        var access = new RealtimeAccess((request, _, _) =>
                 throw new InvalidOperationException("User discovery must not require tenant membership."),
             (_, _) => throw new InvalidOperationException("User discovery must not load a tenant."),
             registry);
@@ -31,10 +31,10 @@ public sealed class RealtimeAccessTests
     public async Task FakeProviderExtendsTopicsAndPreservesTenantIsolation()
     {
         var registry = new RealtimeTopicRegistry([new("plugin.example", RealtimeScope.Tenant)], new());
-        var access = new RealtimeAccess((tenant, user, _, _) => Task.FromResult<LoadTenantMemberOutcome>(
-                tenant == Alpha && user == "viewer"
-                    ? new TenantMemberSnapshot(tenant, user, TenantMembershipRole.Viewer)
-                    : new TenantMemberMissing(tenant, user)),
+        var access = new RealtimeAccess((request, _, _) => Task.FromResult<LoadTenantMemberOutcome>(
+                request.TenantId == Alpha && request.UserId == "viewer"
+                    ? new TenantMemberSnapshot(request.TenantId, request.UserId, TenantMembershipRole.Viewer)
+                    : new TenantMemberMissing(request.TenantId, request.UserId)),
             (tenant, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(tenant, "name")),
             registry);
         Assert.True(await access.AllowsAsync(IdentityFixture.User(), new("plugin.example", Alpha), default));
@@ -49,8 +49,8 @@ public sealed class RealtimeAccessTests
         var registry =
             new RealtimeTopicRegistry([new("catalog", RealtimeScope.Platform), new("resources", RealtimeScope.Tenant)],
                 new());
-        var access = new RealtimeAccess((tenant, user, _, _) =>
-                Task.FromResult<LoadTenantMemberOutcome>(new TenantMemberMissing(tenant, user)),
+        var access = new RealtimeAccess((request, _, _) =>
+                Task.FromResult<LoadTenantMemberOutcome>(new TenantMemberMissing(request.TenantId, request.UserId)),
             (tenant, _) => Task.FromResult<LoadTenantIdentityOutcome>(tenant == Alpha
                 ? new TenantIdentitySnapshot(tenant, "name")
                 : new TenantIdentityNotFound(tenant)),
@@ -85,10 +85,10 @@ public sealed class RealtimeAccessTests
                 Enabled = true,
                 EnabledTopics = ["enabled"]
             });
-        var access = new RealtimeAccess((tenant, user, _, _) => Task.FromResult<LoadTenantMemberOutcome>(
-                tenant == Alpha
-                    ? new TenantMemberSnapshot(tenant, user, TenantMembershipRole.Viewer)
-                    : new TenantMemberMissing(tenant, user)),
+        var access = new RealtimeAccess((request, _, _) => Task.FromResult<LoadTenantMemberOutcome>(
+                request.TenantId == Alpha
+                    ? new TenantMemberSnapshot(request.TenantId, request.UserId, TenantMembershipRole.Viewer)
+                    : new TenantMemberMissing(request.TenantId, request.UserId)),
             (tenant, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentityNotFound(tenant)),
             registry);
         Assert.True(await access.AllowsAsync(IdentityFixture.User(), new("disabled", Alpha), default));

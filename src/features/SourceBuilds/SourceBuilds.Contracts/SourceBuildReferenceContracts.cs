@@ -10,8 +10,7 @@ public union AdmitSourceBuildWebServiceOutcome(
     SourceBuildWebServiceNotFound);
 
 public delegate Task<AdmitSourceBuildWebServiceOutcome> AdmitSourceBuildWebService(
-    string tenantId,
-    string webServiceId,
+    AdmitSourceBuildWebServiceRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
@@ -53,10 +52,9 @@ public delegate Task<bool> SourceBuildWebServiceExists(
 /// </summary>
 public delegate Task<EnsureNoWebServiceActiveSourceBuildsOutcome>
     EnsureNoWebServiceActiveSourceBuilds(
-        string tenantId,
-        string webServiceId,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
+    EnsureNoWebServiceActiveSourceBuildsRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
 
 /// <summary>
 /// Guards a source-repository deletion against source-build configuration that
@@ -172,3 +170,11 @@ public sealed record SourceBuildDeploymentCompletion(
 public delegate Task CompleteSourceBuildJobOnDeployment(
     SourceBuildDeploymentCompletion completion,
     CancellationToken cancellationToken = default);
+
+public sealed record AdmitSourceBuildWebServiceRequest(
+    string TenantId,
+    string WebServiceId);
+
+public sealed record EnsureNoWebServiceActiveSourceBuildsRequest(
+    string TenantId,
+    string WebServiceId);

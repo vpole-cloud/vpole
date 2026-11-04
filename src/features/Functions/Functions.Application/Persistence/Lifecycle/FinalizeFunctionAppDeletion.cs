@@ -55,12 +55,13 @@ internal sealed class MongoFinalizeFunctionAppDeletion(
                 return transaction.Commit(Finalized());
 
             var readiness = await getDeploymentReadiness(
-                tenantId,
-                FunctionResourceDeployment.ResourceType,
-                functionAppId,
-                resourceDeploymentId,
-                transaction.Session,
-                ct);
+                new GetExactResourceDeploymentFinalizationReadinessRequest(
+                    TenantId: tenantId,
+                    ResourceType: FunctionResourceDeployment.ResourceType,
+                    ResourceId: functionAppId,
+                    ResourceDeploymentId: resourceDeploymentId),
+                session: transaction.Session,
+                cancellationToken: ct);
             if (readiness is not ResourceDeploymentFinalizationReadiness.Ready)
                 return transaction.Commit(Finalized());
 
@@ -77,22 +78,24 @@ internal sealed class MongoFinalizeFunctionAppDeletion(
                 return transaction.Abort(Conflict(functionAppId));
 
             var registration = await resourceRegistrar.UnregisterAsync(
-                tenantId,
-                app.ResourceGroupId,
-                FunctionResourceDeployment.ResourceType,
-                functionAppId,
-                transaction.Session,
-                ct);
+                new UnregisterResourceRequest(
+                    TenantId: tenantId,
+                    ResourceGroupId: app.ResourceGroupId,
+                    ResourceTypeId: FunctionResourceDeployment.ResourceType,
+                    ResourceId: functionAppId),
+                session: transaction.Session,
+                cancellationToken: ct);
             if (registration is ResourceRegistrationMutationError)
                 return transaction.Abort(Conflict(functionAppId));
 
             var purge = await purgeDeployment(
-                tenantId,
-                FunctionResourceDeployment.ResourceType,
-                functionAppId,
-                resourceDeploymentId,
-                transaction.Session,
-                ct);
+                new PurgeExactDeletedResourceDeploymentRequest(
+                    TenantId: tenantId,
+                    ResourceType: FunctionResourceDeployment.ResourceType,
+                    ResourceId: functionAppId,
+                    ResourceDeploymentId: resourceDeploymentId),
+                session: transaction.Session,
+                cancellationToken: ct);
             if (purge is ResourceDeploymentFinalizationConflict)
                 return transaction.Abort(Conflict(functionAppId));
 
