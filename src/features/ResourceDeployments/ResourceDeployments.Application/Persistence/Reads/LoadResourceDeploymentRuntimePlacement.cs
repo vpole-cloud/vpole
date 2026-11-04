@@ -1,3 +1,4 @@
+using Pole.Features.ResourceDeployments.Application.Common;
 using MongoDB.Driver;
 using System.Collections.Immutable;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -69,16 +70,17 @@ internal sealed class MongoLoadResourceDeploymentRuntimePlacement(
                 deployment.ResolvedPlacement.DeploymentTargetId),
             deployment.State switch
             {
-                WaitingForRuntimeCellResourceDeploymentState => "WaitingForRuntimeCell",
-                PendingResourceDeploymentState => "Pending",
-                ReconcilingResourceDeploymentState => "Reconciling",
-                AppliedResourceDeploymentState => "Applied",
-                FailedResourceDeploymentState => "Failed",
-                DeletedResourceDeploymentState => "Deleted",
+                PreparedResourceDeploymentState => ResourceDeploymentStatus.Prepared,
+                WaitingForRuntimeCellResourceDeploymentState => ResourceDeploymentStatus.WaitingForRuntimeCell,
+                PendingResourceDeploymentState => ResourceDeploymentStatus.Pending,
+                ReconcilingResourceDeploymentState => ResourceDeploymentStatus.Reconciling,
+                AppliedResourceDeploymentState => ResourceDeploymentStatus.Applied,
+                FailedResourceDeploymentState => ResourceDeploymentStatus.Failed,
+                DeletedResourceDeploymentState => ResourceDeploymentStatus.Deleted,
                 _ => throw new InvalidOperationException(
                     $"Unsupported resource deployment state '{deployment.State.GetType().FullName}'.")
             },
-            deployment.DesiredOperation.ToString(),
+            deployment.DesiredOperation.ToContractOperation(),
             deployment.IsolationScopeId);
 
     private static ResourceDeploymentComputeConfiguration ToContract(

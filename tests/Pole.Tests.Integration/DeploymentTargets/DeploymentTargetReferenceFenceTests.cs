@@ -356,7 +356,7 @@ public sealed class DeploymentTargetReferenceFenceTests(MongoReplicaSetFixture f
         var id = ObjectId.GenerateNewId().ToString();
         const long connectionVersion = 1;
         var now = DateTime.UtcNow;
-        return DeploymentTargetFactory.Create(
+        return DeploymentTargetFactory.Create("target-" + id,
             "Reference fence target",
             $"kubernetes:kube-system:{id}",
             DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),

@@ -363,7 +363,9 @@ public sealed class RedisNativeObservationTests
         true,
         true,
         false,
-        "Healthy");
+        "Healthy",
+        TechnicalName: "test-target",
+        NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown);
 
     private static RedisResourceDeploymentChangeSource Source(ClientProvider provider,
         Budget? budget = null,

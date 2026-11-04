@@ -72,7 +72,7 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
 
         var invalidBodyResponse = await Client.PostAsJsonAsync(
             "/api/v1/platform/deployment-targets/",
-            new CreateDeploymentTargetRequestBody(
+            new CreateDeploymentTargetRequestBody("test-target",
                 "Invalid admission",
                 Enabled: false,
                 AcceptsWorkloads: true,
@@ -120,8 +120,10 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
 
         var duplicateResponse = await Client.PostAsJsonAsync(
             "/api/v1/platform/deployment-targets/",
-            CreateBody("Duplicate cluster", "https://cluster-one.test:6443", certificateAuthorityData, RotatedToken));
+            CreateBody("Duplicate cluster", "https://cluster-one.test:6443", certificateAuthorityData, RotatedToken) with { TechnicalName = "different-cluster-name" });
         Assert.Equal(HttpStatusCode.Conflict, duplicateResponse.StatusCode);
+        var conflict = await duplicateResponse.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("deployment-targets.identity-conflict", conflict.GetProperty("code").GetString());
         Assert.Equal(1, await Fixture.DbContext.DeploymentTargets.CountDocumentsAsync(
             Builders<DeploymentTarget>.Filter.Empty));
     }
@@ -429,7 +431,7 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
 
         var response = await Client.PostAsJsonAsync(
             "/api/v1/platform/deployment-targets/",
-            new CreateDeploymentTargetRequestBody(
+            new CreateDeploymentTargetRequestBody("test-target",
                 "Invalid ingress",
                 Enabled: true,
                 AcceptsWorkloads: true,
@@ -536,12 +538,13 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
             await response.Content.ReadFromJsonAsync<DeploymentTargetDto>());
     }
 
-    private static CreateDeploymentTargetRequestBody CreateBody(
+    internal static CreateDeploymentTargetRequestBody CreateBody(
         string displayName,
         string serverUrl,
         string certificateAuthorityData,
         string token) =>
         new(
+            "target-" + new Uri(serverUrl).Host.Replace('.', '-'),
             displayName,
             Enabled: true,
             AcceptsWorkloads: true,
@@ -558,7 +561,7 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
             CertificateAuthorityData: certificateAuthorityData,
             Token: token);
 
-    private static string CreateCertificateAuthorityData()
+    internal static string CreateCertificateAuthorityData()
     {
         using var rsa = RSA.Create(2048);
         var request = new CertificateRequest(

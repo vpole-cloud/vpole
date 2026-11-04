@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using System.Collections.Immutable;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
@@ -36,7 +37,8 @@ public sealed class GetSecretUsageValidator : AbstractValidator<GetSecretUsageRe
 
 public sealed class GetSecretUsageHandler(
     LoadSecretById load,
-    LoadResourceDeploymentSet loadDeployments)
+    LoadResourceDeploymentSet loadDeployments,
+    IGitOpsMutations git)
     : IMediatorOutcomeHandler<GetSecretUsageRequest, GetSecretUsageOutcome>
 {
     public async Task<GetSecretUsageOutcome> HandleAsync(
@@ -56,9 +58,9 @@ public sealed class GetSecretUsageHandler(
                 binding.ConsumerId,
                 cancellationToken);
             usages.Add(new(
-                SecretBindingDto.From(binding),
+                SecretBindingDto.From(binding) with { GitOps = await git.StatusAsync(request.TenantId, "SecretBinding", binding.Id, cancellationToken) },
                 deployments.Where(x => x.IsolationScopeId == secret.IsolationScopeId &&
-                    x.DesiredOperation != "Delete" &&
+                    x.DesiredOperation != ResourceDeploymentDesiredOperation.Delete &&
                     (binding.Selection is AllSecretDeployments ||
                      binding.Selection is SelectedSecretDeployments selected && selected.DeploymentIds.Contains(x.DeploymentId)))
                     .Select(x => x.DeploymentId).ToArray()));
@@ -97,7 +99,8 @@ public sealed record SecretBindingDto(
     string ConsumerId,
     bool AllDeployments,
     string[] DeploymentIds,
-    ImmutableDictionary<string, string> KeyMappings)
+    ImmutableDictionary<string, string> KeyMappings,
+    GitResourceStatus? GitOps = null)
 {
     public static SecretBindingDto From(SecretBinding binding) => new(
         binding.Id,

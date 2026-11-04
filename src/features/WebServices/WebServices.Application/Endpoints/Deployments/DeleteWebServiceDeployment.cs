@@ -98,10 +98,7 @@ public sealed class DeleteWebServiceDeploymentHandler(
                     request.Id,
                     request.DeploymentId)));
         }
-        if (string.Equals(
-                current.DesiredOperation,
-                "Delete",
-                StringComparison.Ordinal))
+        if (current.DesiredOperation == ResourceDeploymentDesiredOperation.Delete)
         {
             return Error(new DeleteWebServiceDeploymentStateError(
                 new WebServiceDeploymentAlreadyDeleting(
@@ -110,10 +107,7 @@ public sealed class DeleteWebServiceDeploymentHandler(
         }
 
         var desiredDeployments = deployments.Where(deployment =>
-            !string.Equals(
-                deployment.DesiredOperation,
-                "Delete",
-                StringComparison.Ordinal)).ToArray();
+            deployment.DesiredOperation != ResourceDeploymentDesiredOperation.Delete).ToArray();
         if (desiredDeployments.Length <= 1)
         {
             return Error(new DeleteWebServiceDeploymentStateError(

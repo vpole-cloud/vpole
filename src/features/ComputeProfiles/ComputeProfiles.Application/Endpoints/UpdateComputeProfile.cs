@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -20,6 +21,7 @@ using static Pole.Features.DeploymentTargets.Contracts.HttpMapping.DeploymentTar
 
 namespace Pole.Features.ComputeProfiles.Application.Endpoints;
 
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record UpdateComputeProfileRequestBody(
     string DisplayName,
     string Description,

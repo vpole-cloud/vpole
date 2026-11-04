@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Pole.Observation;
 using System.Collections.Concurrent;
 using System.Diagnostics.Metrics;
@@ -57,12 +58,14 @@ public sealed class ObservationMetricsTests
             1,
             new(1,
                 null,
-                new(System.Collections.Immutable.ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty)),
+                new(ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty)),
             1,
             true,
             true,
             false,
-            "Healthy");
+            "Healthy",
+        TechnicalName: "test-target",
+        NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown);
         var targetAvailable = true;
         var loader = new ResourceDeploymentObservationContextLoader(null!,
             catalog,

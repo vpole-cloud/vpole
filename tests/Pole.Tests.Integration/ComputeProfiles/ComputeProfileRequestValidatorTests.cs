@@ -58,7 +58,7 @@ public sealed class ComputeProfileRequestValidatorTests
     }
 
     private static CreateComputeProfileRequestBody ValidBody() =>
-        new(
+        new("test-profile",
             "Default",
             string.Empty,
             new ComputeResourceRequirementsRequestBody(

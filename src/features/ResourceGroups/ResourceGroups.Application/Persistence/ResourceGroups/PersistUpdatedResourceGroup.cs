@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
@@ -22,7 +23,8 @@ internal sealed class MongoPersistUpdatedResourceGroup(
     IMongoCollection<ResourceGroup> resourceGroups,
     StoreOutboxWrites storeOutboxWrites,
     RunMongoOutcomeTransaction<PersistUpdatedResourceGroupOutcome>
-        runMongoTransaction)
+        runMongoTransaction,
+    IGitOpsMutations git)
 {
     public Task<PersistUpdatedResourceGroupOutcome> InvokeAsync(
         ResourceGroup current,
@@ -43,6 +45,9 @@ internal sealed class MongoPersistUpdatedResourceGroup(
 
         return runMongoTransaction(async (transaction, ct) =>
         {
+            if (!await git.AuthorizeAsync(current.TenantId, "ResourceGroup", current.Id, transaction.Session, ct))
+                return transaction.Abort(new ResourceGroupRevisionConflict(current.Id, ResourceGroupRevisionConflictReason.GitOwnedConfiguration));
+            if (replacement.Revision == current.Revision) return transaction.Commit(current);
             if (replacement.Revision != current.Revision)
             {
                 var write = await resourceGroups.ReplaceOneAsync(

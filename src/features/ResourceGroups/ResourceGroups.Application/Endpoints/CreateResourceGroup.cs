@@ -27,7 +27,8 @@ public static class CreateResourceGroup
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     ResourceGroupDto resourceGroup =>
-                        Results.Created($"/resource-groups/{resourceGroup.Id}", resourceGroup)
+                        Results.Created($"/resource-groups/{resourceGroup.Id}", resourceGroup),
+                    ResourceGroupNameAlreadyExists error => ResourceGroupHttpMappings.Map(error)
                 });
             })
             .WithName("CreateResourceGroup")
@@ -42,16 +43,16 @@ public static class CreateResourceGroup
 
 public sealed record CreateResourceGroupRequest(
     [FromBody] CreateResourceGroupRequestBody Body,
-    [FromTenantHeader] string TenantId
-) : IMediatorRequest<CreateResourceGroupOutcome>, ITenantCreateOperation;
+    [FromTenantHeader] string TenantId) : IMediatorRequest<CreateResourceGroupOutcome>, ITenantCreateOperation;
 
-public union CreateResourceGroupOutcome(ResourceGroupDto);
+public union CreateResourceGroupOutcome(
+    ResourceGroupDto,
+    ResourceGroupNameAlreadyExists);
 
 public sealed record CreateResourceGroupRequestBody(
     string Name,
     string Description,
-    ImmutableHashSet<string> Tags
-    );
+    ImmutableHashSet<string> Tags);
 
 public sealed class CreateResourceGroupHandler(
     PersistCreatedResourceGroup persistCreatedResourceGroup)
@@ -81,7 +82,11 @@ public sealed class CreateResourceGroupHandler(
             resourceGroup,
             defaultScope,
             cancellationToken);
-        return persisted.ToDto(resourceCount: 0);
+        return persisted switch
+        {
+            ResourceGroup value => value.ToDto(resourceCount: 0),
+            ResourceGroupNameAlreadyExists error => new CreateResourceGroupOutcome(error)
+        };
     }
 }
 

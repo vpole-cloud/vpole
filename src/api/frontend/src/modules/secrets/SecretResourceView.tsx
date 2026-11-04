@@ -1,3 +1,4 @@
+import { GitOwnershipNotice } from '../../ui/GitOwnershipNotice'
 import { eligibilityKeys } from '../../data/queryKeys'
 import { useEffect, useState } from 'react'
 import {
@@ -90,13 +91,20 @@ export function SecretResourceView({
         </div>
         <div className="row-actions">
           <Button onClick={() => void details.refresh()}>Refresh metadata</Button>
-          {canWrite && !secret.managedBy && (
+          {canWrite && !secret.managedBy && !secret.gitOps && (
             <Button variant="danger" onClick={() => setDeleting(true)}>
               Delete Secret
             </Button>
           )}
         </div>
       </header>
+      <GitOwnershipNotice status={secret.gitOps} />
+      {Boolean(secret.missingValueKeys?.length) && (
+        <Notice>
+          Values needed: {secret.missingValueKeys!.join(', ')}. Supply values to resume
+          reconciliation.
+        </Notice>
+      )}
       {details.error && (
         <Notice tone="error">{details.error} Last fetched metadata is shown.</Notice>
       )}
@@ -208,7 +216,7 @@ export function SecretResourceView({
         {active && section === 'projections' && <SecretProjections secret={secret} />}
       </TabPanel>
       {mutation.error instanceof Error && <Notice tone="error">{mutation.error.message}</Notice>}
-      {deleting && canWrite && !secret.managedBy && (
+      {deleting && canWrite && !secret.managedBy && !secret.gitOps && (
         <ConfirmationDialog
           title={`Delete ${secret.name}?`}
           confirmLabel="Delete Secret"

@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Application;
 using System.Reflection;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authentication;
@@ -85,6 +86,7 @@ public sealed class TestApiApplication : IAsyncDisposable
 
     private static readonly Assembly[] Assemblies =
     [
+        typeof(GitOpsFeature).Assembly,
         typeof(SecretFeature).Assembly,
         typeof(PrivateAccessFeature).Assembly,
         typeof(WebServiceEndpoints).Assembly,
@@ -198,6 +200,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSingleton<DiscoverKubernetesPersistentVolumeClaims>(
             storageDiscovery.GetPersistentVolumeClaimsAsync);
         builder.Services.AddOutboxPersistence();
+        builder.Services.AddGitOpsFeature();
         builder.Services.AddFunctionAppsFeature();
         builder.Services.AddResourceDeploymentsFeature(builder.Configuration);
         builder.Services.AddResourceGroupsFeature(builder.Configuration);
@@ -339,7 +342,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         var api = app.MapGroup("/api/v1").RequireTenantContext()
             .RequireAuthorization();
         api
-            .MapSecretEndpoints()
+            .MapGitSnapshotEndpoints().MapSecretEndpoints()
             .MapPrivateAccessEndpoints()
             .MapResourceGroupEndpoints()
             .MapContainerRegistryEndpoints()

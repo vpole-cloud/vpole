@@ -60,6 +60,7 @@ public sealed record CurrentResourceDeploymentComputeDto(
     string DeploymentTargetId,
     ComputeConfigurationSummaryDto Compute);
 
+[method: System.Text.Json.Serialization.JsonConstructor]
 public sealed record PlacementSummaryDto(
     string DeploymentId,
     string IsolationScopeId,
@@ -67,19 +68,16 @@ public sealed record PlacementSummaryDto(
     string DeploymentTargetId,
     long DesiredGeneration,
     long ObservedGeneration,
-    string Status,
+    ResourceDeploymentStatus Status,
     string? FailureCode,
     ComputeConfigurationSummaryDto Compute,
     ImmutableList<ResourceDeploymentEndpointDto> Endpoints,
-    long ResourceRevision = 1,
-    int FixedReplicas = 1,
-    ResourceDeploymentIngressConfiguration? Ingress = null,
-    long DeploymentRevision = 1,
-    string DesiredOperation = "Apply")
-{
-    public ResourceDeploymentIsolationDto Isolation { get; init; } =
-        new("Unknown", "EnforcementRequired", "EnforcementNotEstablished", null);
-}
+    long ResourceRevision,
+    int FixedReplicas,
+    ResourceDeploymentIngressConfiguration? Ingress,
+    long DeploymentRevision,
+    ResourceDeploymentDesiredOperation DesiredOperation,
+    ResourceDeploymentIsolationDto Isolation);
 
 public sealed record ResourceDeploymentIsolationDto(
     string Enforcement,
@@ -109,8 +107,8 @@ public sealed record ResourceDeploymentRuntimePlacementDto(
     long DeploymentRevision,
     long DesiredGeneration,
     ResourceDeploymentComputeConfiguration Compute,
-    string Status,
-    string DesiredOperation,
+    ResourceDeploymentStatus Status,
+    ResourceDeploymentDesiredOperation DesiredOperation,
     string IsolationScopeId);
 
 public sealed record ResourceGroupHasUnfinishedDeployments(string ResourceGroupId);

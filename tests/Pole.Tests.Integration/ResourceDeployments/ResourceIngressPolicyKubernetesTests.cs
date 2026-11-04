@@ -232,13 +232,12 @@ public sealed class ResourceIngressPolicyKubernetesTests : KubernetesIntegration
             new DeploymentTargetNetworkSourcesDto(
                 ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty.Add(
                     "public-ingress", source))),
-        1, true, true, false, "Healthy")
-        {
-            NetworkPolicy = new DeploymentTargetNetworkPolicyDto(
+        1, true, true, false, "Healthy",
+        TechnicalName: "test-target",
+        NetworkPolicy: new DeploymentTargetNetworkPolicyDto(
             NetworkPolicyEnforcementStatus.Supported, NetworkPolicyReadiness.EnforcementAttested,
             NetworkPolicyReason.OperatorAttestedSupported, DateTime.UtcNow,
-            NetworkPolicyEvidenceSource.OperatorAttestation, false)
-        };
+            NetworkPolicyEvidenceSource.OperatorAttestation, false));
 
     private sealed class PeerNamespace(KubernetesClusterFixture peerFixture)
         : KubernetesIntegrationTestBase(peerFixture), IAsyncDisposable

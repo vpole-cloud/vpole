@@ -1,3 +1,5 @@
+using Pole.Features.DeploymentTargets.Application.Persistence;
+using Pole.Features.GitOps.Application;
 using Pole.Features.Secrets.Application;
 using System.Reflection;
 using Microsoft.Extensions.Configuration;
@@ -48,6 +50,7 @@ public static class TestServiceProviderFactory
 {
     private static readonly Assembly[] Assemblies =
     [
+        typeof(GitOpsFeature).Assembly,
         typeof(SecretFeature).Assembly,
         typeof(WebServiceEndpoints).Assembly,
         typeof(ComputeProfileApplicationRegistration).Assembly,
@@ -91,6 +94,7 @@ public static class TestServiceProviderFactory
             storageDiscovery.GetPersistentVolumeClaimsAsync);
         services.AddSingleton<IKubernetesClientProvider>(
             new FixedKubernetesClientProvider(null!));
+        services.AddGitOpsFeature();
         services.AddOutboxPersistence();
         services.AddFunctionAppsFeature();
         services.AddResourceDeploymentsFeature(
@@ -108,6 +112,7 @@ public static class TestServiceProviderFactory
         services.AddUsersFeature(configuration);
         services.AddDomainsFeature();
         services.AddComputeProfilesFeature();
+        services.AddDeploymentTargetPersistence();
         services.AddStorageProfilesFeature();
         services.AddWebServicesFeature();
         services.AddQuotasFeature(configuration);

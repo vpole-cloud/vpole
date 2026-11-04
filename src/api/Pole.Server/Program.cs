@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Application;
 using Pole.Features.Secrets.Application;
 using Pole.Features.Realtime.Application;
 using System.Reflection;
@@ -145,6 +146,7 @@ app.UsePoleTenantPipeline();
 
 app.UseHangfire();
 app.Services
+    .ScheduleGitSnapshotRecurringJobs()
     .ScheduleOutboxRecurringJobs()
     .ScheduleSourceBuildRecurringJobs()
     .ScheduleResourceGroupRecurringJobs()

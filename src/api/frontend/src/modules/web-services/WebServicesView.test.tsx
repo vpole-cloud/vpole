@@ -1687,3 +1687,31 @@ it('refreshes a mounted service and catalog after an accepted operational retry'
     ),
   ).toBe(true)
 })
+
+it('keeps Git-owned configuration read-only with source and blocker information', async () => {
+  records.set(service.id, {
+    ...service,
+    gitOps: {
+      sourceId: 'source',
+      sourceUrl: 'https://github.com/lsbV/example',
+      blocker: 'SecretValuesMissing',
+      pendingRemoval: false,
+      configurationApplied: false,
+    },
+  })
+  created = true
+  window.history.replaceState(
+    {},
+    '',
+    `/?view=web-services&resource=${service.id}&section=configuration`,
+  )
+  await act(async () => render())
+  expect(visibleText()).toContain('Git manages this configuration')
+  expect(visibleText()).toContain('SecretValuesMissing')
+  expect(visibleText()).toContain('Edit this configuration in Git')
+  expect([...container.querySelectorAll('form')].filter(visible)).toHaveLength(0)
+  expect(
+    container.querySelector<HTMLAnchorElement>('a[href="https://github.com/lsbV/example"]'),
+  ).not.toBeNull()
+  expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(false)
+})

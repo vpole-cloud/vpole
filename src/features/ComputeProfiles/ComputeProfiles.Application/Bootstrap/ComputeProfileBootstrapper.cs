@@ -39,6 +39,7 @@ public sealed class ComputeProfileBootstrapper(
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var profile = ComputeProfileFactory.Create(
+            "default",
             "Default",
             "General-purpose profile for local and small installations.",
             ComputeProfileResourceRequirements.Create(

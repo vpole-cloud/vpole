@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Application;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
@@ -144,6 +145,7 @@ public sealed class SecretProjectionOutboxTests(MongoReplicaSetFixture fixture) 
     {
         var services = new ServiceCollection().AddSingleton(Fixture.Database).AddSingleton(Fixture.Client)
             .AddSingleton<MongoRunTransaction>();
+        services.AddGitOpsFeature();
         services.AddSecretsFeature();
         services.AddSingleton<StoreOutboxWrites>(async (session, writes, ct) =>
         {

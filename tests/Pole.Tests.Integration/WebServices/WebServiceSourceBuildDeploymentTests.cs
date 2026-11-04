@@ -142,8 +142,8 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
         var desired = CreatePlacement("507f1f77bcf86cd799439051", "507f1f77bcf86cd799439061");
         var removed = CreatePlacement("507f1f77bcf86cd799439052", "507f1f77bcf86cd799439062") with
         {
-            DesiredOperation = "Delete",
-            Status = "Pending"
+            DesiredOperation = ResourceDeploymentDesiredOperation.Delete,
+            Status = ResourceDeploymentStatus.Pending
         };
         var writer = new SuccessfulSetMutationWriter([desired]);
         var service = CreateService([desired, removed], writer.RequestSetApplyAsync);
@@ -217,28 +217,7 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
                 "pole-registry-project-1"));
 
     private static PlacementSummaryDto CreatePlacement(string deploymentId, string targetId) =>
-        new(
-            deploymentId,
-            "507f1f77bcf86cd799439070",
-            ObjectId.GenerateNewId().ToString(),
-            targetId,
-            DesiredGeneration: 1,
-            ObservedGeneration: 1,
-            Status: "Applied",
-            FailureCode: null,
-            new ComputeConfigurationSummaryDto(
-                new ComputeProfileReference(ObjectId.GenerateNewId().ToString(), 1),
-                "default",
-                new ComputeResourceValuesDto(250, 256),
-                new ComputeResourceValuesDto(1000, 512),
-                ImmutableList<ComputeExtendedResourceDto>.Empty),
-            Endpoints: [],
-            ResourceRevision: 1,
-            FixedReplicas: 2,
-            Ingress: ResourceDeploymentIngressConfiguration.Create(
-                "traefik", "letsencrypt-prod", "example.test",
-                [$"{deploymentId}.example.test"]),
-            DeploymentRevision: 1);
+        new(deploymentId, "507f1f77bcf86cd799439070", ObjectId.GenerateNewId().ToString(), targetId, DesiredGeneration: 1, ObservedGeneration: 1, Status: ResourceDeploymentStatus.Applied, FailureCode: null, new ComputeConfigurationSummaryDto(new ComputeProfileReference(ObjectId.GenerateNewId().ToString(), 1), "default", new ComputeResourceValuesDto(250, 256), new ComputeResourceValuesDto(1000, 512), ImmutableList<ComputeExtendedResourceDto>.Empty), Endpoints: [], ResourceRevision: 1, FixedReplicas: 2, Ingress: ResourceDeploymentIngressConfiguration.Create("traefik", "letsencrypt-prod", "example.test", [$"{deploymentId}.example.test"]), DeploymentRevision: 1, DesiredOperation: ResourceDeploymentDesiredOperation.Apply, Isolation: new ResourceDeploymentIsolationDto("Unknown", "EnforcementRequired", "EnforcementNotEstablished", null));
 
     private sealed class SuccessfulSetMutationWriter(IReadOnlyList<PlacementSummaryDto> deployments)
     {
@@ -258,7 +237,7 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
                     {
                         DesiredGeneration = item.DesiredGeneration + 1,
                         ResourceRevision = command.ResourceRevision,
-                        Status = "Pending"
+                        Status = ResourceDeploymentStatus.Pending
                     }).ToArray()));
         }
     }

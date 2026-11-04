@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Application;
 using System.Collections.Immutable;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
@@ -235,6 +236,7 @@ public sealed class ResourceProviderRealtimeTests
     public void ResourceGroupsRegistersItsTwoTenantTopicsOnce()
     {
         var services = new ServiceCollection();
+        services.AddGitOpsFeature();
         services.AddResourceGroupsFeature(new ConfigurationBuilder().Build());
         var topics = services.Where(descriptor => descriptor.ServiceType == typeof(RealtimeTopic))
             .Select(descriptor => Assert.IsType<RealtimeTopic>(descriptor.ImplementationInstance)).ToArray();

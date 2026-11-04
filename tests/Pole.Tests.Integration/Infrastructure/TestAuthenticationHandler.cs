@@ -17,6 +17,7 @@ public sealed class TestAuthenticationHandler(
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
+        if (Request.Headers["X-Test-Unauthenticated"] == "true") return Task.FromResult(AuthenticateResult.NoResult());
         var claims = new List<Claim>
         {
             new(Claims.UserId, TestData.UserId),

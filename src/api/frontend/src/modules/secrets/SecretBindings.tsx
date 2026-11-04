@@ -1,3 +1,4 @@
+import { GitOwnershipNotice } from '../../ui/GitOwnershipNotice'
 import { eligibilityKeys } from '../../data/queryKeys'
 import { useState } from 'react'
 import {
@@ -157,10 +158,13 @@ export function SecretBindings({
               id: 'actions',
               label: 'Actions',
               render: ({ binding }) =>
-                binding.id === secret.managedBy?.bindingId ? (
+                binding.gitOps ? (
+                  <GitOwnershipNotice status={binding.gitOps} />
+                ) : binding.id === secret.managedBy?.bindingId ? (
                   <StatusBadge>Protected owner binding</StatusBadge>
                 ) : (
-                  canWrite && (
+                  canWrite &&
+                  !binding.gitOps && (
                     <Button variant="danger" onClick={() => setDetaching(binding.id)}>
                       Detach binding
                     </Button>

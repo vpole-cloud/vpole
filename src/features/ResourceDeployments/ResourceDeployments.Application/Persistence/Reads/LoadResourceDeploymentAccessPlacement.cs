@@ -1,3 +1,4 @@
+using Pole.Features.ResourceDeployments.Application.Common;
 using MongoDB.Driver;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
@@ -31,12 +32,13 @@ internal sealed class MongoLoadResourceDeploymentAccessPlacement(
 
         var status = deployment.State switch
         {
-            WaitingForRuntimeCellResourceDeploymentState => "WaitingForRuntimeCell",
-            PendingResourceDeploymentState => "Pending",
-            ReconcilingResourceDeploymentState => "Reconciling",
-            AppliedResourceDeploymentState => "Applied",
-            FailedResourceDeploymentState => "Failed",
-            DeletedResourceDeploymentState => "Deleted",
+            PreparedResourceDeploymentState => ResourceDeploymentStatus.Prepared,
+            WaitingForRuntimeCellResourceDeploymentState => ResourceDeploymentStatus.WaitingForRuntimeCell,
+            PendingResourceDeploymentState => ResourceDeploymentStatus.Pending,
+            ReconcilingResourceDeploymentState => ResourceDeploymentStatus.Reconciling,
+            AppliedResourceDeploymentState => ResourceDeploymentStatus.Applied,
+            FailedResourceDeploymentState => ResourceDeploymentStatus.Failed,
+            DeletedResourceDeploymentState => ResourceDeploymentStatus.Deleted,
             _ => throw new InvalidOperationException(
                 "Unexpected resource deployment state during private access placement lookup.")
         };
@@ -53,6 +55,6 @@ internal sealed class MongoLoadResourceDeploymentAccessPlacement(
             deployment.Revision,
             deployment.DesiredGeneration,
             status,
-            deployment.DesiredOperation.ToString());
+            deployment.DesiredOperation.ToContractOperation());
     }
 }

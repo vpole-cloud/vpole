@@ -46,13 +46,13 @@ public sealed class UpdateLogTests
     {
         var previous = TestData.ValidWebServiceSpec().ToDomain() with
         {
-            Config = new WebServiceConfig(
-                EnvironmentVariables: ImmutableDictionary<string, string>.Empty,
-                PortMappings:
-                [
-                    new PortMapping(80, "8080", "TCP", "http"),
-                    new PortMapping(443, "8443", "TCP", "https")
-                ])
+            Config = new WebServiceConfig()
+            {
+                EnvironmentVariables = ImmutableDictionary<string, string>.Empty,
+                PortMappings = [new PortMapping(80, "8080", "TCP", "http"), new PortMapping(443, "8443", "TCP", "https")],
+                ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty,
+                SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty
+            }
         };
         var next = previous with
         {

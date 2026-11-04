@@ -93,7 +93,13 @@ public sealed class WebServiceMultiTargetDomainTests
             ObjectId.GenerateNewId().ToString(),
             new WebServiceSpec(
                 new ImageInfo("registry.example.test", "team/api", "latest"),
-                new WebServiceConfig(ImmutableDictionary<string, string>.Empty, ImmutableList<PortMapping>.Empty),
+                new WebServiceConfig()
+                {
+                    EnvironmentVariables = ImmutableDictionary<string, string>.Empty,
+                    PortMappings = ImmutableList<PortMapping>.Empty,
+                    ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty,
+                    SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty
+                },
                 null, new ProbeSpec(probe, probe, probe)),
             WebServiceExposure.Create(WebServiceExposureMode.Public),
             WebServiceFactory.DefaultOptions with

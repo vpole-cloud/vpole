@@ -8,7 +8,8 @@ using Pole.Features.ComputeProfiles.Domain;
 namespace Pole.Features.ComputeProfiles.Application.Persistence.Resolution;
 
 internal sealed class MongoResolveComputeProfiles(
-    IMongoCollection<ComputeProfile> computeProfiles)
+    IMongoCollection<ComputeProfile> computeProfiles,
+    IMongoCollection<ComputeProfileRevision> revisions)
 {
     public async Task<ResolveComputeProfilesOutcome> InvokeAsync(
         ComputeProfileBatchResolutionRequest request,
@@ -57,6 +58,14 @@ internal sealed class MongoResolveComputeProfiles(
                 return new ComputeProfileResolutionError(availability);
             }
 
+            if (target.Revision is not null && target.Revision != profile.Revision)
+            {
+                var historical = await revisions.Find(ComputeProfileRevisionFilters.Identity(profile.Id, target.Revision.Value))
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (historical is null || !historical.Snapshot.TargetMappings.Any(mapping => mapping.DeploymentTargetId == target.DeploymentTargetId))
+                    return new ComputeProfileResolutionError(new ComputeProfileUnavailable(profile.Id, ComputeProfileUnavailableReason.RevisionUnavailable));
+                profile = historical.Snapshot;
+            }
             var mapping = profile.TargetMappings.Single(mapping =>
                 string.Equals(
                     mapping.DeploymentTargetId,
@@ -154,6 +163,8 @@ internal sealed class MongoResolveComputeProfiles(
 
         foreach (var target in request.Targets)
         {
+            if (target.Revision is < 1 || target.Revision is not null && string.IsNullOrWhiteSpace(target.ComputeProfileId))
+                throw new ArgumentException("Pinned profiles require ID and positive revision.", nameof(request));
             if (!ObjectId.TryParse(target.DeploymentTargetId?.Trim(), out _))
             {
                 throw new ArgumentException(

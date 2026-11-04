@@ -66,8 +66,8 @@ public sealed class FunctionRevisionCreatedConsumer(
             message.ResourceDeploymentId,
             cancellationToken);
         if (deployment is null ||
-            !string.Equals(deployment.Status, "Applied", StringComparison.Ordinal) ||
-            !string.Equals(deployment.DesiredOperation, "Apply", StringComparison.Ordinal) ||
+            deployment.Status != ResourceDeploymentStatus.Applied ||
+            deployment.DesiredOperation != ResourceDeploymentDesiredOperation.Apply ||
             deployment.DesiredGeneration != message.Generation ||
             !string.Equals(deployment.RuntimeCellId, message.RuntimeCellId, StringComparison.Ordinal) ||
             !string.Equals(deployment.DeploymentTargetId, app.Placement.DeploymentTargetId, StringComparison.Ordinal))

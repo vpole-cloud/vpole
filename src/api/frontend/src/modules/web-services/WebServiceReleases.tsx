@@ -1,3 +1,4 @@
+import { canEditDesiredConfiguration } from '../../data/gitOps'
 import { useCallback, useState } from 'react'
 import { fetchWebServiceReleases, redeployWebService, rollbackWebService } from '../../api'
 import { useWebServiceQuery } from './useWebServiceQuery'
@@ -67,7 +68,10 @@ function ReleaseHistory({
       }),
     { realtime: interest },
   )
-  const mutation = useWebServiceMutation(scope, tenant.canManage)
+  const mutation = useWebServiceMutation(
+    scope,
+    canEditDesiredConfiguration(tenant.canManage, service.gitOps),
+  )
   const value = history.resource
   const pending = value?.releases.items.some((release) => release.outcome === 'Pending') ?? false
   const { status: historyStatus, refresh: refreshHistory } = history
@@ -87,7 +91,11 @@ function ReleaseHistory({
   const hasDesiredTarget = service.deployments.some(
     (placement) => placement.desiredOperation !== 'Delete',
   )
-  const writable = tenant.canManage && current && !mutation.busy && hasDesiredTarget
+  const writable =
+    canEditDesiredConfiguration(tenant.canManage, service.gitOps) &&
+    current &&
+    !mutation.busy &&
+    hasDesiredTarget
   const resource = { resourceTypeId: 'pole/web-service', resourceId: service.id }
   const refresh = async () => {
     await Promise.all([history.refresh(), onChanged()])
@@ -148,7 +156,7 @@ function ReleaseHistory({
           <Button disabled={history.status === 'loading'} onClick={() => void refresh()}>
             Refresh releases
           </Button>
-          {tenant.canManage && (
+          {canEditDesiredConfiguration(tenant.canManage, service.gitOps) && (
             <Button disabled={!writable} onClick={() => choose(null)}>
               Redeploy current revision
             </Button>
@@ -224,7 +232,7 @@ function ReleaseHistory({
                 >
                   {release.outcome}
                 </StatusBadge>
-                {tenant.canManage && eligible && (
+                {canEditDesiredConfiguration(tenant.canManage, service.gitOps) && eligible && (
                   <Button disabled={!writable} onClick={() => choose(release)}>
                     Rollback to revision {release.resourceRevision}
                   </Button>
@@ -352,7 +360,7 @@ function ReleaseHistory({
           </Button>
         </div>
       )}
-      {selected && tenant.canManage && (
+      {selected && canEditDesiredConfiguration(tenant.canManage, service.gitOps) && (
         <ConfirmationDialog
           title={
             selected.target

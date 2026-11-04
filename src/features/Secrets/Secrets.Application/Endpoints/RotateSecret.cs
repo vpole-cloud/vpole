@@ -43,7 +43,7 @@ public sealed class RotateSecretValidator : AbstractValidator<RotateSecretReques
         RuleFor(x => x.Body).NotNull();
         When(x => x.Body is not null, () =>
         {
-            RuleFor(x => x.Body.ExpectedVersion).GreaterThan(0);
+            RuleFor(x => x.Body.ExpectedVersion).GreaterThanOrEqualTo(0);
             RuleFor(x => x.Body.Values)
                 .Must(SecretValuesValidation.Valid)
                 .WithMessage("Secret values are invalid or exceed limits.");

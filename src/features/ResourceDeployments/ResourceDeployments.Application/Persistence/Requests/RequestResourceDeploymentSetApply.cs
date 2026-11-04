@@ -130,13 +130,13 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
 
         var computeFenceRequests = request.Deployments
             .Where(item => item.ReplacementCompute is not null)
-            .Select(item => item.ReplacementCompute!)
-            .Select(compute => new ComputeProfileResolutionFenceRequest(
-                compute.ComputeProfileId,
-                compute.ComputeProfileRevision,
-                compute.DeploymentTargetId,
+            .Select(item => new ComputeProfileResolutionFenceRequest(
+                item.ReplacementCompute!.ComputeProfileId,
+                item.ReplacementCompute.ComputeProfileRevision,
+                item.ReplacementCompute.DeploymentTargetId,
                 request.TenantId,
-                request.ResourceType))
+                request.ResourceType,
+                item.PinnedCompute))
             .Distinct()
             .ToArray();
         if (computeFenceRequests.Length > 0)

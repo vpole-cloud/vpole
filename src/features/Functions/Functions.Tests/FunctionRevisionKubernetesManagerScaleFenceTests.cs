@@ -261,16 +261,15 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
                 true,
                 true,
                 false,
-                "Healthy")
-            {
-                NetworkPolicy = new(
+                "Healthy",
+        TechnicalName: "test-target",
+        NetworkPolicy: new(
                     NetworkPolicyEnforcementStatus.Unknown,
                     readiness,
                     NetworkPolicyReason.EnforcementNotEstablished,
                     DateTime.UnixEpoch,
                     NetworkPolicyEvidenceSource.OperatorAttestation,
-                    false)
-            }));
+                    false))));
 
     private static Kubernetes CreateKubernetes(DelegatingHandler handler) =>
         new(

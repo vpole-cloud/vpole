@@ -44,7 +44,9 @@ public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture) :
                 enabled,
                 false,
                 false,
-                "Healthy")));
+                "Healthy",
+        TechnicalName: "test-target",
+        NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown)));
         // Each target client receives a fresh owned handler; tests use the real Kubernetes SDK.
         var handler = new NativeWatchTestHandler(Response,
             _ => throw new InvalidOperationException("HTTP discovery cannot open a watch."));

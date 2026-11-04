@@ -45,6 +45,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
 
         Assert.IsType<InClusterConnectionInput>(Assert.Single(preparer.Inputs));
         var (target, settings) = await LoadSingleStateAsync();
+        Assert.Equal("local", target.TechnicalName);
         Assert.IsType<InClusterDeploymentTargetConnection>(target.Connection);
         var ingress = Assert.IsType<DeploymentTargetIngressConfiguration>(
             target.WorkloadConfiguration.Ingress);
@@ -390,7 +391,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
     {
         var id = ObjectId.GenerateNewId().ToString();
         const long connectionVersion = 1;
-        return DeploymentTargetFactory.Create(
+        return DeploymentTargetFactory.Create("target-" + id,
             "Existing cluster",
             $"kubernetes:kube-system:{id}",
             DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),

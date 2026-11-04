@@ -97,7 +97,12 @@ public sealed class WebServiceSourceBuildDeploymentService(
             if (update is WebServiceUpdateConflict updateConflict)
             {
                 DeploySourceBuildWebServiceOutcome rejected = new SourceBuildWebServiceDeploymentError(
-                    new SourceBuildWebServiceUpdateConflict(updateConflict.WebServiceId));
+                    new SourceBuildWebServiceUpdateConflict(updateConflict.WebServiceId, updateConflict.Reason switch
+                    {
+                        WebServiceUpdateConflictReason.ExpectedRevisionConflict => SourceBuildWebServiceUpdateConflictReason.ExpectedRevisionConflict,
+                        WebServiceUpdateConflictReason.GitOwnedConfiguration => SourceBuildWebServiceUpdateConflictReason.GitOwnedConfiguration,
+                        _ => throw new ArgumentOutOfRangeException(nameof(updateConflict.Reason))
+                    }));
                 return transaction.Abort(rejected);
             }
             if (update is WebServiceConnectionConflict connectionConflict)

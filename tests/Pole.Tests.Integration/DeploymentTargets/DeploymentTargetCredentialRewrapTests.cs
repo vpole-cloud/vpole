@@ -239,7 +239,7 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
         DeploymentTargetConnection connection)
     {
         var now = DateTime.UtcNow;
-        return DeploymentTargetFactory.Create(
+        return DeploymentTargetFactory.Create("target-" + id,
             $"Rewrap target {id}",
             $"cluster-{id}",
             connection,

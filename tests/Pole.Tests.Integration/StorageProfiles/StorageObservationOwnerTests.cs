@@ -288,7 +288,9 @@ public sealed class StorageObservationOwnerTests(MongoReplicaSetFixture fixture)
                 true,
                 false,
                 false,
-                "Healthy"))),
+                "Healthy",
+        TechnicalName: "test-target",
+        NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown))),
         budget,
         new());
 

@@ -50,8 +50,8 @@ public sealed class FunctionResourcePlacementResolver(
                 placement.DeploymentTargetId,
                 app.Placement.DeploymentTargetId,
                 StringComparison.Ordinal) ||
-            !string.Equals(placement.DesiredOperation, "Apply", StringComparison.Ordinal) ||
-            requireReady && !string.Equals(placement.Status, "Applied", StringComparison.Ordinal))
+            placement.DesiredOperation != ResourceDeploymentDesiredOperation.Apply ||
+            requireReady && placement.Status != ResourceDeploymentStatus.Applied)
         {
             return new FunctionResourcePlacementUnavailable(app.Id);
         }

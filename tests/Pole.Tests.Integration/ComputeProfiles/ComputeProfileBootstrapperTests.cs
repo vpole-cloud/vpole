@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pole.Features.ComputeProfiles.Application.Bootstrap;
@@ -43,6 +44,8 @@ public sealed class ComputeProfileBootstrapperTests
 
         var profile = Assert.IsType<ComputeProfile>(durableDefault);
         Assert.Equal(1, persistCount);
+        Assert.Equal("default", profile.TechnicalName);
+        Assert.Equal(1, profile.Revision);
         Assert.True(profile.IsDefault);
         Assert.True(profile.IsEnabled);
         Assert.Equal(ComputeArchitecture.Any, profile.Architecture);
@@ -75,10 +78,12 @@ public sealed class ComputeProfileBootstrapperTests
             "in-cluster",
             1,
             new DeploymentTargetWorkloadConfigurationLookupDto(
-                1, null, new DeploymentTargetNetworkSourcesDto(System.Collections.Immutable.ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty)),
+                1, null, new DeploymentTargetNetworkSourcesDto(ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty)),
             1,
             Enabled: true,
             AcceptsWorkloads: true,
             DeletionRequested: false,
-            HealthStatus: "Healthy");
+            HealthStatus: "Healthy",
+        TechnicalName: "test-target",
+        NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown);
 }

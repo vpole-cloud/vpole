@@ -336,7 +336,7 @@ public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture f
     private static DeploymentTarget CreateTarget()
     {
         var id = ObjectId.GenerateNewId().ToString();
-        return DeploymentTargetFactory.Create("Private target name",
+        return DeploymentTargetFactory.Create("target-" + id, "Private target name",
             $"private-cluster:{id}",
             DeploymentTargetConnectionFactory.CreateInCluster(1),
             DeploymentTargetHealth.Unknown(1),

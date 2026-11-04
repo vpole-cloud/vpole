@@ -1,3 +1,5 @@
+import { canEditDesiredConfiguration } from '../../data/gitOps'
+import { GitOwnershipNotice } from '../../ui/GitOwnershipNotice'
 import { useApiScope } from '../../data/useApiScope'
 import { useVisibleRefresh } from '../../hooks/useVisibleRefresh'
 import { useEffect, useState } from 'react'
@@ -62,12 +64,13 @@ export function WebServiceResourceView({
     active: active && ['configuration', 'deployments'].includes(section),
     resourceGroupId: details.service?.resourceGroupId,
   })
+  const canConfigure = canEditDesiredConfiguration(tenant.canManage, details.service?.gitOps)
   const builds = useSourceBuildsManager({
     apiBaseUrl: api.baseUrl,
     token: api.token,
     tenantId: api.tenantId,
     webServiceId: id,
-    canManage: tenant.canManage,
+    canManage: canConfigure,
     enabled: active && section === 'builds',
   })
   const [configurationDirty, setConfigurationDirty] = useState(false)
@@ -105,7 +108,7 @@ export function WebServiceResourceView({
   }, [completedBuild, refreshDetails])
   const reconciling =
     service?.deployments.some((deployment) =>
-      ['WaitingForRuntimeCell', 'Pending', 'Reconciling'].includes(deployment.status),
+      ['Prepared', 'WaitingForRuntimeCell', 'Pending', 'Reconciling'].includes(deployment.status),
     ) ?? false
   useVisibleRefresh(active && reconciling, refreshDetails, 2500, [
     { topic: 'web-services', tenantId: api.tenantId, resourceId: id },
@@ -176,6 +179,7 @@ export function WebServiceResourceView({
           Refresh
         </Button>
       </header>
+      <GitOwnershipNotice status={service?.gitOps} />
       {details.error && (
         <Notice tone="error">{details.error} Last fetched configuration is shown.</Notice>
       )}
@@ -257,7 +261,9 @@ export function WebServiceResourceView({
         )}
       </TabPanel>
       <TabPanel id={panelId} tabId="operations" activeId={section}>
-        {active && section === 'operations' && <WebServiceOperations id={id} active />}
+        {active && section === 'operations' && (
+          <WebServiceOperations id={id} active canRetry={canConfigure} />
+        )}
       </TabPanel>
       <TabPanel id={panelId} tabId="releases" activeId={section}>
         {active && section === 'releases' && (
@@ -279,7 +285,7 @@ export function WebServiceResourceView({
           </Notice>
         )}
         {visited.includes('configuration') &&
-          (tenant.canManage ? (
+          (canConfigure ? (
             <div className="web-service-editor">
               <WebServiceForm
                 key={formVersion}
@@ -318,7 +324,13 @@ export function WebServiceResourceView({
               />
             </div>
           ) : (
-            <EmptyState title="Tenant viewer access is read-only." />
+            <EmptyState
+              title={
+                service.gitOps
+                  ? 'Edit this configuration in Git.'
+                  : 'Tenant viewer access is read-only.'
+              }
+            />
           ))}
       </TabPanel>
       <TabPanel id={panelId} tabId="deployments" activeId={section}>
@@ -327,7 +339,7 @@ export function WebServiceResourceView({
             webService={service}
             availableTargets={manager.availableTargets}
             computeProfilesByTarget={manager.computeProfilesByTarget}
-            canManage={tenant.canManage}
+            canManage={canConfigure}
             onDirtyChange={setDeploymentDirty}
             onLoadComputeProfiles={manager.loadComputeProfiles}
             onAddDeployment={(...args) => mutate(() => manager.addDeployment(...args))}
@@ -357,7 +369,7 @@ export function WebServiceResourceView({
             active={active && section === 'dependencies'}
             key={`${api.baseUrl}:${api.tenantId}:${id}`}
             service={service}
-            canWrite={tenant.canManage}
+            canWrite={canConfigure}
             onDirtyChange={setDependencyDirty}
             onChanged={async () => {
               await details.refreshAfterWrite()
@@ -371,7 +383,7 @@ export function WebServiceResourceView({
           <SourceBuildPanel
             webService={service}
             manager={builds}
-            canManage={tenant.canManage}
+            canManage={canConfigure}
             onDirtyChange={setBuildDirty}
             active={active && section === 'builds'}
           />

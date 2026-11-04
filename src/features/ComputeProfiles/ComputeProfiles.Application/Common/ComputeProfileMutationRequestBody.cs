@@ -404,8 +404,10 @@ public static class ComputeProfileMutationRequestBodyExtensions
 {
     public static ComputeProfile ToDomain(
         this ComputeProfileMutationRequestBody body,
+        string technicalName,
         ComputeProfileFactory.CreateOptions options) =>
         ComputeProfileFactory.Create(
+            technicalName,
             body.DisplayName,
             body.Description,
             body.Resources.ToDomain(),

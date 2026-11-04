@@ -4,7 +4,11 @@ public sealed record ResourceGroupNotFound(string ResourceGroupId);
 
 public sealed record ResourceGroupDeleting(string ResourceGroupId);
 
-public sealed record ResourceGroupRevisionConflict(string ResourceGroupId);
+public enum ResourceGroupRevisionConflictReason { ExpectedRevisionConflict, GitOwnedConfiguration }
+
+public sealed record ResourceGroupRevisionConflict(
+    string ResourceGroupId,
+    ResourceGroupRevisionConflictReason Reason = ResourceGroupRevisionConflictReason.ExpectedRevisionConflict);
 
 public sealed record ResourceGroupContainsResources(string ResourceGroupId);
 

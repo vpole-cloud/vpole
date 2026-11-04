@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Secrets.Domain;
@@ -14,13 +15,15 @@ public delegate Task<RemoveSecretBindingResult> RemoveSecretBinding(
 public union RemoveSecretBindingResult(
     Secret,
     SecretMissing,
-    SecretManagedByProvider);
+    SecretManagedByProvider,
+    SecretGitOwned);
 
 internal sealed class MongoRemoveSecretBinding(
     IMongoCollection<Secret> secrets,
     MongoRunTransaction transactions,
     StoreSecretChange publish,
-    TimeProvider clock)
+    TimeProvider clock,
+    IGitOpsMutations git)
 {
     public Task<RemoveSecretBindingResult> InvokeAsync(
         string tenantId,
@@ -36,6 +39,8 @@ internal sealed class MongoRemoveSecretBinding(
                 .FirstOrDefaultAsync(token);
             if (current is null)
                 return tx.Abort(new SecretMissing());
+            if (!await git.AuthorizeAsync(tenantId, "SecretBinding", bindingId, tx.Session, token))
+                return tx.Abort(new SecretGitOwned());
             if (current.Management is ProviderManagedSecret owner && owner.BindingId == bindingId)
                 return tx.Abort(new SecretManagedByProvider());
             if (current.Bindings.All(x => x.Id != bindingId))

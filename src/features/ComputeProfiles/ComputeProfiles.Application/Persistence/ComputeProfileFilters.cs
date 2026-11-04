@@ -7,6 +7,13 @@ namespace Pole.Features.ComputeProfiles.Application.Persistence;
 
 internal static class ComputeProfileFilters
 {
+    public static FilterDefinition<ComputeProfile> ByTechnicalName(string name) =>
+        Builders<ComputeProfile>.Filter.Eq(item => item.TechnicalName, name);
+
+    public static FilterDefinition<ComputeProfile> NamedForWorkload(string name, string tenantId, string targetId, ResourceTypeId resourceType) =>
+        ByTechnicalName(name) & AllowsTenant(tenantId) & AvailableForTarget(targetId) &
+        Builders<ComputeProfile>.Filter.AnyEq(profile => profile.AllowedResourceTypes, resourceType.Value);
+
     public static FilterDefinition<ComputeProfile> All() =>
         Builders<ComputeProfile>.Filter.Empty;
 

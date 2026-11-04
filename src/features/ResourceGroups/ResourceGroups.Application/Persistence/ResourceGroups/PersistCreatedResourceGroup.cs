@@ -5,7 +5,12 @@ using Pole.Features.ResourceGroups.Domain;
 
 namespace Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
 
-public delegate Task<ResourceGroup> PersistCreatedResourceGroup(
+public sealed record ResourceGroupNameAlreadyExists;
+public union PersistCreatedResourceGroupResult(
+    ResourceGroup,
+    ResourceGroupNameAlreadyExists);
+
+public delegate Task<PersistCreatedResourceGroupResult> PersistCreatedResourceGroup(
     ResourceGroup resourceGroup,
     IsolationScope defaultIsolationScope,
     CancellationToken cancellationToken = default);
@@ -14,9 +19,9 @@ internal sealed class MongoPersistCreatedResourceGroup(
     IMongoCollection<ResourceGroup> resourceGroups,
     IMongoCollection<IsolationScope> isolationScopes,
     StoreOutboxWrites storeOutboxWrites,
-    RunMongoOutcomeTransaction<ResourceGroup> runMongoTransaction)
+    RunMongoOutcomeTransaction<PersistCreatedResourceGroupResult> runMongoTransaction)
 {
-    public Task<ResourceGroup> InvokeAsync(
+    public Task<PersistCreatedResourceGroupResult> InvokeAsync(
         ResourceGroup resourceGroup,
         IsolationScope defaultIsolationScope,
         CancellationToken cancellationToken = default)
@@ -25,10 +30,12 @@ internal sealed class MongoPersistCreatedResourceGroup(
         ArgumentNullException.ThrowIfNull(defaultIsolationScope);
         return runMongoTransaction(async (transaction, ct) =>
         {
-            await resourceGroups.InsertOneAsync(
-                transaction.Session,
-                resourceGroup,
-                cancellationToken: ct);
+            try
+            {
+                await resourceGroups.InsertOneAsync(transaction.Session, resourceGroup, cancellationToken: ct);
+            }
+            catch (MongoWriteException ex) when (MongoDuplicateKey.IsForIndex(ex, ResourceGroupsIndexes.TechnicalName))
+            { return transaction.Abort(new ResourceGroupNameAlreadyExists()); }
             await isolationScopes.InsertOneAsync(
                 transaction.Session,
                 defaultIsolationScope,
@@ -37,7 +44,7 @@ internal sealed class MongoPersistCreatedResourceGroup(
                 transaction.Session,
                 [OutboxWrite.Create(resourceGroup.ToCreateEvent())],
                 ct);
-            return transaction.Commit(resourceGroup);
+            return transaction.Commit(new PersistCreatedResourceGroupResult(resourceGroup));
         }, cancellationToken);
     }
 }

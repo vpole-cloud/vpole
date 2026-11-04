@@ -104,7 +104,7 @@ public sealed class DeploymentTargetObservationFenceTests(MongoReplicaSetFixture
     {
         var id = ObjectId.GenerateNewId().ToString();
         var now = DateTime.UtcNow;
-        return DeploymentTargetFactory.Create("Observation target",
+        return DeploymentTargetFactory.Create("target-" + id, "Observation target",
             $"kubernetes:kube-system:{id}",
             DeploymentTargetConnectionFactory.CreateInCluster(1),
             DeploymentTargetHealth.Healthy(1, now),

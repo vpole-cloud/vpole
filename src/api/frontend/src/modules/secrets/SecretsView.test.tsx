@@ -520,3 +520,30 @@ it('offers groups from later choice pages and submits their selected isolation s
     isolationScopeId: 'scope2',
   })
 })
+
+it('allows first values for Git-owned metadata while keeping deletion unavailable', async () => {
+  secret = {
+    ...secret,
+    currentVersion: 0,
+    missingValueKeys: ['password'],
+    gitOps: {
+      sourceId: 'source',
+      sourceUrl: 'https://github.com/lsbV/example',
+      blocker: null,
+      pendingRemoval: false,
+      configurationApplied: true,
+    },
+  }
+  await open('Rotate values')
+  expect(text()).toContain('Git manages this configuration')
+  expect(text()).toContain('Values needed: password')
+  expect(text()).not.toContain('Delete Secret')
+  await fill('Value 1', 'synthetic-first-value')
+  await submit()
+  await click('Rotate Secret')
+  const write = fetchMock.mock.calls.find(
+    ([url, init]) => String(url).endsWith('/versions') && init?.method === 'POST',
+  )!
+  expect(JSON.parse(write[1]!.body as string).expectedVersion).toBe(0)
+  expect(field('Value 1').value).toBe('')
+})

@@ -1,3 +1,4 @@
+using Pole.Workloads;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -16,6 +17,7 @@ using Pole.Mediator;
 namespace Pole.Features.DeploymentTargets.Application.Endpoints;
 
 public sealed record CreateDeploymentTargetRequestBody(
+    string TechnicalName,
     string DisplayName,
     bool Enabled,
     bool AcceptsWorkloads,
@@ -28,6 +30,7 @@ public sealed record CreateDeploymentTargetRequest(
 
 public union CreateDeploymentTargetOutcome(
     DeploymentTargetDto,
+    DeploymentTargetTechnicalNameConflict,
     DeploymentTargetConnectionRejected,
     DeploymentTargetPublicBaseDomainConflict,
     DeploymentTargetIdentityConflict);
@@ -67,6 +70,7 @@ public sealed class CreateDeploymentTargetHandler(
 
             var now = timeProvider.GetUtcNow().UtcDateTime;
             var target = DeploymentTargetFactory.Create(
+                request.Body.TechnicalName,
                 request.Body.DisplayName,
                 observation.ClusterIdentity,
                 prepared.Connection,
@@ -83,7 +87,8 @@ public sealed class CreateDeploymentTargetHandler(
             return ((PersistCreatedDeploymentTargetError)inserted.Value) switch
             {
                 DeploymentTargetPublicBaseDomainConflict conflict => conflict,
-                DeploymentTargetIdentityConflict conflict => conflict
+                DeploymentTargetIdentityConflict conflict => conflict,
+                DeploymentTargetTechnicalNameConflict conflict => conflict
             };
         }
     }
@@ -108,6 +113,7 @@ public sealed class CreateDeploymentTargetRequestBodyValidator
 {
     public CreateDeploymentTargetRequestBodyValidator()
     {
+        RuleFor(body => body.TechnicalName).Must(ResourceTechnicalName.IsValid);
         RuleFor(body => body.DisplayName)
             .NotEmpty()
             .MaximumLength(80);
@@ -141,7 +147,8 @@ public static class CreateDeploymentTargetEndpoint
                     target),
                 DeploymentTargetConnectionRejected error => DeploymentTargetHttpMappings.Map(error),
                 DeploymentTargetPublicBaseDomainConflict error => DeploymentTargetHttpMappings.Map(error),
-                DeploymentTargetIdentityConflict error => DeploymentTargetHttpMappings.Map(error)
+                DeploymentTargetIdentityConflict error => DeploymentTargetHttpMappings.Map(error),
+                DeploymentTargetTechnicalNameConflict error => DeploymentTargetHttpMappings.Map(error)
             });
         })
             .WithName("CreateDeploymentTarget")

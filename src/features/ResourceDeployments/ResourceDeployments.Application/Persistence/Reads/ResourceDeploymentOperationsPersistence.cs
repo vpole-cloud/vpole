@@ -71,7 +71,7 @@ public sealed class ResourceDeploymentOperationsPersistence(
             { OperationGeneration = deployment.State.Generation, TargetDisplayName = targetName });
         }
         var counts = new ResourceDeploymentOperationCounts(
-            await CountAsync<WaitingForRuntimeCellResourceDeploymentState>(),
+            await CountAsync<WaitingForRuntimeCellResourceDeploymentState>() + await CountAsync<PreparedResourceDeploymentState>(),
             await CountAsync<PendingResourceDeploymentState>(),
             await CountAsync<ReconcilingResourceDeploymentState>(),
             await CountAsync<AppliedResourceDeploymentState>(),
@@ -84,6 +84,7 @@ public sealed class ResourceDeploymentOperationsPersistence(
 
     public static ResourceDeploymentOperationDto ToOperation(ResourceDeployment deployment, string? name) => deployment.State switch
     {
+        PreparedResourceDeploymentState state => new(deployment.ToDto(), name, "Prepared", 0, deployment.CreatedAtUtc, false, null),
         WaitingForRuntimeCellResourceDeploymentState state => new(deployment.ToDto(), name, "Waiting", 0, state.RequestedAtUtc, false, null),
         PendingResourceDeploymentState state => new(deployment.ToDto(), name, "Accepted", state.AttemptCount, state.RequestedAtUtc, false, null),
         ReconcilingResourceDeploymentState state => new(deployment.ToDto(), name, "Running", state.AttemptCount, state.StartedAtUtc, false, null),

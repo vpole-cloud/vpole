@@ -41,7 +41,15 @@ public static class ResourceDeploymentDtoExtensions
                     deployment.ResolvedPlacement.Ingress.PublicBaseDomain,
                     deployment.ResolvedPlacement.Ingress.Hostnames),
             deployment.Revision,
-            deployment.DesiredOperation.ToString());
+            deployment.DesiredOperation.ToContractOperation(),
+            new ResourceDeploymentIsolationDto("Unknown", "EnforcementRequired", "EnforcementNotEstablished", null));
+
+    public static ResourceDeploymentDesiredOperation ToContractOperation(this ResourceDeploymentOperation operation) => operation switch
+    {
+        ResourceDeploymentOperation.Apply => ResourceDeploymentDesiredOperation.Apply,
+        ResourceDeploymentOperation.Delete => ResourceDeploymentDesiredOperation.Delete,
+        _ => throw new ArgumentOutOfRangeException(nameof(operation))
+    };
 
     public static ComputeConfigurationSummaryDto ToSummaryDto(
         this ResolvedComputeConfiguration compute) =>
@@ -70,34 +78,35 @@ public static class ResourceDeploymentDtoExtensions
             endpoint.Port,
             endpoint.Scheme);
 
-    private static string Status(ResourceDeployment deployment) =>
+    private static ResourceDeploymentStatus Status(ResourceDeployment deployment) =>
         deployment.State switch
         {
+            PreparedResourceDeploymentState => ResourceDeploymentStatus.Prepared,
             WaitingForRuntimeCellResourceDeploymentState =>
-                "WaitingForRuntimeCell",
+                ResourceDeploymentStatus.WaitingForRuntimeCell,
             PendingResourceDeploymentState
-                {
-                    Operation: ResourceDeploymentOperation.Apply
-                } => "Pending",
+            {
+                Operation: ResourceDeploymentOperation.Apply
+            } => ResourceDeploymentStatus.Pending,
             PendingResourceDeploymentState
-                {
-                    Operation: ResourceDeploymentOperation.Delete
-                } => "Deleting",
+            {
+                Operation: ResourceDeploymentOperation.Delete
+            } => ResourceDeploymentStatus.Deleting,
             ReconcilingResourceDeploymentState
-                {
-                    Operation: ResourceDeploymentOperation.Apply
-                } => "Reconciling",
+            {
+                Operation: ResourceDeploymentOperation.Apply
+            } => ResourceDeploymentStatus.Reconciling,
             ReconcilingResourceDeploymentState
-                {
-                    Operation: ResourceDeploymentOperation.Delete
-                } => "Deleting",
-            AppliedResourceDeploymentState => "Applied",
+            {
+                Operation: ResourceDeploymentOperation.Delete
+            } => ResourceDeploymentStatus.Deleting,
+            AppliedResourceDeploymentState => ResourceDeploymentStatus.Applied,
             FailedResourceDeploymentState
-                {
-                    Operation: ResourceDeploymentOperation.Delete
-                } => "DeleteFailed",
-            FailedResourceDeploymentState => "Failed",
-            DeletedResourceDeploymentState => "Deleted",
+            {
+                Operation: ResourceDeploymentOperation.Delete
+            } => ResourceDeploymentStatus.DeleteFailed,
+            FailedResourceDeploymentState => ResourceDeploymentStatus.Failed,
+            DeletedResourceDeploymentState => ResourceDeploymentStatus.Deleted,
             _ => throw new InvalidOperationException(
                 $"Unsupported deployment state '{deployment.State.GetType().Name}'.")
         };

@@ -178,3 +178,20 @@ review, semantic architecture diagnostics, formatting and the mandatory full loc
 test gate. New positional record/union/delegate declarations with multiple parameters
 put each parameter on its own line. Shared DTOs are allowed; a shared mutation outcome
 that adds impossible results to unrelated handlers is not.
+
+## Record data construction
+
+Prefer positional primary constructors for data records. A record uses either all positional
+constructor data or ordinary instance properties without a positional constructor. Do not combine
+a positional record with extra stored instance properties/fields or another data constructor.
+Computed members, static helpers, abstract contracts, inherited members and record copy constructors
+remain valid. Primary constructors on ordinary dependency-injected classes are unrelated to this rule.
+
+`POLE009` enforces this semantically, including partial declarations and backing fields. Existing
+members outside the GitOps slice are listed individually in `RecordDataConstructionLegacy.cs`;
+architecture tests prevent new violations and stale allowances. This finite ratchet avoids rewriting
+unrelated event and workload contracts as part of the GitOps remediation. Remove an allowance when
+correcting that member; never exempt a whole type or add an allowance for new code.
+
+Some non-positional records retain explicit constructors so collection defaults, legacy Mongo
+normalization and event identity initialization remain non-null without nullable positional inputs.

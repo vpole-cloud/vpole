@@ -147,7 +147,7 @@ public sealed class ComputeProfileHandlerOutcomeTests
             new ComputeProfileTargetMappingsValid());
 
     private static CreateComputeProfileRequestBody ValidCreateBody() =>
-        new(
+        new("test-profile",
             "General purpose",
             "Compute profile",
             new ComputeResourceRequirementsRequestBody(

@@ -4,6 +4,9 @@ namespace Pole.Features.Secrets.Application;
 
 public static class SecretHttpMappings
 {
+    public static HttpProblem MapGitOwned(SecretGitOwned _) => Problem(
+        409, "secrets.git-owned", "Edit the desired configuration in its managing Git source");
+
     public static HttpProblem MapManagedByProvider(SecretManagedByProvider _) => Problem(
         409, "secrets.managed-by-provider", "Change the managed credential through its owning resource");
 

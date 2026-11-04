@@ -62,7 +62,8 @@ public delegate Task<ResolveComputeProfileOutcome> ResolveComputeProfile(
 
 public sealed record ComputeProfileTargetResolutionRequest(
     string DeploymentTargetId,
-    string? ComputeProfileId);
+    string? ComputeProfileId,
+    long? Revision = null);
 
 /// <summary>
 /// Resolves the compute profile required by each selected deployment target.
@@ -82,7 +83,8 @@ public enum ComputeProfileUnavailableReason
     Disabled,
     ResourceTypeNotAllowed,
     TenantNotAllowed,
-    DeploymentTargetNotConfigured
+    DeploymentTargetNotConfigured,
+    RevisionUnavailable
 }
 
 public sealed record ComputeProfileUnavailable(
@@ -103,7 +105,8 @@ public sealed record ComputeProfileResolutionFenceRequest(
     long ComputeProfileRevision,
     string DeploymentTargetId,
     string TenantId,
-    ResourceTypeId ResourceType);
+    ResourceTypeId ResourceType,
+    bool PinnedRevision = false);
 
 public sealed record ComputeProfileResolutionFenceRejected(
     IReadOnlyList<string> ComputeProfileIds);

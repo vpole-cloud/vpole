@@ -61,8 +61,8 @@ internal sealed class PrivateAccessAdmission(
             accessSession.Grant.ResourceDeploymentId, transactionSession, cancellationToken);
         if (placement is null ||
             placement.ResourceGroupId != registered.ResourceGroupId ||
-            placement.Status != "Applied" ||
-            placement.DesiredOperation != "Apply")
+            placement.Status != ResourceDeploymentStatus.Applied ||
+            placement.DesiredOperation != ResourceDeploymentDesiredOperation.Apply)
             return new PrivateAccessDeploymentUnavailable();
         var target = await fenceTarget(
             placement.DeploymentTargetId, transactionSession, cancellationToken);

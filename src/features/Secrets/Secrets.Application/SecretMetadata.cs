@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.Secrets.Domain;
 
 namespace Pole.Features.Secrets.Application;
@@ -14,9 +15,11 @@ public sealed record SecretMetadata(
     long Revision,
     string Lifecycle,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc)
+    DateTime UpdatedAtUtc,
+    string[] MissingValueKeys,
+    GitResourceStatus? GitOps = null,
+    SecretManagedOwnerMetadata? ManagedBy = null)
 {
-    public SecretManagedOwnerMetadata? ManagedBy { get; init; }
 
     public static SecretMetadata From(Secret secret) => new(
         secret.Id,
@@ -30,12 +33,11 @@ public sealed record SecretMetadata(
         secret.Revision,
         secret.Lifecycle.ToString(),
         secret.CreatedAtUtc,
-        secret.UpdatedAtUtc)
-    {
-        ManagedBy = secret.Management is ProviderManagedSecret owner
+        secret.UpdatedAtUtc,
+        secret.KeyNames.Where(key => !secret.HasValue(key)).ToArray(),
+        ManagedBy: secret.Management is ProviderManagedSecret owner
             ? new(owner.ResourceType, owner.ResourceId, owner.BindingId)
-            : null
-    };
+            : null);
 }
 
 public sealed record SecretManagedOwnerMetadata(

@@ -7,6 +7,10 @@ namespace Pole.Features.ResourceGroups.Application.Persistence;
 
 internal static class ResourceGroupFilters
 {
+    public static FilterDefinition<ResourceGroup> ByTechnicalName(string tenantId, string name) =>
+        Builders<ResourceGroup>.Filter.ForTenant(tenantId) & Builders<ResourceGroup>.Filter.Regex(item => item.Name,
+            new MongoDB.Bson.BsonRegularExpression("^" + System.Text.RegularExpressions.Regex.Escape(name) + "$", "i"));
+
     public static FilterDefinition<ResourceGroup> ByTenantAndId(
         string tenantId,
         string resourceGroupId) =>

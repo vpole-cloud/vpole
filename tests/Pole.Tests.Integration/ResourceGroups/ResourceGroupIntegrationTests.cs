@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -153,7 +154,8 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
             Services.GetRequiredService<StoreOutboxWrites>(),
             Services.GetRequiredService<
                 RunMongoOutcomeTransaction<BeginResourceGroupDeletionOutcome>>(),
-            TimeProvider.System);
+            TimeProvider.System,
+            Services.GetRequiredService<IGitOpsMutations>());
         var registrar = Services.GetRequiredService<IResourceRegistrar>();
 
         var deletion = beginDeletion.InvokeAsync(

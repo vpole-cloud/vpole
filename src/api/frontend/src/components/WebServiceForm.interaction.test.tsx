@@ -21,6 +21,7 @@ it('selects an asynchronously loaded default target but preserves an explicit de
   }
   const target = {
     id: 'target',
+    technicalName: 'target',
     displayName: 'Target',
     workloadConfigurationRevision: 1,
     hasPublicIngress: true,
@@ -72,12 +73,14 @@ it('replaces private target selections with the refreshed public placement befor
   }
   const privateTarget = {
     id: 'private',
+    technicalName: 'private',
     displayName: 'Private cluster',
     workloadConfigurationRevision: 1,
     hasPublicIngress: false,
   }
   const publicTarget = {
     id: 'public',
+    technicalName: 'public',
     displayName: 'Public cluster',
     workloadConfigurationRevision: 1,
     hasPublicIngress: true,
@@ -153,6 +156,7 @@ it('blocks creation without eligible compute profiles and recovers once an eligi
     availableTargets: [
       {
         id: 'target',
+        technicalName: 'target',
         displayName: 'Cluster',
         workloadConfigurationRevision: 1,
         hasPublicIngress: true,
@@ -179,6 +183,7 @@ it('blocks creation without eligible compute profiles and recovers once an eligi
             target: [
               {
                 id: 'default',
+                technicalName: 'default',
                 displayName: 'Default',
                 description: '',
                 isDefault: true,

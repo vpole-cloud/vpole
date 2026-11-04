@@ -8,9 +8,30 @@ public sealed record ConsumerSecretKeyReference(
     string SecretId,
     string Key);
 public sealed record ConsumerSecretReferencesAdmitted;
+public enum ConsumerSecretReferenceError
+{
+    SecretBindingUnavailable,
+    SecretValuesMissing,
+    SecretKeyUnavailable,
+    SecretDeploymentCoverageUnavailable,
+    SecretConsumerUnavailable
+}
 public sealed record ConsumerSecretReferenceUnavailable(
     string SecretId,
-    string ReasonCode);
+    ConsumerSecretReferenceError Reason);
+
+public static class ConsumerSecretReferenceErrorCodes
+{
+    public static string Code(ConsumerSecretReferenceError reason) => reason switch
+    {
+        ConsumerSecretReferenceError.SecretBindingUnavailable => "SecretBindingUnavailable",
+        ConsumerSecretReferenceError.SecretValuesMissing => "SecretValuesMissing",
+        ConsumerSecretReferenceError.SecretKeyUnavailable => "SecretKeyUnavailable",
+        ConsumerSecretReferenceError.SecretDeploymentCoverageUnavailable => "SecretDeploymentCoverageUnavailable",
+        ConsumerSecretReferenceError.SecretConsumerUnavailable => "SecretConsumerUnavailable",
+        _ => throw new ArgumentOutOfRangeException(nameof(reason))
+    };
+}
 public sealed record ConsumerSecretProjectionPending(string SecretId);
 public sealed record ConsumerSecretProjectionKey(
     string SecretId,
@@ -39,7 +60,8 @@ public delegate Task<AdmitConsumerSecretReferencesOutcome> AdmitConsumerSecretRe
     IReadOnlyCollection<ConsumerSecretKeyReference> desiredReferences,
     bool requireAvailable,
     IClientSessionHandle session,
-    CancellationToken ct);
+    CancellationToken ct,
+    bool retainPreviousReferencesUntilRollout = false);
 
 /// <summary>Returns native name/key references only after rechecking current binding authority and the exact projection generation.</summary>
 public delegate Task<EnsureConsumerSecretProjectionsOutcome> EnsureConsumerSecretProjections(

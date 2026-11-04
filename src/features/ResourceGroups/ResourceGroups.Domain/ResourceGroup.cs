@@ -1,4 +1,4 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
@@ -90,19 +90,22 @@ public sealed record DeletingResourceGroupLifecycleState(DateTime RequestedAtUtc
 
 public static class ResourceGroupFactory
 {
+    public const int MaximumNameLength = ResourceGroupValueGuard.MaximumResourceGroupNameLength;
+    public const int MaximumDescriptionLength = ResourceGroupValueGuard.MaximumResourceGroupDescriptionLength;
+    public const int MaximumTagLength = ResourceGroupValueGuard.MaximumResourceGroupTagLength;
     public sealed record ResourceGroupCreateOptions(
         string Id,
         string DefaultIsolationScopeId,
         ImmutableHashSet<string> Tags,
         DateTime CreatedAtUtc);
-    
+
     public static ResourceGroupCreateOptions DefaultCreateOptions =>
         new(
             Id: ObjectId.GenerateNewId().ToString(),
             DefaultIsolationScopeId: ObjectId.GenerateNewId().ToString(),
             Tags: ImmutableHashSet<string>.Empty,
             CreatedAtUtc: DateTime.UtcNow);
-    
+
     public static ResourceGroup Create(
         string tenantId,
         string name,

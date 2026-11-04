@@ -74,10 +74,9 @@ public sealed record DeploymentTargetLookupDto(
     bool Enabled,
     bool AcceptsWorkloads,
     bool DeletionRequested,
-    string HealthStatus)
-{
-    public DeploymentTargetNetworkPolicyDto NetworkPolicy { get; init; } = DeploymentTargetNetworkPolicyDto.Unknown;
-}
+    string HealthStatus,
+    string TechnicalName,
+    DeploymentTargetNetworkPolicyDto NetworkPolicy);
 
 public sealed record DeploymentTargetWorkloadConfigurationLookupDto(
     long Revision,
@@ -138,10 +137,9 @@ public sealed record AvailableDeploymentTargetDto(
     string DisplayName,
     long WorkloadConfigurationRevision,
     bool HasPublicIngress,
-    string? PublicBaseDomain)
-{
-    public DeploymentTargetNetworkPolicyDto NetworkPolicy { get; init; } = DeploymentTargetNetworkPolicyDto.Unknown;
-}
+    string? PublicBaseDomain,
+    string TechnicalName,
+    DeploymentTargetNetworkPolicyDto NetworkPolicy);
 
 /// <summary>
 /// Immutable ingress configuration resolved for admission. Consumers snapshot this value instead

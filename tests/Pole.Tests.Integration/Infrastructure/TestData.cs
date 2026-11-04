@@ -52,13 +52,13 @@ public static class TestData
 
     public static WebServiceSpecDto ValidWebServiceSpec() => new(
         Image: new ImageInfoDto("docker.io", "nginx", "1.27"),
-        Config: new WebServiceConfigDto(
-            EnvironmentVariables: ImmutableDictionary<string, string>.Empty
-                .Add("ASPNETCORE_ENVIRONMENT", "Development"),
-            PortMappings:
-            [
-                new PortMappingDto(80, "8080", "TCP", "http")
-            ]),
+        Config: new WebServiceConfigDto()
+        {
+            EnvironmentVariables = ImmutableDictionary<string, string>.Empty.Add("ASPNETCORE_ENVIRONMENT", "Development"),
+            PortMappings = [new PortMappingDto(80, "8080", "TCP", "http")],
+            ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReferenceDto>.Empty,
+            SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReferenceDto>.Empty
+        },
         Autoscaling: null,
         Probes: new ProbeSpecDto(
             Startup: ValidProbe(),
@@ -117,8 +117,9 @@ public static class TestData
         long limitCpuMillis = 1000,
         long limitMemoryMi = 1024,
         bool isDefault = true,
-        IEnumerable<string>? deploymentTargetIds = null) =>
-        ComputeProfileFactory.Create(
+        IEnumerable<string>? deploymentTargetIds = null,
+        string? technicalName = null) =>
+        ComputeProfileFactory.Create(technicalName ?? (id == DefaultComputeProfileId ? "small" : "profile-" + id),
             "Default",
             "Default test compute profile",
             ComputeProfileResourceRequirements.Create(

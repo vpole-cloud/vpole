@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Application;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Pole.Platform.Hosting;
@@ -235,7 +236,7 @@ public sealed class ManagedSecretIntegrationTests(MongoReplicaSetFixture fixture
         var otherBinding = SecretBinding.Create(Id(), "pole/web-service", Id(), new AllSecretDeployments(), []);
         var other = SecretProjectionFactory.Create(secret, otherBinding, Id(), "cell", "target", "namespace").Applied();
         await Fixture.Database.GetCollection<SecretProjection>("SecretProjections").InsertOneAsync(other);
-        var collection = new ServiceCollection().AddSecretsFeature();
+        var collection = new ServiceCollection().AddGitOpsFeature().AddSecretsFeature();
         collection.AddSingleton<IMongoDatabase>(Fixture.Database);
         collection.AddSingleton<IMongoClient>(Fixture.Client);
         collection.AddSingleton<MongoRunTransaction>();
@@ -279,7 +280,7 @@ public sealed class ManagedSecretIntegrationTests(MongoReplicaSetFixture fixture
         var projection = SecretProjectionFactory.Create(original, binding, Id(), "cell", "target", "namespace")
             .Applied();
         var loads = 0;
-        var collection = new ServiceCollection().AddSecretsFeature();
+        var collection = new ServiceCollection().AddGitOpsFeature().AddSecretsFeature();
         collection.AddSingleton<IMongoDatabase>(Fixture.Database);
         collection.AddSingleton<IMongoClient>(Fixture.Client);
         collection.AddSingleton<MongoRunTransaction>();

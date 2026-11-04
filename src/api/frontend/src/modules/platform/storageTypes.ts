@@ -2,6 +2,7 @@ import type { PoleResourceType } from '../../types'
 
 export interface PlatformDeploymentTarget {
   id: string
+  technicalName: string
   displayName: string
   enabled: boolean
   acceptsWorkloads: boolean

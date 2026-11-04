@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Pole.Features.GitOps.Tests</AssemblyName>
+    <RootNamespace>Pole.Features.GitOps.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../GitOps.Application/GitOps.Application.csproj"/>
+    <ProjectReference Include="../GitOps.Domain/GitOps.Domain.csproj"/>
+    <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+    <PackageReference Include="xunit"/>
+    <PackageReference Include="xunit.runner.visualstudio"/>
+  </ItemGroup>
+</Project>

@@ -46,7 +46,7 @@ internal sealed class ManagedProjectionFixture : IDisposable
                         Projection.DeploymentTargetId, Projection.KubernetesNamespace, 1, 1,
                         new ResourceDeploymentComputeConfiguration(PostgresTestData.DefaultComputeProfileId, 1,
                             Projection.DeploymentTargetId, "test", new(250, 256), new(1000, 1024), ComputeArchitecture.Any,
-                            [], [], [], [], [], null), "Ready", "Apply", Projection.IsolationScopeId)
+                            [], [], [], [], [], null), ResourceDeploymentStatus.Applied, ResourceDeploymentDesiredOperation.Apply, Projection.IsolationScopeId)
                     : null));
         _services = services.BuildServiceProvider(validateScopes: true);
         _scope = _services.CreateScope();

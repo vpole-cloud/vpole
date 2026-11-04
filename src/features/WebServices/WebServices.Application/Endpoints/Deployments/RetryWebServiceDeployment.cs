@@ -101,6 +101,10 @@ public sealed class RetryWebServiceDeploymentHandler(
                     request.DeploymentId)));
         }
 
+        if (webService.Lifecycle is not ActiveWebServiceLifecycle)
+            return Error(new WebServiceDeploymentMutationStateError(
+                new WebServiceUpdateUnavailable(webService.Id)));
+
         var operation = ParseOperation(request.Body.ExpectedOperation);
         return await runTransaction(
             (transaction, ct) => RetryAsync(

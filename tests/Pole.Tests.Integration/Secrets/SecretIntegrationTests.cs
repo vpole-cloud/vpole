@@ -1,3 +1,5 @@
+using Pole.Features.GitOps.Contracts;
+using Pole.Features.GitOps.Application;
 using System.Collections.Immutable;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
@@ -35,11 +37,11 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
     [Theory]
-    [InlineData("key", "SecretKeyUnavailable")]
-    [InlineData("coverage", "SecretDeploymentCoverageUnavailable")]
-    [InlineData("scope", "SecretBindingUnavailable")]
-    [InlineData("tenant", "SecretBindingUnavailable")]
-    public async Task Consumer_references_reject_unauthorized_keys_incomplete_coverage_foreign_scope_or_tenant(string scenario, string reason)
+    [InlineData("key", ConsumerSecretReferenceError.SecretKeyUnavailable)]
+    [InlineData("coverage", ConsumerSecretReferenceError.SecretDeploymentCoverageUnavailable)]
+    [InlineData("scope", ConsumerSecretReferenceError.SecretBindingUnavailable)]
+    [InlineData("tenant", ConsumerSecretReferenceError.SecretBindingUnavailable)]
+    public async Task Consumer_references_reject_unauthorized_keys_incomplete_coverage_foreign_scope_or_tenant(string scenario, ConsumerSecretReferenceError reason)
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var secret = Metadata(await CreateAsync(group.TenantId, group.Id, group.DefaultIsolationScopeId, "authority-refs", "tests", new() { ["password"] = "synthetic", ["other"] = "synthetic" }, default));
@@ -51,7 +53,7 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
         var result = await Services.GetRequiredService<AdmitConsumerSecretReferences>()(
             scenario == "tenant" ? Id() : group.TenantId, group.Id, scenario == "scope" ? Id() : group.DefaultIsolationScopeId,
             ResourceTypeId.Create("pole/web-service"), consumer.ResourceId, [], [new(secret.Id, scenario == "key" ? "other" : "password")], true, session, default);
-        Assert.Equal(reason, Assert.IsType<ConsumerSecretReferenceUnavailable>(result.Value).ReasonCode);
+        Assert.Equal(reason, Assert.IsType<ConsumerSecretReferenceUnavailable>(result.Value).Reason);
         await session.AbortTransactionAsync();
         Assert.Empty((await Services.GetRequiredService<LoadSecretById>()(group.TenantId, secret.Id, default))!.Bindings.Single(item => item.Id == binding.Id).RequiredKeys);
     }
@@ -674,7 +676,8 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
     {
         var handler = new GetSecretUsageHandler(
             Services.GetRequiredService<LoadSecretById>(),
-            Services.GetRequiredService<LoadResourceDeploymentSet>());
+            Services.GetRequiredService<LoadResourceDeploymentSet>(),
+            Services.GetRequiredService<IGitOpsMutations>());
         return Assert.IsType<SecretUsage[]>((await handler.HandleAsync(
             new GetSecretUsageRequest(secret.Id, secret.TenantId), ct)).Value);
     }

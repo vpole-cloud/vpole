@@ -14,8 +14,8 @@ namespace Pole.Features.WebServices.Application.Common;
 internal static class WebServiceDeploymentWorkflow
 {
     public static bool IsDesiredPlacement(PlacementSummaryDto deployment) =>
-        !string.Equals(deployment.DesiredOperation, "Delete", StringComparison.Ordinal) &&
-        !string.Equals(deployment.Status, "Deleted", StringComparison.Ordinal);
+        deployment.DesiredOperation != ResourceDeploymentDesiredOperation.Delete &&
+        deployment.Status != ResourceDeploymentStatus.Deleted;
 
     public static WebServiceQuotaInput ToQuotaInput(
         IEnumerable<PlacementSummaryDto> deployments,
@@ -164,16 +164,16 @@ internal static class WebServiceDeploymentWorkflow
     {
         if (operation == WebServiceReleaseDeploymentOperation.Delete)
         {
-            return string.Equals(deployment.Status, "Deleted", StringComparison.Ordinal)
+            return deployment.Status == ResourceDeploymentStatus.Deleted
                 ? WebServiceReleaseDeploymentOutcome.Removed
                 : WebServiceReleaseDeploymentOutcome.Pending;
         }
 
         return deployment.Status switch
         {
-            "Applied" when deployment.ObservedGeneration >= deployment.DesiredGeneration =>
+            ResourceDeploymentStatus.Applied when deployment.ObservedGeneration >= deployment.DesiredGeneration =>
                 WebServiceReleaseDeploymentOutcome.Succeeded,
-            "Failed" when !string.IsNullOrWhiteSpace(deployment.FailureCode) =>
+            ResourceDeploymentStatus.Failed when !string.IsNullOrWhiteSpace(deployment.FailureCode) =>
                 WebServiceReleaseDeploymentOutcome.Failed,
             _ => WebServiceReleaseDeploymentOutcome.Pending
         };

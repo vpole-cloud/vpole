@@ -192,7 +192,7 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
                 "The cluster probe failed.")
             : DeploymentTargetHealth.Unknown(connectionVersion);
 
-        return DeploymentTargetFactory.Create(
+        return DeploymentTargetFactory.Create("target-" + id,
             $"Target {id[..8]}",
             $"cluster-{id}",
             DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),

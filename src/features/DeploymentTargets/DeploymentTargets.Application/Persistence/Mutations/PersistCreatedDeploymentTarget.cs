@@ -10,7 +10,8 @@ namespace Pole.Features.DeploymentTargets.Application.Persistence.Mutations;
 
 public union PersistCreatedDeploymentTargetError(
     DeploymentTargetPublicBaseDomainConflict,
-    DeploymentTargetIdentityConflict);
+    DeploymentTargetIdentityConflict,
+    DeploymentTargetTechnicalNameConflict);
 
 public union PersistCreatedDeploymentTargetOutcome(
     DeploymentTarget,
@@ -62,8 +63,17 @@ internal sealed class MongoPersistCreatedDeploymentTarget(
                 },
                 cancellationToken);
         }
+        catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(exception, DeploymentTargetTechnicalNames.UniqueIndexName))
+        {
+            return new PersistCreatedDeploymentTargetError(new DeploymentTargetTechnicalNameConflict(deploymentTarget.TechnicalName));
+        }
+        catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(exception, "UX_DeploymentTargets_Active_PublicBaseDomain"))
+        {
+            return new PersistCreatedDeploymentTargetError(new DeploymentTargetPublicBaseDomainConflict(deploymentTarget.Id));
+        }
         catch (MongoWriteException exception) when (
-            exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
+            MongoDuplicateKey.IsForIndex(exception, "UX_DeploymentTargets_ClusterIdentity") ||
+            MongoDuplicateKey.IsForIndex(exception, "_id_", "DeploymentTargets"))
         {
             return new PersistCreatedDeploymentTargetError(
                 new DeploymentTargetIdentityConflict());

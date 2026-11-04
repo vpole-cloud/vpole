@@ -1,4 +1,5 @@
 using Pole.Observation;
+using Pole.Features.Secrets.Contracts;
 using System.Collections.Immutable;
 using System.Text.Json;
 using k8s;
@@ -59,7 +60,13 @@ public sealed class WebServiceNativeObservationTests
         GroupId,
         ScopeId,
         new WebServiceSpec(new ImageInfo("registry", "application"),
-            new WebServiceConfig(ImmutableDictionary<string, string>.Empty, []),
+            new WebServiceConfig()
+            {
+                EnvironmentVariables = ImmutableDictionary<string, string>.Empty,
+                PortMappings = [],
+                ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty,
+                SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty
+            },
             null,
             new ProbeSpec(new ProbeConfig("/", "8080"), new ProbeConfig("/", "8080"), new ProbeConfig("/", "8080"))),
         WebServiceExposure.Create(),
@@ -69,6 +76,57 @@ public sealed class WebServiceNativeObservationTests
             Revision = 2,
             ActiveRevision = 2
         });
+
+    [Theory]
+    [InlineData("ready", true)]
+    [InlineData("waiting", false)]
+    [InlineData("old-controller-generation", false)]
+    [InlineData("old-terminating-pod", false)]
+    [InlineData("old-orphaned-pod", false)]
+    [InlineData("truncated", false)]
+    [InlineData("retirement-scan-truncated", false)]
+    [InlineData("native-unavailable", false)]
+    public async Task Secret_key_retirement_requires_current_complete_native_rollout(string scenario, bool confirmed)
+    {
+        var podReads = 0;
+        using var handler = new NativeWatchTestHandler(request =>
+        {
+            if (scenario == "native-unavailable") throw new HttpRequestException("Synthetic native outage");
+            var json = NativeResponse(request, () =>
+            {
+                var controller = Controller();
+                if (scenario == "waiting") controller.Status.ReadyReplicas = 0;
+                if (scenario == "old-controller-generation") controller.Status.ObservedGeneration = 1;
+                return controller;
+            });
+            if (request.RequestUri!.AbsolutePath.EndsWith("/pods", StringComparison.Ordinal))
+            {
+                var pods = KubernetesJson.Deserialize<V1PodList>(json);
+                podReads++;
+                if (scenario == "truncated" || scenario == "retirement-scan-truncated" && podReads > 1)
+                    pods.Metadata.ContinueProperty = "more";
+                if (scenario is "old-terminating-pod" or "old-orphaned-pod")
+                {
+                    var old = KubernetesJson.Deserialize<V1Pod>(KubernetesJson.Serialize(pods.Items[0]));
+                    old.Metadata.Name = "old";
+                    old.Metadata.Uid = "old";
+                    old.Metadata.Annotations[KubernetesWorkloadObservation.TemplateGenerationAnnotation] = "1";
+                    old.Metadata.DeletionTimestamp = DateTime.UtcNow;
+                    if (scenario == "old-orphaned-pod") old.Metadata.OwnerReferences[0].Uid = "previous-controller-replica";
+                    pods.Items.Add(old);
+                }
+                json = KubernetesJson.Serialize(pods);
+            }
+            return json;
+        }, _ => throw new InvalidOperationException("Retirement must only sample."));
+        using var client = KubernetesNativeWatchTests.Client(handler);
+        var observer = new WebServiceSecretRolloutObserver((_, _, _) => Task.FromResult<WebService?>(Resource),
+            (_, _, _, _) => Task.FromResult<IReadOnlyList<PlacementSummaryDto>>([new("deployment", ScopeId, "cell", "target", 2, 2, ResourceDeploymentStatus.Applied, null, new(new("profile", 1), "test", new(100, 100), new(100, 100), []), [], ResourceRevision: 1, FixedReplicas: 1, Ingress: null, DeploymentRevision: 1, DesiredOperation: ResourceDeploymentDesiredOperation.Apply, Isolation: new ResourceDeploymentIsolationDto("Unknown", "EnforcementRequired", "EnforcementNotEstablished", null))]),
+            (_, _, _, _, _) => Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(new("deployment", ResourceId,
+                "cell", "target", "owned", 3, 2, ResourceDeploymentTestData.ContractCompute("target"),
+                ResourceDeploymentStatus.Applied, ResourceDeploymentDesiredOperation.Apply, ScopeId)), new ClientProvider(client));
+        Assert.Equal(confirmed, (await observer.ObserveAsync(TenantId, ResourceId, default)).Value is SecretConsumerRolloutConfirmed);
+    }
 
     [Fact]
     public async Task Owned_initial_Deployment_binds_before_quiet_watch_ready_and_selector_loss_withdraws_prior_UID()
@@ -209,7 +267,9 @@ public sealed class WebServiceNativeObservationTests
             true,
             true,
             false,
-            "Healthy")),
+            "Healthy",
+        TechnicalName: "test-target",
+        NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown)),
         budget,
         TimeProvider.System);
 

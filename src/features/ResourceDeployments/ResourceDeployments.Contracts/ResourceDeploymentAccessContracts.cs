@@ -16,8 +16,8 @@ public sealed record ResourceDeploymentAccessPlacement(
     string KubernetesNamespace,
     long DeploymentRevision,
     long DesiredGeneration,
-    string Status,
-    string DesiredOperation);
+    ResourceDeploymentStatus Status,
+    ResourceDeploymentDesiredOperation DesiredOperation);
 
 /// <summary>Reads and fences the deployment in the caller's Mongo transaction.</summary>
 public delegate Task<ResourceDeploymentAccessPlacement?> LoadExactResourceDeploymentAccessPlacement(

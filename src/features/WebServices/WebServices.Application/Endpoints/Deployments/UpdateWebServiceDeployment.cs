@@ -104,6 +104,10 @@ public sealed class UpdateWebServiceDeploymentHandler(
                     request.DeploymentId)));
         }
 
+        if (webService.Lifecycle is not ActiveWebServiceLifecycle)
+            return Error(new WebServiceDeploymentMutationStateError(
+                new WebServiceUpdateUnavailable(webService.Id)));
+
         var replacementCompute = await ResolveReplacementComputeAsync(
             request,
             current,

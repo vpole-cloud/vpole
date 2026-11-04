@@ -34,6 +34,7 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
             Assert.True(replacedConfig != kubeconfig, "The dedicated target kubeconfig server must be replaced without changing TLS identity.");
             var target = await SendAsync(HttpMethod.Post, "/api/v1/platform/deployment-targets", new
             {
+                technicalName = "runtime-logs-target",
                 displayName = "Runtime log test target",
                 enabled = true,
                 acceptsWorkloads = true,
@@ -47,6 +48,7 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
             var defaultTarget = targets.EnumerateArray().Single(item => item.GetProperty("isDefault").GetBoolean()); var defaultTargetId = Text(defaultTarget, "id");
             var compute = await SendAsync(HttpMethod.Post, "/api/v1/platform/compute-profiles/", new
             {
+                technicalName = "runtime-logs-compute",
                 displayName = "Runtime logs test compute",
                 description = "Ephemeral two-target diagnostics profile",
                 resources = new { requests = new { cpuMillis = 50, memoryMi = 64 }, limits = new { cpuMillis = 250, memoryMi = 256 } },

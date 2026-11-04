@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -47,7 +48,8 @@ public union GetWebServiceByIdOutcome(
 
 public sealed class GetWebServiceByIdHandler(
     LoadWebServiceById loadWebServiceById,
-    LoadResourceDeploymentSet loadResourceDeploymentSet)
+    LoadResourceDeploymentSet loadResourceDeploymentSet,
+    IGitOpsMutations git)
     : IMediatorOutcomeHandler<GetWebServiceByIdRequest, GetWebServiceByIdOutcome>
 {
     public async Task<GetWebServiceByIdOutcome> HandleAsync(
@@ -67,11 +69,10 @@ public sealed class GetWebServiceByIdHandler(
             WebServiceResourceDeployment.ResourceType,
             webService.Id,
             cancellationToken);
-        return webService.ToDto(deployments);
+        return webService.ToDto(deployments) with { GitOps = await git.StatusAsync(webService.TenantId, "WebService", webService.Id, cancellationToken) };
     }
 }
 
 public record GetWebServiceByIdRequest(
     [FromRoute] string Id,
-    [FromTenantHeader] string TenantId
-) : IMediatorRequest<GetWebServiceByIdOutcome>, ITenantReadOperation;
+    [FromTenantHeader] string TenantId) : IMediatorRequest<GetWebServiceByIdOutcome>, ITenantReadOperation;

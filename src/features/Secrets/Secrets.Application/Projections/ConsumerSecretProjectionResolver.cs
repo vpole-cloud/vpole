@@ -26,20 +26,20 @@ internal sealed class ConsumerSecretProjectionResolver(
         if (references.Count == 0) return new ConsumerSecretProjectionKeys([]);
         var resource = await loadResource(tenantId, consumerType, consumerId, ct);
         var placement = await loadPlacement(tenantId, consumerType, consumerId, deploymentId, ct);
-        if (resource is null || placement is null || placement.DesiredOperation == "Delete")
-            return Unavailable(references.First().SecretId, "SecretConsumerUnavailable");
+        if (resource is null || placement is null || placement.DesiredOperation == ResourceDeploymentDesiredOperation.Delete)
+            return Unavailable(references.First().SecretId, ConsumerSecretReferenceError.SecretConsumerUnavailable);
         var keys = ImmutableArray.CreateBuilder<ConsumerSecretProjectionKey>();
         foreach (var group in references.Distinct().GroupBy(reference => reference.SecretId, StringComparer.Ordinal))
         {
             var current = await loadSecret(tenantId, group.Key, ct);
             var binding = Binding(current, consumerType, consumerId);
-            if (!Authorized(current, binding, resource.ResourceGroupId, placement, group)) return Unavailable(group.Key, "SecretBindingUnavailable");
+            if (!Authorized(current, binding, resource.ResourceGroupId, placement, group)) return Unavailable(group.Key, ConsumerSecretReferenceError.SecretBindingUnavailable);
             await reconcile.ReconcileAsync(tenantId, group.Key, ct);
             var latest = await loadSecret(tenantId, group.Key, ct);
             var latestBinding = Binding(latest, consumerType, consumerId);
             var latestPlacement = await loadPlacement(tenantId, consumerType, consumerId, deploymentId, ct);
             if (latestBinding?.Id != binding!.Id || latestPlacement is null || !Authorized(latest, latestBinding, resource.ResourceGroupId, latestPlacement, group))
-                return Unavailable(group.Key, "SecretBindingUnavailable");
+                return Unavailable(group.Key, ConsumerSecretReferenceError.SecretBindingUnavailable);
             var projection = (await loadProjections(tenantId, group.Key, ct)).SingleOrDefault(item => item.DeploymentId == deploymentId && item.BindingId == latestBinding.Id);
             if (projection is null || projection.State is not ReadySecretProjection || !SecretProjectionAuthority.MatchesPlacement(latestPlacement, projection) ||
                 !SecretProjectionAuthority.MatchesScope(latest!, projection) || !SecretProjectionAuthority.MatchesConsumer(latestBinding, projection) ||
@@ -53,7 +53,7 @@ internal sealed class ConsumerSecretProjectionResolver(
 
     private static SecretBinding? Binding(Secret? secret, ResourceTypeId type, string id) => secret?.Bindings.SingleOrDefault(item => item.ConsumerType == type.Value && item.ConsumerId == id);
     private static bool Authorized(Secret? secret, SecretBinding? binding, string groupId, ResourceDeploymentRuntimePlacementDto placement, IEnumerable<ConsumerSecretKeyReference> references) =>
-        secret is not null && binding is not null && placement.DesiredOperation != "Delete" && secret.ResourceGroupId == groupId && secret.IsolationScopeId == placement.IsolationScopeId &&
-        SecretProjectionAuthority.IncludesDeployment(binding.Selection, placement.DeploymentId) && references.All(reference => ConsumerSecretReferenceAuthority.IncludesKey(secret, binding, reference.Key));
-    private static ConsumerSecretReferenceUnavailable Unavailable(string id, string reason) => new(id, reason);
+        secret is not null && binding is not null && placement.DesiredOperation != ResourceDeploymentDesiredOperation.Delete && secret.ResourceGroupId == groupId && secret.IsolationScopeId == placement.IsolationScopeId &&
+        SecretProjectionAuthority.IncludesDeployment(binding.Selection, placement.DeploymentId) && references.All(reference => secret.HasValue(reference.Key) && ConsumerSecretReferenceAuthority.IncludesKey(secret, binding, reference.Key));
+    private static ConsumerSecretReferenceUnavailable Unavailable(string id, ConsumerSecretReferenceError reason) => new(id, reason);
 }

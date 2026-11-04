@@ -1,3 +1,4 @@
+import { canEditDesiredConfiguration } from '../../data/gitOps'
 import { eligibilityKeys } from '../../data/queryKeys'
 import { useCallback, useEffect, useState } from 'react'
 import {
@@ -133,7 +134,7 @@ export function WebServiceDomains({
           >
             Refresh zones and targets
           </Button>
-          {tenant.canManage && (
+          {canEditDesiredConfiguration(tenant.canManage, service.gitOps) && (
             <a className="button" href={domainZoneHref('create', api.tenantId)}>
               Reserve a zone
             </a>
@@ -150,7 +151,7 @@ export function WebServiceDomains({
           service={service}
           deployment={deployment}
           active={active}
-          canManage={tenant.canManage}
+          canManage={canEditDesiredConfiguration(tenant.canManage, service.gitOps)}
           zones={zones.resource ?? []}
           zonesAvailable={zonesAvailable}
           target={targets.resource?.find((target) => target.id === deployment.deploymentTargetId)}

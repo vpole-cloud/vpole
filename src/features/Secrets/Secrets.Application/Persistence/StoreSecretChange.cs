@@ -28,6 +28,7 @@ internal sealed class OutboxStoreSecretChange(StoreOutboxWrites outbox)
                     secret.Revision,
                     change)
                 {
+                    Name = secret.Name,
                     EventCore = EventCore.Create(secret.TenantId)
                 })
             ],

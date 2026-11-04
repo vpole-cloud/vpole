@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Pole.Workloads;
 using Microsoft.Extensions.Options;
 using Pole.Features.DeploymentTargets.Domain;
 
@@ -22,6 +23,7 @@ public sealed class DeploymentTargetOptions
 public sealed class DeploymentTargetBootstrapOptions
 {
     public bool Enabled { get; init; } = true;
+    public string TechnicalName { get; init; } = "local";
     public string DisplayName { get; init; } = "Local cluster";
     public DeploymentTargetBootstrapMode Mode { get; init; } = DeploymentTargetBootstrapMode.Auto;
     public string? KubeconfigPath { get; init; }
@@ -103,6 +105,9 @@ public sealed class DeploymentTargetOptionsValidator : IValidateOptions<Deployme
 
         if (!Enum.IsDefined(options.Bootstrap.Mode))
             failures.Add("DeploymentTargets:Bootstrap:Mode is not supported.");
+
+        if (!ResourceTechnicalName.IsValid(options.Bootstrap.TechnicalName))
+            failures.Add("DeploymentTargets:Bootstrap:TechnicalName must be a valid technical name.");
 
         if (string.IsNullOrWhiteSpace(options.Bootstrap.DisplayName) ||
             options.Bootstrap.DisplayName.Trim().Length > 80)

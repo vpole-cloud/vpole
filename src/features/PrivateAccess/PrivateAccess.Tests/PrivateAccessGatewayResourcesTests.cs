@@ -127,16 +127,15 @@ public sealed class PrivateAccessGatewayResourcesTests
         new DeploymentTargetWorkloadConfigurationLookupDto(1, null,
             new DeploymentTargetNetworkSourcesDto(
                 ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty)),
-        1, true, true, false, "Healthy")
-    {
-        NetworkPolicy = new DeploymentTargetNetworkPolicyDto(
+        1, true, true, false, "Healthy",
+        TechnicalName: "test-target",
+        NetworkPolicy: new DeploymentTargetNetworkPolicyDto(
             NetworkPolicyEnforcementStatus.Supported,
             NetworkPolicyReadiness.EnforcementAttested,
             NetworkPolicyReason.OperatorAttestedSupported,
             DateTime.UtcNow,
             NetworkPolicyEvidenceSource.OperatorAttestation,
-            false)
-    };
+            false));
 
     private sealed class FixedKubernetesProvider(IKubernetes client) : IKubernetesClientProvider
     {

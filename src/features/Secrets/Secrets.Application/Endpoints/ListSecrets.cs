@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -34,7 +35,7 @@ public sealed class ListSecretsValidator : AbstractValidator<ListSecretsRequest>
     }
 }
 
-public sealed class ListSecretsHandler(LoadSecretPage load)
+public sealed class ListSecretsHandler(LoadSecretPage load, IGitOpsMutations git)
     : IMediatorOutcomeHandler<ListSecretsRequest, ListSecretsOutcome>
 {
     public async Task<ListSecretsOutcome> HandleAsync(
@@ -42,7 +43,8 @@ public sealed class ListSecretsHandler(LoadSecretPage load)
         CancellationToken cancellationToken = default)
     {
         var page = await load(request.TenantId, request.After, request.PageSize ?? 50, cancellationToken);
-        return new SecretPage(page.Items.Select(SecretMetadata.From).ToArray(), page.NextCursor);
+        var statuses = await git.StatusesAsync(request.TenantId, "Secret", page.Items.Select(item => item.Id).ToArray(), cancellationToken);
+        return new SecretPage(page.Items.Select(item => SecretMetadata.From(item) with { GitOps = statuses.GetValueOrDefault(item.Id) }).ToArray(), page.NextCursor);
     }
 }
 

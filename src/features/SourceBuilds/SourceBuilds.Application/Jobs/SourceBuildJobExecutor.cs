@@ -307,7 +307,14 @@ public sealed class SourceBuildJobExecutor(
                 (DeploymentRejectionCode(rejected.Reason),
                     $"Web service deployment was rejected ({rejected.Reason.Value.GetType().Name})."),
             SourceBuildWebServiceUpdateConflict conflict =>
-                ("WebServiceUpdateConflict", $"Web service '{conflict.WebServiceId}' changed while the source build was being deployed.")
+                conflict.Reason switch
+                {
+                    SourceBuildWebServiceUpdateConflictReason.GitOwnedConfiguration =>
+                        ("GitOwnedConfiguration", "The image was built; edit the managing Git source to change the workload image."),
+                    SourceBuildWebServiceUpdateConflictReason.ExpectedRevisionConflict =>
+                        ("WebServiceUpdateConflict", $"Web service '{conflict.WebServiceId}' changed while the source build was being deployed."),
+                    _ => throw new ArgumentOutOfRangeException(nameof(conflict.Reason))
+                }
         });
 
     private async Task FailAsync(

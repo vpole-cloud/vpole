@@ -33,10 +33,9 @@ public sealed record ResourceDeployment(
     ResourceDeploymentState State,
     ImmutableList<ResourceDeploymentEndpoint> Endpoints,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc)
+    DateTime UpdatedAtUtc,
+    long ReferenceFence = 0)
 {
-    public long ReferenceFence { get; init; }
-
     public ResourceDeployment RequestReconciliation(
         ResolvedResourcePlacement resolvedPlacement,
         bool runtimeCellReady,
@@ -472,6 +471,7 @@ public enum ResourceDeploymentOperation
 
 public static class ResourceDeploymentStateKinds
 {
+    public const string Prepared = "prepared";
     public const string WaitingForRuntimeCell = "waiting-for-runtime-cell";
     public const string Pending = "pending";
     public const string Reconciling = "reconciling";
@@ -482,6 +482,7 @@ public static class ResourceDeploymentStateKinds
 
 [BsonDiscriminator(RootClass = true)]
 [BsonKnownTypes(
+    typeof(PreparedResourceDeploymentState),
     typeof(WaitingForRuntimeCellResourceDeploymentState),
     typeof(PendingResourceDeploymentState),
     typeof(ReconcilingResourceDeploymentState),
@@ -489,6 +490,9 @@ public static class ResourceDeploymentStateKinds
     typeof(FailedResourceDeploymentState),
     typeof(DeletedResourceDeploymentState))]
 public abstract record ResourceDeploymentState(long Generation);
+
+[BsonDiscriminator(ResourceDeploymentStateKinds.Prepared)]
+public sealed record PreparedResourceDeploymentState(long Generation) : ResourceDeploymentState(Generation);
 
 [BsonDiscriminator(ResourceDeploymentStateKinds.WaitingForRuntimeCell)]
 public sealed record WaitingForRuntimeCellResourceDeploymentState(
@@ -711,10 +715,11 @@ public sealed record ResourceDeploymentEndpoint(
 public static class ResourceDeploymentFactory
 {
     public sealed record CreateOptions(
-        string Id,
-        DateTime CreatedAtUtc,
-        long ResourceRevision = 1,
-        int FixedReplicas = 1);
+    string Id,
+    DateTime CreatedAtUtc,
+    long ResourceRevision = 1,
+    int FixedReplicas = 1,
+    bool DeferredActivation = false);
 
     public static ResourceDeployment Create(
         string tenantId,
@@ -784,7 +789,9 @@ public static class ResourceDeploymentFactory
             DesiredGeneration: initialGeneration,
             ResourceDeploymentOperation.Apply,
             ObservedGeneration: 0,
-            runtimeCellReady
+            options.DeferredActivation
+                ? new PreparedResourceDeploymentState(initialGeneration)
+                : runtimeCellReady
                 ? new PendingResourceDeploymentState(
                     initialGeneration,
                     ResourceDeploymentOperation.Apply,

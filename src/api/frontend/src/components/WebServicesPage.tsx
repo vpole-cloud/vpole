@@ -1,3 +1,4 @@
+import { canEditDesiredConfiguration } from '../data/gitOps'
 import { useState } from 'react'
 import { Button, ConfirmationDialog, DataTable, EmptyState, StatusBadge } from '../ui/components'
 import { InventorySearch, Pagination } from '../ui/InventoryControls'
@@ -138,12 +139,20 @@ export function WebServicesPage({
                 label: 'Actions',
                 render: (item) => (
                   <div className="row-actions">
-                    <Button onClick={() => onOpen(item.id, canManage)}>
-                      {canManage ? 'Edit' : 'Inspect'}
+                    <Button
+                      onClick={() =>
+                        onOpen(item.id, canEditDesiredConfiguration(canManage, item.gitOps))
+                      }
+                    >
+                      {canEditDesiredConfiguration(canManage, item.gitOps) ? 'Edit' : 'Inspect'}
                     </Button>
                     <Button
                       variant="danger"
-                      disabled={deletingId === item.id || !canManage}
+                      disabled={
+                        status !== 'success' ||
+                        deletingId === item.id ||
+                        !canEditDesiredConfiguration(canManage, item.gitOps)
+                      }
                       aria-label={`Delete ${item.name}`}
                       onClick={() => setDeleteCandidate(item)}
                     >
@@ -169,8 +178,24 @@ export function WebServicesPage({
           title={`Delete ${deleteCandidate.name}?`}
           confirmLabel="Delete service"
           busy={deletingId === deleteCandidate.id}
+          confirmDisabled={
+            status !== 'success' ||
+            !items.some(
+              (row) =>
+                row.id === deleteCandidate.id && canEditDesiredConfiguration(canManage, row.gitOps),
+            )
+          }
           onCancel={() => setDeleteCandidate(null)}
           onConfirm={async () => {
+            if (
+              status !== 'success' ||
+              !items.some(
+                (row) =>
+                  row.id === deleteCandidate.id &&
+                  canEditDesiredConfiguration(canManage, row.gitOps),
+              )
+            )
+              return
             try {
               await onDelete(deleteCandidate.id)
               setDeleteCandidate(null)

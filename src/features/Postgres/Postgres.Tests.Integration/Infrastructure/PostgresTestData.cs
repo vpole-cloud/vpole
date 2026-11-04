@@ -63,7 +63,7 @@ public static class PostgresTestData
         long limitCpuMillis = 1000,
         long limitMemoryMi = 1024,
         bool isDefault = true) =>
-        ComputeProfileFactory.Create(
+        ComputeProfileFactory.Create("profile-" + id,
             "Default",
             "Default test compute profile",
             ComputeProfileResourceRequirements.Create(

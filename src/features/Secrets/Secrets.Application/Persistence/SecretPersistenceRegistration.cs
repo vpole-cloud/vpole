@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Features.ResourceGroups.Contracts;
@@ -52,6 +53,8 @@ internal static class SecretPersistenceRegistration
         services.AddScoped<EnvelopeEncryptSecretVersion>();
         services.AddScoped<EncryptSecretVersion>(sp => sp.GetRequiredService<EnvelopeEncryptSecretVersion>().InvokeAsync);
         services.AddScoped<IIsolationScopeReferenceGuard, SecretScopeReferenceGuard>();
+        services.AddScoped<IDeclarativeResourceProvider, DeclarativeSecretProvider>();
+        services.AddScoped<IDeclarativeResourceProvider, DeclarativeSecretBindingProvider>();
         return services;
     }
 }

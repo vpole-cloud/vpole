@@ -54,7 +54,7 @@ internal sealed class ResourceConnectionReferenceProvider(
     {
         if (references.Count == 0) return new ResolvedResourceConnectionValues([]);
         var placement = await loadPlacement(tenantId, sourceType, sourceId, deploymentId, ct);
-        if (placement is null || placement.DesiredOperation == "Delete") return Unavailable(references.First().ConnectionId, "SourceDeploymentUnavailable");
+        if (placement is null || placement.DesiredOperation == ResourceDeploymentDesiredOperation.Delete) return Unavailable(references.First().ConnectionId, "SourceDeploymentUnavailable");
         var values = ImmutableArray.CreateBuilder<ResolvedResourceConnectionValue>();
         foreach (var group in references.Distinct().GroupBy(reference => reference.ConnectionId, StringComparer.Ordinal))
         {

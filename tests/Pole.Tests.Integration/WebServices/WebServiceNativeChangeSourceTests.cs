@@ -383,7 +383,9 @@ public sealed class WebServiceNativeChangeSourceTests
         true,
         true,
         false,
-        "Healthy");
+        "Healthy",
+        TechnicalName: "test-target",
+        NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown);
 
     private static WebServiceResourceDeploymentChangeSource Source(ClientProvider provider,
         Func<string, DeploymentTargetLookupDto> target) => new(

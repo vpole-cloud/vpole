@@ -48,17 +48,17 @@ standard tenant Mediator authorization pipeline. Viewer can read; Member or high
 Platform admins must still select a tenant. Reads expose metadata/key names, never plaintext,
 ciphertext, wrapped keys or encrypted version documents.
 
-| Method | Route | Behavior |
-| --- | --- | --- |
-| POST | `/` | Create from `resourceGroupId`, `isolationScopeId`, `name`, `purpose`, `values` |
-| GET | `/?after=&pageSize=` | Metadata page `{ items, nextCursor }`, default 50, maximum 200 |
-| GET | `/{id}` | Metadata with current version and lifecycle |
-| POST | `/{id}/versions` | Rotate with `expectedVersion` and a complete replacement `values` map |
-| DELETE | `/{id}` | Delete metadata and all versions; 409 while bindings remain |
-| POST | `/{id}/bindings` | Attach one consumer with a deployment selection and optional key mapping |
-| DELETE | `/{id}/bindings/{bindingId}` | Idempotently detach exactly one binding |
-| GET | `/{id}/usage` | Bindings plus currently affected deployment IDs |
-| GET | `/{id}/projections` | Per-deployment desired/applied version, health, last attempt and safe failure code |
+| Method | Route                        | Behavior                                                                           |
+| ------ | ---------------------------- | ---------------------------------------------------------------------------------- |
+| POST   | `/`                          | Create from `resourceGroupId`, `isolationScopeId`, `name`, `purpose`, `values`     |
+| GET    | `/?after=&pageSize=`         | Metadata page `{ items, nextCursor }`, default 50, maximum 200                     |
+| GET    | `/{id}`                      | Metadata with current version and lifecycle                                        |
+| POST   | `/{id}/versions`             | Rotate with `expectedVersion` and a complete replacement `values` map              |
+| DELETE | `/{id}`                      | Delete metadata and all versions; 409 while bindings remain                        |
+| POST   | `/{id}/bindings`             | Attach one consumer with a deployment selection and optional key mapping           |
+| DELETE | `/{id}/bindings/{bindingId}` | Idempotently detach exactly one binding                                            |
+| GET    | `/{id}/usage`                | Bindings plus currently affected deployment IDs                                    |
+| GET    | `/{id}/projections`          | Per-deployment desired/applied version, health, last attempt and safe failure code |
 
 Create returns metadata (201), other mutations return metadata (200), and deletion returns 204. Missing Secret IDs return
 404; stale rotation, duplicate names/consumer bindings, used-key removal and bound deletion return
@@ -119,8 +119,8 @@ usage is a current inventory, not a transactionally frozen deployment plan.
 ## Events, operations and limits
 
 `pole.secrets/v1/secret-changed` carries Secret ID, version, revision and a typed change variant
-(`created`, `rotated`, `deleted`, `binding-added`, `binding-removed`), plus tenant/trace context.
-Only binding variants carry a required binding ID. It contains no values, key names, names or purposes. Secrets have no
+(`created`, `metadata-updated`, `rotated`, `deleted`, `binding-added`, `binding-removed`), plus tenant/trace context.
+Only binding variants carry a required binding ID. The event includes the display name for resource inventory updates; it contains no values, key names or purposes. Secrets have no
 search projection; metadata APIs and group inventory provide discovery. No payload is logged by the
 feature, and write-body diagnostic strings are redacted.
 
@@ -136,8 +136,12 @@ an application has consumed a new credential or restart workloads.
 The provider-owned `AdmitConsumerSecretReferences` and `EnsureConsumerSecretProjections` contracts
 let WebServices configure explicit logical Secret/key references. Admission requires a current
 binding, the same tenant/group/scope, every desired consumer deployment and authorized source keys.
-Consumer bindings pin `RequiredKeys`; rotation retains those keys, while removing references
-releases only that consumer's pins. These admission changes do not create encrypted versions or
+Consumer bindings pin current `RequiredKeys`. Declarative reference changes move retired keys to durable
+`RetainedKeys`; rotation, metadata edits and alias changes protect both sets. The minute-based recovery
+job releases retained pins only after the consumer-owned observer confirms complete current native
+rollouts on every placement, with no old or terminating pods or truncated observations. The Mongo
+release transaction fences the Secret revision/reference fence and the complete physical deployment
+set, revisions and generations. Missing, failed or superseded proof retains pins for retry. These admission changes do not create encrypted versions or
 advance projection revisions. Runtime resolution checks exact consumer placement and current
 projection authority and returns generated native names and mapped keys, never plaintext values.
 

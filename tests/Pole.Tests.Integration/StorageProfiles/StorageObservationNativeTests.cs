@@ -144,7 +144,9 @@ public sealed class StorageObservationNativeTests
                 true,
                 false,
                 false,
-                "Healthy")));
+                "Healthy",
+        TechnicalName: "test-target",
+        NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown)));
         var limits = options ?? new();
         return new(new StorageObservationNativeReader(new FixedKubernetesClientProvider(client),
                 contexts,

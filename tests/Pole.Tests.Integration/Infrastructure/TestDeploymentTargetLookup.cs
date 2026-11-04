@@ -44,16 +44,15 @@ internal sealed class TestDeploymentTargetLookup
         Enabled: true,
         AcceptsWorkloads: true,
         DeletionRequested: false,
-        HealthStatus: "Healthy")
-    {
-        NetworkPolicy = new(
+        HealthStatus: "Healthy",
+        TechnicalName: "test-target",
+        NetworkPolicy: new(
             NetworkPolicyEnforcementStatus.Supported,
             NetworkPolicyReadiness.EnforcementAttested,
             NetworkPolicyReason.OperatorAttestedSupported,
             DateTime.UnixEpoch,
             NetworkPolicyEvidenceSource.OperatorAttestation,
-            false)
-    };
+            false));
 
     public bool RejectNewWorkloads
     {

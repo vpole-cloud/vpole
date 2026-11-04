@@ -364,7 +364,7 @@ public sealed class DeploymentTargetConnectionSecurityTests
         DeploymentTargetConnection connection)
     {
         var createdAtUtc = DateTime.UtcNow;
-        return DeploymentTargetFactory.Create(
+        return DeploymentTargetFactory.Create("target-" + id,
             "Security test target",
             $"cluster-{id}",
             connection,

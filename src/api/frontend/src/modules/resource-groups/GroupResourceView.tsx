@@ -1,3 +1,5 @@
+import { canEditDesiredConfiguration } from '../../data/gitOps'
+import { GitOwnershipNotice } from '../../ui/GitOwnershipNotice'
 import { ResourceOperations } from '../../ui/ResourceOperations'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchResourceGroup } from '../../api'
@@ -141,9 +143,10 @@ export function GroupResourceView({
           <ResourceOperations filter={{ resourceGroupId: id }} />
         )}
       </TabPanel>
+      <GitOwnershipNotice status={group.gitOps} />
       <TabPanel id={panelId} tabId="configuration" activeId={section}>
         {visitedConfiguration &&
-          (tenant.canManage ? (
+          (canEditDesiredConfiguration(tenant.canManage, group.gitOps) ? (
             <ResourceGroupForm
               key={formVersion}
               mode="edit"
@@ -162,7 +165,13 @@ export function GroupResourceView({
               }}
             />
           ) : (
-            <EmptyState title="Tenant viewer access is read-only." />
+            <EmptyState
+              title={
+                group.gitOps
+                  ? 'Edit this configuration in Git.'
+                  : 'Tenant viewer access is read-only.'
+              }
+            />
           ))}
       </TabPanel>
       {discarding && (
