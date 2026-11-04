@@ -1,3 +1,4 @@
+import { imageDescription, hasBuildImageAuthority } from './imageModel'
 import { canEditDesiredConfiguration } from '../../data/gitOps'
 import { useCallback, useState } from 'react'
 import { fetchWebServiceReleases, redeployWebService, rollbackWebService } from '../../api'
@@ -12,7 +13,7 @@ import type { WebService, WebServiceRelease, WebServiceSpec } from '../../types'
 import { Button, ConfirmationDialog, EmptyState, Notice, StatusBadge } from '../../ui/components'
 import type { RealtimeSubscription } from '../../realtime/types'
 
-const image = (spec: WebServiceSpec) => `${spec.image.server}/${spec.image.name}:${spec.image.tag}`
+const image = (spec: WebServiceSpec) => imageDescription(spec)
 function externalBuildUrl(value: string | null | undefined) {
   try {
     const url = new URL(value ?? '')
@@ -95,13 +96,14 @@ function ReleaseHistory({
     canEditDesiredConfiguration(tenant.canManage, service.gitOps) &&
     current &&
     !mutation.busy &&
+    service.spec.image !== null &&
     hasDesiredTarget
   const resource = { resourceTypeId: 'pole/web-service', resourceId: service.id }
   const refresh = async () => {
     await Promise.all([history.refresh(), onChanged()])
   }
   const choose = (target: WebServiceRelease | null) => {
-    if (!writable || !value) return
+    if (!writable || !value || (target && hasBuildImageAuthority(service.spec))) return
     mutation.clearError()
     setSelected({
       action: target ? 'rollback' : 'redeploy',
@@ -129,6 +131,8 @@ function ReleaseHistory({
   }
   const eligibleSelection =
     selected &&
+    writable &&
+    (!selected.target || !hasBuildImageAuthority(service.spec)) &&
     current &&
     hasDesiredTarget &&
     selected.expectedRevision === value?.activeRevision &&
@@ -232,11 +236,13 @@ function ReleaseHistory({
                 >
                   {release.outcome}
                 </StatusBadge>
-                {canEditDesiredConfiguration(tenant.canManage, service.gitOps) && eligible && (
-                  <Button disabled={!writable} onClick={() => choose(release)}>
-                    Rollback to revision {release.resourceRevision}
-                  </Button>
-                )}
+                {canEditDesiredConfiguration(tenant.canManage, service.gitOps) &&
+                  eligible &&
+                  !hasBuildImageAuthority(service.spec) && (
+                    <Button disabled={!writable} onClick={() => choose(release)}>
+                      Rollback to revision {release.resourceRevision}
+                    </Button>
+                  )}
               </div>
             </div>
             <p>

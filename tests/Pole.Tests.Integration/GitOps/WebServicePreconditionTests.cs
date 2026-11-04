@@ -20,7 +20,7 @@ public sealed partial class DeclarativePipelineTests
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, result.Status);
         Assert.False(rejectNextWebServiceRevision);
         Assert.Equal(releases + 1, await Releases());
-        Assert.Equal("2", (await Service()).Spec.Image.Tag);
+        Assert.Equal("2", (await Service()).Spec.Image.ResolvedImage!.Tag);
         var operations = await Services.GetRequiredService<GitRepositoryQueries>().OperationsAsync(
             TestData.TenantId, source, result.Context!.RunId, 1, 20, default);
         var configure = Assert.Single(operations!.Items,

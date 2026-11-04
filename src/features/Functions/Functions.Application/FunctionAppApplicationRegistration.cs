@@ -20,6 +20,8 @@ public static class FunctionAppApplicationRegistration
         services.AddScoped<IDeclarativeResourceProvider, DeclarativeFunctionProvider>();
         services.AddSingleton(new SecretDeclarationConsumer(
             "FunctionApp", FunctionResourceDeployment.ResourceType, SecretBindingUsage.Runtime));
+        services.AddSingleton(new ResourceConnectionDeclarationKind("FunctionApp",
+            FunctionResourceDeployment.ResourceType));
         services.AddSingleton(new ResourceConnectionSourceCapability(
             FunctionResourceDeployment.ResourceType));
         services.TryAddSingleton<FunctionAppCountQuota>();

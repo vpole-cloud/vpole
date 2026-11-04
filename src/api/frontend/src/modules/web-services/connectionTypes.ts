@@ -1,3 +1,5 @@
+import type { GitOpsStatus } from '../../data/gitOps'
+
 export interface ResourceConnection {
   id: string
   name: string
@@ -7,6 +9,7 @@ export interface ResourceConnection {
   destinationResourceId: string
   endpointId: string
   status: string
+  gitOps?: GitOpsStatus | null
   generation: number
   targets: {
     targetId: string

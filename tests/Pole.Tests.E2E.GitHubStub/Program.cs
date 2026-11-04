@@ -130,8 +130,13 @@ app.MapGet("/repos/pole-e2e/source-build-sample/branches/{branch}",
     (string branch, HttpRequest request, GitHubStubState state) =>
     {
         state.Record(request);
-        return string.Equals(branch, "main", StringComparison.Ordinal)
-            ? Results.Ok(state.Branch(state.CurrentRevision))
+        return branch is "main" or "gitops-application"
+            ? Results.Ok(new
+            {
+                name = branch,
+                commit = new { sha = state.CurrentRevision.CommitSha },
+                @protected = true
+            })
             : Results.NotFound();
     });
 

@@ -8,6 +8,7 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.Domains.Application.Persistence;
 using Pole.Features.Domains.Application.Persistence.DomainZones;
 using Pole.Features.Domains.Contracts;
+using Pole.Features.GitOps.Contracts;
 using Pole.Mediator;
 using Pole.Validation;
 using static Pole.Features.Domains.Application.Common.DomainHttpMappings;
@@ -25,7 +26,7 @@ public static class GetDomainZone
                 (await mediator.Send(request, cancellationToken)).ToHttpResult(
                     ToHttpResult))
             .WithName("GetDomainZone")
-            .Produces<TenantDomainZoneSnapshot>()
+            .Produces<DomainZoneDto>()
             .ProducesProblem(StatusCodes.Status404NotFound);
         return app;
     }
@@ -33,7 +34,7 @@ public static class GetDomainZone
     private static IResult ToHttpResult(
         GetDomainZoneOutcome outcome) => outcome switch
         {
-            TenantDomainZoneSnapshot zone => Results.Ok(zone),
+            DomainZoneDto zone => Results.Ok(zone),
             DomainZoneNotFound notFound => MapDomainZoneNotFound(notFound)
         };
 }
@@ -44,7 +45,7 @@ public sealed record GetDomainZoneRequest(
     : IMediatorRequest<GetDomainZoneOutcome>, ITenantReadOperation;
 
 public union GetDomainZoneOutcome(
-    TenantDomainZoneSnapshot,
+    DomainZoneDto,
     DomainZoneNotFound);
 
 public sealed class GetDomainZoneRequestValidator : AbstractValidator<GetDomainZoneRequest>
@@ -56,7 +57,9 @@ public sealed class GetDomainZoneRequestValidator : AbstractValidator<GetDomainZ
     }
 }
 
-public sealed class GetDomainZoneHandler(LoadTenantDomainZone loadTenantDomainZone)
+public sealed class GetDomainZoneHandler(
+    LoadTenantDomainZone loadTenantDomainZone,
+    IGitOpsMutations git)
     : IMediatorOutcomeHandler<GetDomainZoneRequest, GetDomainZoneOutcome>
 {
     public async Task<GetDomainZoneOutcome> HandleAsync(
@@ -70,7 +73,8 @@ public sealed class GetDomainZoneHandler(LoadTenantDomainZone loadTenantDomainZo
 
         return result switch
         {
-            TenantDomainZoneSnapshot zone => zone,
+            TenantDomainZoneSnapshot zone => DomainZoneDto.FromSnapshot(zone,
+                await git.StatusAsync(new(request.TenantId, "DomainZone", zone.Id), cancellationToken)),
             DomainZoneNotFound error => error
         };
     }

@@ -8,19 +8,15 @@ import type { SourceBuildConfiguration } from '../types'
 
 const configuration: SourceBuildConfiguration = {
   id: 'configuration',
+  technicalName: 'api-build',
+  revision: 1,
   sourceRepositoryId: 'source',
   webServiceId: 'service',
   createdAtUtc: '',
   updatedAtUtc: '',
   createdByUserId: 'user',
   recipe: {
-    kind: 0,
-    candidateKey: 'candidate',
-    sourceRoot: '.',
-    manifestPath: 'Dockerfile',
-    commands: [],
     dockerfile: 'FROM scratch',
-    isCustomized: false,
   },
 }
 
@@ -49,7 +45,7 @@ it('preserves a dirty recipe across refresh and field failure, then records the 
     )
     .mockImplementationOnce(async (recipe) => ({
       ...configuration,
-      recipe: { ...recipe, isCustomized: true },
+      recipe,
     }))
   const onDirtyChange = vi.fn()
   const render = (value = configuration) =>
@@ -110,7 +106,6 @@ it('preserves a dirty recipe across refresh and field failure, then records the 
     )
     expect(onSave.mock.calls[1][0]).toEqual(
       expect.objectContaining({
-        candidateKey: 'candidate',
         dockerfile: 'FROM busybox\nCMD ["true"]',
       }),
     )

@@ -10,8 +10,6 @@ internal static class GitMetadataEventExtensions
         new(connection.Id, EventCore.Create(connection.TenantId));
 
     public static SourceRepositoryChangedEvent ToChangedEvent(this SourceRepository repository) =>
-        new(repository.Id, repository.ConnectionId)
-        {
-            EventCore = EventCore.Create(repository.TenantId)
-        };
+        new(repository.Id, repository.ConnectionId, repository.TechnicalName, repository.Revision,
+            EventCore.Create(repository.TenantId));
 }

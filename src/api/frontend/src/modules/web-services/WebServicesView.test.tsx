@@ -989,7 +989,7 @@ it('refreshes a clean configuration while preserving a dirty draft across newer 
   records.set(service.id, {
     ...service,
     activeRevision: 2,
-    spec: { ...service.spec, image: { ...service.spec.image, tag: 'server-two' } },
+    spec: { ...service.spec, image: { ...service.spec.image!, tag: 'server-two' } },
   })
   await click('Refresh service details')
   expect(textInput('latest').value).toBe('server-two')
@@ -998,7 +998,7 @@ it('refreshes a clean configuration while preserving a dirty draft across newer 
   records.set(service.id, {
     ...service,
     activeRevision: 3,
-    spec: { ...service.spec, image: { ...service.spec.image, tag: 'server-three' } },
+    spec: { ...service.spec, image: { ...service.spec.image!, tag: 'server-three' } },
   })
   await click('Refresh service details')
   expect(textInput('latest').value).toBe('keep-my-draft')
@@ -1022,12 +1022,12 @@ it('protects a newer build from a stale configuration save and adopts its revisi
   records.set(service.id, {
     ...service,
     activeRevision: 3,
-    spec: { ...service.spec, image: { ...service.spec.image, tag: 'new-build' } },
+    spec: { ...service.spec, image: { ...service.spec.image!, tag: 'new-build' } },
   })
   await click('Refresh service details')
   expect(visibleText()).toContain('The service changed while this draft was open.')
   await submit()
-  expect(records.get(service.id)?.spec.image.tag).toBe('new-build')
+  expect(records.get(service.id)?.spec.image?.tag).toBe('new-build')
   expect(records.get(service.id)?.activeRevision).toBe(3)
   expect(container.querySelector('[role="alert"]')?.textContent).toContain('Configuration changed.')
   expect(textInput('latest').value).toBe('old-draft')
@@ -1043,7 +1043,7 @@ it('protects a newer build from a stale configuration save and adopts its revisi
   await submit()
   expect(JSON.parse(updates()[1][1]!.body as string).expectedRevision).toBe(3)
   expect(records.get(service.id)?.activeRevision).toBe(4)
-  expect(records.get(service.id)?.spec.image.tag).toBe('reviewed-change')
+  expect(records.get(service.id)?.spec.image?.tag).toBe('reviewed-change')
   expect(workspaceTab('sample').getAttribute('aria-label')).toBe('sample')
 })
 
@@ -1176,42 +1176,44 @@ it('moves tab focus with arrow keys and uses Delete to request dirty-tab closure
   expect(container.querySelector('dialog')?.textContent).toContain('Discard changes to sample?')
 })
 
+const authoringPlan = {
+  candidateKey: 'docker',
+  kind: 'Dockerfile',
+  displayName: 'Dockerfile',
+  manifestPath: 'Dockerfile',
+  sourceRoot: '.',
+  confidence: 'High',
+  signals: [],
+  warnings: [],
+  commands: [],
+  dockerfilePreview: 'FROM scratch',
+}
 const gitSource = {
   id: 'source',
+  technicalName: 'application',
+  revision: 1,
   connectionId: 'connection',
   externalRepositoryId: 'repository',
   repositoryFullName: 'team/app',
   repositoryUrl: 'https://github.com/team/app',
   isPrivate: true,
   branch: 'main',
-  commitSha: 'abc123456789',
-  analyzedAtUtc: '2026-10-03T00:00:00Z',
-  selectedPlan: {
-    candidateKey: 'docker',
-    kind: 'Dockerfile',
-    displayName: 'Dockerfile',
-    manifestPath: 'Dockerfile',
-    sourceRoot: '.',
-    confidence: 'High',
-    signals: [],
-    warnings: [],
-    commands: [],
-    dockerfilePreview: 'FROM scratch',
-  },
 }
 const buildConfiguration = {
   id: 'configuration',
+  technicalName: 'app-build',
+  revision: 1,
   webServiceId: service.id,
   sourceRepositoryId: gitSource.id,
-  recipe: {
-    kind: 0,
-    manifestPath: 'Dockerfile',
-    candidateKey: 'docker',
-    sourceRoot: '.',
-    commands: [],
-    dockerfile: 'FROM scratch',
-    isCustomized: false,
-  },
+  recipe: { dockerfile: 'FROM scratch' },
+}
+async function fillBuildRecipe() {
+  const field = (label: string) =>
+    [...container.querySelectorAll('label')]
+      .find((item) => visible(item) && item.textContent?.includes(label))!
+      .querySelector<HTMLInputElement | HTMLTextAreaElement>('input,textarea')!
+  await fill(field('Build configuration technical name'), 'app-build')
+  await fill(field('Dockerfile'), 'FROM scratch')
 }
 async function chooseGitSource() {
   await click('Git repository')
@@ -1222,6 +1224,7 @@ async function chooseGitSource() {
     selector.value = 'source'
     selector.dispatchEvent(new Event('change', { bubbles: true }))
   })
+  await fillBuildRecipe()
 }
 it('recovers accepted source configuration after a lost response without creating another service or configuration', async () => {
   const base = fetchMock.getMockImplementation()!
@@ -1329,16 +1332,15 @@ it('keeps the Git creation form disabled until a source is selected and retains 
   await fillCreateForm()
   await click('Git repository')
   expect(button('Create service and build').disabled).toBe(true)
-  expect(textInput('library/nginx').value).toBe('library/nginx')
-  expect(container.textContent).toContain(
-    'Initial image: this runs until the first Git build is applied.',
-  )
+  expect(textInput('library/nginx')).toBeUndefined()
+  expect(container.textContent).toContain('The service waits for its first successful build.')
   await click('Container image')
   expect(button('Create service').disabled).toBe(false)
   expect(textInput('pole-api').value).toBe('sample')
+  expect(textInput('library/nginx').value).toBe('library/nginx')
 })
 
-it('selects repository, branch and an explicit build plan before linking a new Git source', async () => {
+it('links a named repository and copies optional analysis into an explicit build recipe', async () => {
   const base = fetchMock.getMockImplementation()!
   let linked = false
   fetchMock.mockImplementation((url, init) => {
@@ -1358,8 +1360,8 @@ it('selects repository, branch and an explicit build plan before linking a new G
         repositoryFullName: 'team/app',
         commitSha: 'abc123456789',
         candidates: [
-          gitSource.selectedPlan,
-          { ...gitSource.selectedPlan, candidateKey: 'node', displayName: 'Node application' },
+          authoringPlan,
+          { ...authoringPlan, candidateKey: 'node', displayName: 'Node application' },
         ],
       })
     if (path.endsWith('/links') && init?.method === 'POST') {
@@ -1383,18 +1385,21 @@ it('selects repository, branch and an explicit build plan before linking a new G
   await select('repository')
   await select('release')
   await click('Analyze branch')
-  expect(
-    [...container.querySelectorAll('button')].some(
-      (item) => item.textContent === 'Use this source',
-    ),
-  ).toBe(false)
+  const nameInput = [...container.querySelectorAll('label')]
+    .find((item) => visible(item) && item.textContent?.includes('Repository technical name'))!
+    .querySelector('input')!
+  await fill(nameInput, 'application')
   await select('docker')
   await click('Use this source')
+  await fillBuildRecipe()
   expect(button('Create service and build').disabled).toBe(false)
   const link = fetchMock.mock.calls.find(
     ([url, init]) => String(url).endsWith('/links') && init?.method === 'POST',
   )!
-  expect(JSON.parse(String(link[1]?.body))).toEqual({ branch: 'release', candidateKey: 'docker' })
+  expect(JSON.parse(String(link[1]?.body))).toEqual({
+    branch: 'release',
+    technicalName: 'application',
+  })
   expect(container.textContent).toContain('team/app')
 })
 
@@ -1532,7 +1537,15 @@ it('freezes the selected Git source and delivery mode while the initial create r
   expect(JSON.parse(String(write[1]?.body))).toEqual({
     sourceRepositoryId: 'source',
     webServiceId: service.id,
+    technicalName: 'app-build',
+    recipe: { dockerfile: 'FROM scratch' },
   })
+  const create = fetchMock.mock.calls.find(
+    ([url, init]) => String(url).endsWith('/web-services') && init?.method === 'POST',
+  )!
+  const body = JSON.parse(String(create[1]?.body))
+  expect(body.creationMode).toBe('SourceBuild')
+  expect(body.spec.image).toBeNull()
   expect(new URLSearchParams(window.location.search).get('section')).toBe('builds')
 })
 
@@ -1714,4 +1727,71 @@ it('keeps Git-owned configuration read-only with source and blocker information'
     container.querySelector<HTMLAnchorElement>('a[href="https://github.com/lsbV/example"]'),
   ).not.toBeNull()
   expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(false)
+})
+
+it('renders a configured service awaiting its first artifact without a placeholder image or active configuration actions', async () => {
+  created = true
+  records.set(service.id, {
+    ...service,
+    lifecycle: 'AwaitingFirstArtifact',
+    spec: {
+      ...service.spec,
+      image: null,
+      imageAuthority: {
+        mode: 'PendingSourceBuild',
+        configurationId: 'configuration',
+        jobId: null,
+        generation: null,
+        digest: null,
+      },
+    },
+  })
+  await act(async () => render())
+  await click('sample')
+  expect(container.textContent).toContain('Awaiting first artifact')
+  expect(container.textContent).toContain('Workload and routes await the first successful build.')
+  await click('Configuration')
+  expect(textInput('library/nginx')).toBeUndefined()
+})
+
+it('allows manual Build for a Git-owned service awaiting an artifact while configuration writes remain disabled', async () => {
+  created = true
+  const gitOps = {
+    sourceId: 'gitops-source',
+    sourceUrl: 'https://github.com/team/configuration',
+    blocker: null,
+    pendingRemoval: false,
+    configurationApplied: true,
+  }
+  records.set(service.id, {
+    ...service,
+    gitOps,
+    lifecycle: 'AwaitingFirstArtifact',
+    spec: {
+      ...service.spec,
+      image: null,
+      imageAuthority: {
+        mode: 'PendingSourceBuild',
+        configurationId: 'configuration',
+        jobId: null,
+        generation: null,
+        digest: null,
+      },
+    },
+  })
+  const base = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation((url, init) => {
+    const path = new URL(String(url), 'http://localhost').pathname
+    if (path.endsWith('/source-build-configurations'))
+      return json([{ ...buildConfiguration, gitOps }])
+    if (path.endsWith('/source-repositories')) return json([gitSource])
+    return base(url, init)
+  })
+  await act(async () => render())
+  await click('sample')
+  await click('Builds')
+  expect(button('Build and deploy').disabled).toBe(false)
+  expect(button('Remove configuration').disabled).toBe(true)
+  await click('Configuration')
+  expect(container.textContent).toContain('Edit this configuration in Git.')
 })

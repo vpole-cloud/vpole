@@ -53,7 +53,9 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
         foreach (var item in request.Deployments)
         {
             var deployment = byId[item.ResourceDeploymentId];
-            if (deployment.Revision != item.ExpectedDeploymentRevision)
+            if (deployment.Revision != item.ExpectedDeploymentRevision ||
+                request.Activation == ResourceDeploymentActivation.KeepPrepared &&
+                deployment.State is not PreparedResourceDeploymentState)
             {
                 return new ResourceDeploymentMutationError(
                     new ResourceDeploymentChanged(request.ResourceId, item.ResourceDeploymentId));
@@ -176,12 +178,15 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
                 _ => throw new ArgumentException("An ingress change is required.", nameof(request))
             };
 
-            updated.Add(deployment.RequestReconciliation(
-                placement,
-                runtimeCellsById[deployment.RuntimeCellId].State == ResourcePlacementState.Ready,
-                now,
-                request.ResourceRevision,
-                item.FixedReplicas));
+            updated.Add(request.Activation switch
+            {
+                ResourceDeploymentActivation.KeepPrepared => deployment.ConfigurePrepared(placement, now,
+                    request.ResourceRevision, item.FixedReplicas ?? deployment.FixedReplicas),
+                ResourceDeploymentActivation.Reconcile => deployment.RequestReconciliation(placement,
+                    runtimeCellsById[deployment.RuntimeCellId].State == ResourcePlacementState.Ready,
+                    now, request.ResourceRevision, item.FixedReplicas),
+                _ => throw new ArgumentOutOfRangeException(nameof(request))
+            });
         }
 
         foreach (var deployment in updated)

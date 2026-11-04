@@ -33,6 +33,28 @@ lowercase ASCII and may contain already encoded `xn--` labels. Unicode-to-punyco
 external apex-domain verification, shared hostnames across targets, and DNS-provider record
 creation are outside this feature's current scope.
 
+## Technical identity and planning
+
+Managed zones and custom bindings require immutable tenant-unique technical names, distinct from
+DNS labels and relative names. Generated entities have an explicit system identity and no user
+technical name. Names follow `ResourceTechnicalName`; DNS normalization still permits apex `@`
+and multi-label hostname aliases independently of technical identity.
+
+The named lookup and planning capabilities are tenant-scoped and join the caller's Mongo session.
+Planning snapshots include a technical reference fence. Conditional fence writes do not change
+business revisions, timestamps or events, and roll back with the caller's transaction. Creation
+accepts server-allocated IDs so GitOps inventory and domain reservations can share one commit.
+
+## Declarative zones
+
+`DomainZone` declarations reserve a label under a named DeploymentTarget and retain the accepted
+target ID. The provider creates once and verifies no-op thereafter; moving the target or changing
+the DNS label requires a later lifecycle operation. Deleted managed identities are reported as
+missing rather than recreated. Domain-specific target admission verifies current public ingress
+without treating a zone as a workload. Target revision/configuration and zone reference fences
+are checked inside the same transaction as inventory, receipt, reference registration and outbox.
+Git-owned reservations expose ownership in the existing API and cannot be removed manually.
+
 ## Operation outcomes
 
 Zone, hostname-binding and cleanup capabilities return named outcome unions. Capability delegates
@@ -40,3 +62,17 @@ use operation names without an `Outcome` suffix; the corresponding result type c
 Provider error groups remain available to workload consumers during their migration. Domain-zone
 endpoints expose concrete local errors and call HTTP mapping methods directly. Only provider
 contract error mappings remain registered for consumers still using the dynamic mapper.
+
+### Declarative hostname attachments
+
+`HostnameBinding` waits for the named zone and configured Public workload, then joins reservation and owner-managed
+attachment in the GitOps transaction. Accepted zone, target and workload IDs remain pinned. The managed projection
+separates immutable identity from attachment presence; a missing ingress attachment is repaired without recreating the
+binding or adopting its workload. Current zone, target, binding and workload documents receive transactional fences.
+
+Workload owners implement `IHostnameBindingWorkloadCapability`. Active and configured awaiting-artifact workloads may
+accept reservations; prepared, Private and unavailable workloads are rejected. Manual deletion checks the binding's
+own GitOps ownership. The ordinary dependency cleanup remains available as a safety workflow.
+
+The attachment capability receives the invoking declaration's source, run and immutable commit as explicit provenance.
+A release belongs to that invocation even when the workload is owned by another source; no actor identity is invented.

@@ -458,12 +458,13 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
             service.ResourceGroupId,
             service.IsolationScopeId,
             service.Revision,
+            Pole.Features.WebServices.Events.WebServiceLifecycleState.Active,
             new WebServiceSpecSnapshot(
                 new WebServiceImageInfoSnapshot(
-                    spec.Image.Server,
-                    spec.Image.Name,
-                    spec.Image.Tag,
-                    spec.Image.SecretName),
+                    spec.Image.ResolvedImage!.Server,
+                    spec.Image.ResolvedImage!.Name,
+                    spec.Image.ResolvedImage!.Tag,
+                    spec.Image.ResolvedImage!.SecretName),
                 new WebServiceConfigSnapshot(
                     spec.Config.EnvironmentVariables,
                     spec.Config.PortMappings.Select(mapping => new PortMappingSnapshot(

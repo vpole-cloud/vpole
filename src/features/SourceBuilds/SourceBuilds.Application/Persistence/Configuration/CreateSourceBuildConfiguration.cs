@@ -1,64 +1,86 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.GitProviders.Contracts;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
+using Pole.Features.SourceBuilds.Application.Migrations;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Domain;
 
 namespace Pole.Features.SourceBuilds.Application.Persistence.Configuration;
 
+public sealed record CreateSourceBuildConfigurationCommand(
+    SourceBuildConfiguration Configuration,
+    long RepositoryRevision);
+
 public union PersistCreatedSourceBuildConfigurationOutcome(
     SourceBuildConfiguration,
     SourceBuildConfigurationAlreadyExists,
-    SourceBuildConfigurationWebServiceNotFound);
+    SourceBuildConfigurationWebServiceNotFound,
+    SourceBuildConfigurationNameConflict,
+    SourceBuildConfigurationRepositoryChanged);
 
-public delegate Task<PersistCreatedSourceBuildConfigurationOutcome>
-    CreateSourceBuildConfiguration(
-        SourceBuildConfiguration configuration,
-        CancellationToken cancellationToken = default);
+public delegate Task<PersistCreatedSourceBuildConfigurationOutcome> CreateSourceBuildConfiguration(
+    CreateSourceBuildConfigurationCommand command,
+    CancellationToken cancellationToken = default);
 
 internal sealed class MongoCreateSourceBuildConfiguration(
     IMongoCollection<SourceBuildConfiguration> configurations,
     MongoRunTransaction transactions,
+    FenceSourceRepository fenceRepository,
     AdmitSourceBuildWebService admitWebService,
     StoreOutboxWrites outbox)
 {
-    public async Task<PersistCreatedSourceBuildConfigurationOutcome>
-        InvokeAsync(
-            SourceBuildConfiguration configuration,
-            CancellationToken cancellationToken = default)
+    public Task<PersistCreatedSourceBuildConfigurationOutcome> InvokeAsync(
+        CreateSourceBuildConfigurationCommand command,
+        CancellationToken cancellationToken = default) =>
+        transactions.InvokeOutcomeAsync<PersistCreatedSourceBuildConfigurationOutcome>(async (transaction, ct) =>
+        {
+            var result = await InsertAsync(command, transaction.Session, ct);
+            return result is SourceBuildConfiguration ? transaction.Commit(result) : transaction.Abort(result);
+        }, cancellationToken);
+
+    public async Task<PersistCreatedSourceBuildConfigurationOutcome> InsertAsync(
+        CreateSourceBuildConfigurationCommand command,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
     {
-        return await transactions.InvokeOutcomeAsync<PersistCreatedSourceBuildConfigurationOutcome>(
-            async (transaction, ct) =>
-            {
-                var admitted = await admitWebService(
-                    new AdmitSourceBuildWebServiceRequest(
-                        TenantId: configuration.TenantId,
-                        WebServiceId: configuration.WebServiceId),
-                    session: transaction.Session,
-                    cancellationToken: ct);
-                if (admitted is SourceBuildWebServiceNotFound)
-                {
-                    PersistCreatedSourceBuildConfigurationOutcome rejected =
-                        new SourceBuildConfigurationWebServiceNotFound(configuration.WebServiceId);
-                    return transaction.Abort(rejected);
-                }
+        var configuration = command.Configuration;
+        if (await fenceRepository(new(configuration.TenantId, configuration.SourceRepositoryId,
+            command.RepositoryRevision), session, cancellationToken) is not SourceRepositoryFenced)
+            return new SourceBuildConfigurationRepositoryChanged(configuration.SourceRepositoryId);
 
-                try
-                {
-                    await configurations.InsertOneAsync(transaction.Session, configuration, cancellationToken: ct);
-                }
-                catch (MongoWriteException exception) when (exception.WriteError?.Category ==
-                                                            ServerErrorCategory.DuplicateKey)
-                {
-                    return transaction.Abort(new SourceBuildConfigurationAlreadyExists(configuration.WebServiceId));
-                }
+        if (await configurations.Find(session,
+            SourceBuildConfigurationFilters.ByName(configuration.TenantId, configuration.TechnicalName))
+            .AnyAsync(cancellationToken))
+            return new SourceBuildConfigurationNameConflict(configuration.TechnicalName);
 
-                await outbox(transaction.Session, [OutboxWrite.Create(configuration.ToChangedEvent())], ct);
+        if (await configurations.Find(session,
+            SourceBuildConfigurationFilters.ByWebService(configuration.TenantId, configuration.WebServiceId))
+            .AnyAsync(cancellationToken))
+            return new SourceBuildConfigurationAlreadyExists(configuration.WebServiceId);
 
-                PersistCreatedSourceBuildConfigurationOutcome created = configuration;
-                return transaction.Commit(created);
-            },
-            cancellationToken);
+        if (await admitWebService(new(configuration.TenantId, configuration.WebServiceId, configuration.Id,
+            SourceBuildAdmissionPurpose.Configure),
+            session, cancellationToken) is SourceBuildWebServiceNotFound)
+            return new SourceBuildConfigurationWebServiceNotFound(configuration.WebServiceId);
+
+        try
+        {
+            await configurations.InsertOneAsync(session, configuration, cancellationToken: cancellationToken);
+        }
+        catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(exception,
+            SourceBuildMigration.TenantNameIndex, configurations.CollectionNamespace.CollectionName))
+        {
+            return new SourceBuildConfigurationNameConflict(configuration.TechnicalName);
+        }
+        catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(exception,
+            SourceBuildMigration.TenantWebServiceIndex, configurations.CollectionNamespace.CollectionName))
+        {
+            return new SourceBuildConfigurationAlreadyExists(configuration.WebServiceId);
+        }
+
+        await outbox(session, [OutboxWrite.Create(configuration.ToChangedEvent())], cancellationToken);
+        return configuration;
     }
 }

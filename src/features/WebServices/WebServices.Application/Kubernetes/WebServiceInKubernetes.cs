@@ -155,6 +155,10 @@ public readonly record struct WebServiceInKubernetes(
 
     private V1PodSpec BuildPodSpec()
     {
+        if (WebService.Lifecycle is not ActiveWebServiceLifecycle ||
+            WebService.Spec.Image.ResolvedImage is not { } image)
+            throw new InvalidOperationException("Only an active service with an artifact can render a workload.");
+
         var expectedNames = WebService.Spec.Config.ConnectionEnvironmentReferences.Keys.Concat(WebService.Spec.Config.SecretEnvironmentReferences.Keys).ToArray();
         if (expectedNames.Distinct(StringComparer.Ordinal).Count() != expectedNames.Length ||
             expectedNames.Intersect(WebService.Spec.Config.EnvironmentVariables.Keys, StringComparer.Ordinal).Any() ||
@@ -162,15 +166,15 @@ public readonly record struct WebServiceInKubernetes(
             throw new InvalidOperationException("Logical dependency references must be resolved without environment name collisions before rendering.");
         var podSpec = new V1PodSpec
         {
-            ImagePullSecrets = WebService.Spec.Image.SecretName is null
+            ImagePullSecrets = image.SecretName is null
                 ? null
-                : [new V1LocalObjectReference { Name = WebService.Spec.Image.SecretName }],
+                : [new V1LocalObjectReference { Name = image.SecretName }],
             Containers =
             [
                 new V1Container
                 {
                     Name = WebService.Name,
-                    Image = WebService.Spec.Image.FullImageName,
+                    Image = WebService.Spec.Image.ResolvedImageReference,
                     Ports = [new V1ContainerPort { ContainerPort = 80 }],
                     EnvFrom =
                     [
@@ -220,8 +224,9 @@ public readonly record struct WebServiceInKubernetes(
 
     public V1Secret? ToImagePullSecret(string username = "", string password = "")
     {
-        var rs = WebService.Spec.Image.SecretName;
-        if (rs is null) return null;
+        var image = WebService.Spec.Image.ResolvedImage;
+        if (image?.SecretName is null)
+            return null;
 
         // docker config json format
         var auth = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"));
@@ -230,7 +235,7 @@ public readonly record struct WebServiceInKubernetes(
         {
             auths = new Dictionary<string, object>
             {
-                [WebService.Spec.Image.Server] = new
+                [image.Server] = new
                 {
                     username,
                     password,
@@ -248,7 +253,7 @@ public readonly record struct WebServiceInKubernetes(
             Kind = "Secret",
             Metadata = new V1ObjectMeta
             {
-                Name = WebService.Spec.Image.SecretName,
+                Name = image.SecretName,
                 NamespaceProperty = Namespace,
                 Labels = new Dictionary<string, string>
                 {
@@ -281,7 +286,7 @@ public readonly record struct WebServiceInKubernetes(
     public V1Ingress? ToIngress(
         WebServiceDeploymentMetadata? deploymentMetadata = null)
     {
-        if (IngressConfiguration is null)
+        if (WebService.Lifecycle is not ActiveWebServiceLifecycle || IngressConfiguration is null)
             return null;
         var serviceName = ServiceName;
         var servicePort = GetIngressServicePort(WebService);
@@ -350,7 +355,8 @@ public readonly record struct WebServiceInKubernetes(
     public V2HorizontalPodAutoscaler? ToHorizontalPodAutoscaler(
         WebServiceDeploymentMetadata? deploymentMetadata = null)
     {
-        if (WebService.Spec.Autoscaling is not { } autoscaling)
+        if (WebService.Lifecycle is not ActiveWebServiceLifecycle ||
+            WebService.Spec.Autoscaling is not { } autoscaling)
             return null;
 
         if (autoscaling.Metric.Type is not ("cpu" or "memory") ||

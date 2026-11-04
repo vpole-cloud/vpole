@@ -139,7 +139,12 @@ public sealed class CreateWebServiceHandler(
                 "Compute profile batch resolution did not return one result for every selected deployment target.");
         }
 
-        var options = WebServiceFactory.DefaultOptions with { Tags = request.Body.Tags };
+        var options = WebServiceFactory.DefaultOptions with
+        {
+            Tags = request.Body.Tags,
+            Lifecycle = request.Body.CreationMode == WebServiceCreationMode.SourceBuild
+                ? new PreparedWebServiceLifecycle() : new ActiveWebServiceLifecycle()
+        };
         var spec = request.Body.Spec.ToDomain();
         var quotaInput = WebServiceDeploymentWorkflow.ToQuotaInput(
             targets.Select(target => (
@@ -313,7 +318,8 @@ public sealed class CreateWebServiceHandler(
                 Storage: null,
                 ResourcePlacementCapability.MultiTarget,
                 target.Request.FixedReplicas,
-                webService.ActiveRevision));
+                webService.ActiveRevision,
+                DeferredActivation: webService.Lifecycle is PreparedWebServiceLifecycle));
         }
 
         return (IReadOnlyList<CreateResourceDeploymentRequest>)requests;
@@ -375,6 +381,10 @@ public sealed class CreateWebServiceHandler(
             WebServiceDeploymentWorkflow.ToEventDeployments(deployments));
         var persisted = await persistCreatedWebService(transaction.Session, webService, createdEvent, cancellationToken);
         if (persisted.Value is WebServiceNameAlreadyExists duplicate) return Abort(transaction, new CreateWebServiceError(duplicate));
+
+        if (webService.Lifecycle is PreparedWebServiceLifecycle)
+            return transaction.Commit(new CreateWebServiceOutcome(
+                new CreateWebServiceResponse(webService.Id, deployments)));
 
         var release = WebServiceReleaseFactory.CreatePending(
             webService.TenantId,
@@ -457,7 +467,11 @@ public sealed record CreateWebServiceRequestBody(
     WebServicePlacementRequest Placement,
     ImmutableHashSet<string> Tags,
     [property: JsonConverter(typeof(WebServiceExposureModeJsonConverter))]
-    WebServiceExposureMode Exposure = WebServiceExposureMode.Private);
+    WebServiceExposureMode Exposure = WebServiceExposureMode.Private,
+    [property: JsonConverter(typeof(JsonStringEnumConverter<WebServiceCreationMode>))]
+    WebServiceCreationMode CreationMode = WebServiceCreationMode.Image);
+
+public enum WebServiceCreationMode { Image, SourceBuild }
 
 public sealed class WebServiceExposureModeJsonConverter
     : JsonStringEnumConverter<WebServiceExposureMode>
@@ -495,6 +509,10 @@ public sealed class CreateWebServiceRequestBodyValidator : AbstractValidator<Cre
     public CreateWebServiceRequestBodyValidator()
     {
         RuleFor(body => body.Name).NotEmpty().MaximumLength(30);
+        RuleFor(body => body.CreationMode).IsInEnum();
+        RuleFor(body => body).Must(body => body.Spec is null ||
+                (body.CreationMode == WebServiceCreationMode.SourceBuild) == (body.Spec.Image is null))
+            .WithMessage("Provide an image for image mode; source build mode must omit the image.");
         RuleFor(body => body.ResourceGroupId).NotEmpty().MongoObjectId("Resource group ID");
         RuleFor(body => body.Spec).NotNull().SetValidator(new WebServiceSpecDtoValidator());
         RuleFor(body => body.Spec).Must(spec => spec?.Config is null ||
@@ -564,7 +582,12 @@ public sealed class WebServiceSpecDtoValidator : AbstractValidator<WebServiceSpe
 {
     public WebServiceSpecDtoValidator()
     {
-        RuleFor(spec => spec.Image).NotNull();
+        When(spec => spec.Image is not null, () =>
+        {
+            RuleFor(spec => spec.Image!.Server).NotEmpty();
+            RuleFor(spec => spec.Image!.Name).NotEmpty();
+            RuleFor(spec => spec.Image!.Tag).NotEmpty();
+        });
         RuleFor(spec => spec.Probes).NotNull();
         RuleFor(spec => spec.Config).NotNull();
         RuleFor(spec => spec.Config).Must(ValidDependencyReferences)

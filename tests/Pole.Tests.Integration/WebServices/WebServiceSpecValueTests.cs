@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
-using System.Text.Json;
+using MongoDB.Bson;
+using MongoDB.Bson.Serialization;
 using Pole.Features.WebServices.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -70,8 +71,15 @@ public sealed class WebServiceSpecValueTests
                         "DB_PASSWORD", spec.Config.SecretEnvironmentReferences["DB_PASSWORD"] with { Key = "rotated" })
                 }
             },
-            "image" => spec with { Image = spec.Image with { Tag = "next" } },
-            "pull-reference" => spec with { Image = spec.Image with { SecretName = "another-pull-reference" } },
+            "image" => spec with
+            {
+                Image = Assert.IsType<Pole.Features.WebServices.Domain.ImageInfo>(spec.Image) with { Tag = "next" }
+            },
+            "pull-reference" => spec with
+            {
+                Image = Assert.IsType<Pole.Features.WebServices.Domain.ImageInfo>(spec.Image) with
+                { SecretName = "another-pull-reference" }
+            },
             "autoscaling" => spec with { Autoscaling = spec.Autoscaling! with { MaxReplicas = 5 } },
             "probes" => spec with { Probes = spec.Probes with { Readiness = spec.Probes.Readiness with { Path = "/next" } } },
             _ => throw new ArgumentOutOfRangeException(nameof(field))
@@ -84,7 +92,7 @@ public sealed class WebServiceSpecValueTests
     }
 
     private static WebServiceSpec Copy(WebServiceSpec spec) =>
-        JsonSerializer.Deserialize<WebServiceSpec>(JsonSerializer.Serialize(spec))!;
+        BsonSerializer.Deserialize<WebServiceSpec>(spec.ToBson());
 
     private static WebService ConfiguredService()
     {
@@ -93,7 +101,8 @@ public sealed class WebServiceSpecValueTests
         {
             Spec = service.Spec with
             {
-                Image = service.Spec.Image with { SecretName = "managed-pull-reference" },
+                Image = Assert.IsType<Pole.Features.WebServices.Domain.ImageInfo>(service.Spec.Image) with
+                { SecretName = "managed-pull-reference" },
                 Autoscaling = new AutoscalingSpec(1, 3, new AutoscalingMetric("cpu", 70)),
                 Config = service.Spec.Config with
                 {

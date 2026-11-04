@@ -1,12 +1,19 @@
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Workloads;
 
 namespace Pole.Features.ResourceGroups.Application.Persistence.ResourceRegistrations;
 
 internal static class ResourceRegistrationFilters
 {
+    public static FilterDefinition<ResourceRegistration> AtPlanningSnapshot(
+        ResourceRegistrationPlanningSnapshot snapshot) =>
+        ByIdentity(snapshot.Resource.TenantId, snapshot.Resource.ResourceTypeId, snapshot.Resource.ResourceId) &
+        Builders<ResourceRegistration>.Filter.Eq(item => item.Id, snapshot.Resource.RegistrationId) &
+        Builders<ResourceRegistration>.Filter.Eq(item => item.ReferenceFence, snapshot.ReferenceFence);
+
     public static FilterDefinition<ResourceRegistration> ByIdentity(
         string tenantId,
         ResourceTypeId resourceTypeId,

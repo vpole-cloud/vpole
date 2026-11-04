@@ -8,17 +8,17 @@ internal sealed class MongoEnsureNoSourceRepositoryBuildConfiguration(
     IMongoCollection<SourceBuildConfiguration> configurations)
 {
     public async Task<EnsureNoSourceRepositoryBuildConfigurationOutcome> InvokeAsync(
-        string tenantId,
-        string sourceRepositoryId,
+        SourceRepositoryConfigurationRequest request,
+        IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
         var hasConfiguration = await configurations
-            .Find(SourceBuildConfigurationFilters.BySourceRepository(
-                tenantId,
-                sourceRepositoryId))
+            .Find(session, SourceBuildConfigurationFilters.BySourceRepository(
+                request.TenantId,
+                request.SourceRepositoryId))
             .AnyAsync(cancellationToken);
         return hasConfiguration
-            ? new SourceBuildSourceRepositoryConfigurationExists(sourceRepositoryId)
+            ? new SourceBuildSourceRepositoryConfigurationExists(request.SourceRepositoryId)
             : new NoSourceRepositoryBuildConfiguration();
     }
 }

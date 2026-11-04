@@ -40,6 +40,7 @@ public static class DeleteDomainZone
             GeneratedDomainZoneDeletionRejected error => MapGeneratedDomainZoneDeletionRejected(error),
             DomainZoneHasHostnameBindings error => MapDomainZoneHasHostnameBindings(error),
             DomainZoneDeletionConflict error => MapDomainZoneDeletionConflict(error),
+            DomainZoneGitOwned error => MapDomainZoneGitOwned(error),
             ManagedDomainZoneReferenceRemovalRejected error => MapManagedDomainZoneReferenceRemovalRejected(error)
         };
 }
@@ -55,6 +56,7 @@ public union DeleteDomainZoneOutcome(
     GeneratedDomainZoneDeletionRejected,
     DomainZoneHasHostnameBindings,
     DomainZoneDeletionConflict,
+    DomainZoneGitOwned,
     ManagedDomainZoneReferenceRemovalRejected);
 
 public sealed class DeleteDomainZoneRequestValidator : AbstractValidator<DeleteDomainZoneRequest>
@@ -90,6 +92,7 @@ public sealed class DeleteDomainZoneHandler(
                     GeneratedDomainZoneDeletionRejected error => transaction.Abort(error),
                     DomainZoneHasHostnameBindings error => transaction.Abort(error),
                     DomainZoneDeletionConflict error => transaction.Abort(error),
+                    DomainZoneGitOwned error => transaction.Abort(error),
                     ManagedDomainZoneReferenceRemovalRejected error => transaction.Abort(error)
                 };
             },

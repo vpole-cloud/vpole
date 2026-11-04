@@ -18,7 +18,7 @@ public static class WebServiceSearchProjection
         string name,
         string resourceGroupId,
         IEnumerable<string> hostnames,
-        string image,
+        string? image,
         long resourceRevision) =>
         new(
             new SearchProjectionIdentity(tenantId, SourceType.ResourceTypeId, webServiceId),
@@ -28,9 +28,12 @@ public static class WebServiceSearchProjection
             new[]
                 {
                     new SearchProjectionField(SearchProjectionFieldType.SourceId, webServiceId),
-                    new SearchProjectionField(SearchProjectionFieldType.Name, name),
-                    new SearchProjectionField(SearchProjectionFieldType.Image, image)
+                    new SearchProjectionField(SearchProjectionFieldType.Name, name)
                 }
+                .Concat(image is null ? [] : new[]
+                {
+                    new SearchProjectionField(SearchProjectionFieldType.Image, image)
+                })
                 .Concat(hostnames.Distinct().Select(hostname =>
                     new SearchProjectionField(SearchProjectionFieldType.Domain, hostname)))
                 .ToArray(),
@@ -54,7 +57,7 @@ public sealed class AddWebServiceToSearchOnWebServiceCreatedConsumer(
             message.Name,
             message.ResourceGroupId,
             message.Deployments.SelectMany(deployment => deployment.Hostnames),
-            message.Spec.Image.FullImageName,
+            message.Spec.Image.ResolvedImageReference,
             message.ResourceRevision);
 }
 
@@ -70,7 +73,7 @@ public sealed class UpdateWebServiceInSearchOnWebServiceUpdatedConsumer(
                 message.Name,
                 message.ResourceGroupId,
                 message.Deployments.SelectMany(deployment => deployment.Hostnames),
-                message.Spec.Image.FullImageName,
+                message.Spec.Image.ResolvedImageReference,
                 message.ResourceRevision),
             cancellationToken);
 

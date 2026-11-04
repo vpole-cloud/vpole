@@ -102,3 +102,25 @@ public sealed record LoadRegisteredResourceRequest(
     string TenantId,
     ResourceTypeId ResourceTypeId,
     string ResourceId);
+
+public sealed record ResourceRegistrationPlanningSnapshot(
+    RegisteredResource Resource,
+    long ReferenceFence);
+
+public sealed record ResourceRegistrationSnapshotFenced;
+
+public sealed record ResourceRegistrationSnapshotChanged;
+
+public union FenceResourceRegistrationSnapshotOutcome(
+    ResourceRegistrationSnapshotFenced,
+    ResourceRegistrationSnapshotChanged);
+
+public delegate Task<ResourceRegistrationPlanningSnapshot?> LoadResourceRegistrationPlanningSnapshot(
+    LoadRegisteredResourceRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken);
+
+public delegate Task<FenceResourceRegistrationSnapshotOutcome> FenceResourceRegistrationPlanningSnapshot(
+    ResourceRegistrationPlanningSnapshot snapshot,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken);

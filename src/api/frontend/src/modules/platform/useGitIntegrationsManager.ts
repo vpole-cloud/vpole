@@ -248,23 +248,21 @@ export function useGitIntegrationsManager({
       /* Scoped error is displayed. */
     }
   }
+  const [sourceName, setSourceName] = useState({ identity: analysisIdentity, value: '' })
+  const sourceTechnicalName = sourceName.identity === analysisIdentity ? sourceName.value : ''
+  const sourceNameValid =
+    /^[a-z](?:[a-z0-9-]*[a-z0-9])?$/.test(sourceTechnicalName) && sourceTechnicalName.length <= 63
   const link = async () => {
-    if (
-      analysisStale ||
-      !selection.connectionId ||
-      !selection.repositoryId ||
-      !selection.branch ||
-      !selection.candidateKey
-    )
+    if (!selection.connectionId || !selection.repositoryId || !selection.branch || !sourceNameValid)
       return
-    const command = { ...selection }
+    const command = { ...selection, technicalName: sourceTechnicalName }
     await write((signal) =>
       linkProviderRepository(
         apiBaseUrl,
         command.connectionId!,
         command.repositoryId!,
         command.branch,
-        command.candidateKey!,
+        command.technicalName,
         origin.credential(),
         tenantId,
         signal,
@@ -335,15 +333,38 @@ export function useGitIntegrationsManager({
     selectConnection,
     selectRepository,
     selectBranch: (branch: string) => dispatch({ type: 'selectBranch', branch }),
+    sourceTechnicalName,
+    sourceNameValid,
+    setSourceTechnicalName: (value: string) => setSourceName({ identity: analysisIdentity, value }),
     selectCandidate: (candidateKey: string) => dispatch({ type: 'selectCandidate', candidateKey }),
     analyze,
     link,
-    reanalyze: (id: string) =>
-      write(
-        (signal) =>
-          reanalyzeSourceRepository(apiBaseUrl, id, origin.credential(), tenantId, signal),
-        id,
-      ),
+    reanalyze: async (id: string) => {
+      const source = sources.resource?.find((item) => item.id === id)
+      if (!source || !enabled || !canManage || !current()) return
+      setBusySource({ identity, id })
+      try {
+        await mutation.run(
+          (signal) =>
+            reanalyzeSourceRepository(apiBaseUrl, id, origin.credential(), tenantId, signal),
+          (analysis) => {
+            if (!current()) return
+            dispatch({ type: 'selectConnection', connectionId: source.connectionId })
+            dispatch({
+              type: 'selectRepository',
+              repositoryId: source.externalRepositoryId,
+              defaultBranch: source.branch,
+            })
+            dispatch({ type: 'analysisLoaded', analysis })
+            setAnalysisEvidence({ analysis, snapshot: null })
+          },
+        )
+      } catch {
+        /* Scoped error is displayed. */
+      } finally {
+        if (current()) setBusySource(null)
+      }
+    },
     unlink: (id: string) =>
       write(
         (signal) => unlinkSourceRepository(apiBaseUrl, id, origin.credential(), tenantId, signal),

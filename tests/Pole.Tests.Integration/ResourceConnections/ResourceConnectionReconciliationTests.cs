@@ -11,6 +11,8 @@ using Pole.Features.ResourceConnections.Application.Kubernetes;
 using Pole.Features.ResourceConnections.Application.Persistence;
 using Pole.Features.ResourceConnections.Application.Reconciliation;
 using Pole.Features.ResourceConnections.Domain;
+using Pole.Features.GitOps.Application;
+using Microsoft.Extensions.Configuration;
 using Pole.Tests.Integration.Infrastructure;
 using Pole.Workloads;
 using Xunit;
@@ -40,6 +42,8 @@ public sealed class ResourceConnectionReconciliationTests(MongoReplicaSetFixture
         collection.AddSingleton(TimeProvider.System);
         collection.AddSingleton<MongoRunTransaction>();
         collection.AddSingleton<StoreOutboxWrites>(fixture.StoreOutboxWrites);
+        collection.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
+        collection.AddGitOpsFeature();
         collection.AddResourceConnectionsFeature();
         collection.RemoveAll<IResourceConnectionPolicyTarget>();
         collection.AddSingleton<IResourceConnectionPolicyTarget>(policy);

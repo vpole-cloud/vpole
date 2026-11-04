@@ -31,11 +31,20 @@ public sealed record TenantDomainZone(
     string DeploymentTargetId,
     string Label,
     string Domain,
-    [property: BsonRepresentation(BsonType.String)]
-    TenantDomainZoneKind Kind,
+    DomainIdentity Identity,
     long Revision,
+    long ReferenceFence,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc)
+{
+    [BsonIgnore]
+    public TenantDomainZoneKind Kind => Identity switch
+    {
+        GeneratedDomainIdentity => TenantDomainZoneKind.Generated,
+        NamedDomainIdentity => TenantDomainZoneKind.ManagedReservation,
+        _ => throw new InvalidOperationException("The domain identity is not supported.")
+    };
+}
 
 public static class TenantDomainZoneFactory
 {
@@ -54,7 +63,7 @@ public static class TenantDomainZoneFactory
             deploymentTargetId,
             label,
             publicBaseDomain,
-            TenantDomainZoneKind.Generated,
+            DomainIdentityFactory.Generated(),
             options);
 
     public static TenantDomainZone CreateManagedReservation(
@@ -62,6 +71,7 @@ public static class TenantDomainZoneFactory
         string deploymentTargetId,
         string label,
         DnsName publicBaseDomain,
+        string technicalName,
         CreateOptions options)
     {
         if (!TenantDomainZoneLabelPolicy.IsManagedLabelAllowed(label))
@@ -76,7 +86,7 @@ public static class TenantDomainZoneFactory
             deploymentTargetId,
             label,
             publicBaseDomain,
-            TenantDomainZoneKind.ManagedReservation,
+            DomainIdentityFactory.Named(technicalName),
             options);
     }
 
@@ -85,7 +95,7 @@ public static class TenantDomainZoneFactory
         string deploymentTargetId,
         string label,
         DnsName publicBaseDomain,
-        TenantDomainZoneKind kind,
+        DomainIdentity identity,
         CreateOptions options)
     {
         ArgumentNullException.ThrowIfNull(publicBaseDomain);
@@ -98,8 +108,9 @@ public static class TenantDomainZoneFactory
             DomainValueGuard.ObjectId(deploymentTargetId, nameof(deploymentTargetId)),
             normalizedLabel.Value,
             DnsName.Combine(normalizedLabel, publicBaseDomain).Value,
-            kind,
+            identity,
             Revision: 1,
+            ReferenceFence: 0,
             createdAtUtc,
             createdAtUtc);
     }

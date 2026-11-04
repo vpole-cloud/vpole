@@ -36,6 +36,9 @@ public static class ResourceConnectionHttpProblemMappings
     public static HttpProblem MapDeletionConflict(ResourceConnectionDeletionConflict _) => Problem(
         409, "resource-connections.deletion-conflict", "Connection deletion conflicted");
 
+    public static HttpProblem MapGitOwned(ResourceConnectionGitOwned _) => Problem(
+        409, "resource-connections.git-owned", "Connection configuration is managed by Git");
+
     private static HttpProblem Problem(int status, string code, string title) =>
         new(status, PoleProblemTypeId.FromCode(code), title, code);
 }

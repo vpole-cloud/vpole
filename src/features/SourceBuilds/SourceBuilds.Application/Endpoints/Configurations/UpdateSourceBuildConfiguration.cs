@@ -20,12 +20,14 @@ public sealed record UpdateSourceBuildConfigurationRequest(
     [FromTenantHeader] string TenantId)
     : IMediatorRequest<UpdateSourceBuildConfigurationOutcome>, ITenantWriteOperation;
 
-public sealed record UpdateSourceBuildConfigurationBody(SourceBuildRecipeDto Recipe);
+public sealed record UpdateSourceBuildConfigurationBody(
+    SourceBuildRecipeDto Recipe,
+    long ExpectedRevision);
 
 public union UpdateSourceBuildConfigurationOutcome(
     SourceBuildConfigurationDto,
     SourceBuildConfigurationNotFound,
-    SourceBuildConfigurationRecipeCandidateChanged,
+    SourceBuildConfigurationGitOwned,
     SourceBuildConfigurationUpdateConflict);
 
 public sealed class UpdateSourceBuildConfigurationHandler(
@@ -48,24 +50,18 @@ public sealed class UpdateSourceBuildConfigurationHandler(
         {
             return new SourceBuildConfigurationNotFound(request.ConfigurationId);
         }
-        if (!string.Equals(
-                existing.Recipe.CandidateKey,
-                request.Body.Recipe.CandidateKey,
-                StringComparison.Ordinal))
-        {
-            return new SourceBuildConfigurationRecipeCandidateChanged(existing.Id);
-        }
+        if (existing.Revision != request.Body.ExpectedRevision)
+            return new SourceBuildConfigurationUpdateConflict(existing.Id);
 
         var updated = await updateSourceBuildConfiguration(
-            existing,
-            request.Body.Recipe.ToDomain(isCustomized: true),
-            timeProvider.GetUtcNow().UtcDateTime,
+            new(existing, request.Body.Recipe.ToDomain(), timeProvider.GetUtcNow().UtcDateTime),
             cancellationToken);
         return updated switch
         {
             SourceBuildConfiguration success => success.ToDto(),
             SourceBuildConfigurationNotFound notFound => notFound,
-            SourceBuildConfigurationUpdateConflict conflict => conflict
+            SourceBuildConfigurationUpdateConflict conflict => conflict,
+            SourceBuildConfigurationGitOwned owned => owned
         };
     }
 }
@@ -85,10 +81,13 @@ public sealed class UpdateSourceBuildConfigurationRequestValidator
 public sealed class UpdateSourceBuildConfigurationBodyValidator
     : AbstractValidator<UpdateSourceBuildConfigurationBody>
 {
-    public UpdateSourceBuildConfigurationBodyValidator() =>
+    public UpdateSourceBuildConfigurationBodyValidator()
+    {
+        RuleFor(item => item.ExpectedRevision).GreaterThan(0);
         RuleFor(item => item.Recipe)
             .NotNull()
             .SetValidator(new SourceBuildRecipeDtoValidator());
+    }
 }
 
 public static class UpdateSourceBuildConfigurationEndpoint
@@ -106,7 +105,7 @@ public static class UpdateSourceBuildConfigurationEndpoint
                 {
                     SourceBuildConfigurationDto configuration => Results.Ok(configuration),
                     SourceBuildConfigurationNotFound error => MapConfigurationNotFound(error),
-                    SourceBuildConfigurationRecipeCandidateChanged error => MapRecipeCandidateChanged(error),
+                    SourceBuildConfigurationGitOwned error => MapConfigurationGitOwned(error),
                     SourceBuildConfigurationUpdateConflict error => MapConfigurationUpdateConflict(error)
                 });
             })

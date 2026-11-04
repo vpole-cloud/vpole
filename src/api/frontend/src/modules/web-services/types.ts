@@ -27,6 +27,7 @@ export interface WebService {
   resourceGroupId: string
   isolationScopeId?: string | null
   activeRevision: number
+  lifecycle?: 'Prepared' | 'AwaitingFirstArtifact' | 'Active' | 'Deleting'
   spec: WebServiceSpec
   exposure: WebServiceExposure
   deployments: WebServiceDeployment[]
@@ -38,7 +39,14 @@ export interface WebServiceExposure {
 }
 
 export interface WebServiceSpec {
-  image: ImageInfo
+  image: ImageInfo | null
+  imageAuthority?: {
+    mode: 'Direct' | 'UnboundSourceBuild' | 'PendingSourceBuild' | 'DeliveredSourceBuild'
+    configurationId: string | null
+    jobId: string | null
+    generation: number | null
+    digest: string | null
+  } | null
   config: {
     environmentVariables: Record<string, string>
     portMappings: PortMapping[]
@@ -102,7 +110,7 @@ export interface WebServiceRelease {
     commitSha: string | null
     buildUrl: string | null
     imageDigest: string | null
-    previousImageTag: string
+    previousImageTag: string | null
     newImageTag: string
     actorType: string
     deploymentTokenId: string | null
@@ -127,6 +135,7 @@ export interface WebServiceReleaseHistory {
 }
 
 export interface WebServiceInput {
+  creationMode?: 'Image' | 'SourceBuild'
   expectedRevision?: number
   connectionEnvironmentReferences?: Record<string, ConnectionEnvironmentReference>
   secretEnvironmentReferences?: Record<string, SecretEnvironmentReference>

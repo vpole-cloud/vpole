@@ -12,6 +12,12 @@ export async function fetchDomainZones(
 }
 
 const domainProblems: Record<string, string> = {
+  'domains.hostname.invalid-name': 'The hostname is invalid or too long for this zone.',
+  'domains.hostname.git-owned': 'This hostname binding is managed by GitOps.',
+  'domains.zone.git-owned': 'This reservation is managed by GitOps. Change its managing source.',
+  'domains.zone.name-conflict': 'This technical name is already used in the active tenant.',
+  'domains.hostname.name-conflict':
+    'This hostname binding technical name is already used in the active tenant.',
   'domains.zone.not-found': 'This zone is unavailable in the active tenant. Refresh the catalog.',
   'domains.zone.already-reserved':
     'This zone label is already reserved on the target. Choose another label.',
@@ -142,7 +148,7 @@ export const fetchDomainZoneBindings = (
 
 export async function createDomainZone(
   apiBaseUrl: string,
-  input: { deploymentTargetId: string; label: string },
+  input: { deploymentTargetId: string; label: string; technicalName: string },
   token?: string,
   tenantId?: string,
   signal?: AbortSignal,
@@ -196,7 +202,7 @@ export async function addWebServiceHostnameBinding(
   apiBaseUrl: string,
   id: string,
   deploymentId: string,
-  input: { tenantDomainZoneId: string; relativeName: string },
+  input: { tenantDomainZoneId: string; relativeName: string; technicalName: string },
   token?: string,
   tenantId?: string,
   signal?: AbortSignal,

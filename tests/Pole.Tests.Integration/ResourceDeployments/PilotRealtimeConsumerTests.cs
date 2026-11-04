@@ -215,6 +215,7 @@ public sealed class PilotRealtimeConsumerTests
                 GroupId,
                 "scope-pilot",
                 2,
+            Pole.Features.WebServices.Events.WebServiceLifecycleState.Active,
                 null!,
                 null!,
                 [],

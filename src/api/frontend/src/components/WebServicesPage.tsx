@@ -1,3 +1,4 @@
+import { imageDescription } from '../modules/web-services/imageModel'
 import { canEditDesiredConfiguration } from '../data/gitOps'
 import { useState } from 'react'
 import { Button, ConfirmationDialog, DataTable, EmptyState, StatusBadge } from '../ui/components'
@@ -116,11 +117,7 @@ export function WebServicesPage({
               {
                 id: 'image',
                 label: 'Image',
-                render: (item) => (
-                  <code>
-                    {item.spec.image.server}/{item.spec.image.name}:{item.spec.image.tag}
-                  </code>
-                ),
+                render: (item) => <code>{imageDescription(item.spec)}</code>,
               },
               {
                 id: 'placement',

@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Domains.Contracts;
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Persistence.Reads;
@@ -31,15 +32,37 @@ public static class GetWebServiceDeploymentHostnames
                         (await mediator.Send(request, cancellationToken))
                         .ToHttpResult(outcome => outcome switch
                         {
-                            IReadOnlyList<HostnameBindingSnapshot> value => Results.Ok(value),
+                            IReadOnlyList<WebServiceHostnameBindingDto> value => Results.Ok(value),
                             GetWebServiceDeploymentHostnamesError error =>
                                 MapError(error)
                         }))
                 .WithName("GetWebServiceDeploymentHostnames")
-                .Produces<IReadOnlyList<HostnameBindingSnapshot>>();
+                .Produces<IReadOnlyList<WebServiceHostnameBindingDto>>();
             return app;
         }
     }
+}
+
+public sealed record WebServiceHostnameBindingDto(
+    string Id,
+    string TenantId,
+    string TenantDomainZoneId,
+    string DeploymentTargetId,
+    string ResourceType,
+    string ResourceId,
+    string ResourceDeploymentId,
+    string RelativeName,
+    string Hostname,
+    string Kind,
+    DateTime CreatedAtUtc,
+    string? TechnicalName,
+    GitResourceStatus? GitOps)
+{
+    public static WebServiceHostnameBindingDto FromSnapshot(
+        HostnameBindingSnapshot binding, GitResourceStatus? status) =>
+        new(binding.Id, binding.TenantId, binding.TenantDomainZoneId, binding.DeploymentTargetId,
+            binding.ResourceType, binding.ResourceId, binding.ResourceDeploymentId, binding.RelativeName,
+            binding.Hostname, binding.Kind, binding.CreatedAtUtc, binding.TechnicalName, status);
 }
 
 public union GetWebServiceDeploymentHostnamesError(
@@ -47,7 +70,7 @@ public union GetWebServiceDeploymentHostnamesError(
     WebServiceResourceDeploymentNotFound);
 
 public union GetWebServiceDeploymentHostnamesOutcome(
-    IReadOnlyList<HostnameBindingSnapshot>,
+    IReadOnlyList<WebServiceHostnameBindingDto>,
     GetWebServiceDeploymentHostnamesError);
 
 public sealed record GetWebServiceDeploymentHostnamesRequest(
@@ -59,7 +82,8 @@ public sealed record GetWebServiceDeploymentHostnamesRequest(
 public sealed class GetWebServiceDeploymentHostnamesHandler(
     LoadWebServiceById loadWebService,
     LoadExactResourceDeployment loadExactResourceDeployment,
-    LoadHostnameBindingsForDeployment loadHostnameBindingsForDeployment)
+    LoadHostnameBindingsForDeployment loadHostnameBindingsForDeployment,
+    IGitOpsMutations git)
     : IMediatorOutcomeHandler<
         GetWebServiceDeploymentHostnamesRequest,
         GetWebServiceDeploymentHostnamesOutcome>
@@ -97,7 +121,11 @@ public sealed class GetWebServiceDeploymentHostnamesHandler(
                 ResourceId: request.Id,
                 ResourceDeploymentId: request.DeploymentId),
             cancellationToken: cancellationToken);
-        return new GetWebServiceDeploymentHostnamesOutcome(snapshots);
+        var statuses = await git.StatusesAsync(new(request.TenantId, "HostnameBinding",
+            snapshots.Select(item => item.Id).ToArray()), cancellationToken);
+        return new GetWebServiceDeploymentHostnamesOutcome(snapshots
+            .Select(item => WebServiceHostnameBindingDto.FromSnapshot(item, statuses.GetValueOrDefault(item.Id)))
+            .ToArray());
     }
 }
 

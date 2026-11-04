@@ -22,7 +22,8 @@ The suite covers:
   resource-group metadata tabs, dirty-close confirmation, direct URLs/reload, and typed resource
   links from group contents and the paginated navigation tree;
 - multi-target Kubernetes placement and isolated target failure/retry;
-- browser Git repository/branch/build-plan selection, source-linked service creation, BuildKit
+- browser named repository/branch selection, optional build-plan analysis and explicit inline
+  Dockerfile authoring, source-build service creation without a placeholder image, BuildKit
   build/push, Harbor artifacts, Kubernetes deployment, and a visible failed-build result;
 - tenant-scoped global search and contextual commands, keyboard selection, focus restoration,
   and reuse of the existing resource tab after opening a search result.
@@ -49,13 +50,29 @@ branch deletion without inventory removal. Repository `9003` (`pole-e2e/gitops-m
 immutable commit snapshots controlled by the authenticated test-only `/__e2e/gitops-mixed` endpoint.
 Repeating identical commit/input is idempotent; changed content at an existing commit is rejected.
 
-`MixedRepositoryWaitsForSecretsRepairsDriftAndThenPerformsNoOp` covers eight kinds, ten declarations
-and fourteen phase operations: a group, named scope, Secret, WebService, Redis, PostgreSQL,
-FunctionApp and three runtime/bootstrap grants. It checks the missing-value blocker and dependency
-recovery without a new Git commit, inert prepared consumers, PostgreSQL native credential projection
-and password-authenticated login, then same-SHA WebService/Redis/PostgreSQL repair and a full no-op.
-The no-op check includes Function revision stability. The mixed lane checks configuration applied;
-it does not require Function runtime activation before evaluating configuration drift.
+`MixedRepositoryWaitsForSecretsRepairsDriftAndThenPerformsNoOp` covers all thirteen kinds with
+fifteen declarations and nineteen phase operations: ResourceGroup, IsolationScope, Secret,
+WebService, RedisService, PostgresCluster, FunctionApp, three SecretBindings for runtime/bootstrap
+access, ResourceConnection, DomainZone, HostnameBinding, SourceRepository and SourceBuildConfiguration.
+It checks the missing-value blocker and dependency recovery without a new Git commit, inert prepared
+consumers, PostgreSQL native credential projection and password-authenticated login.
+
+The Public WebService delegates image ownership to its accepted build configuration. After GitOps
+apply it remains `AwaitingFirstArtifact`, with no image, build job, release, native Deployment, Pod or
+Ingress. A manual Build resolves the application repository's current SHA, builds the explicit
+Dockerfile through the real BuildKit/Harbor lane and activates the workload using a verified digest.
+The application source uses repository `9001` on the stub's `gitops-application` branch, distinct from
+the manual build tests' `main` identity; its SHA also differs from the GitOps manifest commit.
+
+The scenario verifies connection environment values and custom ingress rules, repairs
+WebService/Redis/PostgreSQL drift at the same manifest SHA, then removes the accepted hostname
+attachment through the Mongo fixture and checks a `HostnameBinding` update restores it. The final
+Sync reports nineteen no-op operations, preserves business revisions and the delivered digest, and
+creates no additional build job. Native ingress-rule assertions do not prove routed HTTP, public
+DNS or TLS. Separate routing checks must supply that evidence.
+
+The mixed lane checks configuration applied; it does not require Function runtime activation before
+evaluating configuration drift. The no-op check includes Function revision stability.
 
 The separate Function live test checks native Secret projection, SDK activation and authenticated
 invocation. Its lifecycle callbacks apply Domain transitions in memory; Mongo integration tests cover
@@ -143,11 +160,25 @@ runs and other worktrees independent. The test restores its port-forward at the 
 port in `finally`, so later tests in the fixture can build again. The fixture keeps its tenant's
 Harbor project until all source-build tests finish, then deletes it during teardown.
 
-The API provenance test uses `FROM scratch` to isolate artifact/release behavior. The browser
-journey selects the stub's runnable `dependencies` revision, builds its .NET application and
-waits for `/health` on port 8080 to become ready. It saves a deliberately broken COPY recipe,
-reloads its retained failure output, verifies the running deployment is unchanged, then repairs
+The API provenance test supplies an inline Dockerfile based on `traefik/whoami:v1.11.0`, copying
+the application revision marker into the image. It creates the WebService in explicit `SourceBuild`
+mode with no initial image or release. A second manual Build resolves the changed application branch
+without reanalysis; each job retains its own immutable commit and recipe. Deployment assertions use
+the verified digest, rather than the mutable build tag. The browser journey selects the stub's
+runnable `dependencies` revision, supplies repository/configuration technical names and a Dockerfile,
+builds its .NET application and waits for `/health` on port 8080 to become ready. It saves a
+deliberately broken COPY recipe, reloads its retained failure output, verifies the running
+deployment is unchanged, then repairs
 the recipe through the browser and observes a new successful release and ready workload.
+Analysis is only an authoring aid; linking a repository and executing an authored recipe do not
+require a selected candidate. A new Build uses the current application branch; recovery of the
+same job retains its accepted input. There is no exact-input Retry API. GitOps polling, Sync and
+webhook processing never queue application builds.
+
+Source-build cleanup deletes the WebService first, then removes any remaining build configuration
+and finally unlinks the repository. Deleting a configuration still bound to image authority is
+blocked even when no build is running. The ordered cleanup waits for dependent deletion before
+removing the resource group and its namespace.
 
 `TenantWorkspaceBrowserE2ETests` temporarily grants the real Beta Keycloak user Viewer access to
 Alpha while retaining ownership of Beta. It proves read-only controls and an actual forbidden

@@ -62,8 +62,8 @@ public delegate Task<EnsureNoWebServiceActiveSourceBuildsOutcome>
 /// </summary>
 public delegate Task<EnsureNoSourceRepositoryBuildConfigurationOutcome>
     EnsureNoSourceRepositoryBuildConfiguration(
-        string tenantId,
-        string sourceRepositoryId,
+        SourceRepositoryConfigurationRequest request,
+        IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
 /// <summary>
@@ -85,6 +85,7 @@ public sealed record SourceBuildDeploymentRequest(
     string BuildJobId,
     string SourceRepositoryId,
     string CommitSha,
+    SourceBuildDeploymentAuthority Authority,
     string? ActorUserId,
     string? ActorEmail,
     SourceBuildDeploymentImage Image);
@@ -132,7 +133,12 @@ public sealed record SourceBuildWebServiceDeploymentRejected(
     string WebServiceId,
     SourceBuildResourceDeploymentRejection Reason);
 
-public enum SourceBuildWebServiceUpdateConflictReason { ExpectedRevisionConflict, GitOwnedConfiguration }
+public enum SourceBuildWebServiceUpdateConflictReason
+{
+    ExpectedRevisionConflict,
+    GitOwnedConfiguration,
+    SupersededBuild
+}
 
 public sealed record SourceBuildWebServiceUpdateConflict(
     string WebServiceId,
@@ -171,10 +177,37 @@ public delegate Task CompleteSourceBuildJobOnDeployment(
     SourceBuildDeploymentCompletion completion,
     CancellationToken cancellationToken = default);
 
+public enum SourceBuildAdmissionPurpose { Configure, Build }
+
 public sealed record AdmitSourceBuildWebServiceRequest(
     string TenantId,
-    string WebServiceId);
+    string WebServiceId,
+    string ConfigurationId,
+    SourceBuildAdmissionPurpose Purpose);
 
 public sealed record EnsureNoWebServiceActiveSourceBuildsRequest(
     string TenantId,
     string WebServiceId);
+
+public sealed record SourceRepositoryConfigurationRequest(
+    string TenantId,
+    string SourceRepositoryId);
+
+public sealed record SourceBuildTargetRequest(
+    string TenantId,
+    string WebServiceId);
+
+public sealed record SourceBuildTargetSnapshot(
+    string TenantId,
+    string WebServiceId,
+    long Revision,
+    string? ConfigurationId);
+
+public union LoadSourceBuildTargetOutcome(
+    SourceBuildTargetSnapshot,
+    SourceBuildWebServiceNotFound);
+
+public delegate Task<LoadSourceBuildTargetOutcome> LoadSourceBuildTarget(
+    SourceBuildTargetRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken);

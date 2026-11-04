@@ -39,6 +39,12 @@ public static class DeploymentTargetPersistenceRegistration
         AddSingletonCapability<MongoLoadDefaultDeploymentTargetId, LoadDefaultDeploymentTargetId>(
             services,
             implementation => implementation.InvokeAsync);
+        AddCapability<MongoDomainReservationTargetPlanning, ResolveNamedDomainReservationTarget>(
+            services, implementation => implementation.ResolveNameAsync);
+        AddCapability<MongoDomainReservationTargetPlanning, ResolveDomainReservationTargetPlanningSnapshot>(
+            services, implementation => implementation.ReadAsync);
+        AddCapability<MongoDomainReservationTargetPlanning, FenceDomainReservationTargetPlanningSnapshot>(
+            services, implementation => implementation.FenceAsync);
         AddCapability<MongoDeploymentTargetPlanningSnapshots, ResolveDeploymentTargetPlanningSnapshot>(
             services, implementation => implementation.ReadAsync);
         AddCapability<MongoDeploymentTargetPlanningSnapshots, FenceDeploymentTargetPlanningSnapshot>(

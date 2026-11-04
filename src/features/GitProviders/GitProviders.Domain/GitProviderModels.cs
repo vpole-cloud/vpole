@@ -35,6 +35,7 @@ public sealed record GitProviderConnection(
     GitProviderAccountType AccountType,
     GitProviderRepositorySelection RepositorySelection,
     string CreatedByUserId,
+    long ReferenceFence,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc);
 
@@ -70,6 +71,7 @@ public static class GitProviderConnectionFactory
             accountType,
             repositorySelection,
             createdByUserId,
+            0,
             options.CreatedAtUtc,
             options.UpdatedAtUtc);
 }
@@ -173,16 +175,15 @@ public sealed record SourceRepository(
     [property: BsonRepresentation(BsonType.ObjectId)]
     string Id,
     string TenantId,
+    string TechnicalName,
     string ConnectionId,
     string ExternalRepositoryId,
     string RepositoryFullName,
     string RepositoryUrl,
     bool IsPrivate,
     string Branch,
-    string CandidateKey,
-    SourceBuildPlan SelectedPlan,
-    string CommitSha,
-    DateTime AnalyzedAtUtc,
+    long Revision,
+    long ReferenceFence,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc);
 
@@ -198,27 +199,33 @@ public static class SourceRepositoryFactory
 
     public static SourceRepository Create(
         string tenantId,
+        string technicalName,
         string connectionId,
         string externalRepositoryId,
         string repositoryFullName,
         string repositoryUrl,
         bool isPrivate,
-        SourceRepositoryAnalysis analysis,
-        SourceBuildPlan selectedPlan,
-        CreateOptions options) =>
-        new(
+        string branch,
+        CreateOptions options)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(externalRepositoryId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(branch);
+
+        return new(
             options.Id,
             tenantId,
+            ResourceTechnicalName.Require(technicalName),
             connectionId,
             externalRepositoryId,
             repositoryFullName,
             repositoryUrl,
             isPrivate,
-            analysis.Branch,
-            selectedPlan.CandidateKey,
-            selectedPlan,
-            analysis.CommitSha,
-            analysis.AnalyzedAtUtc,
+            branch,
+            1,
+            0,
             options.CreatedAtUtc,
             options.UpdatedAtUtc);
+    }
 }

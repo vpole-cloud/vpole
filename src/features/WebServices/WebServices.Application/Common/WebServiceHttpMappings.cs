@@ -186,6 +186,7 @@ public static class WebServiceHttpMappings
             "Custom hostnames require public web-service exposure",
             ("webServiceId", unavailable.WebServiceId)),
         CustomHostnameBindingError hostname => DomainContractHttpMappings.MapCustomHostnameBindingError(hostname),
+        CustomHostnameBindingGitOwned owned => DomainContractHttpMappings.MapCustomHostnameBindingGitOwned(owned),
         ResourceDeploymentMutationError deployment => ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
         AdvanceResourceDeploymentRevisionError revision => ResourceDeploymentContractHttpMappings.MapRevisionError(revision),
         WebServiceConnectionConflict conflict => MapError(conflict),

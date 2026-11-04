@@ -19,6 +19,7 @@ import {
   type AcceptedCreation,
   type CreationCommand,
   type CreationPhase,
+  type SourceBuildCreation,
 } from './creationWorkflow'
 
 export function useWebServiceCreation(onCompleted: (id: string, mode: 'image' | 'git') => void) {
@@ -87,16 +88,25 @@ export function useWebServiceCreation(onCompleted: (id: string, mode: 'image' | 
           )
           guard()
           const existing = configurations.find((item) => item.webServiceId === serviceId)
-          if (existing && existing.sourceRepositoryId !== command.sourceId)
+          if (
+            existing &&
+            (existing.sourceRepositoryId !== command.source.sourceRepositoryId ||
+              existing.technicalName !== command.source.technicalName ||
+              existing.recipe.dockerfile !== command.source.dockerfile)
+          )
             throw new Error(
-              'This service already has a different source. Open Builds to inspect its configuration.',
+              'This service already has a different build configuration. Open Builds to review its source, technical name and recipe.',
             )
           accepted.configurationId = existing?.id ?? accepted.configurationId
           if (!accepted.configurationId) {
             const configuration = await createSourceBuildConfiguration(
               api.baseUrl,
-              command.sourceId,
-              serviceId,
+              {
+                technicalName: command.source.technicalName,
+                sourceRepositoryId: command.source.sourceRepositoryId,
+                webServiceId: serviceId,
+                recipe: { dockerfile: command.source.dockerfile },
+              },
               scope.credential(),
               api.tenantId,
             )
@@ -152,8 +162,8 @@ export function useWebServiceCreation(onCompleted: (id: string, mode: 'image' | 
     error,
     accepted,
     locked: state.kind !== 'editing',
-    submit: (input: WebServiceInput, mode: 'image' | 'git', sourceId?: string) =>
-      execute(creationCommand(input, mode, sourceId), {}, false),
+    submit: (input: WebServiceInput, mode: 'image' | 'git', source?: SourceBuildCreation) =>
+      execute(creationCommand(input, mode, source), {}, false),
     retry: () =>
       state.kind === 'recoverable-failure'
         ? execute(state.command, state.accepted, true)

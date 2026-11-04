@@ -1,7 +1,13 @@
 import type { WebServiceInput } from '../../types'
 
+export interface SourceBuildCreation {
+  sourceRepositoryId: string
+  technicalName: string
+  dockerfile: string
+}
+
 export type CreationCommand = Readonly<
-  { input: WebServiceInput } & ({ mode: 'image' } | { mode: 'git'; sourceId: string })
+  { input: WebServiceInput } & ({ mode: 'image' } | { mode: 'git'; source: SourceBuildCreation })
 >
 export interface AcceptedCreation {
   serviceId?: string
@@ -87,12 +93,20 @@ export function creationReducer(_state: CreationState, event: CreationEvent): Cr
 export function creationCommand(
   input: WebServiceInput,
   mode: 'image' | 'git',
-  sourceId?: string,
+  source?: SourceBuildCreation,
 ): CreationCommand {
   const snapshot = structuredClone(input)
   if (mode === 'git') {
-    if (!sourceId) throw new Error('Choose a linked Git source first.')
-    return { mode, input: snapshot, sourceId }
+    if (!source?.sourceRepositoryId) throw new Error('Choose a linked Git source first.')
+    if (!/^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(source.technicalName))
+      throw new Error('Use a lowercase technical name up to 63 characters, starting with a letter.')
+    if (!source.dockerfile.trim() || source.dockerfile.length > 100000)
+      throw new Error('Provide an executable Dockerfile up to 100000 characters.')
+    return {
+      mode,
+      input: { ...snapshot, creationMode: 'SourceBuild' },
+      source: structuredClone(source),
+    }
   }
-  return { mode, input: snapshot }
+  return { mode, input: { ...snapshot, creationMode: 'Image' } }
 }

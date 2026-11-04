@@ -1,3 +1,4 @@
+import { imageDescription } from './imageModel'
 import { canEditDesiredConfiguration } from '../../data/gitOps'
 import { GitOwnershipNotice } from '../../ui/GitOwnershipNotice'
 import { useApiScope } from '../../data/useApiScope'
@@ -64,13 +65,15 @@ export function WebServiceResourceView({
     active: active && ['configuration', 'deployments'].includes(section),
     resourceGroupId: details.service?.resourceGroupId,
   })
-  const canConfigure = canEditDesiredConfiguration(tenant.canManage, details.service?.gitOps)
+  const canConfigure =
+    canEditDesiredConfiguration(tenant.canManage, details.service?.gitOps) &&
+    details.service?.spec.image !== null
   const builds = useSourceBuildsManager({
     apiBaseUrl: api.baseUrl,
     token: api.token,
     tenantId: api.tenantId,
     webServiceId: id,
-    canManage: canConfigure,
+    canManage: tenant.canManage,
     enabled: active && section === 'builds',
   })
   const [configurationDirty, setConfigurationDirty] = useState(false)
@@ -167,9 +170,7 @@ export function WebServiceResourceView({
             {groups.find((group) => group.id === service.resourceGroupId)?.name ?? 'Resource group'}
           </p>
           <h1>{service.name}</h1>
-          <p>
-            {service.spec.image.server}/{service.spec.image.name}:{service.spec.image.tag}
-          </p>
+          <p>{imageDescription(service.spec)}</p>
         </div>
         <Button
           aria-label="Refresh service details"
@@ -180,6 +181,16 @@ export function WebServiceResourceView({
         </Button>
       </header>
       <GitOwnershipNotice status={service?.gitOps} />
+      {service.lifecycle === 'AwaitingFirstArtifact' && (
+        <Notice>
+          The configuration is accepted. Workload and routes await the first successful build.
+        </Notice>
+      )}
+      {service.lifecycle === 'Prepared' && (
+        <Notice>
+          The service is prepared and does not run yet. Complete its build configuration.
+        </Notice>
+      )}
       {details.error && (
         <Notice tone="error">{details.error} Last fetched configuration is shown.</Notice>
       )}
@@ -204,9 +215,7 @@ export function WebServiceResourceView({
             <div>
               <dt>Image</dt>
               <dd>
-                <code>
-                  {service.spec.image.server}/{service.spec.image.name}:{service.spec.image.tag}
-                </code>
+                <code>{imageDescription(service.spec)}</code>
               </dd>
             </div>
             <div>
@@ -328,7 +337,9 @@ export function WebServiceResourceView({
               title={
                 service.gitOps
                   ? 'Edit this configuration in Git.'
-                  : 'Tenant viewer access is read-only.'
+                  : service.spec.image === null
+                    ? 'Configuration changes become available after the first artifact.'
+                    : 'Tenant viewer access is read-only.'
               }
             />
           ))}
@@ -383,7 +394,7 @@ export function WebServiceResourceView({
           <SourceBuildPanel
             webService={service}
             manager={builds}
-            canManage={canConfigure}
+            canManage={tenant.canManage}
             onDirtyChange={setBuildDirty}
             active={active && section === 'builds'}
           />

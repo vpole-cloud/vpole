@@ -54,6 +54,7 @@ public sealed class DomainZoneLoadCapabilityTests(MongoReplicaSetFixture fixture
             deploymentTargetId,
             label,
             DnsName.Create("apps.example.test"),
+            "zone-" + MongoDB.Bson.ObjectId.GenerateNewId(),
             new TenantDomainZoneFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
                 DateTime.UtcNow));

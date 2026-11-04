@@ -58,3 +58,10 @@ public delegate Task<LoadTenantMemberOutcome> LoadTenantMember(
 public sealed record LoadTenantMemberRequest(
     string TenantId,
     string UserId);
+
+public sealed record FenceTenantIdentityRequest(string TenantId);
+
+public delegate Task<LoadTenantIdentityOutcome> FenceTenantIdentity(
+    FenceTenantIdentityRequest request,
+    MongoDB.Driver.IClientSessionHandle session,
+    CancellationToken cancellationToken);

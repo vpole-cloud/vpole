@@ -1,5 +1,6 @@
 using Pole.Features.DeploymentTargets.Application.Persistence;
 using Pole.Features.GitOps.Application;
+using Pole.Features.GitProviders.Application;
 using Pole.Features.Secrets.Application;
 using System.Reflection;
 using Microsoft.Extensions.Configuration;
@@ -154,6 +155,7 @@ public static class TestServiceProviderFactory
         services.AddSingleton<TestSourceBuildJobDispatcher>();
         services.AddSingleton<DispatchSourceBuildJob>(provider =>
             provider.GetRequiredService<TestSourceBuildJobDispatcher>().Invoke);
+        services.AddGitProvidersFeature(configuration);
         services.AddSourceBuildsFeature(configuration);
         services.AddValidatorsFromAssemblies(Assemblies);
         services.AddPoleMediator(Assemblies);

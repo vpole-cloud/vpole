@@ -65,6 +65,9 @@ type PostgresFeatureRegistration =
 
         PostgresPersistenceRegistration.addPostgresPersistence services |> ignore
 
+        services.AddSingleton<ResourceConnectionDeclarationKind>(
+            ResourceConnectionDeclarationKind("PostgresCluster", PostgresResourceDeployment.ResourceType)
+        ) |> ignore
         services.AddSingleton<ResourceConnectionSourceCapability>(
             ResourceConnectionSourceCapability(PostgresResourceDeployment.ResourceType)
         )

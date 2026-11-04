@@ -27,6 +27,7 @@ const zone: TenantDomainZone = {
   label: 'company',
   domain: 'company.apps.test',
   kind: 'managed-reservation',
+  technicalName: 'company-zone',
   revision: 1,
   createdAtUtc: '2026-01-01T00:00:00Z',
   updatedAtUtc: '2026-01-02T00:00:00Z',
@@ -42,6 +43,7 @@ const generated: HostnameBinding = {
   relativeName: 'app',
   hostname: 'app.generated.apps.test',
   kind: 'generated',
+  technicalName: null,
   createdAtUtc: zone.createdAtUtc,
 }
 const custom: HostnameBinding = {
@@ -51,6 +53,7 @@ const custom: HostnameBinding = {
   relativeName: 'api',
   hostname: 'api.company.apps.test',
   kind: 'custom',
+  technicalName: 'api-alias',
 }
 let service: WebService
 let rows: HostnameBinding[]
@@ -69,6 +72,7 @@ let zonesFail: boolean
 let bindingsFail: boolean
 let currentZone: TenantDomainZone
 let ownerCount: number
+let bindingOwnership: TenantDomainZone['gitOps']
 let ownersFail: boolean
 let zoneFail: boolean
 let heldZone: Promise<Response> | undefined
@@ -170,6 +174,7 @@ beforeEach(() => {
   bindingsFail = false
   currentZone = { ...zone }
   ownerCount = 26
+  bindingOwnership = null
   ownersFail = false
   zoneFail = false
   heldZone = undefined
@@ -257,7 +262,8 @@ beforeEach(() => {
           ...custom,
           id: 'new',
           relativeName: body.relativeName,
-          hostname: `${body.relativeName}.${zone.domain}`,
+          hostname: body.relativeName === '@' ? zone.domain : `${body.relativeName}.${zone.domain}`,
+          technicalName: body.technicalName,
         })
         return heldAttach ?? json(service.deployments[0])
       }
@@ -398,6 +404,7 @@ it('retains a dirty reservation across workspace tabs and exposes safe conflict 
   await click('Reserve zone')
   await fill('Deployment target', 'target')
   await fill('Zone label', 'company')
+  await fill('Technical name', 'company-zone')
   await click('All zones')
   await click('Reserve zone')
   expect(field('Zone label').value).toBe('company')
@@ -418,6 +425,7 @@ it('preserves partial alias replacement and retries detach without duplicating t
   expect(text()).toContain('IngressApplyFailed')
   expect(text()).toContain('Generated · maintained')
   await click('Change alias')
+  await fill('Binding technical name', 'next-alias')
   await fill('Hostname label', 'next')
   detachFails = true
   await act(async () =>
@@ -458,6 +466,7 @@ it('explains a routing conflict without revealing the inaccessible owner or losi
   window.history.replaceState({}, '', '/?view=web-services')
   await render('Owner', 'alpha', 'web-services')
   await fill('Reserved zone', 'zone')
+  await fill('Binding technical name', 'fresh-alias')
   await fill('Hostname label', 'conflict')
   attachFails = true
   await act(async () =>
@@ -476,6 +485,7 @@ it('blocks missing ingress and viewer mutations and clears drafts on tenant swit
   window.history.replaceState({}, '', '/?view=web-services')
   await render('Owner', 'alpha', 'web-services')
   await fill('Reserved zone', 'zone')
+  await fill('Binding technical name', 'fresh-alias')
   await fill('Hostname label', 'draft')
   await render('Viewer', 'alpha', 'web-services')
   expect(text()).not.toContain('Attach alias')
@@ -493,6 +503,7 @@ it('preserves a reservation draft when credentials refresh and sends the new cre
   await click('Reserve zone')
   await fill('Deployment target', 'target')
   await fill('Zone label', 'draft')
+  await fill('Technical name', 'draft-zone')
   await render('Owner', 'alpha', 'domains', 'fresh')
   expect(field('Zone label').value).toBe('draft')
   await act(async () =>
@@ -512,6 +523,7 @@ it('observes conservative binding hints without replacing an alias draft and res
   await render('Owner', 'alpha', 'web-services', 'token', true)
   await act(async () => vi.advanceTimersByTimeAsync(500))
   await fill('Reserved zone', 'zone')
+  await fill('Binding technical name', 'fresh-alias')
   await fill('Hostname label', 'unsaved-alias')
   rows = [
     ...rows,
@@ -561,6 +573,7 @@ async function aliasDraft() {
   await render('Owner', 'alpha', 'web-services', 'token', true)
   await act(async () => vi.advanceTimersByTimeAsync(500))
   await fill('Reserved zone', 'zone')
+  await fill('Binding technical name', 'fresh-alias')
   await fill('Hostname label', ' Fresh.Alias ')
 }
 async function domainHint() {
@@ -616,6 +629,7 @@ it.each(['zones', 'bindings', 'both'] as const)(
     expect(JSON.parse(submitted as string)).toEqual({
       tenantDomainZoneId: 'zone',
       relativeName: 'fresh.alias',
+      technicalName: 'fresh-alias',
     })
     expect(new Headers(command?.headers).get('X-Pole-Tenant-ID')).toBe('alpha')
     expect(new Headers(command?.headers).get('Authorization')).toBe('Bearer token')
@@ -716,6 +730,7 @@ it('keeps initial absent metadata, invalid labels and duplicate aliases blocked 
   })
   await act(async () => vi.advanceTimersByTimeAsync(1))
   await fill('Reserved zone', 'zone')
+  await fill('Binding technical name', 'fresh-alias')
   for (const name of ['', 'bad_name', '.api', 'api']) {
     await fill('Hostname label', name)
     expect(attachButton().disabled).toBe(true)
@@ -744,6 +759,7 @@ function ownerSnapshot(pageNumber = 1) {
       ? [
           {
             binding: custom,
+            gitOps: bindingOwnership,
             resourceDisplayName: 'Application',
             resourceGroupId: 'group',
             placement: service.deployments[1],
@@ -854,3 +870,112 @@ it('requires initial owner evidence and current tenant management rights for res
   expect(container.querySelector('dialog[open]')).toBeNull()
   expect(reservationDeletes()).toHaveLength(0)
 })
+
+it('shows GitOps ownership and prevents manual removal of a managed reservation', async () => {
+  currentZone = {
+    ...zone,
+    gitOps: {
+      sourceId: 'source',
+      sourceUrl: 'https://github.com/pole/declarations',
+      blocker: null,
+      pendingRemoval: false,
+      configurationApplied: true,
+    },
+  }
+  ownerCount = 0
+  await render()
+  await click(zone.domain)
+  expect(text()).toContain('Managed by GitOps')
+  const remove = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+    (item) => item.textContent === 'Remove reservation',
+  )!
+  expect(remove.disabled).toBe(true)
+})
+
+it('shows independent GitOps ownership on a hostname usage', async () => {
+  bindingOwnership = {
+    sourceId: 'hostname-source',
+    sourceUrl: 'https://github.com/pole/domains',
+    blocker: null,
+    pendingRemoval: false,
+    configurationApplied: true,
+  }
+  await render()
+  await click(zone.domain)
+  expect(text()).toContain('Managed by GitOps')
+  expect(text()).toContain(custom.hostname)
+})
+
+it('requires a new technical name and supports zone apex aliases', async () => {
+  window.history.replaceState({}, '', '/?view=web-services')
+  await render('Owner', 'alpha', 'web-services')
+  await fill('Reserved zone', 'zone')
+  await fill('Hostname label', '@')
+  expect(attachButton().disabled).toBe(true)
+  await fill('Binding technical name', 'Upper')
+  expect(attachButton().disabled).toBe(true)
+  await fill('Binding technical name', 'company-apex')
+  expect(attachButton().disabled).toBe(false)
+  await click('Attach alias')
+  const input = JSON.parse(aliasPosts()[0][1]?.body as string)
+  expect(input).toEqual({
+    tenantDomainZoneId: 'zone',
+    relativeName: '@',
+    technicalName: 'company-apex',
+  })
+})
+
+it('protects a Git-owned binding on a manually managed workload', async () => {
+  rows = [
+    generated,
+    {
+      ...custom,
+      gitOps: {
+        sourceId: 'source',
+        sourceUrl: 'https://github.com/pole/domains',
+        blocker: null,
+        pendingRemoval: false,
+        configurationApplied: true,
+      },
+    },
+  ]
+  window.history.replaceState({}, '', '/?view=web-services')
+  await render('Owner', 'alpha', 'web-services')
+  expect(text()).toContain('Managed by GitOps')
+  expect(text()).not.toContain('Change alias')
+  expect(text()).not.toContain('Detach alias')
+  expect(text()).toContain('Attach a custom hostname')
+})
+
+it('allows reservation drafts while a configured service awaits its first artifact', async () => {
+  service = {
+    ...service,
+    lifecycle: 'AwaitingFirstArtifact',
+    deployments: service.deployments.map((deployment) => ({ ...deployment, status: 'Prepared' })),
+  }
+  window.history.replaceState({}, '', '/?view=web-services')
+  await render('Owner', 'alpha', 'web-services')
+  expect(text()).toContain('Routes activate after the first successful build')
+  await fill('Reserved zone', 'zone')
+  await fill('Binding technical name', 'pending-alias')
+  await fill('Hostname label', 'pending')
+  expect(attachButton().disabled).toBe(false)
+  await click('Attach alias')
+  expect(aliasPosts()).toHaveLength(1)
+})
+
+it.each(['Prepared', 'Deleting'] as const)(
+  'prevents hostname writes for %s services',
+  async (lifecycle) => {
+    service = { ...service, lifecycle }
+    window.history.replaceState({}, '', '/?view=web-services')
+    await render('Owner', 'alpha', 'web-services')
+    expect(text()).not.toContain('Attach a custom hostname')
+    const detach = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+      (button) => button.textContent === 'Detach alias',
+    )!
+    expect(detach.disabled).toBe(true)
+    await click('Detach alias')
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false)
+  },
+)

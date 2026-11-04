@@ -2,28 +2,13 @@ using Pole.ResultType;
 
 namespace Pole.Features.GitProviders.Contracts;
 
-public enum SourceRepositoryBuildPlanKind
-{
-    Dockerfile,
-    DotNet,
-    Node
-}
-
-public sealed record SourceRepositoryBuildPlanSnapshot(
-    string CandidateKey,
-    SourceRepositoryBuildPlanKind Kind,
-    string SourceRoot,
-    string ManifestPath,
-    IReadOnlyList<string> Commands,
-    string? StartCommand,
-    string Dockerfile);
-
 public sealed record SourceRepositoryBuildSnapshot(
     string Id,
-    string CandidateKey,
+    string TechnicalName,
+    string ConnectionId,
+    string ExternalRepositoryId,
     string Branch,
-    string CommitSha,
-    SourceRepositoryBuildPlanSnapshot SelectedPlan);
+    long Revision);
 
 public sealed record SourceRepositoryBuildNotFound(string SourceRepositoryId);
 

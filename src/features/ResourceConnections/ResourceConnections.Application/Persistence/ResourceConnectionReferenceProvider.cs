@@ -15,10 +15,23 @@ internal sealed class ResourceConnectionReferenceProvider(
     LoadResourceDeploymentConnectionPlacements loadPlacements,
     LoadExactResourceDeploymentRuntimePlacement loadPlacement)
 {
-    public async Task<AdmitResourceConnectionReferencesOutcome> AdmitAsync(
+    public Task<AdmitResourceConnectionReferencesOutcome> AdmitAsync(
         AdmitResourceConnectionReferencesRequest request,
         IClientSessionHandle session,
-        CancellationToken ct)
+        CancellationToken ct) => InspectAsync(request, session, ct, ReferenceAccessMode.AcquireFence);
+
+    internal Task<AdmitResourceConnectionReferencesOutcome> ReadAsync(
+        AdmitResourceConnectionReferencesRequest request,
+        IClientSessionHandle session,
+        CancellationToken ct) => InspectAsync(request, session, ct, ReferenceAccessMode.ReadOnly);
+
+    private enum ReferenceAccessMode { ReadOnly, AcquireFence }
+
+    private async Task<AdmitResourceConnectionReferencesOutcome> InspectAsync(
+        AdmitResourceConnectionReferencesRequest request,
+        IClientSessionHandle session,
+        CancellationToken ct,
+        ReferenceAccessMode access)
     {
         if (!session.IsInTransaction) throw new InvalidOperationException("Connection reference admission requires a transaction.");
         if (request.References.Count == 0) return new ResourceConnectionReferencesAdmitted();
@@ -41,8 +54,10 @@ internal sealed class ResourceConnectionReferenceProvider(
                 return Unavailable(group.Key, "EndpointFieldUnavailable");
             if (active.Targets.Any(target => target.Snapshot.DestinationServiceName != resolved.ServiceName || target.Snapshot.DestinationServicePort != resolved.ServicePort.Value || target.Snapshot.DestinationPort != resolved.TargetPort.Value))
                 return Unavailable(group.Key, "EndpointChanged");
-            await connections.UpdateOneAsync(session, ResourceConnectionFilters.ByTenantAndId(request.TenantId, current.Id),
-                Builders<ResourceConnection>.Update.Inc(item => item.ReferenceFence, 1), cancellationToken: ct);
+            if (access == ReferenceAccessMode.AcquireFence)
+                await connections.UpdateOneAsync(session,
+                    ResourceConnectionFilters.ByTenantAndId(request.TenantId, current.Id),
+                    Builders<ResourceConnection>.Update.Inc(item => item.ReferenceFence, 1), cancellationToken: ct);
         }
         return new ResourceConnectionReferencesAdmitted();
     }

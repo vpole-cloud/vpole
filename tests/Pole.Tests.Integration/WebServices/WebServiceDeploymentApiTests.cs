@@ -256,7 +256,7 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         var saved = await Fixture.Database.WebServices().Find(x => x.Id == service.Id).SingleAsync();
         Assert.Equal(3, saved.ActiveRevision);
-        Assert.Equal(service.Spec.Image.Tag, saved.Spec.Image.Tag);
+        Assert.Equal(service.Spec.Image.ResolvedImage!.Tag, saved.Spec.Image.ResolvedImage!.Tag);
         Assert.Equal(service.Exposure, saved.Exposure);
         var release = await Fixture.Database.WebServiceReleases().Find(x => x.WebServiceId == service.Id && x.ResourceRevision == 3).SingleAsync();
         Assert.Equal(WebServiceReleaseAction.Rollback, release.Action);
@@ -336,7 +336,7 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
             .Find(service => service.Id == webService.Id)
             .SingleAsync();
         Assert.Equal(2, saved.ActiveRevision);
-        Assert.Equal("2026.07.09-abc1234", saved.Spec.Image.Tag);
+        Assert.Equal("2026.07.09-abc1234", saved.Spec.Image.ResolvedImage!.Tag);
 
         var release = await Fixture.Database.WebServiceReleases()
             .Find(r => r.WebServiceId == webService.Id && r.ResourceRevision == 2)
@@ -459,14 +459,19 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
 
         var zoneResponse = await Client.PostAsJsonAsync(
             "/api/v1/domain-zones/",
-            new { deploymentTargetId = deployment.DeploymentTargetId, label = "company" });
+            new
+            {
+                technicalName = "company-zone",
+                deploymentTargetId = deployment.DeploymentTargetId,
+                label = "company"
+            });
         Assert.Equal(HttpStatusCode.Created, zoneResponse.StatusCode);
         var zone = await zoneResponse.Content
             .ReadFromJsonAsync<TenantDomainZoneSnapshot>(JsonOptions);
         Assert.NotNull(zone);
         var addResponse = await Client.PostAsJsonAsync(
             $"/api/v1/web-services/{created.WebServiceId}/deployments/{deployment.DeploymentId}/hostnames",
-            new { tenantDomainZoneId = zone.Id, relativeName = "api" });
+            new { technicalName = "api-hostname", tenantDomainZoneId = zone.Id, relativeName = "api" });
         Assert.Equal(HttpStatusCode.Accepted, addResponse.StatusCode);
 
         var listResponse = await Client.GetAsync(

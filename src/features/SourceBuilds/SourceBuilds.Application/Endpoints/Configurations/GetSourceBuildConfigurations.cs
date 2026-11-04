@@ -7,6 +7,7 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Persistence.Configuration;
 using Pole.Mediator;
+using Pole.Features.GitOps.Contracts;
 
 namespace Pole.Features.SourceBuilds.Application.Endpoints.Configurations;
 
@@ -17,7 +18,8 @@ public sealed record GetSourceBuildConfigurationsRequest(
 public union GetSourceBuildConfigurationsOutcome(IReadOnlyList<SourceBuildConfigurationDto>);
 
 public sealed class GetSourceBuildConfigurationsHandler(
-    LoadSourceBuildConfigurations loadSourceBuildConfigurations)
+    LoadSourceBuildConfigurations loadSourceBuildConfigurations,
+    IGitOpsMutations git)
     : IMediatorOutcomeHandler<
         GetSourceBuildConfigurationsRequest,
         GetSourceBuildConfigurationsOutcome>
@@ -29,7 +31,9 @@ public sealed class GetSourceBuildConfigurationsHandler(
         var configurations = await loadSourceBuildConfigurations(
             request.TenantId,
             cancellationToken);
-        return configurations.Select(item => item.ToDto()).ToArray();
+        var ownership = await git.StatusesAsync(new(request.TenantId, "SourceBuildConfiguration",
+            configurations.Select(item => item.Id).ToArray()), cancellationToken);
+        return configurations.Select(item => item.ToDto(ownership.GetValueOrDefault(item.Id))).ToArray();
     }
 }
 

@@ -9,8 +9,13 @@ public static class DomainContractHttpMappings
         Array.AsReadOnly<HttpProblemMapping>(
         [
             HttpProblemMapping.For<GeneratedDomainZoneError>(MapGeneratedZoneError),
-            HttpProblemMapping.For<GeneratedHostnameBindingError>(MapGeneratedBindingError)
+            HttpProblemMapping.For<GeneratedHostnameBindingError>(MapGeneratedBindingError),
+            HttpProblemMapping.For<CustomHostnameBindingGitOwned>(MapCustomHostnameBindingGitOwned)
         ]);
+
+    public static HttpProblem MapCustomHostnameBindingGitOwned(CustomHostnameBindingGitOwned owned) =>
+        Problem(HttpStatusCode.Conflict, "domains.hostname.git-owned",
+            "Hostname binding configuration is managed by GitOps", ("bindingId", owned.BindingId));
 
     public static HttpProblem MapGeneratedZoneError(
         GeneratedDomainZoneError error) => error switch
@@ -66,6 +71,8 @@ public static class DomainContractHttpMappings
     public static HttpProblem MapCustomHostnameBindingError(
         CustomHostnameBindingError error) => error switch
         {
+            CustomHostnameBindingInvalidRelativeName => Problem(HttpStatusCode.BadRequest,
+                "domains.hostname.invalid-name", "The relative name does not form a valid hostname in this zone"),
             CustomHostnameBindingZoneNotFound notFound => Problem(
                 HttpStatusCode.NotFound,
                 "domains.hostname.zone-not-found",
@@ -77,6 +84,11 @@ public static class DomainContractHttpMappings
                 "Domain zone belongs to another deployment target",
                 ("domainZoneId", mismatch.TenantDomainZoneId),
                 ("deploymentTargetId", mismatch.DeploymentTargetId)),
+            CustomHostnameBindingNameConflict conflict => Problem(
+                HttpStatusCode.Conflict,
+                "domains.hostname.name-conflict",
+                "Hostname binding technical name is already used",
+                ("technicalName", conflict.TechnicalName)),
             CustomHostnameBindingConflict conflict => Problem(
                 HttpStatusCode.Conflict,
                 "domains.hostname.already-bound",

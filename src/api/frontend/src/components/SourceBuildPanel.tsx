@@ -17,7 +17,6 @@ interface SourceBuildPanelProps {
 }
 
 const shortSha = (value: string) => value.slice(0, 10)
-const recipeKinds = ['Dockerfile', '.NET', 'Node.js'] as const
 const buildPhases = ['Queued', 'Cloning', 'Analyzing', 'Building', 'Pushing', 'Deploying'] as const
 const shortDigest = (value?: string | null) => (value ? `${value.slice(0, 19)}...` : null)
 const formatDate = (value: string) =>
@@ -50,6 +49,8 @@ export function SourceBuildPanel({
     section: 'deployments',
   }
   const [selectedSource, setSelectedSource] = useState<SourceRepository | null>(null)
+  const [technicalName, setTechnicalName] = useState('')
+  const [dockerfile, setDockerfile] = useState('')
   const [removing, setRemoving] = useState(false)
   const [recipeDirty, setRecipeDirty] = useState(false)
   const [logJobId, setLogJobId] = useState<string | null>(
@@ -72,6 +73,15 @@ export function SourceBuildPanel({
   const source = manager.sourceRepositories.find(
     (item) => item.id === configuration?.sourceRepositoryId,
   )
+  const configurationBound =
+    Boolean(configuration) &&
+    webService.spec.imageAuthority?.configurationId === configuration?.id &&
+    webService.lifecycle !== 'Deleting'
+  const canAttachConfiguration =
+    webService.spec.imageAuthority?.mode === 'UnboundSourceBuild' &&
+    webService.lifecycle === 'Prepared' &&
+    !webService.gitOps
+  const canConfigure = canManage && !configuration?.gitOps
   const busy = manager.actionStatus === 'loading'
   const dirty = (!configuration && Boolean(selectedSource)) || recipeDirty
   useEffect(() => {
@@ -87,7 +97,7 @@ export function SourceBuildPanel({
         </div>
         <div className="row-actions">
           <span data-testid="source-build-kind" className="panel__meta">
-            {configuration ? recipeKinds[configuration.recipe.kind] : 'Not configured'}
+            {configuration ? 'Dockerfile' : 'Not configured'}
           </span>
           <button className="button" onClick={() => void manager.refresh()} type="button">
             Refresh
@@ -107,25 +117,12 @@ export function SourceBuildPanel({
         <div className="source-build-configuration">
           <div className="source-build-configuration__identity">
             <strong>{source?.repositoryFullName ?? configuration.sourceRepositoryId}</strong>
+            <span>{source?.branch ?? 'Linked branch'} · each Build resolves the latest commit</span>
             <span>
-              {source?.branch ?? 'Linked branch'} at{' '}
-              <code>{source ? shortSha(source.commitSha) : 'unknown'}</code>
-            </span>
-            <span>
-              {configuration.recipe.manifestPath} · {configuration.recipe.candidateKey}
+              {configuration.technicalName} · revision {configuration.revision}
             </span>
           </div>
           <div className="row-actions">
-            {source && (
-              <button
-                className="button"
-                disabled={!canManage || busy || manager.hasActiveBuild}
-                onClick={() => void manager.reanalyze(source.id).catch(() => {})}
-                type="button"
-              >
-                Analyze latest commit
-              </button>
-            )}
             <button
               className="button button--primary"
               disabled={!canManage || busy || manager.hasActiveBuild}
@@ -136,35 +133,68 @@ export function SourceBuildPanel({
             </button>
             <button
               className="button button--danger"
-              disabled={!canManage || busy || manager.hasActiveBuild}
+              disabled={!canConfigure || configurationBound || busy || manager.hasActiveBuild}
               onClick={() => setRemoving(true)}
               type="button"
             >
               Remove configuration
             </button>
           </div>
+          {configurationBound && (
+            <p>This build configuration cannot be removed while it is bound to this service.</p>
+          )}
           <BuildRecipeForm
             key={configuration.id}
             configuration={configuration}
-            canManage={canManage}
+            canManage={canConfigure}
             busy={busy}
             onSave={(recipe) => manager.updateRecipe(configuration.id, recipe)}
             onDirtyChange={setRecipeDirty}
           />
         </div>
+      ) : !canAttachConfiguration ? (
+        <p>
+          This service uses a container image. Create a service with Git source to use source
+          builds.
+        </p>
       ) : (
         <div className="source-build-setup">
           {canManage ? (
-            <GitSourcePicker source={selectedSource} onSelect={setSelectedSource} disabled={busy} />
+            <>
+              <GitSourcePicker
+                source={selectedSource}
+                onSelect={setSelectedSource}
+                onRecipeSelected={setDockerfile}
+                disabled={busy}
+              />
+              <label className="field">
+                <span className="field__label">Build configuration technical name</span>
+                <input
+                  className="field__control"
+                  value={technicalName}
+                  onChange={(event) => setTechnicalName(event.target.value)}
+                  disabled={busy}
+                />
+              </label>
+              <label className="field">
+                <span className="field__label">Dockerfile</span>
+                <textarea
+                  className="field__control field__control--textarea"
+                  value={dockerfile}
+                  onChange={(event) => setDockerfile(event.target.value)}
+                  disabled={busy}
+                />
+              </label>
+            </>
           ) : (
             <p>No source is configured. Tenant viewer access is read-only.</p>
           )}
           <button
             className="button button--primary"
-            disabled={!canManage || busy || !selectedSource}
+            disabled={!canManage || busy || !selectedSource || !technicalName || !dockerfile.trim()}
             onClick={() =>
               void manager
-                .create(selectedSource!.id, webService.id)
+                .create(selectedSource!.id, webService.id, technicalName, { dockerfile })
                 .then(() => setSelectedSource(null))
                 .catch(() => {})
             }
@@ -241,7 +271,7 @@ export function SourceBuildPanel({
                 {job.state.status === 'failed' && (
                   <span className="field__hint">
                     Check the source recipe and reported failure. Correct the cause, then use Build
-                    and deploy to retry.
+                    and deploy to build the latest branch commit.
                   </span>
                 )}
               </div>

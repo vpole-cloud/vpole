@@ -142,8 +142,18 @@ public sealed class SourceBuildLogApiTests(MongoReplicaSetFixture fixture) : Api
     private ServiceProvider Services(TimeProvider clock) => new ServiceCollection().AddLogging().AddSingleton(Fixture.Database).AddSingleton(clock)
         .AddSourceBuildsFeature(new ConfigurationBuilder().Build()).BuildServiceProvider(validateScopes: true);
     private static string Url(SourceBuildJob job, long after = 0) => $"/api/v1/source-build-jobs/{job.Id}/logs?webServiceId={job.WebServiceId}&afterSequence={after}";
-    private static SourceBuildJob CreateJob(string tenantId) => SourceBuildJobFactory.CreateManual(tenantId, ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString(), "main", "abc123",
-        new("candidate", SourceBuildRecipeKind.Dockerfile, ".", "Dockerfile", [], null, "FROM scratch", false), TestData.UserId, TestData.UserEmail, new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow));
+    private static SourceBuildJob CreateJob(string tenantId) => SourceBuildJobFactory.CreateManual(
+        tenantId,
+        ObjectId.GenerateNewId().ToString(),
+        ObjectId.GenerateNewId().ToString(),
+        ObjectId.GenerateNewId().ToString(),
+        "main",
+        "abc123",
+        new SourceBuildInputVersion(1, 1, 1),
+        new("FROM scratch"),
+        TestData.UserId,
+        TestData.UserEmail,
+        new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow));
     private sealed class MutableClock(DateTimeOffset now) : TimeProvider
     {
         public DateTimeOffset Now { get; set; } = now;

@@ -17,7 +17,7 @@ public sealed class SourceBuildConfigurationRealtimeTests
             notice = change;
             return Task.CompletedTask;
         });
-        await consumer.HandleAsync(new("configuration", "web-service")
+        await consumer.HandleAsync(new("configuration", "web-service", "api-build", 1)
         {
             EventCore = EventCore.Create("tenant")
         });

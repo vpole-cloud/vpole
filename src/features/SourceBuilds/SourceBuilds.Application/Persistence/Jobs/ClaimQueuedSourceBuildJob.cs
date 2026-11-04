@@ -1,13 +1,17 @@
 using MongoDB.Driver;
+using MongoDB.Bson;
 using Pole.Database;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Domain;
 
 namespace Pole.Features.SourceBuilds.Application.Persistence.Jobs;
 
+public sealed record ClaimSourceBuildJobRequest(
+    string BuildJobId,
+    string WorkerId);
+
 public delegate Task<SourceBuildJob?> ClaimQueuedSourceBuildJob(
-    string buildJobId,
-    DateTime claimedAtUtc,
+    ClaimSourceBuildJobRequest request,
     CancellationToken cancellationToken = default);
 
 internal sealed record SourceBuildJobNotClaimed;
@@ -22,8 +26,7 @@ internal sealed class MongoClaimQueuedSourceBuildJob(
     StoreOutboxWrites storeOutboxWrites)
 {
     public async Task<SourceBuildJob?> InvokeAsync(
-        string buildJobId,
-        DateTime claimedAtUtc,
+        ClaimSourceBuildJobRequest request,
         CancellationToken cancellationToken = default)
     {
         // The internal dispatcher supplies job IDs; the claimed document owns tenant context.
@@ -31,10 +34,30 @@ internal sealed class MongoClaimQueuedSourceBuildJob(
             {
                 var claimed = await jobs.FindOneAndUpdateAsync(
                     transaction.Session,
-                    SourceBuildJobFilters.ClaimQueued(buildJobId),
-                    Builders<SourceBuildJob>.Update
-                        .Set(item => item.State, new CloningSourceBuild(claimedAtUtc))
-                        .Set(item => item.UpdatedAtUtc, claimedAtUtc),
+                    SourceBuildJobFilters.ById(request.BuildJobId) & SourceBuildJobFilters.Recoverable,
+                    new PipelineUpdateDefinition<SourceBuildJob>(new[]
+                    {
+                        new BsonDocument("$unset", "State"),
+                        new BsonDocument("$set", new BsonDocument
+                        {
+                            ["Execution"] = new BsonDocument
+                            {
+                                ["_t"] = new BsonArray
+                                {
+                                    nameof(SourceBuildExecution), nameof(ClaimedSourceBuildExecution)
+                                },
+                                ["WorkerId"] = new BsonDocument("$literal", request.WorkerId),
+                                ["Attempt"] = new BsonDocument("$add", new BsonArray { "$Execution.Attempt", 1L }),
+                                ["ExpiresAtUtc"] = SourceBuildExecutionLease.Expiry
+                            },
+                            ["State"] = new BsonDocument
+                            {
+                                ["_t"] = new BsonArray { nameof(SourceBuildJobState), nameof(CloningSourceBuild) },
+                                ["StartedAtUtc"] = "$$NOW"
+                            },
+                            ["UpdatedAtUtc"] = "$$NOW"
+                        })
+                    }),
                     new FindOneAndUpdateOptions<SourceBuildJob> { ReturnDocument = ReturnDocument.After },
                     ct);
                 if (claimed is null)

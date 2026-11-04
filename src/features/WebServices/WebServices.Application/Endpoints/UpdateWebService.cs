@@ -119,15 +119,24 @@ public sealed class UpdateWebServiceHandler(
                 new WebServiceHasNoActiveDeployments(webService.Id)));
 
         var nextSpec = request.Body.Spec.ToDomain();
-        // Registry credentials are provider-owned and intentionally absent from the HTTP DTO.
-        // Configuration and tag updates within the same repository retain that authorization.
-        if (nextSpec.Image.Server == webService.Spec.Image.Server &&
-            nextSpec.Image.Name == webService.Spec.Image.Name)
+        if (nextSpec.Image is not ImageInfo requestedImage)
+            return Error(new WebServiceLifecycleMutationStateError(
+                new WebServiceUpdateUnavailable(webService.Id)));
+
+        if (webService.Spec.Image is DeliveredSourceBuildImage delivered)
         {
-            nextSpec = nextSpec with
-            {
-                Image = nextSpec.Image with { SecretName = webService.Spec.Image.SecretName }
-            };
+            if (requestedImage.Server != delivered.Image.Server || requestedImage.Name != delivered.Image.Name ||
+                requestedImage.Tag != delivered.Image.Tag)
+                return Error(new WebServiceLifecycleMutationStateError(
+                    new WebServiceUpdateUnavailable(webService.Id)));
+
+            nextSpec = nextSpec with { Image = delivered };
+        }
+        else if (webService.Spec.Image is ImageInfo currentImage &&
+                 requestedImage.Server == currentImage.Server && requestedImage.Name == currentImage.Name)
+        {
+            // The owner retains registry authorization when the repository identity is unchanged.
+            nextSpec = nextSpec with { Image = requestedImage with { SecretName = currentImage.SecretName } };
         }
         var nextExposure = WebServiceExposure.Create(
             request.Body.Exposure,

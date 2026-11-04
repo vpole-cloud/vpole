@@ -6,6 +6,9 @@ namespace Pole.Features.SourceBuilds.Application.Migrations;
 
 public sealed class SourceBuildMigration : IMigration
 {
+    public const string TenantWebServiceIndex = "UX_SourceBuildConfigurations_Tenant_WebService";
+    public const string TenantNameIndex = "UX_SourceBuildConfigurations_Tenant_TechnicalName";
+
     public ObjectId Id => new("69d30000b213917a38c379ee");
     public string Name => "Source build configurations and jobs";
     public string Description => "Creates tenant configuration and build history indexes.";
@@ -16,11 +19,14 @@ public sealed class SourceBuildMigration : IMigration
         await configurations.Indexes.CreateManyAsync(
         [
             new CreateIndexModel<BsonDocument>(
+                Builders<BsonDocument>.IndexKeys.Ascending("TenantId").Ascending("TechnicalName"),
+                new CreateIndexOptions { Unique = true, Name = TenantNameIndex }),
+            new CreateIndexModel<BsonDocument>(
                 Builders<BsonDocument>.IndexKeys.Ascending("TenantId").Ascending("WebServiceId"),
                 new CreateIndexOptions
                 {
                     Unique = true,
-                    Name = "UX_SourceBuildConfigurations_Tenant_WebService"
+                    Name = TenantWebServiceIndex
                 }),
             new CreateIndexModel<BsonDocument>(
                 Builders<BsonDocument>.IndexKeys.Ascending("TenantId").Ascending("SourceRepositoryId"),

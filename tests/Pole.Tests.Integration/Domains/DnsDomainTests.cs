@@ -43,6 +43,7 @@ public sealed class DnsDomainTests
             targetId,
             "Company",
             DnsName.Create("Example.COM."),
+            "zone-" + MongoDB.Bson.ObjectId.GenerateNewId(),
             new TenantDomainZoneFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now));
         var binding = HostnameBindingFactory.CreateCustom(
             tenantId,
@@ -53,6 +54,7 @@ public sealed class DnsDomainTests
             ObjectId.GenerateNewId().ToString(),
             "Api.Eu",
             DnsName.Create(zone.Domain),
+            "binding-" + MongoDB.Bson.ObjectId.GenerateNewId(),
             new HostnameBindingFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now));
 
         Assert.Equal("company.example.com", zone.Domain);
@@ -67,10 +69,11 @@ public sealed class DnsDomainTests
         var exception = Assert.Throws<ArgumentException>(() =>
             TenantDomainZoneFactory.CreateManagedReservation(
                 ObjectId.GenerateNewId().ToString(),
-                ObjectId.GenerateNewId().ToString(),
-                $"{TenantDomainZoneLabelPolicy.GeneratedPrefix}acme-12345678",
-                DnsName.Create("example.com"),
-                new TenantDomainZoneFactory.CreateOptions(
+            ObjectId.GenerateNewId().ToString(),
+            $"{TenantDomainZoneLabelPolicy.GeneratedPrefix}acme-12345678",
+            DnsName.Create("example.com"),
+            "zone-" + MongoDB.Bson.ObjectId.GenerateNewId(),
+            new TenantDomainZoneFactory.CreateOptions(
                     ObjectId.GenerateNewId().ToString(),
                     DateTime.UtcNow)));
 

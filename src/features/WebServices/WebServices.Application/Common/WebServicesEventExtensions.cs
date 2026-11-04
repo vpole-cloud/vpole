@@ -13,7 +13,8 @@ internal static class WebServicesEventExtensions
         internal WebServiceCreatedEvent ToCreateEvent(
             ImmutableList<WebServiceDesiredDeploymentSnapshot> deployments) =>
             new(webService.Id, webService.Name, webService.ResourceGroupId, webService.IsolationScopeId,
-                webService.Revision, webService.Spec.ToSnapshot(), webService.Exposure.ToSnapshot(),
+                webService.Revision, webService.Lifecycle.ToSnapshot(), webService.Spec.ToSnapshot(),
+                webService.Exposure.ToSnapshot(),
                 webService.Tags, deployments)
             { EventCore = EventCore.Create(webService.TenantId) };
 
@@ -25,7 +26,8 @@ internal static class WebServicesEventExtensions
         internal WebServiceUpdatedEvent ToUpdatedEvent(
             ImmutableList<WebServiceDesiredDeploymentSnapshot> deployments) =>
             new(webService.Id, webService.Name, webService.ResourceGroupId, webService.IsolationScopeId,
-                webService.Revision, webService.Spec.ToSnapshot(), webService.Exposure.ToSnapshot(),
+                webService.Revision, webService.Lifecycle.ToSnapshot(), webService.Spec.ToSnapshot(),
+                webService.Exposure.ToSnapshot(),
                 webService.Tags, deployments)
             { EventCore = EventCore.Create(webService.TenantId) };
     }
@@ -42,7 +44,8 @@ internal static class WebServicesEventExtensions
             {
                 Id = createEvent.WebServiceId,
                 ActiveRevision = createEvent.ResourceRevision,
-                Tags = createEvent.Tags
+                Tags = createEvent.Tags,
+                Lifecycle = createEvent.Lifecycle.ToDomain()
             });
     }
 
@@ -64,8 +67,48 @@ internal static class WebServicesEventExtensions
             exposure.Mode.ToString(), exposure.GeneratedHostnameLabelPrefix);
     }
 
-    extension(ImageInfo image) { private WebServiceImageInfoSnapshot ToSnapshot() => new(image.Server, image.Name, image.Tag, image.SecretName); }
-    extension(WebServiceImageInfoSnapshot image) { private ImageInfo ToDomain() => new(image.Server, image.Name, image.Tag, image.SecretName); }
+    private static WebServiceLifecycleState ToSnapshot(this WebServiceLifecycle lifecycle) => lifecycle switch
+    {
+        PreparedWebServiceLifecycle => WebServiceLifecycleState.Prepared,
+        AwaitingFirstArtifactWebServiceLifecycle => WebServiceLifecycleState.AwaitingFirstArtifact,
+        ActiveWebServiceLifecycle => WebServiceLifecycleState.Active,
+        DeletingWebServiceLifecycle => WebServiceLifecycleState.Deleting
+    };
+
+    private static WebServiceLifecycle ToDomain(this WebServiceLifecycleState lifecycle) => lifecycle switch
+    {
+        WebServiceLifecycleState.Prepared => new PreparedWebServiceLifecycle(),
+        WebServiceLifecycleState.AwaitingFirstArtifact => new AwaitingFirstArtifactWebServiceLifecycle(),
+        WebServiceLifecycleState.Active => new ActiveWebServiceLifecycle(),
+        _ => throw new InvalidOperationException("A create event cannot represent a deleting service.")
+    };
+
+    private static WebServiceImageSnapshot ToSnapshot(this WebServiceImage image) => image switch
+    {
+        ImageInfo direct => DirectSnapshot(direct),
+        UnboundSourceBuildImage => new UnboundSourceBuildImageSnapshot(),
+        PendingSourceBuildImage pending => new PendingSourceBuildImageSnapshot(pending.ConfigurationId),
+        DeliveredSourceBuildImage delivered => new DeliveredSourceBuildImageSnapshot(
+            delivered.ConfigurationId, DirectSnapshot(delivered.Image), delivered.Digest,
+            delivered.JobId, delivered.Generation)
+    };
+
+    private static WebServiceImageInfoSnapshot DirectSnapshot(ImageInfo image) =>
+        new(image.Server, image.Name, image.Tag, image.SecretName);
+
+    private static WebServiceImage ToDomain(this WebServiceImageSnapshot image) => image switch
+    {
+        WebServiceImageInfoSnapshot direct => DirectImage(direct),
+        UnboundSourceBuildImageSnapshot => new UnboundSourceBuildImage(),
+        PendingSourceBuildImageSnapshot pending => WebServiceImageFactory.Pending(pending.ConfigurationId),
+        DeliveredSourceBuildImageSnapshot delivered => DeliveredSourceBuildImage.Create(
+            delivered.ConfigurationId, DirectImage(delivered.Image), delivered.Digest,
+            delivered.JobId, delivered.Generation)
+    };
+
+    private static ImageInfo DirectImage(WebServiceImageInfoSnapshot image) =>
+        new(image.Server, image.Name, image.Tag, image.SecretName);
+
     extension(WebServiceConfig config)
     {
         private WebServiceConfigSnapshot ToSnapshot() => new(config.EnvironmentVariables,

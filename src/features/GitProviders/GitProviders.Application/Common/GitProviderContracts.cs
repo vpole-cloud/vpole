@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Pole.Features.GitProviders.Domain;
+using Pole.Features.GitOps.Contracts;
 
 namespace Pole.Features.GitProviders.Application.Common;
 
@@ -40,8 +41,8 @@ public sealed record ProviderPage<T>(
 public sealed record AnalyzeRepositoryRequestBody(string Branch);
 
 public sealed record LinkSourceRepositoryRequestBody(
-    string Branch,
-    string CandidateKey);
+    string TechnicalName,
+    string Branch);
 
 public sealed record RepositoryAnalysisDto(
     string RepositoryId,
@@ -67,17 +68,17 @@ public sealed record SourceBuildPlanDto(
 
 public sealed record SourceRepositoryDto(
     string Id,
+    string TechnicalName,
     string ConnectionId,
     string ExternalRepositoryId,
     string RepositoryFullName,
     string RepositoryUrl,
     bool IsPrivate,
     string Branch,
-    string CommitSha,
-    DateTime AnalyzedAtUtc,
+    long Revision,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
-    SourceBuildPlanDto SelectedPlan);
+    GitResourceStatus? GitOps);
 
 public static class GitProviderDtoExtensions
 {
@@ -109,17 +110,17 @@ public static class GitProviderDtoExtensions
     public static SourceRepositoryDto ToDto(this SourceRepository repository) =>
         new(
             repository.Id,
+            repository.TechnicalName,
             repository.ConnectionId,
             repository.ExternalRepositoryId,
             repository.RepositoryFullName,
             repository.RepositoryUrl,
             repository.IsPrivate,
             repository.Branch,
-            repository.CommitSha,
-            repository.AnalyzedAtUtc,
+            repository.Revision,
             repository.CreatedAtUtc,
             repository.UpdatedAtUtc,
-            repository.SelectedPlan.ToDto());
+            null);
 
     public static RepositoryAnalysisDto ToDto(
         this SourceRepositoryAnalysis analysis,

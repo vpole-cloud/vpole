@@ -75,11 +75,14 @@ export async function fetchWebService(
 }
 
 const buildWebServiceSpec = (input: WebServiceInput) => ({
-  image: {
-    server: input.imageServer,
-    name: input.imageName,
-    tag: input.imageTag,
-  },
+  image:
+    input.creationMode === 'SourceBuild'
+      ? null
+      : {
+          server: input.imageServer,
+          name: input.imageName,
+          tag: input.imageTag,
+        },
   config: {
     connectionEnvironmentReferences: input.connectionEnvironmentReferences ?? {},
     secretEnvironmentReferences: input.secretEnvironmentReferences ?? {},
@@ -147,6 +150,7 @@ export async function createWebService(
     headers: buildHeaders(token, tenantId),
     body: JSON.stringify({
       name: input.name,
+      creationMode: input.creationMode ?? 'Image',
       resourceGroupId: input.resourceGroupId,
       exposure: input.exposure,
       spec: buildWebServiceSpec(input),

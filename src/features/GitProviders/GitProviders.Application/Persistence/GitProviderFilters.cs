@@ -6,6 +6,11 @@ namespace Pole.Features.GitProviders.Application.Persistence;
 
 internal static class GitProviderFilters
 {
+    internal static FilterDefinition<GitProviderConnection> GitHubConnectionByTenantAndId(
+        string tenantId, string connectionId) =>
+        ConnectionByTenantAndId(tenantId, connectionId) &
+        Builders<GitProviderConnection>.Filter.Eq(item => item.Provider, GitProviderKind.GitHub);
+
     internal static FilterDefinition<GitHubDeliveryReceipt> GitHubDeliveryById(string id) =>
         Builders<GitHubDeliveryReceipt>.Filter.Eq(item => item.Id, id);
 
@@ -18,6 +23,13 @@ internal static class GitProviderFilters
         Builders<GitProviderConnection>.Filter.And(
             Builders<GitProviderConnection>.Filter.ForTenant(tenantId),
             Builders<GitProviderConnection>.Filter.Eq(item => item.Id, connectionId));
+
+    internal static FilterDefinition<GitProviderConnection> ConnectionAtFence(
+        string tenantId,
+        string connectionId,
+        long referenceFence) =>
+        ConnectionByTenantAndId(tenantId, connectionId) &
+        Builders<GitProviderConnection>.Filter.Eq(item => item.ReferenceFence, referenceFence);
 
     internal static FilterDefinition<GitProviderConnection> ConnectionByTenantAndName(
         string tenantId,
@@ -43,6 +55,19 @@ internal static class GitProviderFilters
         Builders<SourceRepository>.Filter.And(
             Builders<SourceRepository>.Filter.ForTenant(tenantId),
             Builders<SourceRepository>.Filter.Eq(item => item.Id, sourceRepositoryId));
+
+    internal static FilterDefinition<SourceRepository> SourceRepositoryByTenantAndName(
+        string tenantId,
+        string technicalName) =>
+        SourceRepositoriesByTenant(tenantId) &
+        Builders<SourceRepository>.Filter.Eq(item => item.TechnicalName, technicalName);
+
+    internal static FilterDefinition<SourceRepository> SourceRepositoryAtRevision(
+        string tenantId,
+        string sourceRepositoryId,
+        long revision) =>
+        SourceRepositoryByTenantAndId(tenantId, sourceRepositoryId) &
+        Builders<SourceRepository>.Filter.Eq(item => item.Revision, revision);
 
     internal static FilterDefinition<SourceRepository> SourceRepositoriesByTenant(string tenantId) =>
         Builders<SourceRepository>.Filter.ForTenant(tenantId);

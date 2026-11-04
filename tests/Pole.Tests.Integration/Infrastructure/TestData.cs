@@ -221,7 +221,7 @@ public static class TestData
     {
         var spec = ValidWebServiceSpec();
         return new WebServiceSpecSnapshot(
-            new WebServiceImageInfoSnapshot(spec.Image.Server, spec.Image.Name, spec.Image.Tag),
+            new WebServiceImageInfoSnapshot(spec.Image!.Server, spec.Image.Name, spec.Image.Tag),
             new WebServiceConfigSnapshot(
                 spec.Config.EnvironmentVariables,
                 spec.Config.PortMappings

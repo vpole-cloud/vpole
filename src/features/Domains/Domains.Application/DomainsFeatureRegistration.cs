@@ -1,6 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
 using Pole.ASP.Helpers;
 using Pole.Features.Realtime.Contracts;
+using Pole.Features.GitOps.Contracts;
+using Pole.Features.Domains.Application.Persistence.DomainZones;
+using Pole.Features.Domains.Application.Persistence.HostnameBindings;
 using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Application.Persistence;
 using Pole.Features.Domains.Contracts.HttpMapping;
@@ -14,6 +17,8 @@ public static class DomainsFeatureRegistration
     {
         services.AddSingleton(new RealtimeTopic("domains", RealtimeScope.Tenant));
         services.AddDomainPersistence();
+        services.AddScoped<IDeclarativeResourceProvider, DeclarativeDomainZoneProvider>();
+        services.AddScoped<IDeclarativeResourceProvider, DeclarativeHostnameBindingProvider>();
         services.AddHttpProblemMappings(DomainContractHttpMappings.All);
         services.AddHttpProblemMappings(DomainHttpMappings.All);
         return services;

@@ -96,6 +96,7 @@
     <Project Path="src/features/SourceBuilds/SourceBuilds.Tests/SourceBuilds.Tests.csproj" />
   </Folder>
   <Folder Name="/features/Domains/">
+    <Project Path="src/features/Domains/Domains.Tests/Domains.Tests.csproj" />
     <Project Path="src/features/Domains/Domains.Events/Domains.Events.csproj" />
     <Project Path="src/features/Domains/Domains.Application/Domains.Application.csproj" />
     <Project Path="src/features/Domains/Domains.Contracts/Domains.Contracts.csproj" />
@@ -142,6 +143,7 @@
     <Project Path="src/features/WebServices/WebServices.Contracts/WebServices.Contracts.csproj" />
     <Project Path="src/features/WebServices/WebServices.Domain/WebServices.Domain.csproj" />
     <Project Path="src/features/WebServices/WebServices.Events/WebServices.Events.csproj" />
+    <Project Path="src/features/WebServices/WebServices.Tests/WebServices.Tests.csproj" />
   </Folder>
   <Folder Name="/features/Outbox/">
     <Project Path="src/features/Outbox/Outbox.Application/Outbox.Application.csproj" />

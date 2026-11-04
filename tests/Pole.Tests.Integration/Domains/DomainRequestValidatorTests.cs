@@ -21,14 +21,16 @@ public sealed class DomainRequestValidatorTests
         var reserved = await validator.ValidateAsync(new CreateDomainZoneRequest(
             new CreateDomainZoneBody(
                 ObjectId.GenerateNewId().ToString(),
-                $"{TenantDomainZoneLabelPolicy.GeneratedPrefix}acme-12345678"),
+            $"{TenantDomainZoneLabelPolicy.GeneratedPrefix}acme-12345678",
+            "zone-" + MongoDB.Bson.ObjectId.GenerateNewId()),
             ObjectId.GenerateNewId().ToString()));
         Assert.Contains(reserved.Errors, error => error.PropertyName == "Body.Label");
 
         var invalidLabel = await validator.ValidateAsync(new CreateDomainZoneRequest(
             new CreateDomainZoneBody(
                 ObjectId.GenerateNewId().ToString(),
-                "invalid.label"),
+            "invalid.label",
+            "zone-" + MongoDB.Bson.ObjectId.GenerateNewId()),
             ObjectId.GenerateNewId().ToString()));
         Assert.Contains(invalidLabel.Errors, error => error.PropertyName == "Body.Label");
     }

@@ -48,13 +48,11 @@ export function IntegrationsPage({
     (candidate) => candidate.candidateKey === manager.selection.candidateKey,
   )
   const isLinked = Boolean(
-    selectedPlan &&
     manager.sourceRepositories.some(
       (source) =>
         source.connectionId === manager.selection.connectionId &&
         source.externalRepositoryId === manager.selection.repositoryId &&
-        source.branch === manager.selection.branch &&
-        source.selectedPlan.candidateKey === selectedPlan.candidateKey,
+        source.branch === manager.selection.branch,
     ),
   )
 
@@ -257,10 +255,11 @@ export function IntegrationsPage({
                       {source.repositoryFullName}
                     </a>
                     <span>
-                      {source.branch} · {source.selectedPlan.displayName}
+                      {source.technicalName} · {source.branch}
+                      {source.gitOps && ' · Managed by Git'}
                     </span>
                   </div>
-                  <code>{shortSha(source.commitSha)}</code>
+                  <code>r{source.revision}</code>
                   <div className="row-actions">
                     <button
                       className="button"
@@ -272,7 +271,7 @@ export function IntegrationsPage({
                     </button>
                     <button
                       className="button button--danger"
-                      disabled={!canManage || busy}
+                      disabled={!canManage || busy || Boolean(source.gitOps)}
                       onClick={() => void unlink(source.id, source.repositoryFullName)}
                       type="button"
                     >
@@ -292,6 +291,34 @@ export function IntegrationsPage({
             <p className="panel__eyebrow">Repository analysis</p>
             <h2 className="panel__title">Build-plan preview</h2>
           </div>
+          <div className="repository-controls">
+            <label className="field">
+              <span>Repository technical name</span>
+              <input
+                value={manager.sourceTechnicalName}
+                onChange={(event) => manager.setSourceTechnicalName(event.target.value)}
+                maxLength={63}
+                disabled={!canManage || manager.actionStatus === 'loading'}
+                placeholder="application-source"
+              />
+            </label>
+            <button
+              className="button button--primary"
+              type="button"
+              disabled={
+                !canManage ||
+                !manager.selection.repositoryId ||
+                !manager.selection.branch ||
+                !manager.sourceNameValid ||
+                isLinked ||
+                manager.actionStatus === 'loading'
+              }
+              onClick={() => void manager.link()}
+            >
+              {isLinked ? 'Already linked' : 'Link repository'}
+            </button>
+          </div>
+
           {manager.selection.analysis && (
             <span className="panel__meta">
               {shortSha(manager.selection.analysis.commitSha)} ·{' '}
@@ -383,6 +410,34 @@ export function IntegrationsPage({
             </div>
           )}
 
+        <div className="repository-controls">
+          <label className="field">
+            <span>Repository technical name</span>
+            <input
+              value={manager.sourceTechnicalName}
+              onChange={(event) => manager.setSourceTechnicalName(event.target.value)}
+              maxLength={63}
+              disabled={!canManage || manager.actionStatus === 'loading'}
+              placeholder="application-source"
+            />
+          </label>
+          <button
+            className="button button--primary"
+            type="button"
+            disabled={
+              !canManage ||
+              !manager.selection.repositoryId ||
+              !manager.selection.branch ||
+              !manager.sourceNameValid ||
+              isLinked ||
+              manager.actionStatus === 'loading'
+            }
+            onClick={() => void manager.link()}
+          >
+            {isLinked ? 'Already linked' : 'Link repository'}
+          </button>
+        </div>
+
         {manager.selection.analysis && (
           <div className="analysis-workspace">
             <div className="analysis-candidates" role="radiogroup" aria-label="Build plans">
@@ -469,19 +524,7 @@ export function IntegrationsPage({
                       Branch <strong>{manager.selection.analysis.branch}</strong> at{' '}
                       <code>{shortSha(manager.selection.analysis.commitSha)}</code>
                     </span>
-                    <button
-                      className="button button--primary"
-                      disabled={
-                        !canManage ||
-                        isLinked ||
-                        manager.analysisStale ||
-                        manager.actionStatus === 'loading'
-                      }
-                      onClick={() => void manager.link()}
-                      type="button"
-                    >
-                      {isLinked ? 'Linked' : 'Link repository'}
-                    </button>
+
                     {manager.analysisStale && (
                       <p role="status">
                         The branch changed after analysis. Analyze it again before linking this

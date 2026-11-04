@@ -49,6 +49,16 @@ internal sealed class MongoCreateCustomHostnameBinding(
                     request.DeploymentTargetId));
         }
 
+        var zoneDomain = DnsName.Create(zone.Domain);
+        try
+        {
+            RelativeDnsName.Create(request.RelativeName).Under(zoneDomain);
+        }
+        catch (ArgumentException)
+        {
+            return new CustomHostnameBindingError(new CustomHostnameBindingInvalidRelativeName());
+        }
+
         var binding = HostnameBindingFactory.CreateCustom(
             request.TenantId,
             zone.Id,
@@ -57,9 +67,10 @@ internal sealed class MongoCreateCustomHostnameBinding(
             request.ResourceId,
             request.ResourceDeploymentId,
             request.RelativeName,
-            DnsName.Create(zone.Domain),
+            zoneDomain,
+            request.TechnicalName,
             new HostnameBindingFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(),
+                request.BindingId,
                 timeProvider.GetUtcNow().UtcDateTime));
 
         if (!await cleanup.TryAdvanceZoneRevisionsAsync([zone], session, cancellationToken))
@@ -72,8 +83,13 @@ internal sealed class MongoCreateCustomHostnameBinding(
         {
             await bindings.InsertOneAsync(session, binding, cancellationToken: cancellationToken);
         }
-        catch (MongoWriteException exception) when (
-            exception.WriteError.Category == ServerErrorCategory.DuplicateKey)
+        catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(
+            exception, DomainIndexNames.BindingTechnicalName, bindings.CollectionNamespace.CollectionName))
+        {
+            return new CustomHostnameBindingError(new CustomHostnameBindingNameConflict(request.TechnicalName));
+        }
+        catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(
+            exception, DomainIndexNames.BindingHostname, bindings.CollectionNamespace.CollectionName))
         {
             return new CustomHostnameBindingError(
                 new CustomHostnameBindingConflict(binding.Hostname));
@@ -88,7 +104,8 @@ internal sealed class MongoCreateCustomHostnameBinding(
     private static void EnsureRequest(CreateCustomHostnameBindingRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (!ObjectId.TryParse(request.TenantId, out _) ||
+        if (!ObjectId.TryParse(request.BindingId, out _) ||
+            !ObjectId.TryParse(request.TenantId, out _) ||
             !ObjectId.TryParse(request.TenantDomainZoneId, out _) ||
             !ObjectId.TryParse(request.DeploymentTargetId, out _) ||
             !ObjectId.TryParse(request.ResourceId, out _) ||

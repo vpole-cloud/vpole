@@ -91,15 +91,35 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
 
         private static BsonDocument WebServiceSpecSchema() => Object(
             ["Image", "Config", "Autoscaling", "Probes"],
-            ("Image", Object(
-                ["Server", "Name", "Tag", "SecretName"],
-                ("Server", StringType(minimumLength: 1, maximumLength: 255)),
-                ("Name", StringType(minimumLength: 1, maximumLength: 255)),
-                ("Tag", StringType(minimumLength: 1, maximumLength: 100)),
-                ("SecretName", Nullable(StringType())))),
+            ("Image", ImageSchema()),
             ("Config", ConfigSchema()),
             ("Autoscaling", Nullable(AutoscalingSchema())),
             ("Probes", ProbeSpecSchema()));
+
+        private static BsonDocument ImageSchema() => OneOf(
+            DirectImageSchema(),
+            ClosedObject(["_t"], ("_t", ImageDiscriminator("UnboundSourceBuildImage"))),
+            ClosedObject(["_t", "ConfigurationId"],
+                ("_t", ImageDiscriminator("PendingSourceBuildImage")),
+                ("ConfigurationId", StringType(minimumLength: 24, maximumLength: 24))),
+            ClosedObject(["_t", "ConfigurationId", "Image", "Digest", "JobId", "Generation"],
+                ("_t", ImageDiscriminator("DeliveredSourceBuildImage")),
+                ("ConfigurationId", StringType(minimumLength: 24, maximumLength: 24)),
+                ("Image", DirectImageSchema()),
+                ("Digest", new BsonDocument { ["bsonType"] = "string", ["pattern"] = "^sha256:[0-9a-f]{64}$" }),
+                ("JobId", StringType(minimumLength: 24, maximumLength: 24)),
+                ("Generation", IntegerType("long", minimum: 1))));
+
+        private static BsonDocument ImageDiscriminator(string discriminator) =>
+            AllowedValue(new BsonArray { "WebServiceImage", discriminator });
+
+        private static BsonDocument DirectImageSchema() => ClosedObject(
+            ["_t", "Server", "Name", "Tag", "SecretName"],
+            ("_t", ImageDiscriminator("ImageInfo")),
+            ("Server", StringType(minimumLength: 1, maximumLength: 255)),
+            ("Name", StringType(minimumLength: 1, maximumLength: 255)),
+            ("Tag", StringType(minimumLength: 1, maximumLength: 100)),
+            ("SecretName", Nullable(StringType())));
 
         private static BsonDocument ConfigSchema() => Object(
             ["EnvironmentVariables", "PortMappings"],
@@ -158,6 +178,8 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
 
         private static BsonDocument LifecycleSchema() => OneOf(
             LifecycleVariant("ActiveWebServiceLifecycle"),
+            LifecycleVariant("PreparedWebServiceLifecycle"),
+            LifecycleVariant("AwaitingFirstArtifactWebServiceLifecycle"),
             LifecycleVariant("DeletingWebServiceLifecycle", "RequestedAtUtc"));
 
         private static BsonDocument LifecycleVariant(

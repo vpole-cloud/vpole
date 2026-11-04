@@ -114,6 +114,10 @@ public sealed class UpdateWebServiceImageTagHandler(
             return Error(new WebServiceImageTagStateError(
                 new WebServiceUpdateUnavailable(webService.Id)));
 
+        if (webService.Spec.Image is not ImageInfo directImage)
+            return Error(new WebServiceImageTagStateError(
+                new WebServiceUpdateUnavailable(webService.Id)));
+
         var deploymentInventory = await loadResourceDeploymentSet(
             new LoadResourceDeploymentSetRequest(
                 TenantId: webService.TenantId,
@@ -131,7 +135,7 @@ public sealed class UpdateWebServiceImageTagHandler(
         {
             var nextSpec = webService.Spec with
             {
-                Image = webService.Spec.Image with
+                Image = directImage with
                 {
                     Tag = request.Body.Tag
                 }
@@ -200,7 +204,7 @@ public sealed class UpdateWebServiceImageTagHandler(
                     request.Body.CommitSha,
                     request.Body.BuildUrl,
                     request.Body.ImageDigest,
-                    webService.Spec.Image.Tag,
+                    directImage.Tag,
                     request.Body.Tag,
                     authorization.ActorType,
                     authorization.DeploymentTokenId,

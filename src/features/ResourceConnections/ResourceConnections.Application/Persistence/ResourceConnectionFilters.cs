@@ -1,11 +1,20 @@
 using MongoDB.Driver;
 using Pole.Features.ResourceConnections.Domain;
+using Pole.Features.ResourceConnections.Contracts;
 using Pole.Workloads;
 
 namespace Pole.Features.ResourceConnections.Application.Persistence;
 
 internal static class ResourceConnectionFilters
 {
+    public static FilterDefinition<ResourceConnection> ByName(string tenantId, string name) =>
+        ByTenant(tenantId) & Builders<ResourceConnection>.Filter.Eq(item => item.Name, name);
+
+    public static FilterDefinition<ResourceConnection> AtPlanningVersion(
+        string tenantId, ResourceConnectionPlanningVersion version) =>
+        AtRevision(tenantId, version.ConnectionId, version.Revision) &
+        Builders<ResourceConnection>.Filter.Eq(item => item.ReferenceFence, version.ReferenceFence);
+
     public static FilterDefinition<ResourceConnection> All() =>
         Builders<ResourceConnection>.Filter.Empty;
 

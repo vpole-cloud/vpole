@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Pole.Testing;
+using Pole.Tests.E2E.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.E2E;
@@ -14,14 +15,17 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
     private const string MixedSecret = "gitops-mixed-auth";
     private const string MixedProfile = "gitops-mixed-profile";
 
-    [Fact]
+    [SourceBuildFact]
     public async Task MixedRepositoryWaitsForSecretsRepairsDriftAndThenPerformsNoOp()
     {
         using var evidence = new TestPhaseJournal(nameof(MixedRepositoryWaitsForSecretsRepairsDriftAndThenPerformsNoOp))
             .Activate();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(12));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(18));
         var ct = timeout.Token;
         fixture.EnableGitOpsNamespaceCleanup();
+        await fixture.EnsureSourceBuildInfrastructureReadyAsync(ct);
+        using (var revision = await fixture.Stub.PostAsJsonAsync("/__e2e/revision", new { revision = "v1" }, ct))
+            revision.EnsureSuccessStatusCode();
         var image = await fixture.CreateGitOpsFunctionImageAsync(ct);
         var target = await CreateMixedCatalogAsync(ct);
         var connection = await ConnectAsync(ct);
@@ -47,7 +51,7 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
         var ids = operations.GetProperty("items").EnumerateArray()
             .GroupBy(item => item.GetProperty("kind").GetString()!)
             .ToDictionary(group => group.Key, group => group.First().GetProperty("resourceId").GetString()!);
-        Assert.Equal(8, ids.Count);
+        Assert.Equal(13, ids.Count);
         Assert.Null(blocked.GetProperty("synchronization").GetProperty("fullyAppliedCommit").GetString());
         await fixture.AssertGitOpsPreparedWorkloadsAreInertAsync(ids, ct);
 
@@ -59,10 +63,30 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
             values = new Dictionary<string, string> { ["password"] = value }
         }, ct);
         var applied = await AppliedAsync(source, commit, ct);
-        Assert.Equal(10, applied.GetProperty("inventory").GetProperty("owned").GetInt64());
+        Assert.Equal(15, applied.GetProperty("inventory").GetProperty("owned").GetInt64());
         Assert.NotEqual(blockedRun, LatestRunId(applied));
         await fixture.WaitForNamespaceCreationAsync(ids["ResourceGroup"], ct);
         await fixture.VerifyGitOpsPostgresBootstrapAsync(ids["PostgresCluster"], value, ct);
+
+        var webService = await JsonAsync(HttpMethod.Get, $"/api/v1/web-services/{ids["WebService"]}", null, ct);
+        Assert.Equal("AwaitingFirstArtifact", webService.GetProperty("lifecycle").GetString());
+        Assert.Equal(JsonValueKind.Null, webService.GetProperty("spec").GetProperty("image").ValueKind);
+        await fixture.AssertGitOpsAwaitingArtifactIsInertAsync(ids["WebService"], ct);
+        Assert.Empty((await MixedBuildsAsync(ids["WebService"], ct)).EnumerateArray());
+        var releases = await JsonAsync(HttpMethod.Get, $"/api/v1/web-services/{ids["WebService"]}/releases", null, ct);
+        Assert.Empty(releases.GetProperty("releases").GetProperty("items").EnumerateArray());
+
+        var build = await JsonAsync(HttpMethod.Post,
+            $"/api/v1/source-build-configurations/{ids["SourceBuildConfiguration"]}/builds", null, ct);
+        var buildId = build.GetProperty("id").GetString()!;
+        var completed = await WaitMixedBuildAsync(buildId, ct);
+        Assert.Equal(new string('1', 40), completed.GetProperty("commitSha").GetString());
+        Assert.NotEqual(commit, completed.GetProperty("commitSha").GetString());
+        var digest = completed.GetProperty("state").GetProperty("imageDigest").GetString()!;
+        Assert.Equal(digest, await fixture.GetHarborArtifactDigestAsync(
+            fixture.Alpha.DefaultTenantId, ids["WebService"], digest, ct));
+        await fixture.WaitForWebServiceReadyAsync(ids["ResourceGroup"], "mixed-web", ct);
+        await fixture.AssertGitOpsDeliveryWiringAsync(ids, digest, ct);
 
         // A controlled database fixture is the only writer bypassing the production ownership guards.
         await fixture.InjectMixedGitOpsDriftAsync(ids, ct);
@@ -75,6 +99,16 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
         Assert.All(operations.GetProperty("items").EnumerateArray(), operation =>
             Assert.Equal("Succeeded", operation.GetProperty("status").GetString()));
         Assert.False(operations.GetRawText().Contains(value, StringComparison.Ordinal), "API leaked Secret content.");
+        await fixture.RemoveGitOpsHostnameAttachmentAsync(ids["HostnameBinding"], ct);
+        var attachmentRepair = await WaitMixedAsync(source, item =>
+            LatestRunId(item) != LatestRunId(repaired) &&
+            item.GetProperty("status").GetString() == "ConfigurationApplied", ct);
+        var attachmentOperations = await OperationsAsync(source, LatestRunId(attachmentRepair), ct);
+        Assert.Contains(attachmentOperations.GetProperty("items").EnumerateArray(), item =>
+            item.GetProperty("kind").GetString() == "HostnameBinding" &&
+            item.GetProperty("plan").GetProperty("action").GetString() == "Update" &&
+            item.GetProperty("status").GetString() == "Succeeded");
+        await fixture.AssertGitOpsDeliveryWiringAsync(ids, digest, ct);
         var stable = await fixture.ReadMixedGitOpsBusinessVersionsAsync(ids, ct);
 
         await JsonAsync(HttpMethod.Post, $"{Root}/{source}/sync", new
@@ -82,13 +116,20 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
             expectedRevision = 1,
             idempotencyKey = Guid.NewGuid()
         }, ct);
-        var unchanged = await WaitMixedAsync(source, item => LatestRunId(item) != LatestRunId(repaired) &&
+        var unchanged = await WaitMixedAsync(source, item => LatestRunId(item) != LatestRunId(attachmentRepair) &&
             item.GetProperty("status").GetString() == "AlreadyCurrent", ct);
         var summary = unchanged.GetProperty("latestRun").GetProperty("operations");
-        Assert.Equal(14, summary.GetProperty("noOp").GetInt32());
+        Assert.Equal(19, summary.GetProperty("noOp").GetInt32());
         Assert.Equal(0, summary.GetProperty("update").GetInt32());
         Assert.Equal(0, summary.GetProperty("create").GetInt32());
         Assert.Equal(stable, await fixture.ReadMixedGitOpsBusinessVersionsAsync(ids, ct));
+
+        webService = await JsonAsync(HttpMethod.Get, $"/api/v1/web-services/{ids["WebService"]}", null, ct);
+        var authority = webService.GetProperty("spec").GetProperty("imageAuthority");
+        Assert.Equal(digest, authority.GetProperty("digest").GetString());
+        Assert.Equal(buildId, authority.GetProperty("jobId").GetString());
+        Assert.Single((await MixedBuildsAsync(ids["WebService"], ct)).EnumerateArray());
+        await fixture.AssertGitOpsDeliveryWiringAsync(ids, digest, ct);
 
         using var foreign = fixture.CreateAuthenticatedRequest(HttpMethod.Get, $"{Root}/{source}",
             fixture.Beta, fixture.Beta.DefaultTenantId);
@@ -97,6 +138,26 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
         var journal = (await fixture.Stub.GetFromJsonAsync<JsonElement[]>("/__e2e/requests", ct))!;
         Assert.DoesNotContain(journal, item => item.GetProperty("path").GetString()!
             .StartsWith("/repos/pole-e2e/gitops-mixed/contents/", StringComparison.Ordinal));
+    }
+
+    private async Task<JsonElement> MixedBuildsAsync(string webServiceId, CancellationToken ct) =>
+        (await JsonAsync(HttpMethod.Get, $"/api/v1/source-build-jobs?webServiceId={webServiceId}", null, ct))
+        .GetProperty("items");
+
+    private async Task<JsonElement> WaitMixedBuildAsync(string id, CancellationToken ct)
+    {
+        while (true)
+        {
+            var job = await JsonAsync(HttpMethod.Get, $"/api/v1/source-build-jobs/{id}", null, ct);
+            var state = job.GetProperty("state");
+            var status = state.GetProperty("status").GetString();
+            Assert.False(status == "failed",
+                "The mixed repository's manual build failed; inspect sanitized job status.");
+            if (status == "succeeded")
+                return job;
+
+            await Task.Delay(TimeSpan.FromSeconds(1), ct);
+        }
     }
 
     private Task<JsonElement> WaitMixedAsync(string source, Func<JsonElement, bool> ready, CancellationToken ct) =>
@@ -137,7 +198,7 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
         {
             technicalName = MixedProfile,
             displayName = "Mixed GitOps",
-            description = "Stage five E2E",
+            description = "Stage six E2E",
             resources = new
             {
                 requests = new { cpuMillis = 100, memoryMi = 256 },
@@ -157,7 +218,7 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
         {
             technicalName = MixedProfile,
             displayName = "Mixed GitOps",
-            description = "Stage five E2E",
+            description = "Stage six E2E",
             mediaType = "Network",
             performanceTier = "Standard",
             isEnabled = true,
@@ -193,7 +254,7 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
         var storage = new { sizeGb = 1, profile = new { name = MixedProfile, revision = 1 } };
         var secretEnvironment = new Dictionary<string, object>
         {
-            ["STAGE_FIVE_SECRET"] = new { secret = MixedSecret, key = "password" }
+            ["STAGE_SIX_SECRET"] = new { secret = MixedSecret, key = "password" }
         };
         var probe = new
         {
@@ -230,7 +291,12 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
                 version = 16, instances = 1, username = "app",
                 bootstrapPassword = new { secret = MixedSecret, key = "password" } }),
             File("WebService", "mixed-web", new { resourceGroup = MixedGroup, placement,
-                image = new { server = "docker.io", name = "traefik/whoami", tag = "v1.11.0" },
+                image = new { sourceBuildConfiguration = "mixed-build" }, exposure = "Public",
+                connectionEnvironment = new Dictionary<string, object>
+                {
+                    ["CACHE_HOST"] = new { connection = "mixed-cache", valueKind = "Host" },
+                    ["CACHE_PORT"] = new { connection = "mixed-cache", valueKind = "Port" }
+                },
                 ports = new[] { new { name = "http", servicePort = 80, targetPort = "80", protocol = "TCP" } },
                 probes = new { startup = probe, readiness = probe, liveness = probe },
                 secretEnvironment, tags = new[] { "gitops" } }),
@@ -246,6 +312,26 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
                     trigger = new { type = "http", route = "hello", methods = new[] { "GET" },
                         exposure = "Internal" } } },
                 tags = new[] { "gitops" } }),
+            File("ResourceConnection", "mixed-cache", new
+            {
+                source = new { kind = "WebService", name = "mixed-web" },
+                destination = new { kind = "RedisService", name = "mixed-redis" }, endpoint = "redis"
+            }),
+            File("DomainZone", "mixed-zone", new { deploymentTarget = target, label = "gitops-mixed" }),
+            File("HostnameBinding", "mixed-hostname", new
+            {
+                zone = "mixed-zone", resource = new { kind = "WebService", name = "mixed-web" },
+                deploymentTarget = target, relativeName = "app"
+            }),
+            File("SourceRepository", "mixed-repository", new
+            {
+                connection = "github-e2e", repositoryId = "9001", branch = "gitops-application"
+            }),
+            File("SourceBuildConfiguration", "mixed-build", new
+            {
+                repository = "mixed-repository", webService = "mixed-web",
+                recipe = new { dockerfile = "FROM traefik/whoami:v1.11.0\nCOPY src/Program.cs /app/revision.txt\n" }
+            }),
             Binding("mixed-web-binding", "WebService", "mixed-web", "Runtime"),
             Binding("mixed-function-binding", "FunctionApp", "mixed-function", "Runtime"),
             Binding("mixed-bootstrap-grant", "PostgresCluster", "mixed-postgres", "Bootstrap")

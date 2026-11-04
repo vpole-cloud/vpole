@@ -1,5 +1,7 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Features.Domains.Domain;
+using Pole.Workloads;
 
 namespace Pole.Features.Domains.Application.Migrations;
 
@@ -54,6 +56,15 @@ internal static class DomainCollectionSchema
             ["properties"] = schemas
         };
     }
+
+    public static BsonDocument Identity() => new("oneOf", new BsonArray
+    {
+        Object(["_t"], ("_t", Enum(nameof(GeneratedDomainIdentity)))),
+        Object(
+            ["_t", "TechnicalName"],
+            ("_t", Enum(nameof(NamedDomainIdentity))),
+            ("TechnicalName", String(1, ResourceTechnicalName.MaximumLength, ResourceTechnicalName.Pattern)))
+    });
 
     public static BsonDocument Type(string bsonType) => new("bsonType", bsonType);
 

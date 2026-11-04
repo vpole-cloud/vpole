@@ -1,4 +1,5 @@
 using MongoDB.Driver;
+using Pole.Features.GitOps.Contracts;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Contracts;
@@ -9,10 +10,13 @@ namespace Pole.Features.ResourceConnections.Application.Persistence;
 
 public sealed record ResourceConnectionDeletionConflict(string Id);
 
+public sealed record ResourceConnectionGitOwned(string Id);
+
 public union DeleteResourceConnectionPersistenceOutcome(
     ResourceConnection,
     ResourceConnectionMissing,
-    ResourceConnectionDeletionConflict);
+    ResourceConnectionDeletionConflict,
+    ResourceConnectionGitOwned);
 
 public sealed record ResourceConnectionMissing(string Id);
 
@@ -25,6 +29,7 @@ internal sealed class MongoBeginResourceConnectionDeletion(
     IMongoCollection<ResourceConnection> connections,
     RunMongoOutcomeTransaction<DeleteResourceConnectionPersistenceOutcome> transactions,
     StoreOutboxWrites storeOutboxWrites,
+    IGitOpsMutations git,
     TimeProvider timeProvider)
 {
     public Task<DeleteResourceConnectionPersistenceOutcome> InvokeAsync(
@@ -40,6 +45,10 @@ internal sealed class MongoBeginResourceConnectionDeletion(
             if (current is null)
                 return transaction.Abort(new DeleteResourceConnectionPersistenceOutcome(
                     new ResourceConnectionMissing(connectionId)));
+            if (!await git.AuthorizeAsync(new(tenantId, "ResourceConnection", connectionId), transaction.Session, ct))
+                return transaction.Abort(new DeleteResourceConnectionPersistenceOutcome(
+                    new ResourceConnectionGitOwned(connectionId)));
+
             if (current.Lifecycle is DeletingResourceConnection)
                 return transaction.Commit(new DeleteResourceConnectionPersistenceOutcome(current));
 

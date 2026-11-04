@@ -34,12 +34,21 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
         var placement = Assert.Single(service.Deployments);
         foreach (var label in new[] { "alpha", "beta" })
         {
-            using var attach = await Client.PostAsJsonAsync($"/api/v1/web-services/{service.WebServiceId}/deployments/{placement.DeploymentId}/hostnames", new { tenantDomainZoneId = zone.Id, relativeName = label });
+            using var attach = await Client.PostAsJsonAsync(
+                $"/api/v1/web-services/{service.WebServiceId}/deployments/{placement.DeploymentId}/hostnames",
+                new { tenantDomainZoneId = zone.Id, relativeName = label, technicalName = label });
             Assert.Equal(HttpStatusCode.Accepted, attach.StatusCode);
         }
         var foreign = HostnameBindingFactory.CreateCustom(
-            OtherTenantId, zone.Id, TestData.DefaultDeploymentTargetId, ResourceTypeId.Create("pole/web-service"),
-            ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString(), "foreign-canary", DnsName.Create(zone.Domain),
+            OtherTenantId,
+            zone.Id,
+            TestData.DefaultDeploymentTargetId,
+            ResourceTypeId.Create("pole/web-service"),
+            ObjectId.GenerateNewId().ToString(),
+            ObjectId.GenerateNewId().ToString(),
+            "foreign-canary",
+            DnsName.Create(zone.Domain),
+            "binding-" + MongoDB.Bson.ObjectId.GenerateNewId(),
             new HostnameBindingFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow));
         await Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings").InsertOneAsync(foreign);
         await SetCurrentUserRoleAsync(TenantRole.Viewer);
@@ -107,6 +116,7 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
             TestData.DefaultDeploymentTargetId,
             "foreign",
             DnsName.Create("apps.test.local"),
+            "zone-" + MongoDB.Bson.ObjectId.GenerateNewId(),
             new TenantDomainZoneFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
                 DateTime.UtcNow));
@@ -208,6 +218,7 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
             ObjectId.GenerateNewId().ToString(),
             "api",
             DnsName.Create(zone.Domain),
+            "binding-" + MongoDB.Bson.ObjectId.GenerateNewId(),
             new HostnameBindingFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
                 DateTime.UtcNow));
@@ -265,6 +276,7 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
             TestData.DefaultDeploymentTargetId,
             "foreign-delete",
             DnsName.Create("apps.test.local"),
+            "zone-" + MongoDB.Bson.ObjectId.GenerateNewId(),
             new TenantDomainZoneFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
                 DateTime.UtcNow));
@@ -437,7 +449,7 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
         string label) =>
         Client.PostAsJsonAsync(
             "/api/v1/domain-zones/",
-            new { deploymentTargetId, label });
+            new { deploymentTargetId, label, technicalName = "zone-" + ObjectId.GenerateNewId() });
 
     private async Task<TenantDomainZoneSnapshot> CreateZoneAsync(string label)
     {

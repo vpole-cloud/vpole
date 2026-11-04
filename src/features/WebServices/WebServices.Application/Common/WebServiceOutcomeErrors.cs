@@ -146,6 +146,7 @@ public union WebServiceDeploymentHostnameError(
     WebServiceDeploymentMutationStateError,
     WebServiceHostnameAttachmentUnavailable,
     CustomHostnameBindingError,
+    CustomHostnameBindingGitOwned,
     ResourceDeploymentMutationError,
     AdvanceResourceDeploymentRevisionError,
     WebServiceConnectionConflict,

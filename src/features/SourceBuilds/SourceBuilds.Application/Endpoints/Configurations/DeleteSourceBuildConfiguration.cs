@@ -23,7 +23,9 @@ public sealed record SourceBuildConfigurationDeleted(string ConfigurationId);
 public union DeleteSourceBuildConfigurationOutcome(
     SourceBuildConfigurationDeleted,
     SourceBuildConfigurationNotFound,
-    SourceBuildConfigurationHasActiveJobs);
+    SourceBuildConfigurationHasActiveJobs,
+    SourceBuildConfigurationInUse,
+    SourceBuildConfigurationGitOwned);
 
 public sealed class DeleteSourceBuildConfigurationHandler(
     DeleteSourceBuildConfiguration deleteSourceBuildConfiguration)
@@ -44,7 +46,9 @@ public sealed class DeleteSourceBuildConfigurationHandler(
             SourceBuildConfigurationRemovalRecorded =>
                 new SourceBuildConfigurationDeleted(request.ConfigurationId),
             SourceBuildConfigurationNotFound error => error,
-            SourceBuildConfigurationHasActiveJobs error => error
+            SourceBuildConfigurationHasActiveJobs error => error,
+            SourceBuildConfigurationInUse error => error,
+            SourceBuildConfigurationGitOwned error => error
         };
     }
 }
@@ -71,6 +75,8 @@ public static class DeleteSourceBuildConfigurationEndpoint
                 {
                     SourceBuildConfigurationDeleted => Results.NoContent(),
                     SourceBuildConfigurationNotFound error => MapConfigurationNotFound(error),
+                    SourceBuildConfigurationGitOwned error => MapConfigurationGitOwned(error),
+                    SourceBuildConfigurationInUse error => MapConfigurationInUse(error),
                     SourceBuildConfigurationHasActiveJobs error => MapConfigurationHasActiveJobs(error)
                 });
             })

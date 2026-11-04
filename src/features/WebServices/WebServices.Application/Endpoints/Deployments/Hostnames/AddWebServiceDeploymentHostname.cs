@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Database;
+using Pole.Dns;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -57,7 +58,8 @@ public sealed record AddWebServiceDeploymentHostnameRequest(
 
 public sealed record AddWebServiceDeploymentHostnameBody(
     string TenantDomainZoneId,
-    string RelativeName);
+    string RelativeName,
+    string TechnicalName);
 
 public union AddWebServiceDeploymentHostnameOutcome(
     PlacementSummaryDto,
@@ -69,7 +71,7 @@ public sealed class AddWebServiceDeploymentHostnameHandler(
     CreateCustomHostnameBinding createCustomHostnameBinding,
     LoadHostnameBindingsForDeploymentInTransaction
         loadHostnameBindingsForDeploymentInTransaction,
-    RequestExactResourceDeploymentApply requestExactResourceDeploymentApply,
+    RequestResourceDeploymentSetApply requestResourceDeploymentSetApply,
     AdvanceResourceDeploymentRevision advanceResourceDeploymentRevision,
     PersistUpdatedWebServiceOutcome persistWebService,
     PersistCurrentWebServiceRelease persistRelease,
@@ -92,7 +94,8 @@ public sealed class AddWebServiceDeploymentHostnameHandler(
             return Error(new WebServiceDeploymentMutationStateError(
                 new WebServiceNotFound(request.Id)));
         }
-        if (webService.Exposure.Mode is WebServiceExposureMode.Private)
+        if (webService.Exposure.Mode is WebServiceExposureMode.Private ||
+            webService.Lifecycle is not (ActiveWebServiceLifecycle or AwaitingFirstArtifactWebServiceLifecycle))
         {
             return Error(new WebServiceHostnameAttachmentUnavailable(webService.Id));
         }
@@ -132,13 +135,15 @@ public sealed class AddWebServiceDeploymentHostnameHandler(
     {
         var created = await createCustomHostnameBinding(
             new CreateCustomHostnameBindingRequest(
+                MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
                 request.TenantId,
                 request.Body.TenantDomainZoneId,
                 deployment.DeploymentTargetId,
                 WebServiceResourceDeployment.ResourceType,
                 request.Id,
                 request.DeploymentId,
-                request.Body.RelativeName),
+                request.Body.RelativeName,
+                request.Body.TechnicalName),
             transaction.Session,
             cancellationToken);
         if (created is CustomHostnameBindingError createdError)
@@ -169,20 +174,23 @@ public sealed class AddWebServiceDeploymentHostnameHandler(
             session: transaction.Session,
             cancellationToken: cancellationToken);
         var updated = webService.AdvancePlacementDesiredState();
-        var applied = await requestExactResourceDeploymentApply(
-            WebServiceDeploymentWorkflow.ToExactApplyRequest(
+        var applied = await requestResourceDeploymentSetApply(
+            new ResourceDeploymentSetApplyRequest(
                 request.TenantId,
+                WebServiceResourceDeployment.ResourceType,
                 request.Id,
-                current,
                 updated.ActiveRevision,
-                replacementIngress: WebServiceDeploymentWorkflow.WithHostnames(
-                    current,
-                    snapshots.Select(binding => binding.Hostname))),
+                [new(current.DeploymentId, current.DeploymentRevision, current.Compute.Profile,
+                    new ReplaceIngress(WebServiceDeploymentWorkflow.WithHostnames(
+                        current, snapshots.Select(binding => binding.Hostname))))],
+                updated.Lifecycle is AwaitingFirstArtifactWebServiceLifecycle
+                    ? ResourceDeploymentActivation.KeepPrepared : ResourceDeploymentActivation.Reconcile),
             transaction.Session,
             cancellationToken);
         if (applied is ResourceDeploymentMutationError failure)
             return Abort(transaction, new WebServiceDeploymentHostnameError(failure));
-        var changed = (PlacementSummaryDto)applied.Value;
+        var changed = ((MutatedResourceDeployments)applied.Value).Placements
+            .Single(item => item.DeploymentId == request.DeploymentId);
 
         var advanced = await advanceResourceDeploymentRevision(
             new ResourceDeploymentResourceRevisionRequest(
@@ -210,22 +218,26 @@ public sealed class AddWebServiceDeploymentHostnameHandler(
         if (persisted is WebServiceDependencyUnavailable dependencyUnavailable)
             return Abort(transaction, new WebServiceDeploymentHostnameError(dependencyUnavailable));
 
-        var release = WebServiceReleaseFactory.CreatePending(
-            updated.TenantId,
-            updated.Id,
-            updated.ActiveRevision,
-            WebServiceReleaseAction.HostnameChanged,
-            null,
-            null,
-            updated.Spec,
-            WebServiceDeploymentWorkflow.ToReleaseDeployments(deployments),
-            null,
-            null,
-            new WebServiceReleaseFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(),
-                timeProvider.GetUtcNow().UtcDateTime),
-            updated.Exposure);
-        await persistRelease(transaction.Session, release, cancellationToken);
+        if (updated.Lifecycle is ActiveWebServiceLifecycle)
+        {
+            var release = WebServiceReleaseFactory.CreatePending(
+                updated.TenantId,
+                updated.Id,
+                updated.ActiveRevision,
+                WebServiceReleaseAction.HostnameChanged,
+                null,
+                null,
+                updated.Spec,
+                WebServiceDeploymentWorkflow.ToReleaseDeployments(deployments),
+                null,
+                null,
+                new WebServiceReleaseFactory.CreateOptions(
+                    ObjectId.GenerateNewId().ToString(),
+                    timeProvider.GetUtcNow().UtcDateTime),
+                updated.Exposure);
+            await persistRelease(transaction.Session, release, cancellationToken);
+        }
+
         return transaction.Commit(new AddWebServiceDeploymentHostnameOutcome(changed));
     }
 
@@ -248,8 +260,24 @@ public sealed class AddWebServiceDeploymentHostnameValidator
             .MongoObjectId("Resource deployment ID");
         RuleFor(request => request.Body.TenantDomainZoneId)
             .MongoObjectId("Domain zone ID");
+        RuleFor(request => request.Body.TechnicalName)
+            .NotEmpty().Must(Pole.Workloads.ResourceTechnicalName.IsValid);
         RuleFor(request => request.Body.RelativeName)
             .NotEmpty()
-            .MaximumLength(253);
+            .MaximumLength(253)
+            .Must(IsValidRelativeName);
+    }
+
+    private static bool IsValidRelativeName(string value)
+    {
+        try
+        {
+            RelativeDnsName.Create(value);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
     }
 }

@@ -28,13 +28,7 @@ const job: SourceBuildJob = {
   createdAtUtc: '',
   updatedAtUtc: '',
   recipe: {
-    kind: 0,
-    candidateKey: 'docker',
-    sourceRoot: '.',
-    manifestPath: 'Dockerfile',
-    commands: [],
     dockerfile: 'FROM scratch',
-    isCustomized: false,
   },
   state: { status: 'queued', startedAtUtc: '' },
 }
@@ -134,69 +128,51 @@ it('rejects failed configuration writes so callers retain their source selection
   )
   await act(async () => root.render(<Probe />))
   await act(async () => {
-    await expect(state.create('source', 'service')).rejects.toThrow('Source is unavailable')
+    await expect(
+      state.create('source', 'service', 'api-build', { dockerfile: 'FROM scratch' }),
+    ).rejects.toThrow('Source is unavailable')
   })
   expect(state.actionStatus).toBe('error')
   expect(state.actionError).toBe('Source is unavailable')
   expect(state.configurations).toEqual([])
 })
 
-it('retains a newly analyzed commit when an earlier configuration refresh completes', async () => {
+it('analysis remains authoring output and does not replace the repository identity cache', async () => {
   const source: SourceRepository = {
     id: 'source',
+    technicalName: 'application',
+    revision: 1,
     connectionId: 'account',
     externalRepositoryId: 'repo',
     repositoryFullName: 'team/app',
     repositoryUrl: '',
     isPrivate: true,
     branch: 'main',
-    commitSha: 'old',
     createdAtUtc: '',
     updatedAtUtc: '',
-    analyzedAtUtc: '',
-    selectedPlan: {
-      candidateKey: 'docker',
-      kind: 'Dockerfile',
-      displayName: 'Dockerfile',
-      sourceRoot: '.',
-      manifestPath: 'Dockerfile',
-      confidence: 'High',
-      signals: [],
-      warnings: [],
-      commands: [],
-      dockerfilePreview: 'FROM scratch',
-    },
   }
-  const old = deferred<SourceRepository[]>()
-  vi.mocked(api.fetchSourceRepositories)
-    .mockResolvedValueOnce([source])
-    .mockReturnValueOnce(old.promise)
-  vi.mocked(api.reanalyzeSourceRepository).mockImplementation(async () => {
-    const updated = { ...source, commitSha: 'new' }
-    vi.mocked(api.fetchSourceRepositories).mockResolvedValue([updated])
-    return updated
+  vi.mocked(api.fetchSourceRepositories).mockResolvedValue([source])
+  vi.mocked(api.reanalyzeSourceRepository).mockResolvedValue({
+    repositoryId: 'repo',
+    repositoryFullName: 'team/app',
+    branch: 'main',
+    commitSha: 'new',
+    analyzedAtUtc: '',
+    detectedFiles: [],
+    candidates: [],
   })
   await act(async () => root.render(<Probe />))
-  let pending!: ReturnType<typeof state.refresh>
-  await act(async () => {
-    pending = state.refresh()
-  })
-  const signal = vi.mocked(api.fetchSourceRepositories).mock.calls[1][3]!
   await act(async () => {
     await state.reanalyze('source')
   })
-  expect(signal.aborted).toBe(true)
-  await act(async () => {
-    old.resolve([source])
-    await pending
-  })
-  expect(state.sourceRepositories[0].commitSha).toBe('new')
-  expect(state.status).toBe('success')
+  expect(state.sourceRepositories).toEqual([source])
 })
 
 it('retains loaded configuration and history while a visited Builds section becomes inactive', async () => {
   const configuration = {
     id: 'configuration',
+    technicalName: 'api-build',
+    revision: 1,
     webServiceId: 'service',
     sourceRepositoryId: 'source',
     recipe: job.recipe,

@@ -19,6 +19,31 @@ namespace Pole.Tests.Integration.WebServices;
 public sealed class WebServiceManifestTests
 {
     [Fact]
+    public void Awaiting_artifact_cannot_render_workload_or_routes_and_promotion_uses_digest()
+    {
+        var subject = CreateSubject();
+        const string configurationId = "6b800088b213917a38c38011";
+        const string jobId = "6b800088b213917a38c38012";
+        var awaiting = subject.WebService with
+        {
+            Spec = subject.WebService.Spec with { Image = WebServiceImageFactory.Pending(configurationId) },
+            Lifecycle = new AwaitingFirstArtifactWebServiceLifecycle()
+        };
+        var inert = subject with { WebService = awaiting };
+        Assert.Throws<InvalidOperationException>(() => inert.ToDeployment());
+        Assert.Null(inert.ToIngress());
+        Assert.Null(inert.ToImagePullSecret());
+
+        var digest = "sha256:" + new string('b', 64);
+        var image = Assert.IsType<ImageInfo>(subject.WebService.Spec.Image);
+        var promoted = awaiting.PromoteArtifact(
+            DeliveredSourceBuildImage.Create(configurationId, image, digest, jobId, 1));
+        var active = subject with { WebService = promoted };
+        Assert.Equal($"{image.Server}/{image.Name}@{digest}",
+            Assert.Single(active.ToDeployment().Spec.Template.Spec.Containers).Image);
+    }
+
+    [Fact]
     public void Dependency_environment_uses_target_values_and_native_key_references_without_plaintext_in_ConfigMap()
     {
         var subject = CreateSubject();

@@ -45,151 +45,77 @@ public delegate Task<CreateResourceConnectionPersistenceOutcome> PersistResource
 internal sealed class MongoCreateResourceConnection(
     RunMongoOutcomeTransaction<CreateResourceConnectionPersistenceOutcome> transactions,
     FenceRegisteredResource fenceRegistration,
-    LoadResourceDeploymentConnectionPlacements loadPlacements,
-    ResourceConnectionEndpointCatalog endpointCatalog,
+    ResourceConnectionTopologyAdmission admission,
     IMongoCollection<ResourceConnection> connections,
     StoreOutboxWrites storeOutboxWrites)
 {
     public Task<CreateResourceConnectionPersistenceOutcome> InvokeAsync(
         CreateResourceConnectionCommand command,
         CancellationToken cancellationToken = default) =>
-        transactions(
-            async (transaction, ct) =>
+        transactions(async (transaction, ct) =>
+        {
+            var result = await CreateAsync(new(ObjectId.GenerateNewId().ToString(), command), transaction.Session, ct);
+            return result is ResourceConnection ? transaction.Commit(result) : transaction.Abort(result);
+        }, cancellationToken);
+
+    public async Task<CreateResourceConnectionPersistenceOutcome> CreateAsync(
+        CreateResourceConnectionInSession request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        if (!session.IsInTransaction)
+            throw new InvalidOperationException("Connection creation requires an active transaction.");
+
+        var command = request.Command;
+        var references = new[]
+        {
+            new FenceRegisteredResourceRequest(command.TenantId, command.SourceResourceType, command.SourceResourceId),
+            new FenceRegisteredResourceRequest(command.TenantId,
+                command.DestinationResourceType, command.DestinationResourceId)
+        }.Distinct().OrderBy(item => item.ResourceTypeId.Value, StringComparer.Ordinal)
+            .ThenBy(item => item.ResourceId, StringComparer.Ordinal);
+        foreach (var reference in references)
+        {
+            if (await fenceRegistration(reference, session, cancellationToken) is null)
+                return new ConnectionResourceMissing();
+        }
+
+        var admitted = await admission.ReadAsync(command, session, cancellationToken);
+        return admitted switch
+        {
+            ResolvedResourceConnectionTopology topology => await PersistAsync(topology),
+            ConnectionResourceMissing error => error,
+            ConnectionEndpointUnsupported error => error,
+            ConnectionSourceHasNoPlacements error => error,
+            ConnectionPlacementDeleting error => error,
+            ConnectionDestinationTargetMissing error => error,
+            ConnectionDestinationTargetAmbiguous error => error
+        };
+
+        async Task<CreateResourceConnectionPersistenceOutcome> PersistAsync(ResolvedResourceConnectionTopology topology)
+        {
+            var connection = ResourceConnectionFactory.Create(request.Id, command.TenantId, command.Name,
+                command.SourceResourceType, command.SourceResourceId, command.DestinationResourceType,
+                command.DestinationResourceId, command.EndpointId, topology.Targets);
+            try
             {
-                var source = new ResourceReference(
-                    command.SourceResourceType,
-                    command.SourceResourceId);
-                var destination = new ResourceReference(
-                    command.DestinationResourceType,
-                    command.DestinationResourceId);
-                var references = new[] { source, destination }
-                    .Distinct()
-                    .OrderBy(item => item.Type.Value, StringComparer.Ordinal)
-                    .ThenBy(item => item.Id, StringComparer.Ordinal);
-                // Placement and endpoint mutations acquire this same registration
-                // write fence before changing topology in their transactions.
-                foreach (var reference in references)
-                {
-                    var registered = await fenceRegistration(
-                        new FenceRegisteredResourceRequest(
-                            TenantId: command.TenantId,
-                            ResourceTypeId: reference.Type,
-                            ResourceId: reference.Id),
-                        session: transaction.Session,
-                        cancellationToken: ct);
-                    if (registered is null)
-                        return transaction.Abort(new CreateResourceConnectionPersistenceOutcome(
-                            new ConnectionResourceMissing()));
-                }
+                await connections.InsertOneAsync(session, connection, cancellationToken: cancellationToken);
+            }
+            catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(exception,
+                Migrations.ResourceConnectionIndexesMigration.TenantNameIndex,
+                connections.CollectionNamespace.CollectionName))
+            {
+                return new ConnectionNameAlreadyExists(command.Name);
+            }
 
-                var publishedEndpoint = await endpointCatalog.ResolveAsync(
-                    command.TenantId,
-                    destination.Type,
-                    command.DestinationResourceId,
-                    command.EndpointId,
-                    transaction.Session,
-                    ct);
-                return publishedEndpoint switch
-                {
-                    ResolvedConnectionEndpoint endpoint => await PersistResolvedEndpointAsync(endpoint),
-                    ConnectionEndpointMissing => transaction.Abort(new CreateResourceConnectionPersistenceOutcome(
-                        new ConnectionResourceMissing())),
-                    ConnectionDestinationDeleting => transaction.Abort(new CreateResourceConnectionPersistenceOutcome(
-                        new ConnectionPlacementDeleting())),
-                    ConnectionEndpointUnsupportedByProvider => transaction.Abort(
-                        new CreateResourceConnectionPersistenceOutcome(new ConnectionEndpointUnsupported()))
-                };
-
-                async Task<MongoTransactionDecision<CreateResourceConnectionPersistenceOutcome>>
-                    PersistResolvedEndpointAsync(ResolvedConnectionEndpoint endpoint)
-                {
-                    var sourcePlacements = (await loadPlacements(
-                        new LoadResourceDeploymentConnectionPlacementsRequest(
-                            TenantId: command.TenantId,
-                            ResourceType: source.Type,
-                            ResourceId: source.Id),
-                        session: transaction.Session,
-                        cancellationToken: ct))
-                        .Where(item => !item.DeletionRequested)
-                        .ToArray();
-                    var destinationPlacements = (await loadPlacements(
-                        new LoadResourceDeploymentConnectionPlacementsRequest(
-                            TenantId: command.TenantId,
-                            ResourceType: destination.Type,
-                            ResourceId: destination.Id),
-                        session: transaction.Session,
-                        cancellationToken: ct))
-                        .Where(item => !item.DeletionRequested)
-                        .ToArray();
-
-                    var topology = ResourceConnectionTopology.Evaluate(sourcePlacements.Select(item => item.DeploymentTargetId), destinationPlacements.Select(item => item.DeploymentTargetId));
-                    switch (topology.Kind)
-                    {
-                        case ConnectionTopologyKind.SourceHasNoPlacements:
-                            return transaction.Abort(new CreateResourceConnectionPersistenceOutcome(new ConnectionSourceHasNoPlacements()));
-                        case ConnectionTopologyKind.DestinationTargetMissing:
-                            return transaction.Abort(new CreateResourceConnectionPersistenceOutcome(new ConnectionDestinationTargetMissing(topology.TargetId!)));
-                        case ConnectionTopologyKind.DestinationTargetAmbiguous:
-                            return transaction.Abort(new CreateResourceConnectionPersistenceOutcome(new ConnectionDestinationTargetAmbiguous(topology.TargetId!)));
-                    }
-                    var snapshots = new List<ConnectionTargetSnapshot>();
-                    foreach (var sourcesOnTarget in sourcePlacements
-                        .GroupBy(item => item.DeploymentTargetId, StringComparer.Ordinal))
-                    {
-                        var destinationPlacement = destinationPlacements.Single(item => item.DeploymentTargetId == sourcesOnTarget.Key);
-                        snapshots.Add(ConnectionTargetSnapshot.Create(
-                            sourcesOnTarget.Key,
-                            destinationPlacement.DeploymentId,
-                            destinationPlacement.RuntimeCellId,
-                            destinationPlacement.KubernetesNamespace,
-                            endpoint.ServiceName,
-                            endpoint.ServicePort.Value,
-                            endpoint.TargetPort.Value,
-                            sourcesOnTarget.Select(item => new ConnectionSourcePlacement(
-                                item.DeploymentId,
-                                item.RuntimeCellId,
-                                item.KubernetesNamespace))));
-                    }
-
-                    var connection = ResourceConnectionFactory.Create(
-                        ObjectId.GenerateNewId().ToString(),
-                        command.TenantId,
-                        command.Name,
-                        source.Type,
-                        source.Id,
-                        destination.Type,
-                        destination.Id,
-                        endpoint.Id,
-                        snapshots);
-                    try
-                    {
-                        await connections.InsertOneAsync(
-                            transaction.Session,
-                            connection,
-                            cancellationToken: ct);
-                    }
-                    catch (MongoWriteException exception) when (
-                        exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
-                    {
-                        return transaction.Abort(new CreateResourceConnectionPersistenceOutcome(
-                            new ConnectionNameAlreadyExists(command.Name)));
-                    }
-
-                    await storeOutboxWrites(
-                        transaction.Session,
-                        [OutboxWrite.Create(new ResourceConnectionCreatedEvent(
-                        connection.Id,
-                        connection.Generation)
-                    {
-                        EventCore = EventCore.Create(command.TenantId)
-                    })],
-                        ct);
-                    return transaction.Commit(new CreateResourceConnectionPersistenceOutcome(connection));
-                }
-            },
-            cancellationToken);
-
-    private sealed record ResourceReference(
-        ResourceTypeId Type,
-        string Id);
+            await storeOutboxWrites(session, [OutboxWrite.Create(new ResourceConnectionCreatedEvent(
+                connection.Id, connection.Generation) { EventCore = EventCore.Create(command.TenantId) })],
+                cancellationToken);
+            return connection;
+        }
+    }
 }
+
+internal sealed record CreateResourceConnectionInSession(
+    string Id,
+    CreateResourceConnectionCommand Command);

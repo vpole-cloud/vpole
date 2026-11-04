@@ -21,7 +21,7 @@ public sealed class DomainHandlerOutcomeTests
             receivedDeploymentTargetId = requestedDeploymentTargetId;
             return Task.FromResult<IReadOnlyList<TenantDomainZoneSnapshot>>([]);
         };
-        var handler = new GetDomainZonesHandler(loadZones);
+        var handler = new GetDomainZonesHandler(loadZones, null!);
 
         var outcome = await handler.HandleAsync(new GetDomainZonesRequest(
             tenantId,
@@ -29,7 +29,7 @@ public sealed class DomainHandlerOutcomeTests
 
         var zones = outcome switch
         {
-            IReadOnlyList<TenantDomainZoneSnapshot> value => value,
+            IReadOnlyList<DomainZoneDto> value => value,
             _ => throw new Xunit.Sdk.XunitException(
                 "Expected the domain-zone list outcome.")
         };

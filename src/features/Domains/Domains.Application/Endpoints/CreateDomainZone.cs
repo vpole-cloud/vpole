@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Dns;
+using Pole.Workloads;
+using MongoDB.Bson;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Domains.Application.Persistence;
@@ -28,7 +30,7 @@ public static class CreateDomainZone
                 (await mediator.Send(request, cancellationToken)).ToHttpResult(
                     ToHttpResult))
             .WithName("CreateDomainZone")
-            .Produces<TenantDomainZoneSnapshot>(StatusCodes.Status201Created)
+            .Produces<DomainZoneDto>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
@@ -40,9 +42,10 @@ public static class CreateDomainZone
         CreateDomainZoneOutcome outcome) => outcome switch
         {
             TenantDomainZoneSnapshot zone =>
-                Results.Created($"/api/v1/domain-zones/{zone.Id}", zone),
+                Results.Created($"/api/v1/domain-zones/{zone.Id}", DomainZoneDto.FromSnapshot(zone, null)),
             DeploymentTargetDomainReservationAdmissionError error => MapDomainReservationAdmissionError(error),
             ManagedDomainZoneAlreadyReserved error => MapManagedDomainZoneAlreadyReserved(error),
+            ManagedDomainZoneNameConflict error => MapManagedDomainZoneNameConflict(error),
             ManagedDomainZoneDeploymentTargetChanged error => MapManagedDomainZoneDeploymentTargetChanged(error),
             ManagedDomainZoneReferenceRejected error => MapManagedDomainZoneReferenceRejected(error)
         };
@@ -50,7 +53,8 @@ public static class CreateDomainZone
 
 public sealed record CreateDomainZoneBody(
     string DeploymentTargetId,
-    string Label);
+    string Label,
+    string TechnicalName);
 
 public sealed record CreateDomainZoneRequest(
     [FromBody] CreateDomainZoneBody Body,
@@ -61,6 +65,7 @@ public union CreateDomainZoneOutcome(
     TenantDomainZoneSnapshot,
     DeploymentTargetDomainReservationAdmissionError,
     ManagedDomainZoneAlreadyReserved,
+    ManagedDomainZoneNameConflict,
     ManagedDomainZoneDeploymentTargetChanged,
     ManagedDomainZoneReferenceRejected);
 
@@ -75,6 +80,9 @@ public sealed class CreateDomainZoneRequestValidator : AbstractValidator<CreateD
         {
             RuleFor(request => request.Body.DeploymentTargetId)
                 .MongoObjectId("Deployment target ID");
+            RuleFor(request => request.Body.TechnicalName)
+                .Must(ResourceTechnicalName.IsValid)
+                .WithMessage("Technical name must be a lowercase DNS label beginning with a letter.");
             RuleFor(request => request.Body.Label)
                 .Must(DnsLabel.IsValid)
                 .WithMessage("Label must be one valid ASCII DNS label.")
@@ -106,17 +114,21 @@ public sealed class CreateDomainZoneHandler(
         return await runMongoTransaction(async (transaction, ct) =>
         {
             var reserved = await createManagedDomainZone(
-                request.TenantId,
-                publicIngress.DeploymentTargetId,
-                request.Body.Label,
-                publicIngress.PublicBaseDomain,
-                publicIngress.WorkloadConfigurationRevision,
+                new CreateManagedDomainZoneCommand(
+                    ObjectId.GenerateNewId().ToString(),
+                    request.TenantId,
+                    publicIngress.DeploymentTargetId,
+                    request.Body.TechnicalName,
+                    request.Body.Label,
+                    publicIngress.PublicBaseDomain,
+                    publicIngress.WorkloadConfigurationRevision),
                 transaction.Session,
                 ct);
             return reserved switch
             {
                 TenantDomainZoneSnapshot zone => transaction.Commit(zone),
                 ManagedDomainZoneAlreadyReserved error => transaction.Abort(error),
+                ManagedDomainZoneNameConflict error => transaction.Abort(error),
                 ManagedDomainZoneDeploymentTargetChanged error => transaction.Abort(error),
                 ManagedDomainZoneReferenceRejected error => transaction.Abort(error)
             };

@@ -1,3 +1,5 @@
+import type { GitOpsStatus } from '../../data/gitOps'
+
 export type GitProviderKind = 'GitHub'
 export type GitProviderAccountType = 'User' | 'Organization'
 export type GitProviderRepositorySelection = 'All' | 'Selected'
@@ -69,15 +71,15 @@ export interface RepositoryAnalysis {
 
 export interface SourceRepository {
   id: string
+  gitOps?: GitOpsStatus | null
+  technicalName: string
   connectionId: string
   externalRepositoryId: string
   repositoryFullName: string
   repositoryUrl: string
   isPrivate: boolean
   branch: string
-  commitSha: string
-  analyzedAtUtc: string
+  revision: number
   createdAtUtc: string
   updatedAtUtc: string
-  selectedPlan: SourceBuildPlan
 }

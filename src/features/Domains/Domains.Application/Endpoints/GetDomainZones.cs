@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Domains.Contracts;
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.Domains.Application.Persistence;
 using Pole.Features.Domains.Application.Persistence.DomainZones;
 using Pole.Mediator;
@@ -24,10 +25,10 @@ public static class GetDomainZones
                 (await mediator.Send(request, cancellationToken)).ToHttpResult(
                     outcome => outcome switch
                     {
-                        IReadOnlyList<TenantDomainZoneSnapshot> zones => Results.Ok(zones)
+                        IReadOnlyList<DomainZoneDto> zones => Results.Ok(zones)
                     }))
             .WithName("GetDomainZones")
-            .Produces<IReadOnlyList<TenantDomainZoneSnapshot>>();
+            .Produces<IReadOnlyList<DomainZoneDto>>();
         return app;
     }
 }
@@ -37,7 +38,7 @@ public sealed record GetDomainZonesRequest(
     [FromQuery] string? DeploymentTargetId)
     : IMediatorRequest<GetDomainZonesOutcome>, ITenantReadOperation;
 
-public union GetDomainZonesOutcome(IReadOnlyList<TenantDomainZoneSnapshot>);
+public union GetDomainZonesOutcome(IReadOnlyList<DomainZoneDto>);
 
 public sealed class GetDomainZonesRequestValidator : AbstractValidator<GetDomainZonesRequest>
 {
@@ -51,7 +52,9 @@ public sealed class GetDomainZonesRequestValidator : AbstractValidator<GetDomain
     }
 }
 
-public sealed class GetDomainZonesHandler(LoadTenantDomainZones loadTenantDomainZones)
+public sealed class GetDomainZonesHandler(
+    LoadTenantDomainZones loadTenantDomainZones,
+    IGitOpsMutations git)
     : IMediatorOutcomeHandler<GetDomainZonesRequest, GetDomainZonesOutcome>
 {
     public async Task<GetDomainZonesOutcome> HandleAsync(
@@ -62,6 +65,12 @@ public sealed class GetDomainZonesHandler(LoadTenantDomainZones loadTenantDomain
             request.TenantId,
             request.DeploymentTargetId,
             cancellationToken);
-        return zones;
+        if (zones.Count == 0)
+            return Array.Empty<DomainZoneDto>();
+
+        var ownership = await git.StatusesAsync(
+            new(request.TenantId, "DomainZone", zones.Select(item => item.Id).ToArray()), cancellationToken);
+        return zones.Select(zone => DomainZoneDto.FromSnapshot(zone,
+            ownership.GetValueOrDefault(zone.Id))).ToArray();
     }
 }

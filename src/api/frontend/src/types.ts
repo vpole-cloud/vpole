@@ -90,7 +90,6 @@ export type {
 export type {
   SourceBuildLogEntry,
   SourceBuildLogs,
-  SourceBuildRecipeKind,
   SourceBuildPhase,
   SourceBuildRecipe,
   SourceBuildConfiguration,

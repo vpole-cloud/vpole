@@ -11,12 +11,14 @@ export function GitSourcePicker({
   disabled = false,
   active = true,
   onSourceCurrent,
+  onRecipeSelected,
 }: {
   source: SourceRepository | null
   onSelect: (source: SourceRepository | null) => void
   disabled?: boolean
   active?: boolean
   onSourceCurrent?: (id: string, current: boolean) => void
+  onRecipeSelected?: (dockerfile: string) => void
 }) {
   const { api, tenant, navigation } = useAppServices()
   const manager = useGitSourceSelection(api, !disabled && tenant.canManage, active)
@@ -25,6 +27,7 @@ export function GitSourcePicker({
   useEffect(() => {
     if (source && active && manager.sourcesCurrent) onSourceCurrent?.(source.id, selectedCurrent)
   }, [source, active, manager.sourcesCurrent, selectedCurrent, onSourceCurrent])
+  const [technicalName, setTechnicalName] = useState('')
   const [chooseNew, setChooseNew] = useState(false)
   const plan = manager.selection.analysis?.candidates.find(
     (item) => item.candidateKey === manager.selection.candidateKey,
@@ -68,7 +71,7 @@ export function GitSourcePicker({
           <option value="">Choose a linked source</option>
           {manager.sources.map((item) => (
             <option key={item.id} value={item.id}>
-              {item.repositoryFullName} · {item.branch} · {item.selectedPlan.displayName}
+              {item.technicalName} · {item.repositoryFullName} · {item.branch}
             </option>
           ))}
         </select>
@@ -77,14 +80,9 @@ export function GitSourcePicker({
         <div className="git-source-summary">
           <strong>{source.repositoryFullName}</strong>
           <span>
-            {source.branch} · commit {source.commitSha.slice(0, 10)}
+            {source.branch} · {source.technicalName}
           </span>
-          <span>
-            {source.selectedPlan.displayName} · {source.selectedPlan.manifestPath}
-          </span>
-          <p className="field__hint">
-            Builds use this analyzed commit. Reanalyze the linked source to build a newer commit.
-          </p>
+          <p className="field__hint">Build resolves the latest branch commit when requested.</p>
         </div>
       )}
       {!readOnly && (
@@ -167,6 +165,14 @@ export function GitSourcePicker({
               {manager.branchStatus === 'success' && manager.branches.length === 0 && (
                 <Notice>No branches are available for this repository.</Notice>
               )}
+              <label className="field">
+                <span className="field__label">Repository technical name</span>
+                <input
+                  className="field__control"
+                  value={technicalName}
+                  onChange={(event) => setTechnicalName(event.target.value)}
+                />
+              </label>
               <div className="row-actions">
                 {manager.moreRepositories && (
                   <Button
@@ -196,6 +202,21 @@ export function GitSourcePicker({
                   {manager.busy ? 'Working…' : 'Analyze branch'}
                 </Button>
               </div>
+              <Button
+                variant="primary"
+                disabled={!technicalName || !manager.selection.branch}
+                onClick={() =>
+                  void manager.link(technicalName).then((linked) => {
+                    if (linked) {
+                      onSelect(linked)
+                      if (plan && !manager.analysisStale) onRecipeSelected?.(plan.dockerfilePreview)
+                      setChooseNew(false)
+                    }
+                  })
+                }
+              >
+                Use this source
+              </Button>
               {manager.selection.analysis && (
                 <>
                   <p className="field__hint">
@@ -240,20 +261,6 @@ export function GitSourcePicker({
                           </pre>
                         </details>
                       </div>
-                      <Button
-                        variant="primary"
-                        disabled={manager.analysisStale}
-                        onClick={() =>
-                          void manager.link().then((linked) => {
-                            if (linked) {
-                              onSelect(linked)
-                              setChooseNew(false)
-                            }
-                          })
-                        }
-                      >
-                        Use this source
-                      </Button>
                     </>
                   )}
                 </>

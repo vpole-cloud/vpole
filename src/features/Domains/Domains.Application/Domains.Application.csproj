@@ -9,7 +9,9 @@
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="../../GitOps/GitOps.Contracts/GitOps.Contracts.csproj" />
     <InternalsVisibleTo Include="Pole.Tests.Integration" />
+    <InternalsVisibleTo Include="Pole.Features.Domains.Tests" />
     <ProjectReference Include="../../ResourceGroups/ResourceGroups.Contracts/ResourceGroups.Contracts.csproj" />
     <ProjectReference Include="../../ResourceDeployments/ResourceDeployments.Contracts/ResourceDeployments.Contracts.csproj" />
     <ProjectReference Include="../Domains.Events/Domains.Events.csproj" />

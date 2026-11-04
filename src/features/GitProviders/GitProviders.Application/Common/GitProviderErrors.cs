@@ -11,15 +11,12 @@ public sealed record SourceRepositoryNotFound(string SourceRepositoryId);
 public sealed record SourceRepositoryAlreadyLinked(
     string ConnectionId,
     string RepositoryId,
-    string Branch,
-    string CandidateKey);
-
-public sealed record SourceRepositoryBuildPlanNotFound(string CandidateKey);
-
-public sealed record SourceRepositorySelectedBuildPlanUnavailable(
-    string SourceRepositoryId,
-    string CandidateKey);
+    string Branch);
 
 public sealed record SourceRepositoryHasBuildConfiguration(string SourceRepositoryId);
 
 public sealed record RepositorySourceSnapshotTooLarge;
+
+public sealed record SourceRepositoryNameConflict(string TechnicalName);
+
+public sealed record SourceRepositoryGitOwned(string SourceRepositoryId);

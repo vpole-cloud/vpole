@@ -36,12 +36,18 @@ public static class WebServicePersistenceRegistration
         services.AddCapability<MongoWebServiceExists, WebServiceExists>(x => x.InvokeAsync);
         services.AddCapability<MongoWebServiceExists, SourceBuildWebServiceExists>(x => x.InvokeAsync);
         services.AddCapability<MongoAdmitSourceBuildWebService, AdmitSourceBuildWebService>(x => x.InvokeAsync);
+        services.AddCapability<MongoAdmitSourceBuildWebService, LoadSourceBuildTarget>(x => x.ReadAsync);
+        services.AddCapability<MongoAdmitSourceBuildWebService, LoadWebServiceForSourceBuild>(x => x.LoadAsync);
         services.AddCapability<MongoLoadWebServicePage, LoadWebServicePage>(x => x.InvokeAsync);
         services.AddCapability<MongoLoadWebServiceReleaseHistory, LoadWebServiceReleaseHistory>(x => x.InvokeAsync);
         services.AddCapability<MongoLoadSucceededWebServiceRelease, LoadSucceededWebServiceRelease>(x => x.InvokeAsync);
         services.AddCapability<MongoLoadWebServiceDeploymentSnapshot, LoadWebServiceDeploymentSnapshot>(x => x.InvokeAsync);
         services.AddCapability<MongoPersistCreatedWebService, PersistCreatedWebService>(x => x.InvokeAsync);
         services.AddCapability<MongoPersistUpdatedWebService, PersistUpdatedWebServiceOutcome>(x => x.InvokeOutcomeAsync);
+        services.AddCapability<MongoPersistUpdatedWebService, PersistWebServiceHostnameAttachment>(x =>
+            x.PersistHostnameAsync);
+        services.AddCapability<MongoPersistUpdatedWebService, PersistWebServiceArtifactPromotion>(x =>
+            x.PersistArtifactAsync);
         services.AddCapability<MongoPersistCurrentWebServiceRelease, PersistCurrentWebServiceRelease>(x => x.InvokeAsync);
         services.AddCapability<MongoBeginWebServiceDeletion, BeginWebServiceDeletionOutcome>(x => x.InvokeOutcomeAsync);
         services.AddCapability<MongoFinalizeWebServiceDeletion, FinalizeWebServiceDeletion>(x => x.InvokeAsync);

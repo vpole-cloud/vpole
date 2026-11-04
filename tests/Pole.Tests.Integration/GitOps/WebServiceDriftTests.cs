@@ -37,7 +37,8 @@ public sealed partial class DeclarativePipelineTests
             Revision = service.Revision + 1,
             Spec = service.Spec with
             {
-                Image = service.Spec.Image with { Tag = "manual", SecretName = "server-pull-secret" },
+                Image = Assert.IsType<Pole.Features.WebServices.Domain.ImageInfo>(service.Spec.Image) with
+                { Tag = "manual", SecretName = "server-pull-secret" },
                 Config = service.Spec.Config with { ConnectionEnvironmentReferences = connectionReferences }
             }
         });
@@ -57,8 +58,8 @@ public sealed partial class DeclarativePipelineTests
         var result = await Apply();
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, result.Status);
         var repaired = await Service();
-        Assert.Equal(service.Spec.Image.Tag, repaired.Spec.Image.Tag);
-        Assert.Equal("server-pull-secret", repaired.Spec.Image.SecretName);
+        Assert.Equal(service.Spec.Image.ResolvedImage!.Tag, repaired.Spec.Image.ResolvedImage!.Tag);
+        Assert.Equal("server-pull-secret", repaired.Spec.Image.ResolvedImage!.SecretName);
         Assert.Equal(connectionReferences.OrderBy(item => item.Key),
             repaired.Spec.Config.ConnectionEnvironmentReferences.OrderBy(item => item.Key));
         Assert.Equal(releases + 1, await Releases());

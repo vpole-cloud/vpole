@@ -15,7 +15,7 @@ internal sealed class MongoLoadStaleQueuedSourceBuildJobs(IMongoCollection<Sourc
         int limit,
         CancellationToken cancellationToken = default) =>
         await jobs
-            .Find(SourceBuildJobFilters.StaleQueued(cutoffUtc))
+            .Find(SourceBuildJobFilters.RecoverableBefore(cutoffUtc))
             .SortBy(item => item.UpdatedAtUtc)
             .Limit(limit)
             .Project(item => item.Id)

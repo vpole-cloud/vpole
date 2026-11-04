@@ -57,23 +57,34 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Web services", Exact = true }).ClickAsync();
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "New service", Exact = true }).ClickAsync();
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Git repository", Exact = true }).ClickAsync();
-            await page.GetByLabel("Repository").SelectOptionAsync("9001");
+            await page.GetByRole(AriaRole.Combobox, new PageGetByRoleOptions { Name = "Repository" })
+                .SelectOptionAsync("9001");
             await page.GetByLabel("Branch").SelectOptionAsync("main");
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Analyze branch", Exact = true }).ClickAsync();
             var buildPlan = page.GetByLabel("Build plan");
             var candidate = await buildPlan.Locator("option").Nth(1).GetAttributeAsync("value");
             await buildPlan.SelectOptionAsync(candidate!);
             Assert.Contains("mcr.microsoft.com/dotnet/aspnet", await page.GetByTestId("git-recipe-preview").TextContentAsync() ?? string.Empty, StringComparison.Ordinal);
+            await page.GetByLabel("Repository technical name").FillAsync($"browser-{Guid.NewGuid():N}");
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Use this source", Exact = true }).ClickAsync();
             var sourceId = await WaitForBrowserSourceSelectionAsync(page, token);
-            resources.Defer("unlink browser source", cleanup => DeleteAsync($"/api/v1/source-repositories/{sourceId}", cleanup));
+            var deliveryCleanup = resources.CreateCleanupSequence("browser source delivery dependencies");
+            string? createdServiceId = null;
+            string? createdConfigurationId = null;
+            deliveryCleanup.Defer("delete browser Git service", cleanup => createdServiceId is null
+                ? Task.CompletedTask : DeleteAsync($"/api/v1/web-services/{createdServiceId}", cleanup));
+            deliveryCleanup.Defer("delete browser source configuration", cleanup => createdConfigurationId is null
+                ? Task.CompletedTask
+                : DeleteAsync($"/api/v1/source-build-configurations/{createdConfigurationId}", cleanup));
+            deliveryCleanup.Defer("unlink browser source",
+                cleanup => DeleteAsync($"/api/v1/source-repositories/{sourceId}", cleanup));
             await page.GetByLabel("Linked source").SelectOptionAsync(sourceId);
             var name = $"git-ui-{Guid.NewGuid():N}"[..20];
+            await page.GetByLabel("Build configuration technical name").FillAsync($"{name}-build");
             await page.GetByLabel("Name", new PageGetByLabelOptions { Exact = true }).FillAsync(name);
             await page.GetByLabel("Resource group").SelectOptionAsync(groupId);
-            await page.GetByLabel("Image registry").FillAsync("docker.io");
-            await page.GetByLabel("Image name").FillAsync("library/nginx");
-            await page.GetByLabel("Tag", new PageGetByLabelOptions { Exact = true }).FillAsync("1.27.5-alpine");
+            Assert.False(string.IsNullOrWhiteSpace(await page.GetByRole(AriaRole.Textbox,
+                new PageGetByRoleOptions { Name = "Dockerfile", Exact = true }).InputValueAsync()));
             await page.GetByLabel("Probe path").FillAsync("/health");
             await page.GetByLabel("Probe port").FillAsync("8080");
             await page.GetByLabel("Target port").FillAsync("8080");
@@ -85,20 +96,21 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
             Assert.True(createdResponse.Ok, $"Git service creation returned HTTP {createdResponse.Status}.");
             var created = await createdResponse.JsonAsync() ?? throw new InvalidOperationException("The created service was empty.");
             var serviceId = RequiredString(created, "webServiceId");
-            resources.Defer("delete browser Git service", cleanup => DeleteAsync($"/api/v1/web-services/{serviceId}", cleanup));
+            createdServiceId = serviceId;
             await fixture.WaitForNamespaceCreationAsync(groupId, token);
             await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Source builds", Exact = true }).WaitForAsync();
             var configurationId = await GetBrowserBuildConfigurationAsync(serviceId, token);
-            resources.Defer("delete browser source configuration", cleanup => DeleteAsync($"/api/v1/source-build-configurations/{configurationId}", cleanup));
+            createdConfigurationId = configurationId;
             var buildId = await GetBrowserBuildIdAsync(serviceId, token);
             var completed = await WaitForBuildAsync(buildId, "succeeded", token);
             var state = completed.GetProperty("state");
             Assert.Equal("3333333333333333333333333333333333333333", RequiredString(completed, "commitSha"));
-            var image = RequiredString(state, "imageReference");
+            var image = ImmutableImageReference(state);
             var releaseId = RequiredString(state, "releaseId");
             await AssertSourceBuildDeploymentAsync(groupId, new CreatedWebService(serviceId, name), image, releaseId, token);
             await fixture.WaitForWebServiceReadyAsync(groupId, name, token);
-            Assert.Equal(RequiredString(state, "imageDigest"), await fixture.GetHarborArtifactDigestAsync(fixture.Alpha.DefaultTenantId, serviceId, buildId, token));
+            Assert.Equal(RequiredString(state, "imageDigest"), await fixture.GetHarborArtifactDigestAsync(
+                fixture.Alpha.DefaultTenantId, serviceId, RequiredString(state, "imageDigest"), token));
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Refresh", Exact = true }).Last.ClickAsync();
             await page.GetByText("succeeded", new PageGetByTextOptions { Exact = true }).First.WaitForAsync();
             Assert.Equal("Dockerfile", await page.GetByTestId("source-build-kind").InnerTextAsync());
@@ -114,7 +126,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
                 () => page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Save build recipe", Exact = true }).ClickAsync(),
                 response => response.Request.Method == "PUT" && new Uri(response.Url).AbsolutePath == $"/api/v1/source-build-configurations/{configurationId}");
             Assert.True(recipeResponse.Ok, $"Build recipe update returned HTTP {recipeResponse.Status}.");
-            await page.GetByText("Build recipe · Customized", new PageGetByTextOptions { Exact = true }).WaitForAsync();
+            await page.GetByText("Build recipe · Dockerfile", new PageGetByTextOptions { Exact = true }).WaitForAsync();
             await CaptureDeliveryScreenshotsAsync(page, "git-builds");
 
             await WaitForBrowserSearchProjectionAsync(serviceId, name, token);
@@ -188,7 +200,9 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
                 var recoveryJob = await recovery.JsonAsync() ?? throw new InvalidOperationException("Recovery job was empty.");
                 var recovered = await WaitForBuildAsync(RequiredString(recoveryJob, "id"), "succeeded", token);
                 Assert.NotEqual(releaseId, RequiredString(recovered.GetProperty("state"), "releaseId"));
-                await AssertSourceBuildDeploymentAsync(groupId, new CreatedWebService(serviceId, name), RequiredString(recovered.GetProperty("state"), "imageReference"), RequiredString(recovered.GetProperty("state"), "releaseId"), token);
+                await AssertSourceBuildDeploymentAsync(groupId, new CreatedWebService(serviceId, name),
+                    ImmutableImageReference(recovered.GetProperty("state")),
+                    RequiredString(recovered.GetProperty("state"), "releaseId"), token);
                 await fixture.WaitForWebServiceReadyAsync(groupId, name, token);
                 var retainedFailure = await WaitForCompletedBuildLogAsync(serviceId, failedId, missingMarker, token);
                 Assert.Equal(savedLog.GetProperty("lastSequence").GetInt64(), retainedFailure.GetProperty("lastSequence").GetInt64());
@@ -349,41 +363,40 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
             resourceGroupCleanup.Defer(
                 "wait for source-build namespace deletion",
                 token => fixture.WaitForNamespaceDeletionAsync(resourceGroupId, token));
-            var webService = await resources.CreateAsync(
+            var deliveryCleanup = resources.CreateCleanupSequence("source delivery dependencies");
+            var webService = await deliveryCleanup.CreateAsync(
                 "delete source-build WebService",
                 token => CreateWebServiceAsync(resourceGroupId, token),
                 (service, token) => DeleteAsync($"/api/v1/web-services/{service.Id}", token),
                 cancellationToken);
-            await fixture.WaitForNamespaceCreationAsync(resourceGroupId, cancellationToken);
-            await WaitForReleaseOutcomeAsync(webService.Id, "Succeeded", cancellationToken);
-
             var connectionId = await EnsureGitHubConnectionAsync(cancellationToken);
-            var sourceRepositoryId = await resources.CreateAsync(
-                "delete linked source repository",
-                token => LinkSourceRepositoryAsync(connectionId, token),
-                (id, token) => DeleteAsync($"/api/v1/source-repositories/{id}", token),
-                cancellationToken);
-            var sourceBuildConfigurationId = await resources.CreateAsync(
-                "delete source-build configuration",
-                token => CreateSourceBuildConfigurationAsync(sourceRepositoryId, webService.Id, token),
-                (id, token) => DeleteAsync($"/api/v1/source-build-configurations/{id}", token),
-                cancellationToken);
+            var sourceRepositoryId = await LinkSourceRepositoryAsync(connectionId, cancellationToken);
+            string? configurationId = null;
+            deliveryCleanup.Defer("delete source-build configuration", token => configurationId is null
+                ? Task.CompletedTask : DeleteAsync($"/api/v1/source-build-configurations/{configurationId}", token));
+            deliveryCleanup.Defer("delete linked source repository",
+                token => DeleteAsync($"/api/v1/source-repositories/{sourceRepositoryId}", token));
+            var sourceBuildConfigurationId = await CreateSourceBuildConfigurationAsync(
+                sourceRepositoryId, webService.Id, cancellationToken);
+            configurationId = sourceBuildConfigurationId;
+            Assert.Empty((await GetReleasesAsync(webService.Id, cancellationToken)).EnumerateArray());
 
             var v1Build = await StartBuildAsync(sourceBuildConfigurationId, cancellationToken);
             var v1CompletedBuild = await WaitForBuildAsync(v1Build, "succeeded", cancellationToken);
             var v1State = v1CompletedBuild.GetProperty("state");
             var v1CommitSha = RequiredString(v1CompletedBuild, "commitSha");
             var v1ImageDigest = RequiredString(v1State, "imageDigest");
-            var v1ImageReference = RequiredString(v1State, "imageReference");
+            var v1ImageReference = ImmutableImageReference(v1State);
             var v1ReleaseId = RequiredString(v1State, "releaseId");
             Assert.Equal(RevisionOneCommitSha, v1CommitSha);
 
             var v1ArtifactDigest = await fixture.GetHarborArtifactDigestAsync(
                 fixture.Alpha.DefaultTenantId,
                 webService.Id,
-                v1Build,
+                v1ImageDigest,
                 cancellationToken);
             Assert.Equal(v1ImageDigest, v1ArtifactDigest);
+            await fixture.WaitForNamespaceCreationAsync(resourceGroupId, cancellationToken);
             await WaitForReleaseOutcomeAsync(webService.Id, "Succeeded", cancellationToken, v1ReleaseId);
             var v1Releases = await GetReleasesAsync(webService.Id, cancellationToken);
             var v1Release = FindRelease(v1Releases, v1ReleaseId);
@@ -396,14 +409,13 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
                 cancellationToken);
 
             await SetStubRevisionAsync("v2", cancellationToken);
-            await ReanalyzeSourceRepositoryAsync(sourceRepositoryId, RevisionTwoCommitSha, cancellationToken);
 
             var v2Build = await StartBuildAsync(sourceBuildConfigurationId, cancellationToken);
             var v2CompletedBuild = await WaitForBuildAsync(v2Build, "succeeded", cancellationToken);
             var v2State = v2CompletedBuild.GetProperty("state");
             var v2CommitSha = RequiredString(v2CompletedBuild, "commitSha");
             var v2ImageDigest = RequiredString(v2State, "imageDigest");
-            var v2ImageReference = RequiredString(v2State, "imageReference");
+            var v2ImageReference = ImmutableImageReference(v2State);
             var v2ReleaseId = RequiredString(v2State, "releaseId");
             Assert.Equal(RevisionTwoCommitSha, v2CommitSha);
             Assert.NotEqual(v1ImageDigest, v2ImageDigest);
@@ -411,7 +423,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
             var v2ArtifactDigest = await fixture.GetHarborArtifactDigestAsync(
                 fixture.Alpha.DefaultTenantId,
                 webService.Id,
-                v2Build,
+                v2ImageDigest,
                 cancellationToken);
             Assert.Equal(v2ImageDigest, v2ArtifactDigest);
             await WaitForReleaseOutcomeAsync(webService.Id, "Succeeded", cancellationToken, v2ReleaseId);
@@ -467,10 +479,11 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
             name,
             resourceGroupId,
             exposure = "Public",
+            creationMode = "SourceBuild",
             tags = new[] { "e2e", "source-build" },
             spec = new
             {
-                image = new { server = "docker.io", name = "library/nginx", tag = "1.27" },
+                image = (object?)null,
                 config = new
                 {
                     environmentVariables = new Dictionary<string, string>(),
@@ -534,44 +547,12 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
     private async Task<string> LinkSourceRepositoryAsync(string connectionId, CancellationToken cancellationToken)
     {
         const string repositoryId = "9001";
-        using var analyze = fixture.CreateAuthenticatedRequest(
-            HttpMethod.Post,
-            $"/api/v1/git-provider-connections/{connectionId}/repositories/{repositoryId}/analysis",
-            fixture.Alpha,
-            fixture.Alpha.DefaultTenantId);
-        analyze.Content = JsonContent.Create(new { branch = "main" });
-        using var analysisResponse = await fixture.Api.SendAsync(analyze, cancellationToken);
-        if (!analysisResponse.IsSuccessStatusCode)
-        {
-            var diagnostics = await fixture.GetServerErrorDiagnosticsAsync(cancellationToken);
-            var stubRequests = await fixture.GetGitHubStubRequestDiagnosticsAsync(cancellationToken);
-            var responseDetails = await ReadSafeErrorDetailsAsync(analysisResponse, cancellationToken);
-            throw new HttpRequestException(
-                $"Pole could not analyze the source repository: {(int)analysisResponse.StatusCode}." +
-                (string.IsNullOrWhiteSpace(responseDetails)
-                    ? string.Empty
-                    : $"{Environment.NewLine}API detail: {responseDetails}") +
-                (string.IsNullOrWhiteSpace(diagnostics)
-                    ? string.Empty
-                    : $"{Environment.NewLine}Server diagnostic: {diagnostics}") +
-                (string.IsNullOrWhiteSpace(stubRequests)
-                    ? string.Empty
-                    : $"{Environment.NewLine}GitHub stub requests:{Environment.NewLine}{stubRequests}"),
-                null,
-                analysisResponse.StatusCode);
-        }
-        analysisResponse.EnsureSuccessStatusCode();
-        using var analysis = JsonDocument.Parse(await analysisResponse.Content.ReadAsStreamAsync(cancellationToken));
-        var candidate = analysis.RootElement.GetProperty("candidates")[0];
-        Assert.Contains("FROM scratch", RequiredString(candidate, "dockerfilePreview"), StringComparison.Ordinal);
-        var candidateKey = RequiredString(candidate, "candidateKey");
-
         using var link = fixture.CreateAuthenticatedRequest(
             HttpMethod.Post,
             $"/api/v1/git-provider-connections/{connectionId}/repositories/{repositoryId}/links",
             fixture.Alpha,
             fixture.Alpha.DefaultTenantId);
-        link.Content = JsonContent.Create(new { branch = "main", candidateKey });
+        link.Content = JsonContent.Create(new { technicalName = $"source-{Guid.NewGuid():N}", branch = "main" });
         using var linkResponse = await fixture.Api.SendAsync(link, cancellationToken);
         if (!linkResponse.IsSuccessStatusCode)
         {
@@ -607,26 +588,16 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         response.EnsureSuccessStatusCode();
     }
 
-    private async Task ReanalyzeSourceRepositoryAsync(
-        string sourceRepositoryId,
-        string expectedCommitSha,
-        CancellationToken cancellationToken)
-    {
-        using var request = fixture.CreateAuthenticatedRequest(
-            HttpMethod.Post,
-            $"/api/v1/source-repositories/{sourceRepositoryId}/reanalyze",
-            fixture.Alpha,
-            fixture.Alpha.DefaultTenantId);
-        using var response = await fixture.Api.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        using var sourceRepository = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
-        Assert.Equal(expectedCommitSha, RequiredString(sourceRepository.RootElement, "commitSha"));
-    }
-
     private async Task<string> CreateSourceBuildConfigurationAsync(string sourceRepositoryId, string webServiceId, CancellationToken cancellationToken)
     {
         using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Post, "/api/v1/source-build-configurations", fixture.Alpha, fixture.Alpha.DefaultTenantId);
-        request.Content = JsonContent.Create(new { sourceRepositoryId, webServiceId });
+        request.Content = JsonContent.Create(new
+        {
+            technicalName = $"build-{Guid.NewGuid():N}",
+            sourceRepositoryId,
+            webServiceId,
+            recipe = new { dockerfile = "FROM traefik/whoami:v1.11.0\nCOPY src/Program.cs /app/revision.txt\n" }
+        });
         using var response = await fixture.Api.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
         using var configuration = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
@@ -746,6 +717,18 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         Assert.True(
             await fixture.KubernetesSecretExistsAsync(resourceGroupId, pullSecretName, cancellationToken),
             "The source-built Deployment should have its Harbor pull secret in the resource-group namespace.");
+    }
+
+    private static string ImmutableImageReference(JsonElement state)
+    {
+        var reference = RequiredString(state, "imageReference");
+        var digest = RequiredString(state, "imageDigest");
+        var separator = reference.IndexOf('@');
+        if (separator >= 0)
+            return reference[..separator] + "@" + digest;
+
+        var tag = reference.LastIndexOf(':');
+        return (tag > reference.LastIndexOf('/') ? reference[..tag] : reference) + "@" + digest;
     }
 
     private static JsonElement FindRelease(JsonElement releases, string releaseId)

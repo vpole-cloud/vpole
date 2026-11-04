@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using MongoDB.Bson;
+using MongoDB.Bson.Serialization;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
@@ -14,6 +15,32 @@ namespace Pole.Tests.Integration.WebServices;
 
 public sealed class WebServiceBoundarySerializationTests
 {
+    [Fact]
+    public void Pending_image_DTO_has_no_placeholder_and_request_metadata_cannot_supply_delivery_authority()
+    {
+        var configurationId = ObjectId.GenerateNewId().ToString();
+        var spec = TestData.ValidWebServiceSpec().ToDomain() with
+        {
+            Image = WebServiceImageFactory.Pending(configurationId)
+        };
+        var dto = spec.ToDto();
+        Assert.Null(dto.Image);
+        Assert.Equal("PendingSourceBuild", dto.ImageAuthority!.Mode);
+        Assert.Equal(configurationId, dto.ImageAuthority.ConfigurationId);
+        var restored = JsonSerializer.Deserialize<WebServiceSpecDto>(JsonSerializer.Serialize(dto))!;
+        Assert.Null(restored.Image);
+        Assert.Equal(dto.ImageAuthority, restored.ImageAuthority);
+        Assert.IsType<UnboundSourceBuildImage>(restored.ToDomain().Image);
+
+        var direct = TestData.ValidWebServiceSpec().ToDomain();
+        var artifact = DeliveredSourceBuildImage.Create(configurationId, Assert.IsType<ImageInfo>(direct.Image),
+            "sha256:" + new string('a', 64), ObjectId.GenerateNewId().ToString(), 1);
+        var deliveredDto = (direct with { Image = artifact }).ToDto();
+        Assert.Equal(artifact.Digest, deliveredDto.ImageAuthority!.Digest);
+        Assert.IsType<ImageInfo>(deliveredDto.ToDomain().Image);
+        Assert.DoesNotContain("secretName", JsonSerializer.Serialize(deliveredDto), StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public void Logical_references_round_trip_HTTP_BSON_and_legacy_missing_fields_default_empty()
     {
@@ -108,6 +135,7 @@ public sealed class WebServiceBoundarySerializationTests
             "resource-group-1",
             "isolation-scope-1",
             1,
+            WebServiceLifecycleState.Active,
             spec,
             new WebServiceExposureSnapshot("Public", "api"),
             ImmutableHashSet.Create("production"),
@@ -188,8 +216,8 @@ public sealed class WebServiceBoundarySerializationTests
         var document = release.ToBsonDocument();
         var spec = document["Spec"].AsBsonDocument;
         Assert.Equal(
-            TestData.ValidWebServiceSpecSnapshot().ToBsonDocument(),
-            spec);
+            release.Spec.Image,
+            BsonSerializer.Deserialize<WebServiceRelease>(document).Spec.Image);
         var image = spec["Image"].AsBsonDocument;
         var probes = spec["Probes"].AsBsonDocument;
         var startup = probes["Startup"].AsBsonDocument;

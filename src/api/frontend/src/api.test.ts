@@ -323,6 +323,7 @@ describe('web service placement API', () => {
       {
         tenantDomainZoneId: '507f1f77bcf86cd799439020',
         relativeName: 'api',
+        technicalName: 'api-hostname',
       },
     )
     expect(added).toEqual(placement)
@@ -340,6 +341,7 @@ describe('web service placement API', () => {
         body: JSON.stringify({
           tenantDomainZoneId: '507f1f77bcf86cd799439020',
           relativeName: 'api',
+          technicalName: 'api-hostname',
         }),
       }),
     )
