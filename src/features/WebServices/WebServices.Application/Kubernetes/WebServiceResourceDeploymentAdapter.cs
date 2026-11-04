@@ -252,8 +252,12 @@ public sealed class WebServiceResourceDeploymentAdapter(
 
         await WebServiceKubernetesResourceManager.DeleteAsync(
             kubernetes,
-            webService.Name,
-            context.Deployment.Placement.KubernetesNamespace,
+            new WebServiceKubernetesCleanup(webService.Name, context.Deployment.Placement.KubernetesNamespace,
+                new WorkloadIdentityLabels(context.Deployment.TenantId, context.Deployment.ResourceGroupId,
+                    context.Deployment.IsolationScopeId, context.Deployment.RuntimeCellId,
+                    context.Deployment.Placement.DeploymentTargetId,
+                    WebServiceResourceDeployment.KubernetesResourceTypeLabel,
+                    context.Deployment.ResourceId, context.Deployment.Id)),
             cancellationToken);
 
         return ResourceDeploymentAdapterResult.Succeeded.Create();

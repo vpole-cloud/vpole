@@ -1,4 +1,5 @@
 using FluentValidation;
+using Pole.Workloads;
 using Pole.Validation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -105,6 +106,8 @@ public sealed class CreateIsolationScopeRequestBodyValidator
         RuleFor(body => body.Name)
             .NotEmpty()
             .MaximumLength(IsolationScopeFactory.MaximumNameLength)
+            .Must(ResourceTechnicalName.IsValid)
+            .WithMessage("An isolation scope name must be a lowercase DNS label beginning with a letter.")
             .Must(name =>
                 name is not null &&
                 !string.Equals(

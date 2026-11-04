@@ -23,6 +23,16 @@ public static class StorageProfilePersistenceRegistration
                 .GetRequiredService<IMongoDatabase>()
                 .GetCollection<StorageProfile>(CollectionName));
 
+        services.TryAddSingleton(serviceProvider => serviceProvider.GetRequiredService<IMongoDatabase>()
+            .GetCollection<StorageProfileRevision>("StorageProfileRevisions"));
+        services.AddScoped<StorageProfileHistory>();
+        services.AddCapability<MongoResolveNamedStorageProfile, ResolveNamedStorageProfile>(
+            implementation => implementation.InvokeAsync);
+        services.AddCapability<MongoStorageProfilePlanningSnapshots, ResolveStorageProfilePlanningSnapshot>(
+            implementation => implementation.ReadAsync);
+        services.AddScoped<FenceStorageProfilePlanningSnapshot>(provider =>
+            provider.GetRequiredService<MongoStorageProfilePlanningSnapshots>().FenceAsync);
+
         services.AddCapability<MongoLoadStorageProfileById, LoadStorageProfileById>(
             implementation => implementation.InvokeAsync);
         services.AddCapability<MongoLoadStorageProfiles, LoadStorageProfiles>(
@@ -38,11 +48,12 @@ public static class StorageProfilePersistenceRegistration
         services.AddCapability<MongoFenceStorageProfileResolution,
             FenceStorageProfileResolution>(implementation => implementation.InvokeAsync);
 
-        services.TryAddSingleton<RunMongoOutcomeTransaction<StorageProfile>>(
+        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistCreatedStorageProfileOutcome>>(
             serviceProvider => serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<StorageProfile>);
-        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistUpdatedStorageProfileOutcome>>(serviceProvider => serviceProvider
+                .InvokeOutcomeAsync<PersistCreatedStorageProfileOutcome>);
+        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistUpdatedStorageProfileOutcome>>(
+            serviceProvider => serviceProvider
                 .GetRequiredService<MongoRunTransaction>()
                 .InvokeOutcomeAsync<PersistUpdatedStorageProfileOutcome>);
         return services;

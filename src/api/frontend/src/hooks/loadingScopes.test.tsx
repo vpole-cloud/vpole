@@ -274,6 +274,7 @@ it.each(['create', 'update'] as const)(
   'keeps an accepted storage %s across token refresh and reads with current credentials',
   async (operation) => {
     const input: StorageProfileInput = {
+      technicalName: 'test-disk',
       displayName: 'Old',
       description: '',
       mediaType: 'SSD',

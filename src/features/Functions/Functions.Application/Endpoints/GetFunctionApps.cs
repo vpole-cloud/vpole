@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -40,7 +41,9 @@ public sealed record GetFunctionAppsRequest
     [FromQuery] public string? ResourceGroupId { get; init; }
 }
 
-public sealed class GetFunctionAppsHandler(LoadFunctionAppPage loadFunctionAppPage)
+public sealed class GetFunctionAppsHandler(
+    LoadFunctionAppPage loadFunctionAppPage,
+    IGitOpsMutations git)
     : IMediatorOutcomeHandler<GetFunctionAppsRequest, GetFunctionAppsOutcome>
 {
     public async Task<GetFunctionAppsOutcome> HandleAsync(
@@ -55,8 +58,10 @@ public sealed class GetFunctionAppsHandler(LoadFunctionAppPage loadFunctionAppPa
                 request.PageNumber,
                 request.PageSize),
             cancellationToken);
+        var statuses = await git.StatusesAsync(new(request.TenantId, "FunctionApp",
+            page.Items.Select(item => item.Id).ToArray()), cancellationToken);
         return new PaginatedResponse<FunctionAppDto>(
-            page.Items.Select(app => app.ToDto()),
+            page.Items.Select(app => app.ToDto() with { GitOps = statuses.GetValueOrDefault(app.Id) }),
             page.TotalCount,
             request.PageNumber,
             request.PageSize);

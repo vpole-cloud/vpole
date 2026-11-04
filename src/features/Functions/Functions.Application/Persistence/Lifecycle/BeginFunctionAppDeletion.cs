@@ -2,6 +2,7 @@ using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence;
@@ -14,14 +15,17 @@ public sealed record FunctionAppDeletionChanged(string FunctionAppId);
 
 public union BeginFunctionAppDeletionOutcome(
     FunctionApp,
-    FunctionAppDeletionChanged);
+    FunctionAppDeletionChanged,
+    FunctionAppGitOwnedConfiguration);
 
-public delegate Task<BeginFunctionAppDeletionOutcome>
-    BeginFunctionAppDeletion(
-        IClientSessionHandle session,
-        FunctionApp current,
-        DateTimeOffset nowUtc,
-        CancellationToken cancellationToken = default);
+public sealed record BeginFunctionAppDeletionRequest(
+    FunctionApp Current,
+    DateTimeOffset NowUtc);
+
+public delegate Task<BeginFunctionAppDeletionOutcome> BeginFunctionAppDeletion(
+    BeginFunctionAppDeletionRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken);
 
 internal sealed class MongoBeginFunctionAppDeletion(
     FenceRegisteredResource fenceRegisteredResource,
@@ -29,16 +33,21 @@ internal sealed class MongoBeginFunctionAppDeletion(
     IMongoCollection<FunctionApp> functionApps,
     IMongoCollection<FunctionRouteBinding> functionRouteBindings,
     IMongoCollection<FunctionTimerState> functionTimerStates,
-    StoreOutboxWrites storeOutboxWrites)
+    StoreOutboxWrites storeOutboxWrites,
+    IGitOpsMutations git)
 {
     public async Task<BeginFunctionAppDeletionOutcome> InvokeAsync(
+        BeginFunctionAppDeletionRequest request,
         IClientSessionHandle session,
-        FunctionApp current,
-        DateTimeOffset nowUtc,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken)
     {
+        var (current, nowUtc) = request;
         if (!session.IsInTransaction)
             throw new InvalidOperationException("Function App deletion requires an active transaction.");
+
+        if (!await git.AuthorizeAsync(new(current.TenantId, "FunctionApp", current.Id), session, cancellationToken))
+            return new FunctionAppGitOwnedConfiguration(current.Id);
+
         var registration = await fenceRegisteredResource(
             new FenceRegisteredResourceRequest(
                 TenantId: current.TenantId,

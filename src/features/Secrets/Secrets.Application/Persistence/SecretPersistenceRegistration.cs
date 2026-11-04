@@ -15,6 +15,9 @@ internal static class SecretPersistenceRegistration
         services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>().GetCollection<SecretVersion>("SecretVersions"));
         services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>().GetCollection<SecretProjection>("SecretProjections"));
         services.AddScoped<SecretPlanningFence>();
+        services.AddScoped<BootstrapSecrets>();
+        services.AddScoped<ReadBootstrapSecret>(sp => sp.GetRequiredService<BootstrapSecrets>().ReadAsync);
+        services.AddScoped<CreateBootstrapSecret>(sp => sp.GetRequiredService<BootstrapSecrets>().CreateAsync);
         services.AddScoped<ConsumerSecretPlanningSnapshots>();
         services.AddScoped<LoadConsumerSecretPlanningSnapshot>(sp =>
             sp.GetRequiredService<ConsumerSecretPlanningSnapshots>().ReadAsync);

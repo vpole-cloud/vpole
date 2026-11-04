@@ -227,6 +227,7 @@ type PostgresClusterDeploymentManager(settings : PostgresSettings) =
             metadata,
             cancellationToken) =
             task {
+                cluster.EnsureConfigured()
                 match cluster.Spec.DeploymentMode with
                 | PostgresDeploymentMode.Operator ->
                     do!

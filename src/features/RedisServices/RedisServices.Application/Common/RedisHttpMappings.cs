@@ -59,6 +59,12 @@ public static class RedisHttpMappings
         "Redis service changed concurrently while deletion was being accepted",
         ("redisId", error.RedisId));
 
+    public static HttpProblem MapGitOwned(RedisGitOwnedConfiguration error) => Problem(
+        HttpStatusCode.Conflict,
+        "redis-services.git-owned-configuration",
+        "Redis configuration is managed by GitOps",
+        ("redisId", error.RedisId));
+
     private static HttpProblem Problem(
         HttpStatusCode status,
         string code,

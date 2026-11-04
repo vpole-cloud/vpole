@@ -145,9 +145,8 @@ module private DeletePostgresClusterWorkflow =
                                 timeProvider.GetUtcNow().UtcDateTime)
                         let! persisted =
                             beginDeletion.Invoke(
+                                { Current = plan.Cluster; Replacement = deleting },
                                 transaction.Session,
-                                plan.Cluster,
-                                deleting,
                                 transactionCancellationToken)
 
                         match persisted with

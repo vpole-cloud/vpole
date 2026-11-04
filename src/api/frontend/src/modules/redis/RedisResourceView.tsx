@@ -1,3 +1,5 @@
+import { canEditDesiredConfiguration } from '../../data/gitOps'
+import { GitOwnershipNotice } from '../../ui/GitOwnershipNotice'
 import { eligibilityKeys } from '../../data/queryKeys'
 import { ResourceHealth } from '../../ui/ResourceHealth'
 import { ResourceOperations } from '../../ui/ResourceOperations'
@@ -190,7 +192,8 @@ export function RedisResourceView({
         <Button onClick={() => void details.refresh()}>Retry Redis service</Button>
       </EmptyState>
     )
-  const canWrite = tenant.canManage && redis.lifecycle === 'Active'
+  const canWrite =
+    canEditDesiredConfiguration(tenant.canManage, redis.gitOps) && redis.lifecycle === 'Active'
   const panelId = `redis-${id}`
   return (
     <div>
@@ -213,6 +216,10 @@ export function RedisResourceView({
       </header>
       {details.error && (
         <Notice tone="error">{details.error} Last fetched metadata is shown.</Notice>
+      )}
+      <GitOwnershipNotice status={redis.gitOps} />
+      {redis.lifecycle === 'Prepared' && (
+        <Notice>Configuration is pending. No workload is running yet.</Notice>
       )}
       {redis.lifecycle === 'Deleting' && (
         <Notice>This service is being deleted. Wait for cleanup to complete.</Notice>

@@ -52,7 +52,8 @@ internal sealed partial class DeclarativeWebServiceProvider
             ? new DeclarationProjection(DeclarationJson.Write(identity), DeclarationJson.Write(new { }))
             : Project(current.Spec, current.Tags, current.Exposure.Mode.ToString(), identity,
                 new(placement.Compute.ComputeProfileId, placement.Compute.ComputeProfileRevision,
-                    placement.FixedReplicas, ComputeProjection(placement.Compute)));
+                    placement.FixedReplicas, ComputeProjection(placement.Compute)),
+                IngressProjection(placement.Ingress));
         return new CurrentDeclaration(current.Id, new([
                 new($"WebService/{current.Id}", current.Revision),
                 new($"WebService/{current.Id}/PlanningFence", current.PlanningFence),
@@ -72,14 +73,15 @@ internal sealed partial class DeclarativeWebServiceProvider
 
         var dependencies = (WebServicePlanningDependencies)read.Value;
         var spec = DeclarationJson.Read<WebServiceDeclaration>(operation.Declaration.Spec);
-        var identity = new PlanningPlacement(dependencies.Group.ResourceGroupId,
-            dependencies.Group.DefaultIsolationScopeId, dependencies.Target.Target.Id);
+        var identity = new PlanningPlacement(dependencies.Scope.ResourceGroupId,
+            dependencies.Scope.IsolationScopeId, dependencies.Target.Target.Id);
         var projection = operation.Phase == DeclarationPhase.Prepare
             ? new DeclarationProjection(DeclarationJson.Write(identity), DeclarationJson.Write(new { }))
             : Project(ToSpec(spec, dependencies.References, dependencies.Current?.Spec), spec.Tags, spec.Exposure,
                 identity, new(dependencies.Compute.Compute.ComputeProfileId, spec.Placement.ComputeProfile.Revision,
-                    spec.Replicas,
-                    ComputeProjection(dependencies.Compute.Compute.ToResourceDeploymentConfiguration())));
+                    spec.FixedReplicas,
+                    ComputeProjection(dependencies.Compute.Compute.ToResourceDeploymentConfiguration())),
+                DesiredIngress(spec, dependencies.Target.Target));
         return projection with { Dependencies = new(DependencyVersions(dependencies)) };
     }
 
@@ -89,14 +91,25 @@ internal sealed partial class DeclarativeWebServiceProvider
         var spec = DeclarationJson.Read<WebServiceDeclaration>(operation.Declaration.Spec);
         var tenant = operation.Context.TenantId;
         var groupId = await AcceptedReferenceAsync(operation, new("ResourceGroup", spec.ResourceGroup), session, ct);
-        if (groupId is null || await loadPlanningGroup(new(tenant, groupId), session, ct)
-            is not ResourceGroupPlanningSnapshot group)
+        if (groupId is null)
+            return PlanningBlocked(WebServiceDeclarationError.ResourceGroupUnavailable);
+
+        string? scopeId = null;
+        if (spec.Placement.IsolationScope is not null)
+        {
+            scopeId = await AcceptedReferenceAsync(operation,
+                new("IsolationScope", spec.Placement.IsolationScope), session, ct);
+            if (scopeId is null)
+                return PlanningBlocked(WebServiceDeclarationError.ResourceGroupUnavailable);
+        }
+        if (await loadPlanningScope(new(tenant, groupId, scopeId), session, ct)
+            is not IsolationScopePlanningSnapshot scope)
             return PlanningBlocked(WebServiceDeclarationError.ResourceGroupUnavailable);
 
         var targetId = await AcceptedReferenceAsync(operation,
             new("DeploymentTarget", spec.Placement.DeploymentTarget), session, ct);
         if (targetId is null || await resolvePlanningTarget(new(tenant, WebServiceResourceDeployment.ResourceType,
-                group.DefaultIsolationScopeId, targetId, DeploymentTargetRequiredCapabilities.None), session, ct)
+                scope.IsolationScopeId, targetId, RequiredCapabilities(spec)), session, ct)
             is not DeploymentTargetPlanningSnapshot target)
             return PlanningBlocked(WebServiceDeclarationError.DeploymentTargetUnavailable);
 
@@ -143,7 +156,7 @@ internal sealed partial class DeclarativeWebServiceProvider
                 new ConsumerSecretKeyReference(item.SecretId, item.Key)).ToArray();
             var desired = references.Values.Select(item => new ConsumerSecretKeyReference(item.SecretId, item.Key))
                 .ToArray();
-            var loaded = await loadPlanningSecrets(new(tenant, group.ResourceGroupId, group.DefaultIsolationScopeId,
+            var loaded = await loadPlanningSecrets(new(tenant, scope.ResourceGroupId, scope.IsolationScopeId,
                 WebServiceResourceDeployment.ResourceType, current.Id, previous, desired,
                 placements.Items.Select(item => item.DeploymentId).ToArray()), session, ct);
             if (loaded is ConsumerSecretReferenceUnavailable unavailable)
@@ -151,7 +164,7 @@ internal sealed partial class DeclarativeWebServiceProvider
             secrets = (ConsumerSecretPlanningSnapshot)loaded.Value;
         }
 
-        return new WebServicePlanningDependencies(current, group, target, compute, placements, secrets,
+        return new WebServicePlanningDependencies(current, scope, target, compute, placements, secrets,
             references.ToImmutable());
     }
 
@@ -176,8 +189,8 @@ internal sealed partial class DeclarativeWebServiceProvider
                 return new DeclarationPreconditionsChanged();
         }
 
-        if (await fencePlanningGroup(dependencies.Group, session, cancellationToken)
-            is ResourceGroupPlanningFenceRejected ||
+        if (await fencePlanningScope(dependencies.Scope, session, cancellationToken)
+            is IsolationScopePlanningFenceRejected ||
             await fencePlanningTarget(dependencies.Target, session, cancellationToken)
             is DeploymentTargetPlanningFenceRejected ||
             await fencePlanningCompute(dependencies.Compute, session, cancellationToken)
@@ -199,14 +212,19 @@ internal sealed partial class DeclarativeWebServiceProvider
         return new DeclarationFenced();
     }
 
+    private static DeploymentTargetRequiredCapabilities RequiredCapabilities(WebServiceDeclaration spec) =>
+        spec.Exposure == WebServiceDeclarationRules.PublicExposure
+            ? DeploymentTargetRequiredCapabilities.PublicIngress
+            : DeploymentTargetRequiredCapabilities.None;
+
     private Task<string?> AcceptedReferenceAsync(GitOperationInput operation, ResourceAddress address,
         IClientSessionHandle session, CancellationToken ct) => git.ResolveAcceptedAsync(
         new(operation.Context, operation.ResourceId, address), session, ct);
 
     private static DeclarationDocumentVersion[] DependencyVersions(WebServicePlanningDependencies dependencies) =>
     [
-        new($"ResourceGroup/{dependencies.Group.ResourceGroupId}", dependencies.Group.Revision),
-        new($"IsolationScope/{dependencies.Group.DefaultIsolationScopeId}", dependencies.Group.ScopeRevision),
+        new($"ResourceGroup/{dependencies.Scope.ResourceGroupId}", dependencies.Scope.ResourceGroupRevision),
+        new($"IsolationScope/{dependencies.Scope.IsolationScopeId}", dependencies.Scope.ScopeRevision),
         new($"DeploymentTarget/{dependencies.Target.Target.Id}", dependencies.Target.Target.Revision),
         new($"DeploymentTarget/{dependencies.Target.Target.Id}/WorkloadConfiguration",
             dependencies.Target.Target.WorkloadConfiguration.Revision),
@@ -251,7 +269,7 @@ internal sealed partial class DeclarativeWebServiceProvider
 
 internal sealed record WebServicePlanningDependencies(
     WebService? Current,
-    ResourceGroupPlanningSnapshot Group,
+    IsolationScopePlanningSnapshot Scope,
     DeploymentTargetPlanningSnapshot Target,
     ComputeProfilePlanningSnapshot Compute,
     ResourceDeploymentPlanningSnapshot? Placements,

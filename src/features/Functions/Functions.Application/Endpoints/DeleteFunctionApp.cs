@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Database;
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence.Lifecycle;
@@ -45,6 +46,7 @@ public static class DeleteFunctionApp
     private static HttpProblem MapDeleteError(DeleteFunctionAppError error) =>
         error switch
         {
+            FunctionAppGitOwnedConfiguration owned => MapGitOwned(owned),
             FunctionAppNotFound notFound => MapNotFound(notFound),
             FunctionAppResourceDeploymentMissing missing => MapResourceDeploymentMissing(missing),
             FunctionAppDeletionChanged changed => MapDeletionChanged(changed),
@@ -63,6 +65,7 @@ public sealed record DeleteFunctionAppResponse(string FunctionAppId);
 
 public union DeleteFunctionAppError(
     FunctionAppNotFound,
+    FunctionAppGitOwnedConfiguration,
     FunctionAppResourceDeploymentMissing,
     FunctionAppDeletionChanged,
     ResourceDeploymentMutationError,
@@ -78,7 +81,8 @@ public sealed class DeleteFunctionAppHandler(
     LoadExactResourceDeploymentRuntimePlacement loadDeploymentPlacement,
     RequestExactResourceDeploymentDeletion requestDeploymentDeletion,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IGitOpsMutations git)
     : IMediatorOutcomeHandler<DeleteFunctionAppRequest, DeleteFunctionAppOutcome>
 {
     public async Task<DeleteFunctionAppOutcome> HandleAsync(
@@ -93,6 +97,9 @@ public sealed class DeleteFunctionAppHandler(
             return new DeleteFunctionAppError(new FunctionAppNotFound(request.Id));
         if (app.DesiredState == FunctionAppDesiredState.Deleting)
             return new DeleteFunctionAppResponse(app.Id);
+
+        if (await git.StatusAsync(new(app.TenantId, "FunctionApp", app.Id), cancellationToken) is not null)
+            return new DeleteFunctionAppError(new FunctionAppGitOwnedConfiguration(app.Id));
 
         var deployment = await loadDeploymentPlacement(
             new LoadExactResourceDeploymentRuntimePlacementRequest(
@@ -126,12 +133,12 @@ public sealed class DeleteFunctionAppHandler(
                 MutationCallback: async (transaction, ct) =>
                 {
                     var deleted = await beginFunctionAppDeletion(
-                        transaction.Session,
-                        app,
-                        timeProvider.GetUtcNow(),
-                        ct);
+                        new(app, timeProvider.GetUtcNow()), transaction.Session, ct);
                     if (deleted is FunctionAppDeletionChanged deletionError)
                         return transaction.Abort(new DeleteFunctionAppError(deletionError));
+
+                    if (deleted is FunctionAppGitOwnedConfiguration owned)
+                        return transaction.Abort(new DeleteFunctionAppError(owned));
 
                     var deploymentResult = await requestDeploymentDeletion(
                         new ResourceDeploymentExactMutationRequest(

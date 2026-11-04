@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using System.Collections.Immutable;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.RedisServices.Domain;
@@ -14,7 +15,8 @@ public sealed record RedisDto(
     ImmutableHashSet<string> Tags,
     PlacementSummaryDto? Placement,
     long Revision,
-    string Lifecycle
+    string Lifecycle,
+    GitResourceStatus? GitOps
 );
 
 public sealed record RedisSpecDto(
@@ -39,7 +41,14 @@ public static class RedisDtoExtensions
         redis.Tags,
         placement,
         redis.Revision,
-        redis.Lifecycle is DeletingRedisLifecycle ? "Deleting" : "Active"
+        redis.Lifecycle switch
+        {
+            PreparedRedisLifecycle => "Prepared",
+            ActiveRedisLifecycle => "Active",
+            DeletingRedisLifecycle => "Deleting",
+            _ => throw new ArgumentOutOfRangeException(nameof(redis))
+        },
+        null
     );
 
     private static RedisSpecDto ToDto(this RedisSpec spec) => new(

@@ -4,6 +4,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence.Lifecycle;
+using Pole.Features.Functions.Application.Persistence.Reads;
 using Pole.Features.Functions.Application.Persistence.Runtime.Gateway;
 using Pole.Features.Functions.Application.Endpoints;
 using Pole.Features.Functions.Domain;
@@ -20,6 +21,97 @@ namespace Pole.Tests.Integration.FunctionApps;
 public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
+    [Fact]
+    public async Task Latest_accepted_configuration_survives_failed_runtime_and_cleared_pointers()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var created = await CreateAsync(group.Id);
+        (await Services.GetRequiredService<FailFunctionRevision>()(
+            TestData.TenantId, created.FunctionAppId, created.RevisionId,
+            new FunctionRevisionFailure("image-pull", "Image unavailable"))).RequireLifecycleSuccess();
+        var app = await DbContext.FunctionApps.Find(item => item.Id == created.FunctionAppId).SingleAsync();
+        Assert.Null(app.ActiveRevisionId);
+        Assert.Null(app.PendingRevisionId);
+        var references = await Services.GetRequiredService<LoadFunctionAppRevisionReferences>()(app);
+        Assert.Equal(created.RevisionId, references.LatestConfiguration?.Id);
+        Assert.IsType<FailedFunctionRevisionStatus>(references.LatestConfiguration!.Status);
+
+        await DbContext.FunctionRevisions.DeleteOneAsync(item => item.Id == created.RevisionId);
+        Assert.Null((await Services.GetRequiredService<LoadFunctionAppRevisionReferences>()(app)).LatestConfiguration);
+    }
+
+    [Fact]
+    public async Task Missing_logical_secret_rolls_back_create_and_all_revision_events()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var spec = RevisionRequest("*/5 * * * *") with
+        {
+            Configuration = new FunctionConfiguration(
+                ImmutableDictionary<string, string>.Empty,
+                ImmutableDictionary<string, FunctionSecretReference>.Empty
+                    .Add("TOKEN", new("507f1f77bcf86cd799439099", "token")))
+        };
+        var result = (await Mediator.Send(new CreateFunctionAppRequest(
+            new("secret-functions", "secret-functions", group.Id, spec, []),
+            TestData.TenantId))).HandlerOutcome();
+        var error = Assert.IsAssignableFrom<CreateFunctionAppError>(result.Value);
+        Assert.IsType<FunctionSecretReferenceRejected>(error.Value);
+        Assert.Equal(0, await DbContext.FunctionApps.CountDocumentsAsync(FilterDefinition<FunctionApp>.Empty));
+        Assert.Equal(0, await DbContext.FunctionRevisions.CountDocumentsAsync(
+            FilterDefinition<FunctionRevision>.Empty));
+        Assert.Equal(0, await DbContext.ResourceDeployments.CountDocumentsAsync(
+            item => item.ResourceType == FunctionResourceDeployment.ResourceType.Value));
+        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync("pole.functions/v1/function-app-created"));
+        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync("pole.functions/v1/function-revision-created"));
+    }
+
+    [Fact]
+    public async Task Missing_logical_secret_rolls_back_update_without_replacing_active_revision()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var created = await CreateAsync(group.Id);
+        (await MarkReadyAndPromoteAsync(
+            Services.GetRequiredService<MarkFunctionRevisionReady>(),
+            Services.GetRequiredService<PromoteFunctionRevision>(),
+            TestData.TenantId, created.FunctionAppId, created.RevisionId)).RequireLifecycleSuccess();
+        var spec = RevisionRequest("*/10 * * * *", "v2") with
+        {
+            Configuration = new FunctionConfiguration(
+                ImmutableDictionary<string, string>.Empty,
+                ImmutableDictionary<string, FunctionSecretReference>.Empty
+                    .Add("TOKEN", new("507f1f77bcf86cd799439099", "token")))
+        };
+        var result = (await Mediator.Send(new UpdateFunctionAppRequest(
+            created.FunctionAppId, new(spec, []), TestData.TenantId))).HandlerOutcome();
+        var error = Assert.IsAssignableFrom<UpdateFunctionAppError>(result.Value);
+        Assert.IsType<FunctionSecretReferenceRejected>(error.Value);
+        var app = await DbContext.FunctionApps.Find(item => item.Id == created.FunctionAppId).SingleAsync();
+        Assert.Equal(created.RevisionId, app.ActiveRevisionId);
+        Assert.Null(app.PendingRevisionId);
+        Assert.Equal(1, await DbContext.FunctionRevisions.CountDocumentsAsync(
+            item => item.FunctionAppId == app.Id));
+        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync("pole.functions/v1/function-revision-created"));
+    }
+
+    [Fact]
+    public async Task Create_uses_explicit_named_scope_placement()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var scope = Pole.Features.ResourceGroups.Domain.IsolationScopeFactory.CreateAdditional(
+            TestData.TenantId, group.Id, "function-private",
+            Pole.Features.ResourceGroups.Domain.IsolationScopeFactory.DefaultOptions);
+        await Fixture.Database.GetCollection<Pole.Features.ResourceGroups.Domain.IsolationScope>("IsolationScopes")
+            .InsertOneAsync(scope);
+        var created = (await Mediator.Send(new CreateFunctionAppRequest(
+            new("scoped-functions", "scoped-functions", group.Id, RevisionRequest("*/5 * * * *"), [],
+                Placement: new(TestData.DefaultDeploymentTargetId, scope.Id)),
+            TestData.TenantId))).RequireSuccess();
+        var placement = await DbContext.ResourceDeployments.Find(
+            item => item.ResourceId == created.FunctionAppId).SingleAsync();
+        Assert.Equal(scope.Id, placement.IsolationScopeId);
+        Assert.Equal(TestData.DefaultDeploymentTargetId, placement.ResolvedPlacement.DeploymentTargetId);
+    }
+
     [Fact]
     public async Task Create_maps_resource_group_not_found_from_registration_to_function_outcome()
     {
@@ -577,7 +669,7 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             new FunctionImageRequest("registry.example", "team/functions", imageTag),
             new FunctionConfiguration(
                 ImmutableDictionary<string, string>.Empty,
-                ImmutableDictionary<string, string>.Empty),
+                ImmutableDictionary<string, FunctionSecretReference>.Empty),
             new FunctionResources(
                 new FunctionResourceValues(100, 128),
                 new FunctionResourceValues(500, 512)),

@@ -320,6 +320,11 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
             await AttemptAsync("dispose application", () => _application.DisposeAsync().AsTask());
         }
 
+        using var gitOpsCleanupTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+        await AttemptAsync("remove owned GitOps namespaces", () =>
+            CleanupGitOpsNamespacesAsync(gitOpsCleanupTimeout.Token));
+        await AttemptAsync("remove GitOps test images", DisposeGitOpsImagesAsync);
+
         await AttemptAsync("dispose BuildKit forwarding", () => DisposePortForwardAsync(_buildKitPortForward));
         _buildKitPortForward = null;
         await AttemptAsync("dispose Harbor forwarding", () => DisposePortForwardAsync(_harborPortForward));

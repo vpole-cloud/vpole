@@ -9,6 +9,7 @@ export interface ResourceGroup {
 }
 
 export interface IsolationScope {
+  gitOps?: GitOpsStatus | null
   id: string
   resourceGroupId: string
   name: string

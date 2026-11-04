@@ -26,59 +26,67 @@ internal sealed class MongoPersistCreatedIsolationScope(
     RunMongoOutcomeTransaction<PersistCreatedIsolationScopeOutcome>
         runMongoTransaction)
 {
-    public Task<PersistCreatedIsolationScopeOutcome> InvokeAsync(
+    public async Task<PersistCreatedIsolationScopeOutcome> InvokeAsync(
         ResourceGroup resourceGroup,
         IsolationScope isolationScope,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resourceGroup);
         ArgumentNullException.ThrowIfNull(isolationScope);
-        return runMongoTransaction(async (transaction, ct) =>
+        try
         {
-            var existing = await isolationScopes
-                .Find(
+            return await runMongoTransaction(async (transaction, ct) =>
+            {
+                var existing = await isolationScopes
+                    .Find(
+                        transaction.Session,
+                        IsolationScopeFilters.ByTechnicalName(
+                            isolationScope.TenantId,
+                            isolationScope.NormalizedName))
+                    .AnyAsync(ct);
+                if (existing)
+                {
+                    return transaction.Abort(new PersistCreatedIsolationScopeError(
+                        new IsolationScopeNameConflict(
+                            isolationScope.ResourceGroupId,
+                            isolationScope.NormalizedName)));
+                }
+
+                var now = isolationScope.CreatedAtUtc;
+                var fence = await resourceGroups.UpdateOneAsync(
                     transaction.Session,
-                    IsolationScopeFilters.ByTenantResourceGroupAndNormalizedName(
-                        isolationScope.TenantId,
-                        isolationScope.ResourceGroupId,
-                        isolationScope.NormalizedName))
-                .AnyAsync(ct);
-            if (existing)
-            {
-                return transaction.Abort(new PersistCreatedIsolationScopeError(
-                    new IsolationScopeNameConflict(
-                        isolationScope.ResourceGroupId,
-                        isolationScope.NormalizedName)));
-            }
-
-            var now = isolationScope.CreatedAtUtc;
-            var fence = await resourceGroups.UpdateOneAsync(
-                transaction.Session,
-                ResourceGroupFilters.ActiveAtRevision(
-                    resourceGroup.TenantId,
-                    resourceGroup.Id,
-                    resourceGroup.Revision),
-                Builders<ResourceGroup>.Update
-                    .Inc(group => group.Revision, 1)
-                    .Set(group => group.UpdatedAtUtc, now),
-                cancellationToken: ct);
-            if (fence.ModifiedCount != 1)
-            {
-                return transaction.Abort(new PersistCreatedIsolationScopeError(
-                    new ResourceGroupRevisionConflict(
+                    ResourceGroupFilters.ActiveAtRevision(
+                        resourceGroup.TenantId,
                         resourceGroup.Id,
-                        ResourceGroupRevisionConflictReason.ExpectedRevisionConflict)));
-            }
+                        resourceGroup.Revision),
+                    Builders<ResourceGroup>.Update
+                        .Inc(group => group.Revision, 1)
+                        .Set(group => group.UpdatedAtUtc, now),
+                    cancellationToken: ct);
+                if (fence.ModifiedCount != 1)
+                {
+                    return transaction.Abort(new PersistCreatedIsolationScopeError(
+                        new ResourceGroupRevisionConflict(
+                            resourceGroup.Id,
+                            ResourceGroupRevisionConflictReason.ExpectedRevisionConflict)));
+                }
 
-            await isolationScopes.InsertOneAsync(
-                transaction.Session,
-                isolationScope,
-                cancellationToken: ct);
-            await storeOutboxWrites(
-                transaction.Session,
-                [OutboxWrite.Create(isolationScope.ToCreatedEvent())],
-                ct);
-            return transaction.Commit(isolationScope);
-        }, cancellationToken);
+                await isolationScopes.InsertOneAsync(
+                    transaction.Session,
+                    isolationScope,
+                    cancellationToken: ct);
+                await storeOutboxWrites(
+                    transaction.Session,
+                    [OutboxWrite.Create(isolationScope.ToCreatedEvent())],
+                    ct);
+                return transaction.Commit(isolationScope);
+            }, cancellationToken);
+        }
+        catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(exception,
+            IsolationScopeIndexes.TenantName, isolationScopes.CollectionNamespace.CollectionName))
+        {
+            return new PersistCreatedIsolationScopeError(new IsolationScopeNameConflict(
+                isolationScope.ResourceGroupId, isolationScope.Name));
+        }
     }
 }

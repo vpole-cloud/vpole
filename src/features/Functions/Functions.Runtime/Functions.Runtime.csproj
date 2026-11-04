@@ -17,6 +17,7 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\Secrets\Secrets.Contracts\Secrets.Contracts.csproj" />
     <ProjectReference Include="..\Functions.Application\Functions.Application.csproj" />
     <ProjectReference Include="..\Functions.Domain\Functions.Domain.csproj" />
     <ProjectReference Include="..\Functions.Events\Functions.Events.csproj" />

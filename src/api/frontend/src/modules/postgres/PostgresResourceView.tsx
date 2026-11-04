@@ -1,3 +1,5 @@
+import { canEditDesiredConfiguration } from '../../data/gitOps'
+import { GitOwnershipNotice } from '../../ui/GitOwnershipNotice'
 import { eligibilityKeys } from '../../data/queryKeys'
 import { ResourceHealth } from '../../ui/ResourceHealth'
 import { ResourceOperations } from '../../ui/ResourceOperations'
@@ -186,7 +188,8 @@ export function PostgresResourceView({
       </EmptyState>
     )
   const panelId = `postgres-${id}`
-  const canWrite = tenant.canManage && cluster.lifecycle === 'Active'
+  const canOperate = tenant.canManage && cluster.lifecycle === 'Active'
+  const canWrite = canEditDesiredConfiguration(canOperate, cluster.gitOps)
   return (
     <div>
       <header className="ui-page-header">
@@ -209,6 +212,7 @@ export function PostgresResourceView({
           )}
         </div>
       </header>
+      <GitOwnershipNotice status={cluster.gitOps} />
       {details.error && (
         <Notice tone="error">{details.error} Last fetched metadata is shown.</Notice>
       )}
@@ -361,7 +365,7 @@ export function PostgresResourceView({
           ))}
       </TabPanel>
       <TabPanel id={panelId} tabId="credentials" activeId={section}>
-        {active && section === 'credentials' && canWrite && (
+        {active && section === 'credentials' && canOperate && (
           <PostgresCredentials
             key={`${scopeKey}:${tenant.canManage}`}
             cluster={cluster}

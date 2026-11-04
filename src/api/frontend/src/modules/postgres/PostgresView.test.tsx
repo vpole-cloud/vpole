@@ -366,6 +366,25 @@ it('preserves configuration drafts through sections and refresh, confirms dirty 
   expect(JSON.parse(put[1]!.body as string)).toEqual({ expectedRevision: 1, storage: 2 })
 })
 
+it('keeps Git-owned configuration read-only while allowing credential operations', async () => {
+  cluster.gitOps = {
+    sourceId: 'source',
+    sourceUrl: '/api/v1/gitops/sources/source',
+    blocker: null,
+    pendingRemoval: false,
+    configurationApplied: true,
+  }
+  await open()
+  expect(text()).toContain('Git manages this configuration.')
+  expect(text()).not.toContain('Delete database')
+  await tab('Configuration')
+  expect(text()).toContain('Database configuration is read-only.')
+  await tab('Credentials')
+  await click('Reveal connection string')
+  expect(container.querySelector('textarea')?.value).toBe('ephemeral-credential')
+  expect(text()).toContain('Rotate password')
+})
+
 it('clears revealed values on section change, role downgrade and tenant change', async () => {
   await open()
   await tab('Credentials')

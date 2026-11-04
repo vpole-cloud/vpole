@@ -40,6 +40,11 @@ internal static class RedisFilters
             Builders<Redis>.Filter.Eq(candidate => candidate.Revision, redis.Revision));
     }
 
+    public static FilterDefinition<Redis> AtPlanningVersion(Redis redis) =>
+        Builders<Redis>.Filter.And(
+            AtRevision(redis),
+            Builders<Redis>.Filter.Eq(candidate => candidate.PlanningFence, redis.PlanningFence));
+
     public static FilterDefinition<Redis> ActiveAtRevision(Redis redis) =>
         Builders<Redis>.Filter.And(
             AtRevision(redis),

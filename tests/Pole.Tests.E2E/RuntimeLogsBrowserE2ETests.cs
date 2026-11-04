@@ -183,20 +183,47 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
             await CaptureAsync(page, "reconnected");
             journal.Record(TestPhase.Completed);
 
-            object StorageBody(bool enabled, long revision) => new
+            object StorageBody(bool enabled, long revision)
             {
-                displayName = "Runtime logs test disk",
-                description = "Ephemeral diagnostics profile",
-                mediaType = "Network",
-                performanceTier = "Standard",
-                isEnabled = enabled,
-                isDefault = false,
-                targetMappings = enabled ? new[] { new { deploymentTargetId = targetId, storageClassName = lab.StorageClassName }, new { deploymentTargetId = defaultTargetId, storageClassName = fixture.LabState.GetRequiredTarget("default").StorageClassName } }
-                    : new[] { new { deploymentTargetId = defaultTargetId, storageClassName = fixture.LabState.GetRequiredTarget("default").StorageClassName } },
-                allowedResourceTypes = new[] { "pole/redis" },
-                tenantAccess = new { mode = "SelectedTenants", tenantIds = new[] { fixture.Alpha.DefaultTenantId } },
-                revision
-            };
+                var body = JsonSerializer.SerializeToNode(new
+                {
+                    displayName = "Runtime logs test disk",
+                    description = "Ephemeral diagnostics profile",
+                    mediaType = "Network",
+                    performanceTier = "Standard",
+                    isEnabled = enabled,
+                    isDefault = false,
+                    targetMappings = enabled
+                        ? new[]
+                        {
+                            new { deploymentTargetId = targetId, storageClassName = lab.StorageClassName },
+                            new
+                            {
+                                deploymentTargetId = defaultTargetId,
+                                storageClassName = fixture.LabState.GetRequiredTarget("default").StorageClassName
+                            }
+                        }
+                        : new[]
+                        {
+                            new
+                            {
+                                deploymentTargetId = defaultTargetId,
+                                storageClassName = fixture.LabState.GetRequiredTarget("default").StorageClassName
+                            }
+                        },
+                    allowedResourceTypes = new[] { "pole/redis" },
+                    tenantAccess = new
+                    {
+                        mode = "SelectedTenants",
+                        tenantIds = new[] { fixture.Alpha.DefaultTenantId }
+                    },
+                    revision
+                })!.AsObject();
+                if (revision == 0)
+                    body["technicalName"] = $"disk-{Guid.NewGuid():N}";
+
+                return body;
+            }
         }
         catch (Exception exception) { journal?.Record(TestPhase.Failed); primaryFailure = exception; throw; }
         finally

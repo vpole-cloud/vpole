@@ -187,3 +187,22 @@ Related rules:
 - [Multitenancy](../../../docs/multitenancy.md)
 - [Observability and outbox propagation](../../../docs/observability.md)
 - [Testing](../../../docs/testing.md)
+
+## Autoscaling runtime
+
+Autoscaling uses an owned `autoscaling/v2` HorizontalPodAutoscaler with the declared CPU or memory
+resource utilization target. Utilization is relative to the resource request and can exceed 100%.
+The first Deployment starts at `minReplicas`; later reconciliation preserves the HPA-managed live
+replica count. Switching to fixed replicas removes the owned HPA with UID/resource-version
+preconditions before setting the requested replica count. Workload cleanup removes the HPA too.
+Prepared services do not create native resources.
+
+The target credential needs `get`, `list`, `watch`, `create`, `update`, `patch`, and `delete` on
+`autoscaling/horizontalpodautoscalers` in managed namespaces. Pole does not install a workload
+Role/ClusterRole or binding; operators grant these permissions to the supplied target identity.
+HPA resource metrics also require the target cluster's resource metrics API.
+
+Observation checks HPA identity and declared policy and watches its changes. A missing or drifted
+HPA is not reported as healthy merely because Deployment replicas are ready. Existing periodic
+ResourceDeployment verification reapplies the policy, including recreating a missing owned HPA;
+live replica counts remain runtime observations and never become desired GitOps configuration.

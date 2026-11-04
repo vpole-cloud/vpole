@@ -73,6 +73,8 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
             savedCluster.Spec.StorageProfileId);
         Assert.Equal(1, savedCluster.Revision);
         Assert.IsType<ActivePostgresClusterLifecycle>(savedCluster.Lifecycle);
+        Assert.IsType<DirectPostgresProvisioning>(savedCluster.Provisioning);
+        Assert.Equal(0, savedCluster.PlanningFence);
 
         var credential = await Credentials
             .Find(ForCluster(savedCluster.Id) & Builders<Secret>.Filter.Eq(item => item.TenantId, PostgresTestData.TenantId))
@@ -140,6 +142,29 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
+    public async Task PlanningFenceRejectsStaleMutationWithoutChangingRootOrOutbox()
+    {
+        var (current, _) = await CreateClusterAsync();
+        var messagesBefore = await DbContext.OutboxMessages.CountDocumentsAsync(_ => true);
+        await DbContext.Postgres.UpdateOneAsync(item => item.Id == current.Id,
+            Builders<PostgresCluster>.Update.Inc(item => item.PlanningFence, 1));
+        var persist = Services.GetRequiredService<PersistUpdatedPostgresCluster>();
+        var outcome = await DbContext.RunOutcomeInTransactionAsync<bool>(async (transaction, ct) =>
+        {
+            var result = await persist.Invoke(new(current, current.UpdateDesiredState(2, 30), null),
+                transaction.Session, ct);
+            return transaction.Commit(result.IsPostgresError);
+        });
+
+        Assert.True(outcome);
+        var persisted = await DbContext.Postgres.Find(item => item.Id == current.Id).SingleAsync();
+        Assert.Equal(1, persisted.PlanningFence);
+        Assert.Equal(current.Revision, persisted.Revision);
+        Assert.Equal(current.Spec, persisted.Spec);
+        Assert.Equal(messagesBefore, await DbContext.OutboxMessages.CountDocumentsAsync(_ => true));
+    }
+
+    [Fact]
     public async Task PersistUpdate_RejectsRename()
     {
         var (current, _) = await CreateClusterAsync();
@@ -150,16 +175,17 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
             current.GroupId,
             current.Spec,
             current.Revision,
-            current.Lifecycle);
+            current.Lifecycle,
+            current.Provisioning,
+            current.PlanningFence);
         var persistUpdated = Services.GetRequiredService<PersistUpdatedPostgresCluster>();
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             DbContext.RunOutcomeInTransactionAsync<Pole.ResultType.Unit>(async (transaction, cancellationToken) =>
             {
                 _ = await persistUpdated.Invoke(
+                    new(current, replacement, null),
                     transaction.Session,
-                    current,
-                    replacement,
                     cancellationToken);
                 return transaction.Commit(Pole.ResultType.Unit.Value);
             }));

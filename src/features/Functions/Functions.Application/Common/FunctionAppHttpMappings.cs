@@ -7,6 +7,20 @@ namespace Pole.Features.Functions.Application.Common;
 
 public static class FunctionAppHttpMappings
 {
+    public static HttpProblem MapGitOwned(FunctionAppGitOwnedConfiguration error) => Conflict(
+        "function-apps.git-owned", "Function App configuration is managed by GitOps", error.FunctionAppId);
+
+    public static HttpProblem MapConfigurationUnavailable(FunctionAppConfigurationUnavailable error) => Conflict(
+        "function-apps.configuration-unavailable",
+        "The latest accepted Function configuration is unavailable",
+        error.FunctionAppId);
+
+    public static HttpProblem MapSecretReferenceRejected(FunctionSecretReferenceRejected _) => new(
+        (int)HttpStatusCode.Conflict,
+        PoleProblemTypeId.FromCode("function-apps.secret-reference-unavailable"),
+        "Function Secret references are not available or authorized",
+        "function-apps.secret-reference-unavailable");
+
     public static HttpProblem MapNotFound(FunctionAppNotFound error) =>
         new(
             (int)HttpStatusCode.NotFound,

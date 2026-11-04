@@ -30,6 +30,10 @@ public sealed class FunctionResourceDeploymentAdapter(
                 "The Function App no longer exists.",
                 retryable: false);
         }
+        if (app.DesiredState == FunctionAppDesiredState.Prepared)
+            return ResourceDeploymentAdapterResult.Failed.Create(
+                "FunctionConfigurationPending", "The Function App is not configured yet.");
+
         if (!Matches(app, deployment))
         {
             return ResourceDeploymentAdapterResult.Failed.Create(

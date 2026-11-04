@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Immutable;
 using System.Globalization;
 using System.Net;
@@ -10,6 +11,7 @@ using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Features.Functions.Runtime.Security;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.Secrets.Contracts;
 using Pole.Functions.Protocol;
 using Xunit;
 
@@ -17,6 +19,68 @@ namespace Pole.Features.Functions.Tests;
 
 public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Apply_requires_authorized_ready_secret_projections(bool ready)
+    {
+        var subject = CreateSubject();
+        var reference = new FunctionSecretReference("507f1f77bcf86cd799439099", "source-key");
+        subject = subject with
+        {
+            Revision = subject.Revision with
+            {
+                Spec = subject.Revision.Spec with
+                {
+                    Configuration = new FunctionConfiguration(
+                        ImmutableDictionary<string, string>.Empty,
+                        ImmutableDictionary<string, FunctionSecretReference>.Empty.Add("TOKEN", reference))
+                }
+            }
+        };
+        using var handler = new DeploymentHandler(new V1Deployment());
+        using var kubernetes = CreateKubernetes(handler);
+        var services = new ServiceCollection();
+        services.AddScoped<EnsureConsumerSecretProjections>(_ => (request, ct) =>
+        {
+            Assert.Equal(subject.App.TenantId, request.TenantId);
+            Assert.Equal(subject.App.Id, request.ConsumerId);
+            Assert.Equal(subject.Placement.ResourceDeploymentId, request.DeploymentId);
+            Assert.Equal(reference.Key, Assert.Single(request.References).Key);
+            return Task.FromResult<EnsureConsumerSecretProjectionsOutcome>(ready
+                ? new ConsumerSecretProjectionKeys(
+                    [new(reference.SecretId, reference.Key, "native-projection", "mapped-key", 1)])
+                : new ConsumerSecretProjectionPending(reference.SecretId));
+        });
+        using var provider = services.BuildServiceProvider();
+        var manager = new FunctionRevisionKubernetesManager(
+            new FixedKubernetesClientProvider(kubernetes),
+            (id, ct) => LookupTarget(id, NetworkPolicyReadiness.EnforcementAttested),
+            ReadyBaseline, [], provider.GetRequiredService<IServiceScopeFactory>());
+
+        var result = await manager.ApplyAsync(subject);
+        Assert.Equal(ready, result is FunctionRevisionKubernetesMutationCompleted);
+        Assert.Equal(ready ? 2 : 0, handler.PostRequests.Count);
+        if (ready)
+        {
+            var manifest = handler.PostRequests[0];
+            Assert.Contains("native-projection", manifest);
+            Assert.Contains("mapped-key", manifest);
+            Assert.DoesNotContain(reference.SecretId, manifest);
+        }
+        else
+        {
+            var error = Assert.IsAssignableFrom<FunctionRevisionKubernetesOperationError>(result.Value);
+            Assert.IsType<FunctionRevisionSecretsUnavailable>(error.Value);
+
+            ready = true;
+            Assert.IsType<FunctionRevisionKubernetesMutationCompleted>((await manager.ApplyAsync(subject)).Value);
+            Assert.Equal(2, handler.PostRequests.Count);
+            Assert.Contains("native-projection", handler.PostRequests[0]);
+            Assert.Contains("mapped-key", handler.PostRequests[0]);
+        }
+    }
+
     [Theory]
     [InlineData(NetworkPolicyReadiness.EnforcementRequired, false)]
     [InlineData(NetworkPolicyReadiness.EnforcementAttested, true)]
@@ -39,7 +103,8 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
                 return LookupTarget(id, currentReadiness);
             },
             ReadyBaseline,
-            []);
+            [],
+            new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>());
         var result = await manager.ApplyAsync(subject);
         Assert.Equal(allowed, result is FunctionRevisionKubernetesMutationCompleted);
         Assert.Equal(allowed ? 2 : 0, handler.PostRequests.Count);
@@ -62,7 +127,8 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
 (request, ct) =>
                 Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
                     new RuntimeCellIngressBaselinePolicyUnavailable(request.RuntimeCellId)),
-            []);
+            [],
+            new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>());
 
         var result = await manager.ApplyAsync(subject);
 
@@ -80,7 +146,8 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
             new FixedKubernetesClientProvider(kubernetes),
             (id, ct) => LookupTarget(id, NetworkPolicyReadiness.EnforcementAttested, gatewaySource: false),
             ReadyBaseline,
-            []);
+            [],
+            new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>());
 
         var apply = await manager.ApplyAsync(subject);
         var provisioningIncrease = await manager.ScaleProvisioningAsync(subject, 2);
@@ -118,7 +185,8 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
             new FixedKubernetesClientProvider(kubernetes),
             (id, ct) => LookupTarget(id, NetworkPolicyReadiness.EnforcementRequired),
             ReadyBaseline,
-            []);
+            [],
+            new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>());
         var result = provisioning
             ? await manager.ScaleProvisioningAsync(subject, desired)
             : await manager.ScaleAsync(subject, desired, 5);
@@ -137,7 +205,8 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
             (_, _) => throw new InvalidOperationException(
                 "Readiness lookup is forbidden for diagnostics/deletion."),
             ReadyBaseline,
-            []);
+            [],
+            new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>());
         Assert.IsType<FunctionReplicaState>((await manager.ReadReplicaStateAsync(subject)).Value);
         Assert.IsType<FunctionRevisionKubernetesMutationCompleted>((await manager.DeleteAsync(subject)).Value);
         Assert.Equal(2, handler.DeleteRequests);
@@ -225,12 +294,185 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         Assert.Empty(handler.PutRequests);
     }
 
-    private static FunctionRevisionKubernetesManager CreateManager(IKubernetes kubernetes) =>
+    [Fact]
+    public async Task Provisioning_scale_rereads_resource_version_after_a_conflict()
+    {
+        var subject = CreateSubject();
+        using var handler = new DeploymentHandler(Deployment(subject, replicas: 0, generation: 0))
+        {
+            ConflictsRemaining = 1
+        };
+        using var kubernetes = CreateKubernetes(handler);
+        var baselineChecks = 0;
+        var manager = CreateManager(kubernetes, baseline: (request, ct) =>
+        {
+            baselineChecks++;
+            return ReadyBaseline(request, ct);
+        });
+
+        var result = await manager.ScaleProvisioningAsync(subject, replicas: 1);
+
+        Assert.IsType<FunctionRevisionKubernetesMutationCompleted>(result.Value);
+        Assert.Equal(2, handler.GetRequests);
+        Assert.Equal(2, handler.PutRequests.Count);
+        Assert.Equal(2, baselineChecks);
+        Assert.Equal(["17", "18"], handler.PutRequests.Select(request =>
+        {
+            using var body = JsonDocument.Parse(request.Body);
+            return body.RootElement.GetProperty("metadata").GetProperty("resourceVersion").GetString();
+        }));
+    }
+
+    [Fact]
+    public async Task Provisioning_scale_does_not_write_when_already_current()
+    {
+        var subject = CreateSubject();
+        using var handler = new DeploymentHandler(Deployment(subject, replicas: 1, generation: 0));
+        using var kubernetes = CreateKubernetes(handler);
+        var manager = CreateManager(kubernetes, (_, _) =>
+            throw new InvalidOperationException("An unchanged scale does not require increase admission."));
+
+        var result = await manager.ScaleProvisioningAsync(subject, replicas: 1);
+
+        Assert.IsType<FunctionRevisionKubernetesMutationCompleted>(result.Value);
+        Assert.Equal(1, handler.GetRequests);
+        Assert.Empty(handler.PutRequests);
+    }
+
+    [Fact]
+    public async Task Provisioning_scale_accepts_another_writer_converging_after_conflict()
+    {
+        var subject = CreateSubject();
+        var deployment = Deployment(subject, replicas: 0, generation: 0);
+        using var handler = new DeploymentHandler(deployment)
+        {
+            ConflictsRemaining = 1,
+            OnConflict = () => deployment.Spec.Replicas = 1
+        };
+        using var kubernetes = CreateKubernetes(handler);
+        var manager = CreateManager(kubernetes);
+
+        var result = await manager.ScaleProvisioningAsync(subject, replicas: 1);
+
+        Assert.IsType<FunctionRevisionKubernetesMutationCompleted>(result.Value);
+        Assert.Equal(2, handler.GetRequests);
+        Assert.Single(handler.PutRequests);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Provisioning_scale_revalidates_target_and_baseline_after_conflict(bool revokeBaseline)
+    {
+        var subject = CreateSubject();
+        var revoked = false;
+        using var handler = new DeploymentHandler(Deployment(subject, replicas: 0, generation: 0))
+        {
+            ConflictsRemaining = 1,
+            OnConflict = () => revoked = true
+        };
+        using var kubernetes = CreateKubernetes(handler);
+        var targetChecks = 0;
+        var baselineChecks = 0;
+        var manager = CreateManager(kubernetes, (id, _) =>
+        {
+            targetChecks++;
+            return LookupTarget(id, revoked && !revokeBaseline
+                ? NetworkPolicyReadiness.EnforcementRequired : NetworkPolicyReadiness.EnforcementAttested);
+        }, (_, _) =>
+        {
+            baselineChecks++;
+            return Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(revoked && revokeBaseline
+                ? new RuntimeCellIngressBaselineNotReady(subject.Placement.RuntimeCellId)
+                : new RuntimeCellIngressBaselineReady());
+        });
+
+        var result = await manager.ScaleProvisioningAsync(subject, replicas: 1);
+
+        var error = Assert.IsAssignableFrom<FunctionRevisionKubernetesOperationError>(result.Value);
+        Assert.IsType<FunctionRevisionKubernetesOperationRejected>(error.Value);
+        Assert.Equal(2, handler.GetRequests);
+        Assert.Single(handler.PutRequests);
+        Assert.Equal(2, targetChecks);
+        Assert.Equal(revokeBaseline ? 2 : 1, baselineChecks);
+    }
+
+    [Fact]
+    public async Task Provisioning_scale_conflict_retries_are_bounded()
+    {
+        var subject = CreateSubject();
+        using var handler = new DeploymentHandler(Deployment(subject, replicas: 0, generation: 0))
+        {
+            ConflictsRemaining = 10
+        };
+        using var kubernetes = CreateKubernetes(handler);
+        var manager = CreateManager(kubernetes);
+
+        var result = await manager.ScaleProvisioningAsync(subject, replicas: 1);
+
+        var error = Assert.IsAssignableFrom<FunctionRevisionKubernetesOperationError>(result.Value);
+        Assert.IsType<FunctionRevisionKubernetesOperationRejected>(error.Value);
+        Assert.Equal(5, handler.GetRequests);
+        Assert.Equal(5, handler.PutRequests.Count);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(5)]
+    public async Task Provisioning_scale_preserves_cancellation_after_conflict(int cancelAfter)
+    {
+        var subject = CreateSubject();
+        using var cancellation = new CancellationTokenSource();
+        using var handler = new DeploymentHandler(Deployment(subject, replicas: 0, generation: 0))
+        {
+            ConflictsRemaining = 10
+        };
+        handler.OnConflict = () =>
+        {
+            if (handler.PutRequests.Count == cancelAfter)
+                cancellation.Cancel();
+        };
+        using var kubernetes = CreateKubernetes(handler);
+        var manager = CreateManager(kubernetes);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            manager.ScaleProvisioningAsync(subject, 1, cancellation.Token));
+
+        Assert.Equal(cancelAfter, handler.PutRequests.Count);
+        Assert.Equal(cancelAfter, handler.GetRequests);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Forbidden)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    public async Task Provisioning_scale_does_not_retry_other_http_failures(HttpStatusCode status)
+    {
+        var subject = CreateSubject();
+        using var handler = new DeploymentHandler(Deployment(subject, replicas: 0, generation: 0))
+        {
+            PutFailureStatus = status
+        };
+        using var kubernetes = CreateKubernetes(handler);
+        var manager = CreateManager(kubernetes);
+
+        var result = await manager.ScaleProvisioningAsync(subject, replicas: 1);
+
+        var error = Assert.IsAssignableFrom<FunctionRevisionKubernetesOperationError>(result.Value);
+        Assert.IsType<FunctionRevisionKubernetesUnavailable>(error.Value);
+        Assert.Single(handler.PutRequests);
+        Assert.Equal(1, handler.GetRequests);
+    }
+
+    private static FunctionRevisionKubernetesManager CreateManager(
+        IKubernetes kubernetes,
+        LookupDeploymentTarget? lookup = null,
+        EnsureRuntimeCellIngressBaseline? baseline = null) =>
         new(
             new FixedKubernetesClientProvider(kubernetes),
-            (id, ct) => LookupTarget(id, NetworkPolicyReadiness.EnforcementAttested),
-            ReadyBaseline,
-            Array.Empty<IFunctionAgentTrustBundleProvider>());
+            lookup ?? ((id, ct) => LookupTarget(id, NetworkPolicyReadiness.EnforcementAttested)),
+            baseline ?? ReadyBaseline,
+            Array.Empty<IFunctionAgentTrustBundleProvider>(),
+            new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>());
 
     private static Task<EnsureRuntimeCellIngressBaselineOutcome> ReadyBaseline(
         EnsureRuntimeCellIngressBaselineRequest request,
@@ -295,7 +537,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
             PoleFunctionProtocol.Version,
             new FunctionConfiguration(
                 ImmutableDictionary<string, string>.Empty,
-                ImmutableDictionary<string, string>.Empty),
+                ImmutableDictionary<string, FunctionSecretReference>.Empty),
             new FunctionResources(
                 new FunctionResourceValues(100, 128),
                 new FunctionResourceValues(500, 512)),
@@ -365,13 +607,21 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         public List<RecordedPut> PutRequests { get; } = [];
         public List<string> PostRequests { get; } = [];
         public int DeleteRequests { get; private set; }
+        public int GetRequests { get; private set; }
+        public int ConflictsRemaining { get; set; }
+        public Action? OnConflict { get; set; }
+        public HttpStatusCode? PutFailureStatus { get; set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
             if (request.Method == HttpMethod.Get)
+            {
+                GetRequests++;
                 return JsonResponse(request, Serialize(deployment));
+            }
+
             if (request.Method == HttpMethod.Post)
             {
                 var body = await request.Content!.ReadAsStringAsync(cancellationToken);
@@ -388,6 +638,19 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
             {
                 var body = await request.Content!.ReadAsStringAsync(cancellationToken);
                 PutRequests.Add(new RecordedPut(request.RequestUri!.AbsolutePath, body));
+                if (PutFailureStatus is { } failureStatus)
+                    return new HttpResponseMessage(failureStatus) { RequestMessage = request };
+
+                if (ConflictsRemaining > 0)
+                {
+                    ConflictsRemaining--;
+                    deployment.Metadata.ResourceVersion =
+                        (int.Parse(deployment.Metadata.ResourceVersion, CultureInfo.InvariantCulture) + 1)
+                        .ToString(CultureInfo.InvariantCulture);
+                    OnConflict?.Invoke();
+                    return new HttpResponseMessage(HttpStatusCode.Conflict) { RequestMessage = request };
+                }
+
                 return JsonResponse(request, body);
             }
 

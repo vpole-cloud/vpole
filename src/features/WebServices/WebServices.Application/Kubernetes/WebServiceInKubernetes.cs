@@ -344,29 +344,57 @@ public readonly record struct WebServiceInKubernetes(
         };
     }
 
-    public V1HorizontalPodAutoscaler? ToHorizontalPodAutoscaler() => WebService.Spec.Autoscaling is null ? null : new V1HorizontalPodAutoscaler
+    public string AutoscalerName => BuildAutoscalerName(WebService.Name);
+    public static string BuildAutoscalerName(string webServiceName) => $"{webServiceName}-hpa";
+
+    public V2HorizontalPodAutoscaler? ToHorizontalPodAutoscaler(
+        WebServiceDeploymentMetadata? deploymentMetadata = null)
     {
-        ApiVersion = "autoscaling/v2",
-        Kind = "HorizontalPodAutoscaler",
-        Metadata = new V1ObjectMeta()
+        if (WebService.Spec.Autoscaling is not { } autoscaling)
+            return null;
+
+        if (autoscaling.Metric.Type is not ("cpu" or "memory") ||
+            autoscaling.Metric.TargetAverageUtilization < 1 ||
+            autoscaling.MinReplicas < 1 || autoscaling.MaxReplicas < autoscaling.MinReplicas)
+            throw new InvalidOperationException("The autoscaling policy is invalid.");
+
+        return new V2HorizontalPodAutoscaler
         {
-            Name = $"{WebService.Name}-hpa",
-            NamespaceProperty = Namespace,
-            Labels = IdentityLabels(),
-            Annotations = _defaultAnnotations,
-        },
-        Spec = new V1HorizontalPodAutoscalerSpec()
-        {
-            ScaleTargetRef = new V1CrossVersionObjectReference()
+            ApiVersion = "autoscaling/v2",
+            Kind = "HorizontalPodAutoscaler",
+            Metadata = new V1ObjectMeta
             {
-                ApiVersion = "apps/v1",
-                Kind = "Deployment",
-                Name = WebService.Name
+                Name = AutoscalerName,
+                NamespaceProperty = Namespace,
+                Labels = IdentityLabels(),
+                Annotations = BuildPodTemplateAnnotations(deploymentMetadata)
             },
-            MinReplicas = WebService.Spec.Autoscaling.MinReplicas,
-            MaxReplicas = WebService.Spec.Autoscaling.MaxReplicas,
-        }
-    };
+            Spec = new V2HorizontalPodAutoscalerSpec
+            {
+                ScaleTargetRef = new V2CrossVersionObjectReference
+                {
+                    ApiVersion = "apps/v1",
+                    Kind = "Deployment",
+                    Name = DeploymentName
+                },
+                MinReplicas = autoscaling.MinReplicas,
+                MaxReplicas = autoscaling.MaxReplicas,
+                Metrics = [new V2MetricSpec
+                {
+                    Type = "Resource",
+                    Resource = new V2ResourceMetricSource
+                    {
+                        Name = autoscaling.Metric.Type,
+                        Target = new V2MetricTarget
+                        {
+                            Type = "Utilization",
+                            AverageUtilization = autoscaling.Metric.TargetAverageUtilization
+                        }
+                    }
+                }]
+            }
+        };
+    }
 
     public object ToServiceMonitor() => new
     {

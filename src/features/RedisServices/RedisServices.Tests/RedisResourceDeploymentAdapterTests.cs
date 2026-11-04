@@ -17,6 +17,49 @@ namespace Pole.Features.RedisServices.Tests;
 
 public sealed class RedisResourceDeploymentAdapterTests
 {
+    public enum NativeWrite { Create, Replace, Apply }
+
+    [Theory]
+    [InlineData(NativeWrite.Create)]
+    [InlineData(NativeWrite.Replace)]
+    [InlineData(NativeWrite.Apply)]
+    public async Task PreparedResourceCannotReachNativeKubernetesWrite(NativeWrite operation)
+    {
+        var prepared = CreateRedis() with { Lifecycle = new PreparedRedisLifecycle() };
+        var placement = CreateContext().Deployment.Placement;
+        var subject = prepared.ToKubernetes(KubernetesNamespace, placement.Storage!, placement.Compute,
+            new(TenantId, ResourceGroupId, IsolationScopeId, RuntimeCellId, TargetId,
+                RedisResourceDeployment.KubernetesResourceTypeLabel, ResourceId, DeploymentId));
+        var metadata = RedisResourceDeploymentMetadata.Create(DeploymentId, RuntimeCellId, TargetId, 1, NowUtc);
+        using var handler = new RecordingKubernetesHandler();
+        using var kubernetes = CreateKubernetes(handler);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => operation switch
+        {
+            NativeWrite.Create => RedisKubernetesResourceManager.CreateAsync(kubernetes, subject),
+            NativeWrite.Replace => RedisKubernetesResourceManager.ReplaceAsync(kubernetes, subject),
+            NativeWrite.Apply => RedisKubernetesResourceManager.ApplyAsync(kubernetes, subject, metadata),
+            _ => throw new ArgumentOutOfRangeException(nameof(operation))
+        });
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task PreparedResourceCannotApplyKubernetesObjects()
+    {
+        var loader = new RecordingRedisLoader(CreateRedis() with { Lifecycle = new PreparedRedisLifecycle() });
+        using var handler = new RecordingKubernetesHandler();
+        using var kubernetes = CreateKubernetes(handler);
+        var subject = new RedisResourceDeploymentAdapter(loader.InvokeAsync,
+            new FixedKubernetesClientProvider(kubernetes));
+
+        var result = await subject.ApplyAsync(CreateContext());
+
+        var failure = Assert.IsType<ResourceDeploymentAdapterResult.Failed>(result);
+        Assert.Equal("RedisNotActive", failure.FailureCode);
+        Assert.Empty(handler.Requests);
+    }
+
     [Fact]
     public async Task Apply_UsesContextClientNamespaceAndResolvedStorage()
     {

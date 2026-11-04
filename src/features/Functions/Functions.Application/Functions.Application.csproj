@@ -16,7 +16,10 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="../../ResourceConnections/ResourceConnections.Contracts/ResourceConnections.Contracts.csproj" />
+        <ProjectReference Include="..\..\GitOps\GitOps.Contracts\GitOps.Contracts.csproj" />
+        <ProjectReference Include="..\..\GitOps\GitOps.Primitives\GitOps.Primitives.csproj" />
+        <ProjectReference Include="..\..\Secrets\Secrets.Contracts\Secrets.Contracts.csproj" />
+    <ProjectReference Include="../../ResourceConnections/ResourceConnections.Contracts/ResourceConnections.Contracts.csproj" />
       <ProjectReference Include="..\Functions.Domain\Functions.Domain.csproj" />
         <ProjectReference Include="..\Functions.Events\Functions.Events.csproj" />
         <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />

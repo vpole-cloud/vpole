@@ -7,6 +7,7 @@ namespace Pole.Features.StorageProfiles.Application.Common;
 
 public sealed record StorageProfileDto(
     string Id,
+    string TechnicalName,
     string DisplayName,
     string Description,
     string MediaType,
@@ -36,6 +37,7 @@ public static class StorageProfileDtoExtensions
     public static StorageProfileDto ToDto(this StorageProfile profile) =>
         new(
             profile.Id,
+            profile.TechnicalName,
             profile.DisplayName,
             profile.Description,
             profile.MediaType.ToString(),
@@ -56,8 +58,10 @@ public static class StorageProfileDtoExtensions
 
     public static StorageProfile ToDomain(
         this StorageProfileMutationRequestBody body,
+        string technicalName,
         StorageProfileFactory.CreateOptions options) =>
         StorageProfileFactory.Create(
+            technicalName,
             body.DisplayName,
             body.Description,
             Enum.Parse<StorageMediaType>(body.MediaType, ignoreCase: true),

@@ -77,11 +77,11 @@ internal static class RedisPersistenceGuards
         Redis replacement)
     {
         EnsureSameIdentity(current, replacement);
-        if (current.Lifecycle is not ActiveRedisLifecycle ||
+        if (current.Lifecycle is not (ActiveRedisLifecycle or PreparedRedisLifecycle) ||
             replacement.Lifecycle is not ActiveRedisLifecycle)
         {
             throw new InvalidOperationException(
-                "Redis updates must replace an active Redis service with an active Redis service.");
+                "Redis configuration must activate a prepared service or update an active service.");
         }
     }
 

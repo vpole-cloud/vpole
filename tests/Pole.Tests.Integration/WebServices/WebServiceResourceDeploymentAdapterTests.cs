@@ -145,7 +145,11 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         Assert.Equal(
             [(TenantId, ResourceId, DeploymentId, 1L, 1L)],
             reader.ApplyRequests);
-        Assert.Equal(5, handler.Requests.Count);
+        Assert.Equal(7, handler.Requests.Count);
+        Assert.Equal(2, handler.Requests.Count(request => request.Method == HttpMethod.Get &&
+            request.Path.Contains("/horizontalpodautoscalers/", StringComparison.Ordinal)));
+        Assert.DoesNotContain(handler.Requests, request => request.Method == HttpMethod.Delete &&
+            request.Path.Contains("/horizontalpodautoscalers/", StringComparison.Ordinal));
         Assert.All(
             handler.Requests,
             request => Assert.Contains(
@@ -641,11 +645,13 @@ public sealed class WebServiceResourceDeploymentAdapterTests
 
         var succeeded = Assert.IsType<ResourceDeploymentAdapterResult.Succeeded>(result);
         Assert.Empty(succeeded.Endpoints);
-        Assert.Equal(6, handler.Requests.Count);
+        Assert.Equal(7, handler.Requests.Count);
+        var autoscalerRead = Assert.Single(handler.Requests, request => request.Method == HttpMethod.Get);
+        Assert.Contains("/horizontalpodautoscalers/", autoscalerRead.Path, StringComparison.Ordinal);
         Assert.Equal([(TenantId, ResourceId)], reader.DeleteRequests);
         Assert.All(handler.Requests, request =>
         {
-            Assert.Equal(HttpMethod.Delete, request.Method);
+            Assert.Equal(request == autoscalerRead ? HttpMethod.Get : HttpMethod.Delete, request.Method);
             Assert.Contains(
                 $"/namespaces/{KubernetesNamespace}/",
                 request.Path,
@@ -1003,10 +1009,11 @@ public sealed class WebServiceResourceDeploymentAdapterTests
                 _ingressDeleted = true;
                 IngressDeleteResponseStatus = HttpStatusCode.OK;
             }
-            var absentIngressRead = request.Method == HttpMethod.Get &&
-                request.RequestUri!.AbsolutePath.Contains("/ingresses/", StringComparison.Ordinal);
+            var absentOptionalResourceRead = request.Method == HttpMethod.Get &&
+                (request.RequestUri!.AbsolutePath.Contains("/ingresses/", StringComparison.Ordinal) ||
+                 request.RequestUri.AbsolutePath.Contains("/horizontalpodautoscalers/", StringComparison.Ordinal));
             return new HttpResponseMessage(
-                absentIngressRead
+                absentOptionalResourceRead
                     ? HttpStatusCode.NotFound
                     : request.Method == HttpMethod.Delete
                     ? HttpStatusCode.OK

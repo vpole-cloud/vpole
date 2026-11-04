@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -46,7 +47,8 @@ public union GetFunctionAppByIdOutcome(
 
 public sealed class GetFunctionAppByIdHandler(
     LoadFunctionAppById loadFunctionAppById,
-    LoadFunctionAppRevisionReferences loadFunctionAppRevisionReferences)
+    LoadFunctionAppRevisionReferences loadFunctionAppRevisionReferences,
+    IGitOpsMutations git)
     : IMediatorOutcomeHandler<GetFunctionAppByIdRequest, GetFunctionAppByIdOutcome>
 {
     public async Task<GetFunctionAppByIdOutcome> HandleAsync(
@@ -62,7 +64,11 @@ public sealed class GetFunctionAppByIdHandler(
 
         var references = await loadFunctionAppRevisionReferences(functionApp, cancellationToken);
         return new FunctionAppDetailsDto(
-            functionApp.ToDto(),
+            functionApp.ToDto() with
+            {
+                GitOps = await git.StatusAsync(
+                new(functionApp.TenantId, "FunctionApp", functionApp.Id), cancellationToken)
+            },
             references.ActiveRevision?.ToDto(),
             references.PendingRevision?.ToDto());
     }

@@ -9,3 +9,7 @@ public sealed record FunctionAppHasPendingRevision(string FunctionAppId);
 public sealed record FunctionAppIsNotEnabled(string FunctionAppId);
 
 public sealed record FunctionAppResourceDeploymentMissing(string FunctionAppId);
+
+public sealed record FunctionAppConfigurationUnavailable(string FunctionAppId);
+
+public sealed record FunctionAppGitOwnedConfiguration(string FunctionAppId);

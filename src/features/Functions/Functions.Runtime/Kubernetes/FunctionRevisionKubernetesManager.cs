@@ -1,4 +1,6 @@
 using System.Net;
+using Microsoft.Extensions.DependencyInjection;
+using Pole.Features.Secrets.Contracts;
 using k8s;
 using k8s.Autorest;
 using k8s.Models;
@@ -57,7 +59,8 @@ public sealed class FunctionRevisionKubernetesManager(
     IKubernetesClientProvider kubernetesClientProvider,
     LookupDeploymentTarget lookupDeploymentTarget,
     EnsureRuntimeCellIngressBaseline ensureRuntimeCellIngressBaseline,
-    IEnumerable<IFunctionAgentTrustBundleProvider> trustBundleProviders)
+    IEnumerable<IFunctionAgentTrustBundleProvider> trustBundleProviders,
+    IServiceScopeFactory scopes)
     : IFunctionRevisionKubernetesManager
 {
     private readonly FunctionAgentTrustBundle? trustBundle =
@@ -82,9 +85,14 @@ public sealed class FunctionRevisionKubernetesManager(
         if (!await BaselineReadyAsync(revision, cancellationToken))
             return EnforcementRequired();
 
+        var projections = await ResolveSecretsAsync(revision, cancellationToken);
+        if (projections is FunctionRevisionSecretsUnavailable unavailable)
+            return new FunctionRevisionKubernetesOperationError(unavailable);
+
         try
         {
-            var deployment = revision.ToDeployment(trustBundle);
+            var deployment = revision.ToDeployment(
+                trustBundle, ((FunctionSecretProjections)projections.Value).Environment);
             var service = revision.ToService();
             await CreateOrReplaceAsync(
                 () => kubernetes.AppsV1.CreateNamespacedDeploymentAsync(
@@ -134,6 +142,36 @@ public sealed class FunctionRevisionKubernetesManager(
         {
             return Unavailable("Unable to apply Function revision in Kubernetes.");
         }
+    }
+
+    private async Task<FunctionSecretProjectionOutcome> ResolveSecretsAsync(
+        FunctionRevisionInKubernetes subject,
+        CancellationToken ct)
+    {
+        var references = subject.Revision.Spec.Configuration.SecretReferences;
+        if (references.Count == 0)
+            return new FunctionSecretProjections(new Dictionary<string, FunctionSecretProjection>());
+
+        await using var scope = scopes.CreateAsyncScope();
+        var resolve = scope.ServiceProvider.GetRequiredService<EnsureConsumerSecretProjections>();
+        var result = await resolve(new EnsureConsumerSecretProjectionsRequest(
+            subject.App.TenantId,
+            FunctionResourceDeployment.ResourceType,
+            subject.App.Id,
+            subject.Placement.ResourceDeploymentId,
+            references.Values.Select(value => new ConsumerSecretKeyReference(value.SecretId, value.Key))
+                .Distinct().ToArray()), ct);
+        if (result is not ConsumerSecretProjectionKeys resolved)
+            return new FunctionRevisionSecretsUnavailable("Function Secret projections are not ready or authorized.");
+
+        return new FunctionSecretProjections(references.ToDictionary(
+            pair => pair.Key,
+            pair =>
+            {
+                var projection = resolved.Keys.Single(item =>
+                    item.SecretId == pair.Value.SecretId && item.SourceKey == pair.Value.Key);
+                return new FunctionSecretProjection(projection.KubernetesName, projection.ProjectedKey);
+            }, StringComparer.Ordinal));
     }
 
     public async Task<FunctionRevisionKubernetesMutationOutcome> DeleteAsync(
@@ -195,23 +233,44 @@ public sealed class FunctionRevisionKubernetesManager(
 
         try
         {
-            var scale = await kubernetes.AppsV1.ReadNamespacedDeploymentScaleAsync(
-                revision.DeploymentName,
-                revision.Namespace,
-                cancellationToken: cancellationToken);
-            if (replicas > (scale.Spec.Replicas ?? 0))
+            for (var attempt = 0; attempt < 5; attempt++)
             {
-                var admission = await WorkloadReadinessAsync(revision, cancellationToken);
-                if (admission is not TargetWorkloadReadiness.Ready)
-                    return AdmissionFailure(admission);
+                cancellationToken.ThrowIfCancellationRequested();
+                var scale = await kubernetes.AppsV1.ReadNamespacedDeploymentScaleAsync(
+                    revision.DeploymentName,
+                    revision.Namespace,
+                    cancellationToken: cancellationToken);
+                var currentReplicas = scale.Spec.Replicas ?? 0;
+                if (replicas == currentReplicas)
+                    return new FunctionRevisionKubernetesMutationCompleted();
+
+                if (replicas > currentReplicas)
+                {
+                    var admission = await WorkloadReadinessAsync(revision, cancellationToken);
+                    if (admission is not TargetWorkloadReadiness.Ready)
+                        return AdmissionFailure(admission);
+                }
+
+                scale.Spec.Replicas = replicas;
+                try
+                {
+                    await kubernetes.AppsV1.ReplaceNamespacedDeploymentScaleAsync(
+                        scale,
+                        revision.DeploymentName,
+                        revision.Namespace,
+                        cancellationToken: cancellationToken);
+                    return new FunctionRevisionKubernetesMutationCompleted();
+                }
+                catch (HttpOperationException exception) when (
+                    exception.Response?.StatusCode == HttpStatusCode.Conflict)
+                {
+                    // Controllers also change resourceVersion. Re-read the scale and recheck admission
+                    // before attempting another increase; another writer may already have converged it.
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
             }
-            scale.Spec.Replicas = replicas;
-            await kubernetes.AppsV1.ReplaceNamespacedDeploymentScaleAsync(
-                scale,
-                revision.DeploymentName,
-                revision.Namespace,
-                cancellationToken: cancellationToken);
-            return new FunctionRevisionKubernetesMutationCompleted();
+
+            return Rejected("The Function revision changed repeatedly while applying its provisioning scale.");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -496,3 +555,9 @@ public sealed class FunctionRevisionKubernetesManager(
                    out generation) && generation >= 0;
     }
 }
+
+internal sealed record FunctionSecretProjections(IReadOnlyDictionary<string, FunctionSecretProjection> Environment);
+
+internal union FunctionSecretProjectionOutcome(
+    FunctionSecretProjections,
+    FunctionRevisionSecretsUnavailable);

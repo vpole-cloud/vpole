@@ -2,6 +2,7 @@ namespace Pole.Features.WebServices.Application.Persistence;
 
 internal static class WebServiceDeclarationRules
 {
+    public const string PublicExposure = "Public";
     public const string PrivateExposure = "Private";
     public const int DefaultReplicas = 1;
     public const int MaximumNameLength = 30;

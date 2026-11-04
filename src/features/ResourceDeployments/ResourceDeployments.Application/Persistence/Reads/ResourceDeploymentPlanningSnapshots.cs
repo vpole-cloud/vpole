@@ -72,6 +72,7 @@ internal sealed class MongoResourceDeploymentPlanningSnapshots(
                     ? ResourceDeploymentPlanningState.Prepared
                     : ResourceDeploymentPlanningState.Active;
 
+        var placement = deployment.ToReconciliationSnapshot().Placement;
         return new ResourceDeploymentPlanningItem(
             deployment.Id,
             deployment.ResourceGroupId,
@@ -79,8 +80,11 @@ internal sealed class MongoResourceDeploymentPlanningSnapshots(
             deployment.ResolvedPlacement.DeploymentTargetId,
             deployment.Revision,
             deployment.FixedReplicas,
-            deployment.ToReconciliationSnapshot().Placement.Compute,
-            state);
+            placement.Compute,
+            state,
+            placement.Storage,
+            placement.Ingress,
+            placement.TargetWorkloadConfigurationRevision);
     }
 
     private static void RequireTransaction(IClientSessionHandle session)

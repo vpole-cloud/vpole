@@ -1,3 +1,4 @@
+using Pole.Features.RedisServices.Application.Persistence.Mutations;
 using MassTransit;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
@@ -39,6 +40,7 @@ public static class DeleteRedisService
                     RedisServiceNotFound error => MapNotFound(error),
                     RedisDeletionResourceDeploymentMissing error => MapDeletionResourceDeploymentMissing(error),
                     RedisDeletionConflict error => MapDeletionConflict(error),
+                    RedisGitOwnedConfiguration error => MapGitOwned(error),
                     LoadCurrentResourceDeploymentComputeError error => MapComputeError(error),
                     ResourceDeploymentMutationError error => MapMutationError(error),
                     QuotaExecutionError error => MapExecutionError(error)
@@ -58,6 +60,7 @@ public union DeleteRedisServiceOutcome(
     RedisDeletionResourceDeploymentMissing,
     LoadCurrentResourceDeploymentComputeError,
     RedisDeletionConflict,
+    RedisGitOwnedConfiguration,
     ResourceDeploymentMutationError,
     QuotaExecutionError);
 
@@ -124,10 +127,12 @@ public sealed class DeleteRedisServiceHandler(
                     var deleting = redis.BeginDeletion(
                         timeProvider.GetUtcNow().UtcDateTime);
                     var persistenceResult = await beginRedisDeletion(
+                        new(redis, deleting),
                         transaction.Session,
-                        redis,
-                        deleting,
                         transactionCancellationToken);
+                    if (persistenceResult is RedisGitOwnedConfiguration ownershipError)
+                        return transaction.Abort(ownershipError);
+
                     if (persistenceResult is RedisDeletionConflict persistenceError)
                     {
                         return transaction.Abort(persistenceError);

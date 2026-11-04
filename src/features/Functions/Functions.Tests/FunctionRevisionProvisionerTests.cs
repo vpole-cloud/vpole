@@ -193,7 +193,7 @@ public sealed class FunctionRevisionProvisionerTests
             PoleFunctionProtocol.Version,
             new FunctionConfiguration(
                 ImmutableDictionary<string, string>.Empty,
-                ImmutableDictionary<string, string>.Empty),
+                ImmutableDictionary<string, FunctionSecretReference>.Empty),
             new FunctionResources(
                 new FunctionResourceValues(100, 128),
                 new FunctionResourceValues(500, 512)),

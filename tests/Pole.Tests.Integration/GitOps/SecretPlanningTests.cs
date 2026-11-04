@@ -1,4 +1,5 @@
 using MongoDB.Driver;
+using Pole.Database;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Contracts;
@@ -16,12 +17,15 @@ public sealed partial class DeclarativePipelineTests
         await Apply();
         var declaration = Services.GetRequiredService<ManifestCompiler>().Compile(Snapshot()).Declarations
             .Single(item => item.Address.Kind == "Secret");
-        using var session = await Fixture.Database.Client.StartSessionAsync();
         var planner = Services.GetRequiredService<DeclarativeResourcePlanner>();
+        var transactions = Services.GetRequiredService<MongoRunTransaction>();
+        Task<ResourceDeclarationPlan> PlanAsync(PlanDeclarationRequest input) =>
+            transactions.InvokeOutcomeAsync<ResourceDeclarationPlan>(async (tx, ct) =>
+                tx.Commit(await planner.PlanAsync(input, tx.Session, ct)), default);
         var request = new PlanDeclarationRequest(new(TestData.TenantId, source, null), declaration);
-        var before = Assert.IsType<NoOpDeclarationPlan>(await planner.PlanAsync(request, session, default));
+        var before = Assert.IsType<NoOpDeclarationPlan>(await PlanAsync(request));
         await Supply("must-never-appear-in-a-plan");
-        var after = Assert.IsType<NoOpDeclarationPlan>(await planner.PlanAsync(request, session, default));
+        var after = Assert.IsType<NoOpDeclarationPlan>(await PlanAsync(request));
         Assert.True(System.Text.Json.JsonElement.DeepEquals(before.Current.Projection.Configuration,
             after.Current.Projection.Configuration));
         Assert.DoesNotContain("must-never-appear", after.Current.Projection.Configuration.GetRawText());
@@ -32,12 +36,12 @@ public sealed partial class DeclarativePipelineTests
             Purpose = "drift",
             Revision = secret.Revision + 1
         });
-        Assert.IsType<UpdateDeclarationPlan>(await planner.PlanAsync(request, session, default));
-        Assert.IsType<BlockedDeclarationPlan>(await planner.PlanAsync(request with
+        Assert.IsType<UpdateDeclarationPlan>(await PlanAsync(request));
+        Assert.IsType<BlockedDeclarationPlan>(await PlanAsync(request with
         {
             Scope = new(Id(), source, null)
-        }, session, default));
+        }));
         await Secrets.DeleteOneAsync(item => item.Id == secret.Id);
-        Assert.IsType<CreateDeclarationPlan>(await planner.PlanAsync(request, session, default));
+        Assert.IsType<CreateDeclarationPlan>(await PlanAsync(request));
     }
 }

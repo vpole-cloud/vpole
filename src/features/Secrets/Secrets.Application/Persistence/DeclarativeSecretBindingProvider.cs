@@ -8,6 +8,8 @@ using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Secrets.Domain;
 using Pole.Features.Secrets.Events;
 using Pole.Workloads;
+using Pole.Features.Secrets.Primitives;
+using System.Text.Json.Serialization;
 
 namespace Pole.Features.Secrets.Application.Persistence;
 
@@ -15,16 +17,20 @@ public sealed record SecretBindingDeclaration
 {
     public required string Secret { get; init; }
 
-    public required string WebService { get; init; }
+    public required ResourceAddress Consumer { get; init; }
+
+    [JsonConverter(typeof(JsonStringEnumConverter<SecretBindingUsage>))]
+    public SecretBindingUsage Usage { get; init; } = SecretBindingUsage.Runtime;
 
     public Dictionary<string, string> KeyMappings { get; init; } = [];
 }
 
 internal sealed partial class DeclarativeSecretBindingProvider(
     IMongoCollection<Secret> secrets,
+    IEnumerable<SecretDeclarationConsumer> consumerCapabilities,
     IGitOpsMutations git,
-    LoadResourceGroupPlanningSnapshot loadPlanningGroup,
-    FenceResourceGroupPlanningSnapshot fencePlanningGroup,
+    LoadIsolationScopePlanningSnapshot loadPlanningScope,
+    FenceIsolationScopePlanningSnapshot fencePlanningScope,
     LoadResourceDeploymentPlanningSnapshot loadPlanningPlacements,
     FenceResourceDeploymentPlanningSnapshot fencePlanningPlacements,
     SecretPlanningFence planningFence,
@@ -52,7 +58,10 @@ internal sealed partial class DeclarativeSecretBindingProvider(
         _ => throw new ArgumentException("The failure belongs to another declaration provider.", nameof(failure))
     };
 
-    private static ResourceTypeId ConsumerType => ResourceTypeId.Create(SecretDeclarationRules.ConsumerResourceType);
+    private readonly IReadOnlyDictionary<string, SecretDeclarationConsumer> consumers =
+        consumerCapabilities.ToDictionary(item => item.Kind, StringComparer.Ordinal);
+
+    private ResourceTypeId ConsumerType(SecretBindingDeclaration spec) => consumers[spec.Consumer.Kind].ResourceType;
 
     public DeclarationFacts Facts(JsonElement spec)
     {
@@ -65,8 +74,8 @@ internal sealed partial class DeclarativeSecretBindingProvider(
                     new("Secret", value.Secret),
                     "spec.secret"),
                 new(
-                    new("WebService", value.WebService),
-                    "spec.webService"),
+                    value.Consumer,
+                    "spec.consumer"),
                 .. value.KeyMappings.Keys.Select(key => new DeclaredReference(
                     new("Secret", value.Secret),
                     "spec.keyMappings",
@@ -77,12 +86,12 @@ internal sealed partial class DeclarativeSecretBindingProvider(
                 new(
                     SecretDeclarationRules.ConsumerBindingRelation,
                     new("Secret", value.Secret),
-                    new("WebService", value.WebService))
+                    value.Consumer)
             ],
             AccessGrants:
             [
                 new(
-                    new("WebService", value.WebService),
+                    value.Consumer,
                     new("Secret", value.Secret),
                     value.KeyMappings.Keys.ToArray(),
                     value.KeyMappings.Count == 0)
@@ -92,7 +101,10 @@ internal sealed partial class DeclarativeSecretBindingProvider(
     public JsonElement NormalizeAndValidate(JsonElement spec)
     {
         var value = DeclarationJson.Read<SecretBindingDeclaration>(spec);
-        DeclarationJson.Require(DeclarationNames.Valid(value.Secret) && DeclarationNames.Valid(value.WebService) &&
+        DeclarationJson.Require(DeclarationNames.Valid(value.Secret) && value.Consumer is not null &&
+                                DeclarationNames.Valid(value.Consumer.Name) &&
+                                consumers.TryGetValue(value.Consumer.Kind, out var consumer) &&
+                                consumer.Usage == value.Usage &&
                                 value.KeyMappings is { Count: <= SecretKeyReferenceRules.MaximumKeys } &&
                                 value.KeyMappings.All(pair =>
                                     SecretKeyReferenceRules.ValidKey(pair.Key) &&
@@ -112,7 +124,7 @@ internal sealed partial class DeclarativeSecretBindingProvider(
             new(DeclarationPhase.Bind,
             [
                 new(new("Secret", value.Secret), DeclarationPhase.Prepare),
-                new(new("WebService", value.WebService), DeclarationPhase.Prepare)
+                new(value.Consumer, DeclarationPhase.Prepare)
             ])
         ];
     }
@@ -149,7 +161,7 @@ internal sealed partial class DeclarativeSecretBindingProvider(
                 new ResolveAcceptedGitReferenceRequest(
                     Context: context,
                     ConsumerResourceId: operation.ResourceId,
-                    Address: new("WebService", spec.WebService)),
+                    Address: spec.Consumer),
                 session: session,
                 ct: token);
 
@@ -180,10 +192,10 @@ internal sealed partial class DeclarativeSecretBindingProvider(
                     new SecretBindingDeclarationRejected(SecretBindingDeclarationError.ImmutableBindingChange));
 
             var binding = SecretBinding.Create(operation.ResourceId,
-                    ConsumerType.Value,
+                    ConsumerType(spec).Value,
                     consumerId,
                     new AllSecretDeployments(),
-                    spec.KeyMappings) with
+                    spec.KeyMappings, spec.Usage) with
             {
                 DeclarationName = operation.Declaration.Address.Name
             };
@@ -192,6 +204,7 @@ internal sealed partial class DeclarativeSecretBindingProvider(
             return transition switch
             {
                 Secret updated => await PersistAsync(updated),
+                SecretBindingUsageChanged => Rejected(SecretBindingDeclarationError.ImmutableBindingChange),
                 SecretBindingConsumerChanged => Rejected(SecretBindingDeclarationError.ImmutableBindingChange),
                 SecretBindingConsumerConflict => Rejected(SecretBindingDeclarationError.ExplicitAdoptionRequired),
                 UnknownSecretBindingKeys => Rejected(SecretBindingDeclarationError.SecretKeyUnavailable),
@@ -209,7 +222,7 @@ internal sealed partial class DeclarativeSecretBindingProvider(
                             TenantId: context.TenantId,
                             ResourceGroupId: secret.ResourceGroupId,
                             IsolationScopeId: secret.IsolationScopeId,
-                            Consumer: new ResourceScopeConsumerReference(ConsumerType, consumerId)),
+                            Consumer: new ResourceScopeConsumerReference(ConsumerType(spec), consumerId)),
                         session: session,
                         cancellationToken: token) is ResourceScopeReferenceUnavailable ||
                     await admitDeployments(
@@ -217,7 +230,7 @@ internal sealed partial class DeclarativeSecretBindingProvider(
                             TenantId: context.TenantId,
                             ResourceGroupId: secret.ResourceGroupId,
                             IsolationScopeId: secret.IsolationScopeId,
-                            ConsumerType: ConsumerType,
+                            ConsumerType: ConsumerType(spec),
                             ConsumerId: consumerId,
                             AllDeployments: true,
                             DeploymentIds: []),

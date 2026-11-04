@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using MongoDB.Driver;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
@@ -8,32 +9,44 @@ public sealed record RedisUpdateConflict(string RedisId);
 
 public sealed record RedisUpdated;
 
+public sealed record RedisGitOwnedConfiguration(string RedisId);
+
+public sealed record RedisUpdate(
+    Redis Current,
+    Redis Replacement,
+    GitMutationContext? Context);
+
 public union PersistUpdatedRedisOutcome(
     RedisUpdated,
-    RedisUpdateConflict);
+    RedisUpdateConflict,
+    RedisGitOwnedConfiguration);
 
 public delegate Task<PersistUpdatedRedisOutcome> PersistUpdatedRedis(
+    RedisUpdate request,
     IClientSessionHandle session,
-    Redis current,
-    Redis replacement,
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoPersistUpdatedRedis(
     IMongoCollection<Redis> redisServices,
-    StoreOutboxWrites storeOutboxWrites)
+    StoreOutboxWrites storeOutboxWrites,
+    IGitOpsMutations git)
 {
     public async Task<PersistUpdatedRedisOutcome> InvokeAsync(
+        RedisUpdate request,
         IClientSessionHandle session,
-        Redis current,
-        Redis replacement,
         CancellationToken cancellationToken = default)
     {
         RedisPersistenceGuards.EnsureTransaction(session, "Redis update");
+        var (current, replacement, context) = request;
         RedisPersistenceGuards.EnsureActiveUpdate(current, replacement);
+
+        if (!await git.AuthorizeAsync(new(current.TenantId, DeclarativeRedisProvider.ResourceKind,
+                current.Id, context), session, cancellationToken))
+            return new RedisGitOwnedConfiguration(current.Id);
 
         var replace = await redisServices.ReplaceOneAsync(
             session,
-            RedisFilters.ActiveAtRevision(current),
+            RedisFilters.AtPlanningVersion(current),
             replacement,
             cancellationToken: cancellationToken);
         if (replace.ModifiedCount != 1)

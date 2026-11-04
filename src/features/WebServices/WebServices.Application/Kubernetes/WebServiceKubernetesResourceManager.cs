@@ -6,6 +6,7 @@ using k8s;
 using k8s.Autorest;
 using k8s.Models;
 using Pole.Features.Core.Kubernetes;
+using Pole.Features.WebServices.Domain;
 
 namespace Pole.Features.WebServices.Application.Kubernetes;
 
@@ -19,6 +20,11 @@ public union WebServiceKubernetesApplyOutcome(
     WebServiceKubernetesApplied,
     WebServiceKubernetesApplyFailed,
     WebServiceKubernetesApplyRejected);
+
+public sealed record WebServiceKubernetesCleanup(
+    string Name,
+    string Namespace,
+    WorkloadIdentityLabels Identity);
 
 public static class WebServiceKubernetesResourceManager
 {
@@ -145,6 +151,13 @@ public static class WebServiceKubernetesResourceManager
         WebServiceInKubernetes webService,
         CancellationToken cancellationToken = default)
     {
+        if (webService.WebService.Lifecycle is PreparedWebServiceLifecycle)
+            throw new InvalidOperationException("The WebService is not configured yet.");
+
+        _ = webService.ToHorizontalPodAutoscaler();
+        if (webService.WebService.Spec.Autoscaling is null)
+            await ApplyUnversionedAutoscalerAsync(kubernetes, webService, cancellationToken);
+
         var configMap = webService.ToConfigMap();
         var deployment = webService.ToDeployment();
         var service = webService.ToService();
@@ -156,6 +169,14 @@ public static class WebServiceKubernetesResourceManager
 
         await KubernetesExtensions.CreateIfNotExistAsync(() =>
             kubernetes.AppsV1.CreateNamespacedDeploymentAsync(deployment, webService.Namespace, cancellationToken: cancellationToken));
+
+        if (webService.WebService.Spec.Autoscaling is not null)
+        {
+            var current = await kubernetes.AppsV1.ReadNamespacedDeploymentAsync(
+                deployment.Metadata.Name, webService.Namespace, cancellationToken: cancellationToken);
+            PreserveDeploymentScale(deployment, current, webService);
+            await ApplyUnversionedAutoscalerAsync(kubernetes, webService, cancellationToken);
+        }
 
         await KubernetesExtensions.CreateIfNotExistAsync(() =>
             kubernetes.CoreV1.CreateNamespacedServiceAsync(service, webService.Namespace, cancellationToken: cancellationToken));
@@ -181,6 +202,13 @@ public static class WebServiceKubernetesResourceManager
         WebServiceInKubernetes webService,
         CancellationToken cancellationToken = default)
     {
+        if (webService.WebService.Lifecycle is PreparedWebServiceLifecycle)
+            throw new InvalidOperationException("The WebService is not configured yet.");
+
+        _ = webService.ToHorizontalPodAutoscaler();
+        if (webService.WebService.Spec.Autoscaling is null)
+            await ApplyUnversionedAutoscalerAsync(kubernetes, webService, cancellationToken);
+
         var configMap = webService.ToConfigMap();
         var deployment = webService.ToDeployment();
         var service = webService.ToService();
@@ -192,11 +220,18 @@ public static class WebServiceKubernetesResourceManager
             webService.Namespace,
             cancellationToken: cancellationToken);
 
+        var currentDeployment = await kubernetes.AppsV1.ReadNamespacedDeploymentAsync(
+            deployment.Metadata.Name, webService.Namespace, cancellationToken: cancellationToken);
+        PreserveDeploymentScale(deployment, currentDeployment, webService);
+
         await kubernetes.AppsV1.ReplaceNamespacedDeploymentAsync(
             deployment,
             deployment.Metadata.Name,
             webService.Namespace,
             cancellationToken: cancellationToken);
+
+        if (webService.WebService.Spec.Autoscaling is not null)
+            await ApplyUnversionedAutoscalerAsync(kubernetes, webService, cancellationToken);
 
         await kubernetes.CoreV1.ReplaceNamespacedServiceAsync(
             service,
@@ -233,6 +268,25 @@ public static class WebServiceKubernetesResourceManager
         var stage = "preparing the deployment manifest";
         try
         {
+            if (webService.WebService.Lifecycle is PreparedWebServiceLifecycle)
+                return new WebServiceKubernetesApplyRejected(
+                    "WebServiceConfigurationPending", "The WebService is not configured yet.");
+
+            stage = "applying the autoscaling policy";
+            _ = webService.ToHorizontalPodAutoscaler(deploymentMetadata);
+            var autoscalerRequest = new AutoscalerApplyRequest(webService, deploymentMetadata, isCurrentGeneration);
+            var preflight = await ValidateAutoscalerAsync(kubernetes, autoscalerRequest, cancellationToken);
+            if (preflight is not null)
+                return preflight;
+
+            if (webService.WebService.Spec.Autoscaling is null)
+            {
+                var autoscalerFailure = await ApplyAutoscalerAsync(
+                    kubernetes, new(webService, deploymentMetadata, isCurrentGeneration), cancellationToken);
+                if (autoscalerFailure is not null)
+                    return autoscalerFailure;
+            }
+
             stage = "preparing the ConfigMap manifest";
             var configMap = webService.ToConfigMap();
 
@@ -279,13 +333,22 @@ public static class WebServiceKubernetesResourceManager
                         deployment.Metadata.Name,
                         webService.Namespace,
                         cancellationToken: cancellationToken);
-                    deployment.Metadata.ResourceVersion = existing.Metadata.ResourceVersion;
+                    PreserveDeploymentScale(deployment, existing, webService);
                     await kubernetes.AppsV1.ReplaceNamespacedDeploymentAsync(
                         deployment,
                         deployment.Metadata.Name,
                         webService.Namespace,
                         cancellationToken: cancellationToken);
                 });
+            if (webService.WebService.Spec.Autoscaling is not null)
+            {
+                stage = "applying the autoscaling policy";
+                var autoscalerFailure = await ApplyAutoscalerAsync(
+                    kubernetes, new(webService, deploymentMetadata, isCurrentGeneration), cancellationToken);
+                if (autoscalerFailure is not null)
+                    return autoscalerFailure;
+            }
+
             stage = "applying the Service";
             await CreateOrReplaceAsync(
                 () => kubernetes.CoreV1.CreateNamespacedServiceAsync(
@@ -382,10 +445,20 @@ public static class WebServiceKubernetesResourceManager
 
     public static async Task DeleteAsync(
         IKubernetes kubernetes,
-        string webServiceName,
-        string @namespace,
+        WebServiceKubernetesCleanup request,
         CancellationToken cancellationToken = default)
     {
+        var existing = await ReadAutoscalerAsync(kubernetes, request, cancellationToken);
+        if (existing is not null)
+        {
+            if (!OwnsAutoscaler(existing, request))
+                throw new InvalidOperationException("An unowned autoscaler cannot be deleted.");
+
+            await DeleteAutoscalerAsync(kubernetes, existing, cancellationToken);
+        }
+
+        var webServiceName = request.Name;
+        var @namespace = request.Namespace;
         await KubernetesExtensions.DeleteIfExistsAsync(() =>
             kubernetes.CustomObjects.DeleteNamespacedCustomObjectAsync(
                 group: "monitoring.coreos.com",
@@ -424,6 +497,168 @@ public static class WebServiceKubernetesResourceManager
                 name: WebServiceInKubernetes.BuildTlsSecretName(webServiceName),
                 namespaceParameter: @namespace,
                 cancellationToken: cancellationToken));
+    }
+
+    private static async Task ApplyUnversionedAutoscalerAsync(
+        IKubernetes kubernetes, WebServiceInKubernetes service, CancellationToken ct)
+    {
+        var failure = await ApplyAutoscalerAsync(kubernetes, new(service, null, null), ct);
+        if (failure is not null)
+            throw new InvalidOperationException(failure.Message);
+    }
+
+    private sealed record AutoscalerApplyRequest(
+        WebServiceInKubernetes Service,
+        WebServiceDeploymentMetadata? Metadata,
+        Func<CancellationToken, Task<bool>>? IsCurrentGeneration);
+
+    private static async Task<WebServiceKubernetesApplyRejected?> ValidateAutoscalerAsync(
+        IKubernetes kubernetes, AutoscalerApplyRequest request, CancellationToken ct)
+    {
+        var service = request.Service;
+        var cleanup = new WebServiceKubernetesCleanup(service.WebService.Name, service.Namespace,
+            service.PlacementIdentity);
+        var current = await ReadAutoscalerAsync(kubernetes, cleanup, ct);
+        return current is not null && (!OwnsAutoscaler(current, cleanup) ||
+            !IsAutoscalerGenerationCurrent(current, request.Metadata))
+            ? new("AutoscalerOwnershipConflict", "A newer or unowned autoscaler cannot be changed.") : null;
+    }
+
+    private static async Task<WebServiceKubernetesApplyRejected?> ApplyAutoscalerAsync(
+        IKubernetes kubernetes, AutoscalerApplyRequest request, CancellationToken ct)
+    {
+        var service = request.Service;
+        var cleanup = new WebServiceKubernetesCleanup(service.WebService.Name, service.Namespace,
+            service.PlacementIdentity);
+        var desired = service.ToHorizontalPodAutoscaler(request.Metadata);
+        var existing = await ReadAutoscalerAsync(kubernetes, cleanup, ct);
+        if (existing is not null && (!OwnsAutoscaler(existing, cleanup) ||
+            !IsAutoscalerGenerationCurrent(existing, request.Metadata)))
+            return new("AutoscalerOwnershipConflict", "A newer or unowned autoscaler cannot be changed.");
+
+        if (request.IsCurrentGeneration is not null && !await request.IsCurrentGeneration(ct))
+            return new("DeploymentGenerationSuperseded", "A newer generation superseded autoscaling reconciliation.");
+
+        if (desired is null)
+        {
+            if (existing is not null)
+                await DeleteAutoscalerAsync(kubernetes, existing, ct);
+
+            return null;
+        }
+
+        V2HorizontalPodAutoscaler written;
+        if (existing is null)
+        {
+            written = await kubernetes.AutoscalingV2.CreateNamespacedHorizontalPodAutoscalerAsync(
+                desired, service.Namespace, cancellationToken: ct);
+        }
+        else
+        {
+            desired.Metadata.ResourceVersion = existing.Metadata.ResourceVersion;
+            written = await kubernetes.AutoscalingV2.ReplaceNamespacedHorizontalPodAutoscalerAsync(
+                desired, desired.Metadata.Name, service.Namespace, cancellationToken: ct);
+        }
+
+        if (request.IsCurrentGeneration is null || await request.IsCurrentGeneration(ct))
+            return null;
+
+        await DeleteAutoscalerAsync(kubernetes, written, ct);
+        return new("DeploymentGenerationSuperseded", "A newer generation superseded autoscaling reconciliation.");
+    }
+
+    private static bool IsAutoscalerGenerationCurrent(
+        V2HorizontalPodAutoscaler existing, WebServiceDeploymentMetadata? metadata)
+    {
+        if (metadata is null)
+            return true;
+
+        var key = metadata is WebServiceResourceDeploymentMetadata
+            ? "pole.server/deploymentGeneration" : "pole.server/revision";
+        var requested = metadata is WebServiceResourceDeploymentMetadata placement
+            ? placement.DesiredGeneration : metadata.Revision;
+        return existing.Metadata.Annotations is not null &&
+            existing.Metadata.Annotations.TryGetValue(key, out var raw) &&
+            long.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out var generation) &&
+            generation <= requested;
+    }
+
+    private static async Task<V2HorizontalPodAutoscaler?> ReadAutoscalerAsync(
+        IKubernetes kubernetes, WebServiceKubernetesCleanup request, CancellationToken ct)
+    {
+        try
+        {
+            return await kubernetes.AutoscalingV2.ReadNamespacedHorizontalPodAutoscalerAsync(
+                WebServiceInKubernetes.BuildAutoscalerName(request.Name), request.Namespace, cancellationToken: ct);
+        }
+        catch (HttpOperationException error) when (error.Response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    }
+
+    private static bool OwnsAutoscaler(V2HorizontalPodAutoscaler existing, WebServiceKubernetesCleanup request) =>
+        existing.Metadata?.NamespaceProperty == request.Namespace &&
+        !string.IsNullOrEmpty(existing.Metadata.Uid) && !string.IsNullOrEmpty(existing.Metadata.ResourceVersion) &&
+        existing.Metadata.Labels is not null && request.Identity.ToDictionary().All(pair =>
+            existing.Metadata.Labels.TryGetValue(pair.Key, out var value) && value == pair.Value) &&
+        existing.Spec?.ScaleTargetRef is { ApiVersion: "apps/v1", Kind: "Deployment" } target &&
+        target.Name == request.Name;
+
+    private static async Task DeleteAutoscalerAsync(
+        IKubernetes kubernetes, V2HorizontalPodAutoscaler existing, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(existing.Metadata.Uid) || string.IsNullOrEmpty(existing.Metadata.ResourceVersion))
+            throw new InvalidOperationException("Autoscaler deletion requires its exact Kubernetes identity.");
+
+        try
+        {
+            await kubernetes.AutoscalingV2.DeleteNamespacedHorizontalPodAutoscalerAsync(
+                existing.Metadata.Name, existing.Metadata.NamespaceProperty,
+                body: new V1DeleteOptions
+                {
+                    Preconditions = new V1Preconditions
+                    {
+                        Uid = existing.Metadata.Uid,
+                        ResourceVersion = existing.Metadata.ResourceVersion
+                    }
+                }, cancellationToken: ct);
+        }
+        catch (HttpOperationException error) when (error.Response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            return;
+        }
+
+        for (var attempt = 0; attempt < 30; attempt++)
+        {
+            try
+            {
+                var remaining = await kubernetes.AutoscalingV2.ReadNamespacedHorizontalPodAutoscalerAsync(
+                    existing.Metadata.Name, existing.Metadata.NamespaceProperty, cancellationToken: ct);
+                if (remaining.Metadata.Uid != existing.Metadata.Uid)
+                    throw new InvalidOperationException("The autoscaler identity changed during deletion.");
+            }
+            catch (HttpOperationException error) when (error.Response?.StatusCode == HttpStatusCode.NotFound)
+            {
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100), ct);
+        }
+
+        throw new InvalidOperationException("Autoscaler deletion has not completed.");
+    }
+
+    private static void PreserveDeploymentScale(
+        V1Deployment desired, V1Deployment existing, WebServiceInKubernetes service)
+    {
+        if (existing.Metadata?.Labels is null || !service.PlacementIdentity.ToDictionary().All(pair =>
+                existing.Metadata.Labels.TryGetValue(pair.Key, out var value) && value == pair.Value))
+            throw new InvalidOperationException("An unowned Deployment cannot be replaced.");
+
+        desired.Metadata.ResourceVersion = existing.Metadata.ResourceVersion;
+        if (service.WebService.Spec.Autoscaling is not null)
+            desired.Spec.Replicas = existing.Spec.Replicas;
     }
 
     private static async Task<WebServiceKubernetesApplyRejected?> ApplyIngressAsync(

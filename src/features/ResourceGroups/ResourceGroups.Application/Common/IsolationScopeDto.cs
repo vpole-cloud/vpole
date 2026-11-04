@@ -1,4 +1,5 @@
 using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.GitOps.Contracts;
 
 namespace Pole.Features.ResourceGroups.Application.Common;
 
@@ -10,7 +11,8 @@ public sealed record IsolationScopeDto(
     string Lifecycle,
     long Revision,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc,
+    GitResourceStatus? GitOps = null);
 
 internal static class IsolationScopeExtensions
 {

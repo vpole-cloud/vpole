@@ -13,6 +13,12 @@ public static class StorageProfileContractHttpMappings
         StorageProfileResolutionError error) => error switch
         {
             StorageProfileNotFound notFound => MapNotFound(notFound),
+            StorageProfileRevisionUnavailable revision => Problem(
+                HttpStatusCode.UnprocessableEntity,
+                "storage-profiles.revision-unavailable",
+                "Storage profile revision is unavailable",
+                ("storageProfileId", revision.StorageProfileId),
+                ("revision", revision.Revision)),
             StorageProfileDisabled disabled => Problem(
                 HttpStatusCode.UnprocessableEntity,
                 "storage-profiles.disabled",

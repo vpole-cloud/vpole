@@ -40,12 +40,42 @@ The suite covers:
   generated names, alias replacement/reload and confirmed detach. Zone details link the owning
   resource and group; desktop/mobile light/dark screenshots exercise both domain workspaces.
 
-The GitHub stub serves deterministic source archives and a separate YAML-only GitOps repository.
-Repository-flow E2E covers create/apply, signed push dispatch, polling after a missed push, controlled
+## GitOps repository scenarios
+
+The GitHub stub serves deterministic source archives and two isolated YAML-only repositories.
+Repository `9002` exercises create/apply, signed push dispatch, polling after a missed push, controlled
 managed-field drift in the disposable Mongo database, same-SHA poll repair, verified Sync no-op and
-branch deletion without inventory removal. Fault injection stays in the test fixture; production has
-no test mutation endpoint. It never records credentials,
-OAuth state, private keys, or bearer tokens.
+branch deletion without inventory removal. Repository `9003` (`pole-e2e/gitops-mixed`) has independent
+immutable commit snapshots controlled by the authenticated test-only `/__e2e/gitops-mixed` endpoint.
+Repeating identical commit/input is idempotent; changed content at an existing commit is rejected.
+
+`MixedRepositoryWaitsForSecretsRepairsDriftAndThenPerformsNoOp` covers eight kinds, ten declarations
+and fourteen phase operations: a group, named scope, Secret, WebService, Redis, PostgreSQL,
+FunctionApp and three runtime/bootstrap grants. It checks the missing-value blocker and dependency
+recovery without a new Git commit, inert prepared consumers, PostgreSQL native credential projection
+and password-authenticated login, then same-SHA WebService/Redis/PostgreSQL repair and a full no-op.
+The no-op check includes Function revision stability. The mixed lane checks configuration applied;
+it does not require Function runtime activation before evaluating configuration drift.
+
+The separate Function live test checks native Secret projection, SDK activation and authenticated
+invocation. Its lifecycle callbacks apply Domain transitions in memory; Mongo integration tests cover
+durable promotion, outbox writes and rollout retention separately. Its shared `FunctionSdkTestImage`
+builds a real .NET 10
+application with `Pole.Functions.Sdk` pinned to the control-plane protocol version. The authenticated
+`hello` handler returns only `configured`/`missing`, never the supplied Secret value. BuildKit publishes
+to a unique public project in the selected local lab Harbor, so test workloads need no pull credential.
+Private Docker configuration stays outside the build context. Temporary files/BuildKit access are
+removed after publishing; image/project and Harbor access are removed on disposal. Successful image
+publication alone is not proof of Function activation or rollout.
+
+Fault injection stays in the test fixture; production has no test mutation endpoint. Journals exclude
+manifest bodies, credentials, OAuth state, private keys and bearer tokens. Git-owned resources retain
+production write/delete guards. Teardown stops the isolated application before removing only the
+fixture's labelled namespaces with UID preconditions, then disposes owned test images.
+
+Delivery must report actual results and infrastructure blockers for the mixed Aspire scenario and
+separate live checks; the scenario descriptions alone are not evidence of a passing run.
+The complete publication gate remains deferred until all stages of the single PR are implemented.
 
 ## Prerequisites and run
 

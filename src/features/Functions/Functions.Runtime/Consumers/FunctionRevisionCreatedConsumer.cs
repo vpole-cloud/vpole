@@ -53,7 +53,7 @@ public sealed class FunctionRevisionCreatedConsumer(
 
         var tenantId = message.EventCore.TenantId;
         var app = await loadFunctionAppById(tenantId, message.ResourceId, cancellationToken);
-        if (app is null || app.DesiredState == FunctionAppDesiredState.Deleting ||
+        if (app is null || app.DesiredState != FunctionAppDesiredState.Enabled ||
             app.PendingRevisionId is not { } pendingRevisionId ||
             !string.Equals(app.Placement.ResourceDeploymentId, message.ResourceDeploymentId, StringComparison.Ordinal) ||
             !string.Equals(app.Placement.RuntimeCellId, message.RuntimeCellId, StringComparison.Ordinal))
@@ -94,7 +94,7 @@ public sealed class FunctionRevisionCreatedConsumer(
         var app = subject.App;
         var revision = subject.Revision;
         if (revision.Status is not (ProvisioningFunctionRevisionStatus or ReadyFunctionRevisionStatus) ||
-            app.DesiredState == FunctionAppDesiredState.Deleting ||
+            app.DesiredState != FunctionAppDesiredState.Enabled ||
             !string.Equals(app.PendingRevisionId, revision.Id, StringComparison.Ordinal))
             return;
 
@@ -113,10 +113,11 @@ public sealed class FunctionRevisionCreatedConsumer(
                 cancellationToken);
             if (applied is FunctionRevisionKubernetesOperationError applyFailure)
             {
-                if (applyFailure.Value is FunctionRevisionGatewaySourceUnavailable)
+                if (applyFailure.Value is
+                    FunctionRevisionGatewaySourceUnavailable or FunctionRevisionSecretsUnavailable)
                 {
                     logger.LogWarning(
-                        "[function-revision-provisioning-deferred] Gateway source is unavailable for revision {RevisionId} of Function App {FunctionAppId}: {Reason}",
+                        "[function-revision-deferred] Revision {RevisionId}, app {FunctionAppId}: {Reason}",
                         revision.Id,
                         app.Id,
                         applyFailure.Message());

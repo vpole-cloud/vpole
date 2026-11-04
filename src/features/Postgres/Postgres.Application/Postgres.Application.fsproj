@@ -19,6 +19,7 @@
         <Compile Include="Common\ResourceDeploymentQueryExtensions.fs" />
         <Compile Include="Common\TypedResultInterop.fs" />
         <Compile Include="Common\PostgresResourceDeployment.fs" />
+        <Compile Include="Common\PostgresPreparedPlacement.fs" />
         <Compile Include="Common\PostgresClusterCredentials.fs" />
         <Compile Include="Common\PostgresClusterEventExtensions.fs" />
         <Compile Include="Realtime\PostgresRealtimeConsumers.fs" />
@@ -32,6 +33,7 @@
         <Compile Include="Persistence\Reads\LoadPostgresClusterPage.fs" />
         <Compile Include="Persistence\Credentials\PostgresCredentialErrors.fs" />
         <Compile Include="Persistence\Credentials\CreatePostgresCredential.fs" />
+        <Compile Include="Persistence\Credentials\InitializePostgresBootstrap.fs" />
         <Compile Include="Persistence\Credentials\LoadPostgresCredential.fs" />
         <Compile Include="Persistence\Credentials\RotatePostgresCredential.fs" />
         <Compile Include="Persistence\Credentials\PersistRotatedPostgresCredential.fs" />
@@ -40,6 +42,12 @@
         <Compile Include="Persistence\Mutations\PersistUpdatedPostgresCluster.fs" />
         <Compile Include="Persistence\Lifecycle\BeginPostgresClusterDeletion.fs" />
         <Compile Include="Persistence\Lifecycle\FinalizePostgresClusterDeletion.fs" />
+        <Compile Include="Persistence\Declarative\PostgresDeclaration.fs" />
+        <Compile Include="Persistence\Declarative\PostgresPlanning.fs" />
+        <Compile Include="Persistence\Declarative\PostgresDeclarationPlanner.fs" />
+        <Compile Include="Persistence\Declarative\PostgresDeclarationReferences.fs" />
+        <Compile Include="Persistence\Declarative\PostgresDeclarationExecution.fs" />
+        <Compile Include="Persistence\Declarative\DeclarativePostgresProvider.fs" />
         <Compile Include="Persistence\PostgresPersistenceRegistration.fs" />
         <Compile Include="Kubernetes\PostgresClusterKubernetesBuilder.fs" />
         <Compile Include="Kubernetes\PostgresStatefulSetKubernetesBuilder.fs" />
@@ -88,6 +96,7 @@
       <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
       <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts.HttpMapping\ResourceGroups.Contracts.HttpMapping.csproj" />
       <ProjectReference Include="..\..\Secrets\Secrets.Contracts\Secrets.Contracts.csproj" />
+      <ProjectReference Include="..\..\GitOps\GitOps.Contracts\GitOps.Contracts.csproj" />
       <ProjectReference Include="..\..\Search\Search.Contracts\Search.Contracts.csproj" />
       <ProjectReference Include="..\..\Quotas\Quotas.Contracts\Quotas.Contracts.csproj" />
       <ProjectReference Include="..\..\Quotas\Quotas.Contracts.HttpMapping\Quotas.Contracts.HttpMapping.csproj" />

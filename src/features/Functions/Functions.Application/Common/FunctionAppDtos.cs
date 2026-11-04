@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Pole.Features.Functions.Domain;
+using Pole.Features.GitOps.Contracts;
 
 namespace Pole.Features.Functions.Application.Common;
 
@@ -18,7 +19,8 @@ public sealed record FunctionAppDto(
     FunctionQuotaAllocation AdmittedQuota,
     ImmutableHashSet<string> Tags,
     DateTimeOffset CreatedAtUtc,
-    DateTimeOffset UpdatedAtUtc);
+    DateTimeOffset UpdatedAtUtc,
+    GitResourceStatus? GitOps);
 
 public sealed record FunctionPlacementDto(
     string ResourceDeploymentId,
@@ -59,7 +61,8 @@ public static class FunctionAppDtoExtensions
             app.AdmittedQuota,
             app.Tags,
             app.CreatedAtUtc,
-            app.UpdatedAtUtc);
+            app.UpdatedAtUtc,
+            GitOps: null);
 
     public static FunctionRevisionDto ToDto(this FunctionRevision revision) =>
         new(

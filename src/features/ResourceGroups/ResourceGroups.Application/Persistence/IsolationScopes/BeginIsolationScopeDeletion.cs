@@ -1,4 +1,5 @@
 using MongoDB.Driver;
+using Pole.Features.GitOps.Contracts;
 using Pole.Database;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Application.Common;
@@ -41,7 +42,8 @@ internal sealed class MongoBeginIsolationScopeDeletion(
     StoreOutboxWrites storeOutboxWrites,
     RunMongoOutcomeTransaction<BeginIsolationScopeDeletionOutcome> runMongoTransaction,
     TimeProvider timeProvider,
-    IEnumerable<IIsolationScopeReferenceGuard> referenceGuards)
+    IEnumerable<IIsolationScopeReferenceGuard> referenceGuards,
+    IGitOpsMutations git)
 {
     public Task<BeginIsolationScopeDeletionOutcome> InvokeAsync(
         string tenantId,
@@ -99,6 +101,12 @@ internal sealed class MongoBeginIsolationScopeDeletion(
                 throw new InvalidOperationException(
                     $"Isolation scope '{scope.Id}' has an unsupported lifecycle state.");
             }
+
+            if (!await git.AuthorizeAsync(new(tenantId, "IsolationScope", isolationScopeId),
+                transaction.Session, ct))
+                return transaction.Abort(new BeginIsolationScopeDeletionOutcome(new IsolationScopeDeletionError(
+                    new ResourceGroupRevisionConflict(resourceGroupId,
+                        ResourceGroupRevisionConflictReason.GitOwnedConfiguration))));
 
             foreach (var guard in referenceGuards)
             {

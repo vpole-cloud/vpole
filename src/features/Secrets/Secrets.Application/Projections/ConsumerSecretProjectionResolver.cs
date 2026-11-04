@@ -102,6 +102,7 @@ internal sealed class ConsumerSecretProjectionResolver(
 
     private static SecretBinding? FindBinding(Secret? secret, ResourceTypeId type, string id) =>
         secret?.Bindings.SingleOrDefault(binding =>
+            binding.Usage == Pole.Features.Secrets.Primitives.SecretBindingUsage.Runtime &&
             binding.Consumer.ResourceType == type.Value && binding.Consumer.ResourceId == id);
 
     private static bool IsAuthorized(

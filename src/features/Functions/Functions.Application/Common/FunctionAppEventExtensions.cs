@@ -88,7 +88,9 @@ internal static class FunctionAppEventExtensions
             spec.RuntimeProtocolVersion,
             new FunctionConfigurationSnapshot(
                 spec.Configuration.EnvironmentVariables,
-                spec.Configuration.SecretReferences),
+                spec.Configuration.SecretReferences.ToImmutableDictionary(
+                    pair => pair.Key,
+                    pair => new FunctionSecretReferenceSnapshot(pair.Value.SecretId, pair.Value.Key))),
             new FunctionResourcesSnapshot(
                 new FunctionResourceValuesSnapshot(
                     spec.Resources.Requests.CpuMillis,

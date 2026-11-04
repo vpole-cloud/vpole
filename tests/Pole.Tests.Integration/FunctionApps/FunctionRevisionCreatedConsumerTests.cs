@@ -64,7 +64,8 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
 (request, ct) =>
                 Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
                     new RuntimeCellIngressBaselineReady()),
-            []);
+            [],
+            new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>());
         var loadPlacement = Services.GetRequiredService<LoadExactResourceDeploymentRuntimePlacement>();
         var resolver = new FunctionResourcePlacementResolver(async (request, ct) =>
         {
@@ -318,8 +319,10 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
         Assert.IsType<FailedFunctionRevisionStatus>(revision.Status);
     }
 
-    [Fact]
-    public async Task Gateway_source_restoration_replays_pending_revision_after_current_deployment_applies()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Runtime_dependency_restoration_replays_same_pending_revision(bool secretProjectionPending)
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var created = (await Mediator.Send(new CreateFunctionAppRequest(
@@ -330,10 +333,10 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
                 RevisionRequest(),
                 []),
             TestData.TenantId))).RequireSuccess();
-        var manager = new RecordingKubernetesManager(
-            new FunctionRevisionKubernetesOperationError(
-                new FunctionRevisionGatewaySourceUnavailable(
-                    "The Function gateway source is not configured.")));
+        FunctionRevisionKubernetesOperationError dependencyFailure = secretProjectionPending
+            ? new FunctionRevisionSecretsUnavailable("Secret projection is not ready.")
+            : new FunctionRevisionGatewaySourceUnavailable("The Function gateway source is not configured.");
+        var manager = new RecordingKubernetesManager(dependencyFailure);
         var consumer = new FunctionRevisionCreatedConsumer(
             new MongoLoadFunctionRevisionProvisioningSubject(
                 DbContext.FunctionApps,
@@ -362,6 +365,9 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             .Find(candidate => candidate.Id == created.RevisionId)
             .SingleAsync();
         Assert.IsType<ProvisioningFunctionRevisionStatus>(pending.Status);
+        var waitingApp = await DbContext.FunctionApps.Find(item => item.Id == created.FunctionAppId).SingleAsync();
+        Assert.Equal(created.RevisionId, waitingApp.PendingRevisionId);
+        Assert.Null(waitingApp.ActiveRevisionId);
         manager.ApplyResult = new FunctionRevisionKubernetesMutationCompleted();
 
         await consumer.HandleAppliedAsync(AppliedEvent(created));
@@ -376,10 +382,15 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             .SingleAsync();
         Assert.Null(app.PendingRevisionId);
         Assert.Equal(created.RevisionId, app.ActiveRevisionId);
+        Assert.Equal(2, app.NextRevisionNumber);
+        Assert.Equal(1, await DbContext.FunctionRevisions.CountDocumentsAsync(
+            item => item.FunctionAppId == created.FunctionAppId));
     }
 
-    [Fact]
-    public async Task Applied_event_does_not_replay_stale_generation_or_deleting_app()
+    [Theory]
+    [InlineData(FunctionAppDesiredState.Deleting)]
+    [InlineData(FunctionAppDesiredState.Prepared)]
+    public async Task Events_do_not_replay_stale_generation_or_inert_app(FunctionAppDesiredState inertState)
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var created = (await Mediator.Send(new CreateFunctionAppRequest(
@@ -392,18 +403,11 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             TestData.TenantId))).RequireSuccess();
         var manager = new RecordingKubernetesManager(new FunctionRevisionKubernetesMutationCompleted());
         var loadApp = Services.GetRequiredService<LoadFunctionAppById>();
-        var deleting = false;
         var consumer = new FunctionRevisionCreatedConsumer(
             new MongoLoadFunctionRevisionProvisioningSubject(
                 DbContext.FunctionApps,
                 DbContext.FunctionRevisions).InvokeAsync,
-            async (tenantId, appId, ct) =>
-            {
-                var app = await loadApp(tenantId, appId, ct);
-                return deleting && app is not null
-                    ? app with { DesiredState = FunctionAppDesiredState.Deleting }
-                    : app;
-            },
+            loadApp,
             AppliedPlacement(created),
             new FixedPlacementResolver(),
             manager,
@@ -412,8 +416,14 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             NullLogger<FunctionRevisionCreatedConsumer>.Instance);
 
         await consumer.HandleAppliedAsync(AppliedEvent(created) with { Generation = 2 });
-        deleting = true;
+        await DbContext.FunctionApps.UpdateOneAsync(item => item.Id == created.FunctionAppId,
+            Builders<FunctionApp>.Update.Set(item => item.DesiredState, inertState));
         await consumer.HandleAppliedAsync(AppliedEvent(created));
+        await consumer.HandleAsync(new FunctionRevisionCreatedEvent(
+            created.FunctionAppId, created.RevisionId, created.RevisionNumber, Placement(created), null!)
+        {
+            EventCore = EventCore.Create(TestData.TenantId)
+        });
         await consumer.HandleAppliedAsync(AppliedEvent(created) with
         {
             EventCore = EventCore.Create("other-tenant")
@@ -431,7 +441,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             new FunctionImageRequest("registry.example", "team/functions", "v1"),
             new FunctionConfiguration(
                 ImmutableDictionary<string, string>.Empty,
-                ImmutableDictionary<string, string>.Empty),
+                ImmutableDictionary<string, FunctionSecretReference>.Empty),
             new FunctionResources(
                 new FunctionResourceValues(100, 128),
                 new FunctionResourceValues(500, 512)),

@@ -222,6 +222,7 @@ public sealed class DatabaseBrowserE2ETests(PoleE2EFixture fixture, ITestOutputH
         using var request = fixture.CreatePlatformAdminRequest(HttpMethod.Post, "/api/v1/platform/storage/profiles");
         request.Content = JsonContent.Create(new
         {
+            technicalName = $"disk-{Guid.NewGuid():N}",
             displayName = $"Browser test disk {resourceType}",
             description = "Ephemeral test profile",
             mediaType = "Network",

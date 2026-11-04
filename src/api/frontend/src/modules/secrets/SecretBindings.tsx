@@ -142,7 +142,9 @@ export function SecretBindings({
               id: 'deployments',
               label: 'Deployment selection',
               render: (item) =>
-                `${item.binding.allDeployments ? 'All current and future eligible deployments' : 'Selected deployments'} · ${item.affectedDeploymentIds.length} current`,
+                item.binding.usage === 'Bootstrap'
+                  ? 'Credential bootstrap only'
+                  : `${item.binding.allDeployments ? 'All current and future eligible deployments' : 'Selected deployments'} · ${item.affectedDeploymentIds.length} current`,
             },
             {
               id: 'keys',

@@ -27,6 +27,7 @@ vi.mock('../../realtime/sessionApi', () => ({
   revokeRealtimeSession: vi.fn(async () => {}),
 }))
 const profile: StorageProfile = {
+  technicalName: 'test-disk',
   id: 'disk',
   displayName: 'Private profile',
   description: '',

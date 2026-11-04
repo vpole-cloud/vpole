@@ -5,7 +5,7 @@ coordinates quota admission, resource placement, durable events, and Kubernetes 
 while MongoDB remains the source of truth for the resource document.
 
 The browser module provides catalog/search, creation, overview and configuration workspaces.
-Read DTOs include the persisted revision and `Active`/`Deleting` lifecycle, with nullable deployment
+Read DTOs include the persisted revision and `Prepared`/`Active`/`Deleting` lifecycle, with nullable deployment
 metadata. Provider descriptor registration is additive so Redis remains available when other
 resource adapters are already registered. Browser provisioning does not imply application readiness.
 Native storage resizing is unavailable in the browser. StatefulSet claim retention deletes its owned
@@ -19,6 +19,25 @@ CPU, memory, extended resources, and Kubernetes scheduling are resolved from a
 without an ID preserves that snapshot; an explicit ID adopts the latest eligible revision. Quota
 admission uses resolved requests, and StatefulSet manifests are rendered from the persisted
 deployment snapshot.
+
+## Repository declarations
+
+`RedisService` accepts `spec.resourceGroup`, optional `placement.isolationScope`, an explicit
+`placement.deploymentTarget`, `placement.computeProfile: { name, revision }`,
+`storage: { sizeGb, profile: { name, revision } }`, and tags. Catalog references resolve by
+technical name once; accepted IDs remain pinned. The provider contributes Prepare and Configure
+phases. Prepare allocates an inert logical resource and deferred placement; Configure activates
+that placement. No Bind operation is required for Redis.
+
+Group, scope, target, storage profile/revision/class and size are immutable after creation.
+The planner compares actual placement compute and sorted tags to the accepted desired configuration.
+The same commit repairs managed drift, while a verified no-op changes no business revision or event.
+A missing previously created resource is blocked. Current catalog policy and historical resolution,
+scope admission, placement and root versions take transactional write fences before mutation or no-op.
+Root, quota, registration, placement, ownership, receipt and outbox changes commit together.
+
+Read DTOs expose GitOps ownership. The UI disables configuration edits and deletion for owned
+resources; persistence guards enforce the same restriction. Deployment retries remain available.
 
 ## Module boundaries
 
@@ -48,13 +67,13 @@ Each capability file keeps three closely related elements together when applicab
 
 The current capability surface is:
 
-| Capability | Responsibility | Mongo dependencies |
-| --- | --- | --- |
-| `LoadRedisById` | Tenant-scoped lookup by resource ID | Redis collection |
-| `LoadRedisPage` | Tenant-scoped filtering and pagination | Redis collection |
-| `PersistCreatedRedis` | Insert resource and enqueue its created event | Redis collection, outbox writer |
-| `PersistUpdatedRedis` | Revision-fenced replacement and updated event | Redis collection, outbox writer |
-| `BeginRedisDeletion` | Revision-fenced transition to deleting | Redis collection |
+| Capability              | Responsibility                                                  | Mongo dependencies                                              |
+| ----------------------- | --------------------------------------------------------------- | --------------------------------------------------------------- |
+| `LoadRedisById`         | Tenant-scoped lookup by resource ID                             | Redis collection                                                |
+| `LoadRedisPage`         | Tenant-scoped filtering and pagination                          | Redis collection                                                |
+| `PersistCreatedRedis`   | Insert resource and enqueue its created event                   | Redis collection, outbox writer                                 |
+| `PersistUpdatedRedis`   | Revision-fenced replacement and updated event                   | Redis collection, outbox writer                                 |
+| `BeginRedisDeletion`    | Revision-fenced transition to deleting                          | Redis collection                                                |
 | `FinalizeRedisDeletion` | Delete completed resource/deployments and enqueue deleted event | Redis/deployment collections, transaction runner, outbox writer |
 
 `RedisFilters` is the pure foundation shared by these operations:

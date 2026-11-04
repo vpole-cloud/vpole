@@ -6,7 +6,6 @@ namespace Pole.Features.StorageProfiles.Events;
 [EntityName("pole.storage-profiles/v1/storage-profile-catalog-changed")]
 public sealed record StorageProfileCatalogChangedEvent(
     string StorageProfileId,
-    long Revision) : IPoleEvent
-{
-    public EventCore EventCore { get; init; } = EventCore.Create();
-}
+    long Revision,
+    string TechnicalName,
+    EventCore EventCore) : IPoleEvent;

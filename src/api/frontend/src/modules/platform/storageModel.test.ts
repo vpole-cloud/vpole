@@ -2,6 +2,7 @@ import { expect, it } from 'vitest'
 import { storageProfileCommand, type StorageDraft } from './storageModel'
 import type { StorageProfile } from './storageTypes'
 const draft: StorageDraft = {
+  technicalName: 'data-disk',
   displayName: ' Data disk ',
   description: '',
   mediaType: 'SSD',
@@ -17,6 +18,7 @@ const draft: StorageDraft = {
 }
 it('preserves the baseline revision and other target mappings when shaping an edited profile', () => {
   const baseline = {
+    technicalName: 'data-disk',
     revision: 7,
     targetMappings: [
       { deploymentTargetId: 'a', storageClassName: 'original' },
@@ -27,6 +29,7 @@ it('preserves the baseline revision and other target mappings when shaping an ed
   expect(command).toMatchObject({
     input: {
       revision: 7,
+      technicalName: 'data-disk',
       displayName: 'Data disk',
       targetMappings: [
         { deploymentTargetId: 'a', storageClassName: 'updated' },
@@ -45,3 +48,20 @@ it.each(['NaN', '0', '-1', '1.5'])(
     })
   },
 )
+
+it.each(['Uppercase', '1disk', 'bad_name', '', 'a'.repeat(64)])(
+  'rejects invalid technical name %s',
+  (technicalName) => {
+    expect(storageProfileCommand({ ...draft, technicalName }, null, 'a')).toHaveProperty('error')
+  },
+)
+it('keeps the immutable technical name from the baseline', () => {
+  const baseline = {
+    technicalName: 'fixed-name',
+    revision: 1,
+    targetMappings: [],
+  } as unknown as StorageProfile
+  expect(
+    storageProfileCommand({ ...draft, technicalName: 'attempted-rename' }, baseline, 'a'),
+  ).toMatchObject({ input: { technicalName: 'fixed-name' } })
+})

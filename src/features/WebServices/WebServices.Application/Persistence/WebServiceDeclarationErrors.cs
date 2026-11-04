@@ -22,7 +22,8 @@ public enum WebServiceDeclarationError
     ResourceRegistrationUnavailable,
     PlacementUnavailable,
     PlacementChanged,
-    SecretUnavailable
+    SecretUnavailable,
+    PublicIngressUnavailable
 }
 
 public sealed record WebServiceDeclarationRejected(WebServiceDeclarationError Reason) : IDeclarationFailure;

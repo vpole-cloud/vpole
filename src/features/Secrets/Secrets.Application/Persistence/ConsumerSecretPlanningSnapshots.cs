@@ -25,6 +25,7 @@ internal sealed class ConsumerSecretPlanningSnapshots(
             var current = await secrets.Find(session, SecretFilters.Identity(request.TenantId, id))
                 .FirstOrDefaultAsync(ct);
             var binding = current?.Bindings.SingleOrDefault(item =>
+                item.Usage == Pole.Features.Secrets.Primitives.SecretBindingUsage.Runtime &&
                 item.Consumer.ResourceType == request.ConsumerType.Value &&
                 item.Consumer.ResourceId == request.ConsumerId);
             if (desired.Length > 0)

@@ -1,8 +1,12 @@
+using System.Net;
+using k8s;
+using k8s.Autorest;
 using Pole.Features.Core.Kubernetes;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Persistence.Reads;
+using Pole.Features.WebServices.Domain;
 using Pole.Workloads;
 
 namespace Pole.Features.WebServices.Application.Kubernetes;
@@ -88,9 +92,10 @@ public sealed class WebServiceResourceDeploymentObserver(
         if (workload?.Controller.Uid != bindingId)
             return Changed();
         var diagnostics = await KubernetesWorkloadDiagnostics.DiscoverAsync(workload, cancellationToken);
+        var autoscaler = await ObserveAutoscalerAsync(client, new(resource, deployment, identity), cancellationToken);
         if (!await MatchesAsync())
             return Changed();
-        return new(bindingId, observed)
+        return new(bindingId, autoscaler ?? observed)
         {
             Diagnostics = diagnostics
         };
@@ -126,11 +131,61 @@ public sealed class WebServiceResourceDeploymentObserver(
             deployment.ResourceId,
             deployment.Id);
         var client = await clients.GetAsync(deployment.Placement.DeploymentTargetId, cancellationToken);
+        var autoscaler = await ObserveAutoscalerAsync(client, new(resource, deployment, identity), cancellationToken);
+        if (autoscaler is not null)
+            return autoscaler;
+
         return await KubernetesWorkloadObservation.DeploymentAsync(client,
             resource.Name,
             deployment.Placement.KubernetesNamespace,
             identity,
             deployment.DesiredGeneration,
             cancellationToken);
+    }
+
+    private sealed record AutoscalerObservationRequest(
+        WebService Resource,
+        ResourceDeploymentReconciliationSnapshot Deployment,
+        WorkloadIdentityLabels Identity);
+
+    private static async Task<WorkloadObservation?> ObserveAutoscalerAsync(
+        IKubernetes client, AutoscalerObservationRequest request, CancellationToken ct)
+    {
+        if (request.Resource.Spec.Autoscaling is not { } desired)
+            return null;
+
+        try
+        {
+            var native = await client.AutoscalingV2.ReadNamespacedHorizontalPodAutoscalerAsync(
+                WebServiceInKubernetes.BuildAutoscalerName(request.Resource.Name),
+                request.Deployment.Placement.KubernetesNamespace, cancellationToken: ct);
+            if (native.Metadata.NamespaceProperty != request.Deployment.Placement.KubernetesNamespace ||
+                !KubernetesWorkloadObservation.Owns(native.Metadata, request.Identity) ||
+                native.Spec.ScaleTargetRef is not { ApiVersion: "apps/v1", Kind: "Deployment" } target ||
+                target.Name != request.Resource.Name)
+                return new UnavailableWorkloadObservation("AutoscalerOwnershipConflict");
+
+            var metrics = native.Spec.Metrics;
+            if (native.Metadata.DeletionTimestamp is not null || native.Spec.MinReplicas != desired.MinReplicas ||
+                native.Spec.MaxReplicas != desired.MaxReplicas || metrics is null || metrics.Count != 1 ||
+                metrics[0].Type != "Resource" || metrics[0].Resource?.Name != desired.Metric.Type ||
+                metrics[0].Resource?.Target?.Type != "Utilization" ||
+                metrics[0].Resource?.Target?.AverageUtilization != desired.Metric.TargetAverageUtilization)
+                return new UnavailableWorkloadObservation("AutoscalerConfigurationDrift");
+
+            return null;
+        }
+        catch (HttpOperationException error) when (error.Response?.StatusCode == HttpStatusCode.NotFound)
+        {
+            return new UnavailableWorkloadObservation("AutoscalerMissing");
+        }
+        catch (HttpOperationException)
+        {
+            return new UnavailableWorkloadObservation("AutoscalerUnavailable");
+        }
+        catch (HttpRequestException)
+        {
+            return new UnavailableWorkloadObservation("AutoscalerUnavailable");
+        }
     }
 }

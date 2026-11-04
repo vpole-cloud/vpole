@@ -78,6 +78,7 @@ module PostgresClusterKubernetesBuilder =
         (compute : KubernetesComputeConfiguration)
         (metadata : PostgresResourceDeploymentMetadata)
         (settings : PostgresSettings) =
+        cluster.EnsureConfigured()
         let clusterSecretName = credentials.Projection.KubernetesName
         let username =
             match credentials with

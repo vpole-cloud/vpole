@@ -1,3 +1,5 @@
+using Pole.Features.GitOps.Contracts;
+using Pole.Features.RedisServices.Application.Persistence.Mutations;
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.RedisServices.Application.Common;
@@ -10,30 +12,41 @@ public sealed record RedisDeletionConflict(string RedisId);
 
 public sealed record RedisDeletionStarted;
 
+public sealed record RedisDeletion(
+    Redis Current,
+    Redis Replacement);
+
 public union BeginRedisDeletionOutcome(
     RedisDeletionStarted,
-    RedisDeletionConflict);
+    RedisDeletionConflict,
+    RedisGitOwnedConfiguration);
 
 public delegate Task<BeginRedisDeletionOutcome> BeginRedisDeletion(
+    RedisDeletion request,
     IClientSessionHandle session,
-    Redis current,
-    Redis replacement,
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoBeginRedisDeletion(
     FenceRegisteredResource fenceRegisteredResource,
     CascadeConnectionsForResourceDeletion cascadeConnections,
-    IMongoCollection<Redis> redisServices)
+    IMongoCollection<Redis> redisServices,
+    IGitOpsMutations git)
 {
     public async Task<BeginRedisDeletionOutcome> InvokeAsync(
+        RedisDeletion request,
         IClientSessionHandle session,
-        Redis current,
-        Redis replacement,
         CancellationToken cancellationToken = default)
     {
+        var (current, replacement) = request;
         RedisPersistenceGuards.EnsureTransaction(
             session,
             "Redis deletion start");
+        RedisPersistenceGuards.EnsureSameIdentity(current, replacement);
+
+        if (!await git.AuthorizeAsync(new(current.TenantId, DeclarativeRedisProvider.ResourceKind,
+                current.Id, null), session, cancellationToken))
+            return new RedisGitOwnedConfiguration(current.Id);
+
         RedisPersistenceGuards.EnsureDeletionTransition(current, replacement);
 
         var registration = await fenceRegisteredResource(

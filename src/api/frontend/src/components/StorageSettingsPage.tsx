@@ -497,6 +497,7 @@ function StorageProfileForm({
     () => storageClasses.find((item) => item.isDefault)?.name ?? storageClasses[0]?.name ?? '',
     [storageClasses],
   )
+  const [technicalName, setTechnicalName] = useState(baseline?.technicalName ?? '')
   const [displayName, setDisplayName] = useState(baseline?.displayName ?? '')
   const [description, setDescription] = useState(baseline?.description ?? '')
   const [mediaType, setMediaType] = useState<StorageMediaType>(baseline?.mediaType ?? 'SSD')
@@ -528,6 +529,7 @@ function StorageProfileForm({
 
     const command = storageProfileCommand(
       {
+        technicalName,
         displayName,
         description,
         mediaType,
@@ -557,6 +559,7 @@ function StorageProfileForm({
     if (!mounted.current) return
 
     if (mode === 'create') {
+      setTechnicalName('')
       setDisplayName('')
       setDescription('')
       setIsDefault(false)
@@ -593,6 +596,18 @@ function StorageProfileForm({
           disabled={submitStatus === 'loading'}
           style={{ border: 0, padding: 0, minWidth: 0 }}
         >
+          <Field label="Technical name">
+            <input
+              className="field__control"
+              value={technicalName}
+              onChange={(event) => setTechnicalName(event.target.value)}
+              readOnly={mode === 'edit'}
+              maxLength={63}
+              required
+              pattern="[a-z]([a-z0-9-]*[a-z0-9])?"
+              placeholder="default-ssd"
+            />
+          </Field>
           <Field label="Display name">
             <input
               className="field__control"

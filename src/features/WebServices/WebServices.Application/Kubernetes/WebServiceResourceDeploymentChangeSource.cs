@@ -1,4 +1,5 @@
 using Pole.Observation;
+using Pole.Features.WebServices.Domain;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using k8s;
@@ -33,7 +34,7 @@ public sealed class WebServiceResourceDeploymentChangeSource(
             yield break;
         }
 
-        await using var source = new SourceSession(this, context, resource.Name, clock, cancellationToken);
+        await using var source = new SourceSession(this, context, resource, clock, cancellationToken);
         await foreach (var change in source.RunAsync(cancellationToken))
             yield return change;
     }
@@ -113,6 +114,7 @@ public sealed class WebServiceResourceDeploymentChangeSource(
         private const string PodStream = "pods";
         private const string ServiceStream = "service";
         private const string IngressStream = "ingress";
+        private const string AutoscalerStream = "autoscaler";
         private const string WarningPrefix = "warning:";
         private const int MaximumObjectsPerStream = 100;
         private const int MaximumUidLength = 256;
@@ -120,6 +122,7 @@ public sealed class WebServiceResourceDeploymentChangeSource(
         private readonly WebServiceResourceDeploymentChangeSource _owner;
         private readonly ResourceDeploymentObservationContext _context;
         private readonly string _name;
+        private readonly bool _observeAutoscaler;
         private readonly string _namespace;
         private readonly WorkloadIdentityLabels _identity;
         private readonly string _selector;
@@ -142,13 +145,14 @@ public sealed class WebServiceResourceDeploymentChangeSource(
 
         public SourceSession(WebServiceResourceDeploymentChangeSource owner,
             ResourceDeploymentObservationContext context,
-            string name,
+            WebService resource,
             TimeProvider clock,
             CancellationToken ct)
         {
             _owner = owner;
             _context = context;
-            _name = name;
+            _name = resource.Name;
+            _observeAutoscaler = resource.Spec.Autoscaling is not null;
             _namespace = context.Deployment.Placement.KubernetesNamespace;
             _identity = new(context.Deployment.TenantId,
                 context.Deployment.ResourceGroupId,
@@ -204,7 +208,8 @@ public sealed class WebServiceResourceDeploymentChangeSource(
                         state.Items.Remove(item.Uid);
                         if (message.Type != WatchEventType.Deleted && item.Owned)
                         {
-                            if (message.Stream is DeploymentStream or ServiceStream or IngressStream)
+                            if (message.Stream is DeploymentStream or ServiceStream or IngressStream or
+                                AutoscalerStream)
                                 state.Items.Clear();
                             if (state.Items.Count >= MaximumObjectsPerStream)
                             {
@@ -362,6 +367,10 @@ public sealed class WebServiceResourceDeploymentChangeSource(
 
         private void StartDependents()
         {
+            if (_observeAutoscaler)
+                StartAutoscaler();
+
+
             Add<V1ReplicaSet>(ReplicaStream,
                 async (continuation, ct) =>
                 {
@@ -452,6 +461,25 @@ public sealed class WebServiceResourceDeploymentChangeSource(
                         cancellationToken: ct)),
                 item => item.Metadata,
                 item => Project(item.Metadata, ingressName));
+        }
+
+        private void StartAutoscaler()
+        {
+            var name = WebServiceInKubernetes.BuildAutoscalerName(_name);
+            Add<V2HorizontalPodAutoscaler>(AutoscalerStream,
+                async (continuation, ct) =>
+                {
+                    var page = await ReadAsync(ct,
+                        (client, token) => client.AutoscalingV2.ListNamespacedHorizontalPodAutoscalerAsync(_namespace,
+                            fieldSelector: $"metadata.name={name}", labelSelector: _selector,
+                            limit: 100, continueParameter: continuation, cancellationToken: token));
+                    return new(page.Items.ToArray(), page.Metadata?.ResourceVersion, page.Metadata?.ContinueProperty);
+                },
+                (version, error, ct) => WatchAsync(ct,
+                    client => client.AutoscalingV2.WatchListNamespacedHorizontalPodAutoscalerAsync(_namespace,
+                        allowWatchBookmarks: true, fieldSelector: $"metadata.name={name}", labelSelector: _selector,
+                        resourceVersion: version, timeoutSeconds: 300, onError: error, cancellationToken: ct)),
+                item => item.Metadata, item => Project(item.Metadata, name));
         }
 
         private void StartWarning(string uid) => Add<Corev1Event>(WarningPrefix + uid,

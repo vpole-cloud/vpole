@@ -16,21 +16,44 @@ public sealed class ResourceGroupDomainTests
         new(2026, 7, 27, 10, 0, 0, DateTimeKind.Utc);
 
     [Fact]
-    public void IsolationScopeFactory_NormalizesName_AndRejectsReservedDefault()
+    public void IsolationScopeFactory_UsesTechnicalName_AndRejectsReservedDefault()
     {
         var scope = IsolationScopeFactory.CreateAdditional(
             TenantId,
             ResourceGroupId,
-            " Production ",
+            "production",
             new IsolationScopeFactory.CreateOptions(ScopeId, CreatedAtUtc));
 
-        Assert.Equal("Production", scope.Name);
+        Assert.Equal("production", scope.Name);
         Assert.Equal("production", scope.NormalizedName);
         Assert.Throws<ArgumentException>(() => IsolationScopeFactory.CreateAdditional(
             TenantId,
             ResourceGroupId,
             "DEFAULT",
             new IsolationScopeFactory.CreateOptions(ScopeId, CreatedAtUtc)));
+    }
+
+    [Theory]
+    [InlineData("Production")]
+    [InlineData(" production ")]
+    [InlineData("1production")]
+    [InlineData("production_")]
+    public void IsolationScopeFactory_RejectsInvalidTechnicalNames(string name) =>
+        Assert.Throws<ArgumentException>(() => IsolationScopeFactory.CreateAdditional(
+            TenantId, ResourceGroupId, name, new IsolationScopeFactory.CreateOptions(ScopeId, CreatedAtUtc)));
+
+    [Fact]
+    public void IsolationScopeCurrentStatesRoundTripBsonWithExplicitInitialValues()
+    {
+        var scope = IsolationScopeFactory.CreateAdditional(TenantId, ResourceGroupId, "production",
+            new IsolationScopeFactory.CreateOptions(ScopeId, CreatedAtUtc));
+        Assert.Equal(1, scope.Revision);
+        Assert.False(scope.IsDefault);
+        Assert.IsType<ActiveIsolationScopeLifecycleState>(scope.Lifecycle);
+        Assert.Equal(scope, BsonSerializer.Deserialize<IsolationScope>(scope.ToBson()));
+        var deleting = scope.RequestDeletion(CreatedAtUtc.AddMinutes(1));
+        Assert.Equal(2, deleting.Revision);
+        Assert.Equal(deleting, BsonSerializer.Deserialize<IsolationScope>(deleting.ToBson()));
     }
 
     [Fact]

@@ -5,6 +5,7 @@ using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Application.Common;
 
@@ -32,20 +33,21 @@ internal sealed partial class DeclarativeWebServiceProvider
         if (current.DeclaredPlacement is null)
             return PlanningBlocked(WebServiceDeclarationError.PreparedPlacementIdentityUnavailable);
 
-        var placements = await loadDeployments(new(request.TenantId,
-            WebServiceResourceDeployment.ResourceType, current.Id), cancellationToken);
-        if (placements.Count != 1 || placements[0].DeploymentTargetId != current.DeclaredPlacement.DeploymentTargetId ||
-            placements[0].IsolationScopeId != current.IsolationScopeId)
+        var loaded = await loadPlanningPlacements(new(request.TenantId,
+            WebServiceResourceDeployment.ResourceType, current.Id), session, cancellationToken);
+        if (loaded is not ResourceDeploymentPlanningSnapshot placements || placements.Items.Count != 1 ||
+            placements.Items[0].DeploymentTargetId != current.DeclaredPlacement.DeploymentTargetId ||
+            placements.Items[0].IsolationScopeId != current.IsolationScopeId)
             return PlanningBlocked(WebServiceDeclarationError.ImmutablePlacementChange);
 
-        var placement = placements[0];
+        var placement = placements.Items[0];
         var projection = Project(current.Spec, current.Tags, current.Exposure.Mode.ToString(),
             new(current.ResourceGroupId, current.IsolationScopeId, placement.DeploymentTargetId),
-            new(placement.Compute.Profile.ComputeProfileId, placement.Compute.Profile.ComputeProfileRevision,
-                placement.FixedReplicas, null));
+            new(placement.Compute.ComputeProfileId, placement.Compute.ComputeProfileRevision,
+                placement.FixedReplicas, ComputeProjection(placement.Compute)), IngressProjection(placement.Ingress));
         return new CurrentDeclaration(current.Id, new([
                 new($"WebService/{current.Id}", current.Revision),
-                new($"ResourceDeployment/{placement.DeploymentId}", placement.DeploymentRevision)]),
+                new($"ResourceDeployment/{placement.DeploymentId}", placement.Revision)]),
             projection, current.Lifecycle is PreparedWebServiceLifecycle
                 ? DeclarationConfigurationState.Prepared : DeclarationConfigurationState.Configured);
     }
@@ -61,9 +63,20 @@ internal sealed partial class DeclarativeWebServiceProvider
         var spec = DeclarationJson.Read<WebServiceDeclaration>(NormalizeAndValidate(request.Declaration.Spec));
         var groupAddress = new ResourceAddress("ResourceGroup", spec.ResourceGroup);
         var groupId = await git.ResolveAsync(new(request.TenantId, groupAddress), session, cancellationToken);
-        if (groupId is null || await groupOwnership(request.TenantId, groupId, cancellationToken)
-            is not ResourceGroupOwnership group)
+        if (groupId is null)
             return new DeclarationReadBlocked(new DeclarationReferenceUnavailable(groupAddress));
+
+        string? scopeId = null;
+        if (spec.Placement.IsolationScope is not null)
+        {
+            var address = new ResourceAddress("IsolationScope", spec.Placement.IsolationScope);
+            scopeId = await git.ResolveAsync(new(request.TenantId, address), session, cancellationToken);
+            if (scopeId is null)
+                return new DeclarationReadBlocked(new DeclarationReferenceUnavailable(address));
+        }
+        if (await loadPlanningScope(new(request.TenantId, groupId, scopeId), session, cancellationToken)
+            is not IsolationScopePlanningSnapshot scope)
+            return PlanningBlocked(WebServiceDeclarationError.ResourceGroupUnavailable);
 
         var current = await services.Find(session,
             WebServiceFilters.ByTechnicalName(request.TenantId, request.Declaration.Address.Name))
@@ -78,34 +91,33 @@ internal sealed partial class DeclarativeWebServiceProvider
         else
             return PlanningBlocked(WebServiceDeclarationError.DeploymentTargetUnavailable);
 
+        var targetRead = await resolvePlanningTarget(new(request.TenantId,
+            WebServiceResourceDeployment.ResourceType, scope.IsolationScopeId, targetId, RequiredCapabilities(spec)),
+            session, cancellationToken);
+        if (targetRead is not DeploymentTargetPlanningSnapshot targetSnapshot)
+            return PlanningBlocked(WebServiceDeclarationError.DeploymentTargetUnavailable);
+
         string profileId;
         if (bound?.ComputeProfileName == spec.Placement.ComputeProfile.Name)
-        {
             profileId = bound.ComputeProfileId;
-            var placements = await loadDeployments(new(request.TenantId,
-                WebServiceResourceDeployment.ResourceType, current!.Id), cancellationToken);
-            var alreadyPinned = placements.Count == 1 && placements[0].DeploymentTargetId == targetId &&
-                placements[0].Compute.Profile.ComputeProfileId == profileId &&
-                placements[0].Compute.Profile.ComputeProfileRevision == spec.Placement.ComputeProfile.Revision;
-            if (!alreadyPinned)
-            {
-                var resolution = await resolveCompute(new(request.TenantId, WebServiceResourceDeployment.ResourceType,
-                    [new(targetId, profileId, spec.Placement.ComputeProfile.Revision)]), cancellationToken);
-                if (resolution is ComputeProfileResolutionError error)
-                    return PlanningBlocked(error.Value is ComputeProfileUnavailable
-                    {
-                        Reason: ComputeProfileUnavailableReason.RevisionUnavailable
-                    }
-                        ? WebServiceDeclarationError.ComputeProfileRevisionUnavailable
-                        : WebServiceDeclarationError.PinnedComputeProfileUnavailable);
-            }
-        }
         else if (await resolveProfileName(new(request.TenantId, WebServiceResourceDeployment.ResourceType,
             spec.Placement.ComputeProfile.Name, targetId, spec.Placement.ComputeProfile.Revision), cancellationToken)
             is ResolvedComputeProfile profile)
             profileId = profile.ComputeProfileId;
         else
             return PlanningBlocked(WebServiceDeclarationError.PinnedComputeProfileUnavailable);
+
+        var computeRead = await resolvePlanningCompute(new(request.TenantId,
+            WebServiceResourceDeployment.ResourceType, profileId, targetId, spec.Placement.ComputeProfile.Revision),
+            session, cancellationToken);
+        if (computeRead is not ComputeProfilePlanningSnapshot compute)
+            return PlanningBlocked(computeRead is ComputeProfilePlanningUnavailable
+            {
+                Error.Value: ComputeProfileUnavailable
+                { Reason: ComputeProfileUnavailableReason.RevisionUnavailable }
+            }
+                ? WebServiceDeclarationError.ComputeProfileRevisionUnavailable
+                : WebServiceDeclarationError.PinnedComputeProfileUnavailable);
 
         var references = ImmutableDictionary.CreateBuilder<string, SecretEnvironmentReference>();
         foreach (var (name, reference) in spec.SecretEnvironment)
@@ -119,8 +131,10 @@ internal sealed partial class DeclarativeWebServiceProvider
         }
 
         return Project(ToSpec(spec, references.ToImmutable(), current?.Spec), spec.Tags, spec.Exposure,
-            new(groupId, group.DefaultIsolationScopeId, targetId),
-            new(profileId, spec.Placement.ComputeProfile.Revision, spec.Replicas, null));
+            new(groupId, scope.IsolationScopeId, targetId),
+            new(profileId, spec.Placement.ComputeProfile.Revision, spec.FixedReplicas,
+                ComputeProjection(compute.Compute.ToResourceDeploymentConfiguration())),
+            DesiredIngress(spec, targetSnapshot.Target));
     }
 
     private sealed record PlanningPlacement(
@@ -132,14 +146,15 @@ internal sealed partial class DeclarativeWebServiceProvider
         string ProfileId,
         long Revision,
         int Replicas,
-        JsonElement? Resolution);
+        JsonElement Resolution);
 
     private static DeclarationProjection Project(
         WebServiceSpec spec,
         IEnumerable<string> tags,
         string exposure,
         PlanningPlacement placement,
-        PlanningCompute compute) => new(DeclarationJson.Write(placement), DeclarationJson.Write(new
+        PlanningCompute compute,
+        PlanningIngress? ingress) => new(DeclarationJson.Write(placement), DeclarationJson.Write(new
         {
             image = new { spec.Image.Server, spec.Image.Name, spec.Image.Tag },
             ports = spec.Config.PortMappings.OrderBy(port => port.Name, StringComparer.Ordinal).ToArray(),
@@ -149,8 +164,22 @@ internal sealed partial class DeclarativeWebServiceProvider
             autoscaling = spec.Autoscaling,
             tags = tags.Select(tag => tag.Trim()).Distinct().Order(StringComparer.Ordinal).ToArray(),
             exposure,
+            ingress,
             compute
         }));
+
+    private sealed record PlanningIngress(
+        string ClassName,
+        string ClusterIssuer,
+        string? PublicBaseDomain);
+
+    private static PlanningIngress? IngressProjection(ResourceDeploymentIngressConfiguration? ingress) =>
+        ingress is null ? null : new(ingress.IngressClassName, ingress.ClusterIssuerName, ingress.PublicBaseDomain);
+
+    private static PlanningIngress? DesiredIngress(WebServiceDeclaration spec, DeploymentTargetLookupDto target) =>
+        spec.Exposure == WebServiceDeclarationRules.PublicExposure &&
+        target.WorkloadConfiguration.Ingress is { } ingress
+            ? new(ingress.IngressClassName, ingress.ClusterIssuerName, ingress.PublicBaseDomain) : null;
 
     private static DeclarationReadBlocked PlanningBlocked(WebServiceDeclarationError reason) =>
         new(new WebServiceDeclarationRejected(reason));

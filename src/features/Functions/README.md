@@ -12,16 +12,16 @@ lifecycle](docs/revision-lifecycle.md).
 
 ## Supported scope
 
-| Area | Current behavior |
-| --- | --- |
-| Packaging | A pre-built OCI image that implements the Pole Agent protocol |
-| Official runtime | .NET SDK and ASP.NET Core Agent host |
-| Triggers | HTTP and UTC cron timer |
-| Delivery | Timer invocations are at-least-once; HTTP execution avoids an automatic retry after an ambiguous start |
-| Revisions | Immutable revision specs with validated promotion and draining of the previous revision |
-| Scaling | `minInstances`/`maxInstances`, app and handler concurrency targets, and scale-to-zero |
-| Topology | Multiple `Pole.Server` instances coordinated through Orleans |
-| Usage | Per-hour invocation, attempt, outcome, skip, and execution-duration buckets |
+| Area             | Current behavior                                                                                       |
+| ---------------- | ------------------------------------------------------------------------------------------------------ |
+| Packaging        | A pre-built OCI image that implements the Pole Agent protocol                                          |
+| Official runtime | .NET SDK and ASP.NET Core Agent host                                                                   |
+| Triggers         | HTTP and UTC cron timer                                                                                |
+| Delivery         | Timer invocations are at-least-once; HTTP execution avoids an automatic retry after an ambiguous start |
+| Revisions        | Immutable revision specs with validated promotion and draining of the previous revision                |
+| Scaling          | `minInstances`/`maxInstances`, app and handler concurrency targets, and scale-to-zero                  |
+| Topology         | Multiple `Pole.Server` instances coordinated through Orleans                                           |
+| Usage            | Per-hour invocation, attempt, outcome, skip, and execution-duration buckets                            |
 
 The current implementation is experimental and API contracts may still change.
 
@@ -71,7 +71,7 @@ authentication, concurrency, shutdown, and attempt semantics.
 The create request describes one initial immutable revision:
 
 - `image`: registry server, image name, and tag;
-- `configuration`: plain environment variables and Kubernetes Secret references;
+- `configuration`: plain environment variables and logical Secret ID/key references;
 - `resources`: CPU and memory requests and limits;
 - `scaling`: minimum and maximum instances, target and hard concurrency per instance, scale-down
   delay, and activation timeout;
@@ -101,22 +101,34 @@ enum values currently bind as `Allow` and `Skip`. Timer schedules use UTC only.
 
 Updating a Function App creates a new revision. It never mutates the active revision in place.
 
+Secret references use `secretReferences: { ENV_NAME: { secretId, key } }`. Secrets owns authorization,
+key pins and runtime projections; configuration and events never contain native Kubernetes Secret names
+or values. Supply a runtime SecretBinding for the FunctionApp before adding references to an existing
+app. New manual apps can be created without references, bound, then updated. Missing or unauthorized
+references reject the configuration transaction. Runtime provisioning waits until every logical
+reference has an authorized ready projection. Previous keys remain pinned until the new revision is
+active and all earlier revision pods, including terminating pods, are gone.
+
+The create API optionally accepts `placement: { deploymentTargetId, isolationScopeId }`; omission keeps
+its existing default-target/default-scope behavior. A prepared Function identity has no active or
+pending revision and cannot start a deployment, route or timer before configuration is accepted.
+
 ## Control-plane API
 
 All endpoints require authentication and are tenant-scoped. Normal tenant clients include
 `X-Pole-Tenant-ID` as described in the [multitenancy documentation](../../../docs/multitenancy.md).
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/v1/function-apps` | Create an app and its first revision |
-| `GET` | `/api/v1/function-apps` | List apps |
-| `GET` | `/api/v1/function-apps/{id}` | Read an app and current revision details |
-| `PUT` | `/api/v1/function-apps/{id}` | Create a pending revision |
-| `DELETE` | `/api/v1/function-apps/{id}` | Start app deletion |
-| `GET` | `/api/v1/function-apps/{id}/revisions` | List immutable revisions |
-| `GET` | `/api/v1/function-apps/{id}/invocations` | Inspect durable timer invocations |
-| `POST` | `/api/v1/function-apps/{id}/invocations/{invocationId}:retry` | Retry an eligible failed timer invocation |
-| `GET` | `/api/v1/function-apps/{id}/usage` | Read hourly usage buckets |
+| Method   | Route                                                         | Purpose                                   |
+| -------- | ------------------------------------------------------------- | ----------------------------------------- |
+| `POST`   | `/api/v1/function-apps`                                       | Create an app and its first revision      |
+| `GET`    | `/api/v1/function-apps`                                       | List apps                                 |
+| `GET`    | `/api/v1/function-apps/{id}`                                  | Read an app and current revision details  |
+| `PUT`    | `/api/v1/function-apps/{id}`                                  | Create a pending revision                 |
+| `DELETE` | `/api/v1/function-apps/{id}`                                  | Start app deletion                        |
+| `GET`    | `/api/v1/function-apps/{id}/revisions`                        | List immutable revisions                  |
+| `GET`    | `/api/v1/function-apps/{id}/invocations`                      | Inspect durable timer invocations         |
+| `POST`   | `/api/v1/function-apps/{id}/invocations/{invocationId}:retry` | Retry an eligible failed timer invocation |
+| `GET`    | `/api/v1/function-apps/{id}/usage`                            | Read hourly usage buckets                 |
 
 Create and update return `202 Accepted` because Kubernetes provisioning happens asynchronously
 through the outbox and a MassTransit consumer. Delete also returns `202 Accepted` after persisting
@@ -175,6 +187,27 @@ Function.
 Operational details, ports, storage, RBAC, and failure behavior are documented in [runtime
 architecture](docs/runtime-architecture.md#operations).
 
+## Repository GitOps
+
+The `FunctionApp` provider follows the [repository contract](../GitOps/docs/repository-contracts.md).
+A declaration pins one target and a named ComputeProfile revision, with an optional named scope.
+The Function route, group, scope and target cannot change after creation. Explicit resource requests
+and limits retain the Function API's precedence over the selected compute profile.
+
+Prepare reserves the resource, route and deferred placement without creating a revision or starting
+routes, timers or Pods. Configure admits logical Secret/key references and creates one immutable
+revision through the existing quota and outbox workflow. Git-owned updates and deletion are rejected
+by both API handlers and transactional persistence; current DTOs include `gitOps` ownership.
+
+Each poll compares the latest accepted revision (`NextRevisionNumber - 1`), even after a runtime failure
+clears active and pending pointers. Managed changes produce a revision while preserving server image
+credentials and unchanged trigger identities. A no-op preserves revision numbers, timestamps, timer
+schedule versions and resource events. A missing latest revision blocks reconciliation. A changed
+configuration waits for an existing pending revision; equal configuration can still complete as no-op.
+
+Secret environment entries use logical IDs after resolution. Secrets owns native projection names and
+keys; the runtime waits for those projections and retains previous references until rollout confirmation.
+
 ## Current limitations
 
 - Pole accepts a ready image; build-from-source integration is not part of Functions yet.
@@ -205,8 +238,17 @@ architecture](docs/runtime-architecture.md#operations).
 ## Tests
 
 Integration coverage is split between [Function App control-plane
-tests](../../../tests/Pole.Tests.Integration/FunctionApps) and [runtime, SDK, and protocol
-tests](../../../tests/Pole.Tests.Integration/Functions). Kubernetes manifests are tested without
+tests](../../../tests/Pole.Tests.Integration/FunctionApps) and [runtime and protocol
+tests](Functions.Tests). Kubernetes manifests are tested without
 requiring a live cluster. General server startup can be exercised with the [Aspire local
 workflow](../../../docs/aspire-local-development.md); Function Agent signing keys still have to be
 configured explicitly.
+
+`FunctionSecretActivationKubernetesTests` uses the selected Kubernetes lab's BuildKit and Harbor
+to publish the real authenticated SDK fixture. It exercises the Secret projection target, Function
+resource manager, EndpointSlice registry, Agent metadata validation and an authenticated invocation.
+The manager advances the deployment from zero to one replica; the provisioner then validates the
+SDK and requests promotion. Port forwarding changes only the test transport and retains the real
+Pod UID used by Agent authorization. Secret owner reads and baseline readiness are fixture
+capabilities; lifecycle callbacks apply Domain transitions in memory. Mongo tests separately cover
+durable lifecycle, ownership, quota and outbox transactions.

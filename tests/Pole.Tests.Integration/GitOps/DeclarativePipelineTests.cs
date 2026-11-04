@@ -115,7 +115,11 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
                     {
                         Document("SecretBinding",
                             "demo-api-credentials-access",
-                            new { secret = "demo-api-credentials", webService = "demo-api" }),
+                            new
+                            {
+                                secret = "demo-api-credentials",
+                                consumer = new { kind = "WebService", name = "demo-api" }
+                            }),
                         Document("WebService",
                             "demo-api",
                             new
@@ -542,7 +546,8 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
             "malformed" => "kind: [",
             "duplicate" => valid.Content,
             "duplicate-binding" =>
-                "apiVersion: pole.io/v1alpha1\nkind: SecretBinding\nmetadata: {name: other-access}\nspec: {secret: demo-api-credentials, webService: demo-api}",
+                "apiVersion: pole.io/v1alpha1\nkind: SecretBinding\nmetadata: {name: other-access}\n" +
+                "spec: {secret: demo-api-credentials, consumer: {kind: WebService, name: demo-api}}",
             "whitespace-tag" =>
                 "apiVersion: pole.io/v1alpha1\nkind: ResourceGroup\nmetadata: {name: zzz}\nspec: {tags: [' ']}",
             _ =>
@@ -888,8 +893,9 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         var deniedKeys = files[0] with
         {
             Content = files[0].Content.Replace("\"keys\":[\"API_TOKEN\"]", "\"keys\":[\"API_TOKEN\",\"OTHER\"]")
-                .Replace("\"webService\":\"demo-api\"",
-                    "\"webService\":\"demo-api\",\"keyMappings\":{\"OTHER\":\"OTHER\"}")
+                .Replace("\"consumer\":{\"kind\":\"WebService\",\"name\":\"demo-api\"}",
+                    "\"consumer\":{\"kind\":\"WebService\",\"name\":\"demo-api\"}," +
+                    "\"keyMappings\":{\"OTHER\":\"OTHER\"}")
         };
         var invalidGrant = await Apply(files: [deniedKeys]);
         Assert.Equal(RepositoryPipelineStatus.InvalidSnapshot, invalidGrant.Status);
@@ -927,7 +933,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
             if (kind == "SecretBinding")
             {
                 declaration["metadata"]!["name"] = "second-access";
-                declaration["spec"]!["webService"] = "second-api";
+                declaration["spec"]!["consumer"]!["name"] = "second-api";
                 second.Add(declaration.ToJsonString());
             }
         }

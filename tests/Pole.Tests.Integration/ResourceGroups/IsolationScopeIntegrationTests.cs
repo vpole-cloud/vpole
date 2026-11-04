@@ -28,12 +28,12 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var createResult = await Mediator.Send(new CreateIsolationScopeRequest(
             resourceGroup.Id,
-            new CreateIsolationScopeRequestBody("Production"),
+            new CreateIsolationScopeRequestBody("production"),
             resourceGroup.TenantId));
 
         var created = AssertCreated(createResult.AssertHandlerOutcome());
         Assert.False(created.IsDefault);
-        Assert.Equal("Production", created.Name);
+        Assert.Equal("production", created.Name);
 
         var listResult = await Mediator.Send(new GetIsolationScopesRequest(
             resourceGroup.Id,
@@ -63,11 +63,11 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
         var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var first = await Mediator.Send(new CreateIsolationScopeRequest(
             resourceGroup.Id,
-            new CreateIsolationScopeRequestBody("Production"),
+            new CreateIsolationScopeRequestBody("production"),
             resourceGroup.TenantId));
         var duplicate = await Mediator.Send(new CreateIsolationScopeRequest(
             resourceGroup.Id,
-            new CreateIsolationScopeRequestBody(" production "),
+            new CreateIsolationScopeRequestBody("production"),
             resourceGroup.TenantId));
 
         _ = AssertCreated(first.AssertHandlerOutcome());
@@ -271,7 +271,7 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
             index["name"] == "UX_IsolationScopes_ResourceGroup_Default" &&
             index["unique"].AsBoolean);
         Assert.Contains(scopeIndexes, index =>
-            index["name"] == "UX_IsolationScopes_ResourceGroup_Name" &&
+            index["name"] == "UX_IsolationScopes_Tenant_Name" &&
             index["unique"].AsBoolean);
         Assert.Contains(scopeIndexes, index =>
             index["name"] == "IX_IsolationScopes_Lifecycle_UpdatedAt");
@@ -295,11 +295,11 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
 
     private static IReadOnlyList<IsolationScopeDto> AssertScopes(
         GetIsolationScopesOutcome outcome) => outcome switch
-    {
-        IReadOnlyList<IsolationScopeDto> success => success,
-        ResourceGroupNotFound error => throw new Xunit.Sdk.XunitException(
-            $"Expected isolation scopes, resource group '{error.ResourceGroupId}' was not found.")
-    };
+        {
+            IReadOnlyList<IsolationScopeDto> success => success,
+            ResourceGroupNotFound error => throw new Xunit.Sdk.XunitException(
+                $"Expected isolation scopes, resource group '{error.ResourceGroupId}' was not found.")
+        };
 
     private static IsolationScopeDto AssertScope(GetIsolationScopeOutcome outcome) => outcome switch
     {
@@ -312,11 +312,11 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
 
     private static IReadOnlyList<RuntimeCellDto> AssertRuntimeCells(
         GetRuntimeCellsOutcome outcome) => outcome switch
-    {
-        IReadOnlyList<RuntimeCellDto> success => success,
-        ResourceGroupNotFound error => throw new Xunit.Sdk.XunitException(
-            $"Expected runtime cells, resource group '{error.ResourceGroupId}' was not found.")
-    };
+        {
+            IReadOnlyList<RuntimeCellDto> success => success,
+            ResourceGroupNotFound error => throw new Xunit.Sdk.XunitException(
+                $"Expected runtime cells, resource group '{error.ResourceGroupId}' was not found.")
+        };
 
     private static RuntimeCellDto AssertRuntimeCell(GetRuntimeCellOutcome outcome) => outcome switch
     {

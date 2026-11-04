@@ -55,6 +55,7 @@ let container: HTMLDivElement
 let secret: SecretMetadata
 let conflict: boolean
 let managed: boolean
+let bindingUsage: 'Runtime' | 'Bootstrap'
 let placements: ResourcePlacement[]
 const requests = strictFetch()
 const fetchMock = requests.fetch
@@ -88,6 +89,7 @@ beforeEach(() => {
   secret = structuredClone(initial)
   conflict = false
   managed = false
+  bindingUsage = 'Runtime'
   placements = [placement]
   fetchMock.mockReset().mockImplementation((input, init) => {
     const url = new URL(String(input), 'http://localhost')
@@ -130,6 +132,7 @@ beforeEach(() => {
           binding: {
             id: managed ? 'owner' : 'binding',
             consumerType: 'test/stateful',
+            usage: bindingUsage,
             consumerId: 'consumer',
             allDeployments: true,
             deploymentIds: [],
@@ -334,6 +337,13 @@ it('requires explicit current-version review after a conflict and clears values 
   await click('Overview')
   await click('Rotate values')
   expect(field('Value 1').value).toBe('')
+})
+
+it('labels bootstrap grants without promising runtime projections', async () => {
+  bindingUsage = 'Bootstrap'
+  await open('Bindings')
+  expect(text()).toContain('Credential bootstrap only')
+  expect(text()).not.toContain('All current and future eligible deployments')
 })
 
 it('keeps managed owner bindings protected and viewer actions unavailable', async () => {

@@ -6,6 +6,15 @@ namespace Pole.Features.ResourceGroups.Application.Persistence.IsolationScopes;
 
 internal static class IsolationScopeFilters
 {
+    public static FilterDefinition<IsolationScope> ByTenantAndId(string tenantId, string id) =>
+        Builders<IsolationScope>.Filter.ForTenant(tenantId) &
+        Builders<IsolationScope>.Filter.Eq(scope => scope.Id, id);
+
+    public static FilterDefinition<IsolationScope> ByTechnicalName(string tenantId, string name) =>
+        Builders<IsolationScope>.Filter.ForTenant(tenantId) &
+        Builders<IsolationScope>.Filter.Eq(scope => scope.NormalizedName, name) &
+        Builders<IsolationScope>.Filter.Eq(scope => scope.IsDefault, false);
+
     public static FilterDefinition<IsolationScope> ByTenantAndResourceGroup(
         string tenantId,
         string resourceGroupId) =>

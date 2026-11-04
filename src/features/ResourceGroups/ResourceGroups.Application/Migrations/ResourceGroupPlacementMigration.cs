@@ -1,6 +1,7 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.ResourceGroups.Application.Persistence.IsolationScopes;
 
 namespace Pole.Features.ResourceGroups.Application.Migrations;
 
@@ -30,12 +31,12 @@ public sealed class ResourceGroupPlacementMigration : IMigration
             new CreateIndexModel<BsonDocument>(
                 Builders<BsonDocument>.IndexKeys
                     .Ascending("TenantId")
-                    .Ascending("ResourceGroupId")
                     .Ascending("NormalizedName"),
-                new CreateIndexOptions
+                new CreateIndexOptions<BsonDocument>
                 {
                     Unique = true,
-                    Name = "UX_IsolationScopes_ResourceGroup_Name"
+                    Name = IsolationScopeIndexes.TenantName,
+                    PartialFilterExpression = new BsonDocument("IsDefault", false)
                 }),
             new CreateIndexModel<BsonDocument>(
                 Builders<BsonDocument>.IndexKeys

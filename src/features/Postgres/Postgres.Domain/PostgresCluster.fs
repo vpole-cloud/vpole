@@ -41,7 +41,9 @@ type PostgresCluster =
       GroupId : string
       Spec : PostgresClusterSpec
       Revision : int64
-      Lifecycle : PostgresClusterLifecycle }
+      Lifecycle : PostgresClusterLifecycle
+      Provisioning : PostgresProvisioningState
+      PlanningFence : int64 }
 
     static member Create(
         tenantId : string,
@@ -67,7 +69,56 @@ type PostgresCluster =
               Version = version
               DeploymentMode = deploymentMode }
           Revision = 1L
-          Lifecycle = ActivePostgresClusterLifecycle() }
+          Lifecycle = ActivePostgresClusterLifecycle()
+          Provisioning = DirectPostgresProvisioning()
+          PlanningFence = 0L }
+
+    static member CreatePrepared(
+        tenantId : string,
+        name : string,
+        groupId : string,
+        version : int,
+        deploymentMode : PostgresDeploymentMode,
+        storageProfileId : string,
+        options : CreatePostgresClusterOptions,
+        bootstrap : PostgresBootstrapCredential) =
+        let validated = PostgresBootstrapCredential.Create(
+            bootstrap.SourceSecretId, bootstrap.SourceKey, bootstrap.CredentialId, bootstrap.Username)
+
+        let cluster =
+            PostgresCluster.Create(tenantId, name, groupId, version, deploymentMode, storageProfileId, options)
+
+        { cluster with Provisioning = PreparedPostgresProvisioning(validated) }
+
+    [<BsonIgnore>]
+    member this.IsPrepared = this.Provisioning :? PreparedPostgresProvisioning
+
+    member this.EnsureConfigured() =
+        if not (this.Lifecycle :? ActivePostgresClusterLifecycle) then
+            invalidOp "Only an active PostgreSQL cluster can be applied."
+
+        match this.Provisioning with
+        | :? DirectPostgresProvisioning
+        | :? ConfiguredPostgresProvisioning -> ()
+        | :? PreparedPostgresProvisioning -> invalidOp "The PostgreSQL cluster has not completed configuration."
+        | _ -> invalidOp "Unsupported PostgreSQL provisioning state."
+
+    member this.ConfigurePrepared(capacity : PostgresDesiredCapacity) =
+        if not (this.Lifecycle :? ActivePostgresClusterLifecycle) then
+            invalidOp "A deleting PostgreSQL cluster cannot be configured."
+
+        if capacity.Instances < 1 || capacity.Storage < 1 then
+            invalidArg "capacity" "PostgreSQL instances and storage must be positive."
+
+        match this.Provisioning with
+        | :? PreparedPostgresProvisioning as prepared ->
+            { this with
+                Spec = { this.Spec with Instances = capacity.Instances; Storage = capacity.Storage }
+                Provisioning = ConfiguredPostgresProvisioning(prepared.Bootstrap)
+                Revision = PostgresCluster.incrementRevision this.Revision }
+        | :? ConfiguredPostgresProvisioning
+            when this.Spec.Instances = capacity.Instances && this.Spec.Storage = capacity.Storage -> this
+        | _ -> invalidOp "Only a prepared declarative PostgreSQL cluster can complete bootstrap."
 
     member this.UpdateDesiredState(instances : int, storage : int) =
         if instances < 1 then
@@ -75,16 +126,14 @@ type PostgresCluster =
         if storage < 1 then
             invalidArg (nameof storage) "PostgreSQL storage must be positive."
 
-        match this.Lifecycle with
-        | :? ActivePostgresClusterLifecycle ->
-            { this with
-                Spec =
-                    { this.Spec with
-                        Instances = instances
-                        Storage = storage }
-                Revision = PostgresCluster.incrementRevision this.Revision }
-        | _ ->
-            invalidOp "A deleting PostgreSQL cluster cannot be updated."
+        this.EnsureConfigured()
+
+        { this with
+            Spec =
+                { this.Spec with
+                    Instances = instances
+                    Storage = storage }
+            Revision = PostgresCluster.incrementRevision this.Revision }
 
     member this.BeginDeletion(requestedAtUtc : DateTime) =
         match this.Lifecycle with

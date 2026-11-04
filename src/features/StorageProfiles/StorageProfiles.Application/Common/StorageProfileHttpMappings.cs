@@ -23,6 +23,13 @@ public static class StorageProfileHttpMappings
     public static HttpProblem MapNotFound(StorageProfileNotFound notFound) =>
         StorageProfileContractHttpMappings.MapNotFound(notFound);
 
+    public static HttpProblem MapTechnicalNameConflict(StorageProfileTechnicalNameConflict conflict) =>
+        Problem(
+            HttpStatusCode.Conflict,
+            "storage-profiles.technical-name-conflict",
+            "Storage profile technical name already exists",
+            ("technicalName", conflict.TechnicalName));
+
     public static HttpProblem MapRevisionConflict(StorageProfileRevisionConflict conflict) =>
         Problem(
             HttpStatusCode.Conflict,

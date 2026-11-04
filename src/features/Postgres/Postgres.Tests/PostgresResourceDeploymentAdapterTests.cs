@@ -19,6 +19,28 @@ namespace Pole.Features.Postgres.Tests;
 public sealed class PostgresResourceDeploymentAdapterTests
 {
     [Fact]
+    public async Task PreparedIdentityCannotTouchIngressCredentialsOrKubernetes()
+    {
+        var cluster = PostgresProvisioningTests.Prepared();
+        var reader = new RecordingReader(cluster);
+        var manager = new RecordingDeploymentManager();
+        using var kubernetes = CreateKubernetes();
+        var provider = new RecordingKubernetesClientProvider(kubernetes);
+        IResourceDeploymentAdapter subject = new PostgresResourceDeploymentAdapter(
+            new LoadPostgresClusterById(reader.LoadAsync),
+            (_, _) => throw new InvalidOperationException("Prepared resources cannot read credentials."),
+            (_, _) => throw new InvalidOperationException("Prepared resources cannot project credentials."),
+            manager,
+            provider,
+            (_, _) => throw new InvalidOperationException("Prepared resources cannot reconcile ingress."));
+
+        var result = Assert.IsType<ResourceDeploymentAdapterResult.Failed>(await subject.ApplyAsync(CreateContext()));
+        Assert.Equal("PostgresConfigurationPending", result.FailureCode);
+        Assert.Empty(provider.RequestedTargetIds);
+        Assert.Empty(manager.ApplyRequests);
+    }
+
+    [Fact]
     public async Task Apply_UsesPersistedTargetPlacementAndCompute()
     {
         var cluster = CreateCluster(PostgresDeploymentMode.StatefulSet);

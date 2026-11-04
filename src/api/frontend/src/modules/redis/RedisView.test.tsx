@@ -468,3 +468,24 @@ it('reviews a known concurrent Redis revision before reapplying its draft', asyn
   const put = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')!
   expect(JSON.parse(put[1]!.body as string)).toEqual({ spec: redis.spec, tags: ['local-draft'] })
 })
+
+it('keeps Git-owned configuration read-only while allowing deployment retry', async () => {
+  redis.gitOps = {
+    sourceId: 'source',
+    sourceUrl: 'https://example.test/repository',
+    blocker: null,
+    pendingRemoval: false,
+    configurationApplied: true,
+  }
+  redis.placement!.status = 'Failed'
+  await open()
+  expect(text()).toContain('Git manages this configuration.')
+  expect(text()).not.toContain('Delete Redis')
+  await click('Retry deployment')
+  await tab('Configuration')
+  expect(text()).toContain('Redis configuration is read-only.')
+  expect(text()).not.toContain('Save changes')
+  expect(
+    fetchMock.mock.calls.some(([, init]) => init?.method === 'PUT' || init?.method === 'DELETE'),
+  ).toBe(false)
+})

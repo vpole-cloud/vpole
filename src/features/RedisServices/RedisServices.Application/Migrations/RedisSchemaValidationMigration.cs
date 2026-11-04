@@ -67,6 +67,7 @@ public sealed class RedisSchemaValidationMigration : IMigration
                     "Tags",
                     "Events",
                     "Revision",
+                    "PlanningFence",
                     "Lifecycle"
                 ],
                 ("_id", Type("objectId")),
@@ -80,6 +81,7 @@ public sealed class RedisSchemaValidationMigration : IMigration
                 ("Tags", ArrayOf(StringType(), uniqueItems: true)),
                 ("Events", ArrayOf(ServiceEventSchema())),
                 ("Revision", IntegerType("long", minimum: 1)),
+                ("PlanningFence", IntegerType("long", minimum: 0)),
                 ("Lifecycle", LifecycleSchema())));
 
         private static BsonDocument RedisSpecSchema() => ClosedObject(
@@ -95,6 +97,7 @@ public sealed class RedisSchemaValidationMigration : IMigration
             ("Message", StringType()));
 
         private static BsonDocument LifecycleSchema() => OneOf(
+            LifecycleVariant("PreparedRedisLifecycle"),
             LifecycleVariant("ActiveRedisLifecycle"),
             LifecycleVariant("DeletingRedisLifecycle", "RequestedAtUtc"));
 

@@ -224,6 +224,7 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
         var response = await Client.PostAsJsonAsync(
             "/api/v1/platform/storage/profiles",
             new CreateStorageProfileRequestBody(
+                TechnicalName: "storage-" + MongoDB.Bson.ObjectId.GenerateNewId(),
                 DisplayName: "Fast SSD",
                 Description: "Fast tenant storage",
                 MediaType: "SSD",

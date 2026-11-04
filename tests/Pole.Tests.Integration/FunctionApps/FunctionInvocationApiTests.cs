@@ -206,7 +206,7 @@ public sealed class FunctionInvocationApiTests(MongoReplicaSetFixture fixture)
             new FunctionImageRequest("registry.example", "team/functions", "v1"),
             new FunctionConfiguration(
                 ImmutableDictionary<string, string>.Empty,
-                ImmutableDictionary<string, string>.Empty),
+                ImmutableDictionary<string, FunctionSecretReference>.Empty),
             new FunctionResources(
                 new FunctionResourceValues(100, 128),
                 new FunctionResourceValues(500, 512)),
