@@ -75,7 +75,7 @@ public sealed class GitHubAppClient(
         if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Forbidden)
             return false;
 
-        throw CreateException(response.StatusCode);
+        throw await CreateExceptionAsync(response, GitHubRequestTarget.Other, cancellationToken);
     }
 
     public async Task<ProviderPage<ProviderRepository>> GetRepositoriesAsync(
@@ -101,7 +101,8 @@ public sealed class GitHubAppClient(
     {
         var token = await GetInstallationTokenAsync(installationId, cancellationToken);
         using var request = CreateRequest(HttpMethod.Get, ApiUrl($"/repositories/{Escape(repositoryId)}"), token);
-        return MapRepository(await SendAsync<RepositoryResponse>(request, cancellationToken));
+        return MapRepository(await SendAsync<RepositoryResponse>(
+            request, cancellationToken, GitHubRequestTarget.Repository));
     }
 
     public async Task<ProviderPage<ProviderBranch>> GetBranchesAsync(
@@ -163,7 +164,8 @@ public sealed class GitHubAppClient(
         {
             using var contentRequest = CreateRequest(
                 HttpMethod.Get,
-                ApiUrl($"/repos/{repositoryPath}/contents/{EscapePath(path)}?ref={Uri.EscapeDataString(branch)}"),
+                ApiUrl($"/repos/{repositoryPath}/contents/{EscapePath(path)}" +
+                    $"?ref={Uri.EscapeDataString(branchResponse.Commit.Sha)}"),
                 token);
             var contentResponse = await SendAsync<ContentResponse>(contentRequest, cancellationToken);
             if (string.Equals(contentResponse.Encoding, "base64", StringComparison.OrdinalIgnoreCase))
@@ -182,6 +184,34 @@ public sealed class GitHubAppClient(
             treeResponse.Truncated);
     }
 
+    public async Task<string> ResolveCommitAsync(
+        GitHubResolveCommitRequest request,
+        CancellationToken cancellationToken)
+    {
+        var token = await GetInstallationTokenAsync(request.Access.InstallationId, cancellationToken);
+        var repositoryPath = EscapePath(request.Access.Repository.FullName);
+        using var message = CreateRequest(HttpMethod.Get,
+            ApiUrl($"/repos/{repositoryPath}/branches/{Escape(request.Branch)}"), token);
+        var branch = await SendAsync<BranchResponse>(message, cancellationToken, GitHubRequestTarget.Ref);
+        return branch.Commit.Sha;
+    }
+
+    public async Task<GitHubCommitTree> ReadCommitTreeAsync(
+        GitHubReadTreeRequest request,
+        CancellationToken cancellationToken)
+    {
+        var token = await GetInstallationTokenAsync(request.Access.InstallationId, cancellationToken);
+        var repositoryPath = EscapePath(request.Access.Repository.FullName);
+        using var commitRequest = CreateRequest(HttpMethod.Get,
+            ApiUrl($"/repos/{repositoryPath}/git/commits/{Escape(request.Commit)}"), token);
+        var commit = await SendAsync<GitCommitResponse>(commitRequest, cancellationToken, GitHubRequestTarget.Ref);
+        using var treeRequest = CreateRequest(HttpMethod.Get,
+            ApiUrl($"/repos/{repositoryPath}/git/trees/{Escape(commit.Tree.Sha)}?recursive=1"), token);
+        var tree = await SendAsync<GitTreeResponse>(treeRequest, cancellationToken, GitHubRequestTarget.Ref);
+        return new GitHubCommitTree(tree.Tree.Select(item =>
+            new GitHubTreeEntry(item.Path, item.Type, item.Mode)).ToArray(), tree.Truncated);
+    }
+
     public async Task DownloadRepositoryArchiveAsync(
         string installationId,
         string repositoryId,
@@ -189,33 +219,84 @@ public sealed class GitHubAppClient(
         Stream destination,
         CancellationToken cancellationToken = default)
     {
-        var repository = await GetRepositoryAsync(installationId, repositoryId, cancellationToken);
-        var token = await GetInstallationTokenAsync(installationId, cancellationToken);
-        using var request = CreateRequest(
-            HttpMethod.Get,
-            ApiUrl($"/repos/{EscapePath(repository.FullName)}/tarball/{Escape(commitSha)}"),
-            token);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (httpClient.Timeout != Timeout.InfiniteTimeSpan)
+            deadline.CancelAfter(httpClient.Timeout);
 
-        HttpResponseMessage response;
         try
         {
-            response = await httpClient.SendAsync(
-                request,
-                HttpCompletionOption.ResponseHeadersRead,
-                cancellationToken);
+            await DownloadArchiveAsync(new(installationId, repositoryId, commitSha, destination), deadline.Token);
         }
-        catch (HttpRequestException exception)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new GitHubApiException("GitHub could not be reached.", innerException: exception);
+            throw new GitHubApiException("GitHub archive download timed out.");
         }
-
-        using (response)
+        catch (HttpRequestException)
         {
-            if (!response.IsSuccessStatusCode)
-                throw CreateException(response.StatusCode);
-            await response.Content.CopyToAsync(destination, cancellationToken);
+            throw new GitHubApiException("GitHub archive body could not be read.");
         }
     }
+
+    private async Task DownloadArchiveAsync(ArchiveDownloadRequest download, CancellationToken cancellationToken)
+    {
+        var repository = await GetRepositoryAsync(
+            download.InstallationId, download.RepositoryId, cancellationToken);
+        var token = await GetInstallationTokenAsync(download.InstallationId, cancellationToken);
+        var apiOrigin = new Uri(options.ApiBaseUrl);
+        var uri = new Uri(ApiUrl($"/repos/{EscapePath(repository.FullName)}/tarball/{Escape(download.CommitSha)}"));
+
+        for (var redirects = 0; redirects <= 3; redirects++)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+            if (uri.GetLeftPart(UriPartial.Authority) == apiOrigin.GetLeftPart(UriPartial.Authority))
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+            request.Headers.TryAddWithoutValidation("X-GitHub-Api-Version", options.ApiVersion);
+            using var response = await SendArchiveRequestAsync(request, cancellationToken);
+
+            if (response.StatusCode is HttpStatusCode.MovedPermanently or HttpStatusCode.Found or
+                HttpStatusCode.SeeOther or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect)
+            {
+                var location = response.Headers.Location;
+                if (location is null || redirects == 3)
+                    throw new GitHubUnsafeRedirectException();
+
+                var next = location.IsAbsoluteUri ? location : new Uri(uri, location);
+                if (!IsArchiveDestination(next, apiOrigin))
+                    throw new GitHubUnsafeRedirectException();
+
+                uri = next;
+                continue;
+            }
+
+            if (!response.IsSuccessStatusCode)
+                throw await CreateExceptionAsync(response, GitHubRequestTarget.Ref, cancellationToken);
+
+            await response.Content.CopyToAsync(download.Destination, cancellationToken);
+            return;
+        }
+    }
+
+    private async Task<HttpResponseMessage> SendArchiveRequestAsync(
+        HttpRequestMessage request,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        }
+        catch (HttpRequestException)
+        {
+            // Redirect URLs may carry temporary credentials, so transport exception text is not retained.
+            throw new GitHubApiException("GitHub archive download could not be reached.");
+        }
+    }
+
+    private static bool IsArchiveDestination(Uri target, Uri apiOrigin) =>
+        string.IsNullOrEmpty(target.UserInfo) && string.IsNullOrEmpty(target.Fragment) &&
+        (target.GetLeftPart(UriPartial.Authority) == apiOrigin.GetLeftPart(UriPartial.Authority) ||
+         target.Scheme == Uri.UriSchemeHttps && target.IsDefaultPort && target.Host == "codeload.github.com");
 
     private async Task<string> GetInstallationTokenAsync(string installationId, CancellationToken cancellationToken)
     {
@@ -231,13 +312,17 @@ public sealed class GitHubAppClient(
             ApiUrl($"/app/installations/{Escape(installationId)}/access_tokens"),
             createJwt());
         request.Content = JsonContent.Create(new { permissions = new { contents = "read" } });
-        var response = await SendAsync<InstallationTokenResponse>(request, cancellationToken);
+        var response = await SendAsync<InstallationTokenResponse>(
+            request, cancellationToken, GitHubRequestTarget.Installation);
         var entry = new InstallationTokenCacheEntry(response.Token, response.ExpiresAt);
         cache.Set(cacheKey, entry, response.ExpiresAt.AddMinutes(-5));
         return entry.Token;
     }
 
-    private async Task<T> SendAsync<T>(HttpRequestMessage request, CancellationToken cancellationToken)
+    private async Task<T> SendAsync<T>(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken,
+        GitHubRequestTarget target = GitHubRequestTarget.Other)
     {
         HttpResponseMessage response;
         try
@@ -252,7 +337,7 @@ public sealed class GitHubAppClient(
         using (response)
         {
             if (!response.IsSuccessStatusCode)
-                throw CreateException(response.StatusCode);
+                throw await CreateExceptionAsync(response, target, cancellationToken);
 
             var result = await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
             return result ?? throw new GitHubApiException("GitHub returned an empty response.", response.StatusCode);
@@ -271,8 +356,32 @@ public sealed class GitHubAppClient(
     private string ApiUrl(string path) => $"{options.ApiBaseUrl.TrimEnd('/')}{path}";
     private string WebUrl(string path) => $"{options.WebBaseUrl.TrimEnd('/')}{path}";
 
-    private static GitHubApiException CreateException(HttpStatusCode statusCode) =>
-        new($"GitHub request failed with status {(int)statusCode}.", statusCode);
+    private static async Task<GitHubApiException> CreateExceptionAsync(
+        HttpResponseMessage response,
+        GitHubRequestTarget target,
+        CancellationToken ct)
+    {
+        var rateLimited = response.StatusCode == HttpStatusCode.TooManyRequests ||
+            response.StatusCode == HttpStatusCode.Forbidden &&
+            (response.Headers.RetryAfter is not null ||
+             response.Headers.TryGetValues("x-ratelimit-remaining", out var values) && values.Contains("0"));
+        if (!rateLimited && response.StatusCode == HttpStatusCode.Forbidden)
+        {
+            // Secondary limits can lack rate headers. Inspect only a bounded body; never retain or log its text.
+            await using var body = await response.Content.ReadAsStreamAsync(ct);
+            var bytes = new byte[4096];
+            var read = await body.ReadAtLeastAsync(bytes, bytes.Length, throwOnEndOfStream: false, ct);
+            rateLimited = Encoding.UTF8.GetString(bytes, 0, read)
+                .Contains("rate limit", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return new GitHubApiException(
+            $"GitHub request failed with status {(int)response.StatusCode}.", response.StatusCode)
+        {
+            Target = target,
+            IsRateLimited = rateLimited
+        };
+    }
 
     private static ProviderRepository MapRepository(RepositoryResponse repository) =>
         new(
@@ -297,6 +406,12 @@ public sealed class GitHubAppClient(
 
     private static string EscapePath(string value) =>
         string.Join('/', value.Split('/').Select(Uri.EscapeDataString));
+
+    private sealed record ArchiveDownloadRequest(
+        string InstallationId,
+        string RepositoryId,
+        string CommitSha,
+        Stream Destination);
 
     private sealed record InstallationTokenCacheEntry(
         string Token,
@@ -345,7 +460,8 @@ public sealed class GitHubAppClient(
         bool Truncated);
     private sealed record GitTreeItem(
         string Path,
-        string Type);
+        string Type,
+        string Mode);
     private sealed record ContentResponse(
         string Content,
         string Encoding);

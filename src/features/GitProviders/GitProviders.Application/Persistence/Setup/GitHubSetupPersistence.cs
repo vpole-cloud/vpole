@@ -3,6 +3,7 @@ using Pole.Database;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
+using Pole.Features.GitProviders.Application.Persistence.Connections;
 
 namespace Pole.Features.GitProviders.Application.Persistence.Setup;
 
@@ -57,7 +58,7 @@ internal sealed class GitHubSetupPersistence(
             },
             cancellationToken);
 
-    internal async Task<string?> UpsertConnectionAsync(
+    internal async Task<UpsertGitProviderConnectionOutcome> UpsertConnectionAsync(
         GitHubSetupAttempt attempt,
         GitHubInstallationMetadata installation,
         DateTime now,
@@ -67,18 +68,32 @@ internal sealed class GitHubSetupPersistence(
         {
             return await UpsertAsync(attempt, installation, now, cancellationToken);
         }
-        catch (ConnectionDiscoveryRace)
+        catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(
+            exception, GitProviderConnectionIndexes.TechnicalName, _connections.CollectionNamespace.CollectionName))
+        {
+            // The same installation/name can race on either unique index. Re-read its identity before classifying.
+            var existing = await _connections.Find(
+                    GitProviderFilters.ConnectionByInstallation(installation.ExternalInstallationId))
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (existing is not null)
+                return await UpsertAsync(attempt, installation, now, cancellationToken);
+
+            return new GitProviderConnectionNameConflict(attempt.TechnicalName);
+        }
+        catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(
+            exception, GitProviderConnectionIndexes.Installation, _connections.CollectionNamespace.CollectionName))
         {
             return await UpsertAsync(attempt, installation, now, cancellationToken);
         }
     }
 
-    private async Task<string?> UpsertAsync(GitHubSetupAttempt attempt,
+    private async Task<UpsertGitProviderConnectionOutcome> UpsertAsync(GitHubSetupAttempt attempt,
         GitHubInstallationMetadata installation,
         DateTime now,
         CancellationToken cancellationToken)
     {
-        var outcome = await transactions.InvokeOutcomeAsync<UpsertGitProviderConnectionOutcome>(async (tx, ct) =>
+        return await transactions.InvokeOutcomeAsync<UpsertGitProviderConnectionOutcome>(async (tx, ct) =>
             {
                 var globalFilter = GitProviderFilters.ConnectionByInstallation(
                     installation.ExternalInstallationId);
@@ -89,6 +104,9 @@ internal sealed class GitHubSetupPersistence(
                 {
                     if (!string.Equals(existing.TenantId, attempt.TenantId, StringComparison.Ordinal))
                         return tx.Abort(new GitProviderConnectionOwnershipRejected());
+
+                    if (!string.Equals(existing.TechnicalName, attempt.TechnicalName, StringComparison.Ordinal))
+                        return tx.Abort(new GitProviderConnectionNameMismatch(existing.TechnicalName));
 
                     var changed = await _connections.UpdateOneAsync(tx.Session,
                         GitProviderFilters.ConnectionById(existing.Id),
@@ -106,6 +124,7 @@ internal sealed class GitHubSetupPersistence(
 
                 var connection = GitProviderConnectionFactory.Create(
                     attempt.TenantId,
+                    attempt.TechnicalName,
                     GitProviderKind.GitHub,
                     installation.ExternalInstallationId,
                     installation.AccountId,
@@ -118,25 +137,13 @@ internal sealed class GitHubSetupPersistence(
                         CreatedAtUtc = now,
                         UpdatedAtUtc = now
                     });
-                try
-                {
-                    await _connections.InsertOneAsync(tx.Session, connection, cancellationToken: ct);
-                }
-                catch (MongoWriteException exception) when (
-                    exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
-                {
-                    throw new ConnectionDiscoveryRace(exception);
-                }
+                await _connections.InsertOneAsync(tx.Session, connection, cancellationToken: ct);
 
                 await outbox(tx.Session, [OutboxWrite.Create(connection.ToChangedEvent())], ct);
                 return tx.Commit(new LinkedGitProviderConnection(connection.Id));
             },
             cancellationToken);
-        return outcome.Value is LinkedGitProviderConnection linked ? linked.Id : null;
     }
-
-    private sealed class ConnectionDiscoveryRace(MongoWriteException inner)
-        : Exception("A Git connection was discovered concurrently.", inner);
 }
 
 internal sealed record LinkedGitProviderConnection(string Id);
@@ -145,4 +152,10 @@ internal sealed record GitProviderConnectionOwnershipRejected;
 
 internal union UpsertGitProviderConnectionOutcome(
     LinkedGitProviderConnection,
-    GitProviderConnectionOwnershipRejected);
+    GitProviderConnectionOwnershipRejected,
+    GitProviderConnectionNameConflict,
+    GitProviderConnectionNameMismatch);
+
+internal sealed record GitProviderConnectionNameConflict(string TechnicalName);
+
+internal sealed record GitProviderConnectionNameMismatch(string TechnicalName);

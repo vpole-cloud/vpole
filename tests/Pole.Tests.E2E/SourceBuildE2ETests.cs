@@ -517,6 +517,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
             return existing.GetProperty("id").GetString()!;
 
         using var begin = fixture.CreateAuthenticatedRequest(HttpMethod.Post, "/api/v1/git-provider-connections/github/install", fixture.Alpha, fixture.Alpha.DefaultTenantId);
+        begin.Content = JsonContent.Create(new { TechnicalName = "github-e2e" });
         using var beginResponse = await fixture.Api.SendAsync(begin, cancellationToken);
         beginResponse.EnsureSuccessStatusCode();
         using var beginJson = JsonDocument.Parse(await beginResponse.Content.ReadAsStreamAsync(cancellationToken));

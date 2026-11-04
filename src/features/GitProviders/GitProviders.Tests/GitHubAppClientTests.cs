@@ -153,9 +153,178 @@ public sealed class GitHubAppClientTests
         Assert.Equal([1, 2, 3, 4], destination.ToArray());
     }
 
+    [Fact]
+    public async Task AnalysisContentsUseResolvedCommitWhenBranchMoves()
+    {
+        const string sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        var client = CreateClient(new DelegateHandler(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/access_tokens", StringComparison.Ordinal))
+                return Token();
+            if (path == "/repositories/9001")
+                return Repository();
+            if (path.Contains("/branches/", StringComparison.Ordinal))
+            {
+                Assert.Contains("feature%2Fmanifests", request.RequestUri.OriginalString);
+                return Json(HttpStatusCode.OK, $$$"""{"name":"feature/manifests","commit":{"sha":"{{{sha}}}"}}""");
+            }
+            if (path.Contains("/git/commits/", StringComparison.Ordinal))
+            {
+                Assert.EndsWith(sha, path);
+                return Json(HttpStatusCode.OK, """{"tree":{"sha":"tree"}}""");
+            }
+            if (path.Contains("/git/trees/", StringComparison.Ordinal))
+                return Json(HttpStatusCode.OK,
+                    """{"tree":[{"path":"Dockerfile","type":"blob","mode":"100644"}],"truncated":false}""");
+
+            Assert.Equal($"?ref={sha}", request.RequestUri.Query);
+            return Json(HttpStatusCode.OK, """{"encoding":"base64","content":"RlJPTSBhbHBpbmU="}""");
+        }));
+
+        var snapshot = await client.GetRepositorySnapshotAsync("42", "9001", "feature/manifests");
+        Assert.Equal(sha, snapshot.CommitSha);
+        Assert.Equal("FROM alpine", snapshot.FileContents["Dockerfile"]);
+    }
+
+    [Fact]
+    public async Task ArchiveRedirectNeverForwardsInstallationTokenAcrossOrigins()
+    {
+        var client = CreateClient(new DelegateHandler(request =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/access_tokens", StringComparison.Ordinal))
+                return Token();
+            if (request.RequestUri.AbsolutePath == "/repositories/9001")
+                return Repository();
+            if (request.RequestUri.Host == "api.test")
+            {
+                Assert.Equal("installation-token", request.Headers.Authorization?.Parameter);
+                return Redirect("https://codeload.github.com/org/sample/tar.gz/sha?temporary=private");
+            }
+
+            Assert.Null(request.Headers.Authorization);
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([1, 2, 3]) };
+        }));
+        using var destination = new MemoryStream();
+        await client.DownloadRepositoryArchiveAsync("42", "9001", "sha", destination);
+        Assert.Equal([1, 2, 3], destination.ToArray());
+    }
+
+    [Theory]
+    [InlineData("https://untrusted.test/archive")]
+    [InlineData("http://codeload.github.com/archive")]
+    [InlineData("https://user:password@codeload.github.com/archive")]
+    [InlineData("https://api.test/loop")]
+    public async Task UnsafeAndLoopingArchiveRedirectsAreRejected(string location)
+    {
+        var redirects = 0;
+        var client = CreateClient(new DelegateHandler(request =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/access_tokens", StringComparison.Ordinal))
+                return Token();
+            if (request.RequestUri.AbsolutePath == "/repositories/9001")
+                return Repository();
+
+            redirects++;
+            return Redirect(location);
+        }));
+        using var destination = new MemoryStream();
+        var error = await Assert.ThrowsAsync<GitHubUnsafeRedirectException>(() =>
+            client.DownloadRepositoryArchiveAsync("42", "9001", "sha", destination));
+        Assert.InRange(redirects, 1, 4);
+        Assert.DoesNotContain(location, error.ToString());
+        Assert.Empty(destination.ToArray());
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ForbiddenRateLimitsRemainDistinguishableFromAccessDenial(bool rateLimit)
+    {
+        var client = CreateClient(new DelegateHandler(request =>
+            request.RequestUri!.AbsolutePath.EndsWith("/access_tokens", StringComparison.Ordinal)
+                ? Token()
+                : Json(HttpStatusCode.Forbidden, rateLimit
+                    ? "{\"message\":\"You have exceeded a secondary rate limit.\"}"
+                    : "{\"message\":\"Permission denied.\"}")));
+        var error = await Assert.ThrowsAsync<GitHubApiException>(() => client.GetRepositoryAsync("42", "9001"));
+        Assert.Equal(rateLimit, error.IsRateLimited);
+        Assert.Equal(GitHubRequestTarget.Repository, error.Target);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ArchiveBodyDeadlineCoversStallsAndPreservesCallerCancellation(bool callerCancels)
+    {
+        var content = new StallingContent();
+        var client = CreateClient(new DelegateHandler(request =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/access_tokens", StringComparison.Ordinal))
+                return Token();
+            if (request.RequestUri.AbsolutePath == "/repositories/9001")
+                return Repository();
+
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
+        }), timeout: TimeSpan.FromMilliseconds(500));
+        using var destination = new MemoryStream();
+        using var cancellation = new CancellationTokenSource();
+        var download = client.DownloadRepositoryArchiveAsync("42", "9001", "sha", destination, cancellation.Token);
+        await content.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        if (callerCancels)
+        {
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => download.WaitAsync(TimeSpan.FromSeconds(5)));
+        }
+        else
+        {
+            await Assert.ThrowsAsync<GitHubApiException>(() => download.WaitAsync(TimeSpan.FromSeconds(5)));
+        }
+    }
+
+    private sealed class StallingContent : HttpContent
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
+            SerializeToStreamAsync(stream, context, CancellationToken.None);
+
+        protected override async Task SerializeToStreamAsync(
+            Stream stream,
+            TransportContext? context,
+            CancellationToken ct)
+        {
+            Started.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+        }
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return false;
+        }
+    }
+
+    private static HttpResponseMessage Token() => Json(HttpStatusCode.Created,
+        """{"token":"installation-token","expires_at":"2099-01-01T00:00:00Z"}""");
+
+    private static HttpResponseMessage Repository() => Json(HttpStatusCode.OK,
+        """
+        {"id":9001,"name":"sample","full_name":"org/sample","html_url":"https://github.com/org/sample",
+        "private":true,"default_branch":"main","updated_at":null}
+        """);
+
+    private static HttpResponseMessage Redirect(string location)
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.Found);
+        response.Headers.Location = new Uri(location);
+        return response;
+    }
+
     private static GitHubAppClient CreateClient(
         HttpMessageHandler handler,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        TimeSpan? timeout = null)
     {
         var options = new GitHubAppOptions
         {
@@ -169,7 +338,7 @@ public sealed class GitHubAppClientTests
             WebBaseUrl = "https://github.test"
         };
         return new GitHubAppClient(
-            new HttpClient(handler),
+            new HttpClient(handler) { Timeout = timeout ?? TimeSpan.FromSeconds(100) },
             options,
             () => "app-jwt",
             new MemoryCache(new MemoryCacheOptions()),

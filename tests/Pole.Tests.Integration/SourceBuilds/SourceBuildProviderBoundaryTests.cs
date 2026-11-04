@@ -28,6 +28,7 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
         var now = DateTime.UtcNow;
         var connection = GitProviderConnectionFactory.Create(
             TestData.TenantId,
+            "github-test",
             GitProviderKind.GitHub,
             "installation-1",
             "account-1",

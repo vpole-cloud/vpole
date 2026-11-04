@@ -23,6 +23,7 @@ export async function fetchGitProviderConnections(
 
 export async function beginGitHubInstallation(
   apiBaseUrl: string,
+  technicalName: string,
   token?: string,
   tenantId?: string,
   signal?: AbortSignal,
@@ -31,6 +32,7 @@ export async function beginGitHubInstallation(
     `${apiBaseUrl}/api/v1/git-provider-connections/github/install`,
     {
       method: 'POST',
+      body: JSON.stringify({ technicalName }),
       headers: buildHeaders(token, tenantId),
       signal,
     },

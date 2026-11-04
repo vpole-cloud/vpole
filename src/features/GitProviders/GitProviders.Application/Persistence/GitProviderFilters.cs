@@ -16,6 +16,13 @@ internal static class GitProviderFilters
             Builders<GitProviderConnection>.Filter.ForTenant(tenantId),
             Builders<GitProviderConnection>.Filter.Eq(item => item.Id, connectionId));
 
+    internal static FilterDefinition<GitProviderConnection> ConnectionByTenantAndName(
+        string tenantId,
+        string technicalName) =>
+        Builders<GitProviderConnection>.Filter.And(
+            ConnectionsByTenant(tenantId),
+            Builders<GitProviderConnection>.Filter.Eq(item => item.TechnicalName, technicalName));
+
     internal static FilterDefinition<GitProviderConnection> ConnectionByInstallation(
         string installationId) =>
         Builders<GitProviderConnection>.Filter.And(

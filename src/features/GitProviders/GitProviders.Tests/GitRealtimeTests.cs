@@ -20,10 +20,7 @@ public sealed class GitRealtimeTests
             notices.Add(change);
             return Task.CompletedTask;
         });
-        await consumer.HandleAsync(new GitProviderConnectionChangedEvent("connection")
-        {
-            EventCore = EventCore.Create("tenant")
-        });
+        await consumer.HandleAsync(new GitProviderConnectionChangedEvent("connection", EventCore.Create("tenant")));
         await consumer.HandleAsync(new SourceRepositoryChangedEvent("repository", "connection")
         {
             EventCore = EventCore.Create("tenant")

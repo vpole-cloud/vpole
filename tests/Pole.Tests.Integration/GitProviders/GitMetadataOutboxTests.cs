@@ -28,16 +28,16 @@ public sealed class GitMetadataOutboxTests(MongoReplicaSetFixture fixture) : Med
         var now = DateTime.UtcNow;
         var persistence = new GitHubSetupPersistence(Fixture.Database, Transactions, Fixture.StoreOutboxWrites);
         var id = await persistence.UpsertConnectionAsync(attempt, metadata, now, default);
-        Assert.NotNull(id);
+        Assert.IsType<LinkedGitProviderConnection>(id.Value);
         Assert.Equal(id, await persistence.UpsertConnectionAsync(attempt, metadata, now, default));
-        Assert.Null(await persistence.UpsertConnectionAsync(
+        Assert.IsType<GitProviderConnectionOwnershipRejected>((await persistence.UpsertConnectionAsync(
             attempt with
             {
                 TenantId = ObjectId.GenerateNewId().ToString()
             },
             metadata,
             now,
-            default));
+            default)).Value);
         Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(ConnectionEvent));
         await persistence.UpsertConnectionAsync(attempt,
             metadata with
@@ -106,9 +106,9 @@ public sealed class GitMetadataOutboxTests(MongoReplicaSetFixture fixture) : Med
         var now = DateTime.UtcNow;
         string? connectionId = null;
         if (mutation is "connection-update" or "connection-delete")
-            connectionId =
+            connectionId = Assert.IsType<LinkedGitProviderConnection>((
                 await new GitHubSetupPersistence(Fixture.Database, Transactions, Fixture.StoreOutboxWrites)
-                    .UpsertConnectionAsync(attempt, metadata, now, default);
+                    .UpsertConnectionAsync(attempt, metadata, now, default)).Value).Id;
         var repository = Repository();
         if (mutation is "repository-update" or "repository-delete")
             await DbContext.SourceRepositories.InsertOneAsync(repository);
@@ -164,6 +164,7 @@ public sealed class GitMetadataOutboxTests(MongoReplicaSetFixture fixture) : Med
 
     private static GitHubSetupAttempt Attempt() => GitHubSetupAttemptFactory.Create(TestData.TenantId,
         TestData.UserId,
+        "github-test",
         "private-state",
         GitHubSetupAttemptFactory.DefaultOptions);
 

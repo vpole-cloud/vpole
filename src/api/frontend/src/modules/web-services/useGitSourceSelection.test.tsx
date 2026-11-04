@@ -65,6 +65,7 @@ beforeEach(() => {
   vi.mocked(api.fetchGitProviderConnections).mockResolvedValue([
     {
       id: 'account',
+      technicalName: 'github-test',
       accountLogin: 'team',
       provider: 'GitHub',
       accountType: 'Organization',

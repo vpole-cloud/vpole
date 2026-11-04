@@ -17,6 +17,8 @@ public interface IGitHubAppClient
     Task<ProviderRepository> GetRepositoryAsync(string installationId, string repositoryId, CancellationToken cancellationToken = default);
     Task<ProviderPage<ProviderBranch>> GetBranchesAsync(string installationId, string repositoryId, int page, int pageSize, CancellationToken cancellationToken = default);
     Task<RepositorySourceSnapshot> GetRepositorySnapshotAsync(string installationId, string repositoryId, string branch, CancellationToken cancellationToken = default);
+    Task<string> ResolveCommitAsync(GitHubResolveCommitRequest request, CancellationToken cancellationToken);
+    Task<GitHubCommitTree> ReadCommitTreeAsync(GitHubReadTreeRequest request, CancellationToken cancellationToken);
     Task DownloadRepositoryArchiveAsync(
         string installationId,
         string repositoryId,
@@ -32,4 +34,34 @@ public sealed class GitHubApiException(
     : Exception(message, innerException)
 {
     public System.Net.HttpStatusCode? StatusCode { get; } = statusCode;
+    public GitHubRequestTarget Target { get; init; }
+    public bool IsRateLimited { get; init; }
+}
+
+public enum GitHubRequestTarget { Other, Installation, Repository, Ref }
+
+public sealed record GitHubRepositoryAccess(
+    string InstallationId,
+    ProviderRepository Repository);
+
+public sealed record GitHubResolveCommitRequest(
+    GitHubRepositoryAccess Access,
+    string Branch);
+
+public sealed record GitHubReadTreeRequest(
+    GitHubRepositoryAccess Access,
+    string Commit);
+
+public sealed record GitHubTreeEntry(
+    string Path,
+    string Type,
+    string Mode);
+
+public sealed record GitHubCommitTree(
+    IReadOnlyList<GitHubTreeEntry> Entries,
+    bool Truncated);
+
+public sealed class GitHubUnsafeRedirectException : Exception
+{
+    public GitHubUnsafeRedirectException() : base("GitHub returned an unsupported archive redirect.") { }
 }

@@ -5,6 +5,7 @@ namespace Pole.Features.GitProviders.Application.Common;
 
 public sealed record GitProviderConnectionDto(
     string Id,
+    string TechnicalName,
     string Provider,
     string AccountLogin,
     string AccountType,
@@ -83,6 +84,7 @@ public static class GitProviderDtoExtensions
     public static GitProviderConnectionDto ToDto(this GitProviderConnection connection) =>
         new(
             connection.Id,
+            connection.TechnicalName,
             connection.Provider.ToString(),
             connection.AccountLogin,
             connection.AccountType.ToString(),
