@@ -19,7 +19,6 @@ public static class RecordDataConstructionLegacy
         "src/features/Functions/Functions.Events/FunctionLifecycleEvents.cs|Pole.Features.Functions.Events.FunctionRevisionFailedEvent|EventCore|extra-property",
         "src/features/Functions/Functions.Events/FunctionLifecycleEvents.cs|Pole.Features.Functions.Events.FunctionRevisionPromotedEvent|EventCore|extra-property",
         "src/features/Functions/Functions.Events/FunctionLifecycleEvents.cs|Pole.Features.Functions.Events.FunctionRevisionRetiredEvent|EventCore|extra-property",
-        "src/features/GitProviders/GitProviders.Events/SourceRepositoryChangedEvent.cs|Pole.Features.GitProviders.Events.SourceRepositoryChangedEvent|EventCore|extra-property",
         "src/features/PrivateAccess/PrivateAccess.Events/PrivateAccessEvents.cs|Pole.Features.PrivateAccess.Events.PrivateAccessGrantCreatedEvent|EventCore|extra-property",
         "src/features/PrivateAccess/PrivateAccess.Events/PrivateAccessEvents.cs|Pole.Features.PrivateAccess.Events.PrivateAccessGrantRevokedEvent|EventCore|extra-property",
         "src/features/PrivateAccess/PrivateAccess.Events/PrivateAccessEvents.cs|Pole.Features.PrivateAccess.Events.PrivateAccessSessionIssuedEvent|EventCore|extra-property",

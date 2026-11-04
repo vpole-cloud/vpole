@@ -19,27 +19,21 @@ export interface SourceBuildLogs {
   maximumBytes: number | null
 }
 
-export type SourceBuildRecipeKind = 0 | 1 | 2
-
 export type SourceBuildPhase = 0 | 1 | 2 | 3 | 4 | 5
 
 export interface SourceBuildRecipe {
-  candidateKey: string
-  kind: SourceBuildRecipeKind
-  sourceRoot: string
-  manifestPath: string
-  commands: string[]
-  startCommand?: string | null
   dockerfile: string
-  isCustomized: boolean
 }
 
 export interface SourceBuildConfiguration {
   id: string
+  technicalName: string
+  revision: number
+  gitOps?: import('../../data/gitOps').GitOpsStatus | null
   sourceRepositoryId: string
   webServiceId: string
   recipe: SourceBuildRecipe
-  createdByUserId: string
+  createdByUserId: string | null
   createdAtUtc: string
   updatedAtUtc: string
 }

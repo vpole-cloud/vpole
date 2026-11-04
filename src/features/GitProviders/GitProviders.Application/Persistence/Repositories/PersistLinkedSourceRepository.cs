@@ -8,42 +8,58 @@ namespace Pole.Features.GitProviders.Application.Persistence.Repositories;
 
 public union PersistLinkedSourceRepositoryOutcome(
     SourceRepository,
-    SourceRepositoryAlreadyLinked);
+    SourceRepositoryAlreadyLinked,
+    SourceRepositoryNameConflict,
+    GitProviderConnectionNotFound);
 
 public delegate Task<PersistLinkedSourceRepositoryOutcome> PersistLinkedSourceRepository(
     SourceRepository repository,
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoPersistLinkedSourceRepository(
-    IMongoDatabase database,
+    IMongoCollection<SourceRepository> repositories,
+    IMongoCollection<GitProviderConnection> connections,
     MongoRunTransaction transactions,
     StoreOutboxWrites outbox)
 {
-    public async Task<PersistLinkedSourceRepositoryOutcome> InvokeAsync(
+    public Task<PersistLinkedSourceRepositoryOutcome> InvokeAsync(
         SourceRepository repository,
-        CancellationToken cancellationToken = default)
-    {
-        return await transactions.InvokeOutcomeAsync<PersistLinkedSourceRepositoryOutcome>(async (tx, ct) =>
-            {
-                try
-                {
-                    await database
-                        .GetCollection<SourceRepository>("SourceRepositories")
-                        .InsertOneAsync(tx.Session, repository, cancellationToken: ct);
-                }
-                catch (MongoWriteException exception) when (
-                    exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
-                {
-                    return tx.Abort(new SourceRepositoryAlreadyLinked(
-                        repository.ConnectionId,
-                        repository.ExternalRepositoryId,
-                        repository.Branch,
-                        repository.CandidateKey));
-                }
+        CancellationToken cancellationToken = default) =>
+        transactions.InvokeOutcomeAsync<PersistLinkedSourceRepositoryOutcome>(async (tx, ct) =>
+        {
+            var result = await CreateAsync(repository, tx.Session, ct);
+            return result is SourceRepository ? tx.Commit(result) : tx.Abort(result);
+        }, cancellationToken);
 
-                await outbox(tx.Session, [OutboxWrite.Create(repository.ToChangedEvent())], ct);
-                return tx.Commit(repository);
-            },
-            cancellationToken);
+    public async Task<PersistLinkedSourceRepositoryOutcome> CreateAsync(
+        SourceRepository repository,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var fenced = await connections.UpdateOneAsync(session,
+            GitProviderFilters.ConnectionByTenantAndId(repository.TenantId, repository.ConnectionId),
+            Builders<GitProviderConnection>.Update.Inc(item => item.ReferenceFence, 1),
+            cancellationToken: cancellationToken);
+        if (fenced.MatchedCount == 0)
+            return new GitProviderConnectionNotFound(repository.ConnectionId);
+
+        try
+        {
+            await repositories.InsertOneAsync(session, repository, cancellationToken: cancellationToken);
+        }
+        catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(
+            exception, SourceRepositoryIndexes.TechnicalName, repositories.CollectionNamespace.CollectionName))
+        {
+            return new SourceRepositoryNameConflict(repository.TechnicalName);
+        }
+        catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(
+            exception, SourceRepositoryIndexes.Location, repositories.CollectionNamespace.CollectionName))
+        {
+            return new SourceRepositoryAlreadyLinked(
+                repository.ConnectionId, repository.ExternalRepositoryId, repository.Branch);
+        }
+
+        await outbox(session, [OutboxWrite.Create(repository.ToChangedEvent())], cancellationToken);
+        return repository;
     }
 }

@@ -1,4 +1,7 @@
+using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Features.SourceBuilds.Contracts;
+using Pole.Features.SourceBuilds.Application.Persistence.Jobs;
 using Pole.Database;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.SourceBuilds.Application.Persistence.Logs;
@@ -33,17 +36,63 @@ internal static class SourceBuildConfigurationFilters
                 item => item.SourceRepositoryId,
                 sourceRepositoryId));
 
-    public static FilterDefinition<SourceBuildConfiguration> AtUpdatedAt(
+    public static FilterDefinition<SourceBuildConfiguration> ByName(string tenantId, string name) =>
+        VisibleToTenant(tenantId) & Builders<SourceBuildConfiguration>.Filter.Eq(item => item.TechnicalName, name);
+
+    public static FilterDefinition<SourceBuildConfiguration> AtSnapshot(SourceBuildConfigurationSnapshot expected) =>
+        ById(expected.TenantId, expected.Id) &
+        Builders<SourceBuildConfiguration>.Filter.Eq(item => item.Revision, expected.Revision) &
+        Builders<SourceBuildConfiguration>.Filter.Eq(item => item.SourceRepositoryId, expected.SourceRepositoryId) &
+        Builders<SourceBuildConfiguration>.Filter.Eq(item => item.WebServiceId, expected.WebServiceId);
+
+    public static FilterDefinition<SourceBuildConfiguration> ForQueue(SourceBuildJob job) =>
+        ForInput(job, job.InputVersion.Generation - 1);
+
+    public static FilterDefinition<SourceBuildConfiguration> ForPromotion(SourceBuildJob job) =>
+        ForInput(job, job.InputVersion.Generation);
+
+    private static FilterDefinition<SourceBuildConfiguration> ForInput(SourceBuildJob job, long expectedGeneration) =>
+        ById(job.TenantId, job.ConfigurationId) &
+        Builders<SourceBuildConfiguration>.Filter.Eq(item => item.Revision, job.InputVersion.ConfigurationRevision) &
+        Builders<SourceBuildConfiguration>.Filter.Eq(item => item.BuildGeneration, expectedGeneration) &
+        Builders<SourceBuildConfiguration>.Filter.Eq(item => item.SourceRepositoryId, job.SourceRepositoryId) &
+        Builders<SourceBuildConfiguration>.Filter.Eq(item => item.WebServiceId, job.WebServiceId);
+
+    public static FilterDefinition<SourceBuildConfiguration> AtRevision(
         SourceBuildConfiguration configuration) =>
         Builders<SourceBuildConfiguration>.Filter.And(
             ById(configuration.TenantId, configuration.Id),
             Builders<SourceBuildConfiguration>.Filter.Eq(
-                item => item.UpdatedAtUtc,
-                configuration.UpdatedAtUtc));
+                item => item.Revision,
+                configuration.Revision));
 }
 
 internal static class SourceBuildJobFilters
 {
+    public static FilterDefinition<SourceBuildJob> OwnedLease(SourceBuildExecutionIdentity identity) =>
+        SourceBuildJobFilters.ById(identity.TenantId, identity.BuildJobId) &
+        Builders<SourceBuildJob>.Filter.Eq("Execution.WorkerId", identity.WorkerId) &
+        Builders<SourceBuildJob>.Filter.Eq("Execution.Attempt", identity.Attempt) &
+        new BsonDocument("$expr", new BsonDocument("$gt", new BsonArray { "$Execution.ExpiresAtUtc", "$$NOW" }));
+
+    public static FilterDefinition<SourceBuildJob> LiveLease(SourceBuildJob job) =>
+        job.Execution is ClaimedSourceBuildExecution lease
+            ? OwnedLease(new(job.TenantId, job.Id, lease.WorkerId, lease.Attempt))
+            : Builders<SourceBuildJob>.Filter.Where(_ => false);
+
+    public static FilterDefinition<SourceBuildJob> Recoverable =>
+        Builders<SourceBuildJob>.Filter.OfType<SourceBuildJobState, QueuedSourceBuild>(item => item.State) |
+        (Builders<SourceBuildJob>.Filter
+            .OfType<SourceBuildExecution, ClaimedSourceBuildExecution>(item => item.Execution) &
+            Builders<SourceBuildJob>.Filter.Not(SourceBuildJobFilters.TerminalStates()) &
+            Builders<SourceBuildJob>.Filter.Not(
+                Builders<SourceBuildJob>.Filter.OfType<SourceBuildJobState, DeployingSourceBuild>(item => item.State)) &
+            new BsonDocument("$expr", new BsonDocument("$lte",
+                new BsonArray { "$Execution.ExpiresAtUtc", "$$NOW" })));
+
+    public static FilterDefinition<SourceBuildJob> RecoverableBefore(DateTime cutoffUtc) =>
+        Recoverable & Builders<SourceBuildJob>.Filter.Lte(item => item.UpdatedAtUtc, cutoffUtc);
+
     public static FilterDefinition<SourceBuildJob> ById(string buildJobId) =>
         Builders<SourceBuildJob>.Filter.Eq(item => item.Id, buildJobId);
 
@@ -96,6 +145,7 @@ internal static class SourceBuildJobFilters
     public static FilterDefinition<SourceBuildJob> AtUpdatedAt(SourceBuildJob job) =>
         Builders<SourceBuildJob>.Filter.And(
             ById(job.TenantId, job.Id),
+            Builders<SourceBuildJob>.Filter.Eq(item => item.PromotionFence, job.PromotionFence),
             Builders<SourceBuildJob>.Filter.Eq(item => item.UpdatedAtUtc, job.UpdatedAtUtc));
 
     public static FilterDefinition<SourceBuildJob> StaleQueued(DateTime cutoff) =>
@@ -122,7 +172,7 @@ internal static class SourceBuildJobFilters
             Builders<SourceBuildJob>.Filter.OfType<SourceBuildJobState, DeployingSourceBuild>(
                 item => item.State));
 
-    private static FilterDefinition<SourceBuildJob> TerminalStates() =>
+    internal static FilterDefinition<SourceBuildJob> TerminalStates() =>
         Builders<SourceBuildJob>.Filter.Or(
             Builders<SourceBuildJob>.Filter.OfType<SourceBuildJobState, SucceededSourceBuild>(
                 item => item.State),
@@ -154,4 +204,11 @@ internal static class SourceBuildLogFilters
         (Builders<SourceBuildLog>.Filter.Lte(log => log.ExpiresAtUtc, now) &
             Builders<SourceBuildLog>.Filter.Not(Builders<SourceBuildLog>.Filter.OfType<SourceBuildLogState, ExpiredSourceBuildLog>(value => value.State))) |
         (Builders<SourceBuildLog>.Filter.OfType<SourceBuildLogState, OpenSourceBuildLog>(value => value.State) & Builders<SourceBuildLog>.Filter.Lte("State.LeaseExpiresAtUtc", now));
+}
+
+internal static class SourceBuildPromotionReceiptFilters
+{
+    public static FilterDefinition<SourceBuildPromotionReceipt> ByJob(SourceBuildPromotionRequest request) =>
+        Builders<SourceBuildPromotionReceipt>.Filter.Eq(item => item.TenantId, request.TenantId) &
+        Builders<SourceBuildPromotionReceipt>.Filter.Eq(item => item.Id, request.BuildJobId);
 }

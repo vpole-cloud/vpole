@@ -14,6 +14,7 @@ public sealed record WebServiceDto(
     string ResourceGroupId,
     string IsolationScopeId,
     long ActiveRevision,
+    string Lifecycle,
     WebServiceSpecDto Spec,
     WebServiceExposureDto Exposure,
     IReadOnlyList<PlacementSummaryDto> Deployments,
@@ -56,7 +57,7 @@ public sealed record WebServiceReleaseProvenanceDto(
     string? CommitSha,
     string? BuildUrl,
     string? ImageDigest,
-    string PreviousImageTag,
+    string? PreviousImageTag,
     string NewImageTag,
     string ActorType,
     string? DeploymentTokenId,
@@ -88,10 +89,18 @@ public sealed record WebServiceExposureDto(
     string GeneratedHostnameLabelPrefix);
 
 public sealed record WebServiceSpecDto(
-    ImageInfoDto Image,
+    ImageInfoDto? Image,
     WebServiceConfigDto Config,
     AutoscalingSpecDto? Autoscaling,
-    ProbeSpecDto Probes);
+    ProbeSpecDto Probes,
+    WebServiceImageAuthorityDto? ImageAuthority = null);
+
+public sealed record WebServiceImageAuthorityDto(
+    string Mode,
+    string? ConfigurationId,
+    string? JobId,
+    long? Generation,
+    string? Digest);
 
 public sealed record AutoscalingSpecDto(
     int MinReplicas,
@@ -160,6 +169,13 @@ public static class WebServiceDtoExtensions
         webService.ResourceGroupId,
         webService.IsolationScopeId,
         webService.ActiveRevision,
+        webService.Lifecycle switch
+        {
+            PreparedWebServiceLifecycle => "Prepared",
+            AwaitingFirstArtifactWebServiceLifecycle => "AwaitingFirstArtifact",
+            ActiveWebServiceLifecycle => "Active",
+            DeletingWebServiceLifecycle => "Deleting"
+        },
         webService.Spec.ToDto(),
         webService.Exposure.ToDto(),
         deployments ?? [],
@@ -255,11 +271,18 @@ public static class WebServiceDtoExtensions
         new(exposure.Mode.ToString(), exposure.GeneratedHostnameLabelPrefix);
 
     public static WebServiceSpecDto ToDto(this WebServiceSpec spec) => new(
-        spec.Image.ToDto(),
+        spec.Image.ResolvedImage?.ToDto(),
         spec.Config.ToDto(),
         spec.Autoscaling?.ToDto(),
-        spec.Probes.ToDto()
-    );
+        spec.Probes.ToDto(),
+        spec.Image switch
+        {
+            ImageInfo => new("Direct", null, null, null, null),
+            UnboundSourceBuildImage => new("UnboundSourceBuild", null, null, null, null),
+            PendingSourceBuildImage pending => new("PendingSourceBuild", pending.ConfigurationId, null, null, null),
+            DeliveredSourceBuildImage delivered => new("DeliveredSourceBuild", delivered.ConfigurationId,
+                delivered.JobId, delivered.Generation, delivered.Digest)
+        });
 
     public static AutoscalingSpecDto ToDto(this AutoscalingSpec autoscaling) => new(
         autoscaling.MinReplicas,
@@ -308,7 +331,7 @@ public static class WebServiceDtoExtensions
     );
 
     public static WebServiceSpec ToDomain(this WebServiceSpecDto dto) => new(
-        dto.Image.ToDomain(),
+        dto.Image is { } image ? image.ToDomain() : new UnboundSourceBuildImage(),
         dto.Config.ToDomain(),
         dto.Autoscaling?.ToDomain(),
         dto.Probes.ToDomain()

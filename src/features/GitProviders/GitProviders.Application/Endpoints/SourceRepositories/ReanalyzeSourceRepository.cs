@@ -21,16 +21,13 @@ public sealed record ReanalyzeSourceRepositoryRequest(
     : IMediatorRequest<ReanalyzeSourceRepositoryOutcome>, ITenantWriteOperation;
 
 public union ReanalyzeSourceRepositoryOutcome(
-    SourceRepositoryDto,
+    RepositoryAnalysisDto,
     SourceRepositoryNotFound,
-    AnalyzeProviderRepositoryError,
-    SourceRepositorySelectedBuildPlanUnavailable);
+    AnalyzeProviderRepositoryError);
 
 public sealed class ReanalyzeSourceRepositoryHandler(
     LoadSourceRepository loadSourceRepository,
-    AnalyzeProviderRepository analyzeProviderRepository,
-    PersistReanalyzedSourceRepository persistReanalyzedSourceRepository,
-    TimeProvider timeProvider)
+    AnalyzeProviderRepository analyzeProviderRepository)
     : IMediatorOutcomeHandler<ReanalyzeSourceRepositoryRequest, ReanalyzeSourceRepositoryOutcome>
 {
     public async Task<ReanalyzeSourceRepositoryOutcome> HandleAsync(
@@ -50,43 +47,7 @@ public sealed class ReanalyzeSourceRepositoryHandler(
         return analyzed switch
         {
             AnalyzeProviderRepositoryError error => error,
-            AnalyzedProviderRepository success => await PersistAsync(
-                existing,
-                success,
-                persistReanalyzedSourceRepository,
-                timeProvider,
-                cancellationToken)
-        };
-    }
-
-    private static async Task<ReanalyzeSourceRepositoryOutcome> PersistAsync(
-        SourceRepository existing,
-        AnalyzedProviderRepository analyzed,
-        PersistReanalyzedSourceRepository persistReanalyzedSourceRepository,
-        TimeProvider timeProvider,
-        CancellationToken cancellationToken)
-    {
-        var selectedPlan = analyzed.Analysis.Candidates.FirstOrDefault(candidate =>
-            string.Equals(candidate.CandidateKey, existing.CandidateKey, StringComparison.Ordinal));
-        if (selectedPlan is null)
-        {
-            return new SourceRepositorySelectedBuildPlanUnavailable(
-                    existing.Id,
-                    existing.CandidateKey);
-        }
-
-        var now = timeProvider.GetUtcNow().UtcDateTime;
-        var updated = await persistReanalyzedSourceRepository(
-            existing,
-            analyzed.Repository,
-            analyzed.Analysis,
-            selectedPlan,
-            now,
-            cancellationToken);
-        return updated switch
-        {
-            SourceRepository success => success.ToDto(),
-            SourceRepositoryNotFound error => error
+            AnalyzedProviderRepository success => success.Analysis.ToDto(success.Repository)
         };
     }
 }
@@ -110,14 +71,13 @@ public static class ReanalyzeSourceRepositoryEndpoint
                 var result = await mediator.Send(request, cancellationToken);
                 return result.ToHttpResult(outcome => outcome switch
                 {
-                    SourceRepositoryDto repository => Results.Ok(repository),
+                    RepositoryAnalysisDto analysis => Results.Ok(analysis),
                     SourceRepositoryNotFound error => MapSourceRepositoryNotFound(error),
-                    AnalyzeProviderRepositoryError error => MapAnalyzeError(error),
-                    SourceRepositorySelectedBuildPlanUnavailable error => MapSelectedBuildPlanUnavailable(error)
+                    AnalyzeProviderRepositoryError error => MapAnalyzeError(error)
                 });
             })
             .WithName("ReanalyzeSourceRepository")
-            .Produces<SourceRepositoryDto>()
+            .Produces<RepositoryAnalysisDto>()
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity)

@@ -127,11 +127,9 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
             transaction.InvokeOutcomeAsync<CreateManagedDomainZoneOutcome>(async (context, cancellationToken) =>
             {
                 var result = await reservation.InvokeAsync(
-                    tenantId,
-                    targetId,
-                    label,
-                    "apps.example.test",
-                    expectedWorkloadConfigurationRevision: 1,
+                    new CreateManagedDomainZoneCommand(
+                        ObjectId.GenerateNewId().ToString(), tenantId, targetId,
+                        "zone-" + ObjectId.GenerateNewId(), label, "apps.example.test", 1),
                     context.Session,
                     cancellationToken);
 

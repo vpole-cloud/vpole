@@ -13,6 +13,19 @@ public static class DomainPersistenceRegistration
     /// <summary>Registers only the provider-owned domain capabilities and transaction delegates.</summary>
     public static IServiceCollection AddDomainPersistence(this IServiceCollection services)
     {
+        services.AddScoped<MongoDomainPlanning>();
+        services.AddScoped<ResolveNamedDomainZone>(provider =>
+            provider.GetRequiredService<MongoDomainPlanning>().ResolveZoneAsync);
+        services.AddScoped<ResolveNamedHostnameBinding>(provider =>
+            provider.GetRequiredService<MongoDomainPlanning>().ResolveBindingAsync);
+        services.AddScoped<LoadDomainZoneForPlanning>(provider =>
+            provider.GetRequiredService<MongoDomainPlanning>().LoadZoneAsync);
+        services.AddScoped<LoadHostnameBindingForPlanning>(provider =>
+            provider.GetRequiredService<MongoDomainPlanning>().LoadBindingAsync);
+        services.AddScoped<FenceDomainZone>(provider =>
+            provider.GetRequiredService<MongoDomainPlanning>().FenceZoneAsync);
+        services.AddScoped<FenceHostnameBinding>(provider =>
+            provider.GetRequiredService<MongoDomainPlanning>().FenceBindingAsync);
         services.AddScoped<MongoLoadTenantDomainZone>();
         services.AddScoped<LoadTenantDomainZone>(provider =>
             provider.GetRequiredService<MongoLoadTenantDomainZone>().InvokeAsync);

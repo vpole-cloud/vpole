@@ -116,7 +116,7 @@ export async function linkProviderRepository(
   connectionId: string,
   repositoryId: string,
   branch: string,
-  candidateKey: string,
+  technicalName: string,
   token?: string,
   tenantId?: string,
   signal?: AbortSignal,
@@ -127,7 +127,7 @@ export async function linkProviderRepository(
       method: 'POST',
       headers: buildHeaders(token, tenantId),
       signal,
-      body: JSON.stringify({ branch, candidateKey }),
+      body: JSON.stringify({ branch, technicalName }),
     },
   )
 }
@@ -151,7 +151,7 @@ export async function reanalyzeSourceRepository(
   tenantId?: string,
   signal?: AbortSignal,
 ) {
-  return sendJson<SourceRepository>(
+  return sendJson<RepositoryAnalysis>(
     `${apiBaseUrl}/api/v1/source-repositories/${encodeURIComponent(sourceRepositoryId)}/reanalyze`,
     {
       method: 'POST',

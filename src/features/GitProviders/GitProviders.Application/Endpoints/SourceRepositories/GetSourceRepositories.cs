@@ -7,6 +7,7 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.Persistence.Repositories;
 using Pole.Mediator;
+using Pole.Features.GitOps.Contracts;
 
 namespace Pole.Features.GitProviders.Application.Endpoints.SourceRepositories;
 
@@ -16,7 +17,7 @@ public sealed record GetSourceRepositoriesRequest(
 
 public union GetSourceRepositoriesOutcome(IReadOnlyList<SourceRepositoryDto>);
 
-public sealed class GetSourceRepositoriesHandler(LoadSourceRepositories loadSourceRepositories)
+public sealed class GetSourceRepositoriesHandler(LoadSourceRepositories loadSourceRepositories, IGitOpsMutations git)
     : IMediatorOutcomeHandler<GetSourceRepositoriesRequest, GetSourceRepositoriesOutcome>
 {
     public async Task<GetSourceRepositoriesOutcome> HandleAsync(
@@ -24,7 +25,10 @@ public sealed class GetSourceRepositoriesHandler(LoadSourceRepositories loadSour
         CancellationToken cancellationToken = default)
     {
         var repositories = await loadSourceRepositories(request.TenantId, cancellationToken);
-        return repositories.Select(item => item.ToDto()).ToArray();
+        var statuses = await git.StatusesAsync(new(request.TenantId, "SourceRepository",
+            repositories.Select(item => item.Id).ToArray()), cancellationToken);
+        return repositories.Select(item => item.ToDto() with
+        { GitOps = statuses.GetValueOrDefault(item.Id) }).ToArray();
     }
 }
 

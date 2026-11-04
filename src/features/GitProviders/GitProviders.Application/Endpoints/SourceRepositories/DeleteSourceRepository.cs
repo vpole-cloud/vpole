@@ -22,7 +22,8 @@ public sealed record DeleteSourceRepositoryRequest(
 public union DeleteSourceRepositoryOutcome(
     string,
     SourceRepositoryNotFound,
-    SourceRepositoryHasBuildConfiguration);
+    SourceRepositoryHasBuildConfiguration,
+    SourceRepositoryGitOwned);
 
 public sealed class DeleteSourceRepositoryRequestValidator
     : AbstractValidator<DeleteSourceRepositoryRequest>
@@ -32,7 +33,6 @@ public sealed class DeleteSourceRepositoryRequestValidator
 }
 
 public sealed class DeleteSourceRepositoryHandler(
-    EnsureNoSourceRepositoryBuildConfiguration ensureNoSourceRepositoryBuildConfiguration,
     DeleteSourceRepository deleteSourceRepository)
     : IMediatorOutcomeHandler<DeleteSourceRepositoryRequest, DeleteSourceRepositoryOutcome>
 {
@@ -40,31 +40,13 @@ public sealed class DeleteSourceRepositoryHandler(
         DeleteSourceRepositoryRequest request,
         CancellationToken cancellationToken = default)
     {
-        var configurationGuard = await ensureNoSourceRepositoryBuildConfiguration(
-            request.TenantId,
-            request.Id,
-            cancellationToken);
-        return configurationGuard switch
-        {
-            SourceBuildSourceRepositoryConfigurationExists =>
-                new SourceRepositoryHasBuildConfiguration(request.Id),
-            NoSourceRepositoryBuildConfiguration => await DeleteAsync(
-                request,
-                deleteSourceRepository,
-                cancellationToken)
-        };
-    }
-
-    private static async Task<DeleteSourceRepositoryOutcome> DeleteAsync(
-        DeleteSourceRepositoryRequest request,
-        DeleteSourceRepository deleteSourceRepository,
-        CancellationToken cancellationToken)
-    {
         var deleted = await deleteSourceRepository(request.TenantId, request.Id, cancellationToken);
         return deleted switch
         {
             SourceRepositoryDeleted => request.Id,
-            SourceRepositoryNotFound error => error
+            SourceRepositoryNotFound error => error,
+            SourceRepositoryHasBuildConfiguration conflict => conflict,
+            SourceRepositoryGitOwned conflict => conflict
         };
     }
 }
@@ -83,7 +65,8 @@ public static class DeleteSourceRepositoryEndpoint
                 {
                     string _ => Results.NoContent(),
                     SourceRepositoryNotFound error => MapSourceRepositoryNotFound(error),
-                    SourceRepositoryHasBuildConfiguration error => MapSourceRepositoryHasBuildConfiguration(error)
+                    SourceRepositoryHasBuildConfiguration error => MapSourceRepositoryHasBuildConfiguration(error),
+                    SourceRepositoryGitOwned error => MapSourceRepositoryGitOwned(error)
                 });
             })
             .WithName("DeleteSourceRepository")

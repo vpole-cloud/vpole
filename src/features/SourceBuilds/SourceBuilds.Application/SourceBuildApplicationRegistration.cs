@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using Pole.Features.Realtime.Contracts;
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.SourceBuilds.Application.Execution;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Jobs;
@@ -23,6 +24,9 @@ public static class SourceBuildApplicationRegistration
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        services.AddScoped<DeclarativeSourceBuildConfigurationProvider>();
+        services.AddScoped<IDeclarativeResourceProvider>(provider =>
+            provider.GetRequiredService<DeclarativeSourceBuildConfigurationProvider>());
         services.AddSingleton(new RealtimeTopic("source-builds", RealtimeScope.Tenant));
         services.Configure<SourceBuildExecutionOptions>(
             configuration.GetSection(SourceBuildExecutionOptions.SectionName));
@@ -61,6 +65,19 @@ public static class SourceBuildApplicationRegistration
             .GetRequiredService<IMongoDatabase>()
             .GetCollection<SourceBuildJob>("SourceBuildJobs"));
 
+        services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
+            .GetCollection<SourceBuildPromotionReceipt>("SourceBuildPromotionReceipts"));
+        services.AddCapability<SourceBuildPromotion, BeginSourceBuildPromotion>(implementation =>
+            implementation.BeginAsync);
+        services.AddCapability<SourceBuildPromotion, CompleteSourceBuildPromotion>(implementation =>
+            implementation.CompleteAsync);
+
+        services.AddCapability<SourceBuildConfigurationReferences, LoadSourceBuildConfigurationReference>(
+            implementation => implementation.LoadAsync);
+        services.AddCapability<SourceBuildConfigurationReferences, FindNamedSourceBuildConfiguration>(
+            implementation => implementation.FindNamedAsync);
+        services.AddCapability<SourceBuildConfigurationReferences, FenceSourceBuildConfiguration>(
+            implementation => implementation.FenceAsync);
         services.AddCapability<MongoLoadSourceBuildConfiguration, LoadSourceBuildConfiguration>(implementation =>
             implementation.InvokeAsync);
         services.AddCapability<MongoLoadSourceBuildConfigurations, LoadSourceBuildConfigurations>(implementation =>
@@ -73,11 +90,11 @@ public static class SourceBuildApplicationRegistration
             implementation.InvokeAsync);
         services.AddCapability<MongoLoadSourceBuildJob, LoadSourceBuildJob>(implementation =>
             implementation.InvokeAsync);
-        services.AddCapability<MongoLoadSourceBuildJobForExecution, LoadSourceBuildJobForExecution>(implementation =>
-            implementation.InvokeAsync);
         services.AddCapability<MongoLoadSourceBuildJobPage, LoadSourceBuildJobPage>(implementation =>
             implementation.InvokeAsync);
         services.AddCapability<MongoQueueSourceBuildJob, QueueSourceBuildJob>(implementation =>
+            implementation.InvokeAsync);
+        services.AddCapability<MongoRenewSourceBuildExecution, RenewSourceBuildExecution>(implementation =>
             implementation.InvokeAsync);
         services.AddCapability<MongoClaimQueuedSourceBuildJob, ClaimQueuedSourceBuildJob>(implementation =>
             implementation.InvokeAsync);

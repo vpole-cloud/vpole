@@ -2,6 +2,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Outbox.Contracts;
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
 
@@ -10,7 +11,8 @@ namespace Pole.Features.Domains.Application.Persistence.HostnameBindings;
 internal sealed class MongoDeleteCustomHostnameBinding(
     IMongoDatabase database,
     MongoHostnameBindingCleanup cleanup,
-    StoreOutboxWrites outbox)
+    StoreOutboxWrites outbox,
+    IGitOpsMutations git)
 {
     private readonly IMongoCollection<TenantDomainZone> zones =
         database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
@@ -32,6 +34,10 @@ internal sealed class MongoDeleteCustomHostnameBinding(
             return new CustomHostnameBindingError(
                 new CustomHostnameBindingNotFound(request.BindingId));
         }
+
+        if (!await git.AuthorizeAsync(new(request.TenantId, "HostnameBinding", binding.Id, Context: null),
+                session, cancellationToken))
+            return new CustomHostnameBindingGitOwned(binding.Id);
 
         if (binding.Kind == HostnameBindingKind.Generated)
         {

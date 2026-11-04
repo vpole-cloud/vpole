@@ -3,7 +3,7 @@ using System.Collections.Immutable;
 namespace Pole.Features.WebServices.Events;
 
 public sealed record WebServiceSpecSnapshot(
-    WebServiceImageInfoSnapshot Image,
+    WebServiceImageSnapshot Image,
     WebServiceConfigSnapshot Config,
     AutoscalingSpecSnapshot? Autoscaling,
     WebServiceProbeSpecSnapshot Probes);
@@ -58,7 +58,7 @@ public sealed record WebServiceImageInfoSnapshot(
     string Server,
     string Name,
     string Tag = "latest",
-    string? SecretName = null)
+    string? SecretName = null) : WebServiceImageSnapshot
 {
     public string FullImageName => $"{Server}/{Name}:{Tag}";
 }

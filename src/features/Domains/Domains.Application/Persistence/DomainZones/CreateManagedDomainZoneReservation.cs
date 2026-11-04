@@ -1,4 +1,4 @@
-using MongoDB.Bson;
+using Pole.Database;
 using MongoDB.Driver;
 using Pole.Dns;
 using Pole.Features.Outbox.Contracts;
@@ -12,6 +12,17 @@ namespace Pole.Features.Domains.Application.Persistence.DomainZones;
 
 public sealed record ManagedDomainZoneAlreadyReserved(string Domain);
 
+public sealed record ManagedDomainZoneNameConflict(string TechnicalName);
+
+public sealed record CreateManagedDomainZoneCommand(
+    string Id,
+    string TenantId,
+    string DeploymentTargetId,
+    string TechnicalName,
+    string Label,
+    string PublicBaseDomain,
+    long ExpectedWorkloadConfigurationRevision);
+
 public sealed record ManagedDomainZoneDeploymentTargetChanged(
     string DeploymentTargetId);
 
@@ -21,16 +32,13 @@ public sealed record ManagedDomainZoneReferenceRejected(
 public union CreateManagedDomainZoneOutcome(
     TenantDomainZoneSnapshot,
     ManagedDomainZoneAlreadyReserved,
+    ManagedDomainZoneNameConflict,
     ManagedDomainZoneDeploymentTargetChanged,
     ManagedDomainZoneReferenceRejected);
 
 public delegate Task<CreateManagedDomainZoneOutcome>
     CreateManagedDomainZoneReservation(
-        string tenantId,
-        string deploymentTargetId,
-        string label,
-        string publicBaseDomain,
-        long expectedWorkloadConfigurationRevision,
+        CreateManagedDomainZoneCommand request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default);
 
@@ -46,43 +54,45 @@ internal sealed class MongoCreateManagedDomainZoneReservation(
 
     public async Task<CreateManagedDomainZoneOutcome>
         InvokeAsync(
-            string tenantId,
-            string deploymentTargetId,
-            string label,
-            string publicBaseDomain,
-            long expectedWorkloadConfigurationRevision,
+            CreateManagedDomainZoneCommand request,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
     {
         DomainTransactions.EnsureActive(session);
         var zone = TenantDomainZoneFactory.CreateManagedReservation(
-            tenantId,
-            deploymentTargetId,
-            label,
-            DnsName.Create(publicBaseDomain),
+            request.TenantId,
+            request.DeploymentTargetId,
+            request.Label,
+            DnsName.Create(request.PublicBaseDomain),
+            request.TechnicalName,
             new TenantDomainZoneFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(),
+                request.Id,
                 timeProvider.GetUtcNow().UtcDateTime));
 
         var fence = await fenceDeploymentTargetWorkloadConfigurations(
             [
                 new DeploymentTargetWorkloadConfigurationFenceRequest(
-                    deploymentTargetId,
-                    expectedWorkloadConfigurationRevision)
+                    request.DeploymentTargetId,
+                    request.ExpectedWorkloadConfigurationRevision)
             ],
             session,
             cancellationToken);
         if (fence is DeploymentTargetWorkloadConfigurationFenceRejected)
         {
-            return new ManagedDomainZoneDeploymentTargetChanged(deploymentTargetId);
+            return new ManagedDomainZoneDeploymentTargetChanged(request.DeploymentTargetId);
         }
 
         try
         {
             await zones.InsertOneAsync(session, zone, cancellationToken: cancellationToken);
         }
-        catch (MongoWriteException exception) when (
-            exception.WriteError.Category == ServerErrorCategory.DuplicateKey)
+        catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(
+            exception, DomainIndexNames.ZoneTechnicalName, zones.CollectionNamespace.CollectionName))
+        {
+            return new ManagedDomainZoneNameConflict(request.TechnicalName);
+        }
+        catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(
+            exception, DomainIndexNames.ZoneTargetDomain, zones.CollectionNamespace.CollectionName))
         {
             return new ManagedDomainZoneAlreadyReserved(zone.Domain);
         }
@@ -97,7 +107,7 @@ internal sealed class MongoCreateManagedDomainZoneReservation(
             session: session,
             cancellationToken: cancellationToken);
         if (registered is not DeploymentTargetReferencesChanged)
-            return new ManagedDomainZoneReferenceRejected(deploymentTargetId);
+            return new ManagedDomainZoneReferenceRejected(request.DeploymentTargetId);
         await outbox(session, [OutboxWrite.Create(zone.ToChangedEvent())], cancellationToken);
         return zone.ToSnapshot();
     }

@@ -189,7 +189,7 @@ export function useWebServicesManager({
   const addHostname = async (
     webServiceId: string,
     deploymentId: string,
-    input: { tenantDomainZoneId: string; relativeName: string },
+    input: { tenantDomainZoneId: string; relativeName: string; technicalName: string },
   ) => {
     await submit(
       () =>

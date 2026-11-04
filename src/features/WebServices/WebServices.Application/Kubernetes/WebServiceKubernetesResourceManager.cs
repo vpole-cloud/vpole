@@ -151,7 +151,7 @@ public static class WebServiceKubernetesResourceManager
         WebServiceInKubernetes webService,
         CancellationToken cancellationToken = default)
     {
-        if (webService.WebService.Lifecycle is PreparedWebServiceLifecycle)
+        if (webService.WebService.Lifecycle is not ActiveWebServiceLifecycle)
             throw new InvalidOperationException("The WebService is not configured yet.");
 
         _ = webService.ToHorizontalPodAutoscaler();
@@ -202,7 +202,7 @@ public static class WebServiceKubernetesResourceManager
         WebServiceInKubernetes webService,
         CancellationToken cancellationToken = default)
     {
-        if (webService.WebService.Lifecycle is PreparedWebServiceLifecycle)
+        if (webService.WebService.Lifecycle is not ActiveWebServiceLifecycle)
             throw new InvalidOperationException("The WebService is not configured yet.");
 
         _ = webService.ToHorizontalPodAutoscaler();
@@ -268,7 +268,7 @@ public static class WebServiceKubernetesResourceManager
         var stage = "preparing the deployment manifest";
         try
         {
-            if (webService.WebService.Lifecycle is PreparedWebServiceLifecycle)
+            if (webService.WebService.Lifecycle is not ActiveWebServiceLifecycle)
                 return new WebServiceKubernetesApplyRejected(
                     "WebServiceConfigurationPending", "The WebService is not configured yet.");
 

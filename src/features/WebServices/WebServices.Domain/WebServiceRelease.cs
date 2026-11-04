@@ -66,7 +66,7 @@ public sealed record ExternalImageTagUpdateProvenance(
     string? CommitSha,
     string? BuildUrl,
     string? ImageDigest,
-    string PreviousImageTag,
+    string? PreviousImageTag,
     string NewImageTag,
     string ActorType,
     string? DeploymentTokenId,
@@ -77,14 +77,14 @@ public sealed record SourceBuildReleaseProvenance(
     string SourceRepositoryId,
     string CommitSha,
     string ImageDigest,
-    string PreviousImageReference,
+    string? PreviousImageReference,
     string NewImageReference) : WebServiceReleaseProvenance;
 
 public sealed record GitOpsReleaseProvenance(
     string SourceId,
     string RunId,
     string CommitSha,
-    string PreviousImageTag,
+    string? PreviousImageTag,
     string NewImageTag) : WebServiceReleaseProvenance;
 
 public static class WebServiceReleaseFactory

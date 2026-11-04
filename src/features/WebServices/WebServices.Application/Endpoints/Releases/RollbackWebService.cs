@@ -95,7 +95,7 @@ public sealed class RollbackWebServiceHandler(
                 new WebServiceNotFound(request.Id)));
         if (request.Body.ExpectedRevision != webService.ActiveRevision)
             return Error(new RollbackWebServiceError(new WebServiceUpdateConflict(webService.Id)));
-        if (webService.Lifecycle is not ActiveWebServiceLifecycle)
+        if (webService.Lifecycle is not ActiveWebServiceLifecycle || webService.Spec.Image is not ImageInfo)
             return Error(new RollbackWebServiceStateError(
                 new WebServiceUpdateUnavailable(webService.Id)));
 
@@ -109,6 +109,9 @@ public sealed class RollbackWebServiceHandler(
                 new WebServiceReleaseNotFound(
                     webService.Id,
                     request.Body.TargetRevision)));
+        if (sourceRelease.Spec.Image is not ImageInfo)
+            return Error(new RollbackWebServiceStateError(new WebServiceUpdateUnavailable(webService.Id)));
+
         if (sourceRelease.ResourceRevision >= webService.ActiveRevision)
             return Error(new RollbackWebServiceStateError(
                 new WebServiceRollbackRevisionNotEligible(webService.Id, request.Body.TargetRevision)));

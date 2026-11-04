@@ -11,6 +11,7 @@ public sealed record WebServiceUpdatedEvent(
     string ResourceGroupId,
     string IsolationScopeId,
     long ResourceRevision,
+    WebServiceLifecycleState Lifecycle,
     WebServiceSpecSnapshot Spec,
     WebServiceExposureSnapshot Exposure,
     ImmutableHashSet<string> Tags,

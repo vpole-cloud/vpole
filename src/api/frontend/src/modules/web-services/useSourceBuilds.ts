@@ -4,7 +4,7 @@ import { useApiScope } from '../../data/useApiScope'
 import { useScopedQuery } from '../../data/useScopedQuery'
 import { useScopedMutation } from '../../hooks/useScopedMutation'
 import { useVisibleRefresh } from '../../hooks/useVisibleRefresh'
-import type { LoadStatus, SourceRepository } from '../../types'
+import type { LoadStatus } from '../../types'
 import {
   createSourceBuildConfiguration,
   deleteSourceBuildConfiguration,
@@ -108,10 +108,9 @@ export function useSourceBuildsManager({
     return value
   }
   const configs = configurations.resource ?? []
-  const repositories = sources.resource ?? []
   return {
     configurations: configs,
-    sourceRepositories: repositories,
+    sourceRepositories: sources.resource ?? [],
     jobs: visibleJobs,
     status:
       configurations.status === 'error' || sources.status === 'error'
@@ -132,13 +131,17 @@ export function useSourceBuildsManager({
     actionError: mutation.error instanceof Error ? mutation.error.message : '',
     hasActiveBuild,
     refresh: () => Promise.all([configurations.refresh(), sources.refresh(), jobs.refresh()]),
-    create: (sourceId: string, serviceId: string) =>
+    create: (
+      sourceId: string,
+      serviceId: string,
+      technicalName: string,
+      recipe: SourceBuildRecipe,
+    ) =>
       action(
         () =>
           createSourceBuildConfiguration(
             apiBaseUrl,
-            sourceId,
-            serviceId,
+            { sourceRepositoryId: sourceId, webServiceId: serviceId, technicalName, recipe },
             scope.credential(),
             tenantId,
           ),
@@ -178,7 +181,14 @@ export function useSourceBuildsManager({
       ),
     updateRecipe: (id: string, recipe: SourceBuildRecipe) =>
       action(
-        () => updateSourceBuildRecipe(apiBaseUrl, id, recipe, scope.credential(), tenantId),
+        () =>
+          updateSourceBuildRecipe(
+            apiBaseUrl,
+            id,
+            { recipe, expectedRevision: configs.find((item) => item.id === id)!.revision },
+            scope.credential(),
+            tenantId,
+          ),
         (updated: SourceBuildConfiguration, guard) =>
           setRead(
             configurations.queryKey,
@@ -189,12 +199,9 @@ export function useSourceBuildsManager({
     reanalyze: (id: string) =>
       action(
         () => reanalyzeSourceRepository(apiBaseUrl, id, scope.credential(), tenantId),
-        (updated: SourceRepository, guard) =>
-          setRead(
-            sources.queryKey,
-            repositories.map((item) => (item.id === updated.id ? updated : item)),
-            guard,
-          ),
+        async (_analysis, guard) => {
+          guard()
+        },
       ),
   }
 }

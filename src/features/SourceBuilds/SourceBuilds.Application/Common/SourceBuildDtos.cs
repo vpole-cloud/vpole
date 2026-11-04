@@ -1,39 +1,24 @@
-using System.Collections.Immutable;
-using Pole.Features.GitProviders.Contracts;
 using Pole.Features.SourceBuilds.Domain;
+using Pole.Features.GitOps.Contracts;
 
 namespace Pole.Features.SourceBuilds.Application.Common;
 
-public sealed record SourceBuildRecipeDto(
-    string CandidateKey,
-    SourceBuildRecipeKind Kind,
-    string SourceRoot,
-    string ManifestPath,
-    ImmutableList<string> Commands,
-    string? StartCommand,
-    string Dockerfile,
-    bool IsCustomized)
+public sealed record SourceBuildRecipeDto(string Dockerfile)
 {
-    public SourceBuildRecipe ToDomain(bool isCustomized) =>
-        new(
-            CandidateKey,
-            Kind,
-            SourceRoot,
-            ManifestPath,
-            Commands,
-            StartCommand,
-            Dockerfile,
-            isCustomized);
+    public SourceBuildRecipe ToDomain() => SourceBuildRecipe.Create(Dockerfile);
 }
 
 public sealed record SourceBuildConfigurationDto(
     string Id,
+    string TechnicalName,
+    long Revision,
     string SourceRepositoryId,
     string WebServiceId,
     SourceBuildRecipeDto Recipe,
-    string CreatedByUserId,
+    string? CreatedByUserId,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc,
+    GitResourceStatus? GitOps);
 
 public sealed record SourceBuildJobStateDto(
     string Status,
@@ -60,43 +45,20 @@ public sealed record SourceBuildJobDto(
 
 public static class SourceBuildDtoMappings
 {
-    public static SourceBuildRecipe ToBuildRecipe(this SourceRepositoryBuildPlanSnapshot plan) =>
-        new(
-            plan.CandidateKey,
-            plan.Kind switch
-            {
-                SourceRepositoryBuildPlanKind.Dockerfile => SourceBuildRecipeKind.Dockerfile,
-                SourceRepositoryBuildPlanKind.DotNet => SourceBuildRecipeKind.DotNet,
-                SourceRepositoryBuildPlanKind.Node => SourceBuildRecipeKind.Node,
-                _ => throw new ArgumentOutOfRangeException(nameof(plan.Kind), plan.Kind, null)
-            },
-            plan.SourceRoot,
-            plan.ManifestPath,
-            plan.Commands.ToImmutableList(),
-            plan.StartCommand,
-            plan.Dockerfile,
-            IsCustomized: false);
-
-    public static SourceBuildConfigurationDto ToDto(this SourceBuildConfiguration configuration) =>
+    public static SourceBuildConfigurationDto ToDto(
+        this SourceBuildConfiguration configuration, GitResourceStatus? gitOps = null) =>
         new(
             configuration.Id,
-            configuration.SourceRepositoryId,
+            configuration.TechnicalName,
+            configuration.Revision, configuration.SourceRepositoryId,
             configuration.WebServiceId,
             configuration.Recipe.ToDto(),
-            configuration.CreatedByUserId,
+            (configuration.Origin as ManualSourceBuildConfigurationOrigin)?.UserId,
             configuration.CreatedAtUtc,
-            configuration.UpdatedAtUtc);
+            configuration.UpdatedAtUtc,
+            gitOps);
 
-    public static SourceBuildRecipeDto ToDto(this SourceBuildRecipe recipe) =>
-        new(
-            recipe.CandidateKey,
-            recipe.Kind,
-            recipe.SourceRoot,
-            recipe.ManifestPath,
-            recipe.Commands,
-            recipe.StartCommand,
-            recipe.Dockerfile,
-            recipe.IsCustomized);
+    public static SourceBuildRecipeDto ToDto(this SourceBuildRecipe recipe) => new(recipe.Dockerfile);
 
     public static SourceBuildJobDto ToDto(this SourceBuildJob job) =>
         new(

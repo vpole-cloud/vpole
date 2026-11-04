@@ -241,7 +241,33 @@ public sealed class ResourceDeploymentDomainTests
             resourceRevision: 2));
     }
 
-    private static ResourceDeployment CreateDeployment(bool runtimeCellReady)
+    [Fact]
+    public void ConfigurePrepared_UpdatesAcceptedPlacementWithoutActivatingRuntime()
+    {
+        var prepared = CreateDeployment(runtimeCellReady: true, deferredActivation: true);
+        var configured = prepared.ConfigurePrepared(prepared.ResolvedPlacement,
+            CreatedAtUtc.AddMinutes(1), resourceRevision: 2, fixedReplicas: 3);
+
+        Assert.IsType<PreparedResourceDeploymentState>(configured.State);
+        Assert.Equal(2, configured.ResourceRevision);
+        Assert.Equal(3, configured.FixedReplicas);
+        Assert.Equal(prepared.Revision + 1, configured.Revision);
+        Assert.Equal(prepared.DesiredGeneration + 1, configured.DesiredGeneration);
+        Assert.Equal(0, configured.ObservedGeneration);
+        Assert.Empty(configured.Endpoints);
+        var restored = BsonSerializer.Deserialize<ResourceDeployment>(configured.ToBson());
+        Assert.Equal(configured.ToBsonDocument(), restored.ToBsonDocument());
+    }
+
+    [Fact]
+    public void ConfigurePrepared_DoesNotRevertAnActiveDeploymentToPrepared()
+    {
+        var active = CreateDeployment(runtimeCellReady: true);
+        Assert.Throws<InvalidOperationException>(() => active.ConfigurePrepared(active.ResolvedPlacement,
+            CreatedAtUtc.AddMinutes(1), resourceRevision: 2, fixedReplicas: 1));
+    }
+
+    private static ResourceDeployment CreateDeployment(bool runtimeCellReady, bool deferredActivation = false)
     {
         var placement = ResolvedResourcePlacement.Create(
             RuntimeCellId,
@@ -266,7 +292,8 @@ public sealed class ResourceDeploymentDomainTests
             ResourceDeploymentFactory.DefaultOptions with
             {
                 Id = DeploymentId,
-                CreatedAtUtc = CreatedAtUtc
+                CreatedAtUtc = CreatedAtUtc,
+                DeferredActivation = deferredActivation
             });
     }
 }

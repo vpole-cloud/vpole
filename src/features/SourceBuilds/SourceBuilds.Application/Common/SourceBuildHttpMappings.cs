@@ -28,6 +28,11 @@ public static class SourceBuildHttpMappings
             "Web service not found",
             ("webServiceId", error.WebServiceId));
 
+    public static HttpProblem MapConfigurationInUse(SourceBuildConfigurationInUse error) =>
+        Problem(HttpStatusCode.Conflict, "source-builds.configurations.in-use",
+            "This configuration is still bound to its web service",
+            ("configurationId", error.ConfigurationId), ("webServiceId", error.WebServiceId));
+
     public static HttpProblem MapConfigurationHasActiveJobs(
         SourceBuildConfigurationHasActiveJobs error) =>
         Problem(
@@ -36,13 +41,17 @@ public static class SourceBuildHttpMappings
             "Wait for active builds to finish before deleting this configuration",
             ("configurationId", error.ConfigurationId));
 
-    public static HttpProblem MapRecipeCandidateChanged(
-        SourceBuildConfigurationRecipeCandidateChanged error) =>
-        Problem(
-            HttpStatusCode.Conflict,
-            "source-builds.configurations.recipe-candidate-changed",
-            "The recipe candidate cannot be changed; relink the source repository candidate instead",
-            ("configurationId", error.ConfigurationId));
+    public static HttpProblem MapConfigurationNameConflict(SourceBuildConfigurationNameConflict error) =>
+        Problem(HttpStatusCode.Conflict, "source-builds.configurations.name-conflict",
+            "A source build configuration already uses this technical name", ("technicalName", error.TechnicalName));
+
+    public static HttpProblem MapConfigurationRepositoryChanged(SourceBuildConfigurationRepositoryChanged error) =>
+        Problem(HttpStatusCode.Conflict, "source-builds.configurations.repository-changed",
+            "The source repository changed", ("sourceRepositoryId", error.SourceRepositoryId));
+
+    public static HttpProblem MapConfigurationGitOwned(SourceBuildConfigurationGitOwned error) =>
+        Problem(HttpStatusCode.Conflict, "source-builds.configurations.git-owned",
+            "Change this configuration through its managing Git source", ("configurationId", error.ConfigurationId));
 
     public static HttpProblem MapConfigurationUpdateConflict(
         SourceBuildConfigurationUpdateConflict error) =>
@@ -58,15 +67,6 @@ public static class SourceBuildHttpMappings
             HttpStatusCode.Conflict,
             "source-builds.configurations.linked-repository-not-found",
             "The linked source repository no longer exists",
-            ("configurationId", error.ConfigurationId),
-            ("sourceRepositoryId", error.SourceRepositoryId));
-
-    public static HttpProblem MapLinkedRepositoryCandidateChanged(
-        SourceBuildLinkedRepositoryCandidateChanged error) =>
-        Problem(
-            HttpStatusCode.Conflict,
-            "source-builds.configurations.linked-repository-candidate-changed",
-            "The linked source candidate changed; update or recreate the build configuration",
             ("configurationId", error.ConfigurationId),
             ("sourceRepositoryId", error.SourceRepositoryId));
 

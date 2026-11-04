@@ -34,6 +34,10 @@ public static class WebServicesFeatureRegistration
         services.AddSingleton(new RealtimeTopic("web-services", RealtimeScope.Tenant));
         services.AddSingleton<SearchSourceType>(WebServiceSearchProjection.SourceType);
         services.AddWebServicePersistence();
+        services.AddScoped<Pole.Features.Domains.Contracts.IHostnameBindingWorkloadCapability,
+            Pole.Features.WebServices.Application.Persistence.WebServiceHostnameAttachmentCapability>();
+        services.AddSingleton(new ResourceConnectionDeclarationKind("WebService",
+            WebServiceResourceDeployment.ResourceType));
         services.AddSingleton(new ResourceConnectionSourceCapability(
             WebServiceResourceDeployment.ResourceType));
         services.TryAddSingleton<WebServiceCountQuota>();

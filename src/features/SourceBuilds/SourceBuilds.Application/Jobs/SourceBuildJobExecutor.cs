@@ -15,7 +15,6 @@ namespace Pole.Features.SourceBuilds.Application.Jobs;
 public sealed class SourceBuildJobExecutor(
     ClaimQueuedSourceBuildJob claimQueuedSourceBuildJob,
     LoadSourceBuildConfiguration loadSourceBuildConfiguration,
-    LoadSourceBuildJobForExecution loadSourceBuildJobForExecution,
     CreateSourceBuildWorkspace createSourceBuildWorkspace,
     PrepareRegistryBuildPush prepareRegistryBuildPush,
     BuildContainerImage buildContainerImage,
@@ -24,25 +23,32 @@ public sealed class SourceBuildJobExecutor(
     TryPersistSourceBuildJob tryPersistSourceBuildJob,
     TimeProvider timeProvider,
     ILogger<SourceBuildJobExecutor> logger,
-    CreateSourceBuildLogCapture createLogCapture)
+    CreateSourceBuildLogCapture createLogCapture,
+    RenewSourceBuildExecution renewExecution,
+    CheckSourceRepositoryBuildAccess checkRepositoryAccess)
 {
     [AutomaticRetry(Attempts = 0)]
     public async Task ExecuteAsync(string buildJobId)
     {
         var job = await claimQueuedSourceBuildJob(
-            buildJobId,
-            timeProvider.GetUtcNow().UtcDateTime);
+            new(buildJobId, Guid.NewGuid().ToString("N")));
         if (job is null)
             return;
 
+        var execution = (ClaimedSourceBuildExecution)job.Execution;
+        var trigger = (ManualSourceBuildTrigger)job.Trigger;
+        await using var heartbeat = new SourceBuildHeartbeat(
+            new(job.TenantId, job.Id, execution.WorkerId, execution.Attempt), renewExecution, timeProvider);
+        var cancellationToken = heartbeat.Token;
         await using var capture = await createLogCapture(job);
-        await capture.WriteAsync(SourceBuildLogStream.System, "Source build started. Repository archive preparation is in progress.\n");
+        await capture.WriteAsync(SourceBuildLogStream.System,
+            "Source build started. Repository archive preparation is in progress.\n");
 
         try
         {
             var configuration = await loadSourceBuildConfiguration(
                 job.TenantId,
-                job.ConfigurationId);
+                job.ConfigurationId, cancellationToken);
             if (configuration is null)
             {
                 await FailAsync(
@@ -53,11 +59,19 @@ public sealed class SourceBuildJobExecutor(
                 return;
             }
 
+            if (configuration.Revision != job.InputVersion.ConfigurationRevision ||
+                configuration.BuildGeneration != job.InputVersion.Generation)
+            {
+                await FailAsync(job, SourceBuildPhase.Cloning, "SupersededBuild",
+                    "A newer build request or configuration superseded this build.");
+                return;
+            }
+
             var workspaceResult = await createSourceBuildWorkspace(
                 job.TenantId,
                 job.SourceRepositoryId,
                 job.CommitSha,
-                job.Id);
+                job.Id, cancellationToken);
             if (workspaceResult is CreateSourceBuildWorkspaceError workspaceError)
             {
                 await FailAsync(job, SourceBuildPhase.Cloning, workspaceError);
@@ -68,7 +82,7 @@ public sealed class SourceBuildJobExecutor(
             await using (workspaceValue)
             {
                 var analyzing = job.StartAnalyzing(timeProvider.GetUtcNow().UtcDateTime);
-                if (!await tryPersistSourceBuildJob(job, analyzing))
+                if (!await tryPersistSourceBuildJob(job, analyzing, cancellationToken))
                     return;
                 job = analyzing;
 
@@ -81,37 +95,21 @@ public sealed class SourceBuildJobExecutor(
                         "The selected build recipe does not contain a Dockerfile.");
                     return;
                 }
-                var manifestPath = Path.GetFullPath(Path.Combine(
-                    workspaceValue.SourcePath,
-                    job.Recipe.ManifestPath.Replace('/', Path.DirectorySeparatorChar)));
-                if (!manifestPath.StartsWith(
-                        Path.GetFullPath(workspaceValue.SourcePath) + Path.DirectorySeparatorChar,
-                        PathComparison) ||
-                    !File.Exists(manifestPath))
-                {
-                    await FailAsync(
-                        job,
-                        SourceBuildPhase.Analyzing,
-                        "BuildManifestMissing",
-                        "The selected build manifest is missing at the requested commit.");
-                    return;
-                }
-
                 var building = job.StartBuilding(timeProvider.GetUtcNow().UtcDateTime);
-                if (!await tryPersistSourceBuildJob(job, building))
+                if (!await tryPersistSourceBuildJob(job, building, cancellationToken))
                     return;
                 job = building;
-                await capture.WriteAsync(SourceBuildLogStream.System, "BuildKit build and registry push are starting.\n");
+                await capture.WriteAsync(SourceBuildLogStream.System,
+                    "BuildKit build and registry push are starting.\n");
 
-                var actorUserId = (job.Trigger as ManualSourceBuildTrigger)?.UserId ?? "source-build-worker";
                 var repositoryName = $"web-services/{job.WebServiceId}";
-                var tag = $"build-{job.Id}";
+                var tag = $"build-{job.Id}-attempt-{execution.Attempt}";
                 var registryAccessResult = await prepareRegistryBuildPush(
                     new PrepareRegistryBuildPushRequest(
                         TenantId: job.TenantId,
-                        InitiatedByUserId: actorUserId,
+                        InitiatedByUserId: trigger.UserId,
                         RepositoryName: repositoryName,
-                        Tag: tag));
+                        Tag: tag), cancellationToken);
                 if (registryAccessResult.Value is PrepareRegistryBuildPushError accessError)
                 {
                     await FailAsync(job, SourceBuildPhase.Building, accessError);
@@ -127,20 +125,23 @@ public sealed class SourceBuildJobExecutor(
                         registryAccess.Username,
                         registryAccess.Secret,
                         capture.WriteAsync,
-                        capture.MarkUnavailable));
+                        capture.MarkUnavailable), cancellationToken);
                 if (imageResult is BuildContainerImageError imageError)
                 {
-                    await capture.WriteAsync(SourceBuildLogStream.System, "BuildKit did not produce an accepted image. Inspect the job's fixed failure summary.\n");
+                    await capture.WriteAsync(SourceBuildLogStream.System,
+                        "BuildKit did not produce an accepted image. Inspect the job's fixed failure summary.\n");
                     await FailAsync(job, SourceBuildPhase.Building, imageError);
                     return;
                 }
                 var image = (BuiltContainerImage)imageResult.Value;
-                await capture.WriteAsync(SourceBuildLogStream.System, "BuildKit output capture finished; deployment outcome is tracked separately.\n");
+                await capture.WriteAsync(SourceBuildLogStream.System,
+                    "BuildKit output capture finished; deployment outcome is tracked separately.\n");
 
                 var pushing = job.StartPushing(
                     image.Reference,
+                    image.Digest,
                     timeProvider.GetUtcNow().UtcDateTime);
-                if (!await tryPersistSourceBuildJob(job, pushing))
+                if (!await tryPersistSourceBuildJob(job, pushing, cancellationToken))
                     return;
                 job = pushing;
 
@@ -149,7 +150,7 @@ public sealed class SourceBuildJobExecutor(
                         TenantId: job.TenantId,
                         RegistryProjectId: registryAccess.RegistryProjectId,
                         RepositoryName: repositoryName,
-                        Reference: tag));
+                        Reference: tag), cancellationToken);
                 if (artifactResult.Value is GetTenantRegistryArtifactError artifactError)
                 {
                     await FailAsync(job, SourceBuildPhase.Pushing, artifactError);
@@ -170,7 +171,22 @@ public sealed class SourceBuildJobExecutor(
                     return;
                 }
 
-                var trigger = job.Trigger as ManualSourceBuildTrigger;
+                var access = await checkRepositoryAccess(new(job.TenantId, job.SourceRepositoryId), cancellationToken);
+                if (access is not SourceRepositoryBuildSnapshot repository)
+                {
+                    var failure = RepositoryAccessFailure(access);
+                    await FailAsync(job, SourceBuildPhase.Pushing, failure.Code, failure.Message);
+                    return;
+                }
+
+                if (repository.Id != job.SourceRepositoryId ||
+                    repository.Revision != job.InputVersion.RepositoryRevision)
+                {
+                    await FailAsync(job, SourceBuildPhase.Pushing, "SourceRepositoryChanged",
+                        "The application repository binding changed while the artifact was being built.");
+                    return;
+                }
+
                 var deploymentResult = await deploySourceBuildWebService(
                     new SourceBuildDeploymentRequest(
                         job.TenantId,
@@ -178,14 +194,16 @@ public sealed class SourceBuildJobExecutor(
                         job.Id,
                         job.SourceRepositoryId,
                         job.CommitSha,
-                        trigger?.UserId,
-                        trigger?.Email,
+                        new(job.ConfigurationId, job.InputVersion.ConfigurationRevision, job.InputVersion.Generation,
+                            execution.WorkerId, execution.Attempt),
+                        trigger.UserId,
+                        trigger.Email,
                         new SourceBuildDeploymentImage(
                             registryAccess.Target.RegistryHost,
                             $"{registryAccess.Target.ProjectName}/{registryAccess.Target.RepositoryName}",
                             registryAccess.Target.Tag,
                             artifact.Digest,
-                            registryAccess.KubernetesPullSecretName)));
+                            registryAccess.KubernetesPullSecretName)), cancellationToken);
                 if (deploymentResult is SourceBuildWebServiceDeploymentError deploymentError)
                 {
                     await FailAsync(job, SourceBuildPhase.Deploying, deploymentError);
@@ -197,7 +215,7 @@ public sealed class SourceBuildJobExecutor(
                     artifact.Digest,
                     deployment.ReleaseId,
                     timeProvider.GetUtcNow().UtcDateTime);
-                await tryPersistSourceBuildJob(job, deploying);
+                await tryPersistSourceBuildJob(job, deploying, cancellationToken);
             }
         }
         catch (OperationCanceledException)
@@ -210,12 +228,29 @@ public sealed class SourceBuildJobExecutor(
                 "Unexpected source build failure for {BuildJobId} ({ExceptionType}).",
                 buildJobId,
                 exception.GetType().FullName);
-            await FailCurrentAsync(
-                buildJobId,
+            await FailAsync(
+                job, PhaseOf(job.State),
                 "UnexpectedBuildFailure",
                 "An unexpected error interrupted the source build.");
         }
     }
+
+    private static (string Code, string Message) RepositoryAccessFailure(
+        CheckSourceRepositoryBuildAccessOutcome outcome) =>
+        outcome switch
+        {
+            SourceRepositoryBuildNotFound =>
+                ("SourceRepositoryNotFound", "The application repository no longer exists."),
+            SourceRepositoryBuildConnectionNotFound =>
+                ("SourceRepositoryConnectionNotFound", "The application repository connection is unavailable."),
+            SourceRepositoryRemoteNotFound =>
+                ("SourceRepositoryRemoteNotFound", "The remote repository is unavailable."),
+            SourceRepositoryAccessDenied =>
+                ("SourceRepositoryAccessDenied", "Access to the application repository was revoked."),
+            SourceRepositoryUnavailable => ("SourceRepositoryUnavailable", "Repository access could not be verified."),
+            SourceRepositoryBuildSnapshot =>
+                throw new InvalidOperationException("An available repository is not a failure.")
+        };
 
     private async Task FailAsync(
         SourceBuildJob job,
@@ -250,7 +285,8 @@ public sealed class SourceBuildJobExecutor(
             RegistryCredentialUnavailable =>
                 ("RegistryCredentialUnavailable", "The container registry build credential is unavailable."),
             RegistryCredentialProtectionFailed =>
-                ("RegistryCredentialProtectionFailed", "The container registry build credential could not be protected.")
+                ("RegistryCredentialProtectionFailed",
+                "The container registry build credential could not be protected.")
         });
 
     private async Task FailAsync(
@@ -304,17 +340,22 @@ public sealed class SourceBuildJobExecutor(
             SourceBuildWebServiceDeleting deleting =>
                 ("WebServiceDeleting", $"Web service '{deleting.WebServiceId}' is being deleted."),
             SourceBuildWebServiceHasNoActiveDeployments empty =>
-                ("WebServiceNoActiveDeployments", $"Web service '{empty.WebServiceId}' has no active resource deployments."),
+                ("WebServiceNoActiveDeployments",
+                    $"Web service '{empty.WebServiceId}' has no active resource deployments."),
             SourceBuildWebServiceDeploymentRejected rejected =>
                 (DeploymentRejectionCode(rejected.Reason),
                     $"Web service deployment was rejected ({rejected.Reason.Value.GetType().Name})."),
             SourceBuildWebServiceUpdateConflict conflict =>
                 conflict.Reason switch
                 {
+                    SourceBuildWebServiceUpdateConflictReason.SupersededBuild =>
+                        ("SupersededBuild", "A newer build request or configuration superseded this build."),
                     SourceBuildWebServiceUpdateConflictReason.GitOwnedConfiguration =>
-                        ("GitOwnedConfiguration", "The image was built; edit the managing Git source to change the workload image."),
+                        ("GitOwnedConfiguration",
+                    "The image was built; edit the managing Git source to change the workload image."),
                     SourceBuildWebServiceUpdateConflictReason.ExpectedRevisionConflict =>
-                        ("WebServiceUpdateConflict", $"Web service '{conflict.WebServiceId}' changed while the source build was being deployed."),
+                        ("WebServiceUpdateConflict",
+                    $"Web service '{conflict.WebServiceId}' changed while the source build was being deployed."),
                     _ => throw new ArgumentOutOfRangeException(nameof(conflict.Reason))
                 }
         });
@@ -333,14 +374,6 @@ public sealed class SourceBuildJobExecutor(
     {
         var failed = job.Fail(phase, code, message, timeProvider.GetUtcNow().UtcDateTime);
         await tryPersistSourceBuildJob(job, failed);
-    }
-
-    private async Task FailCurrentAsync(string buildJobId, string code, string message)
-    {
-        var job = await loadSourceBuildJobForExecution(buildJobId);
-        if (job is null || job.State is SucceededSourceBuild or FailedSourceBuild)
-            return;
-        await FailAsync(job, PhaseOf(job.State), code, message);
     }
 
     private static (string Code, string Message) DownloadFailure(
@@ -384,6 +417,4 @@ public sealed class SourceBuildJobExecutor(
         _ => throw new ArgumentOutOfRangeException(nameof(state), state, null)
     };
 
-    private static StringComparison PathComparison =>
-        OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 }

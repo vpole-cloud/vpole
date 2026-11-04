@@ -1,156 +1,102 @@
+using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.SourceBuilds.Contracts;
-using Pole.Features.WebServices.Contracts;
 using Pole.Features.WebServices.Application.Persistence;
 using Pole.Features.WebServices.Application.Persistence.Mutations;
-using Pole.Features.WebServices.Application.Persistence.Reads;
 using Pole.Features.WebServices.Application.Persistence.Releases;
 using Pole.Features.WebServices.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.WebServices.Application.Common;
 
 public sealed class WebServiceSourceBuildDeploymentService(
-    LoadWebServiceById loadWebServiceById,
-    PersistUpdatedWebServiceOutcome persistUpdatedWebService,
-    PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
-    RunMongoOutcomeTransaction<DeploySourceBuildWebServiceOutcome>
-        runMongoTransaction,
-    LoadResourceDeploymentSet loadResourceDeploymentSet,
-    RequestResourceDeploymentSetApply requestResourceDeploymentSetApply,
-    TimeProvider timeProvider)
+    LoadWebServiceForSourceBuild loadService,
+    RunMongoOutcomeTransaction<DeploySourceBuildWebServiceOutcome> runTransaction,
+    LoadResourceDeploymentPlanningSnapshot loadPlacements,
+    RequestResourceDeploymentSetApply applyPlacements,
+    PersistWebServiceArtifactPromotion persistPromotion,
+    BeginSourceBuildPromotion beginPromotion,
+    CompleteSourceBuildPromotion completePromotion,
+    PersistCurrentWebServiceRelease persistRelease,
+    TimeProvider clock)
 {
-    public async Task<DeploySourceBuildWebServiceOutcome>
-        DeployAsync(
+    public Task<DeploySourceBuildWebServiceOutcome> DeployAsync(
         SourceBuildDeploymentRequest request,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) => runTransaction(async (transaction, ct) =>
     {
-        var webService = await loadWebServiceById(
-            request.TenantId,
-            request.WebServiceId,
-            cancellationToken);
-        if (webService is null)
-        {
-            return new SourceBuildWebServiceDeploymentError(
-                new SourceBuildWebServiceNotFound(request.WebServiceId));
-        }
-        if (webService.Lifecycle is not ActiveWebServiceLifecycle)
-        {
-            return new SourceBuildWebServiceDeploymentError(
-                new SourceBuildWebServiceDeleting(request.WebServiceId));
-        }
+        var session = transaction.Session;
+        var promotion = new SourceBuildPromotionRequest(request.TenantId, request.BuildJobId, request.WebServiceId,
+            request.Authority, new(request.SourceRepositoryId, request.CommitSha,
+                $"{request.Image.RegistryHost}/{request.Image.ImageName}:{request.Image.Tag}"), request.Image.Digest);
+        var admission = await beginPromotion(promotion, session, ct);
+        if (admission is SourceBuildAlreadyPromoted replay)
+            return transaction.Commit(
+                new SourceBuildDeploymentResult(replay.ReleaseId, replay.Revision));
+        if (admission is not SourceBuildPromotionAuthorized)
+            return transaction.Abort(Superseded(request.WebServiceId));
 
-        var deploymentInventory = await loadResourceDeploymentSet(
-            new LoadResourceDeploymentSetRequest(
-                TenantId: webService.TenantId,
-                ResourceType: WebServiceResourceDeployment.ResourceType,
-                ResourceId: webService.Id),
-            cancellationToken: cancellationToken);
-        var deployments = deploymentInventory
-            .Where(WebServiceDeploymentWorkflow.IsDesiredPlacement)
+        var service = await loadService(new(request.TenantId, request.WebServiceId), session, ct);
+        if (service is null)
+            return transaction.Abort(new SourceBuildWebServiceDeploymentError(
+                new SourceBuildWebServiceNotFound(request.WebServiceId)));
+        if (service.Lifecycle is DeletingWebServiceLifecycle)
+            return transaction.Abort(new SourceBuildWebServiceDeploymentError(
+                new SourceBuildWebServiceDeleting(request.WebServiceId)));
+        if (service.Lifecycle is not (ActiveWebServiceLifecycle or AwaitingFirstArtifactWebServiceLifecycle) ||
+            service.Spec.Image.SourceBuildConfigurationId != request.Authority.ConfigurationId ||
+            service.Spec.Image is DeliveredSourceBuildImage delivered &&
+            delivered.Generation >= request.Authority.Generation)
+            return transaction.Abort(Superseded(request.WebServiceId));
+
+        var read = await loadPlacements(new(request.TenantId, WebServiceResourceDeployment.ResourceType,
+            request.WebServiceId), session, ct);
+        if (read is not ResourceDeploymentPlanningSnapshot placements || placements.Items.Count == 0)
+            return transaction.Abort(new SourceBuildWebServiceDeploymentError(
+                new SourceBuildWebServiceHasNoActiveDeployments(request.WebServiceId)));
+
+        var activePlacements = placements.Items.Where(item => item.State != ResourceDeploymentPlanningState.Deleting)
             .ToArray();
-        if (deployments.Length == 0)
-        {
-            return new SourceBuildWebServiceDeploymentError(
-                new SourceBuildWebServiceHasNoActiveDeployments(request.WebServiceId));
-        }
+        if (activePlacements.Length == 0)
+            return transaction.Abort(new DeploySourceBuildWebServiceOutcome(new SourceBuildWebServiceDeploymentError(
+                new SourceBuildWebServiceHasNoActiveDeployments(request.WebServiceId))));
 
-        return await runMongoTransaction(async (transaction, ct) =>
-        {
-            var session = transaction.Session;
-            var previousImageReference = webService.Spec.Image.FullImageName;
-            var nextImage = new ImageInfo(
-                request.Image.RegistryHost,
-                request.Image.ImageName,
-                request.Image.Tag,
-                request.Image.PullSecretName);
-            var nextSpec = webService.Spec with { Image = nextImage };
-            var updatedWebService = webService.UpdateDesiredState(
-                nextSpec,
-                webService.Tags);
-            var deploymentResult = await requestResourceDeploymentSetApply(
-                new ResourceDeploymentSetApplyRequest(
-                    webService.TenantId,
-                    WebServiceResourceDeployment.ResourceType,
-                    webService.Id,
-                    updatedWebService.ActiveRevision,
-                    deployments.Select(deployment =>
-                        WebServiceDeploymentWorkflow.ToSetApplyItem(deployment)).ToArray()),
-                session,
-                ct);
-            if (deploymentResult is ResourceDeploymentMutationError deploymentFailure)
-            {
-                DeploySourceBuildWebServiceOutcome rejected = new SourceBuildWebServiceDeploymentError(
-                    ToDeploymentError(request.WebServiceId, deploymentFailure));
-                return transaction.Abort(rejected);
-            }
-            var updatedDeployments = ((MutatedResourceDeployments)deploymentResult.Value).Placements;
+        var artifact = DeliveredSourceBuildImage.Create(request.Authority.ConfigurationId,
+            new ImageInfo(request.Image.RegistryHost, request.Image.ImageName, request.Image.Tag,
+                request.Image.PullSecretName), request.Image.Digest, request.BuildJobId, request.Authority.Generation);
+        var next = service.PromoteArtifact(artifact);
+        var applied = await applyPlacements(new(request.TenantId, WebServiceResourceDeployment.ResourceType,
+            request.WebServiceId, next.ActiveRevision, activePlacements.Select(item =>
+                new ResourceDeploymentSetApplyItem(item.DeploymentId, item.Revision,
+                    new(item.Compute.ComputeProfileId, item.Compute.ComputeProfileRevision), new PreserveIngress(),
+                    FixedReplicas: item.FixedReplicas, PinnedCompute: true)).ToArray()), session, ct);
+        if (applied is ResourceDeploymentMutationError error)
+            return transaction.Abort(new SourceBuildWebServiceDeploymentError(
+                ToDeploymentError(request.WebServiceId, error)));
 
-            var updatedEvent = updatedWebService.ToUpdatedEvent(
-                WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments));
-            var update = await persistUpdatedWebService(
-                session,
-                webService,
-                updatedWebService,
-                updatedEvent,
-                ct);
-            if (update is WebServiceUpdateConflict updateConflict)
-            {
-                DeploySourceBuildWebServiceOutcome rejected = new SourceBuildWebServiceDeploymentError(
-                    new SourceBuildWebServiceUpdateConflict(updateConflict.WebServiceId, updateConflict.Reason switch
-                    {
-                        WebServiceUpdateConflictReason.ExpectedRevisionConflict => SourceBuildWebServiceUpdateConflictReason.ExpectedRevisionConflict,
-                        WebServiceUpdateConflictReason.GitOwnedConfiguration => SourceBuildWebServiceUpdateConflictReason.GitOwnedConfiguration,
-                        _ => throw new ArgumentOutOfRangeException(nameof(updateConflict.Reason))
-                    }));
-                return transaction.Abort(rejected);
-            }
-            if (update is WebServiceConnectionConflict connectionConflict)
-            {
-                DeploySourceBuildWebServiceOutcome rejected = new SourceBuildWebServiceDeploymentError(
-                    new SourceBuildWebServiceUpdateConflict(connectionConflict.WebServiceId));
-                return transaction.Abort(rejected);
-            }
-            if (update is WebServiceDependencyUnavailable dependencyUnavailable)
-            {
-                DeploySourceBuildWebServiceOutcome rejected = new SourceBuildWebServiceDeploymentError(
-                    new SourceBuildWebServiceUpdateConflict(dependencyUnavailable.WebServiceId));
-                return transaction.Abort(rejected);
-            }
+        var changed = ((MutatedResourceDeployments)applied.Value).Placements;
+        var updatedEvent = next.ToUpdatedEvent(WebServiceDeploymentWorkflow.ToEventDeployments(changed));
+        var write = await persistPromotion(new(service, next, updatedEvent, promotion), session, ct);
+        if (write is not WebServiceUpdateAccepted)
+            return transaction.Abort(new SourceBuildWebServiceDeploymentError(
+                new SourceBuildWebServiceUpdateConflict(service.Id,
+                    SourceBuildWebServiceUpdateConflictReason.ExpectedRevisionConflict)));
 
-            var release = WebServiceReleaseFactory.CreatePending(
-                request.TenantId,
-                request.WebServiceId,
-                updatedWebService.ActiveRevision,
-                WebServiceReleaseAction.SourceBuild,
-                request.ActorUserId,
-                request.ActorEmail,
-                nextSpec,
-                WebServiceDeploymentWorkflow.ToReleaseDeployments(updatedDeployments),
-                updatedEvent.EventCore.TraceId,
-                updatedEvent.EventCore.CorrelationId,
-                new WebServiceReleaseFactory.CreateOptions(
-                    MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
-                    timeProvider.GetUtcNow().UtcDateTime),
-                updatedWebService.Exposure,
-                new SourceBuildReleaseProvenance(
-                    request.BuildJobId,
-                    request.SourceRepositoryId,
-                    request.CommitSha,
-                    request.Image.Digest,
-                    previousImageReference,
-                    nextImage.FullImageName));
-            await persistCurrentWebServiceRelease(
-                session,
-                release,
-                ct);
-            DeploySourceBuildWebServiceOutcome accepted = new SourceBuildDeploymentResult(
-                release.Id,
-                updatedWebService.ActiveRevision);
-            return transaction.Commit(accepted);
-        }, cancellationToken);
-    }
+        var release = WebServiceReleaseFactory.CreatePending(request.TenantId, request.WebServiceId,
+            next.ActiveRevision, WebServiceReleaseAction.SourceBuild, request.ActorUserId, request.ActorEmail,
+            next.Spec, WebServiceDeploymentWorkflow.ToReleaseDeployments(changed), updatedEvent.EventCore.TraceId,
+            updatedEvent.EventCore.CorrelationId, new(MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
+                clock.GetUtcNow().UtcDateTime), next.Exposure, new SourceBuildReleaseProvenance(request.BuildJobId,
+                request.SourceRepositoryId, request.CommitSha, request.Image.Digest,
+                service.Spec.Image.ResolvedImageReference, artifact.ResolvedImageReference!));
+        await persistRelease(session, release, ct);
+        await completePromotion(new(promotion, release.Id, next.ActiveRevision), session, ct);
+        return transaction.Commit(
+            new SourceBuildDeploymentResult(release.Id, next.ActiveRevision));
+    }, cancellationToken);
+
+    private static DeploySourceBuildWebServiceOutcome Superseded(string serviceId) =>
+        new SourceBuildWebServiceDeploymentError(new SourceBuildWebServiceUpdateConflict(serviceId,
+            SourceBuildWebServiceUpdateConflictReason.SupersededBuild));
 
     private static SourceBuildWebServiceDeploymentRejected ToDeploymentError(
         string webServiceId,

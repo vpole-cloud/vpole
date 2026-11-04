@@ -148,6 +148,11 @@ public static class ResourceGroupApplicationRegistration
             implementation.InvokeAsync);
         services.TryAddScoped<MongoResourceRegistrationMutations>();
         services.TryAddScoped<MongoResourceRegistrationReads>();
+        services.AddScoped<MongoResourceRegistrationPlanning>();
+        services.AddScoped<LoadResourceRegistrationPlanningSnapshot>(provider =>
+            provider.GetRequiredService<MongoResourceRegistrationPlanning>().LoadAsync);
+        services.AddScoped<FenceResourceRegistrationPlanningSnapshot>(provider =>
+            provider.GetRequiredService<MongoResourceRegistrationPlanning>().FenceAsync);
         services.TryAddScoped<LoadRegisteredResource>(provider =>
             provider.GetRequiredService<MongoResourceRegistrationReads>().LoadOneAsync);
         services.AddCapability<MongoResourceRegistrationConnectionFence,

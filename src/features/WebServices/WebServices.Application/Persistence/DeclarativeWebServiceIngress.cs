@@ -16,9 +16,18 @@ internal sealed partial class DeclarativeWebServiceProvider
     {
         var service = request.Service;
         if (service.Exposure.Mode == WebServiceExposureMode.Private)
+        {
+            foreach (var placement in request.Placements)
+            {
+                var existing = await loadHostnameBindingsForDeployment(new(service.TenantId,
+                    WebServiceResourceDeployment.ResourceType, service.Id, placement.DeploymentId), session, ct);
+                if (existing.Any(item => item.Kind == HostnameBindingKinds.Custom))
+                    return new WebServiceDeclarationRejected(WebServiceDeclarationError.PublicIngressUnavailable);
+            }
             return new PreparedWebServiceIngress(request.Placements.ToDictionary(item => item.DeploymentId,
                 item => item.Ingress is null ? (ResourceDeploymentIngressChange)new PreserveIngress() :
                     new ClearIngress(), StringComparer.Ordinal));
+        }
 
         var target = request.Target;
         if (target.WorkloadConfiguration.Ingress is not { PublicBaseDomain: { Length: > 0 } } ingress)
@@ -56,10 +65,16 @@ internal sealed partial class DeclarativeWebServiceProvider
                 bindings.Add(binding.ResourceDeploymentId, binding);
         }
 
-        return new PreparedWebServiceIngress(request.Placements.ToDictionary(item => item.DeploymentId,
-            item => (ResourceDeploymentIngressChange)new ReplaceIngress(ResourceDeploymentIngressConfiguration.Create(
+        var changes = new Dictionary<string, ResourceDeploymentIngressChange>(StringComparer.Ordinal);
+        foreach (var placement in request.Placements)
+        {
+            var authoritative = await loadHostnameBindingsForDeployment(new(service.TenantId,
+                WebServiceResourceDeployment.ResourceType, service.Id, placement.DeploymentId), session, ct);
+            changes.Add(placement.DeploymentId, new ReplaceIngress(ResourceDeploymentIngressConfiguration.Create(
                 ingress.IngressClassName, ingress.ClusterIssuerName, ingress.PublicBaseDomain,
-                [bindings[item.DeploymentId].Hostname])), StringComparer.Ordinal));
+                authoritative.Select(item => item.Hostname).Distinct().Order(StringComparer.Ordinal).ToArray())));
+        }
+        return new PreparedWebServiceIngress(changes);
     }
 }
 

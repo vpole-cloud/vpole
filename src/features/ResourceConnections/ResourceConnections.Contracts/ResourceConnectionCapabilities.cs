@@ -92,3 +92,8 @@ public static class ResourceConnectionNameResolution
 public sealed record LoadResourceConnectionDestinationRequest(
     string TenantId,
     string ResourceId);
+
+/// <summary>Owner-registered declarative kind identity; support still comes from connection capabilities.</summary>
+public sealed record ResourceConnectionDeclarationKind(
+    string Kind,
+    ResourceTypeId ResourceType);

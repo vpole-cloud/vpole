@@ -36,17 +36,17 @@ it('flags newer authoritative branch evidence without replacing a saved analysis
   expect(staleGitAnalysis(analysis, [], false, true)).toBe(false)
   expect(staleGitAnalysis(analysis, [], true, true)).toBe(true)
 })
-it('preserves the selected source snapshot and requires review after removal or changed commit/build plan', () => {
+it('preserves the selected source snapshot and requires review after removal or changed repository identity/revision', () => {
   const source = {
     id: 'source',
     connectionId: 'connection',
     externalRepositoryId: 'repo',
     branch: 'main',
-    commitSha: 'old',
-    selectedPlan: { candidateKey: 'plan' },
+    technicalName: 'application',
+    revision: 1,
   } as SourceRepository
   expect(sourceSelectionCurrent(source, [source])).toBe(true)
   expect(sourceSelectionCurrent(source, [])).toBe(false)
-  expect(sourceSelectionCurrent(source, [{ ...source, commitSha: 'new' }])).toBe(false)
-  expect(source.commitSha).toBe('old')
+  expect(sourceSelectionCurrent(source, [{ ...source, revision: 2 }])).toBe(false)
+  expect(source.revision).toBe(1)
 })

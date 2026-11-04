@@ -67,6 +67,8 @@ export function NewWebServiceView({
   const [dirty, setDirty] = useState(false)
   const [mode, setMode] = useState<'image' | 'git'>('image')
   const [gitVisited, setGitVisited] = useState(false)
+  const [technicalName, setTechnicalName] = useState('')
+  const [dockerfile, setDockerfile] = useState('')
   const [source, setSource] = useState<SourceRepository | null>(null)
   const [sourceValidity, setSourceValidity] = useState({ id: '', current: true })
   const updateSourceValidity = useCallback(
@@ -87,7 +89,8 @@ export function NewWebServiceView({
   })
   const createdId = creation.accepted.serviceId
   const deliveryError = creation.error instanceof Error ? creation.error.message : ''
-  const hasDraft = !createdId && (dirty || Boolean(source))
+  const hasDraft =
+    !createdId && (dirty || Boolean(source) || Boolean(technicalName) || Boolean(dockerfile))
   useUnsavedChanges(hasDraft, 'New service')
   useEffect(() => {
     onDirtyChange(createId, hasDraft)
@@ -129,11 +132,45 @@ export function NewWebServiceView({
         <div hidden={mode !== 'git'}>
           <GitSourcePicker
             source={source}
-            onSelect={setSource}
+            onSelect={(next) => {
+              if (next?.id !== source?.id) {
+                setTechnicalName('')
+                setDockerfile('')
+              }
+              setSource(next)
+            }}
+            onRecipeSelected={setDockerfile}
             active={active && mode === 'git'}
             disabled={creation.locked || creation.busy}
             onSourceCurrent={updateSourceValidity}
           />
+          <section className="panel">
+            <h2 className="panel__title">Build configuration</h2>
+            <label className="field">
+              <span className="field__label">Build configuration technical name</span>
+              <input
+                className="field__control"
+                value={technicalName}
+                maxLength={63}
+                disabled={creation.locked || creation.busy}
+                onChange={(event) => setTechnicalName(event.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span className="field__label">Dockerfile</span>
+              <textarea
+                className="field__control"
+                value={dockerfile}
+                maxLength={100000}
+                rows={10}
+                disabled={creation.locked || creation.busy}
+                onChange={(event) => setDockerfile(event.target.value)}
+              />
+            </label>
+            <p className="field__hint">
+              The build context is the repository root. Analysis can help author this recipe.
+            </p>
+          </section>
         </div>
       )}
       {groupsError && (
@@ -147,7 +184,7 @@ export function NewWebServiceView({
           <h2 className="panel__title">{createdId ? 'Service created' : 'Service creation'}</h2>
           <p>
             {createdId
-              ? 'The initial image configuration was accepted. Source setup and build queueing are separate steps.'
+              ? 'The service is retained without a running image. Source setup and build queueing are separate steps.'
               : 'Waiting to confirm the service creation result. The submitted source and configuration are retained.'}
           </p>
           {creation.busy && <p role="status">Configuring source and queueing the build…</p>}
@@ -219,15 +256,31 @@ export function NewWebServiceView({
             submitLabel={mode === 'git' ? 'Create service and build' : undefined}
             submitDisabled={
               mode === 'git' &&
-              (!source || (sourceValidity.id === source.id && !sourceValidity.current))
+              (!source ||
+                !/^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(technicalName) ||
+                !dockerfile.trim() ||
+                (sourceValidity.id === source.id && !sourceValidity.current))
             }
             imageHint={
               mode === 'git'
-                ? 'Initial image: this runs until the first Git build is applied. The build replaces it. Use a suitable starter image and configure ports for your application.'
+                ? 'The service waits for its first successful build. No workload or routes start before artifact promotion.'
                 : undefined
             }
+            imageMode={mode === 'git' ? 'SourceBuild' : 'Image'}
             onDirtyChange={setDirty}
-            onSubmit={(input) => creation.submit(input, mode, source?.id)}
+            onSubmit={(input) =>
+              creation.submit(
+                input,
+                mode,
+                source
+                  ? {
+                      sourceRepositoryId: source.id,
+                      technicalName,
+                      dockerfile,
+                    }
+                  : undefined,
+              )
+            }
           />
         )}
       </div>

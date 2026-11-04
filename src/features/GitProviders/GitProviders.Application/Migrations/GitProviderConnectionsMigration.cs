@@ -1,6 +1,7 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.GitProviders.Application.Persistence.Repositories;
 using Pole.Features.GitProviders.Application.Persistence.Connections;
 
 namespace Pole.Features.GitProviders.Application.Migrations;
@@ -46,12 +47,11 @@ public sealed class GitProviderConnectionsMigration : IMigration
                     .Ascending("TenantId")
                     .Ascending("ConnectionId")
                     .Ascending("ExternalRepositoryId")
-                    .Ascending("Branch")
-                    .Ascending("CandidateKey"),
+                    .Ascending("Branch"),
                 new CreateIndexOptions
                 {
                     Unique = true,
-                    Name = "UX_SourceRepositories_Tenant_Repository_Branch_Candidate"
+                    Name = SourceRepositoryIndexes.Location
                 }),
             new CreateIndexModel<BsonDocument>(
                 Builders<BsonDocument>.IndexKeys
@@ -59,6 +59,11 @@ public sealed class GitProviderConnectionsMigration : IMigration
                     .Ascending("RepositoryFullName"),
                 new CreateIndexOptions { Name = "IX_SourceRepositories_Tenant_Name" })
         ], cancellationToken);
+
+        await sourceRepositories.Indexes.CreateOneAsync(new CreateIndexModel<BsonDocument>(
+            Builders<BsonDocument>.IndexKeys.Ascending("TenantId").Ascending("TechnicalName"),
+            new CreateIndexOptions { Unique = true, Name = SourceRepositoryIndexes.TechnicalName }),
+            cancellationToken: cancellationToken);
 
         var setupAttempts = context.GetCollection<BsonDocument>("GitHubSetupAttempts");
         await setupAttempts.Indexes.CreateManyAsync(

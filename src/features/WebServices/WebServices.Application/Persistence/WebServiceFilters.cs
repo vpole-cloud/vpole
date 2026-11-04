@@ -9,6 +9,9 @@ namespace Pole.Features.WebServices.Application.Persistence;
 
 internal static class WebServiceFilters
 {
+    public static FilterDefinition<WebService> AtRevision(string tenantId, string resourceId, long revision) =>
+        ById(tenantId, resourceId) & Builders<WebService>.Filter.Eq(item => item.Revision, revision);
+
     public static FilterDefinition<WebService> AtPlanningVersion(WebService service) =>
         AtRevision(service) & Builders<WebService>.Filter.Eq(item => item.PlanningFence, service.PlanningFence);
 

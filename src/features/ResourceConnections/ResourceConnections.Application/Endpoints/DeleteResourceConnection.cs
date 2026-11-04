@@ -26,7 +26,8 @@ public sealed record DeleteResourceConnectionResponse(
 public union DeleteResourceConnectionOutcome(
     DeleteResourceConnectionResponse,
     ResourceConnectionNotFound,
-    ResourceConnectionDeletionConflict);
+    ResourceConnectionDeletionConflict,
+    ResourceConnectionGitOwned);
 
 public sealed class DeleteResourceConnectionRequestValidator
     : AbstractValidator<DeleteResourceConnectionRequest>
@@ -54,7 +55,8 @@ public sealed class DeleteResourceConnectionHandler(
                 connection.Generation,
                 "Deleting"),
             ResourceConnectionMissing => new ResourceConnectionNotFound(request.Id),
-            ResourceConnectionDeletionConflict conflict => conflict
+            ResourceConnectionDeletionConflict conflict => conflict,
+            ResourceConnectionGitOwned conflict => conflict
         };
     }
 }
@@ -73,7 +75,8 @@ public static class DeleteResourceConnectionEndpoint
                 {
                     DeleteResourceConnectionResponse response => Results.Accepted(value: response),
                     ResourceConnectionNotFound error => MapNotFound(error),
-                    ResourceConnectionDeletionConflict error => MapDeletionConflict(error)
+                    ResourceConnectionDeletionConflict error => MapDeletionConflict(error),
+                    ResourceConnectionGitOwned error => MapGitOwned(error)
                 }))
             .WithName("DeleteResourceConnection")
             .Produces<DeleteResourceConnectionResponse>(StatusCodes.Status202Accepted);

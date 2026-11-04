@@ -39,7 +39,7 @@ export function sourceSelectionCurrent(
     source.connectionId === selected.connectionId &&
     source.externalRepositoryId === selected.externalRepositoryId &&
     source.branch === selected.branch &&
-    source.commitSha === selected.commitSha &&
-    JSON.stringify(source.selectedPlan) === JSON.stringify(selected.selectedPlan),
+    source.technicalName === selected.technicalName &&
+    source.revision === selected.revision,
   )
 }

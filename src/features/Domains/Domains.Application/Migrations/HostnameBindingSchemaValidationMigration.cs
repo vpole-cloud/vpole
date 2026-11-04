@@ -18,7 +18,12 @@ public sealed class HostnameBindingSchemaValidationMigration : IMigration
     private static BsonDocument CreateValidator() => new(
         "$jsonSchema",
         DomainCollectionSchema.Object(
-            ["_id", "TenantId", "TenantDomainZoneId", "DeploymentTargetId", "ResourceType", "ResourceId", "ResourceDeploymentId", "RelativeName", "Hostname", "Kind", "CreatedAtUtc"],
+            [
+                "_id", "TenantId", "TenantDomainZoneId", "DeploymentTargetId",
+                "ResourceType", "ResourceId", "ResourceDeploymentId", "RelativeName",
+                "Hostname", "Identity", "ReferenceFence",
+                "CreatedAtUtc"
+            ],
             ("_id", DomainCollectionSchema.Type("objectId")),
             ("TenantId", DomainCollectionSchema.Type("objectId")),
             ("TenantDomainZoneId", DomainCollectionSchema.Type("objectId")),
@@ -28,6 +33,7 @@ public sealed class HostnameBindingSchemaValidationMigration : IMigration
             ("ResourceDeploymentId", DomainCollectionSchema.Type("objectId")),
             ("RelativeName", DomainCollectionSchema.String(1, 253, "^(?:@|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*)$")),
             ("Hostname", DomainCollectionSchema.String(1, 253, "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$")),
-            ("Kind", DomainCollectionSchema.Enum("Generated", "Custom")),
+            ("Identity", DomainCollectionSchema.Identity()),
+            ("ReferenceFence", DomainCollectionSchema.Integer("long", 0)),
             ("CreatedAtUtc", DomainCollectionSchema.Type("date"))));
 }

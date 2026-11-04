@@ -193,66 +193,30 @@ it('aborts tenant source discovery and ignores late old-tenant data', async () =
   expect(state.sources).toEqual([])
 })
 
-it('refreshes an existing linked source when the user selects a newly analyzed commit', async () => {
-  const plan = {
-    candidateKey: 'docker',
-    kind: 'Dockerfile' as const,
-    displayName: 'Dockerfile',
-    sourceRoot: '.',
-    manifestPath: 'Dockerfile',
-    confidence: 'High' as const,
-    signals: [],
-    warnings: [],
-    commands: [],
-    dockerfilePreview: 'FROM scratch',
-  }
+it('reuses an existing named repository without reanalysis or a selected candidate', async () => {
   const source = {
     id: 'source',
+    technicalName: 'application',
+    revision: 1,
     connectionId: 'account',
     externalRepositoryId: 'repo',
     repositoryFullName: 'team/app',
     repositoryUrl: '',
     isPrivate: true,
     branch: 'main',
-    commitSha: 'old',
     createdAtUtc: '',
     updatedAtUtc: '',
-    analyzedAtUtc: '',
-    selectedPlan: plan,
   }
   vi.mocked(api.fetchSourceRepositories).mockResolvedValue([source])
-  vi.mocked(api.analyzeProviderRepository).mockResolvedValue({
-    repositoryId: 'repo',
-    repositoryFullName: 'team/app',
-    branch: 'main',
-    commitSha: 'new',
-    analyzedAtUtc: '',
-    detectedFiles: [],
-    candidates: [plan],
-  })
-  vi.mocked(api.reanalyzeSourceRepository).mockImplementation(async () => {
-    const updated = { ...source, commitSha: 'new' }
-    vi.mocked(api.fetchSourceRepositories).mockResolvedValue([updated])
-    return updated
-  })
   await act(async () => root.render(<Probe />))
   await act(async () => state.selectRepository('repo'))
-  await act(async () => {
-    await state.analyze()
-  })
   let selected!: Awaited<ReturnType<typeof state.link>>
   await act(async () => {
-    selected = await state.link()
+    selected = await state.link('application')
   })
-  expect(selected?.commitSha).toBe('new')
-  expect(state.sources[0].commitSha).toBe('new')
-  expect(api.reanalyzeSourceRepository).toHaveBeenCalledWith(
-    '/api',
-    'source',
-    'token',
-    'alpha',
-    expect.any(AbortSignal),
-  )
+  expect(selected).toEqual(source)
+  expect(api.analyzeProviderRepository).not.toHaveBeenCalled()
+  expect(api.reanalyzeSourceRepository).not.toHaveBeenCalled()
   expect(api.linkProviderRepository).not.toHaveBeenCalled()
 })
 
@@ -280,17 +244,16 @@ it('keeps branch and build-plan selection across credential refresh and links wi
   })
   const source = {
     id: 'source',
+    technicalName: 'application',
+    revision: 1,
     connectionId: 'account',
     externalRepositoryId: 'repo',
     repositoryFullName: 'team/app',
     repositoryUrl: '',
     isPrivate: true,
     branch: 'main',
-    commitSha: 'commit',
-    analyzedAtUtc: '',
     createdAtUtc: '',
     updatedAtUtc: '',
-    selectedPlan: plan,
   }
   vi.mocked(api.linkProviderRepository).mockImplementation(async () => {
     vi.mocked(api.fetchSourceRepositories).mockResolvedValue([source])
@@ -303,13 +266,13 @@ it('keeps branch and build-plan selection across credential refresh and links wi
   expect(state.selection.repositoryId).toBe('repo')
   expect(state.selection.branch).toBe('main')
   expect(state.selection.candidateKey).toBe('docker')
-  await act(async () => state.link())
+  await act(async () => state.link('application'))
   expect(api.linkProviderRepository).toHaveBeenCalledWith(
     '/api',
     'account',
     'repo',
     'main',
-    'docker',
+    'application',
     'renewed-token',
     'alpha',
     expect.any(AbortSignal),
@@ -373,6 +336,6 @@ it('cancels analysis when its picker becomes inactive and rejects a late result'
   })
   expect(state.selection.analysis).toBeNull()
   expect(state.busy).toBe(false)
-  await act(async () => state.link())
+  await act(async () => state.link('application'))
   expect(api.linkProviderRepository).not.toHaveBeenCalled()
 })

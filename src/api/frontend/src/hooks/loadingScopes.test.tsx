@@ -43,7 +43,7 @@ function useDomainProbe(tenantId: string) {
     refresh: async () => {
       await query.refresh()
     },
-    create: async (input: { deploymentTargetId: string; label: string }) => {
+    create: async (input: { deploymentTargetId: string; label: string; technicalName: string }) => {
       await mutation.run(
         (signal) => api.createDomainZone('/api', input, origin.credential(), tenantId, signal),
         async () => {
@@ -247,7 +247,7 @@ it('does not append a completed zone mutation to a different tenant', async () =
   })
   let create!: Promise<void>
   await act(async () => {
-    create = state.create({ deploymentTargetId: 'target', label: 'old' })
+    create = state.create({ deploymentTargetId: 'target', label: 'old', technicalName: 'old-zone' })
   })
   await act(async () => {
     root.render(<Probe tenantId="new" />)
@@ -259,6 +259,7 @@ it('does not append a completed zone mutation to a different tenant', async () =
       deploymentTargetId: 'target',
       label: 'old',
       domain: 'old.test',
+      technicalName: null,
       kind: 'generated',
       revision: 1,
       createdAtUtc: '',

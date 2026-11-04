@@ -24,6 +24,34 @@ public sealed class DomainMetadataOutboxTests(MongoReplicaSetFixture fixture) : 
     private const string EventName = "pole.domains/v1/domain-metadata-changed";
 
     [Fact]
+    public async Task InvalidCombinedHostnameReturnsTypedFailureBeforeAnyWrites()
+    {
+        var zone = TenantDomainZoneFactory.CreateManagedReservation(TestData.TenantId,
+            TestData.DefaultDeploymentTargetId, "company", Pole.Dns.DnsName.Create("example.test"),
+            "company-zone", new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow));
+        var zones = Fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones");
+        await zones.InsertOneAsync(zone);
+        var cleanup = new MongoHostnameBindingCleanup(Fixture.Database, References,
+            TimeProvider.System, Fixture.StoreOutboxWrites);
+        var create = new MongoCreateCustomHostnameBinding(Fixture.Database, cleanup,
+            TimeProvider.System, Fixture.StoreOutboxWrites);
+        var relative = string.Join('.', Enumerable.Repeat(new string('a', 63), 3).Append(new string('b', 50)));
+        using var session = await Fixture.Client.StartSessionAsync();
+        session.StartTransaction();
+        var result = await create.InvokeAsync(new(ObjectId.GenerateNewId().ToString(), zone.TenantId, zone.Id,
+            zone.DeploymentTargetId, ResourceTypeId.Create("pole/web-service"), ObjectId.GenerateNewId().ToString(),
+            ObjectId.GenerateNewId().ToString(), relative, "too-long"), session);
+        Assert.IsType<CustomHostnameBindingInvalidRelativeName>(
+            Assert.IsType<CustomHostnameBindingError>(result.Value).Value);
+        await session.CommitTransactionAsync();
+        Assert.Equal(zone.Revision, (await zones.Find(item => item.Id == zone.Id).SingleAsync()).Revision);
+        Assert.Equal(0, await Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings")
+            .CountDocumentsAsync(item => item.TenantDomainZoneId == zone.Id));
+        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(EventName));
+    }
+
+
+    [Fact]
     public async Task CallerCommitAbortAndOutboxFailureFenceReservationHints()
     {
         var tenant = ObjectId.GenerateNewId().ToString();
@@ -32,7 +60,9 @@ public sealed class DomainMetadataOutboxTests(MongoReplicaSetFixture fixture) : 
         var runner = Services.GetRequiredService<MongoRunTransaction>();
         var aborted = await runner.InvokeOutcomeAsync<CreateManagedDomainZoneOutcome>(async (tx, ct) =>
         {
-            var result = await create.InvokeAsync(tenant, target, "aborted", "example.test", 1, tx.Session, ct);
+            var result = await create.InvokeAsync(new CreateManagedDomainZoneCommand(
+                        ObjectId.GenerateNewId().ToString(), tenant, target, "aborted", "aborted", "example.test", 1),
+                    tx.Session, ct);
             Assert.IsType<TenantDomainZoneSnapshot>(result.Value);
             Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(EventName));
             return tx.Abort(result);
@@ -44,7 +74,9 @@ public sealed class DomainMetadataOutboxTests(MongoReplicaSetFixture fixture) : 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             runner.InvokeOutcomeAsync<CreateManagedDomainZoneOutcome>(async (tx, ct) =>
                 tx.Commit(await Creator(fail: true)
-                    .InvokeAsync(tenant, target, "failed", "example.test", 1, tx.Session, ct))));
+                    .InvokeAsync(new CreateManagedDomainZoneCommand(
+                        ObjectId.GenerateNewId().ToString(), tenant, target, "failed", "failed", "example.test", 1),
+                    tx.Session, ct))));
         Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(EventName));
         Assert.Equal(0,
             await Fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones").CountDocumentsAsync(_ => true));
@@ -54,19 +86,24 @@ public sealed class DomainMetadataOutboxTests(MongoReplicaSetFixture fixture) : 
     public async Task BindingCleanupEmitsOnlyAcceptedIdsAndRetainsCallerTransaction()
     {
         var tenant = ObjectId.GenerateNewId().ToString();
-        var zone = TenantDomainZoneFactory.CreateManagedReservation(tenant,
+        var zone = TenantDomainZoneFactory.CreateManagedReservation(
+            tenant,
             ObjectId.GenerateNewId().ToString(),
             "public",
             Pole.Dns.DnsName.Create("example.test"),
+            "zone-" + MongoDB.Bson.ObjectId.GenerateNewId(),
             new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow));
         await Fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones").InsertOneAsync(zone);
-        var request = new CreateCustomHostnameBindingRequest(tenant,
+        var request = new CreateCustomHostnameBindingRequest(
+            MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
+            tenant,
             zone.Id,
             zone.DeploymentTargetId,
             ResourceTypeId.Create("pole/web-service"),
             ObjectId.GenerateNewId().ToString(),
             ObjectId.GenerateNewId().ToString(),
-            "binding");
+            "binding",
+            "binding-" + MongoDB.Bson.ObjectId.GenerateNewId());
         var cleanup = new MongoHostnameBindingCleanup(Fixture.Database,
             References,
             TimeProvider.System,

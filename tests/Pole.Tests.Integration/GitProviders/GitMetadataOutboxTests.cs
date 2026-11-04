@@ -3,6 +3,8 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Database;
+using Pole.Features.GitOps.Contracts;
+using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.Persistence.Connections;
 using Pole.Features.GitProviders.Application.Persistence.Repositories;
@@ -59,31 +61,26 @@ public sealed class GitMetadataOutboxTests(MongoReplicaSetFixture fixture) : Med
     [Fact]
     public async Task RepositoryCrudAndRepeatedDeletesEmitOnlyAcceptedIdHints()
     {
+        await RepositoryIndexes();
         var repository = Repository();
-        var link = new MongoPersistLinkedSourceRepository(Fixture.Database, Transactions, Fixture.StoreOutboxWrites);
+        await SeedConnection(repository);
+        var link = Link(Fixture.StoreOutboxWrites);
         Assert.IsType<SourceRepository>((await link.InvokeAsync(repository)).Value);
-        Assert.IsType<SourceRepositoryAlreadyLinked>((await link.InvokeAsync(repository)).Value);
+        Assert.IsType<SourceRepositoryNameConflict>((await link.InvokeAsync(repository with
+        {
+            Id = ObjectId.GenerateNewId().ToString(),
+            Branch = "another"
+        })).Value);
+        Assert.IsType<SourceRepositoryAlreadyLinked>((await link.InvokeAsync(repository with
+        {
+            Id = ObjectId.GenerateNewId().ToString(),
+            TechnicalName = "another"
+        })).Value);
         var stored = await DbContext.SourceRepositories.Find(row => row.Id == repository.Id).SingleAsync();
-        var reanalyze =
-            new MongoPersistReanalyzedSourceRepository(Fixture.Database, Transactions, Fixture.StoreOutboxWrites);
-        await reanalyze.InvokeAsync(stored,
-            Provider(stored),
-            Analysis(stored),
-            stored.SelectedPlan,
-            stored.UpdatedAtUtc);
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(RepositoryEvent));
-        await reanalyze.InvokeAsync(stored,
-            Provider(stored),
-            Analysis(stored) with
-            {
-                CommitSha = "new-commit"
-            },
-            stored.SelectedPlan,
-            stored.UpdatedAtUtc.AddSeconds(1));
-        var delete = new MongoDeleteSourceRepository(Fixture.Database, Transactions, Fixture.StoreOutboxWrites);
+        var delete = Delete(Fixture.StoreOutboxWrites);
         Assert.IsType<SourceRepositoryDeleted>((await delete.InvokeAsync(stored.TenantId, stored.Id)).Value);
         Assert.IsType<SourceRepositoryNotFound>((await delete.InvokeAsync(stored.TenantId, stored.Id)).Value);
-        Assert.Equal(3, await DbContext.CountOutboxMessagesAsync(RepositoryEvent));
+        Assert.Equal(2, await DbContext.CountOutboxMessagesAsync(RepositoryEvent));
         Assert.All(await DbContext.OutboxMessages.Find(row => row.EventType == RepositoryEvent).ToListAsync(),
             row =>
             {
@@ -92,12 +89,25 @@ public sealed class GitMetadataOutboxTests(MongoReplicaSetFixture fixture) : Med
             });
     }
 
+    [Fact]
+    public async Task ConcurrentRepositoryNamesHaveOneOwnerAndOneOutboxEvent()
+    {
+        await RepositoryIndexes();
+        var repository = Repository();
+        await SeedConnection(repository);
+        var outcomes = await Task.WhenAll(Enumerable.Range(0, 4).Select(index => Link(Fixture.StoreOutboxWrites)
+            .InvokeAsync(repository with { Id = ObjectId.GenerateNewId().ToString(), Branch = $"branch-{index}" })));
+        Assert.Single(outcomes, outcome => outcome.Value is SourceRepository);
+        Assert.Equal(3, outcomes.Count(outcome => outcome.Value is SourceRepositoryNameConflict));
+        Assert.Equal(1, await DbContext.SourceRepositories.CountDocumentsAsync(_ => true));
+        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(RepositoryEvent));
+    }
+
     [Theory]
     [InlineData("connection-create")]
     [InlineData("connection-update")]
     [InlineData("connection-delete")]
     [InlineData("repository-create")]
-    [InlineData("repository-update")]
     [InlineData("repository-delete")]
     public async Task OutboxFailureRollsBackLocalGitMutation(string mutation)
     {
@@ -110,7 +120,9 @@ public sealed class GitMetadataOutboxTests(MongoReplicaSetFixture fixture) : Med
                 await new GitHubSetupPersistence(Fixture.Database, Transactions, Fixture.StoreOutboxWrites)
                     .UpsertConnectionAsync(attempt, metadata, now, default)).Value).Id;
         var repository = Repository();
-        if (mutation is "repository-update" or "repository-delete")
+        if (mutation is "repository-create" or "repository-delete")
+            await SeedConnection(repository);
+        if (mutation is "repository-delete")
             await DbContext.SourceRepositories.InsertOneAsync(repository);
         var before = await State();
         var beforeCount = await DbContext.OutboxMessages.CountDocumentsAsync(_ => true);
@@ -133,18 +145,9 @@ public sealed class GitMetadataOutboxTests(MongoReplicaSetFixture fixture) : Med
                     default),
             "connection-delete" => new MongoDeleteGitProviderConnection(Fixture.Database, Transactions, failing)
                 .InvokeAsync(attempt.TenantId, connectionId!),
-            "repository-create" => new MongoPersistLinkedSourceRepository(Fixture.Database, Transactions, failing)
+            "repository-create" => Link(failing)
                 .InvokeAsync(repository),
-            "repository-update" => new MongoPersistReanalyzedSourceRepository(Fixture.Database, Transactions, failing)
-                .InvokeAsync(repository,
-                    Provider(repository),
-                    Analysis(repository) with
-                    {
-                        CommitSha = "new-commit"
-                    },
-                    repository.SelectedPlan,
-                    now.AddSeconds(1)),
-            _ => new MongoDeleteSourceRepository(Fixture.Database, Transactions, failing).InvokeAsync(
+            _ => Delete(failing).InvokeAsync(
                 repository.TenantId,
                 repository.Id)
         });
@@ -174,42 +177,31 @@ public sealed class GitMetadataOutboxTests(MongoReplicaSetFixture fixture) : Med
         GitProviderAccountType.User,
         GitProviderRepositorySelection.Selected);
 
-    private static SourceRepository Repository()
-    {
-        var now = DateTime.UtcNow;
-        var plan = new SourceBuildPlan("candidate",
-            SourceBuildPlanKind.Dockerfile,
-            "plan",
-            ".",
-            "Dockerfile",
-            SourceBuildPlanConfidence.High,
-            ImmutableList<string>.Empty,
-            ImmutableList<string>.Empty,
-            ImmutableList<string>.Empty,
-            null,
-            "private-plan-content");
-        return SourceRepositoryFactory.Create(TestData.TenantId,
-            ObjectId.GenerateNewId().ToString(),
-            "external",
-            "private-repository-name",
-            "private-url",
-            true,
-            new("main", "commit", now, ImmutableList<string>.Empty, ImmutableList.Create(plan)),
-            plan,
-            new(ObjectId.GenerateNewId().ToString(), now, now));
-    }
+    private MongoPersistLinkedSourceRepository Link(StoreOutboxWrites outbox) =>
+        new(DbContext.SourceRepositories, DbContext.GitProviderConnections, Transactions, outbox);
 
-    private static ProviderRepository Provider(SourceRepository row) => new(row.ExternalRepositoryId,
-        "name",
-        row.RepositoryFullName,
-        row.RepositoryUrl,
-        row.IsPrivate,
-        row.Branch,
-        row.UpdatedAtUtc);
+    private MongoDeleteSourceRepository Delete(StoreOutboxWrites outbox) =>
+        new(DbContext.SourceRepositories, Transactions, outbox,
+            Services.GetRequiredService<EnsureNoSourceRepositoryBuildConfiguration>(),
+            Services.GetRequiredService<IGitOpsMutations>());
 
-    private static SourceRepositoryAnalysis Analysis(SourceRepository row) => new(row.Branch,
-        row.CommitSha,
-        row.AnalyzedAtUtc,
-        ImmutableList<string>.Empty,
-        ImmutableList.Create(row.SelectedPlan));
+    private Task SeedConnection(SourceRepository repository) => DbContext.GitProviderConnections.InsertOneAsync(
+        GitProviderConnectionFactory.Create(repository.TenantId, "repository-connection", GitProviderKind.GitHub,
+            "42", "account", "organization", GitProviderAccountType.Organization, GitProviderRepositorySelection.All,
+            TestData.UserId, GitProviderConnectionFactory.DefaultOptions with { Id = repository.ConnectionId }));
+
+    private Task RepositoryIndexes() => DbContext.SourceRepositories.Indexes.CreateManyAsync(
+    [
+        new CreateIndexModel<SourceRepository>(Builders<SourceRepository>.IndexKeys
+            .Ascending(item => item.TenantId).Ascending(item => item.TechnicalName),
+            new CreateIndexOptions { Unique = true, Name = SourceRepositoryIndexes.TechnicalName }),
+        new CreateIndexModel<SourceRepository>(Builders<SourceRepository>.IndexKeys
+            .Ascending(item => item.TenantId).Ascending(item => item.ConnectionId)
+            .Ascending(item => item.ExternalRepositoryId).Ascending(item => item.Branch),
+            new CreateIndexOptions { Unique = true, Name = SourceRepositoryIndexes.Location })
+    ]);
+
+    private static SourceRepository Repository() => SourceRepositoryFactory.Create(
+        TestData.TenantId, "application", ObjectId.GenerateNewId().ToString(), "external",
+        "private-repository-name", "private-url", true, "main", SourceRepositoryFactory.DefaultOptions);
 }

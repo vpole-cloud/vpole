@@ -30,10 +30,11 @@ internal sealed class MongoTryPersistSourceBuildJob(
 
         return transactions.InvokeOutcomeAsync<bool>(async (transaction, ct) =>
             {
-                var updated = await jobs.ReplaceOneAsync(
+                var updated = await jobs.UpdateOneAsync(
                     transaction.Session,
-                    SourceBuildJobFilters.AtUpdatedAt(current),
-                    next,
+                    SourceBuildJobFilters.AtUpdatedAt(current) & SourceBuildJobFilters.LiveLease(current),
+                    Builders<SourceBuildJob>.Update.Set(item => item.State, next.State)
+                        .Set(item => item.UpdatedAtUtc, next.UpdatedAtUtc),
                     cancellationToken: ct);
                 if (updated.ModifiedCount != 1)
                     return transaction.Commit(false);

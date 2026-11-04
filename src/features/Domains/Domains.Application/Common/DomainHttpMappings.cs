@@ -20,6 +20,13 @@ public static class DomainHttpMappings
         this IServiceCollection services) =>
         services.AddHttpProblemMappings(All);
 
+    public static HttpProblem MapManagedDomainZoneNameConflict(ManagedDomainZoneNameConflict conflict) =>
+        Problem(
+            HttpStatusCode.Conflict,
+            "Domain zone technical name is already used",
+            "domains.zone.name-conflict",
+            new Dictionary<string, object> { ["technicalName"] = conflict.TechnicalName });
+
     public static HttpProblem MapManagedDomainZoneAlreadyReserved(ManagedDomainZoneAlreadyReserved reserved) =>
         Problem(
             HttpStatusCode.Conflict,
@@ -71,6 +78,13 @@ public static class DomainHttpMappings
                 ["bindingCount"] = referenced.BindingCount
             });
 
+    public static HttpProblem MapDomainZoneGitOwned(DomainZoneGitOwned owned) =>
+        Problem(
+            HttpStatusCode.Conflict,
+            "Domain zone configuration is managed by GitOps",
+            "domains.zone.git-owned",
+            new Dictionary<string, object> { ["domainZoneId"] = owned.ZoneId });
+
     public static HttpProblem MapDomainZoneDeletionConflict(DomainZoneDeletionConflict conflict) =>
         Problem(
             HttpStatusCode.Conflict,
@@ -106,6 +120,8 @@ public static class DomainHttpMappings
     public static HttpProblem MapCustomHostnameBindingError(
         CustomHostnameBindingError error) => error switch
         {
+            CustomHostnameBindingInvalidRelativeName => Problem(HttpStatusCode.BadRequest,
+                "The relative name does not form a valid hostname in this zone", "domains.hostname.invalid-name"),
             CustomHostnameBindingZoneNotFound notFound => Problem(
                 HttpStatusCode.NotFound,
                 "Domain zone not found",
@@ -123,6 +139,11 @@ public static class DomainHttpMappings
                     ["domainZoneId"] = mismatch.TenantDomainZoneId,
                     ["deploymentTargetId"] = mismatch.DeploymentTargetId
                 }),
+            CustomHostnameBindingNameConflict conflict => Problem(
+                HttpStatusCode.Conflict,
+                "Hostname binding technical name is already used",
+                "domains.hostname.name-conflict",
+                new Dictionary<string, object> { ["technicalName"] = conflict.TechnicalName }),
             CustomHostnameBindingConflict conflict => Problem(
                 HttpStatusCode.Conflict,
                 "Hostname is already bound",

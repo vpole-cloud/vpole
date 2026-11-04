@@ -11,6 +11,7 @@
     <InternalsVisibleTo Include="Pole.Features.ResourceConnections.Tests" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../../GitOps/GitOps.Contracts/GitOps.Contracts.csproj" />
     <ProjectReference Include="../ResourceConnections.Domain/ResourceConnections.Domain.csproj" />
     <ProjectReference Include="../ResourceConnections.Events/ResourceConnections.Events.csproj" />
     <ProjectReference Include="../ResourceConnections.Contracts/ResourceConnections.Contracts.csproj" />

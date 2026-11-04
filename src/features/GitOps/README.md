@@ -1,17 +1,15 @@
 # Repository GitOps
 
-Pole synchronizes tenant-owned GitHub repository sources through eight providers:
-ResourceGroup, IsolationScope, Secret, SecretBinding, WebService, PostgresCluster, RedisService
-and FunctionApp. The durable worker, polling, signed push webhooks and dependency recovery use
+Pole synchronizes tenant-owned GitHub repository sources through thirteen providers:
+ResourceGroup, IsolationScope, Secret, SecretBinding, WebService, PostgresCluster, RedisService,
+FunctionApp, ResourceConnection, DomainZone, HostnameBinding, SourceRepository and SourceBuildConfiguration. The durable worker, polling, signed push webhooks and dependency recovery use
 phase-aware managed configuration planning. Every poll and Sync checks drift, including unchanged
 commits, repairs mutable configuration and records verified no-op without business revisions,
 resource events or releases.
 
 The [canonical repository contract](docs/repository-contracts.md) contains the thirteen-kind
 coverage matrix, supported YAML schemas and examples, identity rules, catalog policy and phase
-semantics. Five providers remain for stage 6: ResourceConnection, DomainZone, HostnameBinding,
-SourceRepository and SourceBuildConfiguration. Lifecycle commands remain a later stage of the
-single #88/#98 PR.
+semantics. Stage 7 adds lifecycle commands within the same #88/#98 PR.
 
 ## Execution
 
@@ -65,7 +63,7 @@ scope. The name `default` is reserved and cannot be declared. Accepted resource/
 pinned; reusing a name never silently rebinds an existing declaration.
 
 The [canonical mixed YAML example](docs/repository-contracts.md#mixed-repository-example) shows
-all eight kinds. WebService supports Private/Public exposure and either fixed replicas or autoscaling.
+the workload kinds; the stage-6 section adds connectivity, domains and source delivery. WebService supports Private/Public exposure and either fixed replicas or autoscaling.
 SecretBinding uses `consumer: { kind, name }`: Runtime grants support WebService/FunctionApp;
 Bootstrap grants authorize PostgreSQL initialization without a runtime projection. YAML never
 contains Secret values, credentials, tenant authority or internal Pole IDs.
@@ -74,6 +72,35 @@ Git-owned resources reject manual configuration changes and deletion in the exis
 Supported operational actions and PostgreSQL credential rotation retain their ordinary workflows.
 Group/scope/target changes, immutable storage changes and disappeared created resources produce
 blockers; they do not cause implicit adoption, relocation or recreation.
+
+## Connectivity, domains and source delivery
+
+ResourceConnection pins both endpoint resource IDs and the published endpoint selector. Its Bind
+phase follows source preparation and destination configuration; full preflight rejects phase cycles.
+WebService connection environment references select Host, Port or a published Configuration key,
+without credentials. Runtime network-policy observations stay outside managed projections.
+
+DomainZone and HostnameBinding have tenant-unique technical names distinct from DNS labels and
+relative names. Generated identities stay explicit system identities. A binding may attach to a
+Public WebService owned manually or by another source without transferring workload ownership.
+Attachment repairs use the complete binding set, preserve aliases across WebService updates and
+record the binding source's GitOps provenance. Custom bindings prevent a Private exposure transition.
+Awaiting-artifact attachments retain reservations and desired ingress without activating routes.
+
+SourceRepository stores connection, external repository and branch identity without a selected
+analyzer candidate. Analyzer results are optional authoring aids. SourceBuildConfiguration stores an
+explicit inline Dockerfile; updating it creates a configuration revision and never queues a build.
+WebService image authority is either a concrete image or a pinned build configuration. The latter
+accepts full configuration as `AwaitingFirstArtifact`, with an inert prepared placement.
+
+Manual Build resolves the current application branch once and fixes its SHA, recipe, configuration
+revision and generation in the job. Crash recovery retains that input and uses a leased monotonic
+attempt. Current tenant/connection access, repository/configuration versions, generation and lease
+are checked before transactional artifact promotion. The verified digest, placement activation,
+release, receipt and outbox commit together; exact replay creates no second release. A GitOps poll
+compares image authority, not the delivered digest, so it preserves the last artifact. The application
+commit and manifest commit are separate provenance facts. A configuration still bound to a live
+WebService cannot be deleted before a supported lifecycle transition.
 
 ## Source API
 
@@ -156,13 +183,13 @@ and expose actions and field paths without projection values. WebService Prepare
 full configuration applied; Configure verifies managed fields while preserving connection references
 and server credentials.
 
-Stage 6 adds ResourceConnection, DomainZone, HostnameBinding, SourceRepository and
+Stage 6 implements ResourceConnection, DomainZone, HostnameBinding, SourceRepository and
 SourceBuildConfiguration. Source pause/resume, detach/delete, adoption, replacement, relocation
 and public preview/confirmation remain later lifecycle work. Prune stays `Retain`; there is no parallel ownership inventory or fabricated projection
 state. Live Kubernetes drift and runtime readiness remain the runtime reconcilers' responsibility.
 No new GitOps UI is included.
 
-Stage 5 verification requires solution build; affected GitOps, Secrets, PostgreSQL, Redis,
+Stage 6 verification requires solution build; affected GitOps, Secrets, PostgreSQL, Redis,
 Functions, GitProviders, SourceBuilds and architecture suites; full shared Integration; frontend
 test/build/lint; and GitHub setup plus mixed repository Aspire E2E. The
 [E2E guide](../../../docs/aspire-e2e-testing.md#gitops-repository-scenarios) separates the mixed

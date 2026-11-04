@@ -27,6 +27,8 @@ public static class RedisServicesFeatureRegistration
             new RedisNameIndexesMigration()));
         services.AddSingleton<SearchSourceType>(RedisServiceSearchProjection.SourceType);
         services.AddRedisPersistence();
+        services.AddSingleton(new ResourceConnectionDeclarationKind("RedisService",
+            RedisResourceDeployment.ResourceType));
         services.AddSingleton(new ResourceConnectionSourceCapability(
             RedisResourceDeployment.ResourceType));
         services.TryAddSingleton<RedisServiceCountQuota>();

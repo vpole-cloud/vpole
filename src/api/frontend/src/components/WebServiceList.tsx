@@ -1,3 +1,4 @@
+import { imageDescription } from '../modules/web-services/imageModel'
 import type { LoadStatus, ResourceGroup, WebService } from '../types'
 
 interface WebServiceListProps {
@@ -38,7 +39,7 @@ export function WebServiceList({ items, groups, status, error }: WebServiceListP
       {status === 'success' && items.length > 0 && (
         <div className="list">
           {items.map((item) => {
-            const image = `${item.spec.image.server}/${item.spec.image.name}:${item.spec.image.tag}`
+            const image = imageDescription(item.spec)
             const groupName = resolveResourceGroupName(item, groups)
 
             return (

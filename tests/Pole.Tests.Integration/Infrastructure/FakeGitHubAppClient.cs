@@ -63,7 +63,7 @@ public sealed class FakeGitHubAppClient : IGitHubAppClient
         Snapshot = new RepositorySourceSnapshot(
             Repository,
             "main",
-            "abc1234567890",
+            new string('a', 40),
             ["Pole.Sample.csproj", "Program.cs"],
             ImmutableDictionary<string, string>.Empty
                 .WithComparers(StringComparer.OrdinalIgnoreCase)

@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.GitProviders.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Domain;
@@ -9,7 +10,9 @@ namespace Pole.Features.SourceBuilds.Application.Persistence.Jobs;
 
 public union QueueSourceBuildJobOutcome(
     SourceBuildJob,
-    SourceBuildWebServiceNotFound);
+    SourceBuildWebServiceNotFound,
+    SourceBuildConfigurationUpdateConflict,
+    SourceBuildConfigurationRepositoryChanged);
 
 public delegate Task<QueueSourceBuildJobOutcome> QueueSourceBuildJob(
     SourceBuildJob job,
@@ -18,6 +21,8 @@ public delegate Task<QueueSourceBuildJobOutcome> QueueSourceBuildJob(
 
 internal sealed class MongoQueueSourceBuildJob(
     IMongoCollection<SourceBuildJob> jobs,
+    IMongoCollection<SourceBuildConfiguration> configurations,
+    FenceSourceRepository fenceRepository,
     MongoRunTransaction transactions,
     AdmitSourceBuildWebService admitWebService,
     StoreOutboxWrites storeOutboxWrites)
@@ -37,10 +42,23 @@ internal sealed class MongoQueueSourceBuildJob(
         return transactions.InvokeOutcomeAsync<QueueSourceBuildJobOutcome>(
             async (transaction, ct) =>
             {
+                if (await fenceRepository(new(job.TenantId, job.SourceRepositoryId,
+                    job.InputVersion.RepositoryRevision), transaction.Session, ct) is not SourceRepositoryFenced)
+                    return transaction.Abort(new SourceBuildConfigurationRepositoryChanged(job.SourceRepositoryId));
+
+                var updated = await configurations.UpdateOneAsync(transaction.Session,
+                    SourceBuildConfigurationFilters.ForQueue(job),
+                    Builders<SourceBuildConfiguration>.Update.Inc(item => item.BuildGeneration, 1)
+                        .Inc(item => item.ReferenceFence, 1), cancellationToken: ct);
+                if (updated.MatchedCount != 1)
+                    return transaction.Abort(new SourceBuildConfigurationUpdateConflict(job.ConfigurationId));
+
                 var admitted = await admitWebService(
                     new AdmitSourceBuildWebServiceRequest(
                         TenantId: job.TenantId,
-                        WebServiceId: job.WebServiceId),
+                        WebServiceId: job.WebServiceId,
+                        ConfigurationId: job.ConfigurationId,
+                        Purpose: SourceBuildAdmissionPurpose.Build),
                     session: transaction.Session,
                     cancellationToken: ct);
                 if (admitted is SourceBuildWebServiceNotFound error)

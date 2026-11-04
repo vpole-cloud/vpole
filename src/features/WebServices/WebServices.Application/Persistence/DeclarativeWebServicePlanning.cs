@@ -130,7 +130,33 @@ internal sealed partial class DeclarativeWebServiceProvider
             references.Add(name, new(id, reference.Key));
         }
 
-        return Project(ToSpec(spec, references.ToImmutable(), current?.Spec), spec.Tags, spec.Exposure,
+        ImmutableDictionary<string, ConnectionEnvironmentReference>? connections = null;
+        if (spec.ConnectionEnvironment is not null)
+        {
+            var builder = ImmutableDictionary.CreateBuilder<string, ConnectionEnvironmentReference>();
+            foreach (var (name, reference) in spec.ConnectionEnvironment)
+            {
+                var address = new ResourceAddress("ResourceConnection", reference.Connection);
+                var id = await git.ResolveAsync(new(request.TenantId, address), session, cancellationToken);
+                if (id is null)
+                    return new DeclarationReadBlocked(new DeclarationReferenceUnavailable(address));
+
+                builder.Add(name, new(id, reference.ValueKind, reference.ConfigurationKey));
+            }
+            connections = builder.ToImmutable();
+        }
+
+        string? buildId = null;
+        if (spec.Image is DeclaredSourceBuildImage image)
+        {
+            var address = new ResourceAddress("SourceBuildConfiguration", image.SourceBuildConfiguration);
+            buildId = await git.ResolveAsync(new(request.TenantId, address), session, cancellationToken);
+            if (buildId is null)
+                return new DeclarationReadBlocked(new DeclarationReferenceUnavailable(address));
+        }
+
+        return Project(ToSpec(spec, references.ToImmutable(), current?.Spec, connections, buildId),
+            spec.Tags, spec.Exposure,
             new(groupId, scope.IsolationScopeId, targetId),
             new(profileId, spec.Placement.ComputeProfile.Revision, spec.FixedReplicas,
                 ComputeProjection(compute.Compute.ToResourceDeploymentConfiguration())),
@@ -140,7 +166,8 @@ internal sealed partial class DeclarativeWebServiceProvider
     private sealed record PlanningPlacement(
         string ResourceGroupId,
         string IsolationScopeId,
-        string DeploymentTargetId);
+        string DeploymentTargetId,
+        string? SourceBuildConfigurationId = null);
 
     private sealed record PlanningCompute(
         string ProfileId,
@@ -154,12 +181,14 @@ internal sealed partial class DeclarativeWebServiceProvider
         string exposure,
         PlanningPlacement placement,
         PlanningCompute compute,
-        PlanningIngress? ingress) => new(DeclarationJson.Write(placement), DeclarationJson.Write(new
+        PlanningIngress? ingress) => new(DeclarationJson.Write(placement with
+        { SourceBuildConfigurationId = spec.Image.SourceBuildConfigurationId }), DeclarationJson.Write(new
         {
-            image = new { spec.Image.Server, spec.Image.Name, spec.Image.Tag },
+            image = ImageProjection(spec.Image),
             ports = spec.Config.PortMappings.OrderBy(port => port.Name, StringComparer.Ordinal).ToArray(),
             environment = spec.Config.EnvironmentVariables,
             secretEnvironment = spec.Config.SecretEnvironmentReferences,
+            connectionEnvironment = spec.Config.ConnectionEnvironmentReferences,
             probes = spec.Probes,
             autoscaling = spec.Autoscaling,
             tags = tags.Select(tag => tag.Trim()).Distinct().Order(StringComparer.Ordinal).ToArray(),
@@ -167,6 +196,14 @@ internal sealed partial class DeclarativeWebServiceProvider
             ingress,
             compute
         }));
+
+    private static JsonElement ImageProjection(WebServiceImage image) => image switch
+    {
+        ImageInfo direct => DeclarationJson.Write(new { direct.Server, direct.Name, direct.Tag }),
+        PendingSourceBuildImage or DeliveredSourceBuildImage =>
+            DeclarationJson.Write(new { sourceBuildConfigurationId = image.SourceBuildConfigurationId }),
+        UnboundSourceBuildImage => DeclarationJson.Write(new { awaitingConfiguration = true })
+    };
 
     private sealed record PlanningIngress(
         string ClassName,

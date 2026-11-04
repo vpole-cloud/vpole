@@ -8,9 +8,11 @@
     <RootNamespace>Pole.Features.SourceBuilds.Application</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Pole.Features.SourceBuilds.Tests" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../../GitOps/GitOps.Contracts/GitOps.Contracts.csproj" />
     <ProjectReference Include="..\SourceBuilds.Contracts\SourceBuilds.Contracts.csproj" />
     <ProjectReference Include="..\SourceBuilds.Domain\SourceBuilds.Domain.csproj" />
     <ProjectReference Include="..\SourceBuilds.Events\SourceBuilds.Events.csproj" />

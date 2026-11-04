@@ -54,6 +54,10 @@ public sealed class WebServiceResourceDeploymentAdapter(
         }
 
         var webService = desired.WebService;
+        if (webService.Lifecycle is not ActiveWebServiceLifecycle || webService.Spec.Image.ResolvedImage is null)
+            return ResourceDeploymentAdapterResult.Failed.Create(
+                "WebServiceArtifactUnavailable", "The service has not activated an image artifact.", retryable: false);
+
         var resolvedIngress = context.Deployment.Placement.Ingress;
         if (webService.Exposure.Mode is WebServiceExposureMode.Public &&
             (resolvedIngress is null || resolvedIngress.Hostnames.Count == 0))
@@ -171,7 +175,7 @@ public sealed class WebServiceResourceDeploymentAdapter(
         if (policyFailure is not null)
             return policyFailure;
 
-        if (webService.Spec.Image.SecretName is not null)
+        if (webService.Spec.Image.ResolvedImage?.SecretName is not null)
         {
             var credentialResult = await ApplyRegistryCredentialAsync(
                 context,
@@ -374,11 +378,11 @@ public sealed class WebServiceResourceDeploymentAdapter(
                 retryable: true);
         }
         if (!string.Equals(
-                webService.Spec.Image.SecretName,
+                webService.Spec.Image.ResolvedImage?.SecretName,
                 registryAccess.KubernetesSecretName,
                 StringComparison.Ordinal) ||
             !string.Equals(
-                webService.Spec.Image.Server,
+                webService.Spec.Image.ResolvedImage!.Server,
                 registryAccess.RegistryHost,
                 StringComparison.OrdinalIgnoreCase))
         {

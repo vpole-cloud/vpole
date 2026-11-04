@@ -8,6 +8,7 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.GitProviders.Contracts;
+using static Pole.Features.GitProviders.Contracts.HttpMapping.GitProviderContractHttpMappings;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Persistence.Configuration;
 using Pole.Features.SourceBuilds.Application.Persistence.Jobs;
@@ -31,12 +32,18 @@ public union StartManualSourceBuildOutcome(
     SourceBuildJobDto,
     SourceBuildConfigurationNotFound,
     SourceBuildConfigurationWebServiceNotFound,
-    SourceBuildLinkedRepositoryNotFound,
-    SourceBuildLinkedRepositoryCandidateChanged);
+    SourceBuildConfigurationUpdateConflict,
+    SourceBuildConfigurationRepositoryChanged,
+    SourceRepositoryBuildNotFound,
+    SourceRepositoryBuildConnectionNotFound,
+    SourceRepositoryRemoteNotFound,
+    SourceRepositoryBranchNotFound,
+    SourceRepositoryAccessDenied,
+    SourceRepositoryUnavailable);
 
 public sealed class StartManualSourceBuildHandler(
     LoadSourceBuildConfiguration loadSourceBuildConfiguration,
-    FindSourceRepositoryBuild findSourceRepositoryBuild,
+    ResolveSourceRepositoryCommit resolveCommit,
     QueueSourceBuildJob queueSourceBuildJob,
     TimeProvider timeProvider)
     : IMediatorOutcomeHandler<StartManualSourceBuildRequest, StartManualSourceBuildOutcome>
@@ -45,79 +52,52 @@ public sealed class StartManualSourceBuildHandler(
         StartManualSourceBuildRequest request,
         CancellationToken cancellationToken = default)
     {
-        var configuration = await loadSourceBuildConfiguration(
-            request.TenantId,
-            request.ConfigurationId,
-            cancellationToken);
+        var configuration = await loadSourceBuildConfiguration(request.TenantId,
+            request.ConfigurationId, cancellationToken);
         if (configuration is null)
-        {
             return new SourceBuildConfigurationNotFound(request.ConfigurationId);
-        }
 
-        var sourceRepository = await findSourceRepositoryBuild(
-            request.TenantId,
-            configuration.SourceRepositoryId,
-            cancellationToken);
-        return sourceRepository switch
+        var resolved = await resolveCommit(new(request.TenantId, configuration.SourceRepositoryId), cancellationToken);
+        return resolved switch
         {
-            SourceRepositoryBuildNotFound =>
-                new SourceBuildLinkedRepositoryNotFound(
-                    configuration.Id,
-                    configuration.SourceRepositoryId),
-            SourceRepositoryBuildSnapshot success => await QueueAsync(
-                request,
-                configuration,
-                success,
-                queueSourceBuildJob,
-                timeProvider,
-                cancellationToken)
+            SourceRepositoryCommitResolved commit =>
+                await QueueAsync(request, configuration, commit, cancellationToken),
+            SourceRepositoryBuildNotFound error => error,
+            SourceRepositoryBuildConnectionNotFound error => error,
+            SourceRepositoryRemoteNotFound error => error,
+            SourceRepositoryBranchNotFound error => error,
+            SourceRepositoryAccessDenied error => error,
+            SourceRepositoryUnavailable error => error
         };
     }
 
-    private static async Task<StartManualSourceBuildOutcome> QueueAsync(
+    private async Task<StartManualSourceBuildOutcome> QueueAsync(
         StartManualSourceBuildRequest request,
         SourceBuildConfiguration configuration,
-        SourceRepositoryBuildSnapshot sourceRepository,
-        QueueSourceBuildJob queueSourceBuildJob,
-        TimeProvider timeProvider,
+        SourceRepositoryCommitResolved commit,
         CancellationToken cancellationToken)
     {
-        if (!string.Equals(
-                sourceRepository.CandidateKey,
-                configuration.Recipe.CandidateKey,
-                StringComparison.Ordinal))
-        {
-            return new SourceBuildLinkedRepositoryCandidateChanged(
-                configuration.Id,
-                sourceRepository.Id);
-        }
-
-        var now = timeProvider.GetUtcNow().UtcDateTime;
         var build = SourceBuildJobFactory.CreateManual(
             request.TenantId,
             configuration.Id,
-            sourceRepository.Id,
+            commit.Repository.Id,
             configuration.WebServiceId,
-            sourceRepository.Branch,
-            sourceRepository.CommitSha,
+            commit.Repository.Branch,
+            commit.CommitSha,
+            new(configuration.Revision, commit.Repository.Revision, checked(configuration.BuildGeneration + 1)),
             configuration.Recipe,
             request.CurrentUserId.Value,
             request.CurrentUserEmail.Value,
-            new SourceBuildJobFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(),
-                now));
-        var queued = await queueSourceBuildJob(
-            build,
-            new SourceBuildRequestedEvent(build.Id)
-            {
-                EventCore = EventCore.Create(request.TenantId)
-            },
+            new(ObjectId.GenerateNewId().ToString(), timeProvider.GetUtcNow().UtcDateTime));
+        var queued = await queueSourceBuildJob(build,
+            new SourceBuildRequestedEvent(build.Id) { EventCore = EventCore.Create(request.TenantId) },
             cancellationToken);
         return queued switch
         {
             SourceBuildJob success => success.ToDto(),
-            SourceBuildWebServiceNotFound error =>
-                new SourceBuildConfigurationWebServiceNotFound(error.WebServiceId)
+            SourceBuildWebServiceNotFound error => new SourceBuildConfigurationWebServiceNotFound(error.WebServiceId),
+            SourceBuildConfigurationUpdateConflict error => error,
+            SourceBuildConfigurationRepositoryChanged error => error
         };
     }
 }
@@ -144,8 +124,14 @@ public static class StartManualSourceBuildEndpoint
                     SourceBuildJobDto job => Results.Accepted(value: job),
                     SourceBuildConfigurationNotFound error => MapConfigurationNotFound(error),
                     SourceBuildConfigurationWebServiceNotFound error => MapWebServiceNotFound(error),
-                    SourceBuildLinkedRepositoryNotFound error => MapLinkedRepositoryNotFound(error),
-                    SourceBuildLinkedRepositoryCandidateChanged error => MapLinkedRepositoryCandidateChanged(error)
+                    SourceBuildConfigurationUpdateConflict error => MapConfigurationUpdateConflict(error),
+                    SourceBuildConfigurationRepositoryChanged error => MapConfigurationRepositoryChanged(error),
+                    SourceRepositoryBuildNotFound error => MapSourceRepositoryBuildNotFound(error),
+                    SourceRepositoryBuildConnectionNotFound error => MapSourceRepositoryBuildConnectionNotFound(error),
+                    SourceRepositoryRemoteNotFound error => MapSourceRepositoryRemoteNotFound(error),
+                    SourceRepositoryBranchNotFound error => MapSourceRepositoryBranchNotFound(error),
+                    SourceRepositoryAccessDenied error => MapSourceRepositoryAccessDenied(error),
+                    SourceRepositoryUnavailable error => MapSourceRepositoryUnavailable(error)
                 });
             })
             .WithName("StartManualSourceBuild")

@@ -1,38 +1,45 @@
-using System.Collections.Immutable;
+using Pole.Workloads;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
 namespace Pole.Features.SourceBuilds.Domain;
 
-public enum SourceBuildRecipeKind
+public sealed record SourceBuildRecipe(string Dockerfile)
 {
-    Dockerfile,
-    DotNet,
-    Node
-}
+    public static SourceBuildRecipe Create(string dockerfile)
+    {
+        if (string.IsNullOrWhiteSpace(dockerfile) || dockerfile.Length > 100_000)
+            throw new ArgumentException("A bounded executable Dockerfile is required.", nameof(dockerfile));
 
-public sealed record SourceBuildRecipe(
-    string CandidateKey,
-    [property: BsonRepresentation(BsonType.String)]
-    SourceBuildRecipeKind Kind,
-    string SourceRoot,
-    string ManifestPath,
-    ImmutableList<string> Commands,
-    string? StartCommand,
-    string Dockerfile,
-    bool IsCustomized);
+        return new(dockerfile);
+    }
+}
 
 public sealed record SourceBuildConfiguration(
     [property: BsonId]
     [property: BsonRepresentation(BsonType.ObjectId)]
     string Id,
     string TenantId,
+    string TechnicalName,
     string SourceRepositoryId,
     string WebServiceId,
     SourceBuildRecipe Recipe,
-    string CreatedByUserId,
+    long Revision,
+    long ReferenceFence,
+    long BuildGeneration,
+    SourceBuildConfigurationOrigin Origin,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc);
+
+[BsonDiscriminator(RootClass = true)]
+[BsonKnownTypes(typeof(ManualSourceBuildConfigurationOrigin), typeof(GitSourceBuildConfigurationOrigin))]
+public closed record SourceBuildConfigurationOrigin;
+
+public sealed record ManualSourceBuildConfigurationOrigin(string UserId) : SourceBuildConfigurationOrigin;
+
+public sealed record GitSourceBuildConfigurationOrigin(
+    string SourceId,
+    string RunId) : SourceBuildConfigurationOrigin;
 
 public static class SourceBuildConfigurationFactory
 {
@@ -45,20 +52,30 @@ public static class SourceBuildConfigurationFactory
 
     public static SourceBuildConfiguration Create(
         string tenantId,
+        string technicalName,
         string sourceRepositoryId,
         string webServiceId,
         SourceBuildRecipe recipe,
-        string createdByUserId,
-        CreateOptions options) =>
-        new(
+        SourceBuildConfigurationOrigin origin,
+        CreateOptions options)
+    {
+        if (!ResourceTechnicalName.IsValid(technicalName))
+            throw new ArgumentException("A valid technical name is required.", nameof(technicalName));
+
+        return new(
             options.Id,
             tenantId,
+            technicalName,
             sourceRepositoryId,
             webServiceId,
-            recipe,
-            createdByUserId,
+            SourceBuildRecipe.Create(recipe.Dockerfile),
+            1,
+            0,
+            0,
+            origin,
             options.CreatedAtUtc,
             options.CreatedAtUtc);
+    }
 }
 
 public sealed record SourceBuildJob(
@@ -71,11 +88,19 @@ public sealed record SourceBuildJob(
     string WebServiceId,
     string Branch,
     string CommitSha,
+    SourceBuildInputVersion InputVersion,
+    long PromotionFence,
+    SourceBuildExecution Execution,
     SourceBuildRecipe Recipe,
     SourceBuildTrigger Trigger,
     SourceBuildJobState State,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc);
+
+public sealed record SourceBuildInputVersion(
+    long ConfigurationRevision,
+    long RepositoryRevision,
+    long Generation);
 
 [BsonDiscriminator(RootClass = true)]
 [BsonKnownTypes(typeof(ManualSourceBuildTrigger))]
@@ -114,7 +139,8 @@ public sealed record BuildingSourceBuild(DateTime StartedAtUtc) : SourceBuildJob
 
 public sealed record PushingSourceBuild(
     DateTime StartedAtUtc,
-    string ImageReference) : SourceBuildJobState;
+    string ImageReference,
+    string ExpectedDigest) : SourceBuildJobState;
 
 public sealed record DeployingSourceBuild(
     DateTime StartedAtUtc,
@@ -151,6 +177,7 @@ public static class SourceBuildJobFactory
         string webServiceId,
         string branch,
         string commitSha,
+        SourceBuildInputVersion inputVersion,
         SourceBuildRecipe recipe,
         string userId,
         string? email,
@@ -163,6 +190,9 @@ public static class SourceBuildJobFactory
             webServiceId,
             branch,
             commitSha,
+            inputVersion,
+            0,
+            new AvailableSourceBuildExecution(0),
             recipe,
             new ManualSourceBuildTrigger(userId, email),
             new QueuedSourceBuild(options.CreatedAtUtc),
@@ -184,10 +214,11 @@ public static class SourceBuildJobTransitions
     public static SourceBuildJob StartPushing(
         this SourceBuildJob job,
         string imageReference,
+        string expectedDigest,
         DateTime occurredAtUtc) =>
         Transition<BuildingSourceBuild>(
             job,
-            new PushingSourceBuild(occurredAtUtc, imageReference),
+            new PushingSourceBuild(occurredAtUtc, imageReference, expectedDigest),
             occurredAtUtc);
 
     public static SourceBuildJob StartDeploying(
@@ -198,6 +229,9 @@ public static class SourceBuildJobTransitions
     {
         if (job.State is not PushingSourceBuild pushing)
             return InvalidTransition(job, nameof(PushingSourceBuild));
+
+        if (pushing.ExpectedDigest != imageDigest)
+            throw new ArgumentException("Promotion must retain the built artifact digest.", nameof(imageDigest));
 
         return job with
         {

@@ -769,7 +769,7 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
     public async Task<string> GetHarborArtifactDigestAsync(
         string tenantId,
         string webServiceId,
-        string buildJobId,
+        string imageDigest,
         CancellationToken cancellationToken)
     {
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(tenantId));
@@ -783,8 +783,10 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
         var credentials = Convert.ToBase64String(
             Encoding.UTF8.GetBytes($"{_harborCredentials!.Username}:{_harborCredentials.Password}"));
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
+        var encodedProject = Uri.EscapeDataString(projectName);
+        var encodedDigest = Uri.EscapeDataString(imageDigest);
         using var response = await client.GetAsync(
-            $"/api/v2.0/projects/{Uri.EscapeDataString(projectName)}/repositories/{repository}/artifacts/build-{buildJobId}",
+            $"/api/v2.0/projects/{encodedProject}/repositories/{repository}/artifacts/{encodedDigest}",
             cancellationToken);
         response.EnsureSuccessStatusCode();
         using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));

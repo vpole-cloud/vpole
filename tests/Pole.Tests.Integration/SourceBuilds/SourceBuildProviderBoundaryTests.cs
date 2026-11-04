@@ -1,4 +1,3 @@
-using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.ContainerRegistries.Application.Persistence;
@@ -40,32 +39,15 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
                 ObjectId.GenerateNewId().ToString(),
                 now,
                 now));
-        var plan = new SourceBuildPlan(
-            "DotNet:src/App/App.csproj",
-            SourceBuildPlanKind.DotNet,
-            "App",
-            "src/App",
-            "src/App/App.csproj",
-            SourceBuildPlanConfidence.High,
-            ImmutableList.Create("ASP.NET web SDK"),
-            ImmutableList<string>.Empty,
-            ImmutableList.Create("dotnet restore", "dotnet publish"),
-            "dotnet App.dll",
-            "FROM mcr.microsoft.com/dotnet/aspnet:10.0");
         var repository = SourceRepositoryFactory.Create(
             TestData.TenantId,
+            "application",
             connection.Id,
             "provider-repository-1",
             "lsbV/sample",
             "https://example.test/lsbV/sample",
             true,
-            new SourceRepositoryAnalysis(
-                "main",
-                "current-commit",
-                now,
-                ImmutableList.Create("src/App/App.csproj"),
-                ImmutableList.Create(plan)),
-            plan,
+            "main",
             new SourceRepositoryFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
                 now,
@@ -96,10 +78,9 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
         Assert.IsType<SourceRepositoryBuildNotFound>(crossTenant.Value);
         var found = Assert.IsType<SourceRepositoryBuildSnapshot>(snapshot.Value);
         Assert.Equal(repository.Id, found.Id);
-        Assert.Equal(repository.CandidateKey, found.CandidateKey);
-        Assert.Equal(SourceRepositoryBuildPlanKind.DotNet, found.SelectedPlan.Kind);
-        Assert.Equal(plan.Commands, found.SelectedPlan.Commands);
-        Assert.Equal(plan.DockerfilePreview, found.SelectedPlan.Dockerfile);
+        Assert.Equal(repository.TechnicalName, found.TechnicalName);
+        Assert.Equal(repository.Revision, found.Revision);
+        Assert.Equal(repository.ConnectionId, found.ConnectionId);
 
         await using var destination = new MemoryStream();
         var crossTenantDownload = await archive.InvokeAsync(

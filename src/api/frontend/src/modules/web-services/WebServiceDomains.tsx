@@ -211,10 +211,11 @@ function DeploymentDomains({
   const mutation = useWebServiceMutation(scope, canManage)
   const [zoneId, setZoneId] = useState('')
   const [relativeName, setRelativeName] = useState('')
+  const [technicalName, setTechnicalName] = useState('')
   const [editing, setEditing] = useState<HostnameBinding | null>(null)
   const [removing, setRemoving] = useState<HostnameBinding | null>(null)
   const [notice, setNotice] = useState('')
-  const dirty = Boolean(zoneId || relativeName || editing)
+  const dirty = Boolean(zoneId || relativeName || technicalName || editing)
   useEffect(() => {
     onDirtyChange(deployment.deploymentId, dirty)
     return () => onDirtyChange(deployment.deploymentId, false)
@@ -232,20 +233,33 @@ function DeploymentDomains({
       zone.kind === 'managed-reservation',
   )
   const selected = eligible.find((zone) => zone.id === zoneId)
-  const validName = relativeName
-    .trim()
-    .toLowerCase()
-    .split('.')
-    .every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))
+  const validTechnicalName = /^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(technicalName.trim())
+  const validName =
+    relativeName.trim() === '@' ||
+    relativeName
+      .trim()
+      .toLowerCase()
+      .split('.')
+      .every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))
+  const lifecycleAllowsConfiguration =
+    service.lifecycle !== 'Prepared' && service.lifecycle !== 'Deleting'
   const publicReady =
+    lifecycleAllowsConfiguration &&
     service.exposure.mode === 'Public' &&
     target?.hasPublicIngress &&
-    deployment.desiredOperation === 'Apply'
+    (deployment.desiredOperation === 'Apply' || service.lifecycle === 'AwaitingFirstArtifact')
   const bindingsAvailable =
     bindings.isCurrent &&
     bindings.resource !== null &&
     bindings.status !== 'error' &&
     !bindings.error
+  const existingHostname = bindings.resource?.find(
+    (binding) =>
+      binding.tenantDomainZoneId === zoneId &&
+      binding.relativeName === relativeName.trim().toLowerCase(),
+  )
+  const draftMatches =
+    existingHostname?.technicalName === technicalName.trim() ? existingHostname : undefined
   const canAttach =
     canManage &&
     publicReady &&
@@ -253,15 +267,13 @@ function DeploymentDomains({
     bindingsAvailable &&
     selected &&
     validName &&
+    validTechnicalName &&
+    (!existingHostname || draftMatches) &&
     relativeName.trim()
-  const draftMatches = bindings.resource?.find(
-    (binding) =>
-      binding.tenantDomainZoneId === zoneId &&
-      binding.relativeName === relativeName.trim().toLowerCase(),
-  )
   const clear = () => {
     setZoneId('')
     setRelativeName('')
+    setTechnicalName('')
     setEditing(null)
   }
   const save = () => {
@@ -275,7 +287,11 @@ function DeploymentDomains({
               api.baseUrl,
               service.id,
               deployment.deploymentId,
-              { tenantDomainZoneId: zoneId, relativeName: relativeName.trim().toLowerCase() },
+              {
+                tenantDomainZoneId: zoneId,
+                relativeName: relativeName.trim().toLowerCase(),
+                technicalName: technicalName.trim(),
+              },
               credential(),
               api.tenantId,
               signal,
@@ -334,6 +350,14 @@ function DeploymentDomains({
         Generation {deployment.observedGeneration}/{deployment.desiredGeneration} · desired
         operation {deployment.desiredOperation}
       </p>
+      {service.lifecycle === 'Prepared' && (
+        <Notice>Finish the source build configuration before attaching hostnames.</Notice>
+      )}
+      {service.lifecycle === 'AwaitingFirstArtifact' && (
+        <Notice>
+          Hostname reservations are saved. Routes activate after the first successful build.
+        </Notice>
+      )}
       {deployment.failureCode && (
         <Notice tone="error">
           {deployment.failureCode}. Open Deployments to inspect and retry this target.
@@ -357,6 +381,8 @@ function DeploymentDomains({
           <article className="list-row" key={binding.id}>
             <div className="list-row__primary">
               <h4>{binding.hostname}</h4>
+              {binding.technicalName && <p>{binding.technicalName}</p>}
+              {binding.gitOps && <p>Managed by GitOps</p>}
               <p>
                 {binding.kind === 'generated'
                   ? 'Generated · maintained by this deployment'
@@ -368,27 +394,29 @@ function DeploymentDomains({
               </a>
             </div>
             <div className="row-actions">
-              {binding.kind === 'custom' && canManage && (
-                <>
-                  <Button
-                    disabled={mutation.busy || !publicReady}
-                    onClick={() => {
-                      setEditing(binding)
-                      setZoneId(binding.tenantDomainZoneId)
-                      setRelativeName(binding.relativeName)
-                    }}
-                  >
-                    Change alias
-                  </Button>
-                  <Button
-                    variant="danger"
-                    disabled={mutation.busy}
-                    onClick={() => setRemoving(binding)}
-                  >
-                    Detach alias
-                  </Button>
-                </>
-              )}
+              {binding.kind === 'custom' &&
+                canEditDesiredConfiguration(canManage, binding.gitOps) && (
+                  <>
+                    <Button
+                      disabled={mutation.busy || !publicReady}
+                      onClick={() => {
+                        setEditing(binding)
+                        setZoneId(binding.tenantDomainZoneId)
+                        setRelativeName(binding.relativeName)
+                        setTechnicalName('')
+                      }}
+                    >
+                      Change alias
+                    </Button>
+                    <Button
+                      variant="danger"
+                      disabled={mutation.busy || !lifecycleAllowsConfiguration}
+                      onClick={() => setRemoving(binding)}
+                    >
+                      Detach alias
+                    </Button>
+                  </>
+                )}
             </div>
           </article>
         ))}
@@ -415,6 +443,20 @@ function DeploymentDomains({
           <h4>{editing ? `Replace ${editing.hostname}` : 'Attach a custom hostname'}</h4>
           <fieldset disabled={mutation.busy}>
             <div className="form-grid">
+              <Field
+                label="Binding technical name"
+                hint="An immutable name unique in this tenant. Replacements require a new name."
+              >
+                <input
+                  className="field__control"
+                  required
+                  maxLength={63}
+                  value={technicalName}
+                  pattern="[a-z]([a-z0-9-]{0,61}[a-z0-9])?"
+                  onChange={(event) => setTechnicalName(event.target.value)}
+                  placeholder="api-hostname"
+                />
+              </Field>
               <Field label="Reserved zone">
                 <select
                   className="field__control"
@@ -432,7 +474,7 @@ function DeploymentDomains({
               </Field>
               <Field
                 label="Hostname label"
-                hint="DNS labels beneath the selected zone, for example api or api.eu."
+                hint="Use @ for the zone apex, or labels such as api or api.eu."
               >
                 <input
                   className="field__control"
@@ -449,7 +491,9 @@ function DeploymentDomains({
             <p className="form-message">
               Requested hostname:{' '}
               <strong>
-                {relativeName.trim().toLowerCase() || 'label'}.{selected.domain}
+                {relativeName.trim() === '@'
+                  ? selected.domain
+                  : `${relativeName.trim().toLowerCase() || 'label'}.${selected.domain}`}
               </strong>
             </p>
           )}

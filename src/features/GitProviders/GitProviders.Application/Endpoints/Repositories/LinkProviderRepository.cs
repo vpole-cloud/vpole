@@ -8,9 +8,11 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.Persistence.Repositories;
 using Pole.Features.GitProviders.Application.ProviderOperations;
+using Pole.Features.GitProviders.Contracts;
 using Pole.Features.GitProviders.Domain;
 using Pole.Mediator;
 using Pole.Validation;
+using Pole.Workloads;
 using static Pole.Features.GitProviders.Application.Common.GitProviderHttpMappings;
 
 namespace Pole.Features.GitProviders.Application.Endpoints.Repositories;
@@ -24,12 +26,16 @@ public sealed record LinkProviderRepositoryRequest(
 
 public union LinkProviderRepositoryOutcome(
     SourceRepositoryDto,
-    AnalyzeProviderRepositoryError,
-    SourceRepositoryBuildPlanNotFound,
-    SourceRepositoryAlreadyLinked);
+    GitProviderConnectionNotFound,
+    SourceRepositoryRemoteNotFound,
+    SourceRepositoryBranchNotFound,
+    SourceRepositoryAccessDenied,
+    SourceRepositoryUnavailable,
+    SourceRepositoryAlreadyLinked,
+    SourceRepositoryNameConflict);
 
 public sealed class LinkProviderRepositoryHandler(
-    AnalyzeProviderRepository analyzeProviderRepository,
+    ResolveProviderRepository resolveProviderRepository,
     PersistLinkedSourceRepository persistLinkedSourceRepository)
     : IMediatorOutcomeHandler<LinkProviderRepositoryRequest, LinkProviderRepositoryOutcome>
 {
@@ -37,61 +43,55 @@ public sealed class LinkProviderRepositoryHandler(
         LinkProviderRepositoryRequest request,
         CancellationToken cancellationToken = default)
     {
-        var analyzed = await analyzeProviderRepository(
-            request.TenantId,
-            request.ConnectionId,
-            request.RepositoryId,
-            request.Body.Branch,
+        var resolved = await resolveProviderRepository(
+            new(request.TenantId, request.ConnectionId, request.RepositoryId, request.Body.Branch),
             cancellationToken);
-        return analyzed switch
+        return resolved switch
         {
-            AnalyzeProviderRepositoryError error => error,
-            AnalyzedProviderRepository success => await PersistAsync(
-                request,
-                success,
-                persistLinkedSourceRepository,
-                cancellationToken)
+            ResolvedProviderRepository repository => await PersistAsync(request, repository, cancellationToken),
+            GitProviderConnectionNotFound missing => missing,
+            SourceRepositoryRemoteNotFound missing => missing,
+            SourceRepositoryBranchNotFound missing => missing,
+            SourceRepositoryAccessDenied denied => denied,
+            SourceRepositoryUnavailable unavailable => unavailable
         };
     }
 
-    private static async Task<LinkProviderRepositoryOutcome> PersistAsync(
+    private async Task<LinkProviderRepositoryOutcome> PersistAsync(
         LinkProviderRepositoryRequest request,
-        AnalyzedProviderRepository analyzed,
-        PersistLinkedSourceRepository persistLinkedSourceRepository,
+        ResolvedProviderRepository resolved,
         CancellationToken cancellationToken)
     {
-        var selectedPlan = analyzed.Analysis.Candidates.FirstOrDefault(candidate =>
-            string.Equals(candidate.CandidateKey, request.Body.CandidateKey, StringComparison.Ordinal));
-        if (selectedPlan is null)
-        {
-            return new SourceRepositoryBuildPlanNotFound(request.Body.CandidateKey);
-        }
-
-        var sourceRepository = SourceRepositoryFactory.Create(
-            request.TenantId, request.ConnectionId, request.RepositoryId, analyzed.Repository.FullName,
-            analyzed.Repository.HtmlUrl, analyzed.Repository.IsPrivate, analyzed.Analysis, selectedPlan,
+        var repository = SourceRepositoryFactory.Create(
+            request.TenantId,
+            request.Body.TechnicalName,
+            request.ConnectionId,
+            resolved.Repository.Id,
+            resolved.Repository.FullName,
+            resolved.Repository.HtmlUrl,
+            resolved.Repository.IsPrivate,
+            request.Body.Branch,
             SourceRepositoryFactory.DefaultOptions);
-        var inserted = await persistLinkedSourceRepository(
-            sourceRepository,
-            cancellationToken);
+        var inserted = await persistLinkedSourceRepository(repository, cancellationToken);
         return inserted switch
         {
             SourceRepository success => success.ToDto(),
-            SourceRepositoryAlreadyLinked error => error
+            SourceRepositoryAlreadyLinked conflict => conflict,
+            SourceRepositoryNameConflict conflict => conflict,
+            GitProviderConnectionNotFound missing => missing
         };
     }
 }
 
-public sealed class LinkProviderRepositoryRequestValidator
-    : AbstractValidator<LinkProviderRepositoryRequest>
+public sealed class LinkProviderRepositoryRequestValidator : AbstractValidator<LinkProviderRepositoryRequest>
 {
     public LinkProviderRepositoryRequestValidator()
     {
         RuleFor(request => request.ConnectionId).MongoObjectId("Git provider connection ID");
         RuleFor(request => request.RepositoryId).NotEmpty();
         RuleFor(request => request.Body).NotNull();
+        RuleFor(request => request.Body.TechnicalName).Must(ResourceTechnicalName.IsValid);
         RuleFor(request => request.Body.Branch).NotEmpty();
-        RuleFor(request => request.Body.CandidateKey).NotEmpty();
     }
 }
 
@@ -108,19 +108,22 @@ public static class LinkProviderRepositoryEndpoint
                 return result.ToHttpResult(outcome => outcome switch
                 {
                     SourceRepositoryDto repository => Results.Created(
-                        $"/api/v1/source-repositories/{repository.Id}",
-                        repository),
-                    AnalyzeProviderRepositoryError error => MapAnalyzeError(error),
-                    SourceRepositoryBuildPlanNotFound error => MapBuildPlanNotFound(error),
-                    SourceRepositoryAlreadyLinked error => MapSourceRepositoryAlreadyLinked(error)
+                        $"/api/v1/source-repositories/{repository.Id}", repository),
+                    GitProviderConnectionNotFound missing => MapConnectionNotFound(missing),
+                    SourceRepositoryRemoteNotFound missing => MapSourceRepositoryRemoteNotFound(missing),
+                    SourceRepositoryBranchNotFound missing => MapSourceRepositoryBranchNotFound(missing),
+                    SourceRepositoryAccessDenied denied => MapSourceRepositoryAccessDenied(denied),
+                    SourceRepositoryUnavailable unavailable => MapSourceRepositoryUnavailable(unavailable),
+                    SourceRepositoryAlreadyLinked conflict => MapSourceRepositoryAlreadyLinked(conflict),
+                    SourceRepositoryNameConflict conflict => MapSourceRepositoryNameConflict(conflict)
                 });
             })
             .WithName("LinkProviderRepository")
             .Produces<SourceRepositoryDto>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
-            .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
-            .ProducesProblem(StatusCodes.Status502BadGateway);
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
         return app;
     }
 }

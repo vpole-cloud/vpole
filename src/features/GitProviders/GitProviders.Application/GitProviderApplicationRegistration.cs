@@ -1,6 +1,8 @@
 using Pole.Features.GitProviders.Application.Endpoints.Callbacks;
 using Pole.Features.GitProviders.Application.Persistence.Webhooks;
 using Microsoft.Extensions.Configuration;
+using MongoDB.Driver;
+using Pole.Features.GitProviders.Domain;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitProviders.Application.Snapshots;
 using Microsoft.Extensions.DependencyInjection;
@@ -53,6 +55,25 @@ public static class GitProviderApplicationRegistration
         services.TryAddScoped<GitHubSetupPersistence>();
         services.TryAddScoped<GitHubSetupService>();
         services.TryAddScoped<RepositorySourceAnalyzer>();
+        services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
+            .GetCollection<SourceRepository>("SourceRepositories"));
+        services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
+            .GetCollection<GitProviderConnection>("GitProviderConnections"));
+        services.TryAddScoped<MongoSourceRepositoryReferences>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IDeclarativeResourceProvider,
+            DeclarativeSourceRepositoryProvider>());
+        services.TryAddScoped<FindNamedSourceRepository>(provider =>
+            provider.GetRequiredService<MongoSourceRepositoryReferences>().FindNamedAsync);
+        services.TryAddScoped<LoadSourceRepositoryReference>(provider =>
+            provider.GetRequiredService<MongoSourceRepositoryReferences>().LoadAsync);
+        services.TryAddScoped<FenceSourceRepository>(provider =>
+            provider.GetRequiredService<MongoSourceRepositoryReferences>().FenceAsync);
+        services.AddCapability<GitHubResolveProviderRepository, ResolveProviderRepository>(operation =>
+            operation.InvokeAsync);
+        services.AddCapability<SourceRepositoryCommitResolver, ResolveSourceRepositoryCommit>(operation =>
+            operation.InvokeAsync);
+        services.AddCapability<SourceRepositoryBuildAccessChecker, CheckSourceRepositoryBuildAccess>(operation =>
+            operation.InvokeAsync);
         services.TryAddScoped<SourceRepositoryBuildFinder>();
         services.TryAddScoped<FindSourceRepositoryBuild>(provider =>
             provider.GetRequiredService<SourceRepositoryBuildFinder>().InvokeAsync);
@@ -75,8 +96,6 @@ public static class GitProviderApplicationRegistration
         services.AddCapability<MongoLoadSourceRepositories, LoadSourceRepositories>(persistence =>
             persistence.InvokeAsync);
         services.AddCapability<MongoPersistLinkedSourceRepository, PersistLinkedSourceRepository>(persistence =>
-            persistence.InvokeAsync);
-        services.AddCapability<MongoPersistReanalyzedSourceRepository, PersistReanalyzedSourceRepository>(persistence =>
             persistence.InvokeAsync);
         services.AddCapability<MongoDeleteSourceRepository, DeleteSourceRepository>(persistence =>
             persistence.InvokeAsync);

@@ -136,6 +136,14 @@ internal static class DeploymentTargetFilters
                 target => target.WorkloadConfiguration.Ingress!.PublicBaseDomain,
                 null));
 
+    public static FilterDefinition<DeploymentTarget> AtDomainReservationPlanningVersion(
+        DomainReservationTargetPlanningSnapshot snapshot) =>
+        ById(snapshot.Request.DeploymentTargetId) &
+        Builders<DeploymentTarget>.Filter.Eq(item => item.Revision, snapshot.TargetRevision) &
+        Builders<DeploymentTarget>.Filter.Eq(item => item.WorkloadConfiguration.Revision,
+            snapshot.PublicIngress.WorkloadConfigurationRevision) &
+        Builders<DeploymentTarget>.Filter.Lt(item => item.ReferenceFence, long.MaxValue);
+
     public static FilterDefinition<DeploymentTarget> FenceableWorkloadConfigurations(
         IReadOnlyCollection<DeploymentTargetWorkloadConfigurationFenceRequest> requests)
     {

@@ -1,4 +1,5 @@
 using FluentValidation;
+using Pole.Features.GitOps.Contracts;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -46,7 +47,8 @@ public sealed class GetResourceConnectionsRequestValidator
 }
 
 public sealed class GetResourceConnectionsHandler(
-    LoadResourceConnectionsPage loadPage)
+    LoadResourceConnectionsPage loadPage,
+    IGitOpsMutations git)
     : IMediatorOutcomeHandler<GetResourceConnectionsRequest, GetResourceConnectionsOutcome>
 {
     public async Task<GetResourceConnectionsOutcome> HandleAsync(
@@ -60,8 +62,11 @@ public sealed class GetResourceConnectionsHandler(
             cancellationToken,
             request.SourceResourceType is null ? null : ResourceTypeId.Create(request.SourceResourceType),
             request.SourceResourceId is null ? null : ObjectId.Parse(request.SourceResourceId).ToString());
+        var statuses = await git.StatusesAsync(new(request.TenantId, "ResourceConnection",
+            page.Items.Select(item => item.Id).ToArray()), cancellationToken);
         return new PaginatedResponse<ResourceConnectionDto>(
-            page.Items.Select(connection => connection.ToDto()).ToArray(),
+            page.Items.Select(connection => connection.ToDto() with
+            { GitOps = statuses.GetValueOrDefault(connection.Id) }).ToArray(),
             page.TotalCount,
             request.PageNumber,
             request.PageSize);

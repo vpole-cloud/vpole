@@ -10,6 +10,7 @@ public static class WebServiceDependencyDiagnostics
     public static string Code(WebServiceDependencyUnavailable error) => error.Cause switch
     {
         ResourceConnectionReferencesUnavailable unavailable => unavailable.ReasonCode,
-        ConsumerSecretReferenceUnavailable unavailable => ConsumerSecretReferenceErrorCodes.Code(unavailable.Reason)
+        ConsumerSecretReferenceUnavailable unavailable => ConsumerSecretReferenceErrorCodes.Code(unavailable.Reason),
+        WebServicePublicExposureRequired => "CustomHostnamesRequirePublicExposure"
     };
 }

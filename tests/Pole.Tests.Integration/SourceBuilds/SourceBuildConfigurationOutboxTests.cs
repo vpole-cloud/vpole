@@ -5,6 +5,8 @@ using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.GitProviders.Contracts;
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.SourceBuilds.Application;
@@ -24,25 +26,26 @@ public sealed class SourceBuildConfigurationOutboxTests(MongoReplicaSetFixture f
     private const string EventName = "pole.source-builds/v1/source-build-configuration-changed";
 
     [Fact]
-    public async Task CrudEmitsOnlyAcceptedChangesAndPreservesTimestampCas()
+    public async Task CrudEmitsOnlyAcceptedChangesAndPreservesRevisionCas()
     {
         await using var provider = Provider();
         await using var scope = provider.CreateAsyncScope();
         var configuration = Configuration();
         var create = scope.ServiceProvider.GetRequiredService<CreateSourceBuildConfiguration>();
-        Assert.IsType<SourceBuildConfiguration>((await create(configuration)).Value);
-        Assert.IsType<SourceBuildConfigurationAlreadyExists>((await create(configuration)).Value);
+        Assert.IsType<SourceBuildConfiguration>((await create(new(configuration, 1))).Value);
+        Assert.IsType<SourceBuildConfigurationNameConflict>((await create(new(
+            configuration with { Id = ObjectId.GenerateNewId().ToString() }, 1))).Value);
         var stored = await DbContext.SourceBuildConfigurations.Find(row => row.Id == configuration.Id).SingleAsync();
         var update = scope.ServiceProvider.GetRequiredService<UpdateSourceBuildConfiguration>();
-        Assert.IsType<SourceBuildConfiguration>((await update(stored, stored.Recipe, stored.UpdatedAtUtc)).Value);
-        var next = Assert.IsType<SourceBuildConfiguration>((await update(stored,
+        Assert.IsType<SourceBuildConfiguration>((await update(new(stored, stored.Recipe, stored.UpdatedAtUtc))).Value);
+        var next = Assert.IsType<SourceBuildConfiguration>((await update(new(stored,
             stored.Recipe with
             {
                 Dockerfile = "private-recipe-content"
             },
-            stored.UpdatedAtUtc.AddSeconds(1))).Value);
+            stored.UpdatedAtUtc.AddSeconds(1)))).Value);
         Assert.IsType<SourceBuildConfigurationUpdateConflict>(
-            (await update(stored, stored.Recipe, next.UpdatedAtUtc.AddSeconds(1))).Value);
+            (await update(new(stored, stored.Recipe, next.UpdatedAtUtc.AddSeconds(1)))).Value);
         var delete = scope.ServiceProvider.GetRequiredService<DeleteSourceBuildConfiguration>();
         Assert.IsType<SourceBuildConfigurationRemovalRecorded>((await delete(configuration.TenantId, configuration.Id))
             .Value);
@@ -71,12 +74,14 @@ public sealed class SourceBuildConfigurationOutboxTests(MongoReplicaSetFixture f
             TenantId = ObjectId.GenerateNewId().ToString()
         };
         await DbContext.SourceBuildConfigurations.InsertManyAsync([configuration, foreign]);
-        var job = SourceBuildJobFactory.CreateManual(configuration.TenantId,
+        var job = SourceBuildJobFactory.CreateManual(
+            configuration.TenantId,
             configuration.Id,
             configuration.SourceRepositoryId,
             configuration.WebServiceId,
             "main",
             "commit",
+            new SourceBuildInputVersion(1, 1, 1),
             configuration.Recipe,
             TestData.UserId,
             null,
@@ -108,19 +113,19 @@ public sealed class SourceBuildConfigurationOutboxTests(MongoReplicaSetFixture f
         await using var scope = provider.CreateAsyncScope();
         await Assert.ThrowsAsync<InvalidOperationException>(() => mutation switch
         {
-            "update" => scope.ServiceProvider.GetRequiredService<UpdateSourceBuildConfiguration>()(before!,
+            "update" => scope.ServiceProvider.GetRequiredService<UpdateSourceBuildConfiguration>()(new(before!,
                 configuration.Recipe with
                 {
                     Dockerfile = "changed"
                 },
-                configuration.UpdatedAtUtc.AddSeconds(1)),
+                configuration.UpdatedAtUtc.AddSeconds(1))),
             "delete" => scope.ServiceProvider.GetRequiredService<DeleteSourceBuildConfiguration>()(
                 configuration.TenantId,
                 configuration.Id),
             "cleanup" => scope.ServiceProvider.GetRequiredService<CleanupSourceBuildConfigurations>()(
                 configuration.TenantId,
                 configuration.WebServiceId),
-            _ => scope.ServiceProvider.GetRequiredService<CreateSourceBuildConfiguration>()(configuration)
+            _ => scope.ServiceProvider.GetRequiredService<CreateSourceBuildConfiguration>()(new(configuration, 1))
         });
         var after = await DbContext.SourceBuildConfigurations.Find(row => row.Id == configuration.Id)
             .SingleOrDefaultAsync();
@@ -134,6 +139,18 @@ public sealed class SourceBuildConfigurationOutboxTests(MongoReplicaSetFixture f
     {
         var services = new ServiceCollection().AddSingleton(Fixture.Database).AddSingleton(Fixture.Client)
             .AddSingleton<MongoRunTransaction>();
+        services.AddSingleton(Services.GetRequiredService<IGitOpsMutations>());
+        services.AddSingleton<FenceSourceRepository>((_, session, _) =>
+        {
+            Assert.True(session.IsInTransaction);
+            return Task.FromResult<FenceSourceRepositoryOutcome>(new SourceRepositoryFenced());
+        });
+        services.AddSingleton<LoadSourceBuildTarget>((request, session, _) =>
+        {
+            Assert.True(session.IsInTransaction);
+            return Task.FromResult<LoadSourceBuildTargetOutcome>(
+                new SourceBuildWebServiceNotFound(request.WebServiceId));
+        });
         services.AddSourceBuildsFeature(new ConfigurationBuilder().Build());
         services.AddSingleton<AdmitSourceBuildWebService>((request, session, _) =>
         {
@@ -149,17 +166,12 @@ public sealed class SourceBuildConfigurationOutboxTests(MongoReplicaSetFixture f
         return services.BuildServiceProvider();
     }
 
-    private static SourceBuildConfiguration Configuration() => SourceBuildConfigurationFactory.Create(TestData.TenantId,
+    private static SourceBuildConfiguration Configuration() => SourceBuildConfigurationFactory.Create(
+        TestData.TenantId,
+        "application-build",
         ObjectId.GenerateNewId().ToString(),
         ObjectId.GenerateNewId().ToString(),
-        new("candidate",
-            SourceBuildRecipeKind.Dockerfile,
-            ".",
-            "Dockerfile",
-            ImmutableList<string>.Empty,
-            null,
-            "FROM scratch",
-            false),
-        TestData.UserId,
+        new("FROM scratch"),
+        new ManualSourceBuildConfigurationOrigin(TestData.UserId),
         new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow));
 }

@@ -2,9 +2,8 @@
 
 This is the canonical contract for the single #88/#98 delivery. Repository acquisition, the source
 API, durable execution, polling, push webhooks and managed drift reconciliation are implemented.
-Stage 5 supplies eight resource providers: ResourceGroup, IsolationScope, Secret, SecretBinding,
-WebService, RedisService, PostgresCluster and FunctionApp. The five remaining providers belong to
-stage 6; public lifecycle commands belong to stage 7. Manual snapshot entrypoints are removed.
+All thirteen resource providers are registered, including stage-6 connectivity, domains and source
+delivery. Public lifecycle commands belong to stage 7. Manual snapshot entrypoints are removed.
 The verification section describes required evidence separately from implementation scope.
 
 ## Ownership and module boundaries
@@ -70,9 +69,8 @@ technical name **and revision**, with immutable catalog history. GitHub connecti
 tenant-unique technical names; account display names and Mongo IDs are not YAML connection identities.
 Generated runtime objects are never declarations.
 
-The first eight rows are implemented provider schemas. The remaining five rows describe existing
-owner API capabilities and the stage-6 boundary, not accepted YAML schemas. A missing update API
-requires an explicit lifecycle decision; it does not establish a permanent domain prohibition.
+All rows describe implemented provider schemas. Creation-only identity changes require the explicit
+lifecycle decisions of stage 7; they never imply silent adoption or replacement.
 
 | Kind / owner                             | Status and managed fields                                                                                                                        | References / immutable boundaries                                                                                                    | Excluded fields and phases                                                                                                |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
@@ -84,11 +82,11 @@ requires an explicit lifecycle decision; it does not establish a permanent domai
 | RedisService / RedisServices             | Implemented: tags, pinned compute; storage size/profile and placement on creation                                                                | Group/scope/target and storage profile/revision/size immutable                                                                       | Runtime, timestamps; Prepare → Configure                                                                                  |
 | PostgresCluster / Postgres               | Implemented: version, instances, storage size, username/bootstrap reference, pinned compute/storage, placement                                   | Version, username, bootstrap identity, group/scope/target and storage profile/revision immutable; capacity updates retain mode rules | Credentials, runtime, timestamps; Prepare → Configure with separate Bootstrap binding                                     |
 | FunctionApp / Functions                  | Implemented: functionRoute, image, environment, logical secrets, resources, scaling, handlers/triggers, tags, pinned compute, explicit placement | Route/group/scope/target immutable; runtime Secret grants required                                                                   | Protocol/runtime data, invocations, generated trigger IDs and schedule versions; Prepare → Configure                      |
-| ResourceConnection / ResourceConnections | Stage 6: existing create/read/delete API for source, destination, endpoint                                                                       | Typed named resources; endpoint is a provider-owned selector                                                                         | Resolved network snapshots, fences, cleanup; planned Bind after placements                                                |
-| DomainZone / Domains                     | Stage 6: existing target/label reservation API                                                                                                   | Managed label under target base domain; target/label creation-only                                                                   | Derived domain and generated zones; planned Prepare                                                                       |
-| HostnameBinding / Domains                | Stage 6: existing zone/relative-name/workload binding API                                                                                        | Named zone/workload/target; generated deployment IDs stay internal                                                                   | Computed hostname/generated bindings; planned Bind                                                                        |
-| SourceRepository / GitProviders          | Stage 6: existing connection/repository/branch link also requires CandidateKey                                                                   | Named connection; source provider must separate build-link/candidate concerns from repository access                                 | URL/privacy/analysis observations; planned Prepare                                                                        |
-| SourceBuildConfiguration / SourceBuilds  | Stage 6: existing recipe/candidate/command/Dockerfile API                                                                                        | Repository and WebService creation-only; current candidate changes rejected                                                          | Jobs, logs, images, credentials, server-set customization state; planned Configure                                        |
+| ResourceConnection / ResourceConnections | Implemented: named source, destination, endpoint | Accepted endpoint IDs and target compatibility; identities immutable | Runtime network observations, credentials; Bind after source Prepare and destination Configure |
+| DomainZone / Domains | Implemented: technical name, target, DNS label | Target and label immutable; current managed target reservation policy | Computed DNS name and generated zones; Prepare |
+| HostnameBinding / Domains | Implemented: technical name, zone, workload, target, relative name; attachment repair | Accepted zone and Public WebService IDs; address/attachment immutable; cross-source references preserve ownership | Generated identities and runtime ingress observations; Bind after zone Prepare/workload Configure |
+| SourceRepository / GitProviders | Implemented: technical name, connection, repository ID, branch | Accepted connection ID; location immutable; no mandatory analyzer | Display URL/privacy metadata, candidates and credentials; Prepare |
+| SourceBuildConfiguration / SourceBuilds | Implemented: technical name, repository, WebService, inline Dockerfile | Accepted repository/target IDs immutable; recipe revisions; explicit image authority | Jobs, application commits, artifacts, logs and credentials; Configure after repository/WebService Prepare |
 
 Schemas and phase evidence live with their owners: `DeclarativeResourceGroupProvider`,
 `DeclarativeIsolationScopeProvider`, `DeclarativeSecretProvider`, `DeclarativeSecretBindingProvider`,
@@ -135,7 +133,7 @@ concrete reviewed action. Failed read/preflight never authorizes deletion. Stage
 ## Verification and delivery
 
 Required evidence covers current-schema BSON, factories, phases, normalized projections, explicit
-constructor inputs and pinned identities. Mongo checks cover all eight providers, catalog history/current
+constructor inputs and pinned identities. Mongo checks cover all thirteen providers, catalog history/current
 policy, mutation/quota/ownership/receipt/revision/outbox atomicity, fencing, retry, bootstrap recovery,
 rollout retention and absence of no-op side effects. Architecture checks enforce Domain ownership,
 provider boundaries, records and the three-parameter contract limit. No legacy documents exist.
@@ -292,7 +290,7 @@ exclusive; omitting both means one fixed replica. Autoscaling accepts `minReplic
 `metric: { type: cpu|memory, targetAverageUtilization }`; observed replica counts are excluded from drift.
 Image, ordinary/logical-secret environment, numeric TCP/UDP ports, HTTP probes and tags remain managed.
 Probe `port` is numeric text, not a named port. Connection environment references and server credentials
-are preserved. Custom hostname/connectivity declarations await stage 6.
+are preserved. Custom hostname/connectivity declarations are specified in the stage-6 section below.
 
 All operations retain revisioned plans, session-consistent reads, real resource/dependency fences,
 bounded replanning, receipts and atomic mutation/quota/ownership/revision/release/outbox writes. Manual
@@ -487,10 +485,62 @@ Function resources/scaling/handlers are explicit. Redis tags, Function/WebServic
 Secret purpose and binding key mappings default to empty collections/text; PostgreSQL instances default
 to one. Omission resets managed optional fields to their documented defaults, not to their prior value.
 
-### Stage 6 handoff
+### Stage 7 handoff
 
-The remaining kinds are ResourceConnection, DomainZone, HostnameBinding, SourceRepository and
-SourceBuildConfiguration. Their owners already expose ordinary API capabilities, but their GitOps
-schemas/providers are not registered. Stage 6 must preserve the same generic planning, accepted-ID,
-transactional fencing, ownership and no-op contracts. Repository snapshot acquisition continues to
-use connection plus external repository ID independently of SourceRepository/build analysis.
+All thirteen schemas/providers use the same generic planning, accepted-ID, transactional fencing,
+ownership and no-op contracts. Repository snapshot acquisition uses connection plus external
+repository ID independently of SourceRepository and optional build analysis. Stage 7 supplies
+preview/confirmation, pause/resume, detach/delete, adoption, replacement, relocation and prune
+lifecycle decisions; these actions have no successful placeholders in the current implementation.
+
+## Stage 6: connectivity, domains and source delivery
+
+The following schemas complete the thirteen-kind contract. Their implementation is delivered
+as Stage 6; lifecycle commands remain Stage 7. All declarations retain tenant-local technical
+identity and accepted reference IDs. Missing previously created resources are blockers, not creates.
+
+| Kind | Managed fields | Phase and dependencies | Mutation policy |
+| --- | --- | --- | --- |
+| ResourceConnection | source `{kind,name}`, destination `{kind,name}`, endpoint | Bind after source Prepare and destination endpoint configuration | Create/no-op; identity changes blocked |
+| DomainZone | deploymentTarget, label | Prepare after target admission | Create/no-op; target/label immutable |
+| HostnameBinding | zone, resource `{kind: WebService,name}`, deploymentTarget, relativeName | Bind after Public WebService Configure and zone Prepare | Create/no-op; repair desired ingress attachment |
+| SourceRepository | connection, repositoryId, branch | Prepare after current repository/ref admission | Create/no-op; location immutable |
+| SourceBuildConfiguration | repository, webService, recipe `{dockerfile}` | Configure after repository and WebService Prepare | Editable Dockerfile; associations immutable |
+
+ResourceConnection uses the existing provider capabilities: WebService, PostgreSQL, Redis and
+FunctionApp sources, with WebService, PostgreSQL and Redis destinations. Networking admission
+continues to support cross-group and cross-scope references. WebService may declare logical
+connection environment references to Host, Port or a provider-published Configuration key;
+connections do not grant credentials. Cyclic phase dependencies fail complete preflight.
+
+DomainZone reserves a child label under a deployment target's managed base domain. It does not
+implement external-domain ownership verification. Custom zones and hostname bindings have immutable
+technical names distinct from DNS names; generated entities retain explicit system identity.
+A hostname binding may attach to any Public WebService in the tenant through a narrow owner
+capability without acquiring that workload's ownership. Full authoritative alias sets survive
+ordinary WebService updates. Missing desired ingress attachment can be repaired; missing-created
+binding cannot. Changing a workload with custom bindings to Private is blocked.
+
+SourceRepository is independent of build analysis and candidate selection. A named build
+configuration owns an explicit inline Dockerfile, with the repository root as build context.
+Analyzer candidates are optional UI authoring inputs, never reconciliation inputs.
+
+WebService image input is either the existing concrete image or
+`{sourceBuildConfiguration: <technical-name>}`. Mixed forms are rejected. The image authority mode
+and accepted configuration identity are immutable in this stage. GitOps manages that association;
+SourceBuilds owns the delivered immutable digest and credentials, excluded from managed projection.
+
+Initialization orders repository Prepare, WebService Prepare, build configuration Configure, then
+WebService Configure. The last step can accept a complete configuration as AwaitingFirstArtifact.
+It does not start a workload or HTTP routes and must not substitute a fake bootstrap image.
+Bindings and desired hostnames may be accepted while awaiting the artifact. The first successful
+manual build promotion activates placement and creates the release atomically.
+
+Build is manual-only and resolves the current application branch once. Each job stores immutable
+application SHA, Dockerfile, configuration revision and target association. The application SHA
+is distinct from the GitOps manifest SHA. There is no separate exact-input Retry API; recovery of
+the same job retains its input. GitOps poll/Sync/webhook and recipe changes never enqueue builds.
+Promotion requires the latest eligible build generation and unchanged configuration/image-owner
+association, uses a verified digest, and preserves current non-image fields. Placement, artifact
+state, release, promotion receipt and outbox commit atomically. Failed or superseded builds keep
+the previous running artifact; replay cannot create duplicate releases.

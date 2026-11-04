@@ -373,7 +373,7 @@ export function WebServiceDependencies({
                   },
                 ]}
               />
-              {canWrite && connection.status !== 'Deleting' && (
+              {canWrite && !connection.gitOps && connection.status !== 'Deleting' && (
                 <Button variant="danger" onClick={() => setDisconnecting(connection)}>
                   Disconnect network access
                 </Button>

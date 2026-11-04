@@ -83,15 +83,19 @@ export async function fetchSourceBuildConfigurations(
 
 export async function createSourceBuildConfiguration(
   apiBaseUrl: string,
-  sourceRepositoryId: string,
-  webServiceId: string,
+  body: {
+    technicalName: string
+    sourceRepositoryId: string
+    webServiceId: string
+    recipe: SourceBuildRecipe
+  },
   token?: string,
   tenantId?: string,
 ) {
   return sendJson<SourceBuildConfiguration>(`${apiBaseUrl}/api/v1/source-build-configurations`, {
     method: 'POST',
     headers: buildHeaders(token, tenantId),
-    body: JSON.stringify({ sourceRepositoryId, webServiceId }),
+    body: JSON.stringify(body),
   })
 }
 
@@ -113,7 +117,7 @@ export async function deleteSourceBuildConfiguration(
 export async function updateSourceBuildRecipe(
   apiBaseUrl: string,
   configurationId: string,
-  recipe: SourceBuildRecipe,
+  body: { recipe: SourceBuildRecipe; expectedRevision: number },
   token?: string,
   tenantId?: string,
 ) {
@@ -122,7 +126,7 @@ export async function updateSourceBuildRecipe(
     {
       method: 'PUT',
       headers: buildHeaders(token, tenantId),
-      body: JSON.stringify({ recipe }),
+      body: JSON.stringify(body),
     },
   )
 }

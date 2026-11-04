@@ -20,7 +20,8 @@ internal static class DomainContractMappings
             },
             zone.Revision,
             zone.CreatedAtUtc,
-            zone.UpdatedAtUtc);
+            zone.UpdatedAtUtc,
+            TechnicalName(zone.Identity));
 
     public static HostnameBindingSnapshot ToSnapshot(this HostnameBinding binding) =>
         new(
@@ -39,5 +40,12 @@ internal static class DomainContractMappings
                 HostnameBindingKind.Custom => HostnameBindingKinds.Custom,
                 _ => throw new InvalidOperationException("The hostname-binding kind is not supported.")
             },
-            binding.CreatedAtUtc);
+            binding.CreatedAtUtc,
+            TechnicalName(binding.Identity));
+    private static string? TechnicalName(DomainIdentity identity) => identity switch
+    {
+        GeneratedDomainIdentity => null,
+        NamedDomainIdentity named => named.TechnicalName,
+        _ => throw new InvalidOperationException("The domain identity is not supported.")
+    };
 }

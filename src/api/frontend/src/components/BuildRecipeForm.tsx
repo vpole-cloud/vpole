@@ -36,18 +36,9 @@ export function BuildRecipeForm({
     onDirtyChange(dirty)
     return () => onDirtyChange(false)
   }, [dirty, onDirtyChange])
-  const labels = {
-    sourceRoot: 'Source directory',
-    manifestPath: 'Manifest path',
-    commands: 'Build commands',
-    startCommand: 'Start command',
-    dockerfile: 'Dockerfile',
-  }
   return (
     <details data-testid={`build-recipe-${configuration.id}`} className="build-recipe">
-      <summary>
-        Build recipe · {configuration.recipe.isCustomized ? 'Customized' : 'Detected'}
-      </summary>
+      <summary>Build recipe · Dockerfile</summary>
       {conflict && (
         <Notice tone="error">
           The saved recipe changed while this draft was open. Your draft is kept.
@@ -58,23 +49,14 @@ export function BuildRecipeForm({
         Changes apply to future builds. Running jobs retain their recorded recipe and commit.
       </p>
       <p className="field__hint">
-        Edit the Dockerfile to change build and start commands. The source directory and detected
-        commands are read-only reference information.
+        Edit the executable Dockerfile. The build context is the repository root.
       </p>
       <form
         onSubmit={(event) => {
           event.preventDefault()
           if (!canManage || busy || !dirty || conflict) return
           setFailure(null)
-          const recipe = {
-            ...configuration.recipe,
-            ...fields,
-            startCommand: fields.startCommand.trim() || null,
-            commands: fields.commands
-              .split('\n')
-              .map((command) => command.trim())
-              .filter(Boolean),
-          }
+          const recipe = { dockerfile: fields.dockerfile }
           void onSave(recipe)
             .then((updated) => {
               const fields = fieldsFor(updated.recipe)
@@ -86,37 +68,18 @@ export function BuildRecipeForm({
         }}
       >
         <fieldset className="web-service-form__fields" disabled={busy}>
-          {(['sourceRoot', 'manifestPath', 'commands', 'startCommand', 'dockerfile'] as const).map(
-            (field) => (
-              <label className="field" key={field}>
-                <span className="field__label">{labels[field]}</span>
-                {field === 'commands' || field === 'dockerfile' ? (
-                  <textarea
-                    className={`field__control field__control--textarea${field === 'dockerfile' ? ' build-recipe__dockerfile' : ''}`}
-                    value={fields[field]}
-                    readOnly={!canManage || field === 'commands'}
-                    onChange={(event) =>
-                      setFields((fields) => ({ ...fields, [field]: event.target.value }))
-                    }
-                  />
-                ) : (
-                  <input
-                    className="field__control"
-                    value={fields[field]}
-                    readOnly={!canManage || field === 'sourceRoot' || field === 'startCommand'}
-                    onChange={(event) =>
-                      setFields((fields) => ({ ...fields, [field]: event.target.value }))
-                    }
-                  />
-                )}
-                {validationMessage(failure, `recipe.${field}`) && (
-                  <span className="field-error">
-                    {validationMessage(failure, `recipe.${field}`)}
-                  </span>
-                )}
-              </label>
-            ),
-          )}
+          <label className="field">
+            <span className="field__label">Dockerfile</span>
+            <textarea
+              className="field__control field__control--textarea build-recipe__dockerfile"
+              value={fields.dockerfile}
+              readOnly={!canManage}
+              onChange={(event) => setFields({ dockerfile: event.target.value })}
+            />
+            {validationMessage(failure, 'recipe.dockerfile') && (
+              <span className="field-error">{validationMessage(failure, 'recipe.dockerfile')}</span>
+            )}
+          </label>
           {failure !== null && (
             <Notice tone="error">
               {failure instanceof Error ? failure.message : 'Unable to save the build recipe.'}

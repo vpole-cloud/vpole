@@ -6,7 +6,7 @@ namespace Pole.Features.GitProviders.Events;
 [EntityName("pole.git-providers/v1/source-repository-changed")]
 public sealed record SourceRepositoryChangedEvent(
     string SourceRepositoryId,
-    string ConnectionId) : IPoleEvent
-{
-    public EventCore EventCore { get; init; } = EventCore.Create();
-}
+    string ConnectionId,
+    string TechnicalName,
+    long Revision,
+    EventCore EventCore) : IPoleEvent;

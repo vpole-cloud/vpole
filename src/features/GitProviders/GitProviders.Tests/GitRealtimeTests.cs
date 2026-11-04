@@ -21,10 +21,8 @@ public sealed class GitRealtimeTests
             return Task.CompletedTask;
         });
         await consumer.HandleAsync(new GitProviderConnectionChangedEvent("connection", EventCore.Create("tenant")));
-        await consumer.HandleAsync(new SourceRepositoryChangedEvent("repository", "connection")
-        {
-            EventCore = EventCore.Create("tenant")
-        });
+        await consumer.HandleAsync(new SourceRepositoryChangedEvent(
+            "repository", "connection", "application-source", 1, EventCore.Create("tenant")));
         Assert.Equal(2, notices.Count);
         Assert.All(notices, notice => Assert.Equal(new RealtimeChange("git", "tenant"), notice));
     }

@@ -18,6 +18,33 @@ internal static class DomainFilters
             ZoneForTenant(tenantId),
             Builders<TenantDomainZone>.Filter.Eq(zone => zone.Id, zoneId));
 
+    public static FilterDefinition<TenantDomainZone> ZoneByTechnicalName(
+        string tenantId,
+        string technicalName) =>
+        ZoneForTenant(tenantId) & DomainIdentityFilters.Named<TenantDomainZone>() &
+        Builders<TenantDomainZone>.Filter.Eq(
+            item => ((NamedDomainIdentity)item.Identity).TechnicalName, technicalName);
+
+    public static FilterDefinition<TenantDomainZone> ZoneAtPlanningVersion(FenceDomainZoneRequest request) =>
+        ZoneById(request.TenantId, request.Id) &
+        Builders<TenantDomainZone>.Filter.Eq(item => item.Revision, request.ExpectedRevision) &
+        Builders<TenantDomainZone>.Filter.Eq(item => item.ReferenceFence, request.ExpectedReferenceFence);
+
+    public static FilterDefinition<HostnameBinding> BindingByTechnicalName(
+        string tenantId,
+        string technicalName) =>
+        Builders<HostnameBinding>.Filter.ForTenant(tenantId) & DomainIdentityFilters.Named<HostnameBinding>() &
+        Builders<HostnameBinding>.Filter.Eq(
+            item => ((NamedDomainIdentity)item.Identity).TechnicalName, technicalName);
+
+    public static FilterDefinition<HostnameBinding> BindingById(string tenantId, string id) =>
+        Builders<HostnameBinding>.Filter.ForTenant(tenantId) &
+        Builders<HostnameBinding>.Filter.Eq(item => item.Id, id);
+
+    public static FilterDefinition<HostnameBinding> BindingAtPlanningVersion(FenceHostnameBindingRequest request) =>
+        BindingById(request.TenantId, request.Id) &
+        Builders<HostnameBinding>.Filter.Eq(item => item.ReferenceFence, request.ExpectedReferenceFence);
+
     public static FilterDefinition<TenantDomainZone> ZonesForTenant(
         string tenantId,
         string? deploymentTargetId) =>
@@ -44,9 +71,7 @@ internal static class DomainFilters
             Builders<TenantDomainZone>.Filter.In(
                 zone => zone.DeploymentTargetId,
                 deploymentTargetIds),
-            Builders<TenantDomainZone>.Filter.Eq(
-                zone => zone.Kind,
-                TenantDomainZoneKind.Generated));
+            DomainIdentityFilters.Generated<TenantDomainZone>());
 
     public static FilterDefinition<TenantDomainZone> AtRevision(
         TenantDomainZone zone) =>
@@ -72,9 +97,7 @@ internal static class DomainFilters
         Builders<TenantDomainZone>.Filter.Or(zones.Select(zone =>
             Builders<TenantDomainZone>.Filter.And(
                 AtRevision(zone),
-                Builders<TenantDomainZone>.Filter.Eq(
-                    item => item.Kind,
-                    TenantDomainZoneKind.Generated))));
+                DomainIdentityFilters.Generated<TenantDomainZone>())));
 
     public static FilterDefinition<HostnameBinding> BindingForDeployment(
         string tenantId,
@@ -142,7 +165,5 @@ internal static class DomainFilters
                     Builders<HostnameBinding>.Filter.In(
                         binding => binding.ResourceDeploymentId,
                         deploymentIds),
-                    Builders<HostnameBinding>.Filter.Eq(
-                        binding => binding.Kind,
-                        HostnameBindingKind.Generated))));
+                    DomainIdentityFilters.Generated<HostnameBinding>())));
 }

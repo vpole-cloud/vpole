@@ -70,7 +70,7 @@ internal sealed class MongoBeginWebServiceDeletion(
 
         var result = await webServices.ReplaceOneAsync(
             session,
-            WebServiceFilters.AtRevision(current),
+            WebServiceFilters.AtPlanningVersion(current),
             replacement,
             cancellationToken: cancellationToken);
         return result.ModifiedCount == 1

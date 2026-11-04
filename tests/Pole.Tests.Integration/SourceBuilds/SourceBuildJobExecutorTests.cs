@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.ContainerRegistries.Contracts;
+using Pole.Features.GitProviders.Contracts;
 using Pole.Features.SourceBuilds.Application.Execution;
 using Pole.Features.SourceBuilds.Application;
 using Pole.Features.SourceBuilds.Application.Jobs;
@@ -150,16 +151,45 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
         Assert.Contains("SourceBuildResourceDeploymentPlacementUnavailable", failed.Message);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Executor_RechecksAccessAndBindingAfterBuildBeforePromotion(bool changedRevision)
+    {
+        var queued = await QueueJobAsync();
+        var build = new FakeBuildKitClient();
+        var deployment = new FakeDeploymentService();
+        var checks = 0;
+        CheckSourceRepositoryBuildAccess access = (request, _) =>
+        {
+            checks++;
+            Assert.Equal(1, build.Calls);
+            Assert.Equal(queued.Job.TenantId, request.TenantId);
+            return Task.FromResult<CheckSourceRepositoryBuildAccessOutcome>(changedRevision
+                ? new SourceRepositoryBuildSnapshot(request.SourceRepositoryId, "application", "connection",
+                    "repository", "main", 2)
+                : new SourceRepositoryAccessDenied());
+        };
+        await CreateExecutor(new FakeWorkspaceService(), new FakeRegistryBuildService(), build, deployment,
+            checkAccess: access).ExecuteAsync(queued.Job.Id);
+        Assert.Equal(1, checks);
+        Assert.Null(deployment.Request);
+        var stored = await Fixture.DbContext.SourceBuildJobs.Find(item => item.Id == queued.Job.Id).SingleAsync();
+        Assert.Equal(changedRevision ? "SourceRepositoryChanged" : "SourceRepositoryAccessDenied",
+            Assert.IsType<FailedSourceBuild>(stored.State).Code);
+        Assert.Equal(queued.Job.CommitSha, stored.CommitSha);
+    }
+
     private SourceBuildJobExecutor CreateExecutor(
         FakeWorkspaceService workspace,
         FakeRegistryBuildService registry,
         FakeBuildKitClient buildKit,
         FakeDeploymentService deployment,
-        ILogger<SourceBuildJobExecutor>? logger = null) =>
+        ILogger<SourceBuildJobExecutor>? logger = null,
+        CheckSourceRepositoryBuildAccess? checkAccess = null) =>
         new(
             ClaimAsync,
             LoadConfigurationAsync,
-            LoadForExecutionAsync,
             workspace.InvokeAsync,
             registry.PreparePushAsync,
             buildKit.InvokeAsync,
@@ -168,24 +198,24 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
             TryPersistAsync,
             TimeProvider.System,
             logger ?? NullLogger<SourceBuildJobExecutor>.Instance,
-            CreateCaptureAsync);
+            CreateCaptureAsync,
+            (_, _) => Task.FromResult(true),
+            checkAccess ?? ((request, _) => Task.FromResult<CheckSourceRepositoryBuildAccessOutcome>(
+                new SourceRepositoryBuildSnapshot(request.SourceRepositoryId, "application", "connection",
+                    "repository", "main", 1))));
 
     private async Task<SourceBuildJob?> ClaimAsync(
-        string buildJobId,
-        DateTime claimedAtUtc,
+        ClaimSourceBuildJobRequest request,
         CancellationToken cancellationToken)
     {
-        var claimed = await Fixture.DbContext.SourceBuildJobs.FindOneAndUpdateAsync(
-            Builders<SourceBuildJob>.Filter.And(
-                Builders<SourceBuildJob>.Filter.Eq(item => item.Id, buildJobId),
-                Builders<SourceBuildJob>.Filter.OfType<SourceBuildJobState, QueuedSourceBuild>(
-                    item => item.State)),
-            Builders<SourceBuildJob>.Update
-                .Set(item => item.State, new CloningSourceBuild(claimedAtUtc))
-                .Set(item => item.UpdatedAtUtc, claimedAtUtc),
-            new FindOneAndUpdateOptions<SourceBuildJob> { ReturnDocument = ReturnDocument.After },
-            cancellationToken);
-        return claimed;
+        var now = DateTime.UtcNow;
+        return await Fixture.DbContext.SourceBuildJobs.FindOneAndUpdateAsync(
+            Builders<SourceBuildJob>.Filter.Eq(item => item.Id, request.BuildJobId) &
+            Builders<SourceBuildJob>.Filter.OfType<SourceBuildJobState, QueuedSourceBuild>(item => item.State),
+            Builders<SourceBuildJob>.Update.Set(item => item.State, new CloningSourceBuild(now))
+                .Set(item => item.Execution, new ClaimedSourceBuildExecution(request.WorkerId, 1, now.AddMinutes(2)))
+                .Set(item => item.UpdatedAtUtc, now),
+            new FindOneAndUpdateOptions<SourceBuildJob> { ReturnDocument = ReturnDocument.After }, cancellationToken);
     }
 
     private async Task<SourceBuildConfiguration?> LoadConfigurationAsync(
@@ -194,13 +224,6 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
         CancellationToken cancellationToken) =>
         await Fixture.DbContext.SourceBuildConfigurations
             .Find(item => item.TenantId == tenantId && item.Id == configurationId)
-            .FirstOrDefaultAsync(cancellationToken);
-
-    private async Task<SourceBuildJob?> LoadForExecutionAsync(
-        string buildJobId,
-        CancellationToken cancellationToken) =>
-        await Fixture.DbContext.SourceBuildJobs
-            .Find(item => item.Id == buildJobId)
             .FirstOrDefaultAsync(cancellationToken);
 
     private async Task<bool> TryPersistAsync(
@@ -241,22 +264,15 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
     private async Task<QueuedJob> QueueJobAsync()
     {
         var now = DateTime.UtcNow;
-        var recipe = new SourceBuildRecipe(
-            "candidate",
-            SourceBuildRecipeKind.DotNet,
-            ".",
-            "App.csproj",
-            ImmutableList.Create("dotnet publish"),
-            "dotnet App.dll",
-            "FROM snapshot",
-            false);
+        var recipe = new SourceBuildRecipe("FROM snapshot");
         var sourceRepositoryId = ObjectId.GenerateNewId().ToString();
         var configuration = SourceBuildConfigurationFactory.Create(
             TestData.TenantId,
+            "application-build",
             sourceRepositoryId,
             ObjectId.GenerateNewId().ToString(),
             recipe with { Dockerfile = "FROM changed-after-enqueue" },
-            TestData.UserId,
+            new ManualSourceBuildConfigurationOrigin(TestData.UserId),
             new SourceBuildConfigurationFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now));
         var job = SourceBuildJobFactory.CreateManual(
             TestData.TenantId,
@@ -265,11 +281,12 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
             configuration.WebServiceId,
             "main",
             "exact-commit",
+            new SourceBuildInputVersion(1, 1, 1),
             recipe,
             TestData.UserId,
             TestData.UserEmail,
             new SourceBuildJobFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now));
-        await Fixture.DbContext.SourceBuildConfigurations.InsertOneAsync(configuration);
+        await Fixture.DbContext.SourceBuildConfigurations.InsertOneAsync(configuration with { BuildGeneration = 1 });
         await Fixture.DbContext.SourceBuildJobs.InsertOneAsync(job);
         return new QueuedJob(job, sourceRepositoryId);
     }

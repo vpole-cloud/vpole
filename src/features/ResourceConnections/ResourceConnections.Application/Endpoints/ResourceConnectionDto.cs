@@ -1,4 +1,5 @@
 using Pole.Features.ResourceConnections.Domain;
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.ResourceConnections.Application.Kubernetes;
 
 namespace Pole.Features.ResourceConnections.Application.Endpoints;
@@ -21,7 +22,8 @@ public sealed record ResourceConnectionDto(
     string EndpointId,
     string Status,
     long Generation,
-    IReadOnlyList<ResourceConnectionTargetDto> Targets);
+    IReadOnlyList<ResourceConnectionTargetDto> Targets,
+    GitResourceStatus? GitOps);
 
 internal static class ResourceConnectionDtoMapping
 {
@@ -78,7 +80,8 @@ internal static class ResourceConnectionDtoMapping
             connection.EndpointId,
             status,
             connection.Generation,
-            targets);
+            targets,
+            null);
     }
 
     private static ResourceConnectionTargetDto ToTargetDto(

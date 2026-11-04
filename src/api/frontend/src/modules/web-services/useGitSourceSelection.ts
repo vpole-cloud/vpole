@@ -7,7 +7,6 @@ import {
   fetchProviderRepositories,
   fetchSourceRepositories,
   linkProviderRepository,
-  reanalyzeSourceRepository,
 } from '../../api'
 import { useApiScope } from '../../data/useApiScope'
 import { useScopedQuery } from '../../data/useScopedQuery'
@@ -202,15 +201,14 @@ export function useGitSourceSelection(api: AppServices['api'], allowed = true, a
       )
       .catch(() => {})
   }
-  const link = async () => {
+  const link = async (technicalName: string) => {
     if (
       !allowed ||
       !active ||
-      analysisStale ||
       !selection.connectionId ||
       !selection.repositoryId ||
       !selection.branch ||
-      !selection.candidateKey ||
+      !technicalName ||
       !scope.isCurrent()
     )
       return
@@ -219,29 +217,21 @@ export function useGitSourceSelection(api: AppServices['api'], allowed = true, a
         source.connectionId === selection.connectionId &&
         source.externalRepositoryId === selection.repositoryId &&
         source.branch === selection.branch &&
-        source.selectedPlan.candidateKey === selection.candidateKey,
+        source.technicalName === technicalName,
     )
-    if (existing && existing.commitSha === selection.analysis?.commitSha) return existing
+    if (existing) return existing
     return mutation
       .run(async (signal) => {
-        const source = existing
-          ? await reanalyzeSourceRepository(
-              api.baseUrl,
-              existing.id,
-              scope.credential(),
-              api.tenantId,
-              signal,
-            )
-          : await linkProviderRepository(
-              api.baseUrl,
-              selection.connectionId!,
-              selection.repositoryId!,
-              selection.branch,
-              selection.candidateKey!,
-              scope.credential(),
-              api.tenantId,
-              signal,
-            )
+        const source = await linkProviderRepository(
+          api.baseUrl,
+          selection.connectionId!,
+          selection.repositoryId!,
+          selection.branch,
+          technicalName,
+          scope.credential(),
+          api.tenantId,
+          signal,
+        )
         if (signal.aborted || !scope.isCurrent()) throw new DOMException('Aborted', 'AbortError')
         await scope.session.client.cancelQueries({ queryKey: sources.queryKey, exact: true })
         if (signal.aborted || !scope.isCurrent()) throw new DOMException('Aborted', 'AbortError')

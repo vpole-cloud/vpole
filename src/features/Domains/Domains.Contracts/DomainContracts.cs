@@ -29,7 +29,8 @@ public sealed record TenantDomainZoneSnapshot(
     string Kind,
     long Revision,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc,
+    string? TechnicalName);
 
 public sealed record HostnameBindingSnapshot(
     string Id,
@@ -42,7 +43,8 @@ public sealed record HostnameBindingSnapshot(
     string RelativeName,
     string Hostname,
     string Kind,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    string? TechnicalName);
 
 public sealed record GetOrCreateGeneratedZoneRequest(
     string TenantId,
@@ -60,13 +62,15 @@ public sealed record CreateGeneratedHostnameBindingRequest(
     string RelativeName);
 
 public sealed record CreateCustomHostnameBindingRequest(
+    string BindingId,
     string TenantId,
     string TenantDomainZoneId,
     string DeploymentTargetId,
     ResourceTypeId ResourceType,
     string ResourceId,
     string ResourceDeploymentId,
-    string RelativeName);
+    string RelativeName,
+    string TechnicalName);
 
 public sealed record DeleteCustomHostnameBindingRequest(
     string TenantId,
@@ -83,6 +87,10 @@ public sealed record CustomHostnameBindingTargetMismatch(
 
 public sealed record CustomHostnameBindingConflict(string Hostname);
 
+public sealed record CustomHostnameBindingInvalidRelativeName;
+
+public sealed record CustomHostnameBindingNameConflict(string TechnicalName);
+
 public sealed record CustomHostnameBindingNotFound(string BindingId);
 
 public sealed record GeneratedHostnameBindingDeletionRejected(string BindingId);
@@ -95,9 +103,11 @@ public sealed record CustomHostnameBindingZoneChanged(
 public sealed record CustomHostnameBindingDeletionConflict(string BindingId);
 
 public union CustomHostnameBindingError(
+    CustomHostnameBindingInvalidRelativeName,
     CustomHostnameBindingZoneNotFound,
     CustomHostnameBindingTargetMismatch,
     CustomHostnameBindingConflict,
+    CustomHostnameBindingNameConflict,
     CustomHostnameBindingNotFound,
     GeneratedHostnameBindingDeletionRejected,
     CustomHostnameBindingZoneUnavailable,
@@ -220,6 +230,8 @@ public delegate Task<CleanupHostnameBindingsOutcome>
 
 public sealed record CustomHostnameBindingDeleted;
 
+public sealed record CustomHostnameBindingGitOwned(string BindingId);
+
 public sealed record HostnameBindingsCleanedUp;
 
 public union GetOrCreateGeneratedDomainZoneOutcome(
@@ -244,6 +256,7 @@ public union CreateCustomHostnameBindingOutcome(
 
 public union DeleteCustomHostnameBindingOutcome(
     CustomHostnameBindingDeleted,
+    CustomHostnameBindingGitOwned,
     CustomHostnameBindingError);
 
 public union CleanupHostnameBindingsOutcome(

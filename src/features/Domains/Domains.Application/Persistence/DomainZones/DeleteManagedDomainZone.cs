@@ -3,6 +3,7 @@ using Pole.Features.Outbox.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Domains.Domain;
 using Pole.ResultType;
+using Pole.Features.GitOps.Contracts;
 
 namespace Pole.Features.Domains.Application.Persistence.DomainZones;
 
@@ -16,6 +17,8 @@ public sealed record DomainZoneHasHostnameBindings(
 
 public sealed record DomainZoneDeletionConflict(string ZoneId);
 
+public sealed record DomainZoneGitOwned(string ZoneId);
+
 public sealed record ManagedDomainZoneReferenceRemovalRejected(
     string ZoneId,
     string DeploymentTargetId);
@@ -26,6 +29,7 @@ public union DeleteManagedDomainZoneOutcome(
     GeneratedDomainZoneDeletionRejected,
     DomainZoneHasHostnameBindings,
     DomainZoneDeletionConflict,
+    DomainZoneGitOwned,
     ManagedDomainZoneReferenceRemovalRejected);
 
 public delegate Task<DeleteManagedDomainZoneOutcome>
@@ -38,7 +42,8 @@ public delegate Task<DeleteManagedDomainZoneOutcome>
 internal sealed class MongoDeleteManagedDomainZone(
     IMongoDatabase database,
     ApplyDeploymentTargetReferenceChanges applyDeploymentTargetReferenceChanges,
-    StoreOutboxWrites outbox)
+    StoreOutboxWrites outbox,
+    IGitOpsMutations git)
 {
     private readonly IMongoCollection<TenantDomainZone> zones =
         database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
@@ -67,6 +72,9 @@ internal sealed class MongoDeleteManagedDomainZone(
         {
             return new GeneratedDomainZoneDeletionRejected(zoneId);
         }
+
+        if (!await git.AuthorizeAsync(new(tenantId, "DomainZone", zoneId), session, cancellationToken))
+            return new DomainZoneGitOwned(zoneId);
 
         var bindingCount = await bindings.CountDocumentsAsync(
             session,

@@ -35,6 +35,7 @@ public sealed class DomainSchemaMigrationTests(MongoReplicaSetFixture fixture) :
             targetId,
             "company",
             DnsName.Create("example.com"),
+            "zone-" + MongoDB.Bson.ObjectId.GenerateNewId(),
             new TenantDomainZoneFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now));
         var binding = HostnameBindingFactory.CreateCustom(
             tenantId,
@@ -45,6 +46,7 @@ public sealed class DomainSchemaMigrationTests(MongoReplicaSetFixture fixture) :
             ObjectId.GenerateNewId().ToString(),
             "api",
             DnsName.Create(zone.Domain),
+            "binding-" + MongoDB.Bson.ObjectId.GenerateNewId(),
             new HostnameBindingFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now));
         await new MongoDocumentContractTester<TenantDomainZone>(fixture.Database, "TenantDomainZones")
             .AssertRejectsAsync(zone, document => document["Unexpected"] = true);

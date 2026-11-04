@@ -53,6 +53,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
     protected override void ConfigureServices(IServiceCollection services)
     {
         services.AddSingleton<IRepositorySnapshotProvider>(repository);
+        ConfigureSourceDeliveryServices(services);
         var originalPersistence = services.Last(item =>
             item.ServiceType == typeof(PersistUpdatedWebServiceOutcome)).ImplementationFactory!;
         services.AddScoped<PersistUpdatedWebServiceOutcome>(provider =>
@@ -69,8 +70,11 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
                 return await persist(session, current, next, changed, ct, mutation);
             };
         });
-        foreach (var descriptor in services.Where(item => item.ServiceType ==
-                     typeof(Pole.Features.DeploymentTargets.Contracts.FenceDeploymentTargetWorkloadConfigurations) &&
+        foreach (var descriptor in services.Where(item =>
+                     (item.ServiceType == typeof(Pole.Features.DeploymentTargets.Contracts
+                          .FenceDeploymentTargetWorkloadConfigurations) ||
+                      item.ServiceType == typeof(Pole.Features.DeploymentTargets.Contracts
+                          .ListEligiblePublicIngressDeploymentTargetsForNewWorkload)) &&
                      item.Lifetime == ServiceLifetime.Singleton).ToArray())
             services.Remove(descriptor);
     }
@@ -381,7 +385,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, imageUpdate.Status);
         var updated = await Service();
         Assert.Equal(before.Id, updated.Id);
-        Assert.Equal("2", updated.Spec.Image.Tag);
+        Assert.Equal("2", updated.Spec.Image.ResolvedImage!.Tag);
         Assert.Equal(2, await Releases());
         var blocked = await Apply(Snapshot("3", ["API_TOKEN", "SECOND_TOKEN"]), commit: "blocked-commit");
         Assert.Equal(RepositoryPipelineStatus.Blocked, blocked.Status);
@@ -390,7 +394,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
             {
                 Error.Reason: ConsumerSecretReferenceError.SecretValuesMissing
             });
-        Assert.Equal("2", (await Service()).Spec.Image.Tag);
+        Assert.Equal("2", (await Service()).Spec.Image.ResolvedImage!.Tag);
         Assert.Equal(updated.ActiveRevision, (await Service()).ActiveRevision);
         var state = await Services.GetRequiredService<GitRepositorySources>()
             .StateAsync(TestData.TenantId, source, default);
@@ -404,7 +408,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         await Supply("synthetic-next");
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied,
             (await Pipeline.ResumeAsync(blocked.Context!)).Status);
-        Assert.Equal("3", (await Service()).Spec.Image.Tag);
+        Assert.Equal("3", (await Service()).Spec.Image.ResolvedImage!.Tag);
     }
 
     [Theory]
@@ -579,7 +583,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         Assert.Contains(receipts, item => item.Blocker == "OwnershipConflict");
         Assert.All(await Inventory.Find(item => item.Kind == "WebService").ToListAsync(),
             item => Assert.Equal(source, item.SourceId));
-        Assert.Equal("2", (await Service()).Spec.Image.Tag);
+        Assert.Equal("2", (await Service()).Spec.Image.ResolvedImage!.Tag);
     }
 
     [Fact]
@@ -771,7 +775,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
     }
 
     [Fact]
-    public async Task Source_build_and_image_token_paths_cannot_change_Git_image_or_create_release()
+    public async Task Source_build_without_authority_and_image_token_paths_cannot_change_Git_image_or_create_release()
     {
         var initial = await Apply();
         await Supply();
@@ -784,14 +788,15 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
                 "pole.gitops/v1/source-work-requested"));
         var build = await Services.GetRequiredService<DeploySourceBuildWebService>()(new(current.TenantId,
             current.Id,
-            "synthetic-build",
-            "synthetic-repository",
-            "commit",
+            Id(),
+            Id(),
+            new string('a', 40),
+            new(Id(), 1, 1, "unclaimed", 1),
             TestData.UserId,
             TestData.UserEmail,
-            new("docker.io", "nginx", "build", "sha256:synthetic", "synthetic-pull")));
+            new("docker.io", "nginx", "build", "sha256:" + new string('d', 64), "synthetic-pull")));
         var buildError = Assert.IsType<SourceBuildWebServiceDeploymentError>(build.Value);
-        Assert.Equal(SourceBuildWebServiceUpdateConflictReason.GitOwnedConfiguration,
+        Assert.Equal(SourceBuildWebServiceUpdateConflictReason.SupersededBuild,
             Assert.IsType<SourceBuildWebServiceUpdateConflict>(buildError.Value).Reason);
         var issued = WebServiceDeploymentTokenFactory.Issue(current.TenantId,
             current.Id,

@@ -137,12 +137,19 @@ public sealed record ClearIngress : ResourceDeploymentIngressChange;
 public sealed record ReplaceIngress(ResourceDeploymentIngressConfiguration Configuration)
     : ResourceDeploymentIngressChange;
 
+public enum ResourceDeploymentActivation
+{
+    Reconcile,
+    KeepPrepared
+}
+
 public sealed record ResourceDeploymentSetApplyRequest(
     string TenantId,
     ResourceTypeId ResourceType,
     string ResourceId,
     long ResourceRevision,
-    IReadOnlyList<ResourceDeploymentSetApplyItem> Deployments);
+    IReadOnlyList<ResourceDeploymentSetApplyItem> Deployments,
+    ResourceDeploymentActivation Activation = ResourceDeploymentActivation.Reconcile);
 
 public sealed record ResourceDeploymentSetDeletionItem(
     string ResourceDeploymentId,

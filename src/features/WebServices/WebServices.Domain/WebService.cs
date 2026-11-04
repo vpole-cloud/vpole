@@ -29,8 +29,17 @@ public sealed record WebService(
         return this with { DeclaredPlacement = placement };
     }
 
-    public WebService ActivatePrepared(WebServiceSpec spec, IEnumerable<string> tags, WebServiceExposure exposure) =>
-        Lifecycle is PreparedWebServiceLifecycle ? this with
+    public WebService ActivatePrepared(WebServiceSpec spec, IEnumerable<string> tags, WebServiceExposure exposure)
+    {
+        WebServiceImageFactory.Validate(spec.Image);
+        if (spec.Image.ResolvedImage is null)
+            throw new InvalidOperationException("Activation requires an image artifact.");
+
+        if (Lifecycle is not PreparedWebServiceLifecycle)
+            return UpdateDesiredState(spec, tags, exposure);
+
+        EnsureImageAuthority(spec.Image);
+        return this with
         {
             Spec = spec,
             Tags = WebServiceFactory.NormalizeTags(tags),
@@ -38,8 +47,58 @@ public sealed record WebService(
             Lifecycle = new ActiveWebServiceLifecycle(),
             ActiveRevision = checked(ActiveRevision + 1),
             Revision = checked(Revision + 1)
-        }
-            : UpdateDesiredState(spec, tags, exposure);
+        };
+    }
+
+    public WebService AcceptConfigurationAwaitingArtifact(
+        WebServiceSpec spec,
+        IEnumerable<string> tags,
+        WebServiceExposure exposure)
+    {
+        if (Lifecycle is not (PreparedWebServiceLifecycle or AwaitingFirstArtifactWebServiceLifecycle))
+            throw new InvalidOperationException("Only an unactivated build service can await its first artifact.");
+        if (spec.Image is not PendingSourceBuildImage)
+            throw new InvalidOperationException("An accepted build configuration identity is required.");
+
+        WebServiceImageFactory.Validate(spec.Image);
+        EnsureImageAuthority(spec.Image);
+        var normalizedTags = WebServiceFactory.NormalizeTags(tags);
+        if (Lifecycle is AwaitingFirstArtifactWebServiceLifecycle && Spec.HasSameConfiguration(spec) &&
+            Tags.SetEquals(normalizedTags) && Exposure == exposure)
+            return this;
+
+        return this with
+        {
+            Spec = spec,
+            Tags = normalizedTags,
+            Exposure = exposure,
+            Lifecycle = new AwaitingFirstArtifactWebServiceLifecycle(),
+            ActiveRevision = checked(ActiveRevision + 1),
+            Revision = checked(Revision + 1)
+        };
+    }
+
+    public WebService PromoteArtifact(DeliveredSourceBuildImage artifact)
+    {
+        if (Lifecycle is not (AwaitingFirstArtifactWebServiceLifecycle or ActiveWebServiceLifecycle))
+            throw new InvalidOperationException("The service must have accepted its build configuration.");
+
+        WebServiceImageFactory.Validate(artifact);
+        if (Spec.Image.SourceBuildConfigurationId != artifact.ConfigurationId)
+            throw new InvalidOperationException("The artifact belongs to another build configuration.");
+        if (Spec.Image == artifact)
+            return this;
+        if (Spec.Image is DeliveredSourceBuildImage previous && artifact.Generation <= previous.Generation)
+            throw new InvalidOperationException("An artifact cannot replace the same or a newer build generation.");
+
+        return this with
+        {
+            Spec = Spec with { Image = artifact },
+            Lifecycle = new ActiveWebServiceLifecycle(),
+            ActiveRevision = checked(ActiveRevision + 1),
+            Revision = checked(Revision + 1)
+        };
+    }
 
     public WebService UpdateDesiredState(WebServiceSpec spec, IEnumerable<string> tags)
         => UpdateDesiredState(spec, tags, Exposure);
@@ -53,6 +112,11 @@ public sealed record WebService(
         ArgumentNullException.ThrowIfNull(spec);
         ArgumentNullException.ThrowIfNull(tags);
         ArgumentNullException.ThrowIfNull(exposure);
+
+        WebServiceImageFactory.Validate(spec.Image);
+        EnsureImageAuthority(spec.Image);
+        if (spec.Image.ResolvedImage is null)
+            throw new InvalidOperationException("An active service requires an image artifact.");
 
         var normalizedTags = WebServiceFactory.NormalizeTags(tags);
         return Spec.HasSameConfiguration(spec) && Tags.SetEquals(normalizedTags) && Equals(Exposure, exposure)
@@ -74,7 +138,8 @@ public sealed record WebService(
     /// </summary>
     public WebService AdvancePlacementDesiredState()
     {
-        EnsureActive();
+        if (Lifecycle is not (ActiveWebServiceLifecycle or AwaitingFirstArtifactWebServiceLifecycle))
+            throw new InvalidOperationException("Placement requires an accepted service configuration.");
         return this with
         {
             ActiveRevision = checked(ActiveRevision + 1),
@@ -82,12 +147,20 @@ public sealed record WebService(
         };
     }
 
-    public WebService Redeploy() => AdvancePlacementDesiredState();
+    public WebService Redeploy()
+    {
+        EnsureActive();
+        return AdvancePlacementDesiredState();
+    }
 
     public WebService Rollback(WebServiceSpec spec)
     {
         EnsureActive();
         ArgumentNullException.ThrowIfNull(spec);
+        EnsureImageAuthority(spec.Image);
+        if (Spec.Image is not ImageInfo || spec.Image is not ImageInfo)
+            throw new InvalidOperationException("Build artifacts are changed through verified promotion.");
+
         return this with
         {
             Spec = spec,
@@ -108,18 +181,40 @@ public sealed record WebService(
         };
     }
 
+    private void EnsureImageAuthority(WebServiceImage next)
+    {
+        if (Spec.Image is UnboundSourceBuildImage && Lifecycle is PreparedWebServiceLifecycle &&
+            next is PendingSourceBuildImage)
+            return;
+        if (Spec.Image is ImageInfo && next is ImageInfo)
+            return;
+        if (Spec.Image.SourceBuildConfigurationId is { } configurationId &&
+            next.SourceBuildConfigurationId == configurationId)
+        {
+            if (Spec.Image is PendingSourceBuildImage && next is not PendingSourceBuildImage ||
+                Spec.Image is DeliveredSourceBuildImage && Spec.Image != next)
+                throw new InvalidOperationException("Build artifacts are changed through verified promotion.");
+            return;
+        }
+
+        throw new InvalidOperationException("The image authority cannot change after creation.");
+    }
+
     private void EnsureActive()
     {
         if (Lifecycle is not ActiveWebServiceLifecycle)
-            throw new InvalidOperationException("A deleting web service cannot be updated.");
+            throw new InvalidOperationException("Only an active web service can perform this operation.");
     }
 }
 
 [BsonDiscriminator(RootClass = true)]
-[BsonKnownTypes(typeof(PreparedWebServiceLifecycle), typeof(ActiveWebServiceLifecycle), typeof(DeletingWebServiceLifecycle))]
+[BsonKnownTypes(typeof(PreparedWebServiceLifecycle), typeof(AwaitingFirstArtifactWebServiceLifecycle),
+    typeof(ActiveWebServiceLifecycle), typeof(DeletingWebServiceLifecycle))]
 public closed record WebServiceLifecycle;
 
 public sealed record PreparedWebServiceLifecycle : WebServiceLifecycle;
+
+public sealed record AwaitingFirstArtifactWebServiceLifecycle : WebServiceLifecycle;
 
 public sealed record ActiveWebServiceLifecycle : WebServiceLifecycle;
 
@@ -127,7 +222,7 @@ public sealed record DeletingWebServiceLifecycle(DateTime RequestedAtUtc) : WebS
 
 /// <summary>Configuration shared by every physical deployment of a logical web service.</summary>
 public sealed record WebServiceSpec(
-    ImageInfo Image,
+    WebServiceImage Image,
     WebServiceConfig Config,
     AutoscalingSpec? Autoscaling,
     ProbeSpec Probes)
@@ -215,14 +310,6 @@ public sealed record PortMapping(
     string TargetPort,
     string Protocol,
     string Name);
-public sealed record ImageInfo(
-    string Server,
-    string Name,
-    string Tag,
-    string? SecretName)
-{
-    public string FullImageName => $"{Server}/{Name}:{Tag}";
-}
 
 public static class WebServiceFactory
 {
@@ -250,6 +337,15 @@ public static class WebServiceFactory
         ArgumentNullException.ThrowIfNull(spec);
         ArgumentNullException.ThrowIfNull(exposure);
         ArgumentNullException.ThrowIfNull(options);
+        WebServiceImageFactory.Validate(spec.Image);
+        if (options.Lifecycle is ActiveWebServiceLifecycle && spec.Image.ResolvedImage is null)
+            throw new ArgumentException("An active service requires an image artifact.", nameof(spec));
+        if (options.Lifecycle is AwaitingFirstArtifactWebServiceLifecycle && spec.Image is not PendingSourceBuildImage)
+            throw new ArgumentException("Awaiting services require a bound pending image.", nameof(spec));
+        if (spec.Image is UnboundSourceBuildImage && options.Lifecycle is not PreparedWebServiceLifecycle)
+            throw new ArgumentException(
+                "Only prepared services can have an unbound build configuration.", nameof(spec));
+
         return new WebService(
             RequiredObjectId(options.Id, nameof(options.Id)),
             RequiredObjectId(tenantId, nameof(tenantId)),

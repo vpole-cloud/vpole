@@ -113,9 +113,17 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
         var sourceIndexes = await Fixture.Database
             .GetCollection<BsonDocument>("SourceRepositories")
             .Indexes.ListAsync();
-        var sourceIndex = (await sourceIndexes.ToListAsync())
-            .Single(index => index["name"] == "UX_SourceRepositories_Tenant_Repository_Branch_Candidate");
+        var sourceIndexDocuments = await sourceIndexes.ToListAsync();
+        var sourceIndex = sourceIndexDocuments
+            .Single(index => index["name"] == "UX_SourceRepositories_Tenant_Repository_Branch");
         Assert.True(sourceIndex["unique"].AsBoolean);
+        Assert.Equal(new[] { "TenantId", "ConnectionId", "ExternalRepositoryId", "Branch" },
+            sourceIndex["key"].AsBsonDocument.Names);
+        var sourceNameIndex = sourceIndexDocuments
+            .Single(index => index["name"] == "UX_SourceRepositories_Tenant_TechnicalName");
+        Assert.True(sourceNameIndex["unique"].AsBoolean);
+        Assert.Equal(new[] { "TenantId", "TechnicalName" }, sourceNameIndex["key"].AsBsonDocument.Names);
+        Assert.DoesNotContain(sourceIndexDocuments, index => index["key"].AsBsonDocument.Contains("CandidateKey"));
 
         var setupIndexes = await Fixture.Database
             .GetCollection<BsonDocument>("GitHubSetupAttempts")
@@ -280,22 +288,24 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
 
         var linkResponse = await Client.PostAsJsonAsync(
             $"/api/v1/git-provider-connections/{connection.Id}/repositories/{GitHubClient.Repository.Id}/links",
-            new LinkSourceRepositoryRequestBody("main", candidate.CandidateKey));
+            new LinkSourceRepositoryRequestBody("application", "main"));
         var linked = await linkResponse.Content.ReadFromJsonAsync<SourceRepositoryDto>();
         Assert.Equal(HttpStatusCode.Created, linkResponse.StatusCode);
         Assert.NotNull(linked);
-        Assert.Equal(GitHubClient.Snapshot.CommitSha, linked.CommitSha);
+        Assert.Equal("application", linked.TechnicalName);
+        Assert.Equal(1, linked.Revision);
 
         var disconnectConflict = await Client.DeleteAsync($"/api/v1/git-provider-connections/{connection.Id}");
         Assert.Equal(HttpStatusCode.Conflict, disconnectConflict.StatusCode);
 
-        GitHubClient.Snapshot = GitHubClient.Snapshot with { CommitSha = "def9876543210" };
+        var nextCommit = new string('b', 40);
+        GitHubClient.Snapshot = GitHubClient.Snapshot with { CommitSha = nextCommit };
         var reanalyzeResponse = await Client.PostAsync(
             $"/api/v1/source-repositories/{linked.Id}/reanalyze",
             null);
-        var reanalyzed = await reanalyzeResponse.Content.ReadFromJsonAsync<SourceRepositoryDto>();
+        var reanalyzed = await reanalyzeResponse.Content.ReadFromJsonAsync<RepositoryAnalysisDto>();
         Assert.Equal(HttpStatusCode.OK, reanalyzeResponse.StatusCode);
-        Assert.Equal("def9876543210", reanalyzed!.CommitSha);
+        Assert.Equal(nextCommit, reanalyzed!.CommitSha);
 
         var listResponse = await Client.GetFromJsonAsync<SourceRepositoryDto[]>("/api/v1/source-repositories");
         Assert.Equal(linked.Id, Assert.Single(listResponse!).Id);
@@ -387,7 +397,7 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
 
         var linkResponse = await Client.PostAsJsonAsync(
             $"/api/v1/git-provider-connections/{connection.Id}/repositories/{GitHubClient.Repository.Id}/links",
-            new LinkSourceRepositoryRequestBody("main", Assert.Single(analysis.Candidates).CandidateKey));
+            new LinkSourceRepositoryRequestBody("application", "main"));
         var sourceRepository = await linkResponse.Content.ReadFromJsonAsync<SourceRepositoryDto>();
         Assert.Equal(HttpStatusCode.Created, linkResponse.StatusCode);
         Assert.NotNull(sourceRepository);
@@ -396,18 +406,11 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
         await Fixture.DbContext.SourceBuildConfigurations.InsertOneAsync(
             SourceBuildConfigurationFactory.Create(
                 TestData.TenantId,
+                "application-build",
                 sourceRepository.Id,
                 ObjectId.GenerateNewId().ToString(),
-                new SourceBuildRecipe(
-                    "DotNet:src/App/App.csproj",
-                    SourceBuildRecipeKind.DotNet,
-                    "src/App",
-                    "src/App/App.csproj",
-                    ImmutableList.Create("dotnet publish"),
-                    "dotnet App.dll",
-                    "FROM mcr.microsoft.com/dotnet/aspnet:10.0",
-                    IsCustomized: false),
-                TestData.UserId,
+                SourceBuildRecipe.Create("FROM mcr.microsoft.com/dotnet/aspnet:10.0"),
+                new ManualSourceBuildConfigurationOrigin(TestData.UserId),
                 new SourceBuildConfigurationFactory.CreateOptions(
                     ObjectId.GenerateNewId().ToString(), now)));
 

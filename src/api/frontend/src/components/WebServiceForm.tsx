@@ -43,6 +43,7 @@ interface WebServiceFormProps {
   submitLabel?: string
   submitDisabled?: boolean
   imageHint?: string
+  imageMode?: 'Image' | 'SourceBuild'
 }
 
 export function WebServiceForm({
@@ -66,6 +67,7 @@ export function WebServiceForm({
   submitLabel,
   submitDisabled = false,
   imageHint,
+  imageMode = 'Image',
 }: WebServiceFormProps) {
   const [name, setName] = useState(initialValue?.name ?? '')
   const [resourceGroupId, setResourceGroupId] = useState(
@@ -80,9 +82,9 @@ export function WebServiceForm({
   const [exposure, setExposure] = useState<'Private' | 'Public'>(
     initialValue?.exposure.mode ?? 'Private',
   )
-  const [imageServer, setImageServer] = useState(initialValue?.spec.image.server ?? '')
-  const [imageName, setImageName] = useState(initialValue?.spec.image.name ?? '')
-  const [imageTag, setImageTag] = useState(initialValue?.spec.image.tag ?? 'latest')
+  const [imageServer, setImageServer] = useState(initialValue?.spec.image?.server ?? '')
+  const [imageName, setImageName] = useState(initialValue?.spec.image?.name ?? '')
+  const [imageTag, setImageTag] = useState(initialValue?.spec.image?.tag ?? 'latest')
   const [probePath, setProbePath] = useState(initialValue?.spec.probes?.readiness.path ?? '/health')
   const [probePort, setProbePort] = useState(initialValue?.spec.probes?.readiness.port ?? '8080')
   const [servicePort, setServicePort] = useState(
@@ -226,7 +228,7 @@ export function WebServiceForm({
       setValidationError('Select an available isolation scope or use the group default.')
       return
     }
-    if (!imageServer.trim() || !imageName.trim() || !imageTag.trim()) {
+    if (imageMode === 'Image' && (!imageServer.trim() || !imageName.trim() || !imageTag.trim())) {
       setValidationError('Image registry, name, and tag are required.')
       return
     }
@@ -398,41 +400,56 @@ export function WebServiceForm({
             </div>
           )}
 
-          <div className="form-grid">
-            <label className="field">
-              <span className="field__label">Image registry</span>
-              <input
-                className="field__control"
-                value={imageServer}
-                onChange={(event) => setImageServer(event.target.value)}
-                placeholder="docker.io"
-                aria-invalid={Boolean(fieldError('spec.image.server'))}
-                aria-describedby={fieldError('spec.image') ? `${fieldId}-image-error` : undefined}
-              />
-            </label>
-            <label className="field">
-              <span className="field__label">Image name</span>
-              <input
-                className="field__control"
-                value={imageName}
-                onChange={(event) => setImageName(event.target.value)}
-                placeholder="library/nginx"
-                aria-invalid={Boolean(fieldError('spec.image.name'))}
-                aria-describedby={fieldError('spec.image') ? `${fieldId}-image-error` : undefined}
-              />
-            </label>
-            <label className="field">
-              <span className="field__label">Tag</span>
-              <input
-                className="field__control"
-                value={imageTag}
-                onChange={(event) => setImageTag(event.target.value)}
-                placeholder="latest"
-                aria-invalid={Boolean(fieldError('spec.image.tag'))}
-                aria-describedby={fieldError('spec.image') ? `${fieldId}-image-error` : undefined}
-              />
-            </label>
-          </div>
+          {imageMode === 'Image' && (
+            <fieldset
+              disabled={Boolean(
+                initialValue?.spec.imageAuthority &&
+                initialValue.spec.imageAuthority.mode !== 'Direct',
+              )}
+            >
+              <div className="form-grid">
+                <label className="field">
+                  <span className="field__label">Image registry</span>
+                  <input
+                    className="field__control"
+                    value={imageServer}
+                    onChange={(event) => setImageServer(event.target.value)}
+                    placeholder="docker.io"
+                    aria-invalid={Boolean(fieldError('spec.image.server'))}
+                    aria-describedby={
+                      fieldError('spec.image') ? `${fieldId}-image-error` : undefined
+                    }
+                  />
+                </label>
+                <label className="field">
+                  <span className="field__label">Image name</span>
+                  <input
+                    className="field__control"
+                    value={imageName}
+                    onChange={(event) => setImageName(event.target.value)}
+                    placeholder="library/nginx"
+                    aria-invalid={Boolean(fieldError('spec.image.name'))}
+                    aria-describedby={
+                      fieldError('spec.image') ? `${fieldId}-image-error` : undefined
+                    }
+                  />
+                </label>
+                <label className="field">
+                  <span className="field__label">Tag</span>
+                  <input
+                    className="field__control"
+                    value={imageTag}
+                    onChange={(event) => setImageTag(event.target.value)}
+                    placeholder="latest"
+                    aria-invalid={Boolean(fieldError('spec.image.tag'))}
+                    aria-describedby={
+                      fieldError('spec.image') ? `${fieldId}-image-error` : undefined
+                    }
+                  />
+                </label>
+              </div>
+            </fieldset>
+          )}
           {imageHint && <p className="field__hint">{imageHint}</p>}
           {fieldError('spec.image') && (
             <p id={`${fieldId}-image-error`} className="field-error">

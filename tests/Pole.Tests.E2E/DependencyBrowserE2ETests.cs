@@ -77,10 +77,11 @@ public sealed class DependencyBrowserE2ETests(PoleE2EFixture fixture)
                 name = appName,
                 resourceGroupId = groupId,
                 exposure = "Private",
+                creationMode = "SourceBuild",
                 tags = new[] { "e2e" },
                 spec = new
                 {
-                    image = new { server = "docker.io", name = "library/nginx", tag = "1.27" },
+                    image = (object?)null,
                     config = new { environmentVariables = literal, portMappings = new[] { new { servicePort = 80, targetPort = "8080", protocol = "TCP", name = "http" } } },
                     autoscaling = (object?)null,
                     probes = new { startup = Probe(), liveness = Probe(), readiness = Probe() }
@@ -88,8 +89,41 @@ public sealed class DependencyBrowserE2ETests(PoleE2EFixture fixture)
                 placement = new { targets = new[] { new { fixedReplicas = 1 } } }
             }, ct);
             var appId = Text(app, "webServiceId");
-            resources.Defer("delete dependency application", cleanup => DeleteResourceAsync("web-services", appId, cleanup));
+            var deliveryCleanup = resources.CreateCleanupSequence("dependency source delivery");
+            string? cleanupSourceId = null;
+            string? cleanupConfigurationId = null;
+            deliveryCleanup.Defer("delete dependency application",
+                cleanup => DeleteResourceAsync("web-services", appId, cleanup));
+            deliveryCleanup.Defer("delete dependency probe build configuration",
+                cleanup => cleanupConfigurationId is null
+                ? Task.CompletedTask : DeleteIfPresentAsync(
+                    $"/api/v1/source-build-configurations/{cleanupConfigurationId}", cleanup));
+            deliveryCleanup.Defer("unlink dependency probe source", cleanup => cleanupSourceId is null
+                ? Task.CompletedTask : DeleteIfPresentAsync($"/api/v1/source-repositories/{cleanupSourceId}", cleanup));
+            var providerConnectionId = await EnsureGitHubAsync(ct);
+            var repositoryPath = $"/api/v1/git-provider-connections/{providerConnectionId}/repositories/9001";
+            var analyzed = await SendAsync(HttpMethod.Post, repositoryPath + "/analysis", new { branch = "main" }, ct);
+            var candidate = analyzed.GetProperty("candidates").EnumerateArray().First(item =>
+                Text(item, "dockerfilePreview").Contains("sdk:10.0", StringComparison.Ordinal));
+            var source = await SendAsync(HttpMethod.Post, repositoryPath + "/links",
+                new { technicalName = $"dependency-source-{suffix}", branch = "main" }, ct);
+            var sourceId = Text(source, "id");
+            cleanupSourceId = sourceId;
+
+            var configuration = await SendAsync(HttpMethod.Post, "/api/v1/source-build-configurations", new
+            {
+                technicalName = $"dependency-build-{suffix}",
+                sourceRepositoryId = sourceId,
+                webServiceId = appId,
+                recipe = new { dockerfile = Text(candidate, "dockerfilePreview") }
+            }, ct);
+            var configurationId = Text(configuration, "id");
+            cleanupConfigurationId = configurationId;
+            var job = await SendAsync(HttpMethod.Post,
+                $"/api/v1/source-build-configurations/{configurationId}/builds", new { }, ct);
+            await WaitBuildAsync(Text(job, "id"), ct);
             await fixture.WaitForNamespaceCreationAsync(groupId, ct);
+            await fixture.WaitForWebServiceReadyAsync(groupId, appName, ct);
             var secrets = await SendAsync(HttpMethod.Get, "/api/v1/secrets/?limit=50", null, ct);
             var credential = secrets.GetProperty("items").EnumerateArray().Single(item => item.TryGetProperty("managedBy", out var owner) && owner.ValueKind == JsonValueKind.Object && Text(owner, "resourceId") == pgId);
             var secretId = Text(credential, "id");
@@ -120,19 +154,7 @@ public sealed class DependencyBrowserE2ETests(PoleE2EFixture fixture)
             Assert.Equal(new[] { "PGPASSWORD", "PGUSER" }, (await content.GetByLabel("Environment name").EvaluateAllAsync<string[]>("elements => elements.map(element => element.value)")).Order(StringComparer.Ordinal));
             await CaptureAsync(page, "secret-configured-network-missing", appId);
 
-            var providerConnectionId = await EnsureGitHubAsync(ct);
-            var analyzed = await SendAsync(HttpMethod.Post, $"/api/v1/git-provider-connections/{providerConnectionId}/repositories/9001/analysis", new { branch = "main" }, ct);
-            var candidate = analyzed.GetProperty("candidates").EnumerateArray().First(item => Text(item, "dockerfilePreview").Contains("sdk:10.0", StringComparison.Ordinal));
-            var source = await SendAsync(HttpMethod.Post, $"/api/v1/git-provider-connections/{providerConnectionId}/repositories/9001/links", new { branch = "main", candidateKey = Text(candidate, "candidateKey") }, ct);
-            var sourceId = Text(source, "id");
-            resources.Defer("unlink dependency probe source", cleanup => DeleteIfPresentAsync($"/api/v1/source-repositories/{sourceId}", cleanup));
-            var configuration = await SendAsync(HttpMethod.Post, "/api/v1/source-build-configurations", new { sourceRepositoryId = sourceId, webServiceId = appId }, ct);
-            var configurationId = Text(configuration, "id");
-            resources.Defer("delete dependency probe build configuration", cleanup => DeleteIfPresentAsync($"/api/v1/source-build-configurations/{configurationId}", cleanup));
-            var job = await SendAsync(HttpMethod.Post, $"/api/v1/source-build-configurations/{configurationId}/builds", new { }, ct);
-            await WaitBuildAsync(Text(job, "id"), ct);
-            await fixture.WaitForWebServiceReadyAsync(groupId, appName, ct);
-            Assert.Equal(("ConnectionRejected", "ConnectionRejected"), await fixture.ProbeApplicationDependenciesAsync(groupId, appName, ct));
+            await WaitProbeAsync(groupId, appName, "ConnectionRejected", "ConnectionRejected", ct);
 
             await page.ReloadAsync();
             var groupInventory = await SendAsync(HttpMethod.Get, $"/api/v1/resource-groups/{groupId}/resources?pageNumber=1&pageSize=50", null, ct);

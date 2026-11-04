@@ -1,4 +1,5 @@
 using Hangfire;
+using Pole.Features.GitOps.Contracts;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -32,8 +33,15 @@ public static class ResourceConnectionsFeature
             .GetCollection<ResourceConnectionCleanupTombstone>(
                 "ResourceConnectionCleanupTombstones"));
         services.TryAddScoped<MongoCreateResourceConnection>();
+        services.TryAddScoped<ResourceConnectionTopologyAdmission>();
+        services.AddScoped<IDeclarativeResourceProvider, DeclarativeResourceConnectionProvider>();
         services.TryAddScoped<ResourceConnectionEndpointCatalog>();
         services.AddScoped<ResourceConnectionReferenceProvider>();
+        services.AddScoped<ResourceConnectionReferencePlanning>();
+        services.AddScoped<LoadResourceConnectionReferencePlanning>(provider =>
+            provider.GetRequiredService<ResourceConnectionReferencePlanning>().ReadAsync);
+        services.AddScoped<FenceResourceConnectionReferencePlanning>(provider =>
+            provider.GetRequiredService<ResourceConnectionReferencePlanning>().FenceAsync);
         services.AddScoped<AdmitResourceConnectionReferences>(provider =>
             provider.GetRequiredService<ResourceConnectionReferenceProvider>().AdmitAsync);
         services.AddScoped<ResolveResourceConnectionReferences>(provider =>

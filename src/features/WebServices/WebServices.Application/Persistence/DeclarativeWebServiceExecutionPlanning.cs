@@ -7,7 +7,9 @@ using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.Secrets.Contracts;
+using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
 
@@ -47,7 +49,7 @@ internal sealed partial class DeclarativeWebServiceProvider
             return PlanningBlocked(WebServiceDeclarationError.ImmutablePlacementChange);
 
         var identity = new PlanningPlacement(current.ResourceGroupId, current.IsolationScopeId,
-            placement.DeploymentTargetId);
+            placement.DeploymentTargetId, current.Spec.Image.SourceBuildConfigurationId);
         var projection = operation.Phase == DeclarationPhase.Prepare
             ? new DeclarationProjection(DeclarationJson.Write(identity), DeclarationJson.Write(new { }))
             : Project(current.Spec, current.Tags, current.Exposure.Mode.ToString(), identity,
@@ -74,10 +76,12 @@ internal sealed partial class DeclarativeWebServiceProvider
         var dependencies = (WebServicePlanningDependencies)read.Value;
         var spec = DeclarationJson.Read<WebServiceDeclaration>(operation.Declaration.Spec);
         var identity = new PlanningPlacement(dependencies.Scope.ResourceGroupId,
-            dependencies.Scope.IsolationScopeId, dependencies.Target.Target.Id);
+            dependencies.Scope.IsolationScopeId, dependencies.Target.Target.Id, dependencies.BuildConfigurationId);
         var projection = operation.Phase == DeclarationPhase.Prepare
             ? new DeclarationProjection(DeclarationJson.Write(identity), DeclarationJson.Write(new { }))
-            : Project(ToSpec(spec, dependencies.References, dependencies.Current?.Spec), spec.Tags, spec.Exposure,
+            : Project(ToSpec(spec, dependencies.References, dependencies.Current?.Spec,
+                    dependencies.ConnectionReferences, dependencies.BuildConfigurationId),
+                spec.Tags, spec.Exposure,
                 identity, new(dependencies.Compute.Compute.ComputeProfileId, spec.Placement.ComputeProfile.Revision,
                     spec.FixedReplicas,
                     ComputeProjection(dependencies.Compute.Compute.ToResourceDeploymentConfiguration())),
@@ -147,6 +151,54 @@ internal sealed partial class DeclarativeWebServiceProvider
             references.Add(name, new(id, reference.Key));
         }
 
+        ImmutableDictionary<string, ConnectionEnvironmentReference>? connectionReferences = null;
+        if (spec.ConnectionEnvironment is not null)
+        {
+            var builder = ImmutableDictionary.CreateBuilder<string, ConnectionEnvironmentReference>();
+            foreach (var (name, reference) in spec.ConnectionEnvironment)
+            {
+                var id = await AcceptedReferenceAsync(operation, new("ResourceConnection", reference.Connection),
+                    session, ct);
+                if (id is null)
+                    return new DeclarationReadBlocked(new WebServiceConnectionReferenceRejected());
+
+                builder.Add(name, new(id, reference.ValueKind, reference.ConfigurationKey));
+            }
+            connectionReferences = builder.ToImmutable();
+        }
+
+        ResourceConnectionReferencePlanningSnapshot? connections = null;
+        if (operation.Phase == DeclarationPhase.Configure && connectionReferences is not null)
+        {
+            var readConnections = await loadPlanningConnections(new(tenant, WebServiceResourceDeployment.ResourceType,
+                operation.ResourceId, connectionReferences.Values.Select(item => new ResourceConnectionValueReference(
+                    item.ConnectionId, item.ValueKind, item.ConfigurationKey)).ToArray()), session, ct);
+            if (readConnections is ResourceConnectionReferencesUnavailable)
+                return new DeclarationReadBlocked(new WebServiceConnectionReferenceRejected());
+
+            connections = (ResourceConnectionReferencePlanningSnapshot)readConnections.Value;
+        }
+
+        string? buildConfigurationId = null;
+        SourceBuildConfigurationSnapshot? buildConfiguration = null;
+        if (spec.Image is DeclaredSourceBuildImage image)
+        {
+            buildConfigurationId = await AcceptedReferenceAsync(operation,
+                new("SourceBuildConfiguration", image.SourceBuildConfiguration), session, ct);
+            if (buildConfigurationId is null)
+                return new DeclarationReadBlocked(new DeclarationReferenceUnavailable(
+                    new("SourceBuildConfiguration", image.SourceBuildConfiguration)));
+            if (operation.Phase == DeclarationPhase.Configure)
+            {
+                var loadedBuild = await loadBuildConfiguration(new(tenant, buildConfigurationId), session, ct);
+                if (loadedBuild is not SourceBuildConfigurationSnapshot build ||
+                    build.WebServiceId != operation.ResourceId)
+                    return new DeclarationReadBlocked(new DeclarationReferenceUnavailable(
+                        new("SourceBuildConfiguration", image.SourceBuildConfiguration)));
+                buildConfiguration = build;
+            }
+        }
+
         ConsumerSecretPlanningSnapshot? secrets = null;
         if (operation.Phase == DeclarationPhase.Configure)
         {
@@ -165,7 +217,7 @@ internal sealed partial class DeclarativeWebServiceProvider
         }
 
         return new WebServicePlanningDependencies(current, scope, target, compute, placements, secrets,
-            references.ToImmutable());
+            references.ToImmutable(), connections, connectionReferences, buildConfigurationId, buildConfiguration);
     }
 
     public async Task<FenceDeclarationOutcome> FenceAsync(FenceDeclarationRequest request,
@@ -186,6 +238,20 @@ internal sealed partial class DeclarativeWebServiceProvider
             var write = await services.UpdateOneAsync(session, WebServiceFilters.AtPlanningVersion(current),
                 Builders<WebService>.Update.Inc(item => item.PlanningFence, 1), cancellationToken: cancellationToken);
             if (write.ModifiedCount != 1)
+                return new DeclarationPreconditionsChanged();
+        }
+
+        if (dependencies.BuildConfiguration is { } build &&
+            await fenceBuildConfiguration(build, session, cancellationToken) is not SourceBuildConfigurationFenced)
+            return new DeclarationPreconditionsChanged();
+
+        // Fence references before placements: the destination can share the workload registration.
+        if (dependencies.Connections is { } connections)
+        {
+            var fenced = await fencePlanningConnections(connections, session, cancellationToken);
+            if (fenced is ResourceConnectionReferencesUnavailable)
+                return new DeclarationReadBlocked(new WebServiceConnectionReferenceRejected());
+            if (fenced is ResourceConnectionReferencePlanningChanged)
                 return new DeclarationPreconditionsChanged();
         }
 
@@ -232,6 +298,15 @@ internal sealed partial class DeclarativeWebServiceProvider
             dependencies.Compute.PolicyRevision),
         .. (dependencies.Placements?.Items ?? []).Select(item =>
             new DeclarationDocumentVersion($"ResourceDeployment/{item.DeploymentId}", item.Revision)),
+        .. dependencies.BuildConfiguration is { } build ? new DeclarationDocumentVersion[]
+            { new($"SourceBuildConfiguration/{build.Id}", build.Revision) } : [],
+        .. (dependencies.Connections?.Connections ?? []).SelectMany(item => new DeclarationDocumentVersion[]
+        {
+            new($"ResourceConnection/{item.ConnectionId}", item.Revision),
+            new($"ResourceConnection/{item.ConnectionId}/ReferenceFence", item.ReferenceFence)
+        }),
+        .. (dependencies.Connections?.Destinations ?? []).Select(item =>
+            new DeclarationDocumentVersion($"ResourceRegistration/{item.RegistrationId}", item.ReferenceFence)),
         .. (dependencies.Secrets?.Secrets ?? []).SelectMany(item => new DeclarationDocumentVersion[]
         {
             new($"Secret/{item.SecretId}", item.Revision),
@@ -274,7 +349,11 @@ internal sealed record WebServicePlanningDependencies(
     ComputeProfilePlanningSnapshot Compute,
     ResourceDeploymentPlanningSnapshot? Placements,
     ConsumerSecretPlanningSnapshot? Secrets,
-    ImmutableDictionary<string, SecretEnvironmentReference> References);
+    ImmutableDictionary<string, SecretEnvironmentReference> References,
+    ResourceConnectionReferencePlanningSnapshot? Connections,
+    ImmutableDictionary<string, ConnectionEnvironmentReference>? ConnectionReferences,
+    string? BuildConfigurationId,
+    SourceBuildConfigurationSnapshot? BuildConfiguration);
 
 internal union ReadWebServicePlanningOutcome(
     WebServicePlanningDependencies,

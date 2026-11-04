@@ -28,9 +28,18 @@ public sealed record HostnameBinding(
     string ResourceDeploymentId,
     string RelativeName,
     string Hostname,
-    [property: BsonRepresentation(BsonType.String)]
-    HostnameBindingKind Kind,
-    DateTime CreatedAtUtc);
+    DomainIdentity Identity,
+    long ReferenceFence,
+    DateTime CreatedAtUtc)
+{
+    [BsonIgnore]
+    public HostnameBindingKind Kind => Identity switch
+    {
+        GeneratedDomainIdentity => HostnameBindingKind.Generated,
+        NamedDomainIdentity => HostnameBindingKind.Custom,
+        _ => throw new InvalidOperationException("The domain identity is not supported.")
+    };
+}
 
 public static class HostnameBindingFactory
 {
@@ -57,7 +66,7 @@ public static class HostnameBindingFactory
             resourceDeploymentId,
             relativeName,
             zoneDomain,
-            HostnameBindingKind.Generated,
+            DomainIdentityFactory.Generated(),
             options);
 
     public static HostnameBinding CreateCustom(
@@ -69,6 +78,7 @@ public static class HostnameBindingFactory
         string resourceDeploymentId,
         string relativeName,
         DnsName zoneDomain,
+        string technicalName,
         CreateOptions options) =>
         Create(
             tenantId,
@@ -79,7 +89,7 @@ public static class HostnameBindingFactory
             resourceDeploymentId,
             relativeName,
             zoneDomain,
-            HostnameBindingKind.Custom,
+            DomainIdentityFactory.Named(technicalName),
             options);
 
     private static HostnameBinding Create(
@@ -91,7 +101,7 @@ public static class HostnameBindingFactory
         string resourceDeploymentId,
         string relativeName,
         DnsName zoneDomain,
-        HostnameBindingKind kind,
+        DomainIdentity identity,
         CreateOptions options)
     {
         ArgumentNullException.ThrowIfNull(zoneDomain);
@@ -109,7 +119,8 @@ public static class HostnameBindingFactory
             DomainValueGuard.ObjectId(resourceDeploymentId, nameof(resourceDeploymentId)),
             relative.Value,
             relative.Under(zoneDomain).Value,
-            kind,
+            identity,
+            ReferenceFence: 0,
             DomainValueGuard.Utc(options.CreatedAtUtc, nameof(options.CreatedAtUtc)));
     }
 }

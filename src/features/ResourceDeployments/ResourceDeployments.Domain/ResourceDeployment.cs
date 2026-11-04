@@ -92,6 +92,32 @@ public sealed record ResourceDeployment(
         };
     }
 
+    public ResourceDeployment ConfigurePrepared(
+        ResolvedResourcePlacement placement,
+        DateTime requestedAtUtc,
+        long resourceRevision,
+        int fixedReplicas)
+    {
+        if (State is not PreparedResourceDeploymentState || DesiredOperation != ResourceDeploymentOperation.Apply)
+            throw new InvalidOperationException("Only a prepared deployment can accept deferred configuration.");
+        EnsureSamePlacement(placement);
+        var revision = ResourceDeploymentValueGuard.Positive(resourceRevision, nameof(resourceRevision));
+        if (revision < ResourceRevision)
+            throw new InvalidOperationException("A prepared deployment cannot move to an older resource revision.");
+
+        var generation = checked(DesiredGeneration + 1);
+        return this with
+        {
+            ResolvedPlacement = placement,
+            ResourceRevision = revision,
+            FixedReplicas = ResourceDeploymentValueGuard.PositiveInt(fixedReplicas, nameof(fixedReplicas)),
+            Revision = checked(Revision + 1),
+            DesiredGeneration = generation,
+            State = new PreparedResourceDeploymentState(generation),
+            UpdatedAtUtc = ResourceDeploymentValueGuard.UpdatedUtc(requestedAtUtc, UpdatedAtUtc, nameof(requestedAtUtc))
+        };
+    }
+
     public ResourceDeployment MarkRuntimeCellReady(DateTime requestedAtUtc)
     {
         if (State is not WaitingForRuntimeCellResourceDeploymentState)

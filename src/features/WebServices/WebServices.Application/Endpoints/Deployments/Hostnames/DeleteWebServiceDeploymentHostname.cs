@@ -65,7 +65,7 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
     DeleteCustomHostnameBinding deleteCustomHostnameBinding,
     LoadHostnameBindingsForDeploymentInTransaction
         loadHostnameBindingsForDeploymentInTransaction,
-    RequestExactResourceDeploymentApply requestExactResourceDeploymentApply,
+    RequestResourceDeploymentSetApply requestResourceDeploymentSetApply,
     AdvanceResourceDeploymentRevision advanceResourceDeploymentRevision,
     PersistUpdatedWebServiceOutcome persistWebService,
     PersistCurrentWebServiceRelease persistRelease,
@@ -88,6 +88,9 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
             return Error(new WebServiceDeploymentMutationStateError(
                 new WebServiceNotFound(request.Id)));
         }
+
+        if (webService.Lifecycle is not (ActiveWebServiceLifecycle or AwaitingFirstArtifactWebServiceLifecycle))
+            return Error(new WebServiceHostnameAttachmentUnavailable(webService.Id));
 
         var deployment = await loadExactResourceDeployment(
             new LoadExactResourceDeploymentRequest(
@@ -131,6 +134,8 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
                 request.BindingId),
             transaction.Session,
             cancellationToken);
+        if (deleted is CustomHostnameBindingGitOwned owned)
+            return Abort(transaction, new WebServiceDeploymentHostnameError(owned));
         if (deleted is CustomHostnameBindingError deletedError)
             return Abort(transaction, new WebServiceDeploymentHostnameError(deletedError));
 
@@ -143,20 +148,23 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
             session: transaction.Session,
             cancellationToken: cancellationToken);
         var updated = webService.AdvancePlacementDesiredState();
-        var applied = await requestExactResourceDeploymentApply(
-            WebServiceDeploymentWorkflow.ToExactApplyRequest(
+        var applied = await requestResourceDeploymentSetApply(
+            new ResourceDeploymentSetApplyRequest(
                 request.TenantId,
+                WebServiceResourceDeployment.ResourceType,
                 request.Id,
-                deployment,
                 updated.ActiveRevision,
-                replacementIngress: WebServiceDeploymentWorkflow.WithHostnames(
-                    deployment,
-                    currentBindings.Select(binding => binding.Hostname))),
+                [new(deployment.DeploymentId, deployment.DeploymentRevision, deployment.Compute.Profile,
+                    new ReplaceIngress(WebServiceDeploymentWorkflow.WithHostnames(
+                        deployment, currentBindings.Select(binding => binding.Hostname))))],
+                updated.Lifecycle is AwaitingFirstArtifactWebServiceLifecycle
+                    ? ResourceDeploymentActivation.KeepPrepared : ResourceDeploymentActivation.Reconcile),
             transaction.Session,
             cancellationToken);
         if (applied is ResourceDeploymentMutationError failure)
             return Abort(transaction, new WebServiceDeploymentHostnameError(failure));
-        var changed = (PlacementSummaryDto)applied.Value;
+        var changed = ((MutatedResourceDeployments)applied.Value).Placements
+            .Single(item => item.DeploymentId == request.DeploymentId);
 
         var advanced = await advanceResourceDeploymentRevision(
             new ResourceDeploymentResourceRevisionRequest(
@@ -184,22 +192,26 @@ public sealed class DeleteWebServiceDeploymentHostnameHandler(
         if (persisted is WebServiceDependencyUnavailable dependencyUnavailable)
             return Abort(transaction, new WebServiceDeploymentHostnameError(dependencyUnavailable));
 
-        var release = WebServiceReleaseFactory.CreatePending(
-            updated.TenantId,
-            updated.Id,
-            updated.ActiveRevision,
-            WebServiceReleaseAction.HostnameChanged,
-            null,
-            null,
-            updated.Spec,
-            WebServiceDeploymentWorkflow.ToReleaseDeployments(deployments),
-            null,
-            null,
-            new WebServiceReleaseFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(),
-                timeProvider.GetUtcNow().UtcDateTime),
-            updated.Exposure);
-        await persistRelease(transaction.Session, release, cancellationToken);
+        if (updated.Lifecycle is ActiveWebServiceLifecycle)
+        {
+            var release = WebServiceReleaseFactory.CreatePending(
+                updated.TenantId,
+                updated.Id,
+                updated.ActiveRevision,
+                WebServiceReleaseAction.HostnameChanged,
+                null,
+                null,
+                updated.Spec,
+                WebServiceDeploymentWorkflow.ToReleaseDeployments(deployments),
+                null,
+                null,
+                new WebServiceReleaseFactory.CreateOptions(
+                    ObjectId.GenerateNewId().ToString(),
+                    timeProvider.GetUtcNow().UtcDateTime),
+                updated.Exposure);
+            await persistRelease(transaction.Session, release, cancellationToken);
+        }
+
         return transaction.Commit(new DeleteWebServiceDeploymentHostnameOutcome(changed));
     }
 

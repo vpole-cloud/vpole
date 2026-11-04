@@ -97,6 +97,7 @@ afterEach(async () => {
 async function select() {
   await act(async () => app.root.render(<Probe />))
   await act(async () => state.selectRepository('one'))
+  await act(async () => state.setSourceTechnicalName('application-source'))
 }
 
 it('preserves selection across token refresh and uses the latest credential for each mutation', async () => {
@@ -111,7 +112,7 @@ it('preserves selection across token refresh and uses the latest credential for 
     'connection',
     'one',
     'main',
-    'plan',
+    'application-source',
     'fresh',
     'alpha',
     expect.any(AbortSignal),
@@ -219,7 +220,7 @@ it('refreshes external Git discovery at 60 seconds and pauses it while hidden', 
   expect(api.fetchProviderBranches).not.toHaveBeenCalled()
 })
 
-it('preserves analysis for review and blocks linking after branch discovery finds a new commit', async () => {
+it('preserves stale analysis for review without making it repository-link authority', async () => {
   vi.mocked(api.analyzeProviderRepository).mockResolvedValue({ ...analysis, commitSha: 'sha' })
   await select()
   await act(async () => state.analyze())
@@ -235,7 +236,7 @@ it('preserves analysis for review and blocks linking after branch discovery find
   expect(state.selection.candidateKey).toBe('plan')
   expect(state.analysisStale).toBe(true)
   await act(async () => state.link())
-  expect(api.linkProviderRepository).not.toHaveBeenCalled()
+  expect(api.linkProviderRepository).toHaveBeenCalledTimes(1)
   vi.mocked(api.analyzeProviderRepository).mockResolvedValue({ ...analysis, commitSha: 'new-sha' })
   await act(async () => state.analyze())
   expect(state.analysisStale).toBe(false)
@@ -278,4 +279,25 @@ it('sends the explicit connection name with current tenant credentials', async (
     'alpha',
     expect.any(AbortSignal),
   )
+})
+
+it('links a named repository without build analysis and clears its name on selection change', async () => {
+  await select()
+  await act(async () => state.link())
+  expect(api.analyzeProviderRepository).not.toHaveBeenCalled()
+  expect(api.linkProviderRepository).toHaveBeenCalledWith(
+    '/api',
+    'connection',
+    'one',
+    'main',
+    'application-source',
+    'token',
+    'alpha',
+    expect.any(AbortSignal),
+  )
+  await act(async () => state.selectRepository('two'))
+  expect(state.sourceTechnicalName).toBe('')
+  expect(state.sourceNameValid).toBe(false)
+  await act(async () => state.link())
+  expect(api.linkProviderRepository).toHaveBeenCalledTimes(1)
 })

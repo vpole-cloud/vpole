@@ -69,9 +69,9 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
             .Find(item => item.WebServiceId == current.Id && item.ResourceRevision == updated.ResourceRevision)
             .SingleAsync();
         var expectedPullReference = retainPullReference ? "managed-pull" : null;
-        Assert.Equal(expectedPullReference, saved.Spec.Image.SecretName);
-        Assert.Equal(expectedPullReference, release.Spec.Image.SecretName);
-        Assert.Equal(tag, saved.Spec.Image.Tag);
+        Assert.Equal(expectedPullReference, saved.Spec.Image.ResolvedImage!.SecretName);
+        Assert.Equal(expectedPullReference, release.Spec.Image.ResolvedImage!.SecretName);
+        Assert.Equal(tag, saved.Spec.Image.ResolvedImage!.Tag);
         Assert.Equal("production", saved.Spec.Config.EnvironmentVariables["APP_MODE"]);
         Assert.DoesNotContain("managed-pull", JsonSerializer.Serialize(saved.Spec.ToDto()));
     }
@@ -409,7 +409,8 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
             deployment.DeploymentId,
             new AddWebServiceDeploymentHostnameBody(
                 ObjectId.GenerateNewId().ToString(),
-                "custom"),
+                "custom",
+                "custom-hostname"),
             TestData.TenantId));
         var outcome = result.AssertSuccess();
 
@@ -762,12 +763,12 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(3, rollback.ResourceRevision);
         var saved = await Fixture.Database.WebServices()
             .Find(service => service.Id == created.WebServiceId).SingleAsync();
-        Assert.Equal("1.27", saved.Spec.Image.Tag);
+        Assert.Equal("1.27", saved.Spec.Image.ResolvedImage!.Tag);
         Assert.Equal(WebServiceExposureMode.Public, saved.Exposure.Mode);
         var release = await Fixture.Database.WebServiceReleases()
             .Find(item => item.Id == rollback.ReleaseId).SingleAsync();
         Assert.Equal(WebServiceReleaseAction.Rollback, release.Action);
-        Assert.Equal("1.27", release.Spec.Image.Tag);
+        Assert.Equal("1.27", release.Spec.Image.ResolvedImage!.Tag);
     }
 
     [Fact]

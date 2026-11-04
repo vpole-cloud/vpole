@@ -56,7 +56,7 @@ function release(revision: number): WebServiceRelease {
     traceId: 'trace',
     correlationId: 'correlation',
     failureMessage: 'raw-failure-canary',
-    spec: { ...service.spec, image: { ...service.spec.image, tag: `revision-${revision}` } },
+    spec: { ...service.spec, image: { ...service.spec.image!, tag: `revision-${revision}` } },
     provenance:
       revision === 11
         ? {

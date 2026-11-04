@@ -9,6 +9,8 @@ using Pole.Features.GitProviders.Application;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.GitHub;
 using Pole.Features.GitProviders.Application.Snapshots;
+using Pole.Features.GitProviders.Application.ProviderOperations;
+using Pole.Features.GitProviders.Contracts;
 using Pole.Features.GitProviders.Domain;
 using Pole.Features.Tenants.Contracts;
 using Xunit;
@@ -122,12 +124,107 @@ public sealed class GitHubRepositorySnapshotProviderTests
             services.GetRequiredService<IOptions<RepositoryArchiveOptions>>().Value);
     }
 
+    [Theory]
+    [InlineData("/access_tokens", 404, typeof(SourceRepositoryAccessDenied))]
+    [InlineData("/repositories/9001", 404, typeof(SourceRepositoryRemoteNotFound))]
+    [InlineData("/repositories/9001", 403, typeof(SourceRepositoryAccessDenied))]
+    [InlineData("/repositories/9001", 429, typeof(SourceRepositoryUnavailable))]
+    [InlineData("/branches/main", 404, typeof(SourceRepositoryBranchNotFound))]
+    [InlineData("/branches/main", 503, typeof(SourceRepositoryUnavailable))]
+    public async Task SourceIdentityResolutionRetainsExpectedFailureMeaning(string suffix, int status, Type expected)
+    {
+        var fixture = new AdapterFixture { FailureSuffix = suffix, FailureStatus = (HttpStatusCode)status };
+        var result = await fixture.RepositoryResolver()
+            .InvokeAsync(new("tenant", "connection", "9001", "main"), default);
+        Assert.IsType(expected, result.Value);
+    }
+
+    [Fact]
+    public async Task SourceIdentityResolutionReadsMetadataAndCommitWithoutTreeOrAnalysis()
+    {
+        var fixture = new AdapterFixture();
+        var result = await fixture.RepositoryResolver()
+            .InvokeAsync(new("tenant", "connection", "9001", "main"), default);
+        Assert.Equal(Commit, Assert.IsType<ResolvedProviderRepository>(result.Value).CommitSha);
+        Assert.DoesNotContain(fixture.Paths, path => path.Contains("/git/", StringComparison.Ordinal));
+        Assert.DoesNotContain(fixture.Paths, path => path.Contains("/contents/", StringComparison.Ordinal));
+        Assert.DoesNotContain(fixture.Paths, path => path.Contains("/tarball/", StringComparison.Ordinal));
+        fixture.Connection = null;
+        var count = fixture.Paths.Count;
+        Assert.IsType<GitProviderConnectionNotFound>((await fixture.RepositoryResolver()
+            .InvokeAsync(new("tenant", "connection", "9001", "main"), default)).Value);
+        Assert.Equal(count, fixture.Paths.Count);
+    }
+
+    [Fact]
+    public async Task SourceIdentityResolutionDistinguishesTimeoutFromCallerCancellation()
+    {
+        var fixture = new AdapterFixture { Timeout = true };
+        Assert.IsType<SourceRepositoryUnavailable>((await fixture.RepositoryResolver()
+            .InvokeAsync(new("tenant", "connection", "9001", "main"), default)).Value);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fixture.RepositoryResolver()
+            .InvokeAsync(new("tenant", "connection", "9001", "main"), cancellation.Token));
+    }
+
+    [Fact]
+    public async Task PromotionAccessChecksCurrentAuthorityWithoutResolvingOrDownloadingThePinnedInput()
+    {
+        var fixture = new AdapterFixture();
+        var checker = fixture.BuildAccessChecker();
+        var request = new SourceRepositoryReferenceRequest("tenant", fixture.BuildRepository.Id);
+        Assert.IsType<SourceRepositoryBuildSnapshot>((await checker.InvokeAsync(request, default)).Value);
+        Assert.Contains("/repositories/9001", fixture.Paths);
+        Assert.DoesNotContain(fixture.Paths, path => path.Contains("/branches/", StringComparison.Ordinal) ||
+            path.Contains("/tarball/", StringComparison.Ordinal) || path.Contains("/git/", StringComparison.Ordinal));
+        var calls = fixture.Paths.Count;
+        fixture.Connection = null;
+        Assert.IsType<SourceRepositoryBuildConnectionNotFound>((await checker.InvokeAsync(request, default)).Value);
+        Assert.Equal(calls, fixture.Paths.Count);
+        fixture.TenantPresent = false;
+        Assert.IsType<SourceRepositoryAccessDenied>((await checker.InvokeAsync(request, default)).Value);
+        Assert.IsType<SourceRepositoryBuildNotFound>((await checker.InvokeAsync(
+            request with { TenantId = "foreign" }, default)).Value);
+        Assert.Equal(calls, fixture.Paths.Count);
+    }
+
+    [Theory]
+    [InlineData("/access_tokens", 404, typeof(SourceRepositoryAccessDenied))]
+    [InlineData("/repositories/9001", 404, typeof(SourceRepositoryRemoteNotFound))]
+    [InlineData("/repositories/9001", 403, typeof(SourceRepositoryAccessDenied))]
+    [InlineData("/repositories/9001", 429, typeof(SourceRepositoryUnavailable))]
+    [InlineData("/repositories/9001", 503, typeof(SourceRepositoryUnavailable))]
+    public async Task PromotionAccessRetainsExpectedFailureMeaning(string suffix, int status, Type expected)
+    {
+        var fixture = new AdapterFixture { FailureSuffix = suffix, FailureStatus = (HttpStatusCode)status };
+        var outcome = await fixture.BuildAccessChecker().InvokeAsync(
+            new("tenant", fixture.BuildRepository.Id), default);
+        Assert.IsType(expected, outcome.Value);
+    }
+
+    [Fact]
+    public async Task PromotionAccessPreservesCancellationAndClassifiesTimeout()
+    {
+        var fixture = new AdapterFixture { Timeout = true };
+        var checker = fixture.BuildAccessChecker();
+        var request = new SourceRepositoryReferenceRequest("tenant", fixture.BuildRepository.Id);
+        Assert.IsType<SourceRepositoryUnavailable>((await checker.InvokeAsync(request, default)).Value);
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => checker.InvokeAsync(request, cancellation.Token));
+    }
+
     private sealed class AdapterFixture : HttpMessageHandler
     {
         public GitProviderConnection? Connection { get; set; } = GitProviderConnectionFactory.Create(
             "tenant", "production-git", GitProviderKind.GitHub, "42", "account", "display",
             GitProviderAccountType.User, GitProviderRepositorySelection.All, "departed-author",
             GitProviderConnectionFactory.DefaultOptions);
+        public bool TenantPresent { get; set; } = true;
+        public SourceRepository BuildRepository { get; } = SourceRepositoryFactory.Create(
+            "tenant", "application", "connection", "9001", "org/sample", "https://github.test/org/sample", true,
+            "main", SourceRepositoryFactory.DefaultOptions);
         public bool IsPrivate { get; init; } = true;
         public string? FailureSuffix { get; init; }
         public HttpStatusCode FailureStatus { get; init; }
@@ -146,6 +243,32 @@ public sealed class GitHubRepositorySnapshotProviderTests
                     ? new TenantIdentitySnapshot(tenant, "Tenant") : new TenantIdentityNotFound(tenant)),
                 (tenant, _, _) => Task.FromResult(tenant == "tenant" ? Connection : null),
                 client, new RepositoryManifestArchiveReader(settings), settings);
+        }
+
+        public GitHubResolveProviderRepository RepositoryResolver()
+        {
+            var client = new GitHubAppClient(new HttpClient(this), new GitHubAppOptions
+            {
+                ApiBaseUrl = "https://api.test"
+            }, () => "jwt", new MemoryCache(new MemoryCacheOptions()), TimeProvider.System);
+            return new GitHubResolveProviderRepository(
+                (tenant, _) => Task.FromResult<LoadTenantIdentityOutcome>(tenant == "tenant"
+                    ? new TenantIdentitySnapshot(tenant, "Tenant") : new TenantIdentityNotFound(tenant)),
+                (tenant, _, _) => Task.FromResult(tenant == "tenant" ? Connection : null), client);
+        }
+
+        public SourceRepositoryBuildAccessChecker BuildAccessChecker()
+        {
+            var client = new GitHubAppClient(new HttpClient(this), new GitHubAppOptions
+            {
+                ApiBaseUrl = "https://api.test"
+            }, () => "jwt", new MemoryCache(new MemoryCacheOptions()), TimeProvider.System);
+            return new SourceRepositoryBuildAccessChecker(
+                (tenant, id, _) => Task.FromResult<SourceRepository?>(
+                    tenant == BuildRepository.TenantId && id == BuildRepository.Id ? BuildRepository : null),
+                (tenant, _) => Task.FromResult<LoadTenantIdentityOutcome>(TenantPresent
+                    ? new TenantIdentitySnapshot(tenant, "Tenant") : new TenantIdentityNotFound(tenant)),
+                (tenant, _, _) => Task.FromResult(tenant == "tenant" ? Connection : null), client);
         }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)

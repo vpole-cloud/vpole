@@ -8,7 +8,7 @@ namespace Pole.Features.GitProviders.Application.Common;
 public static class GitProviderHttpMappings
 {
     public static HttpProblem MapAnalyzeError(AnalyzeProviderRepositoryError error) =>
-        error.Value switch
+        error switch
         {
             GitProviderConnectionNotFound notFound => MapConnectionNotFound(notFound),
             GitProviderRepositoryAccessError accessError => MapRepositoryAccessError(accessError),
@@ -16,7 +16,7 @@ public static class GitProviderHttpMappings
         };
 
     public static HttpProblem MapRepositoryAccessError(GitProviderRepositoryAccessError error) =>
-        error.Value switch
+        error switch
         {
             GitProviderUnsupported unsupported => MapProviderUnsupported(unsupported),
             GitProviderUnavailable unavailable => MapProviderUnavailable(unavailable)
@@ -54,27 +54,34 @@ public static class GitProviderHttpMappings
         Problem(
             HttpStatusCode.Conflict,
             "git-providers.source-repositories.already-linked",
-            "This repository branch and build-plan candidate is already linked",
+            "This repository branch is already linked",
             ("connectionId", conflict.ConnectionId),
             ("repositoryId", conflict.RepositoryId),
-            ("branch", conflict.Branch),
-            ("candidateKey", conflict.CandidateKey));
+            ("branch", conflict.Branch));
 
-    public static HttpProblem MapBuildPlanNotFound(SourceRepositoryBuildPlanNotFound notFound) =>
-        Problem(
-            HttpStatusCode.UnprocessableEntity,
-            "git-providers.source-repositories.build-plan-not-found",
-            "The selected build-plan candidate was not found in the latest analysis",
-            ("candidateKey", notFound.CandidateKey));
+    public static HttpProblem MapSourceRepositoryNameConflict(SourceRepositoryNameConflict conflict) =>
+        Problem(HttpStatusCode.Conflict, "git-providers.source-repositories.name-conflict",
+            "The source repository technical name is already used", ("technicalName", conflict.TechnicalName));
 
-    public static HttpProblem MapSelectedBuildPlanUnavailable(
-        SourceRepositorySelectedBuildPlanUnavailable unavailable) =>
-        Problem(
-            HttpStatusCode.Conflict,
-            "git-providers.source-repositories.selected-build-plan-unavailable",
-            "The previously selected build-plan candidate no longer exists",
-            ("sourceRepositoryId", unavailable.SourceRepositoryId),
-            ("candidateKey", unavailable.CandidateKey));
+    public static HttpProblem MapSourceRepositoryGitOwned(SourceRepositoryGitOwned conflict) =>
+        Problem(HttpStatusCode.Conflict, "git-providers.source-repositories.git-owned",
+            "The source repository is managed by GitOps", ("sourceRepositoryId", conflict.SourceRepositoryId));
+
+    public static HttpProblem MapSourceRepositoryRemoteNotFound(SourceRepositoryRemoteNotFound _) =>
+        Problem(HttpStatusCode.NotFound, "git-providers.source-repositories.remote-not-found",
+            "The remote repository was not found");
+
+    public static HttpProblem MapSourceRepositoryBranchNotFound(SourceRepositoryBranchNotFound missing) =>
+        Problem(HttpStatusCode.NotFound, "git-providers.source-repositories.branch-not-found",
+            "The repository branch was not found", ("branch", missing.Branch));
+
+    public static HttpProblem MapSourceRepositoryAccessDenied(SourceRepositoryAccessDenied _) =>
+        Problem(HttpStatusCode.Forbidden, "git-providers.source-repositories.access-denied",
+            "Current repository access is unavailable");
+
+    public static HttpProblem MapSourceRepositoryUnavailable(SourceRepositoryUnavailable _) =>
+        Problem(HttpStatusCode.ServiceUnavailable, "git-providers.source-repositories.unavailable",
+            "The repository provider is temporarily unavailable");
 
     public static HttpProblem MapSourceRepositoryHasBuildConfiguration(
         SourceRepositoryHasBuildConfiguration conflict) =>

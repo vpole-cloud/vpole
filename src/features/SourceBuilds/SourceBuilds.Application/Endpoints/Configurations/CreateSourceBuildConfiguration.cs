@@ -13,6 +13,7 @@ using Pole.Features.SourceBuilds.Application.Persistence.Configuration;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Mediator;
 using Pole.Validation;
+using Pole.Workloads;
 using static Pole.Features.SourceBuilds.Application.Common.SourceBuildHttpMappings;
 
 namespace Pole.Features.SourceBuilds.Application.Endpoints.Configurations;
@@ -24,14 +25,18 @@ public sealed record CreateSourceBuildConfigurationRequest(
     : IMediatorRequest<CreateSourceBuildConfigurationOutcome>, ITenantWriteOperation;
 
 public sealed record CreateSourceBuildConfigurationBody(
+    string TechnicalName,
     string SourceRepositoryId,
-    string WebServiceId);
+    string WebServiceId,
+    SourceBuildRecipeDto Recipe);
 
 public union CreateSourceBuildConfigurationOutcome(
     SourceBuildConfigurationDto,
     SourceRepositoryBuildNotFound,
     SourceBuildConfigurationWebServiceNotFound,
-    SourceBuildConfigurationAlreadyExists);
+    SourceBuildConfigurationAlreadyExists,
+    SourceBuildConfigurationNameConflict,
+    SourceBuildConfigurationRepositoryChanged);
 
 public sealed class CreateSourceBuildConfigurationHandler(
     FindSourceRepositoryBuild findSourceRepositoryBuild,
@@ -71,19 +76,23 @@ public sealed class CreateSourceBuildConfigurationHandler(
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var configuration = SourceBuildConfigurationFactory.Create(
             request.TenantId,
+            request.Body.TechnicalName,
             sourceRepository.Id,
             request.Body.WebServiceId,
-            sourceRepository.SelectedPlan.ToBuildRecipe(),
-            request.CurrentUserId.Value,
+            request.Body.Recipe.ToDomain(),
+            new ManualSourceBuildConfigurationOrigin(request.CurrentUserId.Value),
             new SourceBuildConfigurationFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
                 now));
-        var created = await createSourceBuildConfiguration(configuration, cancellationToken);
+        var created = await createSourceBuildConfiguration(
+            new(configuration, sourceRepository.Revision), cancellationToken);
         return created switch
         {
             SourceBuildConfiguration success => success.ToDto(),
             SourceBuildConfigurationAlreadyExists existsError => existsError,
-            SourceBuildConfigurationWebServiceNotFound missing => missing
+            SourceBuildConfigurationWebServiceNotFound missing => missing,
+            SourceBuildConfigurationNameConflict conflict => conflict,
+            SourceBuildConfigurationRepositoryChanged conflict => conflict
         };
     }
 }
@@ -102,6 +111,8 @@ public sealed class CreateSourceBuildConfigurationBodyValidator
 {
     public CreateSourceBuildConfigurationBodyValidator()
     {
+        RuleFor(item => item.TechnicalName).Must(ResourceTechnicalName.IsValid);
+        RuleFor(item => item.Recipe).NotNull().SetValidator(new SourceBuildRecipeDtoValidator());
         RuleFor(item => item.SourceRepositoryId)
             .NotEmpty()
             .MongoObjectId("Source repository ID");
@@ -129,6 +140,8 @@ public static class CreateSourceBuildConfigurationEndpoint
                         configuration),
                     SourceRepositoryBuildNotFound error =>
                         GitProviderContractHttpMappings.MapSourceRepositoryBuildNotFound(error),
+                    SourceBuildConfigurationNameConflict error => MapConfigurationNameConflict(error),
+                    SourceBuildConfigurationRepositoryChanged error => MapConfigurationRepositoryChanged(error),
                     SourceBuildConfigurationAlreadyExists error => MapConfigurationAlreadyExists(error),
                     SourceBuildConfigurationWebServiceNotFound error => MapWebServiceNotFound(error)
                 });

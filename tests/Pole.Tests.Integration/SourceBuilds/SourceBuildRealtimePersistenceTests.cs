@@ -1,3 +1,4 @@
+using Pole.Features.GitProviders.Application;
 using System.Collections.Immutable;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
@@ -10,6 +11,7 @@ using Pole.Features.Outbox.Contracts;
 using Pole.Features.Realtime.Contracts;
 using Pole.Features.SourceBuilds.Application;
 using Pole.Features.SourceBuilds.Application.Persistence.Jobs;
+using Pole.Features.SourceBuilds.Application.Persistence.Configuration;
 using Pole.Features.SourceBuilds.Application.Realtime;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.SourceBuilds.Events;
@@ -23,24 +25,38 @@ namespace Pole.Tests.Integration.SourceBuilds;
 public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
+    protected override void ConfigureServices(IServiceCollection services) =>
+        services.AddGitProvidersFeature(new ConfigurationBuilder().Build());
+
     private const string EventName = "pole.source-builds/v1/source-build-job-state-changed";
 
     [Fact]
     public async Task QueueAndClaim_CommitImmutableHints_AndOnlyOneClaimSucceeds()
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var service = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id))).AssertSuccess();
+        var service = (await Mediator.Send(SourceBuildTestData.CreateTargetRequest(group.Id))).AssertSuccess();
         var job = Job() with
         {
             WebServiceId = service.WebServiceId
         };
+        var configuration = SourceBuildConfigurationFactory.Create(
+            job.TenantId,
+            "application-build",
+            job.SourceRepositoryId,
+            job.WebServiceId,
+            job.Recipe,
+            new ManualSourceBuildConfigurationOrigin(TestData.UserId),
+            new(job.ConfigurationId, job.CreatedAtUtc));
+        await SourceBuildTestData.SeedRepositoryAsync(DbContext, configuration);
+        Assert.IsType<SourceBuildConfiguration>((await Services.GetRequiredService<CreateSourceBuildConfiguration>()(
+            new(configuration, 1))).Value);
         var requested = new SourceBuildRequestedEvent(job.Id) { EventCore = EventCore.Create(job.TenantId) };
         Assert.IsType<SourceBuildJob>((await Services.GetRequiredService<QueueSourceBuildJob>()(job, requested)).Value);
         var claim = Services.GetRequiredService<ClaimQueuedSourceBuildJob>();
-        var results = await Task.WhenAll(claim(job.Id, job.UpdatedAtUtc.AddSeconds(1)),
-            claim(job.Id, job.UpdatedAtUtc.AddSeconds(1)));
+        var results = await Task.WhenAll(claim(new(job.Id, Guid.NewGuid().ToString("N"))),
+            claim(new(job.Id, Guid.NewGuid().ToString("N"))));
         Assert.Single(results, result => result is not null);
-        Assert.Null(await claim(job.Id, job.UpdatedAtUtc.AddSeconds(2)));
+        Assert.Null(await claim(new(job.Id, "second")));
         var envelopes = await DbContext.OutboxMessages.Find(x => x.EventType == EventName).ToListAsync();
         Assert.Equal(2, envelopes.Count);
         Assert.Equal(["Cloning", "Queued"],
@@ -59,8 +75,7 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
         await using var scope = provider.CreateAsyncScope();
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             scope.ServiceProvider.GetRequiredService<ClaimQueuedSourceBuildJob>()(
-                job.Id,
-                job.UpdatedAtUtc.AddSeconds(1)));
+                new(job.Id, "worker")));
         Assert.IsType<QueuedSourceBuild>(
             (await DbContext.SourceBuildJobs.Find(x => x.Id == job.Id).SingleAsync()).State);
         Assert.Equal(0, await DbContext.OutboxMessages.CountDocumentsAsync(x => x.EventType == EventName));
@@ -114,7 +129,10 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
     [Fact]
     public async Task ProgressCas_CommitsStateAndSanitizedOutbox_AndRejectsStaleReplacement()
     {
-        var current = Job().StartCloning(DateTime.UtcNow.AddMinutes(-1));
+        var current = Job().StartCloning(DateTime.UtcNow.AddMinutes(-1)) with
+        {
+            Execution = new ClaimedSourceBuildExecution("worker", 1, DateTime.UtcNow.AddMinutes(2))
+        };
         await DbContext.SourceBuildJobs.InsertOneAsync(current);
         var next = current.StartAnalyzing(current.UpdatedAtUtc.AddSeconds(1));
         using (TraceContext.Push(TraceContext.Create("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "correlation-pilot")))
@@ -161,7 +179,10 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
     [Fact]
     public async Task ProgressCas_OutboxFailureRollsBackStateAndOutbox()
     {
-        var current = Job().StartCloning(DateTime.UtcNow.AddMinutes(-1));
+        var current = Job().StartCloning(DateTime.UtcNow.AddMinutes(-1)) with
+        {
+            Execution = new ClaimedSourceBuildExecution("worker", 1, DateTime.UtcNow.AddMinutes(2))
+        };
         await DbContext.SourceBuildJobs.InsertOneAsync(current);
         await using var provider = FailingOutboxProvider();
         await using var scope = provider.CreateAsyncScope();
@@ -195,14 +216,8 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
         ObjectId.GenerateNewId().ToString(),
         "main",
         "abc123",
-        new SourceBuildRecipe("Dockerfile:.",
-            SourceBuildRecipeKind.Dockerfile,
-            ".",
-            "Dockerfile",
-            ImmutableList<string>.Empty,
-            null,
-            "FROM scratch",
-            false),
+        new SourceBuildInputVersion(1, 1, 1),
+        new SourceBuildRecipe("FROM scratch"),
         TestData.UserId,
         null,
         new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow.AddMinutes(-2)));
@@ -212,7 +227,7 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
         var job = Job();
         var now = job.UpdatedAtUtc;
         return job.StartCloning(now.AddSeconds(1)).StartAnalyzing(now.AddSeconds(2)).StartBuilding(now.AddSeconds(3))
-            .StartPushing("image-pilot", now.AddSeconds(4))
+            .StartPushing("image-pilot", "digest-pilot", now.AddSeconds(4))
             .StartDeploying("digest-pilot", "release-pilot", now.AddSeconds(5));
     }
 }

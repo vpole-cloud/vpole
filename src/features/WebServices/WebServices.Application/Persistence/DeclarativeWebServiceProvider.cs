@@ -6,6 +6,7 @@ using Pole.Database;
 using System.Collections.Immutable;
 using System.Text.Json;
 using Pole.Features.Domains.Contracts;
+using Pole.Features.ResourceConnections.Contracts;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Contracts;
@@ -16,6 +17,7 @@ using Pole.Features.Quotas.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Secrets.Contracts;
+using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Persistence.Mutations;
 using Pole.Features.WebServices.Application.Persistence.Releases;
@@ -36,11 +38,18 @@ public sealed record DeclaredSecretEnvironmentReference(
     string Secret,
     string Key);
 
+public sealed record DeclaredConnectionEnvironmentReference(
+    string Connection,
+    string ValueKind,
+    string? ConfigurationKey = null);
+
+public sealed record WebServiceConnectionReferenceRejected : IDeclarationFailure;
+
 public sealed record WebServiceDeclaration
 {
     public required string ResourceGroup { get; init; }
 
-    public required ImageInfoDto Image { get; init; }
+    public required DeclaredWebServiceImage Image { get; init; }
 
     public required WebServiceDeclarationPlacement Placement { get; init; }
 
@@ -63,6 +72,8 @@ public sealed record WebServiceDeclaration
     { get; init; } = ImmutableDictionary<string,
         DeclaredSecretEnvironmentReference>.Empty;
 
+    public ImmutableDictionary<string, DeclaredConnectionEnvironmentReference>? ConnectionEnvironment { get; init; }
+
     public string[] Tags { get; init; } = [];
 }
 
@@ -78,6 +89,10 @@ internal sealed partial class DeclarativeWebServiceProvider(
     FenceComputeProfilePlanningSnapshot fencePlanningCompute,
     ResolveDeploymentTargetPlanningSnapshot resolvePlanningTarget,
     FenceDeploymentTargetPlanningSnapshot fencePlanningTarget,
+    LoadSourceBuildConfigurationReference loadBuildConfiguration,
+    FenceSourceBuildConfiguration fenceBuildConfiguration,
+    LoadResourceConnectionReferencePlanning loadPlanningConnections,
+    FenceResourceConnectionReferencePlanning fencePlanningConnections,
     LoadConsumerSecretPlanningSnapshot loadPlanningSecrets,
     FenceConsumerSecretPlanningSnapshot fencePlanningSecrets,
     ResolveNamedDeploymentTarget resolveTargetName,
@@ -99,6 +114,7 @@ internal sealed partial class DeclarativeWebServiceProvider(
 
     public string DescribeFailure(IDeclarationFailure failure) => failure switch
     {
+        WebServiceConnectionReferenceRejected => nameof(WebServiceConnectionReferenceRejected),
         WebServiceSecretReferenceRejected rejected => ConsumerSecretReferenceErrorCodes.Code(rejected.Error.Reason),
         WebServiceDependencyRejected rejected => WebServiceDependencyDiagnostics.Code(rejected.Error),
         WebServiceDeclarationRejected rejected => rejected.Reason switch
@@ -138,6 +154,10 @@ internal sealed partial class DeclarativeWebServiceProvider(
             [],
             [.. value.Placement.IsolationScope is null ? Array.Empty<DeclaredReference>() :
                 [new(new("IsolationScope", value.Placement.IsolationScope), "spec.placement.isolationScope")],
+            .. value.Image is DeclaredSourceBuildImage build ? new DeclaredReference[]
+                { new(new("SourceBuildConfiguration", build.SourceBuildConfiguration), "spec.image") } : [],
+            .. (value.ConnectionEnvironment ?? []).Select(pair => new DeclaredReference(
+                new("ResourceConnection", pair.Value.Connection), $"spec.connectionEnvironment.{pair.Key}")),
             .. value.SecretEnvironment.Select(pair =>
                 new DeclaredReference(
                     new("Secret", pair.Value.Secret),
@@ -151,14 +171,18 @@ internal sealed partial class DeclarativeWebServiceProvider(
     public JsonElement NormalizeAndValidate(JsonElement spec)
     {
         var value = DeclarationJson.Read<WebServiceDeclaration>(spec);
-        DeclarationJson.Require(DeclarationNames.Valid(value.ResourceGroup) && value.Image is not null &&
-                                value.Image.Server is { Length: > 0 and <= MaximumImageComponentLength }
-                                && value.Image.Name is { Length: > 0 and <= MaximumImageComponentLength } &&
-                                value.Image.Tag is { Length: > 0 and <= MaximumImageTagLength }
-                                && !value.Image.Server.Any(char.IsWhiteSpace) &&
-                                !value.Image.Name.Any(char.IsWhiteSpace)
-                                && !value.Image.Tag.Any(char.IsWhiteSpace),
-            "spec.image");
+        DeclarationJson.Require(DeclarationNames.Valid(value.ResourceGroup), "spec.resourceGroup");
+        DeclarationJson.Require(value.Image switch
+        {
+            DeclaredContainerImage image =>
+                image.Server is { Length: > 0 and <= MaximumImageComponentLength } &&
+                image.Name is { Length: > 0 and <= MaximumImageComponentLength } &&
+                image.Tag is { Length: > 0 and <= MaximumImageTagLength } &&
+                !image.Server.Any(char.IsWhiteSpace) && !image.Name.Any(char.IsWhiteSpace) &&
+                !image.Tag.Any(char.IsWhiteSpace),
+            DeclaredSourceBuildImage image => DeclarationNames.Valid(image.SourceBuildConfiguration),
+            null => false
+        }, "spec.image");
         DeclarationJson.Require(value.Placement is not null
                                 && ResourceTechnicalName.IsValid(value.Placement.DeploymentTarget) &&
                                 value.Placement.ComputeProfile is not null
@@ -215,6 +239,16 @@ internal sealed partial class DeclarativeWebServiceProvider(
                                     SecretKeyReferenceRules.ValidKey(reference.Key)),
             "spec.environment");
 
+        var connections = value.ConnectionEnvironment ?? [];
+        DeclarationJson.Require(connections.Count + value.Environment.Count + value.SecretEnvironment.Count <=
+            MaximumEnvironmentEntries && connections.All(pair =>
+                pair.Key.Length <= MaximumEnvironmentNameLength && EnvironmentName.IsMatch(pair.Key) &&
+                pair.Value is not null && DeclarationNames.Valid(pair.Value.Connection) &&
+                (pair.Value.ValueKind is "Host" or "Port" && pair.Value.ConfigurationKey is null ||
+                 pair.Value.ValueKind == "Configuration" && !string.IsNullOrWhiteSpace(pair.Value.ConfigurationKey))) &&
+            !connections.Keys.Intersect(value.Environment.Keys.Concat(value.SecretEnvironment.Keys)).Any(),
+            "spec.connectionEnvironment");
+
         return DeclarationJson.Write(value with
         {
             Replicas = value.Autoscaling is null ? value.FixedReplicas : null,
@@ -256,6 +290,11 @@ internal sealed partial class DeclarativeWebServiceProvider(
             new(DeclarationPhase.Configure,
             [
                 new(address, DeclarationPhase.Prepare),
+                .. value.Image is DeclaredSourceBuildImage build ? new DeclarationDependency[]
+                    { new(new("SourceBuildConfiguration", build.SourceBuildConfiguration), DeclarationPhase.Configure) }
+                    : [],
+                .. (value.ConnectionEnvironment ?? []).Values.Select(reference => new DeclarationDependency(
+                    new("ResourceConnection", reference.Connection), DeclarationPhase.Bind)),
                 .. value.SecretEnvironment.Values.Select(reference => new DeclarationDependency(
                     new("Secret", reference.Secret),
                     DeclarationPhase.Prepare))
@@ -287,7 +326,8 @@ internal sealed partial class DeclarativeWebServiceProvider(
         var selectedTarget = dependencies.Target.Target;
         var binding = new WebServiceDeclaredPlacement(spec.Placement.DeploymentTarget, selectedTarget.Id,
             spec.Placement.ComputeProfile.Name, compute.ComputeProfileId);
-        var domainSpec = ToSpec(spec, ImmutableDictionary<string, SecretEnvironmentReference>.Empty, current?.Spec);
+        var domainSpec = ToSpec(spec, ImmutableDictionary<string, SecretEnvironmentReference>.Empty,
+            current?.Spec, dependencies.ConnectionReferences, dependencies.BuildConfigurationId);
         var nextQuota = WebServiceDeploymentWorkflow.ToQuotaInput([(compute, spec.FixedReplicas)], domainSpec);
         QuotaMutation<WebServiceQuotaInput> quotaChange = current is null
             ? new CreateQuotaMutation<WebServiceQuotaInput>(nextQuota)
@@ -497,7 +537,8 @@ internal sealed partial class DeclarativeWebServiceProvider(
             references.Add(pair.Key, new(secretId, pair.Value.Key));
         }
 
-        var desired = ToSpec(spec, references.ToImmutable(), current.Spec);
+        var desired = ToSpec(spec, references.ToImmutable(), current.Spec, dependencies.ConnectionReferences,
+            dependencies.BuildConfigurationId);
         var admitted = await admitSecrets(
             new AdmitConsumerSecretReferencesRequest(
                 TenantId: current.TenantId,
@@ -521,16 +562,15 @@ internal sealed partial class DeclarativeWebServiceProvider(
         if (admitted is ConsumerSecretReferenceUnavailable unavailable)
             return new(current.Id, new WebServiceSecretReferenceRejected(unavailable));
 
-        var next = current.ActivatePrepared(
-            desired,
-            spec.Tags,
-            current.Exposure with
-            {
-                Mode = spec.Exposure == PublicExposure ? WebServiceExposureMode.Public : WebServiceExposureMode.Private
-            }).BindDeclaredPlacement(binding);
+        var desiredExposure = current.Exposure with
+        { Mode = spec.Exposure == PublicExposure ? WebServiceExposureMode.Public : WebServiceExposureMode.Private };
+        var awaiting = desired.Image is PendingSourceBuildImage;
+        var next = (awaiting
+            ? current.AcceptConfigurationAwaitingArtifact(desired, spec.Tags, desiredExposure)
+            : current.ActivatePrepared(desired, spec.Tags, desiredExposure)).BindDeclaredPlacement(binding);
         var replacementCompute = compute.ToResourceDeploymentConfiguration();
         var placementChanged = placements.Any(item => item.FixedReplicas != spec.FixedReplicas ||
-            item.State == ResourceDeploymentPlanningState.Prepared ||
+            item.State == ResourceDeploymentPlanningState.Prepared && !awaiting ||
             IngressProjection(item.Ingress) != DesiredIngress(spec, dependencies.Target.Target) ||
             item.Compute.ComputeProfileId != replacementCompute.ComputeProfileId ||
             item.Compute.ComputeProfileRevision != replacementCompute.ComputeProfileRevision ||
@@ -557,7 +597,8 @@ internal sealed partial class DeclarativeWebServiceProvider(
                     ingress[item.DeploymentId],
                     replacementCompute,
                     spec.FixedReplicas,
-                    PinnedCompute: true)).ToArray()),
+                    PinnedCompute: true)).ToArray(),
+                awaiting ? ResourceDeploymentActivation.KeepPrepared : ResourceDeploymentActivation.Reconcile),
             session,
             ct);
 
@@ -589,6 +630,9 @@ internal sealed partial class DeclarativeWebServiceProvider(
         if (persisted is WebServiceConnectionConflict)
             return new(current.Id, new WebServiceDeclarationRejected(WebServiceDeclarationError.PlacementChanged));
 
+        if (awaiting)
+            return new(current.Id, Changed: true);
+
         var eventCore = EventCore.Create(current.TenantId);
         var release = WebServiceReleaseFactory.CreatePending(current.TenantId,
             current.Id,
@@ -607,8 +651,8 @@ internal sealed partial class DeclarativeWebServiceProvider(
             new GitOpsReleaseProvenance(operation.Context.SourceId,
                 operation.Context.RunId,
                 operation.Context.Authority.Commit,
-                current.Spec.Image.Tag,
-                next.Spec.Image.Tag));
+                current.Spec.Image.ResolvedImage?.Tag,
+                next.Spec.Image.ResolvedImage!.Tag));
         await persistRelease(session, release, ct);
 
         return new(current.Id, Changed: true);
@@ -617,11 +661,18 @@ internal sealed partial class DeclarativeWebServiceProvider(
     private static WebServiceSpec ToSpec(
         WebServiceDeclaration value,
         ImmutableDictionary<string, SecretEnvironmentReference> references,
-        WebServiceSpec? previous) =>
-        new(new(value.Image.Server,
-                value.Image.Name,
-                value.Image.Tag,
-                SecretName: previous?.Image.SecretName),
+        WebServiceSpec? previous,
+        ImmutableDictionary<string, ConnectionEnvironmentReference>? connections = null,
+        string? buildConfigurationId = null) =>
+        new(value.Image switch
+        {
+            DeclaredContainerImage image => new ImageInfo(image.Server, image.Name, image.Tag,
+                previous?.Image.ResolvedImage?.SecretName),
+            DeclaredSourceBuildImage when previous?.Image is { } prior &&
+                prior.SourceBuildConfigurationId == buildConfigurationId &&
+                prior is PendingSourceBuildImage or DeliveredSourceBuildImage => prior,
+            DeclaredSourceBuildImage => WebServiceImageFactory.Pending(buildConfigurationId!)
+        },
             new WebServiceConfig()
             {
                 EnvironmentVariables = value.Environment,
@@ -630,20 +681,10 @@ internal sealed partial class DeclarativeWebServiceProvider(
                     port.TargetPort,
                     port.Protocol,
                     port.Name)).ToImmutableList(),
-                ConnectionEnvironmentReferences = previous?.Config.ConnectionEnvironmentReferences ??
+                ConnectionEnvironmentReferences = connections ?? previous?.Config.ConnectionEnvironmentReferences ??
                     ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty,
                 SecretEnvironmentReferences = references
             },
             value.Autoscaling?.ToDomain(),
-            new WebServiceSpecDto(value.Image,
-                new()
-                {
-                    EnvironmentVariables = value.Environment,
-                    PortMappings = value.Ports,
-                    ConnectionEnvironmentReferences = ImmutableDictionary<string,
-                        ConnectionEnvironmentReferenceDto>.Empty,
-                    SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReferenceDto>.Empty
-                },
-                null,
-                value.Probes).ToDomain().Probes);
+            value.Probes.ToDomain());
 }
