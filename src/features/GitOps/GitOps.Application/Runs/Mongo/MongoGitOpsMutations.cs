@@ -1,9 +1,13 @@
+using Pole.Features.GitOps.Application.Inventory.Mongo;
+using Pole.Features.GitOps.Application.Lifecycle.Mongo;
+using Pole.Features.GitOps.Application.Mongo;
+using Pole.Features.GitOps.Application.Planning.Mongo;
 using Pole.Features.GitOps.Domain;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.GitOps.Contracts;
 
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Application.Runs.Mongo;
 
 internal sealed class MongoGitOpsMutations(
     GitRunStore runs,

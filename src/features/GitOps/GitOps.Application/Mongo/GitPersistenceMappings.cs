@@ -1,7 +1,8 @@
+using Pole.Features.GitOps.Application.Runs.Mongo;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Application.Mongo;
 
 internal static class GitPersistenceMappings
 {

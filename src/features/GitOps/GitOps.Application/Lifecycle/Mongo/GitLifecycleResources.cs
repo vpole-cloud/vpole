@@ -1,9 +1,10 @@
 using System.Collections.Immutable;
 using MongoDB.Driver;
+using Pole.Features.GitOps.Application.Inventory.Mongo.Filters;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Application.Lifecycle.Mongo;
 
 public sealed class GitLifecycleResources(
     DeclarativeProviderRegistry providers,

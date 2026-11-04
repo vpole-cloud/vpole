@@ -2,11 +2,13 @@ using System.Collections.Immutable;
 using System.Text.Json;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Features.GitOps.Application.Inventory.Mongo.Filters;
+using Pole.Features.GitOps.Application.Planning.Mongo.Filters;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
 
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Application.Lifecycle.Mongo;
 
 public enum GitLifecyclePreviewMode { ExplicitSelection, ReconciliationDiscovery }
 

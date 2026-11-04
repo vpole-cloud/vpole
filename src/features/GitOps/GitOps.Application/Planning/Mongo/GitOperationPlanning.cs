@@ -3,11 +3,17 @@ using MongoDB.Driver;
 using MongoDB.Bson;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Database;
+using Pole.Features.GitOps.Application.Inventory.Mongo.Filters;
+using Pole.Features.GitOps.Application.Mongo;
+using Pole.Features.GitOps.Application.Planning.Mongo.Filters;
+using Pole.Features.GitOps.Application.Runs.Mongo.Filters;
+using Pole.Features.GitOps.Application.Runs.Mongo;
+using Pole.Features.GitOps.Application.Runs;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
 
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Application.Planning.Mongo;
 
 public sealed record GitOperationPlanned(GitOperation Operation);
 

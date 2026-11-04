@@ -1,13 +1,14 @@
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using MongoDB.Bson;
+using Pole.Features.GitOps.Application.Lifecycle.Mongo;
+using Pole.Features.GitOps.Application.Sources.Mongo;
 using Pole.Features.Secrets.Domain;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Jobs;
-using Pole.Features.GitOps.Application.Persistence;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Tests.Integration.Infrastructure;

@@ -3,7 +3,7 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.GitOps.Domain;
 
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Application.Mongo.Filters;
 
 internal static class GitRepositoryFilters
 {

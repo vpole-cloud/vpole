@@ -3,10 +3,12 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Features.GitOps.Application.Inventory.Mongo.Filters;
+using Pole.Features.GitOps.Application.Runs.Mongo;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Contracts;
 
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Application.Planning.Mongo;
 
 public sealed record GitSnapshotCandidate(
     string TenantId,

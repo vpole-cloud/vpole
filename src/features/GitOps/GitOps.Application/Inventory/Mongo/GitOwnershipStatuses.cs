@@ -1,8 +1,10 @@
+using Pole.Features.GitOps.Application.Inventory.Mongo.Filters;
+using Pole.Features.GitOps.Application.Mongo;
 using Pole.Features.GitOps.Domain;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Contracts;
 
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Application.Inventory.Mongo;
 
 internal sealed class GitOwnershipStatuses(IMongoCollection<ManagedDeclaration> inventory)
 {

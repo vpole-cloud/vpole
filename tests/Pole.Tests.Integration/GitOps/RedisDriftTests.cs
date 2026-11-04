@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Application.Sources.Mongo;
 using Pole.Features.GitOps.Application;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Quotas.Domain;
@@ -7,7 +8,6 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.GitOps.Application.Endpoints.Sources;
-using Pole.Features.GitOps.Application.Persistence;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;

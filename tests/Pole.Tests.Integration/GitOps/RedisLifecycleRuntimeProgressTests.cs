@@ -1,9 +1,10 @@
 using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
+using Pole.Features.GitOps.Application.Lifecycle.Mongo;
+using Pole.Features.GitOps.Application.Sources.Mongo;
 using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Jobs;
-using Pole.Features.GitOps.Application.Persistence;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.RedisServices.Application.Common;

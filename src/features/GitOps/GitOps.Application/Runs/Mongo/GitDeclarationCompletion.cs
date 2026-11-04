@@ -1,10 +1,12 @@
 using MongoDB.Driver;
+using Pole.Features.GitOps.Application.Inventory.Mongo.Filters;
+using Pole.Features.GitOps.Application.Mongo;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Application.Runs.Mongo;
 
 internal sealed class GitDeclarationCompletion(
     IMongoCollection<ManagedDeclaration> inventory,

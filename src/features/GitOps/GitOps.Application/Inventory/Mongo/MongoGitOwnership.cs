@@ -1,10 +1,18 @@
+using Pole.Features.GitOps.Application.Inventory.Mongo.Filters;
+using Pole.Features.GitOps.Application.Lifecycle.Mongo;
+using Pole.Features.GitOps.Application.Mongo.Filters;
+using Pole.Features.GitOps.Application.Mongo;
+using Pole.Features.GitOps.Application.Planning.Mongo;
+using Pole.Features.GitOps.Application.Runs.Mongo.Filters;
+using Pole.Features.GitOps.Application.Runs.Mongo;
+using Pole.Features.GitOps.Application.Runs;
 using Pole.Features.GitOps.Primitives;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Application.Inventory.Mongo;
 
 internal sealed class MongoGitOwnership(
     GitRunStore runs,

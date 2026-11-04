@@ -1,6 +1,6 @@
 using Pole.Features.GitOps.Domain;
 
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Application.Sources;
 
 public sealed record CreateGitRepositorySource(
     string TenantId,

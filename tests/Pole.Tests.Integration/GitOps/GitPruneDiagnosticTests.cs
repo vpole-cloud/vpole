@@ -2,7 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Features.GitOps.Application.Persistence;
+using Pole.Features.GitOps.Application.Sources.Mongo;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Xunit;
