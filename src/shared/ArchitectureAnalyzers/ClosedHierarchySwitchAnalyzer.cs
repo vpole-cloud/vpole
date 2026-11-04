@@ -83,9 +83,10 @@ public sealed class ClosedHierarchySwitchAnalyzer : DiagnosticAnalyzer
             positional.Subpatterns.Select((item, index) =>
                 ContainsClosedHierarchy(tuple.TupleElements[index].Type) &&
                 IsCatchAll(item.Pattern, tuple.TupleElements[index].Type, semantics)).Any(value => value),
-        RecursivePatternSyntax { Type: { } type } => MatchesBaseType(type, input, semantics),
-        RecursivePatternSyntax { PositionalPatternClause: null, PropertyPatternClause: { } properties } =>
-            properties.Subpatterns.All(item => IsUnconstrained(item.Pattern)),
+        RecursivePatternSyntax recursive =>
+            (recursive.Type is null || MatchesBaseType(recursive.Type, input, semantics)) &&
+            (recursive.PositionalPatternClause?.Subpatterns.All(item => IsUnconstrained(item.Pattern)) ?? true) &&
+            (recursive.PropertyPatternClause?.Subpatterns.All(item => IsUnconstrained(item.Pattern)) ?? true),
         BinaryPatternSyntax binary when binary.IsKind(SyntaxKind.OrPattern) =>
             IsCatchAll(binary.Left, input, semantics) || IsCatchAll(binary.Right, input, semantics),
         BinaryPatternSyntax binary when binary.IsKind(SyntaxKind.AndPattern) =>

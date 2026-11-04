@@ -17,6 +17,7 @@ public sealed class ClosedHierarchySwitchAnalyzerTests
     [InlineData("state switch { Ready => 1, object other => 0 }")]
     [InlineData("state switch { Ready => 1, { } => 0 }")]
     [InlineData("state switch { Ready => 1, { Version: _ } => 0, null => -1 }")]
+    [InlineData("state switch { Ready => 1, State { Version: _ } => 0, null => -1 }")]
     [InlineData("state switch { Ready => 1, { Version: var version } => 0, null => -1 }")]
     [InlineData("state switch { Ready => 1, { Version: (_) } => 0, null => -1 }")]
     [InlineData("state switch { Ready => 1, not null => 0 }")]
@@ -93,11 +94,13 @@ public sealed class ClosedHierarchySwitchAnalyzerTests
         Assert.Empty(await Analyze("return state switch { State and Ready => 1, Failed => 0, null => -1 };"));
     }
 
-    [Fact]
-    public async Task Constrained_shared_property_pattern_remains_allowed()
+    [Theory]
+    [InlineData("{ Version: 1 }")]
+    [InlineData("State { Version: 1 }")]
+    public async Task Constrained_shared_property_pattern_remains_allowed(string pattern)
     {
         Assert.Empty(await Analyze(
-            "return state switch { { Version: 1 } => 2, Ready => 1, Failed => 0, null => -1 };"));
+            "return state switch { " + pattern + " => 2, Ready => 1, Failed => 0, null => -1 };"));
     }
 
     private static async Task<Diagnostic[]> Analyze(string body, bool closed = true)
