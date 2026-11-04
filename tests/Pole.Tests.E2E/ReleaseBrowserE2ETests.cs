@@ -110,7 +110,16 @@ public sealed class ReleaseBrowserE2ETests(PoleE2EFixture fixture)
 
     private static object Spec(string mode)
     {
-        var probe = new { path = "/", port = "80", initialDelaySeconds = 0, periodSeconds = 6, timeoutSeconds = 1, failureThreshold = 10, successThreshold = 1 };
+        var probe = new
+        {
+            path = "/",
+            port = "80",
+            initialDelaySeconds = 0,
+            periodSeconds = 6,
+            timeoutSeconds = 1,
+            failureThreshold = 10,
+            successThreshold = 1
+        };
         return new
         {
             image = new { server = "docker.io", name = "library/nginx", tag = "1.27.5-alpine" },
