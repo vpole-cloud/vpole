@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Text.RegularExpressions;
 
@@ -37,7 +38,7 @@ public sealed record DnsName
         return new DnsName(normalized.ToLowerInvariant());
     }
 
-    public static bool TryCreate(string? value, out DnsName? name)
+    public static bool TryCreate(string? value, [NotNullWhen(true)] out DnsName? name)
     {
         try
         {
