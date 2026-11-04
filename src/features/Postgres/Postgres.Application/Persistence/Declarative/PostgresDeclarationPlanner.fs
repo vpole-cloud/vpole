@@ -32,7 +32,8 @@ type PostgresDeclarationPlanner(
     let currentVersion (current : PostgresCluster) (placement : ResourceDeploymentPlanningItem) =
         DeclarationVersionToken(
             [| DeclarationDocumentVersion($"PostgresCluster/{current.Id}", current.Revision)
-               DeclarationDocumentVersion($"PostgresCluster/{current.Id}/PlanningFence", current.PlanningFence)
+               DeclarationDocumentVersion(
+                   DeclarationVersionKeys.PlanningFence(PostgresDeclarations.Kind, current.Id), current.PlanningFence)
                DeclarationDocumentVersion($"ResourceDeployment/{placement.DeploymentId}", placement.Revision) |])
 
     let currentProjection phase (current : PostgresCluster) (placement : ResourceDeploymentPlanningItem) bootstrap =
@@ -151,7 +152,8 @@ type PostgresDeclarationPlanner(
                     | None, None -> Task.FromResult true
                     | Some current, Some expected
                         when current.Revision = expected.Revision && request.Expected.Documents.Contains(
-                            DeclarationDocumentVersion($"PostgresCluster/{current.Id}/PlanningFence",
+                            DeclarationDocumentVersion(
+                                DeclarationVersionKeys.PlanningFence(PostgresDeclarations.Kind, current.Id),
                                 current.PlanningFence)) ->
                         task {
                             let! fenced = resources.UpdateOneAsync(session, PostgresFilters.atRevision current,

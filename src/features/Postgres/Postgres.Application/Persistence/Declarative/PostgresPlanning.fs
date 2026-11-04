@@ -66,12 +66,14 @@ module PostgresPlanning =
         [| DeclarationDocumentVersion($"ResourceGroup/{catalog.Scope.ResourceGroupId}",
                 catalog.Scope.ResourceGroupRevision)
            DeclarationDocumentVersion($"IsolationScope/{catalog.Scope.IsolationScopeId}", catalog.Scope.ScopeRevision)
-           DeclarationDocumentVersion($"DeploymentTarget/{catalog.Target.Target.Id}", catalog.Target.Target.Revision)
-           DeclarationDocumentVersion($"DeploymentTarget/{catalog.Target.Target.Id}/WorkloadConfiguration",
+           DeclarationDocumentVersion(
+               DeclarationVersionKeys.DeploymentTarget(catalog.Target.Target.Id), catalog.Target.Target.Revision)
+           DeclarationDocumentVersion(DeclarationVersionKeys.TargetWorkloadConfiguration(catalog.Target.Target.Id),
                 catalog.Target.Target.WorkloadConfiguration.Revision)
-           DeclarationDocumentVersion($"ComputeProfile/{catalog.Compute.Compute.ComputeProfileId}/Policy",
+           DeclarationDocumentVersion(
+               DeclarationVersionKeys.ComputeProfilePolicy(catalog.Compute.Compute.ComputeProfileId),
                 catalog.Compute.PolicyRevision)
-           DeclarationDocumentVersion($"StorageProfile/{catalog.Storage.Storage.ProfileId}/Policy",
+           DeclarationDocumentVersion(DeclarationVersionKeys.StorageProfilePolicy(catalog.Storage.Storage.ProfileId),
                 catalog.Storage.PolicyRevision)
            match data.Placements with
            | Some placements ->

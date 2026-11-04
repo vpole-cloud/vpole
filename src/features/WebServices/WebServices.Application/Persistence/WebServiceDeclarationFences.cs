@@ -41,7 +41,9 @@ internal sealed class WebServiceDeclarationFences(
         {
             if (!request.Expected.Documents.Contains(new($"WebService/{current.Id}", current.Revision)) ||
                 !request.Expected.Documents.Contains(
-                    new($"WebService/{current.Id}/PlanningFence", current.PlanningFence)))
+                    new(
+                        DeclarationVersionKeys.PlanningFence(WebServiceDeclarations.Kind, current.Id),
+                        current.PlanningFence)))
                 return new DeclarationPreconditionsChanged();
             var write = await services.UpdateOneAsync(session, WebServiceFilters.AtPlanningVersion(current),
                 Builders<WebService>.Update.Inc(item => item.PlanningFence, 1), cancellationToken: cancellationToken);

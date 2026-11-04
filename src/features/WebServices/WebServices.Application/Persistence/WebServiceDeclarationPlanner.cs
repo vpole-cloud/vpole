@@ -219,7 +219,9 @@ internal sealed class WebServiceDeclarationPlanner(
                 IngressProjection(placement.Ingress));
         return new CurrentDeclaration(current.Id, new([
                 new($"WebService/{current.Id}", current.Revision),
-                new($"WebService/{current.Id}/PlanningFence", current.PlanningFence),
+                new(
+                    DeclarationVersionKeys.PlanningFence(WebServiceDeclarations.Kind, current.Id),
+                    current.PlanningFence),
                 .. placements.Items.Select(item =>
                     new DeclarationDocumentVersion($"ResourceDeployment/{item.DeploymentId}", item.Revision))]),
             projection, operation.Phase == DeclarationPhase.Prepare ||

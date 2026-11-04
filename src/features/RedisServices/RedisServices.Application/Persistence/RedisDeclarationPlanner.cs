@@ -60,7 +60,7 @@ internal sealed class RedisDeclarationPlanner(
         var phase = request.Operation?.Phase ?? DeclarationPhase.Configure;
         return new CurrentDeclaration(current.Id,
             new([new($"RedisService/{current.Id}", current.Revision),
-                new($"RedisService/{current.Id}/PlanningFence", current.PlanningFence),
+                new(DeclarationVersionKeys.PlanningFence(RedisDeclarations.Kind, current.Id), current.PlanningFence),
                 new($"ResourceDeployment/{placement.DeploymentId}", placement.Revision)]),
             Project(phase, new(current.ResourceGroupId, placement.IsolationScopeId,
                 placement.DeploymentTargetId, current.Spec.Storage.SizeGb, current.Spec.Storage.StorageProfileId,
@@ -111,7 +111,9 @@ internal sealed class RedisDeclarationPlanner(
         if (dependencies.Current is { } current)
         {
             if (expectedRoot?.Revision != current.Revision || !request.Expected.Documents.Contains(
-                    new($"RedisService/{current.Id}/PlanningFence", current.PlanningFence)))
+                    new(
+                        DeclarationVersionKeys.PlanningFence(RedisDeclarations.Kind, current.Id),
+                        current.PlanningFence)))
                 return new DeclarationPreconditionsChanged();
 
             var fenced = await resources.UpdateOneAsync(session, RedisFilters.AtPlanningVersion(current),

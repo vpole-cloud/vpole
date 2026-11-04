@@ -376,8 +376,8 @@ internal sealed class DeclarativeHostnameBindingProvider(
 
     private static DeclarationDocumentVersion[] TargetVersions(DomainReservationTargetPlanningSnapshot target) =>
     [
-        new($"DeploymentTarget/{target.PublicIngress.DeploymentTargetId}", target.TargetRevision),
-        new($"DeploymentTarget/{target.PublicIngress.DeploymentTargetId}/WorkloadConfiguration",
+        new(DeclarationVersionKeys.DeploymentTarget(target.PublicIngress.DeploymentTargetId), target.TargetRevision),
+        new(DeclarationVersionKeys.TargetWorkloadConfiguration(target.PublicIngress.DeploymentTargetId),
             target.PublicIngress.WorkloadConfigurationRevision)
     ];
 

@@ -160,7 +160,7 @@ internal sealed class RedisDeclarationLifecycle(
     private static DeclarationVersionToken LifecycleVersions(Redis resource,
         LoadResourceDeploymentPlanningSnapshotOutcome placements) => new(
         [new($"RedisService/{resource.Id}", resource.Revision),
-            new($"RedisService/{resource.Id}/PlanningFence", resource.PlanningFence),
+            new(DeclarationVersionKeys.PlanningFence(RedisDeclarations.Kind, resource.Id), resource.PlanningFence),
             .. placements is ResourceDeploymentPlanningSnapshot found
                 ? found.Items.SelectMany(item => LifecyclePlacementVersions(item, resource))
                 : []]);

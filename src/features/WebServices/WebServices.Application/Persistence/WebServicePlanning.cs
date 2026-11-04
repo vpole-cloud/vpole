@@ -96,10 +96,12 @@ internal static class WebServicePlanning
     [
         new($"ResourceGroup/{dependencies.Scope.ResourceGroupId}", dependencies.Scope.ResourceGroupRevision),
         new($"IsolationScope/{dependencies.Scope.IsolationScopeId}", dependencies.Scope.ScopeRevision),
-        new($"DeploymentTarget/{dependencies.Target.Target.Id}", dependencies.Target.Target.Revision),
-        new($"DeploymentTarget/{dependencies.Target.Target.Id}/WorkloadConfiguration",
+        new(
+            DeclarationVersionKeys.DeploymentTarget(dependencies.Target.Target.Id),
+            dependencies.Target.Target.Revision),
+        new(DeclarationVersionKeys.TargetWorkloadConfiguration(dependencies.Target.Target.Id),
             dependencies.Target.Target.WorkloadConfiguration.Revision),
-        new($"ComputeProfile/{dependencies.Compute.Request.ComputeProfileId}/Policy",
+        new(DeclarationVersionKeys.ComputeProfilePolicy(dependencies.Compute.Request.ComputeProfileId),
             dependencies.Compute.PolicyRevision),
         .. (dependencies.Placements?.Items ?? []).Select(item =>
             new DeclarationDocumentVersion($"ResourceDeployment/{item.DeploymentId}", item.Revision)),
@@ -184,7 +186,7 @@ internal static class WebServicePlanning
         IReadOnlyList<ResourceDeploymentPlanningItem> placements) =>
     [
         new($"WebService/{current.Id}", current.Revision),
-        new($"WebService/{current.Id}/PlanningFence", current.PlanningFence),
+        new(DeclarationVersionKeys.PlanningFence(WebServiceDeclarations.Kind, current.Id), current.PlanningFence),
         new($"WebService/{current.Id}/Managed/{LifecycleConfigurationHash(current, placements)}", 0),
         .. placements.SelectMany(item => LifecyclePlacementVersions(item,
             current.Lifecycle is DeletingWebServiceLifecycle))
