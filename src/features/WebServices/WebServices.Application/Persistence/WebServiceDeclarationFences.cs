@@ -40,7 +40,7 @@ internal sealed class WebServiceDeclarationFences(
         if (dependencies.Current is { } current)
         {
             if (!request.Expected.Documents.Contains(new(
-                    DeclarationVersionKeys.WebService(current.Id), current.Revision)) ||
+                    WebServiceDeclarations.VersionKey(current.Id), current.Revision)) ||
                 !request.Expected.Documents.Contains(
                     new(
                         DeclarationVersionKeys.PlanningFence(WebServiceDeclarations.Kind, current.Id),

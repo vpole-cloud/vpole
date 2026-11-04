@@ -45,24 +45,24 @@ internal static class RedisPlanning
     internal static DeclarationDocumentVersion[] DependencyVersions(RedisPlanningDependencies dependencies) =>
     [
         new(
-            DeclarationVersionKeys.ResourceGroup(dependencies.Scope.ResourceGroupId),
+            ResourceGroupVersionKeys.Revision(dependencies.Scope.ResourceGroupId),
             dependencies.Scope.ResourceGroupRevision),
         new(
-            DeclarationVersionKeys.IsolationScope(dependencies.Scope.IsolationScopeId),
+            ResourceGroupVersionKeys.IsolationScopeRevision(dependencies.Scope.IsolationScopeId),
             dependencies.Scope.ScopeRevision),
         new(
-            DeclarationVersionKeys.DeploymentTarget(dependencies.Target.Target.Id),
+            DeploymentTargetVersionKeys.Revision(dependencies.Target.Target.Id),
             dependencies.Target.Target.Revision),
-        new(DeclarationVersionKeys.TargetWorkloadConfiguration(dependencies.Target.Target.Id),
+        new(DeploymentTargetVersionKeys.WorkloadConfiguration(dependencies.Target.Target.Id),
             dependencies.Target.Target.WorkloadConfiguration.Revision),
-        new(DeclarationVersionKeys.ComputeProfilePolicy(dependencies.Compute.Compute.ComputeProfileId),
+        new(ComputeProfileVersionKeys.Policy(dependencies.Compute.Compute.ComputeProfileId),
             dependencies.Compute.PolicyRevision),
         new(
-            DeclarationVersionKeys.StorageProfilePolicy(dependencies.Storage.Storage.ProfileId),
+            StorageProfileVersionKeys.Policy(dependencies.Storage.Storage.ProfileId),
             dependencies.Storage.PolicyRevision),
         .. dependencies.Placements?.Items.Select(item =>
             new DeclarationDocumentVersion(
-                DeclarationVersionKeys.ResourceDeployment(item.DeploymentId), item.Revision)) ?? []
+                ResourceDeploymentVersionKeys.Revision(item.DeploymentId), item.Revision)) ?? []
     ];
 
     internal static DeclarationProjection Project(

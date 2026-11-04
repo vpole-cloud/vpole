@@ -274,8 +274,8 @@ internal sealed class DeclarativeHostnameBindingProvider(
 
         var dependencies = new DeclarationVersionToken(
         [
-            new(DeclarationVersionKeys.DomainZone(zone.Id), zone.Revision),
-            new(DeclarationVersionKeys.DomainZoneReferenceFence(zone.Id), zone.ReferenceFence),
+            new(DomainLifecycleVersions.ZoneRevisionKey(zone.Id), zone.Revision),
+            new(DomainLifecycleVersions.ZoneReferenceFenceKey(zone.Id), zone.ReferenceFence),
             .. targetVersion.Documents,
             .. workload.DocumentVersions.Select(item => new DeclarationDocumentVersion(item.DocumentId, item.Version))
         ]);
@@ -345,7 +345,7 @@ internal sealed class DeclarativeHostnameBindingProvider(
                 DomainFilters.BindingById(operation.Context.TenantId, operation.ResourceId))
             .FirstOrDefaultAsync(cancellationToken);
         var expected = request.Expected.Documents.SingleOrDefault(item =>
-            item.DocumentId == DeclarationVersionKeys.HostnameBinding(operation.ResourceId));
+            item.DocumentId == DomainLifecycleVersions.BindingReferenceFenceKey(operation.ResourceId));
         if (current is null ? expected is not null : expected != BindingVersion(current))
             return new DeclarationPreconditionsChanged();
 
@@ -368,12 +368,12 @@ internal sealed class DeclarativeHostnameBindingProvider(
     }
 
     private static DeclarationDocumentVersion BindingVersion(HostnameBinding binding) =>
-        new(DeclarationVersionKeys.HostnameBinding(binding.Id), binding.ReferenceFence);
+        new(DomainLifecycleVersions.BindingReferenceFenceKey(binding.Id), binding.ReferenceFence);
 
     private static DeclarationDocumentVersion[] Versions(ResolvedHostname context) =>
     [
-        new(DeclarationVersionKeys.DomainZone(context.Zone.Id), context.Zone.Revision),
-        new(DeclarationVersionKeys.DomainZoneReferenceFence(context.Zone.Id), context.Zone.ReferenceFence),
+        new(DomainLifecycleVersions.ZoneRevisionKey(context.Zone.Id), context.Zone.Revision),
+        new(DomainLifecycleVersions.ZoneReferenceFenceKey(context.Zone.Id), context.Zone.ReferenceFence),
         .. TargetVersions(context.Target),
         .. context.Workload.DocumentVersions.Select(item =>
             new DeclarationDocumentVersion(item.DocumentId, item.Version))
@@ -381,8 +381,8 @@ internal sealed class DeclarativeHostnameBindingProvider(
 
     private static DeclarationDocumentVersion[] TargetVersions(DomainReservationTargetPlanningSnapshot target) =>
     [
-        new(DeclarationVersionKeys.DeploymentTarget(target.PublicIngress.DeploymentTargetId), target.TargetRevision),
-        new(DeclarationVersionKeys.TargetWorkloadConfiguration(target.PublicIngress.DeploymentTargetId),
+        new(DeploymentTargetVersionKeys.Revision(target.PublicIngress.DeploymentTargetId), target.TargetRevision),
+        new(DeploymentTargetVersionKeys.WorkloadConfiguration(target.PublicIngress.DeploymentTargetId),
             target.PublicIngress.WorkloadConfigurationRevision)
     ];
 

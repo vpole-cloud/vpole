@@ -160,7 +160,7 @@ internal sealed class DeclarativeResourceConnectionProvider(
     {
         public DeclarationDocumentVersion[] Versions => Registrations.Select(item =>
             new DeclarationDocumentVersion(
-                DeclarationVersionKeys.ResourceRegistration(item.Resource.RegistrationId), item.ReferenceFence))
+                ResourceGroupVersionKeys.RegistrationReferenceFence(item.Resource.RegistrationId), item.ReferenceFence))
             .ToArray();
     }
 
@@ -375,7 +375,7 @@ internal sealed class DeclarativeResourceConnectionProvider(
             return new DeclarationReadBlocked(new ConnectionDeclarationUnavailable());
 
         return new CurrentDeclaration(current.Id,
-            new([new(DeclarationVersionKeys.ResourceConnection(current.Id), current.Revision)]),
+            new([new(ResourceConnectionPlanningVersion.RevisionDocumentId(current.Id), current.Revision)]),
             Project(new(current.TenantId, current.Name, ResourceTypeId.Create(current.SourceResourceTypeId),
                 current.SourceResourceId, ResourceTypeId.Create(current.DestinationResourceTypeId),
                 current.DestinationResourceId, current.EndpointId)), DeclarationConfigurationState.Configured);
@@ -427,7 +427,7 @@ internal sealed class DeclarativeResourceConnectionProvider(
             return new DeclarationPreconditionsChanged();
 
         var expected = request.Expected.Documents.SingleOrDefault(item =>
-            item.DocumentId == DeclarationVersionKeys.ResourceConnection(operation.ResourceId));
+            item.DocumentId == ResourceConnectionPlanningVersion.RevisionDocumentId(operation.ResourceId));
         var current = await connections.Find(session,
             ResourceConnectionFilters.ByTenantAndId(operation.Context.TenantId, operation.ResourceId))
             .FirstOrDefaultAsync(cancellationToken);

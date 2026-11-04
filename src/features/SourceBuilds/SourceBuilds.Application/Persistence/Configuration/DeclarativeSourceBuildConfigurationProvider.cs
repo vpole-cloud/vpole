@@ -34,6 +34,8 @@ internal sealed class DeclarativeSourceBuildConfigurationProvider(
 {
     private const string RepositoryField = "spec.repository";
 
+    private const string WebServiceKind = "WebService";
+
     private const string WebServiceField = "spec.webService";
 
     public string Kind => "SourceBuildConfiguration";
@@ -54,7 +56,7 @@ internal sealed class DeclarativeSourceBuildConfigurationProvider(
         var declaration = DeclarationJson.Read<SourceBuildConfigurationDeclaration>(spec);
         return new(null, [],
             [new(new("SourceRepository", declaration.Repository), RepositoryField),
-                new(new("WebService", declaration.WebService), WebServiceField)], [], [],
+                new(new(WebServiceKind, declaration.WebService), WebServiceField)], [], [],
             ReferencesShareScope: false);
     }
 
@@ -63,7 +65,7 @@ internal sealed class DeclarativeSourceBuildConfigurationProvider(
         var declaration = DeclarationJson.Read<SourceBuildConfigurationDeclaration>(spec);
         return [new(DeclarationPhase.Configure,
             [new(new("SourceRepository", declaration.Repository), DeclarationPhase.Prepare),
-                new(new("WebService", declaration.WebService), DeclarationPhase.Prepare)])];
+                new(new(WebServiceKind, declaration.WebService), DeclarationPhase.Prepare)])];
     }
 
     public string DescribeFailure(IDeclarationFailure failure) => failure switch
@@ -123,7 +125,7 @@ internal sealed class DeclarativeSourceBuildConfigurationProvider(
     {
         var spec = DeclarationJson.Read<SourceBuildConfigurationDeclaration>(declaration.Spec);
         var repositoryId = await ResolveAsync(new("SourceRepository", spec.Repository));
-        var targetId = await ResolveAsync(new("WebService", spec.WebService));
+        var targetId = await ResolveAsync(new(WebServiceKind, spec.WebService));
         if (repositoryId is null || targetId is null)
             return null;
 
@@ -142,8 +144,9 @@ internal sealed class DeclarativeSourceBuildConfigurationProvider(
     }
 
     private static DeclarationDocumentVersion[] Versions(References references) =>
-        [new(DeclarationVersionKeys.SourceRepository(references.Repository.Id), references.Repository.Revision),
-            new(DeclarationVersionKeys.WebService(references.Target.WebServiceId), references.Target.Revision)];
+        [new(SourceRepositoryVersionKeys.Revision(references.Repository.Id), references.Repository.Revision),
+            new(DeclarationVersionKeys.Resource(WebServiceKind, references.Target.WebServiceId),
+                references.Target.Revision)];
 
     private static DeclarationProjection Project(string repositoryId, string webServiceId, string dockerfile) =>
         new(DeclarationJson.Write(new { repositoryId, webServiceId }), DeclarationJson.Write(new { dockerfile }));
@@ -198,7 +201,8 @@ internal sealed class DeclarativeSourceBuildConfigurationProvider(
         {
             "SourceRepository" => SourceBuildConfigurationFilters.BySourceRepository(request.TenantId,
                 request.Resource.ResourceId),
-            "WebService" => SourceBuildConfigurationFilters.ByWebService(request.TenantId, request.Resource.ResourceId),
+            WebServiceKind =>
+                SourceBuildConfigurationFilters.ByWebService(request.TenantId, request.Resource.ResourceId),
             _ => null
         };
         if (filter is null)
@@ -206,7 +210,7 @@ internal sealed class DeclarativeSourceBuildConfigurationProvider(
 
         var rows = await configurations.Find(session, filter).SortBy(item => item.Id).ToListAsync(cancellationToken);
         return rows.Select(item => new GitLifecycleDependency(new(new(Kind, item.TechnicalName), item.Id),
-            request.Resource, LifecycleVersions(item), request.Resource.Address.Kind == "WebService"
+            request.Resource, LifecycleVersions(item), request.Resource.Address.Kind == WebServiceKind
                 ? GitLifecycleDependencyOrder.AfterRemovalRequested : GitLifecycleDependencyOrder.BeforeRemoval))
             .ToArray();
     }
@@ -257,7 +261,7 @@ internal sealed class DeclarativeSourceBuildConfigurationProvider(
         var repository = request.References.SingleOrDefault(item => item.Address ==
             new ResourceAddress("SourceRepository", spec.Repository));
         var target = request.References.SingleOrDefault(item => item.Address ==
-            new ResourceAddress("WebService", spec.WebService));
+            new ResourceAddress(WebServiceKind, spec.WebService));
         if (repository is null || target is null || await loadRepository(new(request.TenantId, repository.ResourceId),
                 session, cancellationToken) is not SourceRepositoryBuildSnapshot source ||
             await loadTarget(new(request.TenantId, target.ResourceId), session, cancellationToken) is not
@@ -266,15 +270,15 @@ internal sealed class DeclarativeSourceBuildConfigurationProvider(
 
         return new GitLifecycleAdoptionPreview(found, Project(source.Id, web.WebServiceId, spec.Recipe.Dockerfile) with
         {
-            Dependencies = new([new(DeclarationVersionKeys.SourceRepository(source.Id), source.Revision),
-            new(DeclarationVersionKeys.WebService(web.WebServiceId), web.Revision)])
+            Dependencies = new([new(SourceRepositoryVersionKeys.Revision(source.Id), source.Revision),
+            new(DeclarationVersionKeys.Resource(WebServiceKind, web.WebServiceId), web.Revision)])
         }, request.References);
     }
 
     private static DeclarationVersionToken LifecycleVersions(SourceBuildConfiguration current) => new(
-        [new(DeclarationVersionKeys.SourceBuildConfiguration(current.Id), current.Revision),
-            new(DeclarationVersionKeys.SourceBuildConfigurationFence(current.Id), current.ReferenceFence),
-            new(DeclarationVersionKeys.SourceBuildGeneration(current.Id), current.BuildGeneration)]);
+        [new(SourceBuildConfigurationVersionKeys.Revision(current.Id), current.Revision),
+            new(ConfigurationFenceVersionKey(current.Id), current.ReferenceFence),
+            new(BuildGenerationVersionKey(current.Id), current.BuildGeneration)]);
 
     private static bool SameVersions(DeclarationVersionToken left, DeclarationVersionToken right) =>
         left.Documents.OrderBy(item => item.DocumentId, StringComparer.Ordinal)
@@ -299,7 +303,7 @@ internal sealed class DeclarativeSourceBuildConfigurationProvider(
             return new DeclarationReadBlocked(new DeclarationIdentityChanged());
 
         return new CurrentDeclaration(current.Id,
-            new([new(DeclarationVersionKeys.SourceBuildConfiguration(current.Id), current.Revision)]),
+            new([new(SourceBuildConfigurationVersionKeys.Revision(current.Id), current.Revision)]),
             Project(current.SourceRepositoryId, current.WebServiceId, current.Recipe.Dockerfile),
             DeclarationConfigurationState.Configured);
     }
@@ -337,7 +341,7 @@ internal sealed class DeclarativeSourceBuildConfigurationProvider(
             SourceBuildConfigurationFilters.ById(operation.Context.TenantId, operation.ResourceId))
             .FirstOrDefaultAsync(cancellationToken);
         var expected = request.Expected.Documents.SingleOrDefault(item =>
-            item.DocumentId == DeclarationVersionKeys.SourceBuildConfiguration(operation.ResourceId));
+            item.DocumentId == SourceBuildConfigurationVersionKeys.Revision(operation.ResourceId));
         if (current is null ? expected is not null : expected?.Revision != current.Revision)
             return new DeclarationPreconditionsChanged();
 
@@ -361,4 +365,8 @@ internal sealed class DeclarativeSourceBuildConfigurationProvider(
 
         return new DeclarationFenced();
     }
+
+    private static string ConfigurationFenceVersionKey(string id) => $"SourceBuildConfigurationFence/{id}";
+
+    private static string BuildGenerationVersionKey(string id) => $"SourceBuildGeneration/{id}";
 }

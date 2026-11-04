@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using Pole.Features.GitOps.Contracts;
+using Pole.Features.Secrets.Contracts;
 using Pole.Features.Secrets.Domain;
 
 namespace Pole.Features.Secrets.Application.Persistence;
@@ -8,8 +9,8 @@ internal sealed class SecretPlanningFence(IMongoCollection<Secret> secrets)
 {
     public static DeclarationDocumentVersion[] Versions(Secret secret) =>
     [
-        new(DeclarationVersionKeys.Secret(secret.Id), secret.Revision),
-        new(DeclarationVersionKeys.SecretReferenceFence(secret.Id), secret.ReferenceFence)
+        new(SecretVersionKeys.Revision(secret.Id), secret.Revision),
+        new(SecretVersionKeys.ReferenceFence(secret.Id), secret.ReferenceFence)
     ];
 
     public static bool Matches(Secret secret, DeclarationVersionToken expected) =>

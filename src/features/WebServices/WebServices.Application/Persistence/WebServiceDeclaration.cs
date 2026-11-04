@@ -95,6 +95,8 @@ internal static class WebServiceDeclarations
     public const string Kind = "WebService";
     public static ResourceTypeId ResourceType => WebServiceResourceDeployment.ResourceType;
 
+    internal static string VersionKey(string id) => DeclarationVersionKeys.Resource(Kind, id);
+
     public static string DescribeFailure(IDeclarationFailure failure) => failure switch
     {
         WebServiceConnectionReferenceRejected => nameof(WebServiceConnectionReferenceRejected),

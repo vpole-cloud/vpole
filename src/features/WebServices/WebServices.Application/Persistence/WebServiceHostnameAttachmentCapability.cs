@@ -60,12 +60,12 @@ internal sealed class WebServiceHostnameAttachmentCapability(
         return new HostnameAttachmentSnapshot(request.TenantId, request.ResourceId, ResourceType,
             request.DeploymentTargetId, placement.DeploymentId, request.Hostname,
             placement.Ingress!.Hostnames.Order(StringComparer.Ordinal).ToArray(),
-            [new(DeclarationVersionKeys.WebService(service.Id), service.Revision),
-                new(DeclarationVersionKeys.ResourceGroup(scope.ResourceGroupId), scope.ResourceGroupRevision),
-                new(DeclarationVersionKeys.IsolationScope(scope.IsolationScopeId), scope.ScopeRevision),
+            [new(WebServiceDeclarations.VersionKey(service.Id), service.Revision),
+                new(ResourceGroupVersionKeys.Revision(scope.ResourceGroupId), scope.ResourceGroupRevision),
+                new(ResourceGroupVersionKeys.IsolationScopeRevision(scope.IsolationScopeId), scope.ScopeRevision),
                 .. placements.Items.Select(item =>
                 new HostnameAttachmentDocumentVersion(
-                    DeclarationVersionKeys.ResourceDeployment(item.DeploymentId), item.Revision))],
+                    ResourceDeploymentVersionKeys.Revision(item.DeploymentId), item.Revision))],
             service.Lifecycle is AwaitingFirstArtifactWebServiceLifecycle
                 ? HostnameAttachmentAvailability.AwaitingArtifact : HostnameAttachmentAvailability.Active);
     }
@@ -116,7 +116,7 @@ internal sealed class WebServiceHostnameAttachmentCapability(
             return new HostnameAttachmentPreconditionsChanged();
 
         var version = snapshot.DocumentVersions.Single(item =>
-            item.DocumentId == DeclarationVersionKeys.WebService(snapshot.ResourceId));
+            item.DocumentId == WebServiceDeclarations.VersionKey(snapshot.ResourceId));
         var filter = WebServiceFilters.AtRevision(snapshot.TenantId, snapshot.ResourceId, version.Version);
         var write = await services.UpdateOneAsync(session, filter,
             Builders<WebService>.Update.Inc(item => item.PlanningFence, 1), cancellationToken: cancellationToken);

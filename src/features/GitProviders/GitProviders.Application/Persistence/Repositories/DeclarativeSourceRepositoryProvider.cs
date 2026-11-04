@@ -243,8 +243,8 @@ internal sealed class DeclarativeSourceRepositoryProvider(
     }
 
     private static DeclarationVersionToken LifecycleVersions(SourceRepository repository) => new(
-        [new(DeclarationVersionKeys.SourceRepository(repository.Id), repository.Revision),
-            new(DeclarationVersionKeys.SourceRepositoryFence(repository.Id), repository.ReferenceFence)]);
+        [new(SourceRepositoryVersionKeys.Revision(repository.Id), repository.Revision),
+            new(RepositoryFenceVersionKey(repository.Id), repository.ReferenceFence)]);
 
     private static bool SameVersions(DeclarationVersionToken left, DeclarationVersionToken right) =>
         left.Documents.OrderBy(item => item.DocumentId, StringComparer.Ordinal)
@@ -270,7 +270,7 @@ internal sealed class DeclarativeSourceRepositoryProvider(
             return new DeclarationReadBlocked(new DeclarationIdentityChanged());
 
         return new CurrentDeclaration(current.Id,
-            new([new(DeclarationVersionKeys.SourceRepository(current.Id), current.Revision)]),
+            new([new(SourceRepositoryVersionKeys.Revision(current.Id), current.Revision)]),
             Project(current.ConnectionId, current.ExternalRepositoryId, current.Branch),
             DeclarationConfigurationState.Configured);
     }
@@ -305,7 +305,7 @@ internal sealed class DeclarativeSourceRepositoryProvider(
                 GitProviderFilters.SourceRepositoryByTenantAndId(operation.Context.TenantId, operation.ResourceId))
             .FirstOrDefaultAsync(cancellationToken);
         var expected = request.Expected.Documents.SingleOrDefault(item =>
-            item.DocumentId == DeclarationVersionKeys.SourceRepository(operation.ResourceId));
+            item.DocumentId == SourceRepositoryVersionKeys.Revision(operation.ResourceId));
         if (current is null ? expected is not null : expected?.Revision != current.Revision)
             return new DeclarationPreconditionsChanged();
 
@@ -351,5 +351,9 @@ internal sealed class DeclarativeSourceRepositoryProvider(
     }
 
     private static DeclarationDocumentVersion ConnectionVersion(GitProviderConnection connection) =>
-        new(DeclarationVersionKeys.GitProviderConnection(connection.Id), connection.ReferenceFence);
+        new(ConnectionFenceVersionKey(connection.Id), connection.ReferenceFence);
+
+    private static string RepositoryFenceVersionKey(string id) => $"SourceRepositoryFence/{id}";
+
+    private static string ConnectionFenceVersionKey(string id) => $"GitProviderConnection/{id}";
 }

@@ -66,11 +66,19 @@ internal sealed class DomainLifecycleDependencies(
 
 internal static class DomainLifecycleVersions
 {
+    internal static string ZoneRevisionKey(string id) => $"DomainZone/{id}";
+
+    internal static string ZoneFenceKey(string id) => $"DomainZoneFence/{id}";
+
+    internal static string ZoneReferenceFenceKey(string id) => $"{ZoneRevisionKey(id)}/ReferenceFence";
+
+    internal static string BindingReferenceFenceKey(string id) => $"HostnameBinding/{id}";
+
     public static DeclarationVersionToken Zone(TenantDomainZone zone) => new(
-        [new(DeclarationVersionKeys.DomainZone(zone.Id), zone.Revision),
-            new(DeclarationVersionKeys.DomainZoneFence(zone.Id), zone.ReferenceFence)]);
+        [new(ZoneRevisionKey(zone.Id), zone.Revision),
+            new(ZoneFenceKey(zone.Id), zone.ReferenceFence)]);
     public static DeclarationVersionToken Binding(HostnameBinding binding) => new(
-        [new(DeclarationVersionKeys.HostnameBinding(binding.Id), binding.ReferenceFence)]);
+        [new(BindingReferenceFenceKey(binding.Id), binding.ReferenceFence)]);
     public static bool Same(DeclarationVersionToken left, DeclarationVersionToken right) =>
         left.Documents.OrderBy(item => item.DocumentId, StringComparer.Ordinal)
             .SequenceEqual(right.Documents.OrderBy(item => item.DocumentId, StringComparer.Ordinal));

@@ -60,17 +60,17 @@ type PostgresDeclarationAdoption(
                             [| yield! current
                                GitPreviewResolvedReference(targetAddress, target.Id, DeclarationVersionToken(
                                    [| DeclarationDocumentVersion(
-                                          DeclarationVersionKeys.DeploymentTarget(target.Id), target.Revision)
+                                          DeploymentTargetVersionKeys.Revision(target.Id), target.Revision)
                                       DeclarationDocumentVersion(
-                                          DeclarationVersionKeys.TargetWorkloadConfiguration(target.Id),
+                                          DeploymentTargetVersionKeys.WorkloadConfiguration(target.Id),
                                           target.WorkloadConfiguration.Revision) |]))
                                GitPreviewResolvedReference(computeAddress, compute.Compute.ComputeProfileId,
                                    DeclarationVersionToken([| DeclarationDocumentVersion(
-                                       DeclarationVersionKeys.ComputeProfilePolicy(compute.Compute.ComputeProfileId),
+                                       ComputeProfileVersionKeys.Policy(compute.Compute.ComputeProfileId),
                                        compute.PolicyRevision) |]))
                                GitPreviewResolvedReference(storageAddress, storage.Storage.ProfileId,
                                    DeclarationVersionToken([| DeclarationDocumentVersion(
-                                       DeclarationVersionKeys.StorageProfilePolicy(storage.Storage.ProfileId),
+                                       StorageProfileVersionKeys.Policy(storage.Storage.ProfileId),
                                        storage.PolicyRevision) |])) |]))
                     | _ -> return ReadPreviewReferencesOutcome(
                         PostgresDeclarations.blocked PostgresDeclarationError.StorageProfileUnavailable)

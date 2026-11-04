@@ -37,7 +37,7 @@ type PostgresDeclarationPlanner(
                DeclarationDocumentVersion(
                    DeclarationVersionKeys.PlanningFence(PostgresDeclarations.Kind, current.Id), current.PlanningFence)
                DeclarationDocumentVersion(
-                   DeclarationVersionKeys.ResourceDeployment(placement.DeploymentId),
+                   ResourceDeploymentVersionKeys.Revision(placement.DeploymentId),
                    placement.Revision) |])
 
     let currentProjection phase (current : PostgresCluster) (placement : ResourceDeploymentPlanningItem) bootstrap =

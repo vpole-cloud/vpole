@@ -6,6 +6,7 @@ using Pole.Features.GitOps.Primitives;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Persistence.IsolationScopes;
 using Pole.Features.ResourceGroups.Application.Search;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
 using Pole.Workloads;
@@ -335,7 +336,7 @@ internal sealed class DeclarativeResourceGroupProvider(
                 Tags = current.Tags.ToArray()
             })));
         return new CurrentDeclaration(current.Id,
-            new([new(DeclarationVersionKeys.ResourceGroup(current.Id), current.Revision)]),
+            new([new(ResourceGroupVersionKeys.Revision(current.Id), current.Revision)]),
             projection, DeclarationConfigurationState.Configured);
     }
 
@@ -351,7 +352,7 @@ internal sealed class DeclarativeResourceGroupProvider(
             ResourceGroupFilters.ByTenantAndId(request.Operation.Context.TenantId, request.Operation.ResourceId))
             .FirstOrDefaultAsync(cancellationToken);
         var expected = request.Expected.Documents.SingleOrDefault(item =>
-            item.DocumentId == DeclarationVersionKeys.ResourceGroup(request.Operation.ResourceId));
+            item.DocumentId == ResourceGroupVersionKeys.Revision(request.Operation.ResourceId));
         if (current is null)
             return expected is null ? new DeclarationFenced() : new DeclarationPreconditionsChanged();
         if (expected is null || expected.Revision != current.Revision)
