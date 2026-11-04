@@ -13,3 +13,6 @@
 | POLE007 | Architecture | Error    | Multi-parameter records, unions and delegates use one parameter per line.                   |
 | POLE008 | Architecture | Error    | Declare Mongo filters in named helpers                                                      |
 | POLE009 | Architecture | Error    | Stored record data uses one constructor/property style; exact legacy members are ratcheted. |
+
+| POLE010 | Architecture | Error | Feature-owned Mongo root models belong to the owning Domain project. |
+| POLE011 | Architecture | Error | Domain constructor parameters have no optional defaults. |

@@ -66,7 +66,10 @@ internal sealed class MongoBeginResourceGroupDeletion(
                     ResourceId: resourceGroupId),
                 session: transaction.Session,
                 ct: ct))
-                return transaction.Abort(new BeginResourceGroupDeletionOutcome(new ResourceGroupDeletionError(new ResourceGroupRevisionConflict(resourceGroupId, ResourceGroupRevisionConflictReason.GitOwnedConfiguration))));
+                return transaction.Abort(new BeginResourceGroupDeletionOutcome(
+                    new ResourceGroupDeletionError(new ResourceGroupRevisionConflict(
+                        resourceGroupId,
+                        ResourceGroupRevisionConflictReason.GitOwnedConfiguration))));
             if (resourceGroup.Lifecycle is not ActiveResourceGroupLifecycleState &&
                 resourceGroup.Lifecycle is not DeletingResourceGroupLifecycleState)
             {
@@ -125,7 +128,9 @@ internal sealed class MongoBeginResourceGroupDeletion(
                 {
                     return transaction.Abort(new BeginResourceGroupDeletionOutcome(
                         new ResourceGroupDeletionError(
-                            new ResourceGroupRevisionConflict(resourceGroupId))));
+                            new ResourceGroupRevisionConflict(
+                                resourceGroupId,
+                                ResourceGroupRevisionConflictReason.ExpectedRevisionConflict))));
                 }
                 await storeOutboxWrites(
                     transaction.Session,
@@ -148,7 +153,9 @@ internal sealed class MongoBeginResourceGroupDeletion(
                 {
                     return transaction.Abort(new BeginResourceGroupDeletionOutcome(
                         new ResourceGroupDeletionError(
-                            new ResourceGroupRevisionConflict(resourceGroupId))));
+                            new ResourceGroupRevisionConflict(
+                                resourceGroupId,
+                                ResourceGroupRevisionConflictReason.ExpectedRevisionConflict))));
                 }
             }
             var outboxWrites = new List<OutboxWrite>();
@@ -171,7 +178,9 @@ internal sealed class MongoBeginResourceGroupDeletion(
                 {
                     return transaction.Abort(new BeginResourceGroupDeletionOutcome(
                         new ResourceGroupDeletionError(
-                            new ResourceGroupRevisionConflict(resourceGroupId))));
+                            new ResourceGroupRevisionConflict(
+                                resourceGroupId,
+                                ResourceGroupRevisionConflictReason.ExpectedRevisionConflict))));
                 }
 
                 outboxWrites.Add(OutboxWrite.Create(deletingScope.ToDeletionRequestedEvent()));
@@ -192,7 +201,9 @@ internal sealed class MongoBeginResourceGroupDeletion(
                 {
                     return transaction.Abort(new BeginResourceGroupDeletionOutcome(
                         new ResourceGroupDeletionError(
-                            new ResourceGroupRevisionConflict(resourceGroupId))));
+                            new ResourceGroupRevisionConflict(
+                                resourceGroupId,
+                                ResourceGroupRevisionConflictReason.ExpectedRevisionConflict))));
                 }
 
                 outboxWrites.Add(OutboxWrite.Create(

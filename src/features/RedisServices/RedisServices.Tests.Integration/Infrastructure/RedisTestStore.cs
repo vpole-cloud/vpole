@@ -1,5 +1,5 @@
 using MongoDB.Driver;
-using Pole.Features.Outbox.Application.Model;
+using Pole.Features.Outbox.Domain;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Domain;

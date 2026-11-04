@@ -1,7 +1,7 @@
+using System.Collections.Immutable;
 using MongoDB.Bson.Serialization.Attributes;
-using Pole.Features.GitOps.Contracts;
 
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Domain;
 
 public sealed record GitSourceExecution(
     [property: BsonId] string Id,
@@ -13,17 +13,13 @@ public sealed record GitSourceExecution(
     string ObservedCommit,
     string AttemptedCommit,
     string? AppliedCommit,
-    string Status,
-    string[] DesiredAddresses,
+    SnapshotProgress Status,
+    ImmutableArray<string> DesiredAddresses,
     string SnapshotJson,
     string SourceUrl,
     string ActorUserId,
     string ActorEmail,
     string ApiVersion,
-    string[] ReferencedSecrets,
-    long Attempt = 0,
-    DateTime? NextAttemptAtUtc = null)
-{
-    public GitMutationContext ToContext() => new(
-        TenantId, SourceId, RunId, Fence, SourceUrl, ActorUserId, ActorEmail, Attempt);
-}
+    ImmutableArray<string> ReferencedSecrets,
+    long Attempt,
+    DateTime? NextAttemptAtUtc);

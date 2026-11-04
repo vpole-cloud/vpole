@@ -11,7 +11,9 @@ namespace Pole.Features.Secrets.Application.Persistence;
 public sealed record SecretDeclaration
 {
     public required string ResourceGroup { get; init; }
+
     public string Purpose { get; init; } = "";
+
     public required string[] Keys { get; init; }
 }
 
@@ -25,6 +27,7 @@ internal sealed class DeclarativeSecretProvider(
     TimeProvider clock) : IDeclarativeResourceProvider
 {
     public string Kind => "Secret";
+
     public string DescribeFailure(IDeclarationFailure failure) => failure switch
     {
         SecretDeclarationRejected rejected => rejected.Reason switch
@@ -39,74 +42,141 @@ internal sealed class DeclarativeSecretProvider(
         },
         _ => throw new ArgumentException("The failure belongs to another declaration provider.", nameof(failure))
     };
+
     public DeclarationFacts Facts(JsonElement spec)
     {
         var value = DeclarationJson.Read<SecretDeclaration>(spec);
+
         return new(new("ResourceGroup", value.ResourceGroup), value.Keys, [], [], []);
     }
+
     public JsonElement NormalizeAndValidate(JsonElement spec)
     {
         var value = DeclarationJson.Read<SecretDeclaration>(spec);
-        DeclarationJson.Require(DeclarationNames.Valid(value.ResourceGroup) && value.Purpose is { Length: <= SecretDeclarationRules.MaximumPurposeLength } &&
-            value.Keys is { Length: > 0 and <= SecretKeyReferenceRules.MaximumKeys } && value.Keys.Distinct().Count() == value.Keys.Length &&
+        DeclarationJson.Require(DeclarationNames.Valid(value.ResourceGroup)
+            && value.Purpose is { Length: <= SecretDeclarationRules.MaximumPurposeLength } &&
+            value.Keys is { Length: > 0 and <= SecretKeyReferenceRules.MaximumKeys } && value.Keys.Distinct()
+                .Count() == value.Keys.Length &&
             value.Keys.All(SecretKeyReferenceRules.ValidKey), "spec");
-        return DeclarationJson.Write(value with { Keys = value.Keys.Order(StringComparer.Ordinal).ToArray(), Purpose = value.Purpose.Trim() });
+
+        return DeclarationJson.Write(value with
+        {
+            Keys = value.Keys.Order(StringComparer.Ordinal).ToArray(),
+            Purpose = value.Purpose.Trim()
+        });
     }
+
     public IReadOnlyList<DeclarationStep> Steps(ResourceAddress address, JsonElement spec) =>
-        [new(DeclarationPhase.Prepare, [new(new("ResourceGroup", DeclarationJson.Read<SecretDeclaration>(spec).ResourceGroup), DeclarationPhase.Prepare)])];
+        [new(
+                DeclarationPhase.Prepare,
+                [new(
+                        new("ResourceGroup", DeclarationJson.Read<SecretDeclaration>(spec).ResourceGroup),
+                        DeclarationPhase.Prepare)])];
+
     public async Task<string?> ResolveAsync(
         ResolveDeclaredResourceRequest request,
         IClientSessionHandle session,
         CancellationToken ct) =>
-        (await secrets.Find(session, SecretFilters.TechnicalName(request.TenantId, request.Name)).FirstOrDefaultAsync(ct))?.Id;
-    public Task<GitOperationResult> ApplyAsync(GitOperation operation, CancellationToken ct) => git.ExecuteAsync(operation, async (session, token) =>
-    {
-        var context = operation.Context;
-        var spec = DeclarationJson.Read<SecretDeclaration>(operation.Declaration.Spec);
-        var groupId = await git.ResolveAsync(
-            new ResolveGitResourceRequest(
-                TenantId: context.TenantId,
-                Address: new("ResourceGroup", spec.ResourceGroup)),
-            session: session,
-            ct: token);
-        if (groupId is null) return new(operation.ResourceId, new SecretDeclarationRejected(SecretDeclarationError.ResourceGroupUnavailable));
-        var group = await groupOwnership(context.TenantId, groupId, token);
-        if (group is not ResourceGroupOwnership owned) return new(operation.ResourceId, new SecretDeclarationRejected(SecretDeclarationError.ResourceGroupUnavailable));
-        var current = await secrets.Find(session, SecretFilters.TechnicalName(context.TenantId, operation.Declaration.Address.Name)).FirstOrDefaultAsync(token);
-        if (current is not null && current.Id != operation.ResourceId) return new(operation.ResourceId, new SecretDeclarationRejected(SecretDeclarationError.ExplicitAdoptionRequired));
-        if (current is not null && (current.ResourceGroupId != groupId || current.IsolationScopeId != owned.DefaultIsolationScopeId))
-            return new(current.Id, new SecretDeclarationRejected(SecretDeclarationError.ImmutablePlacementChange));
-        if (await admitScope(
-            new AdmitResourceScopeReferenceRequest(
-                TenantId: context.TenantId,
-                ResourceGroupId: groupId,
-                IsolationScopeId: owned.DefaultIsolationScopeId,
-                Consumer: null),
-            session: session,
-            cancellationToken: token) is ResourceScopeReferenceUnavailable)
-            return new(operation.ResourceId, new SecretDeclarationRejected(SecretDeclarationError.ResourceScopeUnavailable));
-        if (current is null)
-        {
-            var created = SecretFactory.CreateMetadata(operation.ResourceId, context.TenantId, groupId, owned.DefaultIsolationScopeId,
-                operation.Declaration.Address.Name, spec.Purpose, spec.Keys, clock.GetUtcNow().UtcDateTime);
-            if (await registrar.RegisterAsync(
-                new RegisterResourceRequest(
-                    TenantId: context.TenantId,
-                    ResourceGroupId: groupId,
-                    Resource: new(SecretResource.Type, created.Id, created.Name)),
-                session: session,
-                cancellationToken: token) is ResourceRegistrationMutationError)
-                return new(created.Id, new SecretDeclarationRejected(SecretDeclarationError.ResourceRegistrationUnavailable));
-            await secrets.InsertOneAsync(session, created, cancellationToken: token);
-            await publish(session, created, new SecretCreated(), token);
-            return new(created.Id, Changed: true);
-        }
-        var transition = current.UpdateDeclaredMetadata(spec.Purpose, spec.Keys, clock.GetUtcNow().UtcDateTime);
-        if (transition is SecretDeclaredKeysInUse) return new(current.Id, new SecretDeclarationRejected(SecretDeclarationError.SecretKeysInUse));
-        var updated = (Secret)transition.Value;
-        if (updated == current) return new(current.Id);
-        await secrets.ReplaceOneAsync(session, SecretFilters.Identity(context.TenantId, current.Id), updated, cancellationToken: token);
-        await publish(session, updated, new SecretMetadataUpdated(), token);
-        return new(current.Id, Changed: true);
-    }, ct);
+        (await secrets.Find(
+            session,
+            SecretFilters.TechnicalName(request.TenantId, request.Name)).FirstOrDefaultAsync(ct))?.Id;
+
+    public Task<GitOperationResult> ApplyAsync(
+        GitOperation operation,
+        CancellationToken ct) => git.ExecuteAsync(operation, async (
+                session,
+                token) =>
+            {
+                var context = operation.Context;
+                var spec = DeclarationJson.Read<SecretDeclaration>(operation.Declaration.Spec);
+                var groupId = await git.ResolveAsync(
+                    new ResolveGitResourceRequest(
+                        TenantId: context.TenantId,
+                        Address: new("ResourceGroup", spec.ResourceGroup)),
+                    session: session,
+                    ct: token);
+
+                if (groupId is null)
+                    return new(
+                        operation.ResourceId,
+                        new SecretDeclarationRejected(SecretDeclarationError.ResourceGroupUnavailable));
+
+                var group = await groupOwnership(context.TenantId, groupId, token);
+
+                if (group is not ResourceGroupOwnership owned)
+                    return new(
+                        operation.ResourceId,
+                        new SecretDeclarationRejected(SecretDeclarationError.ResourceGroupUnavailable));
+
+                var current = await secrets.Find(
+                    session,
+                    SecretFilters.TechnicalName(
+                        context.TenantId,
+                        operation.Declaration.Address.Name)).FirstOrDefaultAsync(token);
+
+                if (current is not null && current.Id != operation.ResourceId)
+                    return new(
+                        operation.ResourceId,
+                        new SecretDeclarationRejected(SecretDeclarationError.ExplicitAdoptionRequired));
+
+                if (current is not null && (current.ResourceGroupId != groupId
+                    || current.IsolationScopeId != owned.DefaultIsolationScopeId))
+                    return new(
+                        current.Id,
+                        new SecretDeclarationRejected(SecretDeclarationError.ImmutablePlacementChange));
+
+                if (await admitScope(
+                        new AdmitResourceScopeReferenceRequest(
+                            TenantId: context.TenantId,
+                            ResourceGroupId: groupId,
+                            IsolationScopeId: owned.DefaultIsolationScopeId,
+                            Consumer: null),
+                        session: session,
+                        cancellationToken: token) is ResourceScopeReferenceUnavailable)
+                    return new(
+                        operation.ResourceId,
+                        new SecretDeclarationRejected(SecretDeclarationError.ResourceScopeUnavailable));
+
+                if (current is null)
+                {
+                    var created = SecretFactory.CreateMetadata(operation.ResourceId, context.TenantId, groupId,
+                        owned.DefaultIsolationScopeId,
+                        operation.Declaration.Address.Name, spec.Purpose, spec.Keys, clock.GetUtcNow().UtcDateTime);
+
+                    if (await registrar.RegisterAsync(
+                            new RegisterResourceRequest(
+                                TenantId: context.TenantId,
+                                ResourceGroupId: groupId,
+                                Resource: new(SecretResource.Type, created.Id, created.Name)),
+                            session: session,
+                            cancellationToken: token) is ResourceRegistrationMutationError)
+                        return new(
+                            created.Id,
+                            new SecretDeclarationRejected(SecretDeclarationError.ResourceRegistrationUnavailable));
+
+                    await secrets.InsertOneAsync(session, created, cancellationToken: token);
+                    await publish(session, created, new SecretCreated(), token);
+
+                    return new(created.Id, Changed: true);
+                }
+
+                var transition = current.UpdateDeclaredMetadata(spec.Purpose, spec.Keys, clock.GetUtcNow().UtcDateTime);
+
+                if (transition is SecretDeclaredKeysInUse)
+                    return new(current.Id, new SecretDeclarationRejected(SecretDeclarationError.SecretKeysInUse));
+
+                var updated = (Secret)transition.Value;
+
+                if (updated == current)
+                    return new(current.Id);
+
+                await secrets.ReplaceOneAsync(
+                    session,
+                    SecretFilters.Identity(context.TenantId, current.Id),
+                    updated,
+                    cancellationToken: token);
+                await publish(session, updated, new SecretMetadataUpdated(), token);
+
+                return new(current.Id, Changed: true);
+            }, ct);
 }

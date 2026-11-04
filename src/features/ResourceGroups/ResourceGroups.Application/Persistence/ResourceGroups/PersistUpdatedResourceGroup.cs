@@ -52,7 +52,9 @@ internal sealed class MongoPersistUpdatedResourceGroup(
                     ResourceId: current.Id),
                 session: transaction.Session,
                 ct: ct))
-                return transaction.Abort(new ResourceGroupRevisionConflict(current.Id, ResourceGroupRevisionConflictReason.GitOwnedConfiguration));
+                return transaction.Abort(new ResourceGroupRevisionConflict(
+                    current.Id,
+                    ResourceGroupRevisionConflictReason.GitOwnedConfiguration));
             if (replacement.Revision == current.Revision) return transaction.Commit(current);
             if (replacement.Revision != current.Revision)
             {
@@ -63,7 +65,9 @@ internal sealed class MongoPersistUpdatedResourceGroup(
                     cancellationToken: ct);
                 if (write.ModifiedCount != 1)
                 {
-                    return transaction.Abort(new ResourceGroupRevisionConflict(current.Id));
+                    return transaction.Abort(new ResourceGroupRevisionConflict(
+                        current.Id,
+                        ResourceGroupRevisionConflictReason.ExpectedRevisionConflict));
                 }
             }
 

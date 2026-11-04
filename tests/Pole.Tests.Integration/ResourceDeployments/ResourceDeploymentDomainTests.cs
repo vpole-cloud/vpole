@@ -30,6 +30,10 @@ public sealed class ResourceDeploymentDomainTests
             $"{TestResourceType.Value}:{ResourceId}:single",
             deployment.PlacementKey);
         Assert.Equal(ResourcePlacementCapability.SingleTarget, deployment.PlacementCapability);
+        Assert.Equal(1, deployment.Revision);
+        Assert.Equal(1, deployment.ResourceRevision);
+        Assert.Equal(1, deployment.FixedReplicas);
+        Assert.Equal(0, deployment.ReferenceFence);
         Assert.Equal(1, deployment.DesiredGeneration);
         Assert.Equal(0, deployment.ObservedGeneration);
         Assert.IsType<WaitingForRuntimeCellResourceDeploymentState>(deployment.State);
@@ -183,11 +187,13 @@ public sealed class ResourceDeploymentDomainTests
             placement,
             ResourcePlacementCapability.MultiTarget,
             runtimeCellReady: true,
-            new ResourceDeploymentFactory.CreateOptions(
-                DeploymentId,
-                CreatedAtUtc,
-                ResourceRevision: 4,
-                FixedReplicas: 3));
+            ResourceDeploymentFactory.DefaultOptions with
+            {
+                Id = DeploymentId,
+                CreatedAtUtc = CreatedAtUtc,
+                ResourceRevision = 4,
+                FixedReplicas = 3
+            });
 
         Assert.Equal(4, deployment.ResourceRevision);
         Assert.Equal(3, deployment.FixedReplicas);
@@ -257,8 +263,10 @@ public sealed class ResourceDeploymentDomainTests
             placement,
             ResourcePlacementCapability.SingleTarget,
             runtimeCellReady,
-            new ResourceDeploymentFactory.CreateOptions(
-                DeploymentId,
-                CreatedAtUtc));
+            ResourceDeploymentFactory.DefaultOptions with
+            {
+                Id = DeploymentId,
+                CreatedAtUtc = CreatedAtUtc
+            });
     }
 }

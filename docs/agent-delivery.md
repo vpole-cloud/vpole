@@ -67,6 +67,8 @@ The repository compiler diagnostics complement review:
 - `POLE009`: positional records do not add stored instance members or alternate data constructors;
   ordinary-property records, computed/static members and DI classes remain allowed. Existing unrelated
   legacy members have exact per-member allowances, checked by architecture tests.
+- `POLE011`: Domain constructors require explicit arguments; factories own initial defaults.
+- `POLE010`: feature-owned typed Mongo collection roots belong to the owning Domain project.
 - `.editorconfig` and `dotnet format whitespace` verify changed C# source formatting.
 
 Rules use compiler symbols rather than treating every `Store`, array or `Status`

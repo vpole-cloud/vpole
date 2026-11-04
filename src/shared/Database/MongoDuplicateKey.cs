@@ -9,6 +9,12 @@ public static partial class MongoDuplicateKey
 {
     private const int DuplicateKeyCode = 11000;
 
+    public static bool IsForIdIndex(Exception exception, string collectionName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(collectionName);
+        return IsForIndex(exception, "_id_", collectionName);
+    }
+
     public static bool IsForIndex(Exception exception, string indexName, string? collectionName = null) => exception switch
     {
         MongoWriteException { WriteError.Category: ServerErrorCategory.DuplicateKey, WriteConcernError: null } write =>

@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Domain;
 using System.Collections.Immutable;
 using System.Net;
 using System.Net.Http.Json;
@@ -13,7 +14,7 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.GitOps.Application.Jobs;
 using Pole.Features.GitOps.Application.Persistence;
-using Pole.Features.Outbox.Application.Model;
+using Pole.Features.Outbox.Domain;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.Secrets.Application;
 using Pole.Features.Secrets.Domain;
@@ -68,6 +69,51 @@ public sealed class ManualSnapshotApiTests(MongoReplicaSetFixture fixture) : Api
         return body;
     }
 
+    [Fact]
+    public async Task Source_without_an_execution_reports_AwaitingSnapshot_as_a_JSON_string()
+    {
+        var source = await Create();
+        using var response = await Client.GetAsync($"{Root}/{source.Id}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal("AwaitingSnapshot", body.GetProperty("status").GetString());
+        Assert.Equal(SnapshotSourceState.AwaitingSnapshot,
+            body.Deserialize<SnapshotSourceStatus>(JsonSerializerOptions.Web)!.Status);
+        Assert.Equal(0, await Fixture.Database.GetCollection<GitSourceExecution>("GitSourceExecutions")
+            .CountDocumentsAsync(item => item.SourceId == source.Id));
+    }
+
+    public static IEnumerable<object[]> StoredProgressCases() =>
+    [
+        [new ApplyingSnapshot(), SnapshotSourceState.Applying, "Applying"],
+        [new BlockedSnapshot(), SnapshotSourceState.Blocked, "Blocked"],
+        [new AppliedSnapshot(), SnapshotSourceState.ConfigurationApplied, "ConfigurationApplied"],
+        [new UnsupportedSnapshotSchema(), SnapshotSourceState.UnsupportedStoredSchema, "UnsupportedStoredSchema"],
+        [new StaleSnapshotExecution(), SnapshotSourceState.StaleExecution, "StaleExecution"]
+    ];
+
+    [Theory]
+    [MemberData(nameof(StoredProgressCases))]
+    public async Task Current_stored_progress_projects_to_a_typed_status_with_the_existing_JSON_value(
+        SnapshotProgress progress,
+        SnapshotSourceState expectedState,
+        string expectedJson)
+    {
+        var source = await Create();
+        using var submitted = await Submit(source.Id);
+        Assert.Equal(HttpStatusCode.Accepted, submitted.StatusCode);
+        var executions = Fixture.Database.GetCollection<GitSourceExecution>("GitSourceExecutions");
+        await executions.UpdateOneAsync(item => item.SourceId == source.Id,
+            Builders<GitSourceExecution>.Update.Set(item => item.Status, progress));
+
+        using var response = await Client.GetAsync($"{Root}/{source.Id}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(expectedJson, body.GetProperty("status").GetString());
+        Assert.Equal(expectedState, body.Deserialize<SnapshotSourceStatus>(JsonSerializerOptions.Web)!.Status);
+    }
+
     [Theory]
     [InlineData("get")]
     [InlineData("resume")]
@@ -102,14 +148,14 @@ public sealed class ManualSnapshotApiTests(MongoReplicaSetFixture fixture) : Api
         using var submitted = await Client.PutAsJsonAsync($"{Root}/{source.Id}/snapshot", new
         { expectedFence = 0, commit = "escaped-content", files });
         Assert.Equal(HttpStatusCode.Accepted, submitted.StatusCode);
-        Assert.Equal("Blocked", (await Read(source.Id))!.Status);
+        Assert.Equal(SnapshotSourceState.Blocked, (await Read(source.Id))!.Status);
         var secret = await Fixture.Database.GetCollection<Secret>("Secrets").Find(Builders<Secret>.Filter.Empty).SingleAsync();
         using var supplied = await Client.PostAsJsonAsync($"/api/v1/secrets/{secret.Id}/versions",
             new { expectedVersion = 0, values = new Dictionary<string, string> { ["API_TOKEN"] = "" } });
         Assert.Equal(HttpStatusCode.OK, supplied.StatusCode);
         using var resumed = await Client.PostAsJsonAsync($"{Root}/{source.Id}/resume", new { expectedFence = 1 });
         Assert.Equal(HttpStatusCode.Accepted, resumed.StatusCode);
-        Assert.Equal("ConfigurationApplied", (await Read(source.Id))!.Status);
+        Assert.Equal(SnapshotSourceState.ConfigurationApplied, (await Read(source.Id))!.Status);
     }
 
     [Fact]
@@ -165,7 +211,7 @@ public sealed class ManualSnapshotApiTests(MongoReplicaSetFixture fixture) : Api
         Assert.Equal(HttpStatusCode.OK, supplied.StatusCode);
         using var resumed = await Client.PostAsJsonAsync($"{Root}/{source.Id}/resume", new { expectedFence = 1 });
         Assert.Equal(HttpStatusCode.Accepted, resumed.StatusCode);
-        Assert.Equal("ConfigurationApplied", (await Read(source.Id))!.Status);
+        Assert.Equal(SnapshotSourceState.ConfigurationApplied, (await Read(source.Id))!.Status);
     }
 
     [Theory]
@@ -206,7 +252,9 @@ public sealed class ManualSnapshotApiTests(MongoReplicaSetFixture fixture) : Api
         using var response = await Submit(source.Id);
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         var blocked = (await response.Content.ReadFromJsonAsync<SnapshotSourceStatus>())!;
-        Assert.Equal("Blocked", blocked.Status); Assert.Equal(1, blocked.Fence); Assert.Null(blocked.AppliedCommit);
+        Assert.Equal(SnapshotSourceState.Blocked, blocked.Status);
+        Assert.Equal(1, blocked.Fence);
+        Assert.Null(blocked.AppliedCommit);
         var service = await Fixture.Database.GetCollection<WebService>("WebServices").Find(Builders<WebService>.Filter.Empty).SingleAsync();
         Assert.IsType<PreparedWebServiceLifecycle>(service.Lifecycle);
         var operations = await Client.GetAsync($"/api/v1/resource-deployments/operations?resourceType=pole/web-service&resourceId={service.Id}");
@@ -223,18 +271,22 @@ public sealed class ManualSnapshotApiTests(MongoReplicaSetFixture fixture) : Api
                 .Single(item => item.Change is SecretRotated);
             var consumer = scope.ServiceProvider.GetRequiredService<ResumeSnapshotOnSecretValueChanged>();
             await consumer.HandleAsync(changed with { EventCore = EventCore.Create(ObjectId.GenerateNewId().ToString()) });
-            Assert.Equal("Blocked", (await Read(source.Id))!.Status);
+            Assert.Equal(SnapshotSourceState.Blocked, (await Read(source.Id))!.Status);
             await consumer.HandleAsync(changed); await consumer.HandleAsync(changed); // Redelivery is harmless.
         }
         else
         {
             // Advance the persisted due instant to emulate downtime past the retry deadline; no event is delivered.
             await Fixture.Database.GetCollection<GitSourceExecution>("GitSourceExecutions").UpdateOneAsync(item => item.SourceId == source.Id,
-                Builders<GitSourceExecution>.Update.Set(item => item.NextAttemptAtUtc, DateTime.UtcNow.AddMinutes(-1)).Set(item => item.Status, "Applying"));
+                Builders<GitSourceExecution>.Update
+                    .Set(item => item.NextAttemptAtUtc, DateTime.UtcNow.AddMinutes(-1))
+                    .Set(item => item.Status, new ApplyingSnapshot()));
             await scope.ServiceProvider.GetRequiredService<SnapshotResumeRecoveryJob>().RecoverAsync();
         }
         var applied = (await Read(source.Id))!;
-        Assert.Equal("ConfigurationApplied", applied.Status); Assert.Equal("manual-commit", applied.AppliedCommit); Assert.Equal(1, applied.Fence);
+        Assert.Equal(SnapshotSourceState.ConfigurationApplied, applied.Status);
+        Assert.Equal("manual-commit", applied.AppliedCommit);
+        Assert.Equal(1, applied.Fence);
         Assert.Null(applied.NextAttemptAtUtc);
         var before = await Fixture.Database.GetCollection<WebServiceRelease>("WebServiceReleases").CountDocumentsAsync(Builders<WebServiceRelease>.Filter.Empty);
         Assert.Equal(1, before);
@@ -279,7 +331,7 @@ public sealed class ManualSnapshotApiTests(MongoReplicaSetFixture fixture) : Api
         { expectedFence = 0, commit = "invalid", files = new[] { new { path = "bad.yaml", content = "kind: [" } } });
         var problem = await AssertProblem(malformed, HttpStatusCode.BadRequest, "gitops.invalid-snapshot");
         Assert.NotEmpty(problem.GetProperty("diagnostics").EnumerateArray());
-        Assert.Equal("AwaitingSnapshot", (await Read(source.Id))!.Status);
+        Assert.Equal(SnapshotSourceState.AwaitingSnapshot, (await Read(source.Id))!.Status);
         Assert.Equal(0, await Fixture.Database.GetCollection<GitSourceExecution>("GitSourceExecutions").CountDocumentsAsync(Builders<GitSourceExecution>.Filter.Empty));
         using var forged = await Client.PutAsJsonAsync($"{Root}/{source.Id}/snapshot", new
         { expectedFence = 0, commit = "forged", files = DeclarativePipelineTests.Snapshot(), tenantId = ObjectId.GenerateNewId().ToString(), actorUserId = "forged" });
@@ -340,7 +392,8 @@ public sealed class ManualSnapshotApiTests(MongoReplicaSetFixture fixture) : Api
         using var response = await Submit(requester.Id);
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         var status = (await Read(requester.Id))!;
-        Assert.Equal("Blocked", status.Status); Assert.Empty(status.Resources);
+        Assert.Equal(SnapshotSourceState.Blocked, status.Status);
+        Assert.Empty(status.Resources);
         Assert.Contains(status.Operations, item => item.Kind == "WebService" && item.Name == "demo-api" && item.Blocker == "OwnershipConflict");
         Assert.All(await Fixture.Database.GetCollection<ManagedDeclaration>("ManagedDeclarations").Find(Builders<ManagedDeclaration>.Filter.Empty).ToListAsync(),
             item => Assert.Equal(owner.Id, item.SourceId));

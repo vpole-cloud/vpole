@@ -301,5 +301,6 @@ public static class WebServiceDtoExtensions
         dto.Server,
         dto.Name,
         dto.Tag
-    );
+,
+        SecretName: null);
 }

@@ -1,3 +1,4 @@
+using Pole.Features.StorageProfiles.Domain.Observation;
 using MongoDB.Driver;
 using Pole.Database.Observation;
 using Pole.Features.StorageProfiles.Contracts;

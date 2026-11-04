@@ -16,6 +16,29 @@ contracts. Shipping a provider with Pole does not make its rules part of generic
 The complete dependency matrix, Mongo transaction exception, event evolution policy, and
 architecture-test rules are defined in [Module boundaries](module-boundaries.md).
 
+### Persisted feature models
+
+Every model of a feature's own persisted state belongs to that feature's Domain project.
+This includes aggregate documents, immutable revisions, history, retained cleanup authority,
+stored snapshots and projections, including their feature-owned nested data. Business methods
+are not a condition for Domain ownership. Application.Persistence owns database operations,
+filters, indexes, migrations, codecs and transport serialization configuration.
+MongoDB BSON mapping attributes may live with the persisted Domain models.
+
+DTOs and integration events retain their Contracts/Events ownership when serialized as payloads.
+Technical `BsonDocument` use in schema/index migrations does not define a feature model.
+`POLE010` checks feature-owned root types used by Mongo collection APIs; architecture checks
+cover F# collection declarations as well. There are no legacy model-placement exceptions.
+GitOps Domain may reference MongoDB and declare BSON mapping attributes, like other Domain projects.
+It stays independent of Contracts and transport; contract conversion and codecs belong to Application.
+
+### Explicit Domain construction
+
+Domain constructors, including primary constructors and nested `CreateOptions`, require every
+argument explicitly. Initial state belongs to factories and `DefaultOptions`; optional parameters
+on factory methods remain allowed. `POLE011` enforces constructor parameters without exceptions.
+Do not add compatibility constructors or stored-field defaults for an undeployed database schema.
+
 ### Cross-feature contract parameter limit
 
 Public contract delegates and interface operations accept at most **three total parameters**,

@@ -1,11 +1,10 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
-using Pole.Database.Observation;
-using Pole.Features.StorageProfiles.Contracts;
+using Pole.Observation;
 
-namespace Pole.Features.StorageProfiles.Application.Persistence.Observation;
+namespace Pole.Features.StorageProfiles.Domain.Observation;
 
-internal sealed record StorageObservationControlDocument(
+public sealed record StorageObservationControlDocument(
     [property: BsonId, BsonRepresentation(BsonType.ObjectId)]
     string Id,
     long ConnectionVersion,
@@ -22,9 +21,9 @@ internal sealed record StorageObservationControlDocument(
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
     DateTime? IdleSinceUtc,
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
-    DateTime UpdatedAtUtc) : IMongoObservationControl;
+    DateTime UpdatedAtUtc) : IObservationControl;
 
-internal sealed record StorageObservationDemandDocument(
+public sealed record StorageObservationDemandDocument(
     [property: BsonId] string Id,
     [property: BsonRepresentation(BsonType.ObjectId)]
     string DeploymentTargetId,
@@ -34,10 +33,10 @@ internal sealed record StorageObservationDemandDocument(
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
     DateTime OriginalExpiresAtUtc,
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
-    DateTime ExpiresAtUtc) : IMongoObservationDemand;
+    DateTime ExpiresAtUtc) : IObservationDemand;
 
 // Only closed concrete metadata arrays are serialized; no Kubernetes model is stored.
-internal sealed record StorageObservationSnapshotDocument(
+public sealed record StorageObservationSnapshotDocument(
     [property: BsonId, BsonRepresentation(BsonType.ObjectId)]
     string Id,
     long ConnectionVersion,
@@ -46,6 +45,6 @@ internal sealed record StorageObservationSnapshotDocument(
     long ObservationVersion,
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
     DateTime CheckedAtUtc,
-    StorageInventoryObservation Inventory,
+    StoredStorageInventory Inventory,
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
-    DateTime? ExpiresAtUtc) : IMongoObservationSnapshot;
+    DateTime? ExpiresAtUtc) : IObservationSnapshot;

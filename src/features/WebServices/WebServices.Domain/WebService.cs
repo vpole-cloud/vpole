@@ -19,7 +19,7 @@ public sealed record WebService(
     ImmutableList<ServiceEvent> Events,
     long Revision,
     WebServiceLifecycle Lifecycle,
-    [property: BsonIgnoreIfNull] WebServiceDeclaredPlacement? DeclaredPlacement = null)
+    [property: BsonIgnoreIfNull] WebServiceDeclaredPlacement? DeclaredPlacement)
 {
     public WebService BindDeclaredPlacement(WebServiceDeclaredPlacement placement)
     {
@@ -204,7 +204,7 @@ public sealed record WebServiceConfig
 public sealed record ConnectionEnvironmentReference(
     string ConnectionId,
     string ValueKind,
-    string? ConfigurationKey = null);
+    string? ConfigurationKey);
 
 public sealed record SecretEnvironmentReference(
     string SecretId,
@@ -217,8 +217,8 @@ public sealed record PortMapping(
 public sealed record ImageInfo(
     string Server,
     string Name,
-    string Tag = "latest",
-    string? SecretName = null)
+    string Tag,
+    string? SecretName)
 {
     public string FullImageName => $"{Server}/{Name}:{Tag}";
 }
@@ -261,7 +261,8 @@ public static class WebServiceFactory
             NormalizeTags(options.Tags),
             options.Events ?? ImmutableList<ServiceEvent>.Empty,
             Positive(options.Revision, nameof(options.Revision)),
-            options.Lifecycle ?? throw new ArgumentNullException(nameof(options.Lifecycle)));
+            options.Lifecycle ?? throw new ArgumentNullException(nameof(options.Lifecycle)),
+            DeclaredPlacement: null);
     }
 
     internal static ImmutableHashSet<string> NormalizeTags(IEnumerable<string> tags) =>

@@ -48,7 +48,7 @@ public sealed class RetryResourceDeploymentTests(
         Assert.Equal(
             0,
             await DbContext.OutboxMessages.CountDocumentsAsync(
-                FilterDefinition<Pole.Features.Outbox.Application.Model.OutboxMessage>.Empty));
+                FilterDefinition<Pole.Features.Outbox.Domain.OutboxMessage>.Empty));
     }
 
     [Fact]
@@ -71,7 +71,7 @@ public sealed class RetryResourceDeploymentTests(
         Assert.Equal(
             0,
             await DbContext.OutboxMessages.CountDocumentsAsync(
-                FilterDefinition<Pole.Features.Outbox.Application.Model.OutboxMessage>.Empty));
+                FilterDefinition<Pole.Features.Outbox.Domain.OutboxMessage>.Empty));
     }
 
     [Fact]
@@ -94,7 +94,7 @@ public sealed class RetryResourceDeploymentTests(
         Assert.Equal(ResourceDeploymentOperation.Apply, pending.Operation);
         Assert.Equal(deployment.Revision + 1, persisted.Revision);
         var message = await DbContext.OutboxMessages
-            .Find(FilterDefinition<Pole.Features.Outbox.Application.Model.OutboxMessage>.Empty)
+            .Find(FilterDefinition<Pole.Features.Outbox.Domain.OutboxMessage>.Empty)
             .SingleAsync();
         Assert.Equal(
             "pole.resource-deployments/v1/resource-deployment-reconciliation-requested",
@@ -134,7 +134,8 @@ public sealed class RetryResourceDeploymentTests(
         AssertRetryError<ResourceDeploymentRetryConflict>(result);
         Assert.Equal(deployment.Revision, (await LoadDeploymentAsync()).Revision);
         Assert.IsType<FailedResourceDeploymentState>((await LoadDeploymentAsync()).State);
-        Assert.Equal(0, await DbContext.OutboxMessages.CountDocumentsAsync(FilterDefinition<Pole.Features.Outbox.Application.Model.OutboxMessage>.Empty));
+        Assert.Equal(0, await DbContext.OutboxMessages.CountDocumentsAsync(
+            FilterDefinition<Pole.Features.Outbox.Domain.OutboxMessage>.Empty));
     }
 
     private Task<ResourceDeployment> LoadDeploymentAsync() =>
@@ -166,9 +167,11 @@ public sealed class RetryResourceDeploymentTests(
             placement,
             ResourcePlacementCapability.SingleTarget,
             runtimeCellReady: true,
-            new ResourceDeploymentFactory.CreateOptions(
-                DeploymentId,
-                CreatedAtUtc));
+            ResourceDeploymentFactory.DefaultOptions with
+            {
+                Id = DeploymentId,
+                CreatedAtUtc = CreatedAtUtc
+            });
         var claimed = deployment.Start(
             expectedGeneration: 1,
             ResourceDeploymentOperation.Apply,

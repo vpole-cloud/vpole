@@ -194,7 +194,11 @@ public sealed class PrivateAccessGatewayStatusApiTests(MongoReplicaSetFixture fi
                 now),
             ResourcePlacementCapability.SingleTarget,
             runtimeCellReady: true,
-            new ResourceDeploymentFactory.CreateOptions(deploymentId, now));
+            ResourceDeploymentFactory.DefaultOptions with
+            {
+                Id = deploymentId,
+                CreatedAtUtc = now
+            });
         return deployment with
         {
             State = new AppliedResourceDeploymentState(1, now)

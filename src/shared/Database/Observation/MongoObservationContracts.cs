@@ -1,3 +1,4 @@
+using Pole.Observation;
 using System.Linq.Expressions;
 using MongoDB.Driver;
 
@@ -52,46 +53,11 @@ public union MongoObservationOutcome<T>(
     MongoObservationRejected)
     where T : notnull;
 
-// Interfaces describe common fields without introducing a BSON base class or discriminator.
-public interface IMongoObservationControl
-{
-    string Id { get; }
-    long Epoch { get; }
-    long SourceControlVersion { get; }
-    long ObservationVersion { get; }
-    long DemandFence { get; }
-    string? InstanceId { get; }
-    string? Token { get; }
-    DateTime LeaseExpiresAtUtc { get; }
-    bool SourceHealthy { get; }
-    DateTime? IdleSinceUtc { get; }
-    DateTime UpdatedAtUtc { get; }
-}
-
-public interface IMongoObservationDemand
-{
-    string Id { get; }
-    string SubscriptionId { get; }
-    string ConnectionId { get; }
-    string SessionId { get; }
-    DateTime OriginalExpiresAtUtc { get; }
-    DateTime ExpiresAtUtc { get; }
-}
-
-public interface IMongoObservationSnapshot
-{
-    string Id { get; }
-    long SourceControlVersion { get; }
-    long ObservationVersion { get; }
-    DateTime CheckedAtUtc { get; }
-    DateTime? ExpiresAtUtc { get; }
-}
-
 /// <summary>Feature-owned context fencing and event creation participate in the SAME Mongo transaction.</summary>
 public interface IMongoObservationDefinition<TContext, TControl, TDemand, TSnapshot>
-    where TControl : IMongoObservationControl
-    where TDemand : IMongoObservationDemand
-    where TSnapshot : IMongoObservationSnapshot
+    where TControl : IObservationControl
+    where TDemand : IObservationDemand
+    where TSnapshot : IObservationSnapshot
 {
     MongoObservationScope Scope(TContext context);
     MongoObservationScope ScopeOf(TControl control);

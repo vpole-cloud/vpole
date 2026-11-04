@@ -774,7 +774,8 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             resourceGroupId: ResourceGroupId,
             isolationScopeId: IsolationScopeId,
             spec: new WebServiceSpec(
-                new ImageInfo("registry.example.test", "pole/api", "1.0"),
+                new ImageInfo("registry.example.test", "pole/api", "1.0",
+                    SecretName: null),
                 Config: new WebServiceConfig()
                 {
                     EnvironmentVariables = ImmutableDictionary<string, string>.Empty,

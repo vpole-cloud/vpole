@@ -63,17 +63,28 @@ internal sealed class MongoPersistCreatedDeploymentTarget(
                 },
                 cancellationToken);
         }
-        catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(exception, DeploymentTargetTechnicalNames.UniqueIndexName))
+        catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(
+            exception,
+            DeploymentTargetIndexes.TechnicalName,
+            deploymentTargets.CollectionNamespace.CollectionName))
         {
-            return new PersistCreatedDeploymentTargetError(new DeploymentTargetTechnicalNameConflict(deploymentTarget.TechnicalName));
+            return new PersistCreatedDeploymentTargetError(
+                new DeploymentTargetTechnicalNameConflict(deploymentTarget.TechnicalName));
         }
-        catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(exception, "UX_DeploymentTargets_Active_PublicBaseDomain"))
+        catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(
+            exception,
+            DeploymentTargetIndexes.ActivePublicBaseDomain,
+            deploymentTargets.CollectionNamespace.CollectionName))
         {
-            return new PersistCreatedDeploymentTargetError(new DeploymentTargetPublicBaseDomainConflict(deploymentTarget.Id));
+            return new PersistCreatedDeploymentTargetError(
+                new DeploymentTargetPublicBaseDomainConflict(deploymentTarget.Id));
         }
         catch (MongoWriteException exception) when (
-            MongoDuplicateKey.IsForIndex(exception, "UX_DeploymentTargets_ClusterIdentity") ||
-            MongoDuplicateKey.IsForIndex(exception, "_id_", "DeploymentTargets"))
+            MongoDuplicateKey.IsForIndex(
+                exception,
+                DeploymentTargetIndexes.ClusterIdentity,
+                deploymentTargets.CollectionNamespace.CollectionName) ||
+            MongoDuplicateKey.IsForIdIndex(exception, deploymentTargets.CollectionNamespace.CollectionName))
         {
             return new PersistCreatedDeploymentTargetError(
                 new DeploymentTargetIdentityConflict());

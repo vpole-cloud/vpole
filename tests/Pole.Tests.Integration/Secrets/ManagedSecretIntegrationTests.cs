@@ -523,7 +523,11 @@ public sealed class ManagedSecretIntegrationTests(MongoReplicaSetFixture fixture
             placement,
             ResourcePlacementCapability.SingleTarget,
             true,
-            new ResourceDeploymentFactory.CreateOptions(Id(), now));
+            ResourceDeploymentFactory.DefaultOptions with
+            {
+                Id = Id(),
+                CreatedAtUtc = now
+            });
         await DbContext.ResourceDeployments.InsertOneAsync(session, deployment);
         return deployment;
     }

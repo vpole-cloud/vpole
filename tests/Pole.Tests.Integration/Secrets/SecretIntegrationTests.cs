@@ -8,7 +8,7 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Encryption;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.Outbox.Application.Model;
+using Pole.Features.Outbox.Domain;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
@@ -756,7 +756,11 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
             placement,
             ResourcePlacementCapability.MultiTarget,
             true,
-            new ResourceDeploymentFactory.CreateOptions(Id(), now));
+            ResourceDeploymentFactory.DefaultOptions with
+            {
+                Id = Id(),
+                CreatedAtUtc = now
+            });
         await DbContext.ResourceDeployments.InsertOneAsync(deployment);
         return deployment;
     }

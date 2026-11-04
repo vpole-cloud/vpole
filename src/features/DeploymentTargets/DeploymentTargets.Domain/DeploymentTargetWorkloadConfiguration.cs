@@ -44,7 +44,7 @@ public sealed record DeploymentTargetWorkloadConfiguration(
 public sealed record DeploymentTargetIngressConfiguration(
     string IngressClassName,
     string ClusterIssuerName,
-    string? PublicBaseDomain = null)
+    string? PublicBaseDomain)
 {
     public const int MaximumNameLength = 253;
 

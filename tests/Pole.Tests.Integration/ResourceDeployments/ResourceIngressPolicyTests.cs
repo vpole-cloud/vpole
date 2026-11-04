@@ -344,7 +344,11 @@ public sealed class ResourceIngressPolicyTests
                 now),
             ResourcePlacementCapability.SingleTarget,
             runtimeCellReady: true,
-            new ResourceDeploymentFactory.CreateOptions(DeploymentId, now));
+            ResourceDeploymentFactory.DefaultOptions with
+            {
+                Id = DeploymentId,
+                CreatedAtUtc = now
+            });
     }
 
     private static DeploymentTargetLookupDto Target(

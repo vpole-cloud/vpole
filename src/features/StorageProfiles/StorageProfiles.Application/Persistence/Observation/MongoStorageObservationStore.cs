@@ -1,3 +1,4 @@
+using Pole.Features.StorageProfiles.Domain.Observation;
 using MongoDB.Bson;
 using System.Linq.Expressions;
 using MongoDB.Driver;
@@ -159,7 +160,7 @@ internal sealed class MongoStorageObservationStore(
                         sourceVersion,
                         control.ObservationVersion,
                         control.UpdatedAtUtc,
-                        safe,
+                        StorageObservationValueMappings.Store(safe),
                         null),
                 ct)) switch
         {

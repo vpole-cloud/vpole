@@ -11,7 +11,7 @@ using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Outbox.Application.Migrations;
-using Pole.Features.Outbox.Application.Model;
+using Pole.Features.Outbox.Domain;
 using Pole.Features.ResourceGroups.Events;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;

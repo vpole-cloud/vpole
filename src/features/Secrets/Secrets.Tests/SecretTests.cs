@@ -168,7 +168,7 @@ public sealed class SecretTests
             "id",
             2,
             3,
-            new SecretRotated()));
+            new SecretRotated(), "Name", EventCore.Create("tenant")));
         foreach (var json in new[] { metadata, evt })
         {
             Assert.DoesNotContain("Ciphertext", json);
@@ -313,18 +313,27 @@ public sealed class SecretTests
         [
             new SecretCreated(),
             new SecretRotated(),
+            new SecretMetadataUpdated(),
             new SecretDeletedChange(),
             new SecretBindingAdded("binding"),
             new SecretBindingRemoved("binding")
         ];
         foreach (var change in changes)
         {
-            var original = new SecretChangedEvent("secret", 2, 3, change);
+            var original = new SecretChangedEvent("secret", 2, 3, change, "database", EventCore.Create("tenant"));
             var restored = JsonSerializer.Deserialize<SecretChangedEvent>(
                 JsonSerializer.Serialize(original, EventExtensions.SerializerOptions),
                 EventExtensions.SerializerOptions);
             Assert.NotNull(restored);
-            Assert.Equal(change, restored.Change);
+            Assert.Equal(original, restored);
+            Assert.Equal("database", restored.Name);
+            Assert.Equal("tenant", restored.EventCore.TenantId);
+            var json = JsonSerializer.Serialize(original, EventExtensions.SerializerOptions);
+            using var payload = JsonDocument.Parse(json);
+            Assert.Equal(new[] { "change", "eventCore", "name", "revision", "secretId", "version" },
+                payload.RootElement.EnumerateObject().Select(item => item.Name).Order().ToArray());
+            Assert.DoesNotContain("ciphertext", json, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("values", json, StringComparison.OrdinalIgnoreCase);
         }
     }
 }

@@ -1,3 +1,4 @@
+using Pole.Features.StorageProfiles.Domain.Observation;
 using System.Text.Json;
 using System.Security.Claims;
 using Pole.ASP.Helpers;
@@ -19,7 +20,6 @@ using Pole.Features.StorageProfiles.Application.Persistence.Observation;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Events;
 using Pole.Observability;
-using Pole.Tests.Integration.Observation;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -75,14 +75,17 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
-    public async Task HistoricalRawDocumentsRemainReadableRenewableAndWritableWithoutMigration()
+    public async Task CurrentDocumentsRemainReadableRenewableAndWritable()
     {
         var seeded = await SeedAsync();
         var context = seeded.Context;
         var now = await ServerNowAsync();
-        var (_, control) = ObservationDocumentCompatibilityTests.Legacy("storage-control");
-        var (_, demand) = ObservationDocumentCompatibilityTests.Legacy("storage-demand");
-        var (_, snapshot) = ObservationDocumentCompatibilityTests.Legacy("storage-snapshot");
+        var controlValue = StorageProfilesObservationDocumentTests.Create("control");
+        var control = controlValue.ToBsonDocument(controlValue.GetType());
+        var demandValue = StorageProfilesObservationDocumentTests.Create("demand");
+        var demand = demandValue.ToBsonDocument(demandValue.GetType());
+        var snapshotValue = StorageProfilesObservationDocumentTests.Create("snapshot");
+        var snapshot = snapshotValue.ToBsonDocument(snapshotValue.GetType());
         foreach (var document in new[] { control, snapshot })
         {
             document["_id"] = ObjectId.Parse(context.DeploymentTargetId);

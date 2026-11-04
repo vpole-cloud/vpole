@@ -20,12 +20,10 @@ public sealed class SecretRealtimeTests
             changes.Add(change);
             return Task.CompletedTask;
         });
-        var deleted = new SecretChangedEvent("secret", 4, 7, new SecretDeletedChange())
-        {
-            EventCore = EventCore.Create("tenant")
-        };
-        var historical = JsonSerializer.Deserialize<SecretChangedEvent>(JsonSerializer.Serialize(deleted))!;
-        await consumer.HandleAsync(historical);
+        var deleted = new SecretChangedEvent(
+            "secret", 4, 7, new SecretDeletedChange(), "database", EventCore.Create("tenant"));
+        var restored = JsonSerializer.Deserialize<SecretChangedEvent>(JsonSerializer.Serialize(deleted))!;
+        await consumer.HandleAsync(restored);
         await consumer.HandleAsync(
             new SecretProjectionChangedEvent("secret", "projection", "group", "binding", "deployment", 4, 7, 12)
             {

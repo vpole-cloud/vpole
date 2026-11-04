@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using MongoDB.Bson.Serialization.Attributes;
 
 namespace Pole.Features.GitOps.Domain;
 
@@ -15,12 +16,38 @@ public sealed record AcceptedResourceBinding(
     string ResourceId,
     string DesiredHash);
 
+[BsonDiscriminator(RootClass = true)]
+[BsonKnownTypes(
+    typeof(ApplyingSnapshot),
+    typeof(BlockedSnapshot),
+    typeof(AppliedSnapshot),
+    typeof(UnsupportedSnapshotSchema),
+    typeof(StaleSnapshotExecution))]
 public closed record SnapshotProgress;
+
+[BsonDiscriminator(SnapshotProgressKinds.Applying)]
 public sealed record ApplyingSnapshot : SnapshotProgress;
+
+[BsonDiscriminator(SnapshotProgressKinds.Blocked)]
 public sealed record BlockedSnapshot : SnapshotProgress;
+
+[BsonDiscriminator(SnapshotProgressKinds.Applied)]
 public sealed record AppliedSnapshot : SnapshotProgress;
+
+[BsonDiscriminator(SnapshotProgressKinds.UnsupportedSchema)]
 public sealed record UnsupportedSnapshotSchema : SnapshotProgress;
+
+[BsonDiscriminator(SnapshotProgressKinds.Stale)]
 public sealed record StaleSnapshotExecution : SnapshotProgress;
+
+public static class SnapshotProgressKinds
+{
+    public const string Applying = "applying";
+    public const string Blocked = "blocked";
+    public const string Applied = "applied";
+    public const string UnsupportedSchema = "unsupported-schema";
+    public const string Stale = "stale";
+}
 
 public enum SnapshotAcceptance
 {

@@ -530,7 +530,9 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
     private static FunctionSubject CreateSubject()
     {
         var spec = new FunctionRevisionSpecInput(
-            new FunctionImage("registry.example", "team/functions", "v1"),
+            new FunctionImage("registry.example", "team/functions", "v1",
+                Digest: null,
+                PullSecretName: null),
             PoleFunctionProtocol.Version,
             new FunctionConfiguration(
                 ImmutableDictionary<string, string>.Empty,

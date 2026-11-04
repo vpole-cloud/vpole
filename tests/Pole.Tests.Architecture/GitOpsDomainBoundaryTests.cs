@@ -8,12 +8,13 @@ namespace Pole.Tests.Architecture;
 public sealed class GitOpsDomainBoundaryTests
 {
     [Fact]
-    public void Domain_has_no_persistence_transport_or_feature_dependencies()
+    public void Domain_allows_Mongo_attributes_but_has_no_transport_or_feature_dependencies()
     {
         var project = XDocument.Load(Path.Combine(ArchitectureSources.RepositoryRoot,
             "src/features/GitOps/GitOps.Domain/GitOps.Domain.csproj"));
         Assert.Empty(project.Descendants("ProjectReference"));
-        Assert.Empty(project.Descendants("PackageReference"));
+        Assert.All(project.Descendants("PackageReference"), reference =>
+            Assert.Equal("MongoDB.Driver", reference.Attribute("Include")?.Value));
         var sources = ArchitectureSources.ProductionCSharp().Where(source => source.RelativePath.StartsWith(
             "src/features/GitOps/GitOps.Domain/", StringComparison.Ordinal));
         var violations = sources.SelectMany(source => source.Root.DescendantNodes()
@@ -21,13 +22,13 @@ public sealed class GitOpsDomainBoundaryTests
                 .Select(name => (Source: source, Name: name)))
             .Where(item => Forbidden(item.Name.ToString()))
             .Select(item => ArchitectureSources.Describe(item.Source, item.Name,
-                "GitOps domain must not import persistence, serialization, transport or feature contracts"));
+                "GitOps domain must not import application persistence, transport or feature contracts"));
         Assert.Empty(violations);
     }
 
     [Theory]
-    [InlineData("MongoDB.Driver", true)]
-    [InlineData("MongoDB.Bson.Serialization.Attributes", true)]
+    [InlineData("MongoDB.Driver", false)]
+    [InlineData("MongoDB.Bson.Serialization.Attributes", false)]
     [InlineData("System.Text.Json.Serialization", true)]
     [InlineData("YamlDotNet.Core", true)]
     [InlineData("Microsoft.AspNetCore.Http", true)]
@@ -56,8 +57,7 @@ public sealed class GitOpsDomainBoundaryTests
     private static bool Forbidden(string name)
     {
         name = name.Replace("global::", "", StringComparison.Ordinal);
-        return name.StartsWith("MongoDB", StringComparison.Ordinal) ||
-            name.StartsWith("System.Text.Json", StringComparison.Ordinal) ||
+        return name.StartsWith("System.Text.Json", StringComparison.Ordinal) ||
             name.StartsWith("System.Net.Http", StringComparison.Ordinal) ||
             name.StartsWith("YamlDotNet", StringComparison.Ordinal) ||
             name.StartsWith("Microsoft.AspNetCore", StringComparison.Ordinal) ||

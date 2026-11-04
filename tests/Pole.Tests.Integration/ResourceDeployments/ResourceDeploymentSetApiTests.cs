@@ -54,5 +54,9 @@ public sealed class ResourceDeploymentSetApiTests(MongoReplicaSetFixture fixture
         ResolvedResourcePlacement.Create(ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString(), "private-test-namespace", 1, 1,
             ResolvedIngressConfiguration.Create("traefik", "issuer"), null, ResourceDeploymentTestData.Compute(), DateTime.UtcNow),
         ResourcePlacementCapability.SingleTarget, runtimeCellReady: true,
-        new ResourceDeploymentFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow));
+        ResourceDeploymentFactory.DefaultOptions with
+        {
+            Id = ObjectId.GenerateNewId().ToString(),
+            CreatedAtUtc = DateTime.UtcNow
+        });
 }

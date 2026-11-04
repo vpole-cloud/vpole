@@ -10,6 +10,7 @@
     <Project Path="src/examples/Blog/Blog.csproj" />
   </Folder>
   <Folder Name="/shared/">
+    <Project Path="src/shared/Observation.Primitives/Observation.Primitives.csproj" />
     <Project Path="src/shared/Observation/Observation.csproj" />
     <Project Path="src/shared/Mediator/Mediator.csproj" />
     <Project Path="src/shared/Mediator.Runtime/Mediator.Runtime.csproj" />
@@ -143,6 +144,7 @@
   <Folder Name="/features/Outbox/">
     <Project Path="src/features/Outbox/Outbox.Application/Outbox.Application.csproj" />
     <Project Path="src/features/Outbox/Outbox.Contracts/Outbox.Contracts.csproj" />
+    <Project Path="src/features/Outbox/Outbox.Domain/Outbox.Domain.csproj" />
   </Folder>
   <Folder Name="/features/Tenants/">
     <Project Path="src/features/Tenants/Tenants.Application/Tenants.Application.csproj" />

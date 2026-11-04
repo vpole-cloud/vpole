@@ -1,12 +1,13 @@
+using Pole.Observation;
 using MongoDB.Driver;
 
 namespace Pole.Database.Observation;
 
 internal sealed class MongoObservationFilters<TContext, TControl, TDemand, TSnapshot>(
     IMongoObservationDefinition<TContext, TControl, TDemand, TSnapshot> definition)
-    where TControl : class, IMongoObservationControl
-    where TDemand : class, IMongoObservationDemand
-    where TSnapshot : class, IMongoObservationSnapshot
+    where TControl : class, IObservationControl
+    where TDemand : class, IObservationDemand
+    where TSnapshot : class, IObservationSnapshot
 {
     private static FilterDefinitionBuilder<TControl> Control => Builders<TControl>.Filter;
     private static FilterDefinitionBuilder<TDemand> Demand => Builders<TDemand>.Filter;

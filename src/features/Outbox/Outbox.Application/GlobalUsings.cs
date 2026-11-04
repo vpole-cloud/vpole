@@ -1,1 +1,1 @@
-global using Pole.Features.Outbox.Application.Model;
+global using Pole.Features.Outbox.Domain;

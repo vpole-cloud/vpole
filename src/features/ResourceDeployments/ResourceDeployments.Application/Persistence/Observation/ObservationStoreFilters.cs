@@ -1,3 +1,4 @@
+using Pole.Features.ResourceDeployments.Domain.Observation;
 using MongoDB.Driver;
 using Pole.Database.Observation;
 using Pole.Features.ResourceDeployments.Contracts;

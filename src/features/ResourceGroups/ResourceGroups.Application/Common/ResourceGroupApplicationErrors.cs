@@ -8,7 +8,7 @@ public enum ResourceGroupRevisionConflictReason { ExpectedRevisionConflict, GitO
 
 public sealed record ResourceGroupRevisionConflict(
     string ResourceGroupId,
-    ResourceGroupRevisionConflictReason Reason = ResourceGroupRevisionConflictReason.ExpectedRevisionConflict);
+    ResourceGroupRevisionConflictReason Reason);
 
 public sealed record ResourceGroupContainsResources(string ResourceGroupId);
 

@@ -1,3 +1,4 @@
+using Pole.Features.StorageProfiles.Domain.Observation;
 using MongoDB.Bson;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Observation;
@@ -12,9 +13,91 @@ internal static class StorageObservationValueMappings
         snapshot.ObservationVersion,
         snapshot.CheckedAtUtc,
         snapshot.Inventory.Complete,
-        snapshot.Inventory.StorageClasses,
-        snapshot.Inventory.PersistentVolumes,
-        snapshot.Inventory.PersistentVolumeClaims);
+        snapshot.Inventory.StorageClasses.Select(Restore).ToArray(),
+        snapshot.Inventory.PersistentVolumes.Select(Restore).ToArray(),
+        snapshot.Inventory.PersistentVolumeClaims.Select(Restore).ToArray());
+
+    private static StoredStorageClass Store(StorageClassObservation value) => new(
+        value.Name,
+        value.Provisioner,
+        value.IsDefault,
+        value.ReclaimPolicy,
+        value.VolumeBindingMode,
+        value.AllowVolumeExpansion);
+
+    private static StorageClassObservation Restore(StoredStorageClass value) => new(
+        value.Name,
+        value.Provisioner,
+        value.IsDefault,
+        value.ReclaimPolicy,
+        value.VolumeBindingMode,
+        value.AllowVolumeExpansion);
+
+    private static StoredStorageOwner Store(StorageOwnerObservation value) => new(
+        value.TenantId,
+        value.ResourceGroupId,
+        value.ResourceType,
+        value.ResourceId,
+        value.ResourceName);
+
+    private static StorageOwnerObservation Restore(StoredStorageOwner value) => new(
+        value.TenantId,
+        value.ResourceGroupId,
+        value.ResourceType,
+        value.ResourceId,
+        value.ResourceName);
+
+    private static StoredPersistentVolume Store(PersistentVolumeObservation value) => new(
+        value.Name,
+        value.Capacity,
+        value.Status is { } status && Enum.TryParse<StoredVolumeStatus>(status, out var parsed) ? parsed : null,
+        value.StorageClassName,
+        value.BoundClaimNamespace,
+        value.BoundClaimName,
+        value.ReclaimPolicy,
+        Store(value.Owner));
+
+    private static PersistentVolumeObservation Restore(StoredPersistentVolume value) => new(
+        value.Name,
+        value.Capacity,
+        value.Status?.ToString(),
+        value.StorageClassName,
+        value.BoundClaimNamespace,
+        value.BoundClaimName,
+        value.ReclaimPolicy,
+        Restore(value.Owner));
+
+    private static StoredPersistentVolumeClaim Store(PersistentVolumeClaimObservation value) => new(
+        value.Name,
+        value.Namespace,
+        value.Capacity,
+        value.RequestedCapacity,
+        value.Status is { } status && Enum.TryParse<StoredClaimStatus>(status, out var parsed) ? parsed : null,
+        value.StorageClassName,
+        value.VolumeName,
+        Store(value.Owner));
+
+    private static PersistentVolumeClaimObservation Restore(StoredPersistentVolumeClaim value) => new(
+        value.Name,
+        value.Namespace,
+        value.Capacity,
+        value.RequestedCapacity,
+        value.Status?.ToString(),
+        value.StorageClassName,
+        value.VolumeName,
+        Restore(value.Owner));
+
+    internal static StoredStorageInventory Store(StorageInventoryObservation value) => new(
+        value.StorageClasses.Select(Store).ToArray(),
+        value.PersistentVolumes.Select(Store).ToArray(),
+        value.PersistentVolumeClaims.Select(Store).ToArray(),
+        value.Complete);
+
+    private static StorageInventoryObservation Restore(StoredStorageInventory value) => new(
+        value.StorageClasses.Select(Restore).ToArray(),
+        value.PersistentVolumes.Select(Restore).ToArray(),
+        value.PersistentVolumeClaims.Select(Restore).ToArray(),
+        value.Complete);
 
     internal static StorageInventoryObservation? Sanitize(StorageInventoryObservation inventory,
         StorageObservationOptions options)

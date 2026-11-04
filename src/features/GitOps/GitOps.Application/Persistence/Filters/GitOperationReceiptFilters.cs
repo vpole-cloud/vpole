@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Domain;
 using MongoDB.Driver;
 
 namespace Pole.Features.GitOps.Application.Persistence;
@@ -9,5 +10,8 @@ internal static class GitOperationReceiptFilters
         Builders<GitOperationReceipt>.Filter.Eq(item => item.SourceId, source) &
         Builders<GitOperationReceipt>.Filter.Eq(item => item.RunId, run) &
         Builders<GitOperationReceipt>.Filter.Eq(item => item.Fence, fence);
-    public static FilterDefinition<GitOperationReceipt> Identity(string id) => Builders<GitOperationReceipt>.Filter.Eq(item => item.Id, id);
+
+    public static FilterDefinition<GitOperationReceipt> Identity(string id) => Builders<GitOperationReceipt>.Filter.Eq(
+        item => item.Id,
+        id);
 }

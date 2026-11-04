@@ -432,11 +432,13 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
             placement,
             ResourcePlacementCapability.MultiTarget,
             runtimeCellReady: true,
-            new ResourceDeploymentFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(),
-                original.CreatedAtUtc,
-                original.ResourceRevision,
-                original.FixedReplicas));
+            ResourceDeploymentFactory.DefaultOptions with
+            {
+                Id = ObjectId.GenerateNewId().ToString(),
+                CreatedAtUtc = original.CreatedAtUtc,
+                ResourceRevision = original.ResourceRevision,
+                FixedReplicas = original.FixedReplicas
+            });
     }
 
     private static WebServiceUpdatedEvent UpdatedEvent(WebService service)

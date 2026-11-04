@@ -100,7 +100,8 @@ public sealed class WebServiceSpecValueTests
                     EnvironmentVariables = ImmutableDictionary<string, string>.Empty
                         .Add("MODE", "production").Add("PORT", "8080"),
                     ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty
-                        .Add("DB_HOST", new ConnectionEnvironmentReference("507f1f77bcf86cd799439001", "Host")),
+                        .Add("DB_HOST", new ConnectionEnvironmentReference("507f1f77bcf86cd799439001", "Host",
+                            ConfigurationKey: null)),
                     SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty
                         .Add("DB_PASSWORD", new SecretEnvironmentReference("507f1f77bcf86cd799439002", "password"))
                 }

@@ -170,5 +170,9 @@ public sealed class ResourceDeploymentIsolationProjectionTests(
                 DateTime.UtcNow),
             ResourcePlacementCapability.SingleTarget,
             true,
-            new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow));
+            ResourceDeploymentFactory.DefaultOptions with
+            {
+                Id = ObjectId.GenerateNewId().ToString(),
+                CreatedAtUtc = DateTime.UtcNow
+            });
 }

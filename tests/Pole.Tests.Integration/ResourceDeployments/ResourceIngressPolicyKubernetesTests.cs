@@ -222,7 +222,11 @@ public sealed class ResourceIngressPolicyKubernetesTests : KubernetesIntegration
             ResolvedIngressConfiguration.Create("traefik", "issuer", "example.test", ["web.example.test"]),
             null, ResourceDeploymentTestData.Compute(), DateTime.UtcNow),
         ResourcePlacementCapability.SingleTarget, true,
-        new ResourceDeploymentFactory.CreateOptions(DeploymentId, DateTime.UtcNow));
+        ResourceDeploymentFactory.DefaultOptions with
+        {
+            Id = DeploymentId,
+            CreatedAtUtc = DateTime.UtcNow
+        });
 
     private static DeploymentTargetLookupDto TargetConfiguration(
         DeploymentTargetNetworkSourceDto source) => new(

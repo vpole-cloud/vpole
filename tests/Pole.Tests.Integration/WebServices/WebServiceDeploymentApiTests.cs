@@ -545,9 +545,11 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
                 resolvedAtUtc: createdAtUtc.AddSeconds(1)),
             ResourcePlacementCapability.SingleTarget,
             runtimeCellReady: true,
-            new ResourceDeploymentFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(),
-                createdAtUtc.AddSeconds(1)));
+            ResourceDeploymentFactory.DefaultOptions with
+            {
+                Id = ObjectId.GenerateNewId().ToString(),
+                CreatedAtUtc = createdAtUtc.AddSeconds(1)
+            });
         await Fixture.DbContext.RunOutcomeInTransactionAsync<Unit>(
             async (transaction, cancellationToken) =>
             {

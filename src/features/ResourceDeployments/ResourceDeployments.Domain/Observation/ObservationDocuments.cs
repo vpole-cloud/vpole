@@ -1,11 +1,11 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
-using Pole.Database.Observation;
+using Pole.Observation;
 
-namespace Pole.Features.ResourceDeployments.Application.Persistence.Observation;
+namespace Pole.Features.ResourceDeployments.Domain.Observation;
 
 // Concrete BSON shapes deliberately do not persist the JSON-polymorphic Workloads contracts.
-internal sealed record ObservationContextPin(
+public sealed record ObservationContextPin(
     string ResourceType,
     string ResourceId,
     string ResourceGroupId,
@@ -19,7 +19,7 @@ internal sealed record ObservationContextPin(
     long TargetWorkloadConfigurationRevision,
     string KubernetesNamespace);
 
-internal sealed record ObservationControlDocument(
+public sealed record ObservationControlDocument(
     [property: BsonId, BsonRepresentation(BsonType.ObjectId)]
     string Id,
     [property: BsonRepresentation(BsonType.ObjectId)]
@@ -38,9 +38,9 @@ internal sealed record ObservationControlDocument(
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
     DateTime? IdleSinceUtc,
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
-    DateTime UpdatedAtUtc) : IMongoObservationControl;
+    DateTime UpdatedAtUtc) : IObservationControl;
 
-internal sealed record ObservationDemandDocument(
+public sealed record ObservationDemandDocument(
     [property: BsonId] string Id,
     [property: BsonRepresentation(BsonType.ObjectId)]
     string TenantId,
@@ -52,9 +52,9 @@ internal sealed record ObservationDemandDocument(
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
     DateTime OriginalExpiresAtUtc,
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
-    DateTime ExpiresAtUtc) : IMongoObservationDemand;
+    DateTime ExpiresAtUtc) : IObservationDemand;
 
-internal sealed record ObservationSnapshotDocument(
+public sealed record ObservationSnapshotDocument(
     [property: BsonId, BsonRepresentation(BsonType.ObjectId)]
     string Id,
     [property: BsonRepresentation(BsonType.ObjectId)]
@@ -69,14 +69,14 @@ internal sealed record ObservationSnapshotDocument(
     StoredDiagnostics? Diagnostics,
     string Fingerprint,
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
-    DateTime? ExpiresAtUtc) : IMongoObservationSnapshot;
+    DateTime? ExpiresAtUtc) : IObservationSnapshot;
 
-internal sealed record StoredObservation(
+public sealed record StoredObservation(
     string Kind,
     string? Reason,
     StoredObservedWorkload? Observed);
 
-internal sealed record StoredObservedWorkload(
+public sealed record StoredObservedWorkload(
     bool Ready,
     bool RolloutCurrent,
     int DesiredReplicas,
@@ -89,7 +89,7 @@ internal sealed record StoredObservedWorkload(
     StoredEvent[] Events,
     string? EventsUnavailableReason);
 
-internal sealed record StoredPod(
+public sealed record StoredPod(
     string Name,
     string Phase,
     bool Ready,
@@ -97,25 +97,25 @@ internal sealed record StoredPod(
     int RestartCount,
     string[] Reasons);
 
-internal sealed record StoredEvent(
+public sealed record StoredEvent(
     string Reason,
     int Count,
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
     DateTime? LastSeenAtUtc);
 
-internal sealed record StoredDiagnostics(
+public sealed record StoredDiagnostics(
     string Kind,
     string? Reason,
     StoredAvailableDiagnostics? Available);
 
-internal sealed record StoredAvailableDiagnostics(
+public sealed record StoredAvailableDiagnostics(
     StoredInstance[] Instances,
     bool InstancesTruncated,
     StoredDiagnosticEvent[] Events,
     bool EventsTruncated,
     string? EventsUnavailableReason);
 
-internal sealed record StoredInstance(
+public sealed record StoredInstance(
     string Uid,
     string Name,
     string Phase,
@@ -126,12 +126,12 @@ internal sealed record StoredInstance(
     StoredContainer[] Containers,
     bool ContainersTruncated);
 
-internal sealed record StoredContainer(
+public sealed record StoredContainer(
     string Name,
     string Kind,
     bool PreviousAvailable);
 
-internal sealed record StoredDiagnosticEvent(
+public sealed record StoredDiagnosticEvent(
     string ObjectKind,
     string ObjectName,
     string Reason,

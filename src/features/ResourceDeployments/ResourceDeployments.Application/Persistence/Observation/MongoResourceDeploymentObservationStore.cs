@@ -1,3 +1,4 @@
+using Pole.Features.ResourceDeployments.Domain.Observation;
 using MongoDB.Bson;
 using System.Linq.Expressions;
 using MongoDB.Driver;

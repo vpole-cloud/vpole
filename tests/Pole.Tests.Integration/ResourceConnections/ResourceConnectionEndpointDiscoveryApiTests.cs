@@ -156,7 +156,11 @@ public sealed class ResourceConnectionEndpointDiscoveryApiTests(MongoReplicaSetF
     {
         var placement = ResolvedResourcePlacement.Create(Id(), target, "private-native-namespace", 1, 1, null, null, ResourceDeploymentTestData.Compute(), DateTime.UtcNow);
         await Fixture.DbContext.ResourceDeployments.InsertOneAsync(ResourceDeploymentFactory.Create(reference.Group.TenantId, type, reference.Id, reference.Group.Id, reference.Group.DefaultIsolationScopeId,
-            placement, ResourcePlacementCapability.MultiTarget, true, new ResourceDeploymentFactory.CreateOptions(Id(), DateTime.UtcNow)));
+            placement, ResourcePlacementCapability.MultiTarget, true, ResourceDeploymentFactory.DefaultOptions with
+            {
+                Id = Id(),
+                CreatedAtUtc = DateTime.UtcNow
+            }));
     }
 
     private static string UriFor(string id, string? source = null) => $"/api/v1/resource-connections/endpoints?resourceType=pole%2Fredis&resourceId={id}" + (source is null ? "" : $"&sourceResourceType=pole%2Fweb-service&sourceResourceId={source}");

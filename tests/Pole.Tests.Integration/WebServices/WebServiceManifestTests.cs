@@ -24,7 +24,9 @@ public sealed class WebServiceManifestTests
         var subject = CreateSubject();
         var config = subject.WebService.Spec.Config with
         {
-            ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty.Add("PGHOST", new("connection", "Host")),
+            ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty
+                .Add("PGHOST", new("connection", "Host",
+                ConfigurationKey: null)),
             SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty.Add("PGPASSWORD", new("logical-secret", "password"))
         };
         subject = subject with { WebService = subject.WebService with { Spec = subject.WebService.Spec with { Config = config } } };

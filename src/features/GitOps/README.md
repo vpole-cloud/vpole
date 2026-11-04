@@ -304,14 +304,17 @@ live infrastructure end-to-end evidence. None of these are claimed by this slice
 
 ## Execution domain and persistence boundaries
 
-`GitOps.Domain` has no persistence, serialization, transport or foreign-feature dependencies.
+`GitOps.Domain` may depend on MongoDB for BSON attributes. It has no Contracts, transport,
+or application-persistence dependencies.
 It owns execution stamps and accepted resource identity/hash authorization, immutable source origin,
 configuration progress, preservation of the last applied commit, and retained declaration ownership.
 The application pipeline and provider mutation boundary use these decisions directly. Domain progress
 means desired configuration was applied; it does not claim workload runtime readiness.
 
-Application persistence stores the existing BSON documents and JSON snapshots and maps them to the
-pure domain model. Source acceptance, atomic attempt claims/finalization, ownership fences, receipts,
+GitOps Domain owns persisted execution, inventory, receipt, source and accepted-declaration models.
+Domain models declare BSON attributes and standard polymorphic discriminators. Application
+persistence owns JSON codecs and maps stored state to the execution domain model. Source acceptance,
+atomic attempt claims/finalization, ownership fences, receipts,
 status reads and provider transaction orchestration have separate implementations. Acceptance stores
 stable resource IDs before providers run. Attempt claims retain atomic increments; all provider and
 final status writes retain tenant/source/run/fence/attempt predicates. Blocked provider transactions
