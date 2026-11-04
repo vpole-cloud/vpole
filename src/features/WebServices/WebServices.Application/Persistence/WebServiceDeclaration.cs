@@ -84,6 +84,14 @@ public sealed record WebServiceLifecycleDeploymentRejected(ResourceDeploymentMut
 
 internal static class WebServiceDeclarations
 {
+    private const string ConnectionEnvironmentField = "spec.connectionEnvironment";
+
+    private const string PortsField = "spec.ports";
+
+    private const string ReplicasField = "spec.replicas";
+
+    private static string ConnectionEnvironmentFieldPath(string key) => $"{ConnectionEnvironmentField}.{key}";
+
     public const string Kind = "WebService";
     public static ResourceTypeId ResourceType => WebServiceResourceDeployment.ResourceType;
 
@@ -134,7 +142,7 @@ internal static class WebServiceDeclarations
                 { new(new("SourceBuildConfiguration", build.SourceBuildConfiguration), DeclarationFieldPaths.Image) }
                 : [],
             .. (value.ConnectionEnvironment ?? []).Select(pair => new DeclaredReference(
-                new("ResourceConnection", pair.Value.Connection), $"spec.connectionEnvironment.{pair.Key}")),
+                new("ResourceConnection", pair.Value.Connection), ConnectionEnvironmentFieldPath(pair.Key))),
             .. value.SecretEnvironment.Select(pair =>
                 new DeclaredReference(
                     new("Secret", pair.Value.Secret),
@@ -171,7 +179,7 @@ internal static class WebServiceDeclarations
                                 value.Placement.IsolationScope != "default",
             DeclarationFieldPaths.PlacementIsolationScope);
         DeclarationJson.Require(value.Exposure is PrivateExposure or PublicExposure, "spec.exposure");
-        DeclarationJson.Require(value.Replicas is null || value.Autoscaling is null, "spec.replicas");
+        DeclarationJson.Require(value.Replicas is null || value.Autoscaling is null, ReplicasField);
         DeclarationJson.Require(value.Autoscaling is null || ValidAutoscaling(value.Autoscaling), "spec.autoscaling");
         DeclarationJson.Require(
             value.FixedReplicas is >= DefaultReplicas and <= MaximumReplicas && value.Tags is not null
@@ -180,7 +188,7 @@ internal static class WebServiceDeclarations
                                                                             {
                                                                                 Length: > 0 and <= MaximumTagLength
                                                                             } && !string.IsNullOrWhiteSpace(tag)),
-            "spec.replicas");
+            ReplicasField);
         DeclarationJson.Require(value.Ports is { Count: > 0 and <= MaximumPorts } && value.Ports.All(port =>
                                     port is not null &&
                                     port.ServicePort is >= MinimumPort and <= MaximumPort
@@ -193,10 +201,10 @@ internal static class WebServiceDeclarations
                                 value.Ports.Select(port => port.Name).Distinct().Count() == value.Ports.Count &&
                                 value.Ports.Select(port => (port.ServicePort, port.Protocol)).Distinct()
                                     .Count() == value.Ports.Count,
-            "spec.ports");
+            PortsField);
         DeclarationJson.Require(value.Exposure != PublicExposure ||
                                 value.Ports.OrderBy(port => port.Name, StringComparer.Ordinal).First().Protocol ==
-                                TcpProtocol, "spec.ports");
+                                TcpProtocol, PortsField);
         DeclarationJson.Require(value.Probes is not null && ValidProbe(value.Probes.Startup)
                                                          && value.Probes.Startup.SuccessThreshold ==
                                                          RequiredLivenessSuccessThreshold &&
@@ -225,7 +233,7 @@ internal static class WebServiceDeclarations
                 (pair.Value.ValueKind is "Host" or "Port" && pair.Value.ConfigurationKey is null ||
                  pair.Value.ValueKind == "Configuration" && !string.IsNullOrWhiteSpace(pair.Value.ConfigurationKey))) &&
             !connections.Keys.Intersect(value.Environment.Keys.Concat(value.SecretEnvironment.Keys)).Any(),
-            "spec.connectionEnvironment");
+            ConnectionEnvironmentField);
 
         return DeclarationJson.Write(value with
         {

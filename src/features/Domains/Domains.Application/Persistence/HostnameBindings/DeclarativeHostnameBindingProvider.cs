@@ -40,6 +40,10 @@ internal sealed class DeclarativeHostnameBindingProvider(
     private readonly IReadOnlyDictionary<string, IHostnameBindingWorkloadCapability> capabilities =
         workloadCapabilities.ToDictionary(item => item.Kind, StringComparer.Ordinal);
 
+    private const string ResourceField = "spec.resource";
+
+    private const string ZoneField = "spec.zone";
+
     public string Kind => "HostnameBinding";
 
     public string DescribeFailure(IDeclarationFailure failure) => failure switch
@@ -52,13 +56,13 @@ internal sealed class DeclarativeHostnameBindingProvider(
     public JsonElement NormalizeAndValidate(JsonElement spec)
     {
         var declaration = DeclarationJson.Read<HostnameBindingDeclaration>(spec);
-        DeclarationJson.Require(ResourceTechnicalName.IsValid(declaration.Zone), "spec.zone");
+        DeclarationJson.Require(ResourceTechnicalName.IsValid(declaration.Zone), ZoneField);
         DeclarationJson.Require(ResourceTechnicalName.IsValid(declaration.DeploymentTarget),
             DeclarationFieldPaths.DeploymentTarget);
         DeclarationJson.Require(declaration.Resource is not null &&
             DeclarationNames.Valid(declaration.Resource.Name) &&
             !string.IsNullOrWhiteSpace(declaration.Resource.Kind) &&
-            capabilities.ContainsKey(declaration.Resource.Kind), "spec.resource");
+            capabilities.ContainsKey(declaration.Resource.Kind), ResourceField);
         try
         {
             return DeclarationJson.Write(declaration with
@@ -75,8 +79,8 @@ internal sealed class DeclarativeHostnameBindingProvider(
     public DeclarationFacts Facts(JsonElement spec)
     {
         var declaration = DeclarationJson.Read<HostnameBindingDeclaration>(spec);
-        return new(null, [], [new(new("DomainZone", declaration.Zone), "spec.zone"),
-            new(declaration.Resource, "spec.resource")], [], [], ReferencesShareScope: false);
+        return new(null, [], [new(new("DomainZone", declaration.Zone), ZoneField),
+            new(declaration.Resource, ResourceField)], [], [], ReferencesShareScope: false);
     }
 
     public IReadOnlyList<DeclarationStep> Steps(ResourceAddress address, JsonElement spec)

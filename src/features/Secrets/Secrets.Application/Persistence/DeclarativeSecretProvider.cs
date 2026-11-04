@@ -76,7 +76,7 @@ internal sealed class DeclarativeSecretProvider(
                                     .Distinct()
                                     .Count() == value.Keys.Length &&
                                 value.Keys.All(SecretKeyReferenceRules.ValidKey),
-            "spec");
+            DeclarationFieldPaths.Spec);
 
         return DeclarationJson.Write(value with
         {

@@ -72,7 +72,7 @@ internal static class FunctionDeclarations
 
     internal static IReadOnlyList<DeclarationStep> Steps(ResourceAddress address, JsonElement spec)
     {
-        DeclarationJson.Require(address.Name.Length >= 3, "metadata.name");
+        DeclarationJson.Require(address.Name.Length >= 3, DeclarationFieldPaths.MetadataName);
         var value = FunctionDeclarationJson.Read(spec);
         return
         [
