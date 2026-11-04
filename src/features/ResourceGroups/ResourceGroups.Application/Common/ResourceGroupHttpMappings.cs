@@ -13,6 +13,10 @@ namespace Pole.Features.ResourceGroups.Application.Common;
 
 public static class ResourceGroupHttpMappings
 {
+    public static IResult Map(ResourceGroupNameAlreadyExists _) => new HttpProblem(
+        409, PoleProblemTypeId.FromCode("resource-groups.name-already-exists"),
+        "Resource group name already exists", "resource-groups.name-already-exists").ToHttpResult();
+
     public static IResult Map(CreateIsolationScopeError error) => error.Value switch
     {
         ResourceGroupNotFound value => MapResourceGroupNotFound(value).ToHttpResult(),
@@ -104,12 +108,14 @@ public static class ResourceGroupHttpMappings
     private static HttpProblem MapResourceGroupDeleting(ResourceGroupDeleting deleting) =>
         ResourceGroupDeletingProblem(deleting.ResourceGroupId);
 
-    private static HttpProblem MapResourceGroupRevisionConflict(
-        ResourceGroupRevisionConflict conflict) => Problem(
-        HttpStatusCode.Conflict,
-        "resource-groups.revision-conflict",
-        "Resource group changed",
-        ("resourceGroupId", conflict.ResourceGroupId));
+    private static HttpProblem MapResourceGroupRevisionConflict(ResourceGroupRevisionConflict conflict) => conflict.Reason switch
+    {
+        ResourceGroupRevisionConflictReason.ExpectedRevisionConflict => Problem(HttpStatusCode.Conflict,
+            "resource-groups.revision-conflict", "Resource group changed", ("resourceGroupId", conflict.ResourceGroupId)),
+        ResourceGroupRevisionConflictReason.GitOwnedConfiguration => Problem(HttpStatusCode.Conflict,
+            "resource-groups.git-owned", "Edit the desired configuration in its managing Git source", ("resourceGroupId", conflict.ResourceGroupId)),
+        _ => throw new ArgumentOutOfRangeException(nameof(conflict.Reason))
+    };
 
     private static HttpProblem MapResourceGroupContainsResources(
         ResourceGroupContainsResources conflict) => Problem(

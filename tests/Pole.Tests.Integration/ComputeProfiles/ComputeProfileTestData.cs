@@ -1,3 +1,4 @@
+using MongoDB.Driver;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using Pole.Database;
@@ -36,8 +37,9 @@ internal static class ComputeProfileTestData
         ComputeProfileTenantAccess? tenantAccess = null,
         IEnumerable<ResourceTypeId>? resourceTypes = null,
         string? id = null,
-        string displayName = "General purpose") =>
-        ComputeProfileFactory.Create(
+        string displayName = "General purpose",
+        string? technicalName = null) =>
+        ComputeProfileFactory.Create(technicalName ?? "profile-" + (id ?? ObjectId.GenerateNewId().ToString()),
             displayName,
             "Persistence test profile",
             ComputeProfileResourceRequirements.Create(
@@ -83,7 +85,7 @@ internal static class ComputeProfileTestData
     {
         id ??= ObjectId.GenerateNewId().ToString();
         const long connectionVersion = 1;
-        return DeploymentTargetFactory.Create(
+        return DeploymentTargetFactory.Create(id == TestData.DefaultDeploymentTargetId ? "lab" : "target-" + id,
                 "Compute profile target",
                 $"kubernetes:kube-system:{id}",
                 DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),
@@ -105,12 +107,15 @@ internal sealed class ComputeProfilePersistenceTestHost : IDisposable
     public ComputeProfilePersistenceTestHost(
         MongoReplicaSetFixture fixture,
         ApplyDeploymentTargetReferenceChanges? applyTargetReferenceChanges = null,
-        StoreOutboxWrites? storeOutboxWrites = null)
+        StoreOutboxWrites? storeOutboxWrites = null,
+        IMongoDatabase? database = null)
     {
+        database ??= fixture.Database;
+        var store = new MongoTestStore(database.Client, database);
         var services = new ServiceCollection();
-        services.AddSingleton(fixture.Client);
-        services.AddSingleton(fixture.Database);
-        services.AddSingleton(fixture.DbContext.ResourceDeployments);
+        services.AddSingleton(database.Client);
+        services.AddSingleton(database);
+        services.AddSingleton(store.ResourceDeployments);
         services.AddSingleton<MongoEnsureComputeProfileUnreferenced>();
         services.AddSingleton<EnsureComputeProfileUnreferenced>(provider =>
             provider
@@ -123,8 +128,8 @@ internal sealed class ComputeProfilePersistenceTestHost : IDisposable
         if (applyTargetReferenceChanges is null)
         {
             services.AddSingleton(new MongoApplyDeploymentTargetReferenceChanges(
-                fixture.DbContext.DeploymentTargets,
-                fixture.DbContext.DeploymentTargetReferences,
+                store.DeploymentTargets,
+                store.DeploymentTargetReferences,
                 TimeProvider.System));
             services.AddSingleton<ApplyDeploymentTargetReferenceChanges>(provider => provider
                 .GetRequiredService<MongoApplyDeploymentTargetReferenceChanges>()

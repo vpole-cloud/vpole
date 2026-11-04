@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
@@ -50,6 +51,7 @@ public static class WebServicePersistenceRegistration
         services.AddCapability<MongoLoadWebServiceDeploymentTokens, LoadWebServiceDeploymentTokens>(x => x.InvokeAsync);
         services.AddCapability<MongoRevokeWebServiceDeploymentToken, RevokeWebServiceDeploymentTokenOutcome>(x => x.InvokeOutcomeAsync);
         services.AddCapability<MongoTouchWebServiceDeploymentToken, TouchWebServiceDeploymentToken>(x => x.InvokeAsync);
+        services.AddScoped<IDeclarativeResourceProvider, DeclarativeWebServiceProvider>();
         return services;
     }
 

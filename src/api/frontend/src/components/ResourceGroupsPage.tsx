@@ -1,3 +1,4 @@
+import { canEditDesiredConfiguration } from '../data/gitOps'
 import { useState } from 'react'
 import { Button, ConfirmationDialog, DataTable, EmptyState } from '../ui/components'
 import { InventorySearch, Pagination } from '../ui/InventoryControls'
@@ -104,12 +105,20 @@ export function ResourceGroupsPage({
                 label: 'Actions',
                 render: (group) => (
                   <div className="row-actions">
-                    <Button onClick={() => onOpen(group.id, canManage)}>
-                      {canManage ? 'Edit' : 'Inspect'}
+                    <Button
+                      onClick={() =>
+                        onOpen(group.id, canEditDesiredConfiguration(canManage, group.gitOps))
+                      }
+                    >
+                      {canEditDesiredConfiguration(canManage, group.gitOps) ? 'Edit' : 'Inspect'}
                     </Button>
                     <Button
                       variant="danger"
-                      disabled={!canManage || deletingId === group.id}
+                      disabled={
+                        status !== 'success' ||
+                        !canEditDesiredConfiguration(canManage, group.gitOps) ||
+                        deletingId === group.id
+                      }
                       aria-label={`Delete ${group.name}`}
                       onClick={() => setDeleting(group)}
                     >
@@ -135,8 +144,22 @@ export function ResourceGroupsPage({
           title={`Delete ${deleting.name}?`}
           confirmLabel="Delete group"
           busy={deletingId === deleting.id}
+          confirmDisabled={
+            status !== 'success' ||
+            !items.some(
+              (row) => row.id === deleting.id && canEditDesiredConfiguration(canManage, row.gitOps),
+            )
+          }
           onCancel={() => setDeleting(null)}
           onConfirm={async () => {
+            if (
+              status !== 'success' ||
+              !items.some(
+                (row) =>
+                  row.id === deleting.id && canEditDesiredConfiguration(canManage, row.gitOps),
+              )
+            )
+              return
             try {
               await onDelete(deleting.id)
               setDeleting(null)

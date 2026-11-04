@@ -26,6 +26,9 @@ public static class ComputeProfileHttpMappings
         "Compute profile target mappings are invalid",
         ("errors", invalid.Errors));
 
+    public static HttpProblem MapNameConflict(ComputeProfileTechnicalNameConflict conflict) => Problem(
+        HttpStatusCode.Conflict, "compute-profiles.technical-name-conflict", "The catalog technical name is already used");
+
     public static HttpProblem MapRevisionConflict(
         ComputeProfileRevisionConflict conflict) => Problem(
         HttpStatusCode.Conflict,

@@ -80,8 +80,8 @@ internal sealed class MongoCreatePrivateAccessGrant(
                 command.ResourceDeploymentId, transaction.Session, ct);
             if (placement is null ||
                 placement.ResourceGroupId != registered.ResourceGroupId ||
-                placement.Status != "Applied" ||
-                placement.DesiredOperation != "Apply")
+                placement.Status != ResourceDeploymentStatus.Applied ||
+                placement.DesiredOperation != ResourceDeploymentDesiredOperation.Apply)
             {
                 return transaction.Abort(new CreatePrivateAccessGrantPersistenceOutcome(
                     new PrivateAccessResourceUnavailable()));

@@ -41,6 +41,7 @@ export interface ComputeProfileSummary {
 
 export interface AvailableDeploymentTarget {
   id: string
+  technicalName: string
   displayName: string
   workloadConfigurationRevision: number
   hasPublicIngress: boolean
@@ -49,6 +50,7 @@ export interface AvailableDeploymentTarget {
 
 export interface AvailableComputeProfile {
   id: string
+  technicalName: string
   displayName: string
   description: string
   resources: {

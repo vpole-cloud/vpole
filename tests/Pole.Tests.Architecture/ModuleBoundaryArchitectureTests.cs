@@ -23,6 +23,7 @@ public sealed class ModuleBoundaryArchitectureTests
             ["DeploymentTargets"] = FeatureRole.Platform,
             ["Domains"] = FeatureRole.Platform,
             ["GitProviders"] = FeatureRole.BuiltIn,
+            ["GitOps"] = FeatureRole.Platform,
             ["Outbox"] = FeatureRole.Platform,
             ["PrivateAccess"] = FeatureRole.Platform,
             ["Quotas"] = FeatureRole.Platform,
@@ -479,10 +480,10 @@ public sealed class ModuleBoundaryArchitectureTests
     }
 
     private sealed record ProjectNode(
-        string Feature,
-        string Identity,
-        ProjectRole Role,
-        string FullPath)
+    string Feature,
+    string Identity,
+    ProjectRole Role,
+    string FullPath)
     {
         public static ProjectNode Create(string featureRoot, string fullPath)
         {
@@ -513,21 +514,21 @@ public sealed class ModuleBoundaryArchitectureTests
     }
 
     private sealed record ProjectReferenceEdge(
-        ProjectNode Source,
-        ProjectNode Target);
+    ProjectNode Source,
+    ProjectNode Target);
 
     private sealed record SharedProjectReferenceEdge(
-        ProjectNode Source,
-        string TargetIdentity);
+    ProjectNode Source,
+    string TargetIdentity);
 
     private sealed record ProjectEdge(
-        string Source,
-        string Target);
+    string Source,
+    string Target);
 
     private sealed record DocumentedProjectException(
-        ProjectEdge Edge,
-        string Reason,
-        string TrackingIssue)
+    ProjectEdge Edge,
+    string Reason,
+    string TrackingIssue)
     {
         public static DocumentedProjectException Create(
             string source,
@@ -544,9 +545,9 @@ public sealed class ModuleBoundaryArchitectureTests
     }
 
     private sealed record DocumentedSourceException(
-        string RelativePath,
-        string Reason,
-        string TrackingIssue)
+    string RelativePath,
+    string Reason,
+    string TrackingIssue)
     {
         public static DocumentedSourceException Create(
             string relativePath,

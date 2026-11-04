@@ -1,3 +1,5 @@
+using Pole.Features.DeploymentTargets.Application.Persistence;
+using Pole.Workloads;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
@@ -15,6 +17,9 @@ public sealed class DeploymentTargetMigration : IMigration
         var targets = context.GetCollection<BsonDocument>("DeploymentTargets");
         await targets.Indexes.CreateManyAsync(
         [
+            new CreateIndexModel<BsonDocument>(
+                Builders<BsonDocument>.IndexKeys.Ascending("TechnicalName"),
+                new CreateIndexOptions { Unique = true, Name = DeploymentTargetTechnicalNames.UniqueIndexName }),
             new CreateIndexModel<BsonDocument>(
                 Builders<BsonDocument>.IndexKeys.Ascending("ClusterIdentity"),
                 new CreateIndexOptions<BsonDocument>
@@ -46,6 +51,25 @@ public sealed class DeploymentTargetMigration : IMigration
                     Name = "UX_DeploymentTargets_Active_PublicBaseDomain"
                 })
         ], cancellationToken);
+
+        await context.RunCommandAsync<BsonDocument>(new BsonDocument
+        {
+            ["collMod"] = "DeploymentTargets",
+            ["validator"] = new BsonDocument("$jsonSchema", new BsonDocument
+            {
+                ["bsonType"] = "object",
+                ["required"] = new BsonArray { "TechnicalName" },
+                ["properties"] = new BsonDocument("TechnicalName", new BsonDocument
+                {
+                    ["bsonType"] = "string",
+                    ["minLength"] = 1,
+                    ["maxLength"] = ResourceTechnicalName.MaximumLength,
+                    ["pattern"] = ResourceTechnicalName.Pattern
+                })
+            }),
+            ["validationLevel"] = "strict",
+            ["validationAction"] = "error"
+        }, cancellationToken: cancellationToken);
 
         var settings = context.GetCollection<BsonDocument>("DeploymentTargetSettings");
         await settings.Indexes.CreateOneAsync(

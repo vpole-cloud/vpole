@@ -1,3 +1,4 @@
+using Pole.Workloads;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
@@ -19,11 +20,10 @@ public sealed record DeploymentTarget(
     bool AcceptsWorkloads,
     DateTime? DeletionRequestedAtUtc,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc)
+    DateTime UpdatedAtUtc,
+    string TechnicalName,
+    long ObservationFence = 0)
 {
-    // Observation writes need a document conflict without changing reference-admission semantics.
-    public long ObservationFence { get; init; }
-
     [BsonIgnore] public long NextConnectionVersion => checked(Connection.Version + 1);
 
     public DeploymentTarget UpdateMetadata(string displayName, DateTime updatedAtUtc)
@@ -173,7 +173,9 @@ public sealed record DeploymentTarget(
             AcceptsWorkloads: false,
             normalizedRequestedAtUtc,
             CreatedAtUtc,
-            normalizedRequestedAtUtc);
+            normalizedRequestedAtUtc,
+            TechnicalName,
+            ObservationFence);
     }
 
     public DeploymentTarget ReplaceConnectionCredential(
@@ -251,7 +253,9 @@ public sealed record DeploymentTarget(
             AcceptsWorkloads,
             DeletionRequestedAtUtc,
             CreatedAtUtc,
-            UpdatedAtUtc);
+            UpdatedAtUtc,
+            TechnicalName,
+            ObservationFence);
     }
 
     private DeploymentTarget Reconfigured(
@@ -282,7 +286,9 @@ public sealed record DeploymentTarget(
             acceptsWorkloads,
             DeletionRequestedAtUtc,
             CreatedAtUtc,
-            normalizedUpdatedAtUtc);
+            normalizedUpdatedAtUtc,
+            TechnicalName,
+            ObservationFence);
     }
 }
 
@@ -296,6 +302,7 @@ public static class DeploymentTargetFactory
         new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow);
 
     public static DeploymentTarget Create(
+        string technicalName,
         string displayName,
         string clusterIdentity,
         DeploymentTargetConnection connection,
@@ -362,7 +369,8 @@ public static class DeploymentTargetFactory
             acceptsWorkloads,
             DeletionRequestedAtUtc: null,
             normalizedCreatedAtUtc,
-            normalizedCreatedAtUtc);
+            normalizedCreatedAtUtc,
+            ResourceTechnicalName.Require(technicalName));
     }
 }
 

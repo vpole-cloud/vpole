@@ -243,6 +243,7 @@ public sealed class DatabaseBrowserE2ETests(PoleE2EFixture fixture, ITestOutputH
         using var request = fixture.CreatePlatformAdminRequest(HttpMethod.Post, "/api/v1/platform/compute-profiles/");
         request.Content = JsonContent.Create(new
         {
+            technicalName = $"database-edit-{Guid.NewGuid():N}",
             displayName = $"Database edit {Guid.NewGuid():N}",
             description = "Owned browser configuration test profile",
             resources = new { requests = new { cpuMillis = 50, memoryMi = 128 }, limits = new { cpuMillis = 250, memoryMi = 256 } },

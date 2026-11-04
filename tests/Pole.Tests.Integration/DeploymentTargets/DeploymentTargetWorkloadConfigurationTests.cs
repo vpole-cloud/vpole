@@ -227,7 +227,7 @@ public sealed class DeploymentTargetWorkloadConfigurationTests
     {
         var id = ObjectId.GenerateNewId().ToString();
         const long connectionVersion = 1;
-        return DeploymentTargetFactory.Create(
+        return DeploymentTargetFactory.Create("target-" + id,
             "Workload configuration target",
             $"kubernetes:kube-system:{id}",
             DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),

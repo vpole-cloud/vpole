@@ -44,16 +44,20 @@ public static class WebServiceHttpMappings
         HttpStatusCode.Conflict,
         "web-services.dependency-unavailable",
         "A configured dependency is unavailable",
-        ("reasonCode", error.ReasonCode));
+        ("reasonCode", WebServiceDependencyDiagnostics.Code(error)));
 
-    public static HttpProblem MapError(WebServiceUpdateConflict error) => Problem(
-        HttpStatusCode.Conflict,
-        "web-services.update.concurrent-change",
-        "Web service changed concurrently",
-        ("webServiceId", error.WebServiceId));
+    public static HttpProblem MapError(WebServiceUpdateConflict error) => error.Reason switch
+    {
+        WebServiceUpdateConflictReason.ExpectedRevisionConflict => Problem(HttpStatusCode.Conflict,
+            "web-services.update.concurrent-change", "Web service changed concurrently", ("webServiceId", error.WebServiceId)),
+        WebServiceUpdateConflictReason.GitOwnedConfiguration => Problem(HttpStatusCode.Conflict,
+            "web-services.git-owned", "Edit the desired configuration in its managing Git source", ("webServiceId", error.WebServiceId)),
+        _ => throw new ArgumentOutOfRangeException(nameof(error.Reason))
+    };
 
     public static HttpProblem MapError(CreateWebServiceError error) => error switch
     {
+        WebServiceNameAlreadyExists => Problem(HttpStatusCode.Conflict, "web-services.name-already-exists", "Web service name already exists"),
         ResourceGroupOwnershipError ownership => ResourceGroupContractHttpMappings.MapOwnershipError(ownership),
         CreateWebServicePlacementError placement => MapCreatePlacementError(placement),
         ComputeProfileResolutionError compute => ComputeProfileContractHttpMappings.MapResolutionError(compute),
@@ -258,6 +262,11 @@ public static class WebServiceHttpMappings
     private static HttpProblem MapDeploymentMutationStateError(
         WebServiceDeploymentMutationStateError error) => error switch
         {
+            WebServiceUpdateUnavailable unavailable => Problem(
+                HttpStatusCode.Conflict,
+                "web-services.update-unavailable",
+                "Web service cannot be updated in its current lifecycle",
+                ("webServiceId", unavailable.WebServiceId)),
             WebServiceNotFound notFound => Problem(
                 HttpStatusCode.NotFound,
                 "web-services.not-found",

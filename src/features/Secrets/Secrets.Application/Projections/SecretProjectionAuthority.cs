@@ -21,7 +21,7 @@ internal static class SecretProjectionAuthority
     };
 
     public static bool MatchesPlacement(ResourceDeploymentRuntimePlacementDto placement, SecretProjection projection) =>
-        placement.DesiredOperation != "Delete" &&
+        placement.DesiredOperation != ResourceDeploymentDesiredOperation.Delete &&
         placement.IsolationScopeId == projection.IsolationScopeId &&
         placement.RuntimeCellId == projection.RuntimeCellId &&
         placement.DeploymentTargetId == projection.DeploymentTargetId &&

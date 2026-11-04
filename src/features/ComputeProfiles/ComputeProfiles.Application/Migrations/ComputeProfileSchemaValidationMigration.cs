@@ -1,4 +1,5 @@
 using MongoDB.Bson;
+using Pole.Workloads;
 using MongoDB.Driver;
 using Pole.Database;
 
@@ -59,6 +60,7 @@ public sealed class ComputeProfileSchemaValidationMigration : IMigration
             Object(
                 [
                     "_id",
+                    "TechnicalName",
                     "DisplayName",
                     "Description",
                     "Resources",
@@ -75,6 +77,7 @@ public sealed class ComputeProfileSchemaValidationMigration : IMigration
                     "UpdatedAtUtc"
                 ],
                 ("_id", Type("objectId")),
+                ("TechnicalName", StringType(1, ResourceTechnicalName.MaximumLength, ResourceTechnicalName.Pattern)),
                 ("DisplayName", StringType(1, 80)),
                 ("Description", StringType(0, 500)),
                 ("Resources", ResourceRequirementsSchema()),

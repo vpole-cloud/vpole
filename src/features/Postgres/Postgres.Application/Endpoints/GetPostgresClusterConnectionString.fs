@@ -67,7 +67,7 @@ type GetPostgresClusterConnectionStringHandler(
                             cancellationToken)
 
                     if isNull placement ||
-                       placement.Status <> "Applied" ||
+                       placement.Status <> ResourceDeploymentStatus.Applied ||
                        placement.ObservedGeneration <> placement.DesiredGeneration then
                         return
                             GetPostgresClusterConnectionStringRejected(

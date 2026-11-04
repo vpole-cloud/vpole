@@ -33,7 +33,7 @@ public sealed class SecretProjectionReconciler(
                 foreach (var deployment in deployments.Where(x => Selected(secret, binding, x)))
                 {
                     var placement = await loadPlacement(tenantId, ResourceTypeId.Create(binding.ConsumerType), binding.ConsumerId, deployment.DeploymentId, ct);
-                    if (placement is null || placement.DesiredOperation == "Delete" || placement.IsolationScopeId != secret.IsolationScopeId)
+                    if (placement is null || placement.DesiredOperation == ResourceDeploymentDesiredOperation.Delete || placement.IsolationScopeId != secret.IsolationScopeId)
                         continue;
                     var projection = SecretProjectionFactory.Create(secret, binding, placement.DeploymentId, placement.RuntimeCellId, placement.DeploymentTargetId, placement.KubernetesNamespace);
                     desired.Add(projection.Id, projection);
@@ -48,7 +48,7 @@ public sealed class SecretProjectionReconciler(
     }
 
     private static bool Selected(Secret secret, SecretBinding binding, PlacementSummaryDto deployment) =>
-        deployment.IsolationScopeId == secret.IsolationScopeId && deployment.DesiredOperation != "Delete" &&
+        deployment.IsolationScopeId == secret.IsolationScopeId && deployment.DesiredOperation != ResourceDeploymentDesiredOperation.Delete &&
         SecretProjectionAuthority.IncludesDeployment(binding.Selection, deployment.DeploymentId);
 
     private async Task<SecretBinding?> CurrentBindingAsync(SecretProjection projection, CancellationToken ct)
@@ -91,6 +91,11 @@ public sealed class SecretProjectionReconciler(
             await complete(owned.Failed("DesiredStateChanged"), ct);
             return;
         }
+        if (current.CurrentVersion == Secret.MetadataOnlyVersion || binding.KeyMappings.Keys.Concat(binding.ProtectedKeys).Any(key => !current.HasValue(key)))
+        {
+            await complete(owned.Failed("SecretValuesMissing"), ct);
+            return;
+        }
         var version = await loadVersion(owned.TenantId, owned.SecretId, owned.DesiredVersion, ct);
         if (version is null)
         {
@@ -106,7 +111,8 @@ public sealed class SecretProjectionReconciler(
             try
             {
                 var values = JsonSerializer.Deserialize<Dictionary<string, string>>(plaintext)!;
-                return new SecretProjectionManifestOutcome(SecretProjectionManifest.Create(owned, binding, values));
+                return new SecretProjectionManifestOutcome(SecretProjectionManifest.Create(owned, binding, current.DeclaredKeys
+                    ? values.Where(pair => current.KeyNames.Contains(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value) : values));
             }
             finally
             {

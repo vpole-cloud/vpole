@@ -21,3 +21,5 @@ public sealed record SecretUnknownKeys;
 public sealed record SecretBindingsRemain;
 
 public sealed record SecretManagedByProvider;
+
+public sealed record SecretGitOwned;

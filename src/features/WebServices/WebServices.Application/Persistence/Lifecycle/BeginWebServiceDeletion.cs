@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.WebServices.Application.Common;
@@ -23,7 +24,8 @@ public delegate Task<BeginWebServiceDeletionResult>
 internal sealed class MongoBeginWebServiceDeletion(
     FenceRegisteredResource fenceRegisteredResource,
     CascadeConnectionsForResourceDeletion cascadeConnections,
-    IMongoCollection<WebService> webServices)
+    IMongoCollection<WebService> webServices,
+    IGitOpsMutations git)
 {
     public async Task<BeginWebServiceDeletionResult>
         InvokeOutcomeAsync(
@@ -34,6 +36,8 @@ internal sealed class MongoBeginWebServiceDeletion(
     {
         WebServicePersistenceGuards.EnsureTransaction(session, "Web service deletion start");
         WebServicePersistenceGuards.EnsureSameIdentity(current, replacement);
+        if (!await git.AuthorizeAsync(current.TenantId, "WebService", current.Id, session, cancellationToken))
+            return new WebServiceUpdateConflict(current.Id, WebServiceUpdateConflictReason.GitOwnedConfiguration);
         var registration = await fenceRegisteredResource(
             current.TenantId, WebServiceResourceDeployment.ResourceType, current.Id, session, cancellationToken);
         if (registration is null)

@@ -51,9 +51,13 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
     {
         var spec = new WebServiceSpec(
             new ImageInfo("docker.io", "library/nginx", "1.27"),
-            Config: new WebServiceConfig(
-                ImmutableDictionary<string, string>.Empty,
-                [new PortMapping(80, "8080", "TCP", "http")]),
+            Config: new WebServiceConfig()
+            {
+                EnvironmentVariables = ImmutableDictionary<string, string>.Empty,
+                PortMappings = [new PortMapping(80, "8080", "TCP", "http")],
+                ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty,
+                SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty
+            },
             Autoscaling: null,
             Probes: new ProbeSpec(
                 new ProbeConfig("/", "8080"),
@@ -141,15 +145,16 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
         var spec = TestData.ValidWebServiceSpec().ToDomain() with
         {
             Image = new ImageInfo("docker.io", "nginx", "1.27"),
-            Config = new WebServiceConfig(
-                EnvironmentVariables: new Dictionary<string, string>
+            Config = new WebServiceConfig()
+            {
+                EnvironmentVariables = new Dictionary<string, string>
                 {
                     ["ASPNETCORE_ENVIRONMENT"] = "Development"
                 }.ToImmutableDictionary(),
-                PortMappings:
-                [
-                    new PortMapping(80, "80", "TCP", "http")
-                ]),
+                PortMappings = [new PortMapping(80, "80", "TCP", "http")],
+                ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty,
+                SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty
+            },
             Probes = new ProbeSpec(
                 Startup: new ProbeConfig("/", "80"),
                 Liveness: new ProbeConfig("/", "80"),

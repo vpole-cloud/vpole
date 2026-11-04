@@ -46,6 +46,7 @@ public static class ComputeProfileContractHttpMappings
     private static string ReasonCode(
         ComputeProfileUnavailableReason reason) => reason switch
         {
+            ComputeProfileUnavailableReason.RevisionUnavailable => "revision-unavailable",
             ComputeProfileUnavailableReason.Disabled => "disabled",
             ComputeProfileUnavailableReason.ResourceTypeNotAllowed =>
                 "resource-type-not-allowed",

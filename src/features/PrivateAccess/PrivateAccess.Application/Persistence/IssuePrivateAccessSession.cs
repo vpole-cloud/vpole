@@ -87,8 +87,8 @@ internal sealed class MongoIssuePrivateAccessSession(
                 transaction.Session, ct);
             if (placement is null ||
                 placement.ResourceGroupId != registered.ResourceGroupId ||
-                placement.Status != "Applied" ||
-                placement.DesiredOperation != "Apply")
+                placement.Status != ResourceDeploymentStatus.Applied ||
+                placement.DesiredOperation != ResourceDeploymentDesiredOperation.Apply)
                 return await DenyAsync(new PrivateAccessDeploymentUnavailable(), PrivateAccessAuditReason.DeploymentUnavailable);
             var endpoint = await endpointCatalog.ResolveAsync(
                 tenantId, resourceType, grant.ResourceId, grant.EndpointId,

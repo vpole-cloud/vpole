@@ -6,7 +6,8 @@ using Pole.Features.ComputeProfiles.Domain;
 namespace Pole.Features.ComputeProfiles.Application.Persistence.Resolution;
 
 internal sealed class MongoFenceResolvedComputeProfile(
-    IMongoCollection<ComputeProfile> computeProfiles)
+    IMongoCollection<ComputeProfile> computeProfiles,
+    IMongoCollection<ComputeProfileRevision> revisions)
 {
     public async Task<FenceResolvedComputeProfilesOutcome> InvokeAsync(
         IReadOnlyList<ComputeProfileResolutionFenceRequest> requests,
@@ -35,11 +36,14 @@ internal sealed class MongoFenceResolvedComputeProfile(
                     request.TenantId,
                     request.ResourceType,
                     request.DeploymentTargetId) is not null ||
-                profile.Revision != request.ComputeProfileRevision ||
+                (!request.PinnedRevision && profile.Revision != request.ComputeProfileRevision) ||
                 profile.ResolutionFence == long.MaxValue)
             {
                 return Rejected(requests);
             }
+            if (request.PinnedRevision && profile.Revision != request.ComputeProfileRevision &&
+                !await revisions.Find(session, ComputeProfileRevisionFilters.Identity(profile.Id, request.ComputeProfileRevision)).AnyAsync(cancellationToken))
+                return Rejected(requests);
         }
 
         var firstRequest = requests[0];

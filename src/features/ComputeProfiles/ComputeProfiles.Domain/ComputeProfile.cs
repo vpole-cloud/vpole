@@ -23,7 +23,8 @@ public sealed record ComputeProfile(
     long Revision,
     long ResolutionFence,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc)
+    DateTime UpdatedAtUtc,
+    string TechnicalName)
 {
     public ComputeProfile Reconfigure(
         string displayName,
@@ -77,7 +78,8 @@ public sealed record ComputeProfile(
             checked(Revision + 1),
             ResolutionFence,
             CreatedAtUtc,
-            normalizedUpdatedAtUtc);
+            normalizedUpdatedAtUtc,
+            TechnicalName);
     }
 
     private bool HasSameConfiguration(ComputeProfileValues values) =>
@@ -470,6 +472,7 @@ public static class ComputeProfileFactory
         DateTime CreatedAtUtc);
 
     public static ComputeProfile Create(
+        string technicalName,
         string displayName,
         string description,
         ComputeProfileResourceRequirements resources,
@@ -513,7 +516,8 @@ public static class ComputeProfileFactory
             Revision: 1,
             ResolutionFence: 0,
             createdAtUtc,
-            createdAtUtc);
+            createdAtUtc,
+            ResourceTechnicalName.Require(technicalName));
     }
 
     internal static ComputeProfileValues Normalize(

@@ -55,6 +55,7 @@ startup. Empty maps configure no source. For example:
 {
   "DeploymentTargets": {
     "Bootstrap": {
+      "TechnicalName": "local",
       "WorkloadConfiguration": {
         "NetworkSources": {
           "Pods": {
@@ -200,3 +201,12 @@ Function revision provisioning, activation, and autoscaling also use this curren
 check at their shared Kubernetes writer: revision apply and replica increases require evidence
 or the explicit override, even when the resource deployment was previously Applied. Diagnostic
 reads, deletion, and replica reductions remain available after revocation.
+
+## Stable technical names
+
+Creating a deployment target requires an explicit `technicalName` using lowercase DNS-label
+syntax, independently of `displayName`. The name is unique within the platform catalog and
+immutable; ordinary updates can change the display label but cannot rename the technical identity.
+The existing admin create request returns the named target at revision 1. No assignment endpoint
+or inferred display-label name exists. Bootstrap explicitly uses `DeploymentTargets:Bootstrap:TechnicalName`
+(default `local`). Connection validation, credentials and authorization keep their existing rules.

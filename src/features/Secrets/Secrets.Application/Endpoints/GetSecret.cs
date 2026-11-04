@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -30,7 +31,7 @@ public sealed class GetSecretValidator : AbstractValidator<GetSecretRequest>
     }
 }
 
-public sealed class GetSecretHandler(LoadSecretById load)
+public sealed class GetSecretHandler(LoadSecretById load, IGitOpsMutations git)
     : IMediatorOutcomeHandler<GetSecretRequest, GetSecretOutcome>
 {
     public async Task<GetSecretOutcome> HandleAsync(
@@ -38,7 +39,7 @@ public sealed class GetSecretHandler(LoadSecretById load)
         CancellationToken cancellationToken = default)
     {
         var secret = await load(request.TenantId, request.Id, cancellationToken);
-        return secret is null ? new SecretMissing() : SecretMetadata.From(secret);
+        return secret is null ? new SecretMissing() : SecretMetadata.From(secret) with { GitOps = await git.StatusAsync(request.TenantId, "Secret", secret.Id, cancellationToken) };
     }
 }
 

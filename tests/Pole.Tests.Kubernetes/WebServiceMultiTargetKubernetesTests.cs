@@ -122,9 +122,13 @@ public sealed class WebServiceMultiTargetKubernetesTests(KubernetesClusterFixtur
             isolationScopeId: "507f1f77bcf86cd799439013",
             spec: new WebServiceSpec(
                 new ImageInfo("docker.io", "library/nginx", "1.27.5-alpine"),
-                new WebServiceConfig(
-                    ImmutableDictionary<string, string>.Empty,
-                    [new PortMapping(80, "80", "TCP", "http")]),
+                new WebServiceConfig()
+                {
+                    EnvironmentVariables = ImmutableDictionary<string, string>.Empty,
+                    PortMappings = [new PortMapping(80, "80", "TCP", "http")],
+                    ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty,
+                    SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty
+                },
                 Autoscaling: null,
                 new ProbeSpec(
                     new ProbeConfig("/", "80"),

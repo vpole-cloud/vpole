@@ -79,13 +79,12 @@ internal static class WebServicesEventExtensions
     }
     extension(WebServiceConfigSnapshot config)
     {
-        private WebServiceConfig ToDomain() => new(config.EnvironmentVariables ?? ImmutableDictionary<string, string>.Empty,
-            config.PortMappings.Select(mapping => new PortMapping(mapping.ServicePort, mapping.TargetPort, mapping.Protocol, mapping.Name)).ToImmutableList())
+        private WebServiceConfig ToDomain() => new()
         {
-            ConnectionEnvironmentReferences = (config.ConnectionEnvironmentReferences ?? ImmutableDictionary<string, ConnectionEnvironmentReferenceSnapshot>.Empty).ToImmutableDictionary(pair => pair.Key,
-                pair => new ConnectionEnvironmentReference(pair.Value.ConnectionId, pair.Value.ValueKind, pair.Value.ConfigurationKey)),
-            SecretEnvironmentReferences = (config.SecretEnvironmentReferences ?? ImmutableDictionary<string, SecretEnvironmentReferenceSnapshot>.Empty).ToImmutableDictionary(pair => pair.Key,
-                pair => new SecretEnvironmentReference(pair.Value.SecretId, pair.Value.Key))
+            EnvironmentVariables = config.EnvironmentVariables ?? ImmutableDictionary<string, string>.Empty,
+            PortMappings = config.PortMappings.Select(mapping => new PortMapping(mapping.ServicePort, mapping.TargetPort, mapping.Protocol, mapping.Name)).ToImmutableList(),
+            ConnectionEnvironmentReferences = (config.ConnectionEnvironmentReferences ?? ImmutableDictionary<string, ConnectionEnvironmentReferenceSnapshot>.Empty).ToImmutableDictionary(pair => pair.Key, pair => new ConnectionEnvironmentReference(pair.Value.ConnectionId, pair.Value.ValueKind, pair.Value.ConfigurationKey)),
+            SecretEnvironmentReferences = (config.SecretEnvironmentReferences ?? ImmutableDictionary<string, SecretEnvironmentReferenceSnapshot>.Empty).ToImmutableDictionary(pair => pair.Key, pair => new SecretEnvironmentReference(pair.Value.SecretId, pair.Value.Key))
         };
     }
     extension(AutoscalingSpec autoscaling) { private AutoscalingSpecSnapshot ToSnapshot() => new(autoscaling.MinReplicas, autoscaling.MaxReplicas, new AutoscalingMetricSnapshot(autoscaling.Metric.Type, autoscaling.Metric.TargetAverageUtilization)); }

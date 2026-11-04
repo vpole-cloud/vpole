@@ -25,13 +25,13 @@ exact files each writer owns, expected failure cases, and the checks that prove
 the behavior. Include concrete reference files, not only a link to these rules.
 Use the following maintained production implementations where their semantics fit:
 
-| Boundary | Compiled reference | Evidence |
-| --- | --- | --- |
-| Endpoint, transport types, validator, handler, flat outcome and direct HTTP mappings | [CreateUser.cs](../src/features/Users/Users.Application/Endpoints/CreateUser.cs) and [UserHttpProblemMappings.cs](../src/features/Users/Users.Application/UserHttpProblemMappings.cs) | [UserControlPlaneTests.cs](../tests/Pole.Tests.Integration/Users/UserControlPlaneTests.cs), [ApiSliceTests.cs](../tests/Pole.Tests.Integration/Api/ApiSliceTests.cs) and architecture tests |
-| Provider-owned named contract outcomes | [TenantIdentityContracts.cs](../src/features/Tenants/Tenants.Contracts/TenantIdentityContracts.cs) | [TenantFeatureProductionDiTests.cs](../tests/Pole.Tests.Integration/Tenants/TenantFeatureProductionDiTests.cs) |
-| Named persistence capability, internal Mongo implementation, atomic outbox | [PersistCreatedRedis.cs](../src/features/RedisServices/RedisServices.Application/Persistence/Mutations/PersistCreatedRedis.cs) | `Create_Succeeds_WithValidRequest` and `PersistCreate_AbortsRedisAndOutbox_WhenTransactionFails` in RedisIntegrationTests |
-| Factory, immutable collections, explicit lifecycle transitions | [Redis.cs](../src/features/RedisServices/RedisServices.Domain/Redis.cs) | `PersistUpdate_RejectsADeletingReplacement` and update/deletion cases in RedisIntegrationTests |
-| Mongo session ownership and explicit commit/abort | [MongoTransactionDecision.cs](../src/shared/Database/MongoTransactionDecision.cs) and [MongoTransactionPersistence.cs](../src/shared/Database/MongoTransactionPersistence.cs) | [ClientSessionHandleExtensionsTests.cs](../tests/Pole.Tests.Integration/Database/ClientSessionHandleExtensionsTests.cs) and [OutboxPersistenceTests.cs](../tests/Pole.Tests.Integration/Database/OutboxPersistenceTests.cs) |
+| Boundary                                                                             | Compiled reference                                                                                                                                                                    | Evidence                                                                                                                                                                                                                    |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Endpoint, transport types, validator, handler, flat outcome and direct HTTP mappings | [CreateUser.cs](../src/features/Users/Users.Application/Endpoints/CreateUser.cs) and [UserHttpProblemMappings.cs](../src/features/Users/Users.Application/UserHttpProblemMappings.cs) | [UserControlPlaneTests.cs](../tests/Pole.Tests.Integration/Users/UserControlPlaneTests.cs), [ApiSliceTests.cs](../tests/Pole.Tests.Integration/Api/ApiSliceTests.cs) and architecture tests                                 |
+| Provider-owned named contract outcomes                                               | [TenantIdentityContracts.cs](../src/features/Tenants/Tenants.Contracts/TenantIdentityContracts.cs)                                                                                    | [TenantFeatureProductionDiTests.cs](../tests/Pole.Tests.Integration/Tenants/TenantFeatureProductionDiTests.cs)                                                                                                              |
+| Named persistence capability, internal Mongo implementation, atomic outbox           | [PersistCreatedRedis.cs](../src/features/RedisServices/RedisServices.Application/Persistence/Mutations/PersistCreatedRedis.cs)                                                        | `Create_Succeeds_WithValidRequest` and `PersistCreate_AbortsRedisAndOutbox_WhenTransactionFails` in RedisIntegrationTests                                                                                                   |
+| Factory, immutable collections, explicit lifecycle transitions                       | [Redis.cs](../src/features/RedisServices/RedisServices.Domain/Redis.cs)                                                                                                               | `PersistUpdate_RejectsADeletingReplacement` and update/deletion cases in RedisIntegrationTests                                                                                                                              |
+| Mongo session ownership and explicit commit/abort                                    | [MongoTransactionDecision.cs](../src/shared/Database/MongoTransactionDecision.cs) and [MongoTransactionPersistence.cs](../src/shared/Database/MongoTransactionPersistence.cs)         | [ClientSessionHandleExtensionsTests.cs](../tests/Pole.Tests.Integration/Database/ClientSessionHandleExtensionsTests.cs) and [OutboxPersistenceTests.cs](../tests/Pole.Tests.Integration/Database/OutboxPersistenceTests.cs) |
 
 These are real compiled and tested source files, not copied sample implementations
 that can drift. Read the owning [Redis documentation](../src/features/RedisServices/README.md)
@@ -64,6 +64,9 @@ The repository compiler diagnostics complement review:
 - `POLE007`: each parameter of multi-parameter positional records, record structs,
   unions and delegates starts on its own line; architecture tests cover all sources.
 - `POLE008` rejects inline Mongo filter lambdas in runtime persistence operations; use named `*Filters` helpers. It resolves driver filter arguments semantically, so ordinary collection predicates remain allowed.
+- `POLE009`: positional records do not add stored instance members or alternate data constructors;
+  ordinary-property records, computed/static members and DI classes remain allowed. Existing unrelated
+  legacy members have exact per-member allowances, checked by architecture tests.
 - `.editorconfig` and `dotnet format whitespace` verify changed C# source formatting.
 
 Rules use compiler symbols rather than treating every `Store`, array or `Status`
@@ -108,6 +111,17 @@ restricted to changed files or features. For a stacked PR tested with
 `run --base origin/parent`, publish with `open-pr --base parent`. The publication
 command defaults to `master` and rejects a target whose origin ref differs from
 the recorded review base.
+
+For a safe combined changed-file check, use
+`python3 scripts/format_changed.py --base <review-base> --check`. It checks C# with
+the pinned SDK formatter and supported frontend/document files with the locally
+installed Prettier. Use `--write` to apply formatting before review. Write mode
+refuses files with both staged and unstaged edits. Neither mode stages, stashes,
+downloads tools, installs hooks, or changes Git configuration. A fully staged
+file's formatted working copy still needs deliberate review and staging. Project
+XML and other formats without a configured formatter retain their repository
+layout and are checked with `git diff --check`; the command does not reserialize
+them. Run the command again with `--check` after formatting.
 
 A failed prerequisite is a blocked gate, not a skipped passing suite. Repair the
 environment or report the blocker; do not open even a draft PR while it remains.

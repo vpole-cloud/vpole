@@ -802,7 +802,7 @@ public sealed class PostgresIntegrationTests(MongoReplicaSetFixture fixture)
         long requestedCpuMillis = 500,
         long requestedMemoryMi = 512,
         string? runtimeClassName = null) =>
-        ComputeProfileFactory.Create(
+        ComputeProfileFactory.Create("test-profile",
             "PostgreSQL compute",
             "PostgreSQL integration-test profile",
             ComputeProfileResourceRequirements.Create(

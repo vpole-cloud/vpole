@@ -86,6 +86,7 @@ internal sealed class DeploymentTargetBootstrapper(
 
             var createdAtUtc = timeProvider.GetUtcNow().UtcDateTime;
             var target = DeploymentTargetFactory.Create(
+                options.Bootstrap.TechnicalName,
                 options.Bootstrap.DisplayName,
                 observation.ClusterIdentity,
                 prepared.Connection,

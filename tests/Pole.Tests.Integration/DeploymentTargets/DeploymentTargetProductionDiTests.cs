@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Application;
 using Pole.Observation;
 using Pole.ResultType;
 using k8s;
@@ -245,6 +246,7 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
         services.AddOutboxPersistence();
         services.AddKubernetes(configuration)
             .AddDeploymentTargetsFeature(configuration);
+        services.AddGitOpsFeature();
         services.AddResourceGroupsFeature(configuration);
         services.AddFunctionRuntimeFeature(configuration);
 

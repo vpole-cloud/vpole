@@ -300,17 +300,17 @@ public sealed class WebServiceManifestTests
         var spec = TestData.ValidWebServiceSpec().ToDomain() with
         {
             Image = new ImageInfo("registry.example.com", "platform/api-gateway", "2026.04.1", imageSecretName),
-            Config = new WebServiceConfig(
-                EnvironmentVariables: new Dictionary<string, string>
+            Config = new WebServiceConfig()
+            {
+                EnvironmentVariables = new Dictionary<string, string>
                 {
                     ["ASPNETCORE_ENVIRONMENT"] = "Development",
                     ["LOG_LEVEL"] = "Debug"
                 }.ToImmutableDictionary(),
-                PortMappings:
-                [
-                    new PortMapping(80, "8080", "TCP", "http"),
-                    new PortMapping(9090, "metrics", "TCP", "metrics")
-                ]),
+                PortMappings = [new PortMapping(80, "8080", "TCP", "http"), new PortMapping(9090, "metrics", "TCP", "metrics")],
+                ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty,
+                SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty
+            },
             Probes = new ProbeSpec(
                 Startup: new ProbeConfig("/health/startup", "8080"),
                 Liveness: new ProbeConfig("/health/live", "8080"),

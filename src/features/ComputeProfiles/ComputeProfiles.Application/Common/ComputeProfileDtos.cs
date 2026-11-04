@@ -64,7 +64,8 @@ public sealed record ComputeProfileDto(
     bool IsDefault,
     long Revision,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc,
+    string TechnicalName);
 
 public sealed record AvailableComputeProfileDto(
     string Id,
@@ -74,7 +75,8 @@ public sealed record AvailableComputeProfileDto(
     string Architecture,
     IReadOnlyCollection<ComputeExtendedResourceDto> ExtendedResources,
     bool IsDefault,
-    long Revision);
+    long Revision,
+    string TechnicalName);
 
 public sealed record ComputeProfilePageDto(
     IReadOnlyCollection<ComputeProfileDto> Items,
@@ -99,7 +101,8 @@ public static class ComputeProfileDtoExtensions
             profile.IsDefault,
             profile.Revision,
             profile.CreatedAtUtc,
-            profile.UpdatedAtUtc);
+            profile.UpdatedAtUtc,
+            profile.TechnicalName);
 
     public static AvailableComputeProfileDto ToAvailableDto(this ComputeProfile profile) =>
         new(
@@ -110,7 +113,8 @@ public static class ComputeProfileDtoExtensions
             profile.Architecture.ToString(),
             profile.ExtendedResources.Select(ToDto).ToArray(),
             profile.IsDefault,
-            profile.Revision);
+            profile.Revision,
+            profile.TechnicalName);
 
     private static ComputeResourceRequirementsDto ToDto(
         this ComputeProfileResourceRequirements resources) =>

@@ -1,3 +1,4 @@
+import type { GitOpsStatus } from '../../data/gitOps'
 import type { PaginatedResponse, ResourcePlacement } from '../../types'
 
 export interface ImageInfo {
@@ -19,6 +20,7 @@ export interface PortMapping {
 }
 
 export interface WebService {
+  gitOps?: GitOpsStatus | null
   tags?: string[]
   id: string
   name: string

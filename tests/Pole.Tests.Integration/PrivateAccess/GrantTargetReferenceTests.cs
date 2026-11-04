@@ -147,7 +147,7 @@ public sealed class GrantTargetReferenceTests(MongoReplicaSetFixture fixture) : 
         var id = ObjectId.GenerateNewId().ToString();
         var now = DateTime.UtcNow;
         const long connectionVersion = 1;
-        return DeploymentTargetFactory.Create(
+        return DeploymentTargetFactory.Create("target-" + id,
             "Private access target",
             $"kubernetes:kube-system:{id}",
             DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),

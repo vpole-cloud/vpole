@@ -270,7 +270,9 @@ public sealed class RedisNativeObservationKubernetesTests(KubernetesClusterFixtu
         true,
         true,
         false,
-        "Healthy");
+        "Healthy",
+        TechnicalName: "test-target",
+        NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown);
 
     private sealed class ExactClient(IKubernetes client, string target) : IKubernetesClientProvider
     {

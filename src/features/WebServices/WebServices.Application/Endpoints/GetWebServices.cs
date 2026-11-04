@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -44,7 +45,8 @@ public static class GetWebServices
 
 public sealed class GetWebServicesHandler(
     LoadWebServicePage loadWebServicePage,
-    LoadResourceDeploymentSets loadResourceDeploymentSets)
+    LoadResourceDeploymentSets loadResourceDeploymentSets,
+    IGitOpsMutations git)
     : IMediatorOutcomeHandler<GetWebServicesRequest, GetWebServicesOutcome>
 {
     public async Task<GetWebServicesOutcome> HandleAsync(
@@ -65,9 +67,11 @@ public sealed class GetWebServicesHandler(
             page.Items.Select(service => service.Id).ToArray(),
             cancellationToken);
 
+        var statuses = await git.StatusesAsync(request.TenantId, "WebService", page.Items.Select(item => item.Id).ToArray(), cancellationToken);
         return new PaginatedResponse<WebServiceDto>(
             Items: page.Items.Select(service => service.ToDto(
-                placements.GetValueOrDefault(service.Id))),
+                placements.GetValueOrDefault(service.Id)) with
+            { GitOps = statuses.GetValueOrDefault(service.Id) }),
             TotalCount: page.TotalCount,
             PageNumber: request.PageNumber,
             PageSize: request.PageSize);

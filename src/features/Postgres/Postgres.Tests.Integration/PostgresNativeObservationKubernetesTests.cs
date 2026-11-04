@@ -375,7 +375,9 @@ public sealed class PostgresNativeObservationKubernetesTests(KubernetesClusterFi
         true,
         true,
         false,
-        "Healthy");
+        "Healthy",
+        TechnicalName: "test-target",
+        NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown);
 
     private sealed class ExactClient(IKubernetes client, string target) : IKubernetesClientProvider
     {

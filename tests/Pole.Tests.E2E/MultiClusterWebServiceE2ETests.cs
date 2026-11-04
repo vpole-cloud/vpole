@@ -208,6 +208,7 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
             "/api/v1/platform/deployment-targets/");
         request.Content = JsonContent.Create(new
         {
+            technicalName = $"e2e-{target.Key}",
             displayName = $"E2E {target.Key}",
             enabled = true,
             acceptsWorkloads = true,
@@ -296,6 +297,7 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
             "/api/v1/platform/compute-profiles/");
         request.Content = JsonContent.Create(new
         {
+            technicalName = "e2e-multi-target",
             displayName = "E2E multi-target",
             description = "Aspire two-target WebService profile",
             resources = new

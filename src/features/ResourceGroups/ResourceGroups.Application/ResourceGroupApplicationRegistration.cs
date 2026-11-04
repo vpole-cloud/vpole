@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using Hangfire;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -86,6 +87,7 @@ public static class ResourceGroupApplicationRegistration
         services.TryAddScoped<RuntimeCellLifecyclePersistence>();
         services.TryAddScoped<RuntimeCellRecoveryPersistence>();
         services.TryAddScoped<RuntimeCellRecoveryJob>();
+        services.AddScoped<IDeclarativeResourceProvider, DeclarativeResourceGroupProvider>();
         return services;
     }
 
@@ -170,9 +172,9 @@ public static class ResourceGroupApplicationRegistration
             .GetRequiredService<MongoResourcePlacementResolver>()
             .InvokeManyAsync);
 
-        services.TryAddSingleton<RunMongoOutcomeTransaction<ResourceGroup>>(serviceProvider => serviceProvider
+        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistCreatedResourceGroupResult>>(serviceProvider => serviceProvider
             .GetRequiredService<MongoRunTransaction>()
-            .InvokeOutcomeAsync<ResourceGroup>);
+            .InvokeOutcomeAsync<PersistCreatedResourceGroupResult>);
         services.TryAddSingleton<RunMongoOutcomeTransaction<PersistUpdatedResourceGroupOutcome>>(serviceProvider =>
             serviceProvider
                 .GetRequiredService<MongoRunTransaction>()

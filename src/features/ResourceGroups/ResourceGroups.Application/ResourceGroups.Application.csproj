@@ -9,6 +9,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <ProjectReference Include="../../GitOps/GitOps.Contracts/GitOps.Contracts.csproj" />
       <InternalsVisibleTo Include="Pole.Tests.Integration" />
     </ItemGroup>
 

@@ -353,7 +353,7 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
 
     private static CreateComputeProfileRequestBody CreateComputeProfileBody(
         ComputeProfileTenantAccessRequestBody tenantAccess) =>
-        new(
+        new("test-profile",
             "General purpose",
             "API test profile",
             new ComputeResourceRequirementsRequestBody(

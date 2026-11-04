@@ -66,21 +66,21 @@ public class ResourceDeploymentSearchProjectionConsumer(
         IReadOnlyList<PlacementSummaryDto> deployments)
     {
         var allStatuses = deployments.Select(deployment => deployment.Status).ToArray();
-        var statuses = allStatuses.Where(status => status != "Deleted").ToArray();
+        var statuses = allStatuses.Where(status => status != ResourceDeploymentStatus.Deleted).ToArray();
 
         if (statuses.Length == 0 && allStatuses.Length > 0)
             return "Deleted";
-        if (statuses.Contains("DeleteFailed"))
+        if (statuses.Contains(ResourceDeploymentStatus.DeleteFailed))
             return "DeleteFailed";
-        if (statuses.Contains("Failed"))
-            return statuses.Contains("Applied") ? "PartiallyFailed" : "Failed";
-        if (statuses.Contains("Deleting"))
+        if (statuses.Contains(ResourceDeploymentStatus.Failed))
+            return statuses.Contains(ResourceDeploymentStatus.Applied) ? "PartiallyFailed" : "Failed";
+        if (statuses.Contains(ResourceDeploymentStatus.Deleting))
             return "Deleting";
-        if (statuses.All(status => status == "Applied"))
+        if (statuses.All(status => status == ResourceDeploymentStatus.Applied))
             return "Applied";
-        if (statuses.Contains("Reconciling"))
+        if (statuses.Contains(ResourceDeploymentStatus.Reconciling))
             return "Reconciling";
-        if (statuses.Contains("WaitingForRuntimeCell"))
+        if (statuses.Contains(ResourceDeploymentStatus.WaitingForRuntimeCell))
             return "WaitingForRuntimeCell";
         return "Pending";
     }

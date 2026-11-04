@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 namespace Pole.Features.ResourceGroups.Application.Common;
 
 public sealed record ResourceGroupDto(
@@ -10,8 +11,8 @@ public sealed record ResourceGroupDto(
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
     long ResourceCount,
-    IEnumerable<string> Tags
-);
+    IEnumerable<string> Tags,
+    GitResourceStatus? GitOps = null);
 
 public sealed record ResourceRegistrationDto(
     string RegistrationId,

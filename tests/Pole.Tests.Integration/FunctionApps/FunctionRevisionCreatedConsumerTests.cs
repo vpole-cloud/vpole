@@ -70,7 +70,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
         {
             var placement = await loadPlacement(tenant, type, resource, deployment, ct);
             Assert.NotNull(placement);
-            return placement with { Status = "Applied" };
+            return placement with { Status = ResourceDeploymentStatus.Applied };
         });
         var consumer = new FunctionRevisionCreatedConsumer(
             new MongoLoadFunctionRevisionProvisioningSubject(
@@ -460,8 +460,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
                         1,
                         1,
                         null!,
-                        "Applied",
-                        "Apply",
+                        ResourceDeploymentStatus.Applied, ResourceDeploymentDesiredOperation.Apply,
                         "test-scope")
                     : null);
 

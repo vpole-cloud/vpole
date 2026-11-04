@@ -18,8 +18,28 @@ public sealed record WebService(
     ImmutableHashSet<string> Tags,
     ImmutableList<ServiceEvent> Events,
     long Revision,
-    WebServiceLifecycle Lifecycle)
+    WebServiceLifecycle Lifecycle,
+    [property: BsonIgnoreIfNull] WebServiceDeclaredPlacement? DeclaredPlacement = null)
 {
+    public WebService BindDeclaredPlacement(WebServiceDeclaredPlacement placement)
+    {
+        if (DeclaredPlacement is not null && DeclaredPlacement.DeploymentTargetId != placement.DeploymentTargetId)
+            throw new InvalidOperationException("A declared service placement cannot change its target identity.");
+        return this with { DeclaredPlacement = placement };
+    }
+
+    public WebService ActivatePrepared(WebServiceSpec spec, IEnumerable<string> tags, WebServiceExposure exposure) =>
+        Lifecycle is PreparedWebServiceLifecycle ? this with
+        {
+            Spec = spec,
+            Tags = WebServiceFactory.NormalizeTags(tags),
+            Exposure = exposure,
+            Lifecycle = new ActiveWebServiceLifecycle(),
+            ActiveRevision = checked(ActiveRevision + 1),
+            Revision = checked(Revision + 1)
+        }
+            : UpdateDesiredState(spec, tags, exposure);
+
     public WebService UpdateDesiredState(WebServiceSpec spec, IEnumerable<string> tags)
         => UpdateDesiredState(spec, tags, Exposure);
 
@@ -95,8 +115,10 @@ public sealed record WebService(
 }
 
 [BsonDiscriminator(RootClass = true)]
-[BsonKnownTypes(typeof(ActiveWebServiceLifecycle), typeof(DeletingWebServiceLifecycle))]
+[BsonKnownTypes(typeof(PreparedWebServiceLifecycle), typeof(ActiveWebServiceLifecycle), typeof(DeletingWebServiceLifecycle))]
 public closed record WebServiceLifecycle;
+
+public sealed record PreparedWebServiceLifecycle : WebServiceLifecycle;
 
 public sealed record ActiveWebServiceLifecycle : WebServiceLifecycle;
 
@@ -163,10 +185,10 @@ public sealed record AutoscalingSpec(
 public sealed record AutoscalingMetric(
     string Type,
     int TargetAverageUtilization);
-public sealed record WebServiceConfig(
-    ImmutableDictionary<string, string> EnvironmentVariables,
-    ImmutableList<PortMapping> PortMappings)
+public sealed record WebServiceConfig
 {
+    public required ImmutableDictionary<string, string> EnvironmentVariables { get; init; }
+    public required ImmutableList<PortMapping> PortMappings { get; init; }
     public ImmutableDictionary<string, ConnectionEnvironmentReference> ConnectionEnvironmentReferences
     {
         get => field ?? ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty;
@@ -204,12 +226,12 @@ public sealed record ImageInfo(
 public static class WebServiceFactory
 {
     public sealed record CreateOptions(
-        string Id,
-        long ActiveRevision,
-        ImmutableHashSet<string> Tags,
-        ImmutableList<ServiceEvent> Events,
-        long Revision,
-        WebServiceLifecycle Lifecycle);
+    string Id,
+    long ActiveRevision,
+    ImmutableHashSet<string> Tags,
+    ImmutableList<ServiceEvent> Events,
+    long Revision,
+    WebServiceLifecycle Lifecycle);
 
     public static CreateOptions DefaultOptions => new(
         ObjectId.GenerateNewId().ToString(), 1, ImmutableHashSet<string>.Empty,

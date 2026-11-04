@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -49,7 +50,8 @@ public union GetResourceGroupOutcome(
 
 public sealed class GetResourceGroupHandler(
     LoadResourceGroup loadResourceGroup,
-    LoadResourceRegistrationCount loadResourceRegistrationCount)
+    LoadResourceRegistrationCount loadResourceRegistrationCount,
+    IGitOpsMutations git)
     : IMediatorOutcomeHandler<GetResourceGroupRequest, GetResourceGroupOutcome>
 {
     public async Task<GetResourceGroupOutcome> HandleAsync(
@@ -58,7 +60,7 @@ public sealed class GetResourceGroupHandler(
     {
         var group = await loadResourceGroup(request.TenantId, request.Id, cancellationToken);
         if (group is null) return new ResourceGroupNotFound(request.Id);
-        return group.ToDto(await loadResourceRegistrationCount(request.TenantId, request.Id, cancellationToken));
+        return group.ToDto(await loadResourceRegistrationCount(request.TenantId, request.Id, cancellationToken)) with { GitOps = await git.StatusAsync(request.TenantId, "ResourceGroup", group.Id, cancellationToken) };
     }
 }
 

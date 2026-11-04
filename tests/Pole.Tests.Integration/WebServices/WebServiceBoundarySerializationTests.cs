@@ -18,8 +18,10 @@ public sealed class WebServiceBoundarySerializationTests
     public void Logical_references_round_trip_HTTP_BSON_and_legacy_missing_fields_default_empty()
     {
         var id = ObjectId.GenerateNewId().ToString();
-        var config = new WebServiceConfigDto(ImmutableDictionary<string, string>.Empty, [])
+        var config = new WebServiceConfigDto()
         {
+            EnvironmentVariables = ImmutableDictionary<string, string>.Empty,
+            PortMappings = [],
             ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReferenceDto>.Empty.Add("PGHOST", new(id, "Host")),
             SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReferenceDto>.Empty.Add("PGPASSWORD", new(id, "password"))
         };
@@ -45,9 +47,12 @@ public sealed class WebServiceBoundarySerializationTests
     [InlineData("unexpected-key")]
     public void Reference_validation_rejects_collisions_native_identity_and_invalid_field_shape(string failure)
     {
-        var config = new WebServiceConfigDto(ImmutableDictionary<string, string>.Empty, [])
+        var config = new WebServiceConfigDto()
         {
-            ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReferenceDto>.Empty.Add("HOST", new(ObjectId.GenerateNewId().ToString(), "Host"))
+            EnvironmentVariables = ImmutableDictionary<string, string>.Empty,
+            PortMappings = [],
+            ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReferenceDto>.Empty.Add("HOST", new(ObjectId.GenerateNewId().ToString(), "Host")),
+            SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReferenceDto>.Empty
         };
         config = failure switch
         {

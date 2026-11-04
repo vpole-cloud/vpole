@@ -51,6 +51,7 @@ public union RollbackWebServiceStateError(
 
 public union WebServiceDeploymentMutationStateError(
     WebServiceNotFound,
+    WebServiceUpdateUnavailable,
     WebServiceResourceDeploymentNotFound);
 
 public union DeleteWebServiceDeploymentStateError(

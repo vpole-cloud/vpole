@@ -521,7 +521,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         var deleting = result.AssertSuccess();
 
         Assert.Equal(removed.DeploymentId, deleting.DeploymentId);
-        Assert.Equal("Deleting", deleting.Status);
+        Assert.Equal(ResourceDeploymentStatus.Deleting, deleting.Status);
         var release = await Fixture.Database.WebServiceReleases()
             .Find(item => item.WebServiceId == created.WebServiceId &&
                           item.ResourceRevision == 2)
@@ -655,7 +655,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         var retried = result.AssertSuccess();
 
         Assert.Equal(2, retried.ResourceRevision);
-        Assert.Equal("Pending", retried.Status);
+        Assert.Equal(ResourceDeploymentStatus.Pending, retried.Status);
         var release = await Fixture.Database.WebServiceReleases()
             .Find(item => item.WebServiceId == created.WebServiceId &&
                           item.ResourceRevision == 2)

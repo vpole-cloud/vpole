@@ -79,7 +79,7 @@ public sealed class ComputeProfileDomainTests
         ],
         AllTenantsComputeProfileAccess.Create()));
 
-        Assert.Throws<ArgumentException>(() => ComputeProfileFactory.Create(
+        Assert.Throws<ArgumentException>(() => ComputeProfileFactory.Create("test-profile",
             "Duplicate devices",
             string.Empty,
             Resources(),
@@ -204,7 +204,7 @@ public sealed class ComputeProfileDomainTests
     private static ComputeProfile CreateProfile(
         IEnumerable<ComputeProfileTargetMapping> mappings,
         ComputeProfileTenantAccess tenantAccess) =>
-        ComputeProfileFactory.Create(
+        ComputeProfileFactory.Create("test-profile",
             "Accelerated",
             "Portable test profile",
             Resources(),

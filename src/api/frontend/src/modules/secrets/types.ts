@@ -1,4 +1,6 @@
+import type { GitOpsStatus } from '../../data/gitOps'
 export interface SecretMetadata {
+  gitOps?: GitOpsStatus | null
   id: string
   tenantId: string
   resourceGroupId: string
@@ -6,6 +8,7 @@ export interface SecretMetadata {
   name: string
   purpose: string
   keyNames: string[]
+  missingValueKeys?: string[]
   currentVersion: number
   revision: number
   lifecycle: string
@@ -31,7 +34,7 @@ export interface SecretBindingInput {
 }
 
 export interface SecretUsage {
-  binding: SecretBindingInput & { id: string }
+  binding: SecretBindingInput & { id: string; gitOps?: GitOpsStatus | null }
   affectedDeploymentIds: string[]
 }
 

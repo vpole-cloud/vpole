@@ -117,3 +117,11 @@ Related documentation:
 - [Deployment targets](../../../docs/deployment-targets.md)
 - [Tenant quotas](../../../docs/quotas.md)
 - [Testing](../../../docs/testing.md)
+
+## Technical identity and revision history
+
+Creation requires `technicalName`, a unique immutable lowercase DNS label. `displayName` remains
+editable. The built-in bootstrap profile is explicitly named `default`; no name-assignment endpoint
+or automatic display-label conversion exists. A newly created profile starts at revision 1.
+Configuration edits retain immutable revisions for explicitly pinned IaC; naming does not require
+a second request or consume a separate revision. Updates cannot rename a profile.

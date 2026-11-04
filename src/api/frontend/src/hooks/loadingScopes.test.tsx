@@ -82,6 +82,7 @@ describe('loading scope changes', () => {
     vi.mocked(api.fetchPlatformDeploymentTargets).mockResolvedValue([
       {
         id: 'a',
+        technicalName: 'a',
         displayName: 'East',
         enabled: true,
         acceptsWorkloads: true,
@@ -90,6 +91,7 @@ describe('loading scope changes', () => {
       },
       {
         id: 'b',
+        technicalName: 'b',
         displayName: 'West',
         enabled: true,
         acceptsWorkloads: true,
@@ -290,6 +292,7 @@ it.each(['create', 'update'] as const)(
     vi.mocked(api.fetchPlatformDeploymentTargets).mockResolvedValue([
       {
         id: 'target',
+        technicalName: 'target',
         displayName: 'Target',
         enabled: true,
         acceptsWorkloads: true,

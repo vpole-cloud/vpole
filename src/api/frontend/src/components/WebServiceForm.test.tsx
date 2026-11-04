@@ -5,6 +5,7 @@ import type { AvailableDeploymentTarget } from '../types'
 
 const target = (id: string, displayName: string): AvailableDeploymentTarget => ({
   id,
+  technicalName: id,
   displayName,
   workloadConfigurationRevision: 1,
   hasPublicIngress: true,

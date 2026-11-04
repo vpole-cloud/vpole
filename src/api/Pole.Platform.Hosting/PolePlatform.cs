@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Application;
 using Pole.Features.Outbox.Application.Persistence.Delivery;
 using Pole.Features.Realtime.Application;
 using Pole.Features.Realtime.Application.Redis;
@@ -49,6 +50,7 @@ public static class PolePlatform
 {
     public static Assembly[] ApplicationAssemblies =>
     [
+        typeof(GitOpsFeature).Assembly,
         typeof(RealtimeFeature).Assembly,
         typeof(SecretFeature).Assembly,
         typeof(PrivateAccessFeature).Assembly,
@@ -99,6 +101,7 @@ public static class PolePlatform
         services.AddKubernetes(configuration).AddDatabase()
             .AddRealtimeFeature(configuration, development).AddRealtimeRedis(configuration, development)
             .AddOutboxFeature(configuration, events)
+            .AddGitOpsFeature()
             .AddResourceGroupsFeature(configuration)
             .AddResourceDeploymentsFeature(configuration)
             .AddTenantsFeature()

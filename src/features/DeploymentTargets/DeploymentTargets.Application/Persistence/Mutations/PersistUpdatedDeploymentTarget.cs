@@ -38,7 +38,8 @@ internal sealed class MongoPersistUpdatedDeploymentTarget(
     {
         ArgumentNullException.ThrowIfNull(current);
         ArgumentNullException.ThrowIfNull(replacement);
-        if (!string.Equals(current.Id, replacement.Id, StringComparison.Ordinal))
+        if (!string.Equals(current.Id, replacement.Id, StringComparison.Ordinal) ||
+            current.TechnicalName != replacement.TechnicalName)
         {
             throw new ArgumentException(
                 "The current and replacement deployment targets must have the same ID.",

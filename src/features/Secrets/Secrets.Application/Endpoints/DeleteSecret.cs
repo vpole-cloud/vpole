@@ -21,7 +21,8 @@ public union DeleteSecretOutcome(
     SecretDeleted,
     SecretMissing,
     SecretBindingsRemain,
-    SecretReferenceRejected);
+    SecretReferenceRejected,
+    SecretGitOwned);
 
 public sealed record DeleteSecretRequest(
     [FromRoute] string Id,
@@ -46,6 +47,7 @@ public sealed class DeleteSecretHandler(DeleteStoredSecret persist)
         {
             Unit => new SecretDeleted(),
             SecretMissing error => error,
+            SecretGitOwned error => error,
             SecretBindingsRemain error => error,
             SecretReferenceRejected error => error,
         };
@@ -64,6 +66,7 @@ public static class DeleteSecretEndpoint
                 {
                     SecretDeleted => Results.NoContent(),
                     SecretMissing error => MapMissing(error),
+                    SecretGitOwned error => MapGitOwned(error),
                     SecretBindingsRemain error => MapBindingsRemain(error),
                     SecretReferenceRejected error => MapReferenceRejected(error)
                 }))

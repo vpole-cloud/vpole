@@ -42,6 +42,7 @@ public static class DeploymentTargetPersistenceRegistration
         AddCapability<MongoLoadDeploymentTargets, LoadDeploymentTargets>(
             services,
             implementation => implementation.InvokeAsync);
+        AddCapability<MongoResolveNamedDeploymentTarget, ResolveNamedDeploymentTarget>(services, implementation => implementation.InvokeAsync);
         AddCapability<MongoLoadEligibleDeploymentTargets, LoadEligibleDeploymentTargets>(
             services,
             implementation => implementation.InvokeAsync);

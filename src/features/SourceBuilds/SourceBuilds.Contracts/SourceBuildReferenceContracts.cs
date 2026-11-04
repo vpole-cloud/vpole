@@ -134,7 +134,11 @@ public sealed record SourceBuildWebServiceDeploymentRejected(
     string WebServiceId,
     SourceBuildResourceDeploymentRejection Reason);
 
-public sealed record SourceBuildWebServiceUpdateConflict(string WebServiceId);
+public enum SourceBuildWebServiceUpdateConflictReason { ExpectedRevisionConflict, GitOwnedConfiguration }
+
+public sealed record SourceBuildWebServiceUpdateConflict(
+    string WebServiceId,
+    SourceBuildWebServiceUpdateConflictReason Reason = SourceBuildWebServiceUpdateConflictReason.ExpectedRevisionConflict);
 
 public union SourceBuildWebServiceDeploymentError(
     SourceBuildWebServiceNotFound,

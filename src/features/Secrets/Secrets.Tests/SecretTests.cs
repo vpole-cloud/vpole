@@ -4,6 +4,9 @@ using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Secrets.Application;
+using Pole.Features.Secrets.Application.Projections;
+using Pole.Features.Secrets.Contracts;
+using Pole.Workloads;
 using Pole.Features.Secrets.Application.Endpoints;
 using Pole.Features.Secrets.Domain;
 using Pole.Features.Secrets.Events;
@@ -34,6 +37,77 @@ public sealed class SecretTests
             {
                 ["password"] = "PASSWORD"
             });
+
+    [Fact]
+    public async Task One_recovery_pass_can_release_independent_consumers_without_reusing_the_old_reference_fence()
+    {
+        SecretBinding Retained(string id) => SecretBinding.Create(id, "pole/web-service", id, new AllSecretDeployments(), [])
+            .PinReferences(["password"], true).PinReferences(["user"], true);
+        var current = NewSecret().Bind(Retained("first"), DateTime.UtcNow).Bind(Retained("second"), DateTime.UtcNow);
+        var originalFence = current.ReferenceFence;
+        var reconciler = new SecretKeyRetirementReconciler((_, _, _) => Task.FromResult<Secret?>(current),
+            (_, _, revision, fence, binding, _, _) =>
+            {
+                if (revision != current.Revision || fence != current.ReferenceFence) return Task.FromResult(false);
+                current = current.ReleaseRetainedKeys(binding);
+                return Task.FromResult(true);
+            }, [new ConfirmedRolloutObserver()]);
+        await reconciler.ReconcileAsync(current.TenantId, current.Id);
+        Assert.All(current.Bindings, binding => Assert.Empty(binding.RetainedKeys));
+        Assert.Equal(originalFence + 2, current.ReferenceFence);
+    }
+
+    private sealed class ConfirmedRolloutObserver : ISecretConsumerRolloutObserver
+    {
+        public ResourceTypeId ResourceType => ResourceTypeId.Create("pole/web-service");
+        public Task<SecretConsumerRolloutOutcome> ObserveAsync(string tenantId, string consumerId, CancellationToken ct) =>
+            Task.FromResult<SecretConsumerRolloutOutcome>(new SecretConsumerRolloutConfirmed([new("placement-" + consumerId, 1, 1)]));
+    }
+
+    [Fact]
+    public void Declaration_metadata_preserves_values_and_rejects_keys_protected_by_old_rollouts()
+    {
+        var binding = SecretBinding.Create("binding", "pole/web-service", "consumer", new AllSecretDeployments(), [])
+            .PinReferences(["password"], true).PinReferences(["user"], true);
+        var secret = NewSecret().Bind(binding, DateTime.UtcNow);
+        Assert.IsType<SecretDeclaredKeysInUse>(secret.UpdateDeclaredMetadata("changed", ["user"], DateTime.UtcNow).Value);
+        Assert.Throws<InvalidOperationException>(() => secret.Rotate(["user"], DateTime.UtcNow));
+        var released = secret.ReleaseRetainedKeys(binding.Id);
+        var updated = Assert.IsType<Secret>(released.UpdateDeclaredMetadata("changed", ["user"], DateTime.UtcNow).Value);
+        Assert.Equal(secret.CurrentVersion, updated.CurrentVersion);
+        Assert.Equal(secret.Revision + 1, updated.Revision);
+        Assert.Equal(secret.ReferenceFence + 1, updated.ReferenceFence);
+        Assert.Same(updated, updated.UpdateDeclaredMetadata("changed", ["user"], DateTime.UtcNow).Value);
+    }
+
+    [Fact]
+    public void Declarative_binding_updates_preserve_required_and_retained_aliases_and_return_typed_conflicts()
+    {
+        var binding = (Binding("a", "one") with { KeyMappings = Binding("a", "one").KeyMappings.Add("user", "USER") }).PinReferences(["password"], true).PinReferences(["user"], true);
+        var secret = NewSecret().Bind(binding, DateTime.UtcNow);
+        var changed = binding with { KeyMappings = binding.KeyMappings.SetItem("password", "NEW") };
+        var rejected = Assert.IsType<SecretBindingRejected>(secret.DeclareBinding(changed, DateTime.UtcNow).Value);
+        Assert.Equal(SecretBindingRejection.KeysInUse, rejected.Reason);
+        Assert.Equal(SecretBindingRejection.ImmutableConsumer,
+            Assert.IsType<SecretBindingRejected>(secret.DeclareBinding(binding with { ConsumerId = "other" }, DateTime.UtcNow).Value).Reason);
+        Assert.Same(secret, secret.DeclareBinding(binding, DateTime.UtcNow).Value);
+        var released = secret.ReleaseRetainedKeys(binding.Id);
+        var updated = Assert.IsType<Secret>(released.DeclareBinding(changed, DateTime.UtcNow).Value);
+        Assert.Equal("NEW", Assert.Single(updated.Bindings).KeyMappings["password"]);
+        Assert.Equal(["user"], Assert.Single(updated.Bindings).RequiredKeys.ToArray());
+        Assert.Empty(Assert.Single(updated.Bindings).RetainedKeys);
+    }
+
+    [Fact]
+    public void Consecutive_reference_changes_retain_all_earlier_keys_until_release()
+    {
+        var binding = SecretBinding.Create("a", "pole/web-service", "one", new AllSecretDeployments(), [])
+            .PinReferences(["first"], true).PinReferences(["second"], true).PinReferences(["third"], true);
+        Assert.Equal(["first", "second"], binding.RetainedKeys.ToArray());
+        Assert.Equal(["third"], binding.RequiredKeys.ToArray());
+        Assert.Equal(["first", "second"], binding.PinReferences([], false).RetainedKeys.ToArray());
+        Assert.Equal(["second", "third"], binding.PinReferences(["first"], true).RetainedKeys.ToArray());
+    }
 
     [Fact]
     public void RotationPreservesBindingsAndDoesNotMutatePreviousVersion()

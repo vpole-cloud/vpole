@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using System.ComponentModel;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
@@ -50,7 +51,8 @@ public record GetResourceGroupsRequest
 
 
 public sealed class GetResourceGroupsHandler(
-    LoadResourceGroupPage loadResourceGroupPage)
+    LoadResourceGroupPage loadResourceGroupPage,
+    IGitOpsMutations git)
     : IMediatorOutcomeHandler<GetResourceGroupsRequest, GetResourceGroupsOutcome>
 {
     public async Task<GetResourceGroupsOutcome> HandleAsync(
@@ -65,8 +67,9 @@ public sealed class GetResourceGroupsHandler(
                 request.Search),
             cancellationToken);
 
+        var statuses = await git.StatusesAsync(request.TenantId, "ResourceGroup", page.Items.Select(item => item.ResourceGroup.Id).ToArray(), cancellationToken);
         return new PaginatedResponse<ResourceGroupDto>(
-            Items: page.Items.Select(x => x.ResourceGroup.ToDto(x.ResourceCount)),
+            Items: page.Items.Select(x => x.ResourceGroup.ToDto(x.ResourceCount) with { GitOps = statuses.GetValueOrDefault(x.ResourceGroup.Id) }),
             TotalCount: page.TotalCount,
             PageNumber: request.PageNumber,
             PageSize: request.PageSize);

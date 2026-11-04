@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 // ReSharper disable MemberCanBePrivate.Global
 
 using System.Collections.Immutable;
@@ -16,11 +17,9 @@ public sealed record WebServiceDto(
     long ActiveRevision,
     WebServiceSpecDto Spec,
     WebServiceExposureDto Exposure,
-    IReadOnlyList<PlacementSummaryDto> Deployments
-)
-{
-    public ImmutableHashSet<string> Tags { get; init; } = [];
-}
+    IReadOnlyList<PlacementSummaryDto> Deployments,
+    ImmutableHashSet<string> Tags,
+    GitResourceStatus? GitOps = null);
 
 public sealed record WebServiceReleaseDto(
     string Id,
@@ -36,8 +35,7 @@ public sealed record WebServiceReleaseDto(
     string? CorrelationId,
     WebServiceReleaseProvenanceDto? Provenance,
     ImmutableList<WebServiceReleaseDeploymentDto> Deployments,
-    WebServiceSpecDto Spec
-);
+    WebServiceSpecDto Spec);
 
 public sealed record WebServiceReleaseDeploymentDto(
     string ResourceDeploymentId,
@@ -52,8 +50,7 @@ public sealed record WebServiceReleaseDeploymentDto(
 
 public sealed record WebServiceReleaseHistoryDto(
     long ActiveRevision,
-    PaginatedResponse<WebServiceReleaseDto> Releases
-);
+    PaginatedResponse<WebServiceReleaseDto> Releases);
 
 public sealed record WebServiceReleaseProvenanceDto(
     string Source,
@@ -64,11 +61,9 @@ public sealed record WebServiceReleaseProvenanceDto(
     string NewImageTag,
     string ActorType,
     string? DeploymentTokenId,
-    string? DeploymentTokenName)
-{
-    public string? BuildJobId { get; init; }
-    public string? SourceRepositoryId { get; init; }
-}
+    string? DeploymentTokenName,
+    string? BuildJobId = null,
+    string? SourceRepositoryId = null);
 
 public sealed record WebServiceDeploymentTokenDto(
     string Id,
@@ -95,23 +90,19 @@ public sealed record WebServiceSpecDto(
     ImageInfoDto Image,
     WebServiceConfigDto Config,
     AutoscalingSpecDto? Autoscaling,
-    ProbeSpecDto Probes
-);
+    ProbeSpecDto Probes);
 public sealed record AutoscalingSpecDto(
     int MinReplicas,
     int MaxReplicas,
-    AutoscalingMetricDto Metric
-);
+    AutoscalingMetricDto Metric);
 public sealed record AutoscalingMetricDto(
     string Type,
-    int TargetAverageUtilization
-);
+    int TargetAverageUtilization);
 
 public record ProbeSpecDto(
     ProbeConfigDto Startup,
     ProbeConfigDto Liveness,
-    ProbeConfigDto Readiness
-);
+    ProbeConfigDto Readiness);
 public record ProbeConfigDto(
     string Path,
     string Port,
@@ -119,14 +110,12 @@ public record ProbeConfigDto(
     int PeriodSeconds,
     int TimeoutSeconds,
     int FailureThreshold,
-    int SuccessThreshold
-);
+    int SuccessThreshold);
 
-public sealed record WebServiceConfigDto(
-    ImmutableDictionary<string, string> EnvironmentVariables,
-    ImmutableList<PortMappingDto> PortMappings
-)
+public sealed record WebServiceConfigDto
 {
+    public required ImmutableDictionary<string, string> EnvironmentVariables { get; init; }
+    public required ImmutableList<PortMappingDto> PortMappings { get; init; }
     public ImmutableDictionary<string, ConnectionEnvironmentReferenceDto> ConnectionEnvironmentReferences { get; init; } = ImmutableDictionary<string, ConnectionEnvironmentReferenceDto>.Empty;
     public ImmutableDictionary<string, SecretEnvironmentReferenceDto> SecretEnvironmentReferences { get; init; } = ImmutableDictionary<string, SecretEnvironmentReferenceDto>.Empty;
 }
@@ -144,8 +133,7 @@ public sealed record PortMappingDto(
     int ServicePort,
     string TargetPort,
     string Protocol,
-    string Name
-);
+    string Name);
 
 public sealed record ImageInfoDto(
     string Server,
@@ -164,9 +152,8 @@ public static class WebServiceDtoExtensions
         webService.ActiveRevision,
         webService.Spec.ToDto(),
         webService.Exposure.ToDto(),
-        deployments ?? []
-    )
-        { Tags = webService.Tags };
+        deployments ?? [],
+        webService.Tags);
     public static WebServiceReleaseDto ToDto(this WebServiceRelease release) => new(
         release.Id,
         release.ResourceRevision,
@@ -261,17 +248,12 @@ public static class WebServiceDtoExtensions
         probe.FailureThreshold,
         probe.SuccessThreshold
     );
-    public static WebServiceConfigDto ToDto(this WebServiceConfig config) => new(
-        config.EnvironmentVariables,
-        config.PortMappings
-            .Select(pm => new PortMappingDto(pm.ServicePort, pm.TargetPort, pm.Protocol, pm.Name))
-            .ToImmutableList()
-    )
+    public static WebServiceConfigDto ToDto(this WebServiceConfig config) => new()
     {
-        ConnectionEnvironmentReferences = config.ConnectionEnvironmentReferences.ToImmutableDictionary(pair => pair.Key,
-            pair => new ConnectionEnvironmentReferenceDto(pair.Value.ConnectionId, pair.Value.ValueKind, pair.Value.ConfigurationKey)),
-        SecretEnvironmentReferences = config.SecretEnvironmentReferences.ToImmutableDictionary(pair => pair.Key,
-            pair => new SecretEnvironmentReferenceDto(pair.Value.SecretId, pair.Value.Key))
+        EnvironmentVariables = config.EnvironmentVariables,
+        PortMappings = config.PortMappings.Select(pm => new PortMappingDto(pm.ServicePort, pm.TargetPort, pm.Protocol, pm.Name)).ToImmutableList(),
+        ConnectionEnvironmentReferences = config.ConnectionEnvironmentReferences.ToImmutableDictionary(pair => pair.Key, pair => new ConnectionEnvironmentReferenceDto(pair.Value.ConnectionId, pair.Value.ValueKind, pair.Value.ConfigurationKey)),
+        SecretEnvironmentReferences = config.SecretEnvironmentReferences.ToImmutableDictionary(pair => pair.Key, pair => new SecretEnvironmentReferenceDto(pair.Value.SecretId, pair.Value.Key))
     };
     public static ImageInfoDto ToDto(this ImageInfo image) => new(
         image.Server,
@@ -308,17 +290,12 @@ public static class WebServiceDtoExtensions
         dto.FailureThreshold,
         dto.SuccessThreshold
     );
-    public static WebServiceConfig ToDomain(this WebServiceConfigDto dto) => new(
-        dto.EnvironmentVariables ?? ImmutableDictionary<string, string>.Empty,
-        dto.PortMappings
-            .Select(pm => new PortMapping(pm.ServicePort, pm.TargetPort, pm.Protocol, pm.Name))
-            .ToImmutableList()
-    )
+    public static WebServiceConfig ToDomain(this WebServiceConfigDto dto) => new()
     {
-        ConnectionEnvironmentReferences = (dto.ConnectionEnvironmentReferences ?? ImmutableDictionary<string, ConnectionEnvironmentReferenceDto>.Empty)
-            .ToImmutableDictionary(pair => pair.Key, pair => new ConnectionEnvironmentReference(MongoDB.Bson.ObjectId.Parse(pair.Value.ConnectionId).ToString(), pair.Value.ValueKind, pair.Value.ConfigurationKey)),
-        SecretEnvironmentReferences = (dto.SecretEnvironmentReferences ?? ImmutableDictionary<string, SecretEnvironmentReferenceDto>.Empty)
-            .ToImmutableDictionary(pair => pair.Key, pair => new SecretEnvironmentReference(MongoDB.Bson.ObjectId.Parse(pair.Value.SecretId).ToString(), pair.Value.Key))
+        EnvironmentVariables = dto.EnvironmentVariables ?? ImmutableDictionary<string, string>.Empty,
+        PortMappings = dto.PortMappings.Select(pm => new PortMapping(pm.ServicePort, pm.TargetPort, pm.Protocol, pm.Name)).ToImmutableList(),
+        ConnectionEnvironmentReferences = (dto.ConnectionEnvironmentReferences ?? ImmutableDictionary<string, ConnectionEnvironmentReferenceDto>.Empty).ToImmutableDictionary(pair => pair.Key, pair => new ConnectionEnvironmentReference(MongoDB.Bson.ObjectId.Parse(pair.Value.ConnectionId).ToString(), pair.Value.ValueKind, pair.Value.ConfigurationKey)),
+        SecretEnvironmentReferences = (dto.SecretEnvironmentReferences ?? ImmutableDictionary<string, SecretEnvironmentReferenceDto>.Empty).ToImmutableDictionary(pair => pair.Key, pair => new SecretEnvironmentReference(MongoDB.Bson.ObjectId.Parse(pair.Value.SecretId).ToString(), pair.Value.Key))
     };
     public static ImageInfo ToDomain(this ImageInfoDto dto) => new(
         dto.Server,

@@ -31,13 +31,24 @@ public sealed record SecretBinding(
     string ConsumerType,
     string ConsumerId,
     SecretDeploymentSelection Selection,
-    ImmutableDictionary<string, string> KeyMappings)
+    ImmutableDictionary<string, string> KeyMappings,
+    string? DeclarationName,
+    ImmutableArray<string> RequiredKeys,
+    ImmutableArray<string> RetainedKeys)
 {
-    public ImmutableArray<string> RequiredKeys
+    [BsonIgnore]
+    public IEnumerable<string> ProtectedKeys => RequiredKeys.Concat(RetainedKeys).Distinct(StringComparer.Ordinal);
+
+    public SecretBinding PinReferences(IEnumerable<string> desiredKeys, bool retainPreviousReferences)
     {
-        get => field.IsDefault ? [] : field;
-        init;
-    } = [];
+        var desired = desiredKeys.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToImmutableArray();
+        var retained = RetainedKeys.Concat(retainPreviousReferences ? RequiredKeys : [])
+            .Except(desired, StringComparer.Ordinal).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToImmutableArray();
+        return this with { RequiredKeys = desired, RetainedKeys = retained };
+    }
+
+    public string ProjectedKey(string key) => KeyMappings.Count == 0 ? key : KeyMappings[key];
+    public bool IncludesKey(string key) => KeyMappings.Count == 0 || KeyMappings.ContainsKey(key);
 
     public static SecretBinding Create(
         string id,
@@ -50,7 +61,7 @@ public sealed record SecretBinding(
             consumerType,
             consumerId,
             selection,
-            keyMappings.ToImmutableDictionary());
+            keyMappings.ToImmutableDictionary(), null, [], []);
 }
 
 public enum SecretLifecycle
@@ -72,8 +83,7 @@ public sealed record SecretVersion(
 }
 
 public sealed record Secret(
-    [property: BsonId]
-    string Id,
+    [property: BsonId] string Id,
     string TenantId,
     string ResourceGroupId,
     string IsolationScopeId,
@@ -83,26 +93,80 @@ public sealed record Secret(
     ImmutableArray<string> KeyNames,
     long CurrentVersion,
     long Revision,
-    [property: BsonRepresentation(BsonType.String)]
-    SecretLifecycle Lifecycle,
+    [property: BsonRepresentation(BsonType.String)] SecretLifecycle Lifecycle,
     ImmutableArray<SecretBinding> Bindings,
     SecretManagement Management,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc)
+    DateTime UpdatedAtUtc,
+    long ReferenceFence,
+    bool DeclaredKeys,
+    ImmutableArray<string> SuppliedKeys)
 {
     public const int MaximumBindings = 256;
-    public long ReferenceFence { get; init; }
+    public const long MetadataOnlyVersion = 0;
+    public const long FirstValueVersion = 1;
+    public bool HasValue(string key) => CurrentVersion >= FirstValueVersion && (DeclaredKeys ? SuppliedKeys.Contains(key) : KeyNames.Contains(key));
+
+    public UpdateDeclaredSecretOutcome UpdateDeclaredMetadata(string purpose, IEnumerable<string> keys, DateTime now)
+    {
+        var desired = keys.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToImmutableArray();
+        if (Purpose == purpose && KeyNames.SequenceEqual(desired)) return this;
+        if (Bindings.Any(binding => binding.ProtectedKeys.Concat(binding.KeyMappings.Keys).Except(desired).Any()))
+            return new SecretDeclaredKeysInUse();
+        return this with
+        {
+            Purpose = purpose,
+            KeyNames = desired,
+            DeclaredKeys = true,
+            Revision = checked(Revision + 1),
+            UpdatedAtUtc = now
+        };
+    }
+
+    public DeclareSecretBindingOutcome DeclareBinding(SecretBinding binding, DateTime now)
+    {
+        var current = Bindings.SingleOrDefault(item => item.Id == binding.Id);
+        if (current is not null && (current.ConsumerType != binding.ConsumerType || current.ConsumerId != binding.ConsumerId))
+            return new SecretBindingRejected(SecretBindingRejection.ImmutableConsumer);
+        if (current is null && Bindings.Any(item => item.ConsumerType == binding.ConsumerType && item.ConsumerId == binding.ConsumerId))
+            return new SecretBindingRejected(SecretBindingRejection.ConsumerAlreadyBound);
+        if (binding.KeyMappings.Keys.Except(KeyNames).Any())
+            return new SecretBindingRejected(SecretBindingRejection.UnknownKey);
+        if (current is null && Bindings.Length >= MaximumBindings)
+            return new SecretBindingRejected(SecretBindingRejection.LimitReached);
+        if (current is not null)
+        {
+            if (current.KeyMappings.OrderBy(pair => pair.Key).SequenceEqual(binding.KeyMappings.OrderBy(pair => pair.Key))) return this;
+            binding = binding with { RequiredKeys = current.RequiredKeys, RetainedKeys = current.RetainedKeys };
+            if (current.ProtectedKeys.Any(key => !binding.IncludesKey(key) || current.ProjectedKey(key) != binding.ProjectedKey(key)))
+                return new SecretBindingRejected(SecretBindingRejection.KeysInUse);
+        }
+        return this with
+        {
+            Bindings = current is null ? [.. Bindings, binding] :
+            Bindings.Select(item => item.Id == current.Id ? binding : item).ToImmutableArray(),
+            Revision = checked(Revision + 1),
+            UpdatedAtUtc = now
+        };
+    }
+
+    public Secret ReleaseRetainedKeys(string bindingId) => this with
+    {
+        Bindings = Bindings.Select(binding => binding.Id == bindingId ? binding with { RetainedKeys = [] } : binding).ToImmutableArray(),
+        ReferenceFence = checked(ReferenceFence + 1)
+    };
 
     public Secret Rotate(
         IEnumerable<string> keys,
         DateTime now)
     {
         var ownedKeys = keys.ToImmutableArray();
-        if (Bindings.Any(binding => binding.KeyMappings.Keys.Concat(binding.RequiredKeys).Except(ownedKeys).Any()))
+        if (Bindings.Any(binding => binding.KeyMappings.Keys.Concat(binding.ProtectedKeys).Except(ownedKeys).Any()))
             throw new InvalidOperationException("Rotation must retain keys used by bindings.");
         return this with
         {
-            KeyNames = ownedKeys,
+            KeyNames = DeclaredKeys ? KeyNames : ownedKeys,
+            SuppliedKeys = ownedKeys,
             CurrentVersion = checked(CurrentVersion + 1),
             Revision = checked(Revision + 1),
             UpdatedAtUtc = now
@@ -141,6 +205,11 @@ public sealed record Secret(
 
 public static class SecretFactory
 {
+    public static Secret CreateMetadata(string id, string tenantId, string groupId, string scopeId,
+        string name, string purpose, IEnumerable<string> keys, DateTime now) =>
+        Create(id, tenantId, groupId, scopeId, name, purpose, keys, now) with
+        { CurrentVersion = Secret.MetadataOnlyVersion, DeclaredKeys = true, SuppliedKeys = [] };
+
     public static Secret Create(
         string id,
         string tenantId,
@@ -185,11 +254,24 @@ public static class SecretFactory
             name.Trim().ToLowerInvariant(),
             purpose.Trim(),
             keys.Order().ToImmutableArray(),
-            1,
+            Secret.FirstValueVersion,
             1,
             SecretLifecycle.Active,
             [],
             management,
             now,
-            now);
+            now,
+            0,
+            false,
+            []);
 }
+
+public sealed record SecretDeclaredKeysInUse;
+public union UpdateDeclaredSecretOutcome(
+    Secret,
+    SecretDeclaredKeysInUse);
+public enum SecretBindingRejection { ImmutableConsumer, ConsumerAlreadyBound, UnknownKey, LimitReached, KeysInUse }
+public sealed record SecretBindingRejected(SecretBindingRejection Reason);
+public union DeclareSecretBindingOutcome(
+    Secret,
+    SecretBindingRejected);

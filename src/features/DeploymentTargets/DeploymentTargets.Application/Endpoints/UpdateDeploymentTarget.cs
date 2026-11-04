@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using FluentValidation;
 using Pole.Validation;
 using Microsoft.AspNetCore.Builder;
@@ -17,6 +18,7 @@ using Pole.Mediator;
 
 namespace Pole.Features.DeploymentTargets.Application.Endpoints;
 
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record UpdateDeploymentTargetRequestBody(
     string DisplayName,
     bool Enabled,

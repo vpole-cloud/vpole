@@ -114,7 +114,7 @@ public sealed class DeploymentTargetNetworkPolicyTests
     {
         var id = ObjectId.GenerateNewId().ToString();
         var now = DateTime.UtcNow;
-        return DeploymentTargetFactory.Create(
+        return DeploymentTargetFactory.Create("target-" + id,
             "Target",
             $"cluster:{id}",
             DeploymentTargetConnectionFactory.CreateInCluster(1),

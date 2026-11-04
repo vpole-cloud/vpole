@@ -1,4 +1,6 @@
+import type { GitOpsStatus } from '../../data/gitOps'
 export interface ResourceGroup {
+  gitOps?: GitOpsStatus | null
   id: string
   name: string
   description: string

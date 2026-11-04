@@ -38,6 +38,9 @@ public static class SecretFeature
             sp.GetRequiredService<ReconcileManagedSecretProjection>().InvokeAsync);
         services.AddScoped<SecretProjectionReconciler>();
         services.AddScoped<SecretProjectionRecoveryJob>();
+        services.AddScoped<SecretKeyRetirementReconciler>();
+        services.AddScoped<MongoReleaseRetainedSecretKeys>();
+        services.AddScoped<ReleaseRetainedSecretKeys>(sp => sp.GetRequiredService<MongoReleaseRetainedSecretKeys>().InvokeAsync);
         services.AddScoped<ISecretProjectionTarget, KubernetesSecretProjectionTarget>();
         return services;
     }

@@ -19,6 +19,7 @@ using Pole.Features.Quotas.Contracts;
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.ResultType;
+using Pole.Features.Secrets.Contracts;
 
 namespace Pole.Features.WebServices.Application;
 
@@ -53,6 +54,7 @@ public static class WebServicesFeatureRegistration
             DeploySourceBuildWebServiceOutcome>();
         services.TryAddScoped<WebServiceResourceDeploymentAdapter>();
         services.TryAddScoped<WebServiceResourceDeploymentObserver>();
+        services.AddScoped<ISecretConsumerRolloutObserver, WebServiceSecretRolloutObserver>();
         services.TryAddScoped<WebServiceResourceDeploymentChangeSource>();
         services.AddSingleton(
             ResourceDeploymentObserverDescriptor

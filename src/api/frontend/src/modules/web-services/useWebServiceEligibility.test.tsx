@@ -31,12 +31,14 @@ vi.mock('../../realtime/sessionApi', () => ({
 }))
 const target: AvailableDeploymentTarget = {
   id: 'target',
+  technicalName: 'target',
   displayName: 'Before',
   workloadConfigurationRevision: 1,
   hasPublicIngress: true,
 }
 const profile: AvailableComputeProfile = {
   id: 'small',
+  technicalName: 'small',
   displayName: 'Before profile',
   description: '',
   resources: {

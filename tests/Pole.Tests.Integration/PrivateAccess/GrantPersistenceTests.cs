@@ -37,6 +37,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
     private static readonly ResourceTypeId ResourceType = ResourceTypeId.Create("pole/redis");
     private ServiceProvider provider = null!;
     private bool targetAttested = true;
+    private ResourceDeploymentStatus accessPlacementStatus = ResourceDeploymentStatus.Applied;
     private long deploymentRevision = 1;
     private int placementBatchReads;
     private readonly EndpointCapability endpointCapability = new();
@@ -83,7 +84,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
                     tenantId == TenantId ? new ResourceDeploymentAccessPlacement(
                         TenantId, ResourceType.Value, ResourceId, GroupId, DeploymentId,
                         "target", "cell", "scope", "namespace", deploymentRevision, 1,
-                        "Applied", "Apply") : null);
+                        accessPlacementStatus, ResourceDeploymentDesiredOperation.Apply) : null);
             });
         services.AddSingleton<LoadExactResourceDeploymentRuntimePlacement>(
             (tenantId, _, resourceId, deploymentId, _) =>
@@ -91,7 +92,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
                     tenantId == TenantId && resourceId == ResourceId && deploymentId == DeploymentId
                         ? new ResourceDeploymentRuntimePlacementDto(
                             DeploymentId, ResourceId, "cell", "target", "namespace",
-                            deploymentRevision, 1, null!, "Applied", "Apply", "scope")
+                            deploymentRevision, 1, null!, ResourceDeploymentStatus.Applied, ResourceDeploymentDesiredOperation.Apply, "scope")
                         : null));
         services.AddSingleton<LoadResourceDeploymentRuntimePlacements>(
             (tenantId, _, resourceIds, _) =>
@@ -101,7 +102,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
                     tenantId == TenantId && resourceIds.Contains(ResourceId)
                         ? [new ResourceDeploymentRuntimePlacementDto(
                             DeploymentId, ResourceId, "cell", "target", "namespace",
-                            deploymentRevision, 1, null!, "Applied", "Apply", "scope")]
+                            deploymentRevision, 1, null!, ResourceDeploymentStatus.Applied, ResourceDeploymentDesiredOperation.Apply, "scope")]
                         : []);
             });
         services.AddSingleton<FenceDeploymentTargetPrivateAccess>(
@@ -128,6 +129,17 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
     {
         provider.Dispose();
         return Task.CompletedTask;
+    }
+
+    [Fact]
+    public async Task Prepared_placement_cannot_receive_a_private_access_grant()
+    {
+        accessPlacementStatus = ResourceDeploymentStatus.Prepared;
+        var outcome = await provider.GetRequiredService<PersistPrivateAccessGrant>()(Command());
+        Assert.IsType<PrivateAccessResourceUnavailable>(outcome.Value);
+        Assert.Equal(0, await fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants").CountDocumentsAsync(Builders<PrivateAccessGrant>.Filter.Empty));
+        Assert.Equal(0, await fixture.Database.GetCollection<PrivateAccessAudit>("PrivateAccessAudit").CountDocumentsAsync(Builders<PrivateAccessAudit>.Filter.Empty));
+        Assert.Equal(0, await fixture.DbContext.OutboxMessages.CountDocumentsAsync(Builders<Pole.Features.Outbox.Application.Model.OutboxMessage>.Filter.Empty));
     }
 
     [Fact]

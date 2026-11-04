@@ -63,6 +63,7 @@ public union CreateWebServicePlacementError(
     CreateWebServiceTargetUnavailable);
 
 public union CreateWebServiceError(
+    WebServiceNameAlreadyExists,
     ResourceGroupOwnershipError,
     CreateWebServicePlacementError,
     ComputeProfileResolutionError,
@@ -370,7 +371,8 @@ public sealed class CreateWebServiceHandler(
         var eventCore = EventCore.Create(webService.TenantId);
         var createdEvent = webService.ToCreateEvent(
             WebServiceDeploymentWorkflow.ToEventDeployments(deployments));
-        await persistCreatedWebService(transaction.Session, webService, createdEvent, cancellationToken);
+        var persisted = await persistCreatedWebService(transaction.Session, webService, createdEvent, cancellationToken);
+        if (persisted.Value is WebServiceNameAlreadyExists duplicate) return Abort(transaction, new CreateWebServiceError(duplicate));
 
         var release = WebServiceReleaseFactory.CreatePending(
             webService.TenantId,
@@ -418,25 +420,25 @@ public sealed class CreateWebServiceHandler(
         new CreateWebServicePlacementError(error);
 
     private union ResolveTargetsOutcome(
-        IReadOnlyList<ResolvedTargetRequest>,
-        CreateWebServicePlacementError);
+    IReadOnlyList<ResolvedTargetRequest>,
+    CreateWebServicePlacementError);
 
     private union CreateDeploymentRequestsOutcome(
-        IReadOnlyList<CreateResourceDeploymentRequest>,
-        CreateWebServiceError);
+    IReadOnlyList<CreateResourceDeploymentRequest>,
+    CreateWebServiceError);
 
     private sealed record ResolvedTargetRequest(
-        WebServiceDeploymentTargetRequest Request,
-        ResolvedResourceDeploymentTarget Target);
+    WebServiceDeploymentTargetRequest Request,
+    ResolvedResourceDeploymentTarget Target);
 
     private sealed record PendingDeploymentRequest(
-        ResolvedTargetRequest Target,
-        string DeploymentId);
+    ResolvedTargetRequest Target,
+    string DeploymentId);
 
     private sealed record EligibleTarget(
-        string DeploymentTargetId,
-        long WorkloadConfigurationRevision,
-        ResourceDeploymentIngressConfiguration? Ingress);
+    string DeploymentTargetId,
+    long WorkloadConfigurationRevision,
+    ResourceDeploymentIngressConfiguration? Ingress);
 }
 
 public sealed record CreateWebServiceRequest(

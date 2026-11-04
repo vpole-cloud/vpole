@@ -1,3 +1,4 @@
+using Pole.Features.Secrets.Contracts;
 using System.Collections.Immutable;
 using System.Net;
 using System.Text;
@@ -49,7 +50,7 @@ public sealed class WebServiceResourceDeploymentAdapterTests
                 Assert.Equal("token", Assert.Single(references).Key);
                 return Task.FromResult<Pole.Features.Secrets.Contracts.EnsureConsumerSecretProjectionsOutcome>(pending
                     ? new Pole.Features.Secrets.Contracts.ConsumerSecretProjectionPending("secret")
-                    : new Pole.Features.Secrets.Contracts.ConsumerSecretReferenceUnavailable("secret", "SecretBindingUnavailable"));
+                    : new ConsumerSecretReferenceUnavailable("secret", ConsumerSecretReferenceError.SecretBindingUnavailable));
             });
         var result = Assert.IsType<ResourceDeploymentAdapterResult.Failed>(await subject.ApplyAsync(CreateContext(includeIngress: true)));
         Assert.Equal(pending ? "SecretProjectionPending" : "SecretConfigurationUnavailable", result.FailureCode);
@@ -773,9 +774,13 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             isolationScopeId: IsolationScopeId,
             spec: new WebServiceSpec(
                 new ImageInfo("registry.example.test", "pole/api", "1.0"),
-                Config: new WebServiceConfig(
-                    ImmutableDictionary<string, string>.Empty,
-                    [new PortMapping(80, targetPort, protocol, "http")]),
+                Config: new WebServiceConfig()
+                {
+                    EnvironmentVariables = ImmutableDictionary<string, string>.Empty,
+                    PortMappings = [new PortMapping(80, targetPort, protocol, "http")],
+                    ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty,
+                    SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty
+                },
                 Autoscaling: null,
                 Probes: new ProbeSpec(
                     new ProbeConfig("/health", "8080"),
@@ -867,22 +872,7 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             string resourceId,
             string deploymentId,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<PlacementSummaryDto?>(new PlacementSummaryDto(
-                DeploymentId,
-                IsolationScopeId,
-                RuntimeCellId,
-                TargetId,
-                DesiredGeneration: CurrentGeneration,
-                ObservedGeneration: 0,
-                Status: "Pending",
-                FailureCode: null,
-                Compute: new ComputeConfigurationSummaryDto(
-                    new ComputeProfileReference("profile-1", 1),
-                    "test",
-                    new ComputeResourceValuesDto(100, 128),
-                    new ComputeResourceValuesDto(100, 128),
-                    []),
-                Endpoints: []));
+            Task.FromResult<PlacementSummaryDto?>(new PlacementSummaryDto(DeploymentId, IsolationScopeId, RuntimeCellId, TargetId, DesiredGeneration: CurrentGeneration, ObservedGeneration: 0, Status: ResourceDeploymentStatus.Pending, FailureCode: null, Compute: new ComputeConfigurationSummaryDto(new ComputeProfileReference("profile-1", 1), "test", new ComputeResourceValuesDto(100, 128), new ComputeResourceValuesDto(100, 128), []), Endpoints: [], ResourceRevision: 1, FixedReplicas: 1, Ingress: null, DeploymentRevision: 1, DesiredOperation: ResourceDeploymentDesiredOperation.Apply, Isolation: new ResourceDeploymentIsolationDto("Unknown", "EnforcementRequired", "EnforcementNotEstablished", null)));
     }
 
     private static Task<ResolveRuntimeRegistryAccessOutcome>

@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -38,7 +39,8 @@ internal sealed class MongoBeginResourceGroupDeletion(
     EnsureNoUnfinishedResourceGroupDeployments ensureNoUnfinishedDeployments,
     StoreOutboxWrites storeOutboxWrites,
     RunMongoOutcomeTransaction<BeginResourceGroupDeletionOutcome> runMongoTransaction,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IGitOpsMutations git)
 {
     public Task<BeginResourceGroupDeletionOutcome> InvokeAsync(
         string tenantId,
@@ -57,6 +59,8 @@ internal sealed class MongoBeginResourceGroupDeletion(
                     new ResourceGroupDeletionError(
                         new ResourceGroupNotFound(resourceGroupId))));
             }
+            if (!await git.AuthorizeAsync(tenantId, "ResourceGroup", resourceGroupId, transaction.Session, ct))
+                return transaction.Abort(new BeginResourceGroupDeletionOutcome(new ResourceGroupDeletionError(new ResourceGroupRevisionConflict(resourceGroupId, ResourceGroupRevisionConflictReason.GitOwnedConfiguration))));
             if (resourceGroup.Lifecycle is not ActiveResourceGroupLifecycleState &&
                 resourceGroup.Lifecycle is not DeletingResourceGroupLifecycleState)
             {

@@ -1,3 +1,4 @@
+using Pole.Features.ComputeProfiles.Application.Persistence;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
@@ -20,6 +21,9 @@ public sealed class ComputeProfileIndexesMigration : IMigration
         var profiles = context.GetCollection<BsonDocument>("ComputeProfiles");
         return profiles.Indexes.CreateManyAsync(
         [
+            new CreateIndexModel<BsonDocument>(
+                Builders<BsonDocument>.IndexKeys.Ascending("TechnicalName"),
+                new CreateIndexOptions { Unique = true, Name = ComputeProfileTechnicalNames.UniqueIndexName }),
             new CreateIndexModel<BsonDocument>(
                 Builders<BsonDocument>.IndexKeys.Ascending("IsDefault"),
                 new CreateIndexOptions<BsonDocument>

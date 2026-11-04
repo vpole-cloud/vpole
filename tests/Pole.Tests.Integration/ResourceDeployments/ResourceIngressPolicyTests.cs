@@ -365,16 +365,15 @@ public sealed class ResourceIngressPolicyTests
         Enabled: true,
         AcceptsWorkloads: true,
         DeletionRequested: false,
-        HealthStatus: "Healthy")
-        {
-            NetworkPolicy = new DeploymentTargetNetworkPolicyDto(
+        HealthStatus: "Healthy",
+        TechnicalName: "test-target",
+        NetworkPolicy: new DeploymentTargetNetworkPolicyDto(
             NetworkPolicyEnforcementStatus.Supported,
             NetworkPolicyReadiness.EnforcementAttested,
             NetworkPolicyReason.OperatorAttestedSupported,
             DateTime.UtcNow,
             NetworkPolicyEvidenceSource.OperatorAttestation,
-            false)
-        };
+            false));
 
     private const string TenantId = "507f1f77bcf86cd799439011";
     private const string ResourceId = "507f1f77bcf86cd799439012";

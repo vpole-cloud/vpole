@@ -340,7 +340,9 @@ internal static class StorageMetricFixtures
         enabled,
         false,
         false,
-        "Healthy");
+        "Healthy",
+        TechnicalName: "test-target",
+        NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown);
 
     internal static MongoStorageObservationStore
         Store(MongoReplicaSetFixture fixture, StoreOutboxWrites? writes = null) => new(fixture.Database,

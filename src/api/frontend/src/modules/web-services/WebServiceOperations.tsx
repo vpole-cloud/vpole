@@ -10,7 +10,15 @@ import { useState } from 'react'
 import { SourceBuildLogViewer } from '../../components/SourceBuildLogViewer'
 import type { RealtimeSubscription } from '../../realtime/types'
 
-export function WebServiceOperations({ id, active }: { id: string; active: boolean }) {
+export function WebServiceOperations({
+  id,
+  active,
+  canRetry = true,
+}: {
+  id: string
+  active: boolean
+  canRetry?: boolean
+}) {
   const { api, navigation } = useAppServices()
   const origin = useApiScope(api)
   const { credential } = origin
@@ -41,24 +49,28 @@ export function WebServiceOperations({ id, active }: { id: string; active: boole
         filter={{ resourceType: 'pole/web-service', resourceId: id }}
         active={active}
         onAccepted={() => invalidateWebServiceState(origin)}
-        onRetry={(operation, signal) => {
-          const placement = operation.deployment.placement
-          const desiredOperation = placement.desiredOperation
-          if (desiredOperation !== 'Apply' && desiredOperation !== 'Delete')
-            return Promise.reject(new Error('Refresh this operation before retrying.'))
-          return retryWebServiceDeployment(
-            api.baseUrl,
-            id,
-            operation.deployment.id,
-            {
-              expectedDeploymentRevision: placement.deploymentRevision!,
-              expectedOperation: desiredOperation,
-            },
-            credential(),
-            api.tenantId,
-            signal,
-          )
-        }}
+        onRetry={
+          canRetry
+            ? (operation, signal) => {
+                const placement = operation.deployment.placement
+                const desiredOperation = placement.desiredOperation
+                if (desiredOperation !== 'Apply' && desiredOperation !== 'Delete')
+                  return Promise.reject(new Error('Refresh this operation before retrying.'))
+                return retryWebServiceDeployment(
+                  api.baseUrl,
+                  id,
+                  operation.deployment.id,
+                  {
+                    expectedDeploymentRevision: placement.deploymentRevision!,
+                    expectedOperation: desiredOperation,
+                  },
+                  credential(),
+                  api.tenantId,
+                  signal,
+                )
+              }
+            : undefined
+        }
       />
       <section className="panel">
         <div className="panel__header">

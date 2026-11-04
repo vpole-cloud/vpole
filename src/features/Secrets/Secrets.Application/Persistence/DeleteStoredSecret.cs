@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ResourceGroups.Contracts;
@@ -16,14 +17,16 @@ public union DeleteStoredSecretResult(
     Unit,
     SecretMissing,
     SecretBindingsRemain,
-    SecretReferenceRejected);
+    SecretReferenceRejected,
+    SecretGitOwned);
 
 internal sealed class MongoDeleteStoredSecret(
     IMongoCollection<Secret> secrets,
     IMongoCollection<SecretVersion> versions,
     MongoRunTransaction transactions,
     IResourceRegistrar registrar,
-    StoreSecretChange publish)
+    StoreSecretChange publish,
+    IGitOpsMutations git)
 {
     public Task<DeleteStoredSecretResult> InvokeAsync(
         string tenantId,
@@ -36,6 +39,8 @@ internal sealed class MongoDeleteStoredSecret(
                 .FirstOrDefaultAsync(token);
             if (current is null)
                 return tx.Abort(new SecretMissing());
+            if (!await git.AuthorizeAsync(tenantId, "Secret", id, tx.Session, token))
+                return tx.Abort(new SecretGitOwned());
             if (current.Bindings.Length != 0)
                 return tx.Abort(new SecretBindingsRemain());
 

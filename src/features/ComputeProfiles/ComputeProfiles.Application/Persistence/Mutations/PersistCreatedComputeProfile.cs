@@ -1,3 +1,4 @@
+using Pole.Features.ComputeProfiles.Application.Common;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Outbox.Contracts;
@@ -12,6 +13,8 @@ namespace Pole.Features.ComputeProfiles.Application.Persistence.Mutations;
 
 public union PersistCreatedComputeProfileOutcome(
     ComputeProfile,
+    ComputeProfileRevisionConflict,
+    ComputeProfileTechnicalNameConflict,
     DeploymentTargetReferenceChangeRejected);
 
 public delegate Task<PersistCreatedComputeProfileOutcome>
@@ -23,7 +26,8 @@ internal sealed class MongoPersistCreatedComputeProfile(
     IMongoCollection<ComputeProfile> computeProfiles,
     ApplyDeploymentTargetReferenceChanges applyTargetReferenceChanges,
     RunMongoOutcomeTransaction<PersistCreatedComputeProfileOutcome> runMongoTransaction,
-    StoreOutboxWrites storeOutboxWrites)
+    StoreOutboxWrites storeOutboxWrites,
+    ComputeProfileHistory history)
 {
     public Task<PersistCreatedComputeProfileOutcome> InvokeAsync(
         ComputeProfile profile,
@@ -46,18 +50,25 @@ internal sealed class MongoPersistCreatedComputeProfile(
 
                 if (profile.IsDefault)
                 {
-                    await ComputeProfileDefaultPersistence.DemoteOtherDefaultsAsync(
+                    var demoted = await ComputeProfileDefaultPersistence.DemoteOtherDefaultsAsync(
                         computeProfiles,
+                        history,
                         transaction.Session,
                         exceptProfileId: null,
                         profile.UpdatedAtUtc,
                         ct);
+                    if (demoted is ComputeProfileRevisionConflict conflict) return transaction.Abort(conflict);
                 }
 
-                await computeProfiles.InsertOneAsync(
-                    transaction.Session,
-                    profile,
-                    cancellationToken: ct);
+                try
+                {
+                    await computeProfiles.InsertOneAsync(transaction.Session, profile, cancellationToken: ct);
+                }
+                catch (MongoWriteException duplicate) when (MongoDuplicateKey.IsForIndex(duplicate, ComputeProfileTechnicalNames.UniqueIndexName))
+                {
+                    return transaction.Abort(new ComputeProfileTechnicalNameConflict(profile.TechnicalName));
+                }
+                await history.StoreAsync(profile, transaction.Session, ct);
                 await storeOutboxWrites(transaction.Session,
                     [OutboxWrite.Create(new ComputeProfileCatalogChangedEvent(profile.Id, profile.Revision))],
                     ct);

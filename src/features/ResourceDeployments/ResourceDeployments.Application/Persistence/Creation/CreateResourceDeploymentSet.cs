@@ -105,7 +105,8 @@ internal sealed class MongoCreateResourceDeploymentSet(
                 item.Compute.ComputeProfileRevision,
                 item.Compute.DeploymentTargetId,
                 item.TenantId,
-                item.ResourceType))
+                item.ResourceType,
+                item.PinnedCompute))
             .Distinct()
             .ToArray();
         var computeFence = await fenceResolvedComputeProfiles(
@@ -218,7 +219,8 @@ internal sealed class MongoCreateResourceDeploymentSet(
                         item.DeploymentId,
                         now,
                         item.ResourceRevision,
-                        item.FixedReplicas));
+                        item.FixedReplicas,
+                        item.DeferredActivation));
             })
             .ToArray();
         await resourceDeployments.InsertManyAsync(

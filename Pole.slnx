@@ -33,6 +33,12 @@
     <Project Path="src/shared/Workloads/Workloads.csproj" />
   </Folder>
   <Folder Name="/features/" />
+  <Folder Name="/features/GitOps/">
+    <Project Path="src/features/GitOps/GitOps.Domain/GitOps.Domain.csproj" />
+    <Project Path="src/features/GitOps/GitOps.Contracts/GitOps.Contracts.csproj" />
+    <Project Path="src/features/GitOps/GitOps.Application/GitOps.Application.csproj" />
+    <Project Path="src/features/GitOps/GitOps.Tests/GitOps.Tests.csproj" />
+  </Folder>
   <Folder Name="/features/Realtime/">
     <Project Path="src/features/Realtime/Realtime.Contracts/Realtime.Contracts.csproj" />
     <Project Path="src/features/Realtime/Realtime.Application/Realtime.Application.csproj" />

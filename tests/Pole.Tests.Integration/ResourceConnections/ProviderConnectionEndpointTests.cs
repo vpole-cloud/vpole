@@ -51,15 +51,13 @@ public sealed class ProviderConnectionEndpointTests(MongoReplicaSetFixture fixtu
         {
             Spec = TestData.SeedWebService(Id()).Spec with
             {
-                Config = new WebServiceConfig(ImmutableDictionary<string, string>.Empty,
-                [
-                    new PortMapping(80, "8080", "TCP", " HTTP "),
-                    new PortMapping(9000, "9001", "UDP", "datagram"),
-                    new PortMapping(9002, "named-target", "TCP", "unresolved"),
-                    new PortMapping(9003, "9003", "TCP", "duplicate"),
-                    new PortMapping(9004, "9004", "TCP", "DUPLICATE"),
-                    new PortMapping(9005, "9005", "TCP", "")
-                ])
+                Config = new WebServiceConfig()
+                {
+                    EnvironmentVariables = ImmutableDictionary<string, string>.Empty,
+                    PortMappings = [new PortMapping(80, "8080", "TCP", " HTTP "), new PortMapping(9000, "9001", "UDP", "datagram"), new PortMapping(9002, "named-target", "TCP", "unresolved"), new PortMapping(9003, "9003", "TCP", "duplicate"), new PortMapping(9004, "9004", "TCP", "DUPLICATE"), new PortMapping(9005, "9005", "TCP", "")],
+                    ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty,
+                    SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty
+                }
             }
         };
         using var session = await fixture.Client.StartSessionAsync();

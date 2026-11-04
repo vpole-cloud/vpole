@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using MongoDB.Driver.Core.Events;
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Endpoints;
@@ -233,6 +235,69 @@ public sealed class ComputeProfilePersistenceTests(MongoReplicaSetFixture fixtur
             .CountDocumentsAsync(ComputeProfileById(profile.Id)));
         Assert.Equal(1, await fixture.DbContext.DeploymentTargetReferences
             .CountDocumentsAsync(ComputeProfileReferences(profile.Id)));
+    }
+
+    [Fact]
+    public async Task Default_promotion_batches_legacy_defaults_and_keeps_both_history_snapshots()
+    {
+        await PrepareDatabaseAsync();
+        // This fixture-only legacy catalog deliberately predates the unique-default index.
+        var profiles = fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles");
+        await profiles.Indexes.DropOneAsync("UX_ComputeProfiles_Default");
+        var target = ComputeProfileTestData.CreateTarget();
+        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        var legacy = Enumerable.Range(0, 129).Select(index => ComputeProfileTestData.CreateProfile(
+            target.Id, isDefault: true, displayName: $"Legacy {index}")).ToArray();
+        await profiles.InsertManyAsync(legacy);
+
+        var commands = new ConcurrentQueue<(string Collection, int Count)>();
+        var settings = MongoClientSettings.FromConnectionString(fixture.ConnectionString);
+        settings.ClusterConfigurator = cluster => cluster.Subscribe<CommandStartedEvent>(started =>
+        {
+            if (started.CommandName == "update")
+                commands.Enqueue((started.Command["update"].AsString, started.Command["updates"].AsBsonArray.Count));
+        });
+        var client = new MongoClient(settings);
+        using var host = new ComputeProfilePersistenceTestHost(fixture,
+            database: client.GetDatabase(fixture.Database.DatabaseNamespace.DatabaseName));
+        var promoted = ComputeProfileTestData.CreateProfile(target.Id, isDefault: true);
+        Assert.IsType<ComputeProfile>((await host.GetRequiredService<PersistCreatedComputeProfile>()(promoted)).Value);
+
+        var demotions = commands.Where(command => command.Collection == "ComputeProfiles").ToArray();
+        Assert.Equal(2, demotions.Length);
+        Assert.All(demotions, command => Assert.InRange(command.Count, 1, 128));
+        var historyCommands = commands.Where(command => command.Collection == "ComputeProfileRevisions").ToArray();
+        Assert.Equal(3, historyCommands.Length); // Two demotion batches plus the new profile.
+        Assert.All(historyCommands, command => Assert.InRange(command.Count, 1, 256));
+        var history = await fixture.Database.GetCollection<ComputeProfileRevision>("ComputeProfileRevisions")
+            .Find(Builders<ComputeProfileRevision>.Filter.Empty).ToListAsync();
+        Assert.Equal(259, history.Count);
+        foreach (var original in legacy)
+        {
+            Assert.True(Assert.Single(history, item => item.ComputeProfileId == original.Id && item.Revision == 1).Snapshot.IsDefault);
+            Assert.False(Assert.Single(history, item => item.ComputeProfileId == original.Id && item.Revision == 2).Snapshot.IsDefault);
+        }
+        Assert.Equal(promoted.Id, (await profiles.Find(Builders<ComputeProfile>.Filter.Eq(item => item.IsDefault, true)).SingleAsync()).Id);
+    }
+
+    [Fact]
+    public async Task Default_promotion_rolls_back_demotions_and_history_if_outbox_fails()
+    {
+        await PrepareDatabaseAsync();
+        var target = ComputeProfileTestData.CreateTarget();
+        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        var old = ComputeProfileTestData.CreateProfile(target.Id, isDefault: true);
+        await fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles").InsertOneAsync(old);
+        using var host = new ComputeProfilePersistenceTestHost(fixture,
+            storeOutboxWrites: (_, _, _) => throw new InvalidOperationException("Injected outbox failure"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => host.GetRequiredService<PersistCreatedComputeProfile>()(
+            ComputeProfileTestData.CreateProfile(target.Id, isDefault: true)));
+        var remaining = await fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles").Find(AllComputeProfiles()).SingleAsync();
+        Assert.Equal(old.Id, remaining.Id);
+        Assert.Equal(old.Revision, remaining.Revision);
+        Assert.True(remaining.IsDefault);
+        Assert.Equal(0, await fixture.Database.GetCollection<ComputeProfileRevision>("ComputeProfileRevisions")
+            .CountDocumentsAsync(Builders<ComputeProfileRevision>.Filter.Empty));
     }
 
     private async Task PrepareDatabaseAsync()

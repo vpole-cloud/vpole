@@ -25,7 +25,8 @@ internal sealed class ConsumerSecretReferenceAdmission(
         IReadOnlyCollection<ConsumerSecretKeyReference> desiredReferences,
         bool requireAvailable,
         IClientSessionHandle session,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool retainPreviousReferencesUntilRollout = false)
     {
         if (!session.IsInTransaction) throw new InvalidOperationException("Consumer Secret admission requires a transaction.");
         var ids = previousReferences.Concat(desiredReferences).Select(reference => reference.SecretId).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal);
@@ -38,17 +39,19 @@ internal sealed class ConsumerSecretReferenceAdmission(
             if (requireAvailable && desired.Length > 0)
             {
                 if (current is null || binding is null || current.ResourceGroupId != resourceGroupId || current.IsolationScopeId != isolationScopeId)
-                    return Unavailable(id, "SecretBindingUnavailable");
+                    return Unavailable(id, ConsumerSecretReferenceError.SecretBindingUnavailable);
+                if (desired.Any(key => !current.HasValue(key)))
+                    return Unavailable(id, ConsumerSecretReferenceError.SecretValuesMissing);
                 if (desired.Any(key => !ConsumerSecretReferenceAuthority.IncludesKey(current, binding, key)))
-                    return Unavailable(id, "SecretKeyUnavailable");
+                    return Unavailable(id, ConsumerSecretReferenceError.SecretKeyUnavailable);
                 placements ??= (await loadPlacements(tenantId, consumerType, consumerId, session, ct)).Where(item => !item.DeletionRequested).ToArray();
                 if (placements.Count == 0 || placements.Any(placement => !SecretProjectionAuthority.IncludesDeployment(binding.Selection, placement.DeploymentId)) ||
                     await admitScope(tenantId, resourceGroupId, isolationScopeId, new ResourceScopeConsumerReference(consumerType, consumerId), session, ct) is ResourceScopeReferenceUnavailable ||
                     await admitDeployments(tenantId, resourceGroupId, isolationScopeId, consumerType, consumerId, true, [], session, ct) is ResourceDeploymentReferenceUnavailable)
-                    return Unavailable(id, "SecretDeploymentCoverageUnavailable");
+                    return Unavailable(id, ConsumerSecretReferenceError.SecretDeploymentCoverageUnavailable);
             }
             if (current is null || binding is null) continue; // Revocation must never block independent cleanup.
-            var updatedBindings = current.Bindings.Select(item => item.Id == binding.Id ? item with { RequiredKeys = desired } : item).ToImmutableArray();
+            var updatedBindings = current.Bindings.Select(item => item.Id == binding.Id ? item.PinReferences(desired, retainPreviousReferencesUntilRollout) : item).ToImmutableArray();
             // Pins affect admission only, not encrypted values or the projection revision.
             await secrets.UpdateOneAsync(session, SecretFilters.Identity(tenantId, id), Builders<Secret>.Update
                 .Set(item => item.Bindings, updatedBindings).Inc(item => item.ReferenceFence, 1), cancellationToken: ct);
@@ -56,12 +59,12 @@ internal sealed class ConsumerSecretReferenceAdmission(
         return new ConsumerSecretReferencesAdmitted();
     }
 
-    private static ConsumerSecretReferenceUnavailable Unavailable(string id, string reason) => new(id, reason);
+    private static ConsumerSecretReferenceUnavailable Unavailable(string id, ConsumerSecretReferenceError reason) => new(id, reason);
 }
 
 internal static class ConsumerSecretReferenceAuthority
 {
     internal static bool IncludesKey(Secret secret, SecretBinding binding, string key) =>
         secret.KeyNames.Contains(key) && (binding.KeyMappings.Count == 0 || binding.KeyMappings.ContainsKey(key));
-    internal static string ProjectedKey(SecretBinding binding, string key) => binding.KeyMappings.Count == 0 ? key : binding.KeyMappings[key];
+    internal static string ProjectedKey(SecretBinding binding, string key) => binding.ProjectedKey(key);
 }

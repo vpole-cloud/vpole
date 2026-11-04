@@ -1,3 +1,4 @@
+using Pole.Workloads;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -18,6 +19,7 @@ using static Pole.Features.DeploymentTargets.Contracts.HttpMapping.DeploymentTar
 namespace Pole.Features.ComputeProfiles.Application.Endpoints;
 
 public sealed record CreateComputeProfileRequestBody(
+    string TechnicalName,
     string DisplayName,
     string Description,
     ComputeResourceRequirementsRequestBody Resources,
@@ -46,6 +48,8 @@ public sealed record CreateComputeProfileRequest(
 
 public union CreateComputeProfileOutcome(
     ComputeProfileDto,
+    ComputeProfileTechnicalNameConflict,
+    ComputeProfileRevisionConflict,
     SelectedComputeProfileTenantsNotFound,
     ComputeProfileTargetMappingsInvalid,
     DeploymentTargetReferenceChangeRejected);
@@ -62,7 +66,8 @@ public sealed class CreateComputeProfileHandler(
         CancellationToken cancellationToken = default)
     {
         var profile = request.Body.ToDomain(
-            new Pole.Features.ComputeProfiles.Domain.ComputeProfileFactory.CreateOptions(
+            request.Body.TechnicalName,
+            new ComputeProfileFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
                 timeProvider.GetUtcNow().UtcDateTime));
         var tenantValidation = await validateTenantAccess(
@@ -82,6 +87,8 @@ public sealed class CreateComputeProfileHandler(
         return persisted switch
         {
             ComputeProfile created => created.ToDto(),
+            ComputeProfileTechnicalNameConflict conflict => conflict,
+            ComputeProfileRevisionConflict conflict => conflict,
             DeploymentTargetReferenceChangeRejected error => error
         };
     }
@@ -97,7 +104,10 @@ public sealed class CreateComputeProfileRequestValidator
 }
 
 public sealed class CreateComputeProfileRequestBodyValidator
-    : ComputeProfileMutationRequestBodyValidator<CreateComputeProfileRequestBody>;
+    : ComputeProfileMutationRequestBodyValidator<CreateComputeProfileRequestBody>
+{
+    public CreateComputeProfileRequestBodyValidator() => RuleFor(body => body.TechnicalName).Must(ResourceTechnicalName.IsValid);
+}
 
 public static class CreateComputeProfileEndpoint
 {
@@ -117,6 +127,8 @@ public static class CreateComputeProfileEndpoint
                         profile),
                     SelectedComputeProfileTenantsNotFound error => MapSelectedTenantsNotFound(error),
                     ComputeProfileTargetMappingsInvalid error => MapTargetMappingsInvalid(error),
+                    ComputeProfileRevisionConflict conflict => MapRevisionConflict(conflict),
+                    ComputeProfileTechnicalNameConflict conflict => MapNameConflict(conflict),
                     DeploymentTargetReferenceChangeRejected error => MapReferenceChangeRejected(error)
                 });
             })

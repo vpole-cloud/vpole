@@ -7,6 +7,9 @@ namespace Pole.Features.DeploymentTargets.Application.Persistence;
 
 internal static class DeploymentTargetFilters
 {
+    public static FilterDefinition<DeploymentTarget> ByTechnicalName(string name) =>
+        Builders<DeploymentTarget>.Filter.Eq(item => item.TechnicalName, name);
+
     public static FilterDefinition<DeploymentTarget> All() => Builders<DeploymentTarget>.Filter.Empty;
 
     public static FilterDefinition<DeploymentTarget> AfterId(string? cursor) => cursor is null

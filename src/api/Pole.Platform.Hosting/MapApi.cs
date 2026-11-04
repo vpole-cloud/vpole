@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Application;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -29,7 +30,7 @@ public static class MapApi
         var group = app.MapGroup("/api/v1").RequireTenantContext()
             .RequireAuthorization();
 
-        group.MapSecretEndpoints()
+        group.MapGitSnapshotEndpoints().MapSecretEndpoints()
             .MapPrivateAccessEndpoints()
             .MapResourceGroupEndpoints()
             .MapContainerRegistryEndpoints()

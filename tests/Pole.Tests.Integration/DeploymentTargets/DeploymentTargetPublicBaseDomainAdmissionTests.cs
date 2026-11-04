@@ -458,7 +458,7 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         var id = ObjectId.GenerateNewId().ToString();
         var now = DateTime.UtcNow;
         const long connectionVersion = 1;
-        return DeploymentTargetFactory.Create(
+        return DeploymentTargetFactory.Create("target-" + id,
             "Target",
             $"kubernetes:kube-system:{id}",
             DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),

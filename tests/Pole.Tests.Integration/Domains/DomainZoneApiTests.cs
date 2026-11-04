@@ -1,3 +1,4 @@
+using Pole.Features.ResourceDeployments.Contracts;
 using System.Collections.Immutable;
 using System.Net;
 using System.Net.Http.Json;
@@ -53,7 +54,7 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(group.Id, owner.ResourceGroupId);
         Assert.Equal(placement.DeploymentId, owner.Placement!.DeploymentId);
         Assert.Equal(TestData.DefaultDeploymentTargetId, owner.Placement.DeploymentTargetId);
-        Assert.Equal("WaitingForRuntimeCell", owner.Placement.Status);
+        Assert.Equal(ResourceDeploymentStatus.WaitingForRuntimeCell, owner.Placement.Status);
         Assert.DoesNotContain("foreign-canary", await first.Content.ReadAsStringAsync());
         using var second = await Client.GetAsync($"/api/v1/domain-zones/{zone.Id}/bindings?pageNumber=2&pageSize=1");
         var next = (await second.Content.ReadFromJsonAsync<GetDomainZoneBindingsResponse>())!;

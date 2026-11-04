@@ -409,7 +409,9 @@ public sealed class PostgresNativeObservationTests
         true,
         true,
         false,
-        "Healthy");
+        "Healthy",
+        TechnicalName: "test-target",
+        NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown);
 
     private static IResourceDeploymentObservationChangeSource Source(PostgresNativeTestApi api, IKubernetes client) =>
         Source(api, () => client);

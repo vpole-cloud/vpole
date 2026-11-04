@@ -284,7 +284,9 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
                 true,
                 false,
                 false,
-                "Healthy")));
+                "Healthy",
+        TechnicalName: "test-target",
+        NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown)));
         var lifecycle = new StorageObservationLifecycle(new(), loader, Store(), new());
         var subscription = new RealtimeSubscription(seeded.Demand.Identity.SubscriptionId,
             seeded.Demand.Identity.ConnectionId,

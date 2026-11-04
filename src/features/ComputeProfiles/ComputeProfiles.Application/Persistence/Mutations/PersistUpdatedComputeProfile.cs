@@ -27,7 +27,8 @@ internal sealed class MongoPersistUpdatedComputeProfile(
     IMongoCollection<ComputeProfile> computeProfiles,
     ApplyDeploymentTargetReferenceChanges applyTargetReferenceChanges,
     RunMongoOutcomeTransaction<PersistUpdatedComputeProfileOutcome> runMongoTransaction,
-    StoreOutboxWrites storeOutboxWrites)
+    StoreOutboxWrites storeOutboxWrites,
+    ComputeProfileHistory history)
 {
     public Task<PersistUpdatedComputeProfileOutcome> InvokeAsync(
         ComputeProfile current,
@@ -64,12 +65,14 @@ internal sealed class MongoPersistUpdatedComputeProfile(
 
                 if (replacement.IsDefault)
                 {
-                    await ComputeProfileDefaultPersistence.DemoteOtherDefaultsAsync(
+                    var demoted = await ComputeProfileDefaultPersistence.DemoteOtherDefaultsAsync(
                         computeProfiles,
+                        history,
                         transaction.Session,
                         replacement.Id,
                         replacement.UpdatedAtUtc,
                         ct);
+                    if (demoted is ComputeProfileRevisionConflict conflict) return transaction.Abort(conflict);
                 }
 
                 var replaced = await computeProfiles.ReplaceOneAsync(
@@ -82,6 +85,8 @@ internal sealed class MongoPersistUpdatedComputeProfile(
                     return transaction.Abort(new ComputeProfileRevisionConflict(current.Id));
                 }
 
+                await history.StoreAsync(replacement, transaction.Session, ct);
+                await history.StoreAsync(current, transaction.Session, ct);
                 await storeOutboxWrites(transaction.Session,
                     [OutboxWrite.Create(new ComputeProfileCatalogChangedEvent(replacement.Id, replacement.Revision))],
                     ct);

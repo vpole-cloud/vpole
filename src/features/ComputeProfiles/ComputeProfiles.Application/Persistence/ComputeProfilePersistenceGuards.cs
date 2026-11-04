@@ -10,7 +10,8 @@ internal static class ComputeProfilePersistenceGuards
     {
         ArgumentNullException.ThrowIfNull(current);
         ArgumentNullException.ThrowIfNull(replacement);
-        if (!string.Equals(current.Id, replacement.Id, StringComparison.Ordinal))
+        if (!string.Equals(current.Id, replacement.Id, StringComparison.Ordinal) ||
+            current.TechnicalName != replacement.TechnicalName)
         {
             throw new InvalidOperationException(
                 "A compute profile replacement must preserve profile identity.");

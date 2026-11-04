@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Pole.Features.GitOps.Application</AssemblyName>
+    <RootNamespace>Pole.Features.GitOps.Application</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../GitOps.Contracts/GitOps.Contracts.csproj"/>
+    <ProjectReference Include="../GitOps.Domain/GitOps.Domain.csproj"/>
+    <ProjectReference Include="../../../shared/Database/Database.csproj"/>
+    <ProjectReference Include="../../Secrets/Secrets.Events/Secrets.Events.csproj"/>
+    <ProjectReference Include="../../../shared/helpers/ASP/ASP.csproj"/>
+    <ProjectReference Include="../../../shared/Validation/Validation.csproj"/>
+    <PackageReference Include="FluentValidation"/>
+    <PackageReference Include="Hangfire.Core"/>
+    <PackageReference Include="YamlDotNet"/>
+  </ItemGroup>
+</Project>

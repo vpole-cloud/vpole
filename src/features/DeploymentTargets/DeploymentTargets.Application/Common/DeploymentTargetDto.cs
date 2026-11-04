@@ -18,10 +18,9 @@ public sealed record DeploymentTargetDto(
     DateTime? DeletionRequestedAtUtc,
     bool IsDefault,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc)
-{
-    public DeploymentTargetNetworkPolicyDto NetworkPolicy { get; init; } = DeploymentTargetNetworkPolicyDto.Unknown;
-}
+    DateTime UpdatedAtUtc,
+    string TechnicalName,
+    DeploymentTargetNetworkPolicyDto NetworkPolicy);
 
 /// <summary>
 /// Deliberately exposes only the connection discriminator and revision. It must not grow fields
@@ -100,10 +99,9 @@ public static class DeploymentTargetDtoExtensions
             target.DeletionRequestedAtUtc,
             isDefault,
             target.CreatedAtUtc,
-            target.UpdatedAtUtc)
-    {
-        NetworkPolicy = target.ToNetworkPolicyDto()
-    };
+            target.UpdatedAtUtc,
+        TechnicalName: target.TechnicalName,
+        NetworkPolicy: target.ToNetworkPolicyDto());
 
     public static DeploymentTargetLookupDto ToLookupDto(this DeploymentTarget target) => new(
             target.Id,
@@ -124,20 +122,18 @@ public static class DeploymentTargetDtoExtensions
             target.Enabled,
             target.AcceptsWorkloads,
             target.DeletionRequestedAtUtc is not null,
-            target.Health.Status.ToString())
-    {
-        NetworkPolicy = target.ToNetworkPolicyDto()
-    };
+            target.Health.Status.ToString(),
+        TechnicalName: target.TechnicalName,
+        NetworkPolicy: target.ToNetworkPolicyDto());
 
     public static AvailableDeploymentTargetDto ToAvailableDto(this DeploymentTarget target) => new(
             target.Id,
             target.DisplayName,
             target.WorkloadConfiguration.Revision,
             target.WorkloadConfiguration.Ingress?.PublicBaseDomain is not null,
-            target.WorkloadConfiguration.Ingress?.PublicBaseDomain)
-    {
-        NetworkPolicy = target.ToNetworkPolicyDto()
-    };
+            target.WorkloadConfiguration.Ingress?.PublicBaseDomain,
+        TechnicalName: target.TechnicalName,
+        NetworkPolicy: target.ToNetworkPolicyDto());
 
     public static DeploymentTargetNetworkSourcesDto ToDto(
         this DeploymentTargetNetworkSources sources) =>

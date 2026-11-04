@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.Secrets.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
@@ -10,15 +11,23 @@ namespace Pole.Features.WebServices.Application.Persistence.Mutations;
 
 public sealed record WebServiceUpdateAccepted;
 
-public sealed record WebServiceUpdateConflict(string WebServiceId);
+public enum WebServiceUpdateConflictReason { ExpectedRevisionConflict, GitOwnedConfiguration }
+
+public sealed record WebServiceUpdateConflict(
+    string WebServiceId,
+    WebServiceUpdateConflictReason Reason = WebServiceUpdateConflictReason.ExpectedRevisionConflict);
 
 public sealed record WebServiceConnectionConflict(
     string WebServiceId,
     string ConnectionId);
 
+public union WebServiceDependencyFailure(
+    ResourceConnectionReferencesUnavailable,
+    ConsumerSecretReferenceUnavailable);
+
 public sealed record WebServiceDependencyUnavailable(
     string WebServiceId,
-    string ReasonCode);
+    WebServiceDependencyFailure Cause);
 
 public union PersistWebServiceUpdateResult(
     WebServiceConnectionConflict,
@@ -32,7 +41,8 @@ public delegate Task<PersistWebServiceUpdateResult>
         WebService current,
         WebService replacement,
         WebServiceUpdatedEvent updatedEvent,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        GitMutationContext? mutation = null);
 
 internal sealed class MongoPersistUpdatedWebService(
     IMongoCollection<WebService> webServices,
@@ -40,7 +50,8 @@ internal sealed class MongoPersistUpdatedWebService(
     FenceRegisteredResource fenceRegisteredResource,
     ReconcileConnectionsForResource reconcileConnections,
     AdmitResourceConnectionReferences admitConnectionReferences,
-    AdmitConsumerSecretReferences admitSecretReferences)
+    AdmitConsumerSecretReferences admitSecretReferences,
+    IGitOpsMutations git)
 {
     public async Task<PersistWebServiceUpdateResult>
         InvokeOutcomeAsync(
@@ -48,7 +59,8 @@ internal sealed class MongoPersistUpdatedWebService(
             WebService current,
             WebService replacement,
             WebServiceUpdatedEvent updatedEvent,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            GitMutationContext? mutation = null)
     {
         WebServicePersistenceGuards.EnsureTransaction(session, "Web service update");
         WebServicePersistenceGuards.EnsureSameIdentity(current, replacement);
@@ -65,6 +77,8 @@ internal sealed class MongoPersistUpdatedWebService(
                 "A web service update event must preserve tenant and resource identity.");
         }
 
+        if (!await git.AuthorizeAsync(current.TenantId, "WebService", current.Id, session, cancellationToken, mutation))
+            return new WebServiceUpdateConflict(current.Id, WebServiceUpdateConflictReason.GitOwnedConfiguration);
         var registration = await fenceRegisteredResource(
             current.TenantId, WebServiceResourceDeployment.ResourceType, current.Id, session, cancellationToken);
         if (registration is null)
@@ -109,14 +123,14 @@ internal sealed class MongoPersistUpdatedWebService(
             var admittedConnections = await admitConnectionReferences(current.TenantId, WebServiceResourceDeployment.ResourceType, current.Id,
                 replacement.Spec.Config.ConnectionEnvironmentReferences.Values.Select(reference => new ResourceConnectionValueReference(reference.ConnectionId, reference.ValueKind, reference.ConfigurationKey)).ToArray(), session, cancellationToken);
             if (admittedConnections is ResourceConnectionReferencesUnavailable unavailable)
-                return new WebServiceDependencyUnavailable(current.Id, unavailable.ReasonCode);
+                return new WebServiceDependencyUnavailable(current.Id, unavailable);
         }
         var admittedSecrets = await admitSecretReferences(current.TenantId, current.ResourceGroupId, current.IsolationScopeId, WebServiceResourceDeployment.ResourceType, current.Id,
             current.Spec.Config.SecretEnvironmentReferences.Values.Select(reference => new ConsumerSecretKeyReference(reference.SecretId, reference.Key)).ToArray(),
             replacement.Spec.Config.SecretEnvironmentReferences.Values.Select(reference => new ConsumerSecretKeyReference(reference.SecretId, reference.Key)).ToArray(),
-            !cleanup, session, cancellationToken);
+            !cleanup, session, cancellationToken, retainPreviousReferencesUntilRollout: mutation is not null);
         if (admittedSecrets is ConsumerSecretReferenceUnavailable secretUnavailable)
-            return new WebServiceDependencyUnavailable(current.Id, secretUnavailable.ReasonCode);
+            return new WebServiceDependencyUnavailable(current.Id, secretUnavailable);
 
         await storeOutboxWrites(
             session,

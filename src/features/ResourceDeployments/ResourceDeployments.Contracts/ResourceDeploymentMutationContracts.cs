@@ -125,7 +125,8 @@ public sealed record ResourceDeploymentSetApplyItem(
     ComputeProfileReference ExpectedCompute,
     ResourceDeploymentIngressChange IngressChange,
     ResourceDeploymentComputeConfiguration? ReplacementCompute = null,
-    int? FixedReplicas = null);
+    int? FixedReplicas = null,
+    bool PinnedCompute = false);
 
 public abstract record ResourceDeploymentIngressChange;
 
