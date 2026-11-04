@@ -6,6 +6,7 @@ using Pole.Features.Outbox.Domain;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Migrations;
+using Pole.Features.WebServices.Domain;
 using Pole.Tests.Integration.Http;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
