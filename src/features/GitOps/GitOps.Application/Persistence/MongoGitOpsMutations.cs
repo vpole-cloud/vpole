@@ -6,7 +6,8 @@ using Pole.Features.GitOps.Contracts;
 namespace Pole.Features.GitOps.Application.Persistence;
 
 internal sealed class MongoGitOpsMutations(
-    IMongoCollection<GitSourceExecution> sources,
+    GitRunStore runs,
+    GitAcceptedReferences references,
     MongoRunTransaction transactions,
     MongoGitOwnership ownership,
     GitDeclarationCompletion completion,
@@ -14,7 +15,8 @@ internal sealed class MongoGitOpsMutations(
     GitOwnershipStatuses statuses) : IGitOpsMutations
 {
     public async Task<GitOperationResult> ExecuteAsync(GitOperation operation,
-        Func<IClientSessionHandle, CancellationToken, Task<GitOperationResult>> mutation, CancellationToken ct)
+        Func<IClientSessionHandle, CancellationToken, Task<GitOperationResult>> mutation,
+        CancellationToken ct)
     {
         async Task<GitOperationResult> AttemptAsync() =>
             await transactions.InvokeOutcomeAsync<GitOperationResult>(async (
@@ -24,27 +26,37 @@ internal sealed class MongoGitOpsMutations(
                     var rejected = await BeginAsync(operation, tx.Session, token);
 
                     if (rejected is not null)
-                        return tx.Abort(rejected);
+                        return rejected.Applied ? tx.Commit(rejected) : tx.Abort(rejected);
 
                     var result = await mutation(tx.Session, token);
 
                     if (!result.Applied)
                         return tx.Abort(result);
 
-                    await CompleteAsync(
+                    var completed = await CompleteAsync(
                         new CompleteGitOperationRequest(
                             Operation: operation,
                             Result: result),
                         session: tx.Session,
                         ct: token);
 
-                    return tx.Commit(result);
-                }, ct);
+                    return completed.Failure is StaleGitExecution ? tx.Abort(completed) : tx.Commit(result);
+                },
+                ct);
+
         GitOperationResult outcome;
-        try { outcome = await AttemptAsync(); }
+        try
+        {
+            outcome = await AttemptAsync();
+        }
         catch (MongoWriteException ex) when (MongoDuplicateKey.IsForIdIndex(ex, GitOpsCollections.Inventory) ||
-        MongoDuplicateKey.IsForIndex(ex, GitOpsIndexesMigration.ResourceIdentityIndex, GitOpsCollections.Inventory))
-        { outcome = await AttemptAsync(); }
+                                             MongoDuplicateKey.IsForIndex(ex,
+                                                 GitOpsIndexesMigration.ResourceIdentityIndex,
+                                                 GitOpsCollections.Inventory))
+        {
+            outcome = await AttemptAsync();
+        }
+
         // A blocked provider operation may have staged writes; abort all of them first. Retain only
         // its sanitized diagnostic in a fresh fenced transaction, along with the stable address.
         if (!outcome.Applied && outcome.Failure is not StaleGitExecution and not GitDeclarationOwnershipConflict)
@@ -53,36 +65,32 @@ internal sealed class MongoGitOpsMutations(
                     var rejected = await BeginAsync(operation, tx.Session, token);
 
                     if (rejected is not null)
-                        return tx.Abort(rejected);
+                        return rejected.Applied ? tx.Commit(rejected) : tx.Abort(rejected);
 
-                    await CompleteAsync(
+                    var completed = await CompleteAsync(
                         new CompleteGitOperationRequest(
                             Operation: operation,
                             Result: outcome),
                         session: tx.Session,
                         ct: token);
 
-                    return tx.Commit(outcome);
-                }, ct);
+                    return completed.Failure is StaleGitExecution ? tx.Abort(completed) : tx.Commit(outcome);
+                },
+                ct);
 
         if (outcome.Failure is GitDeclarationOwnershipConflict)
             await transactions.InvokeOutcomeAsync<bool>(async (tx, token) =>
                 {
                     // Keep the rejection on the requesting run; touching the other owner's inventory
                     // would either hide its successful state or imply that this source claimed it.
-                    var fenced = await sources.UpdateOneAsync(tx.Session,
-                        GitSourceExecutionFilters.Run(operation.Context),
-                        Builders<GitSourceExecution>.Update.Inc(
-                            item => item.MutationFence,
-                            1), cancellationToken: token);
-
-                    if (fenced.ModifiedCount != 1)
+                    if (await runs.TouchAsync(operation.Context.ToHandle(), tx.Session, token) is null)
                         return tx.Abort(false);
 
                     await receipts.StoreAsync(operation, outcome, tx.Session, token);
 
                     return tx.Commit(true);
-                }, ct);
+                },
+                ct);
 
         return outcome;
     }
@@ -93,11 +101,25 @@ internal sealed class MongoGitOpsMutations(
         CancellationToken ct) =>
         ownership.BeginAsync(operation, session, ct);
 
-    public Task CompleteAsync(
+    public async Task<GitOperationResult> CompleteAsync(
         CompleteGitOperationRequest request,
         IClientSessionHandle session,
-        CancellationToken ct) =>
-        completion.StoreAsync(request.Operation, request.Result, session, ct);
+        CancellationToken ct)
+    {
+        if (await runs.TouchAsync(request.Operation.Context.ToHandle(), session, ct) is null)
+            return new(request.Operation.ResourceId, new StaleGitExecution());
+
+        await completion.StoreAsync(request.Operation, request.Result, session, ct);
+        return request.Result;
+    }
+
+    public Task<string?> ResolveAcceptedAsync(
+        ResolveAcceptedGitReferenceRequest request,
+        IClientSessionHandle session,
+        CancellationToken ct) => references.ResolveAsync(request, session, ct);
+
+    public Task<PinGitReferenceOutcome> PinReferenceAsync(PinGitReferenceRequest request, CancellationToken ct) =>
+        references.PinAsync(request, ct);
 
     public Task<bool> AuthorizeAsync(
         AuthorizeGitResourceMutationRequest request,

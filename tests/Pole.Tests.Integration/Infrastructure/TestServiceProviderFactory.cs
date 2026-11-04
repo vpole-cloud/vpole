@@ -68,7 +68,9 @@ public static class TestServiceProviderFactory
         typeof(UserEndpoints).Assembly
     ];
 
-    public static ServiceProvider Create(MongoReplicaSetFixture fixture)
+    public static ServiceProvider Create(
+        MongoReplicaSetFixture fixture,
+        Action<IServiceCollection>? configure = null)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -78,6 +80,7 @@ public static class TestServiceProviderFactory
             .Build();
         var services = new ServiceCollection();
         services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Debug));
+        services.AddSingleton<Microsoft.Extensions.Configuration.IConfiguration>(configuration);
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton(fixture.Client);
         services.AddSingleton(fixture.Database);
@@ -104,7 +107,7 @@ public static class TestServiceProviderFactory
         services.AddPostgresFeature(configuration);
         services.AddResourceConnectionsFeature();
         services.AddScoped<EnsureRuntimeCellIngressBaseline>(_ =>
-(request, cancellationToken) =>
+            (request, cancellationToken) =>
                 Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
                     new RuntimeCellIngressBaselineReady()));
         services.AddSecretsFeature();
@@ -156,6 +159,7 @@ public static class TestServiceProviderFactory
         services.AddPoleMediator(Assemblies);
         services.ReplaceTenantAuthorizationWithFake();
 
+        configure?.Invoke(services);
         return services.BuildServiceProvider(validateScopes: true);
     }
 

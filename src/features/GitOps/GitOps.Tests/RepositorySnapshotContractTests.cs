@@ -17,19 +17,28 @@ public sealed class RepositorySnapshotContractTests
         Assert.Equal(commit, snapshot.Commit);
         Assert.Empty(snapshot.Files);
         Assert.IsType<RepositoryDirectoryNotFound>((await provider.ReadSnapshotAsync(
-            new(repository, commit, "missing"), default)).Value);
+            new(repository, commit, "missing"),
+            default)).Value);
         Assert.IsType<RepositoryAccessDenied>((await provider.ReadSnapshotAsync(
-            new(repository with { TenantId = "other" }, commit, "empty"), default)).Value);
+            new(repository with { TenantId = "other" }, commit, "empty"),
+            default)).Value);
     }
 
     private sealed class SourceProvider : IRepositorySnapshotProvider
     {
         public string Provider => "Example";
 
+        public Task<CheckRepositoryAccessOutcome> CheckAccessAsync(
+            RepositorySourceReference repository,
+            CancellationToken cancellationToken) => Task.FromResult<CheckRepositoryAccessOutcome>(
+            repository.TenantId == "tenant"
+                ? new RepositoryAccessGranted("https://example.test/repository")
+                : new RepositoryAccessDenied());
+
         public Task<ResolveRepositoryCommitOutcome> ResolveCommitAsync(
             ResolveRepositoryCommitRequest request,
             CancellationToken cancellationToken) => Task.FromResult<ResolveRepositoryCommitOutcome>(
-                new RepositoryCommitResolved("immutable-sha"));
+            new RepositoryCommitResolved("immutable-sha"));
 
         public Task<ReadRepositorySnapshotOutcome> ReadSnapshotAsync(
             ReadRepositorySnapshotRequest request,

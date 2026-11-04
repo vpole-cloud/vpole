@@ -26,6 +26,14 @@ public sealed record RepositorySnapshotRead(
     string Commit,
     IReadOnlyList<RepositoryManifestFile> Files);
 
+public sealed record RepositoryAccessGranted(string DisplayUrl);
+
+public union CheckRepositoryAccessOutcome(
+    RepositoryAccessGranted,
+    RepositoryAccessDenied,
+    RepositoryNotFound,
+    RepositoryTemporarilyUnavailable);
+
 public sealed record RepositoryAccessDenied;
 
 public sealed record RepositoryNotFound;
@@ -67,6 +75,10 @@ public union ReadRepositorySnapshotOutcome(
 public interface IRepositorySnapshotProvider
 {
     string Provider { get; }
+
+    Task<CheckRepositoryAccessOutcome> CheckAccessAsync(
+        RepositorySourceReference repository,
+        CancellationToken cancellationToken);
 
     Task<ResolveRepositoryCommitOutcome> ResolveCommitAsync(
         ResolveRepositoryCommitRequest request,

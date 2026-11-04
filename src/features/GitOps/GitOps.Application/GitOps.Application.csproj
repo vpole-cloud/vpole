@@ -9,12 +9,14 @@
   <ItemGroup>
     <ProjectReference Include="../GitOps.Contracts/GitOps.Contracts.csproj"/>
     <ProjectReference Include="../GitOps.Domain/GitOps.Domain.csproj"/>
+    <ProjectReference Include="../GitOps.Events/GitOps.Events.csproj"/>
+    <ProjectReference Include="../../Outbox/Outbox.Contracts/Outbox.Contracts.csproj"/>
     <ProjectReference Include="../../../shared/Database/Database.csproj"/>
-    <ProjectReference Include="../../Secrets/Secrets.Events/Secrets.Events.csproj"/>
     <ProjectReference Include="../../../shared/helpers/ASP/ASP.csproj"/>
     <ProjectReference Include="../../../shared/Validation/Validation.csproj"/>
     <PackageReference Include="FluentValidation"/>
     <PackageReference Include="Hangfire.Core"/>
+    <PackageReference Include="MassTransit"/>
     <PackageReference Include="YamlDotNet"/>
   </ItemGroup>
 </Project>

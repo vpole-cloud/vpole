@@ -58,16 +58,21 @@ public sealed record CompiledDeclaration(
     string File,
     int Document);
 
-// This context is server-created. Neither manifests nor public resource endpoints accept it.
+// The worker creates this authority from its persisted run and current lease, never from a user payload.
+public sealed record GitExecutionAuthority(
+    long ConfigurationRevision,
+    long Generation,
+    string WorkerId,
+    long Attempt,
+    string Commit);
+
 public sealed record GitMutationContext(
     string TenantId,
     string SourceId,
     string RunId,
     long Fence,
     string SourceUrl,
-    string ActorUserId,
-    string ActorEmail,
-    long Attempt = 0);
+    GitExecutionAuthority Authority);
 
 public sealed record GitResourceStatus(
     string SourceId,
@@ -93,15 +98,20 @@ public sealed record GitOperation(
 public interface IDeclarativeResourceProvider
 {
     string Kind { get; }
-    string DescribeFailure(IDeclarationFailure failure) => throw new InvalidOperationException("The provider must map its own typed declaration failures.");
+
+    string DescribeFailure(IDeclarationFailure failure) =>
+        throw new InvalidOperationException("The provider must map its own typed declaration failures.");
+
     int MaximumNameLength => ResourceTechnicalName.MaximumLength;
     DeclarationFacts Facts(JsonElement spec) => new(null, [], [], [], []);
     JsonElement NormalizeAndValidate(JsonElement spec);
     IReadOnlyList<DeclarationStep> Steps(ResourceAddress address, JsonElement spec);
+
     Task<string?> ResolveAsync(
         ResolveDeclaredResourceRequest request,
         IClientSessionHandle session,
         CancellationToken ct);
+
     Task<GitOperationResult> ApplyAsync(GitOperation operation, CancellationToken ct);
 }
 
@@ -110,23 +120,37 @@ public interface IDeclarativeResourceProvider
 public interface IGitOpsMutations
 {
     Task<GitOperationResult> ExecuteAsync(GitOperation operation,
-        Func<IClientSessionHandle, CancellationToken, Task<GitOperationResult>> mutation, CancellationToken ct);
+        Func<IClientSessionHandle, CancellationToken, Task<GitOperationResult>> mutation,
+        CancellationToken ct);
+
     Task<GitOperationResult?> BeginAsync(GitOperation operation, IClientSessionHandle session, CancellationToken ct);
-    Task CompleteAsync(
+
+    Task<GitOperationResult> CompleteAsync(
         CompleteGitOperationRequest request,
         IClientSessionHandle session,
         CancellationToken ct);
+
     Task<bool> AuthorizeAsync(
         AuthorizeGitResourceMutationRequest request,
         IClientSessionHandle session,
         CancellationToken ct);
+
     Task<string?> ResolveAsync(
         ResolveGitResourceRequest request,
         IClientSessionHandle session,
         CancellationToken ct);
+
+    Task<string?> ResolveAcceptedAsync(
+        ResolveAcceptedGitReferenceRequest request,
+        IClientSessionHandle session,
+        CancellationToken ct);
+
+    Task<PinGitReferenceOutcome> PinReferenceAsync(PinGitReferenceRequest request, CancellationToken ct);
+
     Task<IReadOnlyDictionary<string, GitResourceStatus>> StatusesAsync(
         LoadGitResourceStatusesRequest request,
         CancellationToken ct);
+
     Task<GitResourceStatus?> StatusAsync(
         LoadGitResourceStatusRequest request,
         CancellationToken ct);
@@ -142,10 +166,13 @@ public static class DeclarationJson
 
     public static T Read<T>(JsonElement value) where T : class =>
         value.Deserialize<T>(Options) ?? throw new JsonException("A spec object is required.");
+
     public static JsonElement Write<T>(T value) => JsonSerializer.SerializeToElement(value, Options);
+
     public static void Require([DoesNotReturnIf(false)] bool condition, string field)
     {
-        if (!condition) throw new DeclarationSchemaException(field);
+        if (!condition)
+            throw new DeclarationSchemaException(field);
     }
 }
 

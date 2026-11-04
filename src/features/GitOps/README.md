@@ -1,58 +1,41 @@
-# Manual snapshot API and declarative pipeline (first slice)
+# Repository GitOps
 
-This is the first implementation slice for [#88](https://github.com/lsbV/Pole/issues/88)
-and [#98](https://github.com/lsbV/Pole/issues/98). It supports ResourceGroup, metadata-only
-Secret, WebService identity/placement and final configuration, and explicit SecretBinding.
-It does **not** complete the GitOps epic.
+Pole synchronizes a tenant-owned GitHub repository source through ResourceGroup, Secret,
+SecretBinding and WebService providers. Stage 3 includes the source API, durable execution,
+polling, signed push webhooks and dependency recovery. It remains one part of the #88/#98 PR;
+drift reconciliation, the other nine providers and lifecycle commands are later stages.
 
-## Boundary and execution
+The [canonical repository contract](docs/repository-contracts.md) defines all thirteen kinds,
+source/run/inventory boundaries, YAML identity and the remaining delivery stages.
 
-`DeclarativePipeline` is the internal application engine behind an authenticated **manual snapshot
-API**. A caller can create a source, submit local YAML content, inspect the resulting resource
-IDs/blockers, supply values through the existing Secret API/UI, and have the accepted snapshot
-resume without another commit. This is an operable manual foundation, not repository-connected
-GitOps: Pole does not fetch or verify the submitted repository URL or commit marker.
+## Execution
 
-Every API route uses existing bearer authentication and `X-Pole-Tenant-ID`; Viewer can inspect,
-Member/Admin/Owner can write, and existing platform-admin behavior is preserved. Tenant and actor
-come from the trusted request context. Bodies cannot provide a mutation context or another tenant.
-Source IDs are server-generated and tenant-scoped. Creation is idempotent by a tenant-scoped UUID;
-a source URL is immutable, HTTPS, and cannot contain user info, query parameters or a fragment.
-No credentials or new permissions are provisioned or retained by this feature.
+`POST /api/v1/gitops/sources/` atomically stores source configuration, the first requested
+generation and an outbox signal. A consumer dispatches a Hangfire job containing only tenant/source
+IDs. The Mongo recovery scanner also discovers pending requests, delayed runs and expired claims.
+An unavailable enqueue cannot lose the request.
 
-Stage 2 supplies a GitHub implementation of `IRepositorySnapshotProvider`: resolve an immutable commit,
-then read a complete, bounded manifest snapshot through a named tenant-owned GitHub App connection.
-This adapter is registered but is not yet connected to the active manual execution pipeline.
-Worker orchestration, webhooks/polling and source pause/deletion/relocation remain follow-up work.
-The engine invokes feature-owned application operations directly; it does not chain HTTP endpoints
-or invoke build analysis. See [repository input](docs/repository-contracts.md#stage-2-github-repository-input)
-for directory semantics, archive limits and the setup-name contract.
+`RepositorySourceJob` claims a run before network access. It checks current tenant/connection
+access, resolves the branch to a full SHA, persists it, reads that exact commit and compiles the
+whole snapshot before resource writes. Fetch/compile failures remain inspectable runs and never
+become an empty desired state. A valid existing directory without YAML is an empty snapshot;
+retained ownership is marked pending removal, never deleted.
 
-Providers implement the platform-owned `IDeclarativeResourceProvider` contract and register
-through DI in their owning Application feature. GitOps imports no concrete provider. Each
-provider owns strict schemas, defaults, contextual admission and feature persistence operations;
-providers resolve other resources through tenant-aware contracts. A test provider demonstrates
-extension without changing the engine. Duplicate provider kinds fail registry construction.
+Accepted input stores normalized declarations, allocated resource IDs and ordered operations.
+Internal references use allocated IDs; successful external resolution is pinned durably before
+provider mutation. Recreated names never silently change the accepted target. Execution uses the
+existing Prepare/Bind/Configure phases, preserving inert WebService placement until complete
+configuration can activate it. Runtime readiness and configuration applied are separate facts.
 
-Compilation validates the **entire** snapshot before even accepting source execution state.
-Unknown fields/kinds/versions, duplicate addresses/map keys, anchors/tags, unsafe file paths,
-malformed YAML, internal scope/key/access contradictions, duplicate binding relationships and operation cycles reject the snapshot.
-External input limits are 1 MiB total UTF-8, 256 files/declarations/documents per file and depth 24. Diagnostics
-contain file/document/field and a fixed code; parser messages and values are not copied into errors.
-Accepted specs are capped at 6 MiB of normalized JSON before source mutation, leaving space below MongoDB's document limit after snapshot encoding. Resume revalidates accepted specs and their operation graph
-directly; JSON escaping does not reapply the external text limit.
-The current schema accepts lowercase DNS labels beginning with a letter and ending with a letter/digit: at most 20 characters
-for ResourceGroup, 30 for WebService and 63 for Secret/SecretBinding. There is no displayName.
-Names identify a kind tenant-wide, independently of resource group and source. Internal references
-retain immutable IDs. Case-insensitive unique group/service indexes also protect manual creation. If existing data has
-colliding tenant-wide names, the index migration fails and requires explicit operator remediation;
-it never renames, deletes or adopts either resource automatically.
+Every provider transaction performs real fencing writes against source revision/fence, current
+run and worker/attempt/expiry. Resource mutation, ownership, receipt, release and outbox commit
+atomically. Successful receipts prevent replayed side effects after a crash. Finalization checks
+successful matching receipts for every accepted operation. Lease predicates and expiry use Mongo
+time; local scheduling uses `TimeProvider`.
 
-The operation graph establishes group, Secret metadata and inert WebService placement first,
-then binding/access, then the complete configuration and activation in one transaction.
-A durable `Prepared` ResourceDeployment cannot be claimed, woken by RuntimeCell readiness,
-retried or recovered into a workload. Only explicit complete configuration requests activation.
-Runtime-cell namespace preparation may proceed; no incomplete application is launched.
+Source creators and Sync/Retry users remain audit metadata. The worker has server authority;
+removing an author's membership does not remove tenant-owned automation authority. WebService
+releases record source/run/commit provenance without fabricated user IDs or email addresses.
 
 ## Create named catalog entries
 
@@ -80,8 +63,7 @@ context. Unknown, inaccessible and ambiguous references block. Prepared services
 name/ID pairs internally; retries and unchanged replays never switch to another catalog object that
 later reuses a name. An explicit profile revision selects only that bound profile's history.
 Changing the declared profile name is an explicit desired-state change; target replacement remains
-blocked. The unreleased checkpoint's ID-based YAML is rejected structurally; a stored incompatible
-snapshot stops as `UnsupportedStoredSchema` and needs resubmission with names.
+blocked. ID-based YAML is rejected structurally. There are no deployed legacy snapshots to migrate.
 
 ## Versioned schema and example
 
@@ -193,170 +175,80 @@ An asynchronous projection replacement
 cannot safely rename a key still referenced by the current workload template. Equivalent aliases
 and remapping keys no longer referenced by the service remain supported.
 
-## Supported operator workflow
+## Source API
 
-Use the existing authenticated API session and active tenant. No new credential is needed.
+All source routes use bearer authentication and `X-Pole-Tenant-ID`. Viewer can read;
+Member/Admin/Owner can write, with existing platform-admin behavior preserved. Foreign sources
+and runs return not-found. Tenant/user authority comes from the server, never the body.
 
-| Method and route (under `/api/v1`)  | Input                                                                                                                    | Behavior                                                                                                                                                                                                                                    |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /gitops/sources/`             | `{ "idempotencyKey": "<UUID>", "sourceUrl": "https://github.com/owner/repo" }`                                           | Returns server source `id`, fence 0 and `AwaitingSnapshot`. Reuse the UUID and URL after a lost response.                                                                                                                                   |
-| `PUT /gitops/sources/{id}/snapshot` | `{ "expectedFence": 0, "commit": "demo-snapshot-1", "files": [{ "path": "demo.yaml", "content": "<the YAML above>" }] }` | Validates all documents, accepts normalized desired state, then applies phases. Returns 202 with `Blocked` or `ConfigurationApplied`, resource IDs and sanitized blockers.                                                                  |
-| `GET /gitops/sources/{id}`          | None                                                                                                                     | Returns fence, run, observed/applied marker, next retry time owned-resource status, and bounded per-operation diagnostics (including conflicting addresses). It does not return accepted config, values, actor details or mutation context. |
-| `POST /gitops/sources/{id}/resume`  | `{ "expectedFence": 1 }`                                                                                                 | Re-evaluates the persisted snapshot now, without submitting files or advancing the source fence.                                                                                                                                            |
+Under `/api/v1/gitops/sources`:
 
-For the example, first submission creates metadata and an inert service, then reports
-`SecretValuesMissing`. Find the Secret ID in source status or the Secrets console. Submit
-`POST /secrets/{secretId}/versions` with `{ "expectedVersion": 0, "values": { "API_TOKEN": "" } }`
-or enter values in the existing console. The empty string in this example is a legitimate value.
-Values belong only in this protected value-supply API, **never** in snapshot YAML.
+| Method/path                                | Input and behavior                                                                                                                                                                    |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /`                                   | `idempotencyKey`, `provider`, `connectionId`, `externalRepositoryId`, `branch`, `manifestDirectory`, optional `pollIntervalSeconds`; returns the created source, not an apply result. |
+| `GET /`, `GET /{id}`                       | Configuration, generations, commit markers, current/latest run identity, sanitized latest-run diagnostics and inventory counts. Lists use bounded `page`/`pageSize`.                  |
+| `PUT /{id}`                                | `expectedRevision`, `pollIntervalSeconds`; only polling policy can change in this stage.                                                                                              |
+| `POST /{id}/sync`                          | `expectedRevision`, `idempotencyKey`; returns 202 for a durable request to resolve the current branch.                                                                                |
+| `POST /{id}/retry`                         | `expectedRevision`, `idempotencyKey`, `runId`; returns 202 for a new run using the pinned input.                                                                                      |
+| `GET /{id}/runs`, `GET /{id}/runs/{runId}` | Paginated history and run details.                                                                                                                                                    |
+| `GET /{id}/runs/{runId}/operations`        | Bounded pending/succeeded/blocked descriptors and sanitized diagnostic codes.                                                                                                         |
 
-The durable value event triggers resume. If delivery was missed or the process restarted, the
-recovery job retries the saved snapshot; the explicit resume route provides immediate operator
-recovery. `GET` eventually reports `ConfigurationApplied` and the unchanged applied marker;
-inspect the normal service health/operations views separately for runtime readiness.
+Repeated idempotency keys with identical input do not create another source/generation; changed
+input conflicts. Retry requires the latest failed/blocked run at the same configuration revision,
+a pinned SHA, and no active or pending work. If the run accepted a snapshot, Retry retains it.
+Without a SHA, request Sync. New signals during a run coalesce into a later generation and never
+change its commit. A retry reserves its run before later Sync requests can be claimed.
 
-For later snapshots, use the latest fence returned by `GET`. An unchanged replay advances source
-execution metadata but creates no resource revision, release, or deployment generation. A stale
-submission/resume returns 409; inspect status after an uncertain response instead of creating a
-new source. Invalid YAML returns 400 with diagnostics and leaves accepted state/resources untouched.
-Unknown/foreign source IDs return 404 within the selected tenant. Writer role checks also apply to
-resume and creation. Request bodies are capped (2 MiB snapshot JSON, 4 KiB control requests), with
-the stricter compiled snapshot limits described above. `commit` is a bounded caller-supplied
-revision marker in this manual API; repository/commit authenticity is deferred with Git fetching.
+Observed commit advances after resolution, attempted commit after acceptance, fully applied commit
+only after all phases succeed. Completed generation includes failures/blockers; it is not a success
+flag. Polling can skip an unchanged commit/revision only after the latest successful run, never
+after a later failed or partially applied run.
+
+The former manual snapshot/resume routes are removed. There is no public YAML apply API.
+Responses do not expose raw manifests, accepted specs, credentials or Secret values.
+
+## Scheduling and GitHub webhook
+
+Source polling defaults to five minutes and has a one-minute minimum. `GitOpsWorker` server
+options default to a one-minute scan, batch 100, two-minute lease, 20-second heartbeat and five
+consecutive failed attempts. Temporary failures persist delays of 1/2/4/5 minutes; exhaustion
+finishes the run with an explicit failure. Polling or Sync can start a new run later.
+
+Configure a separate `GitHubWebhook:Secret` (required at startup when GitHub is enabled), and point
+the GitHub App push webhook at `POST /api/v1/integrations/github/webhook`. Use a randomly generated
+secret. The endpoint verifies HMAC-SHA256 over the raw bytes with constant-time comparison before
+parsing, and rejects bodies above 25 MiB, including streamed bodies without Content-Length.
+
+A delivery receipt stores only its GUID, payload hash, event type and receive time. Receipt and
+GitProviders-owned outbox event are atomic. Redelivery is idempotent; a reused ID with different
+content conflicts. Signed ping/irrelevant events are acknowledged without GitOps work. Installation
+identity resolves the stored connection/tenant; payload tenant fields are ignored. The consumer
+calls the GitOps scheduling contract using provider/connection/repository/branch. The SHA is only
+a hint: the worker resolves the current branch. Deleted branches fail with ref-not-found and
+preserve inventory. Polling independently recovers missed deliveries.
 
 ## Secret values and recovery
 
-Secret declarations contain **expected key names only**. `values`, `data` and `stringData` are
-unknown fields and rejected. Metadata begins at value version 0 with no encrypted version.
-The existing authorized rotation operation accepts `expectedVersion: 0` for first supply; subsequent
-rotations retain normal optimistic version checks. For declared metadata, supply a complete map
-with exactly the expected keys. An empty string is a supplied value. Encrypted values stay in the
-existing protected version store and never enter accepted snapshots or operation diagnostics.
-Provider-managed credentials (`managedBy`) are a separate invariant and retain their restrictions.
+YAML declares Secret metadata and keys, never values. Supply values through the existing protected
+Secret API/UI. The Secrets-owned `SecretChangedEvent` adapter forwards value rotations through the
+generic GitOps dependency wake contract. Eligible blocked runs reserve an accepted-input retry;
+replayed signals are idempotent and do not displace newer pending Sync work. GitOps does not import
+Secrets Events. Existing version-aware projection and old-reference rollout safeguards remain active.
 
-Missing external prerequisites and missing values return explicit recoverable blockers, including
-`SecretValuesMissing`, `SecretBindingUnavailable`, `ResourceGroupUnavailable`, and
-`ComputeProfileRevisionUnavailable`. `ResumeAsync(context)` reloads the accepted normalized snapshot
-from storage, re-evaluates prerequisites and current configuration, and can proceed after values are
-supplied **without a new commit**. A restart can load the persisted run context and call the same
-entry point. The manual API additionally persists retry deadlines: a Secret value-change outbox
-consumer wakes same-tenant sources referencing that Secret, and a minutely Hangfire recovery job
-claims up to 32 due accepted snapshots. Blocked snapshots retry after one minute; interrupted
-attempts become recoverable after a five-minute lease. The due claim and per-attempt fence prevent
-duplicate delivery, concurrent retry, or late blocked outcomes from overwriting a newer success.
-The job reloads the server-owned source and tenant from storage, never from event payload credentials.
-This bounded accepted-snapshot recovery does not fetch Git or implement the complete source worker.
+## Persistence and remaining stages
 
-Prepared resources retain stable IDs through retry. An unchanged successful replay creates no
-additional logical revision, release or deployment generation. Image changes retain the service ID.
-A blocked replacement configuration leaves the last working spec, placement and release intact.
+`RepositorySource`, `GitSynchronizationState` and `GitReconciliationRun` replace the manual source
+and execution collections. `ManagedDeclaration` remains ownership inventory, `GitOperationReceipt`
+remains operation truth and `GitAcceptedReference` retains resolved identities. All stored models
+belong to Domain with BSON attributes; Application owns filters, transactions and boundary mappings.
+There are no compatibility readers, backfills or dual writes: Pole has not been deployed.
 
-## Ownership, transactions and status
+Stage 4 connects the projection planner and drift reconciliation. Additional providers, source
+pause/resume, detach/delete, adoption, replacement, relocation and preview confirmation remain
+later work. Prune stays `Retain`. Projection inventory models are not populated with fabricated
+stage-3 values. No new GitOps UI is included.
 
-A source run advances only from the expected source fence. Tenant/source ObjectIds are canonicalized
-before constructing ownership keys. Each resume claims a new attempt generation within that run. The accepted schema version, normalized snapshot and
-allocated IDs are persisted before provider work. Each provider transaction conditionally **writes**
-the current source/run fence, claims the tenant-wide inventory address, mutates the feature,
-records its operation outcome and writes outbox messages together. A newer accepted source run
-conflicts with in-flight old transactions; stale contexts cannot finish or mutate newer state.
-Provider CAS and registration/placement/compute/Secret reference fences remain in force.
-Blocked mutations abort their feature writes before recording only a sanitized blocker in a fresh
-fenced transaction. Successful independent operations remain applied; there is no distributed rollback.
-
-The shared WebService update persistence guard covers ordinary edits, placement, redeploy/rollback,
-source-build completion and image-update tokens. Delete has its own guarded boundary. ResourceGroup
-metadata/deletion and Secret deletion/declared-binding detach are also guarded. Secret value supply
-is the intentional authorized exception; supplied values cannot rewrite declared keys. Runtime
-observations and finalization remain distinct from desired-configuration edits.
-Manual deployment retry/update requests against a Prepared service return the existing
-`web-services.update-unavailable` conflict without changing its placement or creating a release.
-Activate the complete desired configuration through the source before using runtime operations.
-
-`GitSourceExecutions` records observed/attempted/applied commit separately. `ManagedDeclarations`
-records ownership, desired/applied hash, blocker and pending removal; `GitOperationReceipts` records
-per-phase outcomes. `ConfigurationApplied` only means all configuration operations succeeded.
-Runtime readiness continues through ResourceDeployments and existing health APIs. The resource
-console displays ownership, source link and blockers; Git configuration controls are read-only,
-while normal manual resources and Secret value entry remain available.
-
-Pruning is unavailable/off. Removed declarations stay in inventory with ownership and
-`PendingRemoval: true`; an empty snapshot does not authorize deletion. Adoption, detach, prune,
-protected deletion approvals and source relocation remain explicit later stages.
-
-## Compute profile history
-
-ComputeProfiles now retains immutable revision snapshots on create/update and default demotion.
-Initial schema/index setup does not backfill catalog data. Unknown historical revisions produce
-`ComputeProfileRevisionUnavailable`. Historical configuration must still
-pass **current** catalog enabled/type/tenant/target authorization, fenced inside the workload
-transaction. Removing a current target mapping blocks new historical adoption to that target.
-Existing deployment snapshots survive catalog changes. Git must change the pinned revision to
-adopt another snapshot; image-only replay keeps the existing snapshot.
-
-## Verification and remaining stages
-
-`GitOps.Tests` covers strict compilation, normalization, cycle detection and provider extensibility.
-`Pole.Tests.Integration/GitOps` exercises the authenticated operator workflow, Secret-event and
-missed-event/restart recovery, blocked reads, concurrent attempt/source fences, manual duplicate-name
-conflicts, ownership, pinned compute, preflight atomicity and pending removal. Existing Secret,
-WebService, catalog, architecture and frontend suites remain regression gates.
-
-Follow-up: full provider matrix from #88; durable source worker/claim/lease lifecycle; immutable
-Git snapshot acquisition and archive hardening; webhook/poll/retry/pause; full source lifecycle management and
-redacted diffs; explicit adoption/detach/replacement/prune approvals; integrated GitHub/browser and
-live infrastructure end-to-end evidence. None of these are claimed by this slice.
-
-## Execution domain and persistence boundaries
-
-`GitOps.Domain` may depend on MongoDB for BSON attributes. It has no Contracts, transport,
-or application-persistence dependencies.
-It owns execution stamps and accepted resource identity/hash authorization, immutable source origin,
-configuration progress, preservation of the last applied commit, and retained declaration ownership.
-The application pipeline and provider mutation boundary use these decisions directly. Domain progress
-means desired configuration was applied; it does not claim workload runtime readiness.
-
-GitOps Domain owns persisted execution, inventory, receipt, source and accepted-declaration models.
-Domain models declare BSON attributes and standard polymorphic discriminators. Application
-persistence owns JSON codecs and maps stored state to the execution domain model. Source acceptance,
-atomic attempt claims/finalization, ownership fences, receipts,
-status reads and provider transaction orchestration have separate implementations. Acceptance stores
-stable resource IDs before providers run. Attempt claims retain atomic increments; all provider and
-final status writes retain tenant/source/run/fence/attempt predicates. Blocked provider transactions
-still abort resource/outbox changes before recording their diagnostic in a fresh fenced transaction.
-
-`SnapshotSchema` owns the manifest version and structural bounds. `SnapshotHttpLimits` owns request
-bounds. `SnapshotExecutionPolicy` owns the five-minute recovery lease, one-minute retry and bounded
-recovery batch. These operational/transport policies do not belong to Domain. None of these changes
-fetches repositories, applies live manifests or backfills names against running systems.
-
-Declaration providers own their typed rejection reasons. The generic execution contract carries
-an open `IDeclarationFailure`; GitOps itself recognizes only its fencing and ownership failures.
-The ResourceGroup operation has a feature-specific outcome before adapting to that extension
-contract. Providers map failures to stable diagnostic codes when writing inventory/receipts;
-execution never branches on those codes. Secret admission and manual/build/token conflicts retain
-typed reasons through their owning application operations. Existing HTTP problem codes and stored
-diagnostic strings remain compatible.
-
-Placement, runtime and private-access contract projections retain typed status/operation enums.
-HTTP enum converters preserve the existing string wire values and reject unknown/numeric values;
-published event strings retain their existing serialized representation. PlacementSummary uses one
-ordinary-property record style to preserve its nonconstant default isolation value.
-
-Technical names use the same lower-case DNS-label rule for declarations and catalog references:
-they begin with a letter, end with a letter/digit, and contain only letters, digits or hyphens.
-Provider-owned name limits can be shorter than the common 63-character bound.
-
-Secret key changes must preserve keys pinned by the current working configuration. To replace a
-key, first declare/grant both keys, supply values, and move the service reference to the new key.
-Wait for the replacement rollout to complete successfully on every deployment before removing
-the retired key/grant in a later snapshot; source `ConfigurationApplied` does not prove runtime
-consumers have stopped using it. Values are never copied or renamed
-implicitly. A direct removal of an in-use key blocks with `SecretKeysInUse`; the working deployment
-remains intact. Missing historical ComputeProfile revisions likewise block rather than being
-reconstructed or silently replaced with the latest revision.
-
-## Repository GitOps target contracts
-
-See [repository contracts](docs/repository-contracts.md) for the domain model, stage-2 GitHub input, provider boundaries,
-13-kind coverage matrix, target source API and confirmation rules. Repository synchronization and
-lifecycle commands remain scheduled work; the manual snapshot flow above is the current runtime.
+Stage verification includes solution build, full GitOps/GitProviders/SourceBuilds and architecture
+suites, full Integration, frontend gates and GitHub setup/repository-flow Aspire E2E. The E2E fixture
+uses its isolated service graph and the existing full Kubernetes lab. The complete publication gate
+runs after all stages before the single PR; stage evidence does not replace it.

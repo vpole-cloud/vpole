@@ -11,6 +11,10 @@ public sealed record GitCommitProgress(
     string? Attempted,
     string? FullyApplied);
 
+public sealed record GitPendingRequest(
+    GitRunInitiator Initiator,
+    string? RetryOfRunId);
+
 public sealed record GitSynchronizationState(
     [property: BsonId] string Id,
     GitSourceIdentity Source,
@@ -18,11 +22,16 @@ public sealed record GitSynchronizationState(
     long CompletedGeneration,
     long Fence,
     GitActiveRun? CurrentRun,
-    GitCommitProgress Commits)
+    string? LatestRunId,
+    GitPendingRequest Pending,
+    GitCommitProgress Commits,
+    DateTime NextPollAtUtc,
+    long MutationVersion)
 {
-    public GitSynchronizationState RequestSync() => this with
+    public GitSynchronizationState RequestSync(GitPendingRequest request) => this with
     {
-        RequestedGeneration = checked(RequestedGeneration + 1)
+        RequestedGeneration = checked(RequestedGeneration + 1),
+        Pending = request
     };
 
     public GitSynchronizationState Observe(string commit)
@@ -31,18 +40,23 @@ public sealed record GitSynchronizationState(
         return this with { Commits = Commits with { Observed = commit } };
     }
 
-    public GitSynchronizationState BeginRun(string runId, string commit)
+    public GitSynchronizationState Attempt(string commit)
+    {
+        GitSourceGuards.Required(commit, nameof(commit));
+        return this with { Commits = Commits with { Attempted = commit } };
+    }
+
+    public GitSynchronizationState BeginRun(string runId)
     {
         GitSourceGuards.Required(runId, nameof(runId));
-        GitSourceGuards.Required(commit, nameof(commit));
         if (RequestedGeneration <= CompletedGeneration || CurrentRun is not null)
             throw new InvalidOperationException("A run needs pending work and no current run.");
 
         return this with
         {
             CurrentRun = new(runId, RequestedGeneration),
-            Fence = checked(Fence + 1),
-            Commits = Commits with { Attempted = commit }
+            LatestRunId = runId,
+            Fence = checked(Fence + 1)
         };
     }
 
@@ -56,23 +70,29 @@ public sealed record GitSynchronizationState(
         {
             CurrentRun = null,
             CompletedGeneration = stamp.Generation,
-            Commits = completion switch
-            {
-                GitRunCompletion.ConfigurationApplied => Commits with { FullyApplied = Commits.Attempted },
-                GitRunCompletion.Blocked => Commits,
-                _ => throw new ArgumentOutOfRangeException(nameof(completion))
-            }
+            Commits = completion == GitRunCompletion.ConfigurationApplied
+                ? Commits with { FullyApplied = Commits.Attempted }
+                : Commits
         };
     }
 }
 
-public enum GitRunCompletion { ConfigurationApplied, Blocked }
-
 public static class GitSynchronizationStateFactory
 {
-    public static GitSynchronizationState Create(GitSourceIdentity source)
+    public static GitSynchronizationState Create(GitSourceIdentity source, DateTime nextPollAtUtc)
     {
         GitSourceGuards.Identity(source);
-        return new($"{source.TenantId}/{source.SourceId}", source, 0, 0, 0, null, new(null, null, null));
+        GitSourceGuards.Utc(nextPollAtUtc);
+        return new($"{source.TenantId}/{source.SourceId}",
+            source,
+            0,
+            0,
+            0,
+            null,
+            null,
+            new(new(GitRunTrigger.Poll, null), null),
+            new(null, null, null),
+            nextPollAtUtc,
+            0);
     }
 }

@@ -23,6 +23,10 @@ public abstract class MediatorIntegrationTestBase : IAsyncLifetime
     protected IMediator Mediator => _scope!.ServiceProvider.GetRequiredService<IMediator>();
     protected IServiceProvider Services => _scope!.ServiceProvider;
 
+    protected virtual void ConfigureServices(IServiceCollection services)
+    {
+    }
+
     public virtual async Task InitializeAsync()
     {
         await Fixture.ResetDatabaseAsync();
@@ -33,7 +37,7 @@ public abstract class MediatorIntegrationTestBase : IAsyncLifetime
         await Fixture.DbContext.Tenants.InsertOneAsync(TenantFactory.Create(
             "Test tenant",
             TestData.TenantId));
-        _serviceProvider = TestServiceProviderFactory.Create(Fixture);
+        _serviceProvider = TestServiceProviderFactory.Create(Fixture, ConfigureServices);
         _scope = _serviceProvider.CreateScope();
     }
 

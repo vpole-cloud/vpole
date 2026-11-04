@@ -1,0 +1,65 @@
+using Pole.Features.GitOps.Domain;
+
+namespace Pole.Features.GitOps.Application.Persistence;
+
+public sealed record CreateGitRepositorySource(
+    string TenantId,
+    string CreationKey,
+    GitRepositoryLocation Repository,
+    GitSyncPolicy Sync,
+    GitSourceAudit Audit,
+    string DisplayUrl);
+
+public sealed record GitSourceCommand(
+    string TenantId,
+    string SourceId,
+    long ExpectedRevision,
+    string RequestKey,
+    GitRunInitiator Initiator);
+
+public sealed record RetryGitSourceCommand(
+    GitSourceCommand Source,
+    string RunId);
+
+public sealed record ChangeGitSourcePolicy(
+    string TenantId,
+    string SourceId,
+    long ExpectedRevision,
+    GitSyncPolicy Sync);
+
+public sealed record GitSourceNotFound;
+
+public sealed record GitSourceRevisionConflict;
+
+public sealed record GitSourceIdempotencyConflict;
+
+public sealed record GitSourceBusy;
+
+public sealed record GitRetryNotAvailable;
+
+public sealed record GitSourceScheduled(
+    string SourceId,
+    long Generation);
+
+public union CreateGitRepositorySourceOutcome(
+    RepositorySource,
+    GitSourceIdempotencyConflict);
+
+public union RequestGitSourceSyncOutcome(
+    GitSourceScheduled,
+    GitSourceNotFound,
+    GitSourceRevisionConflict,
+    GitSourceIdempotencyConflict);
+
+public union RetryGitSourceOutcome(
+    GitSourceScheduled,
+    GitSourceNotFound,
+    GitSourceRevisionConflict,
+    GitSourceIdempotencyConflict,
+    GitSourceBusy,
+    GitRetryNotAvailable);
+
+public union ChangeGitSourcePolicyOutcome(
+    RepositorySource,
+    GitSourceNotFound,
+    GitSourceRevisionConflict);

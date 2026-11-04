@@ -1,9 +1,10 @@
+using Microsoft.Extensions.Options;
+using Pole.Features.GitOps.Application.Endpoints.Sources;
 using Pole.Features.GitOps.Domain;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Builder;
 using Hangfire;
 using Microsoft.AspNetCore.Routing;
-using Pole.Features.GitOps.Application.Endpoints;
 using Pole.Features.GitOps.Application.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
@@ -17,16 +18,36 @@ public static class GitOpsFeature
     public static IServiceCollection AddGitOpsFeature(this IServiceCollection services)
     {
         services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>()
-                .GetCollection<GitSourceExecution>(GitOpsCollections.Executions));
+            .GetCollection<ManagedDeclaration>(GitOpsCollections.Inventory));
         services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>()
-                .GetCollection<ManagedDeclaration>(GitOpsCollections.Inventory));
+            .GetCollection<GitOperationReceipt>(GitOpsCollections.Receipts));
         services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>()
-                .GetCollection<GitOperationReceipt>(GitOpsCollections.Receipts));
+            .GetCollection<RepositorySource>(RepositoryCollections.Sources));
         services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>()
-                .GetCollection<ManualSnapshotSource>(GitOpsCollections.Sources));
-        services.AddScoped<ManualSnapshotSources>();
-        services.AddScoped<SnapshotResumeRecoveryJob>();
-        services.AddScoped<ResumeSnapshotOnSecretValueChanged>();
+            .GetCollection<GitSynchronizationState>(RepositoryCollections.Synchronization));
+        services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>()
+            .GetCollection<GitReconciliationRun>(RepositoryCollections.Runs));
+        services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>()
+            .GetCollection<GitSourceRequestReceipt>(RepositoryCollections.Requests));
+        services.AddOptions<GitOpsWorkerOptions>().BindConfiguration(GitOpsWorkerOptions.SectionName)
+            .ValidateDataAnnotations().Validate(options => options.HeartbeatSeconds * 2 < options.LeaseSeconds,
+                "The heartbeat interval must be less than half the lease duration.").ValidateOnStart();
+        services.AddSingleton(sp => sp.GetRequiredService<IOptions<GitOpsWorkerOptions>>().Value);
+        services.AddScoped<RepositoryProviderRegistry>();
+        services.AddScoped<GitRepositorySources>();
+        services.AddScoped<GitSourceScheduling>();
+        services.AddScoped<IGitSourceScheduler>(sp => sp.GetRequiredService<GitSourceScheduling>());
+        services.AddScoped<GitSourceRecoveryScanner>();
+        services.AddScoped<DispatchGitSource>(sp => source =>
+            sp.GetRequiredService<IBackgroundJobClient>().Enqueue<RepositorySourceJob>(job =>
+                job.ExecuteAsync(source.TenantId, source.SourceId, CancellationToken.None)));
+        services.AddScoped<GitRunStore>();
+        services.AddScoped<GitSnapshotAcceptance>();
+        services.AddScoped<GitAcceptedReferences>();
+        services.AddScoped<RepositorySourceJob>();
+        services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>()
+            .GetCollection<GitAcceptedReference>(RepositoryCollections.References));
+        services.AddScoped<GitRepositoryQueries>();
         services.AddScoped<DeclarativeProviderRegistry>();
         services.AddScoped<ManifestCompiler>();
         services.AddScoped<DeclarativeResourcePlanner>();
@@ -34,35 +55,27 @@ public static class GitOpsFeature
         services.AddScoped<GitDeclarationCompletion>();
         services.AddScoped<GitOperationReceipts>();
         services.AddScoped<GitOwnershipStatuses>();
-        services.AddScoped<SnapshotAcceptanceStore>();
-        services.AddScoped<AcceptSnapshot>(sp => sp.GetRequiredService<SnapshotAcceptanceStore>().InvokeAsync);
-        services.AddScoped<SnapshotAttemptStore>();
-        services.AddScoped<ClaimSnapshotAttempt>(sp => sp.GetRequiredService<SnapshotAttemptStore>().ClaimAsync);
-        services.AddScoped<RejectStoredSnapshotSchema>(sp => sp.GetRequiredService<SnapshotAttemptStore>()
-                .RejectSchemaAsync);
-        services.AddScoped<FinalizeSnapshotAttempt>(sp => sp.GetRequiredService<SnapshotAttemptStore>().FinalizeAsync);
         services.AddScoped<IGitOpsMutations, MongoGitOpsMutations>();
-        services.AddScoped<DeclarativePipeline>();
 
         return services;
     }
 
-    public static IEndpointRouteBuilder MapGitSnapshotEndpoints(this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapGitOpsEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGroup("/gitops/sources").WithTags("ManualGitSnapshots")
-            .MapCreateSnapshotSourceEndpoint().MapGetSnapshotSourceEndpoint()
-            .MapSubmitSnapshotEndpoint().MapResumeSnapshotEndpoint();
+        app.MapGroup("/gitops/sources").WithTags("GitOpsSources")
+            .MapCreateRepositorySourceEndpoint().MapGetRepositorySourceEndpoint().MapListRepositorySourcesEndpoint()
+            .MapUpdateRepositorySourceEndpoint().MapSyncRepositorySourceEndpoint().MapRetryRepositorySourceEndpoint()
+            .MapListRepositoryRunsEndpoint().MapGetRepositoryRunEndpoint().MapListRepositoryOperationsEndpoint();
 
         return app;
     }
 
-    public static IServiceProvider ScheduleGitSnapshotRecurringJobs(this IServiceProvider services)
+    public static IServiceProvider ScheduleGitOpsRecurringJobs(this IServiceProvider services)
     {
-        RecurringJob.AddOrUpdate<SnapshotResumeRecoveryJob>(
-            "resume-manual-git-snapshots",
-            job => job.RecoverAsync(CancellationToken.None),
-            Cron.Minutely);
-
+        var options = services.GetRequiredService<IOptions<GitOpsWorkerOptions>>().Value;
+        RecurringJob.AddOrUpdate<GitSourceRecoveryScanner>("gitops-source-recovery",
+            job => job.ScanAsync(CancellationToken.None),
+            $"*/{options.ScanIntervalMinutes} * * * *");
         return services;
     }
 }

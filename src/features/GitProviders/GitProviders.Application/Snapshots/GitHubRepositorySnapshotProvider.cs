@@ -17,6 +17,16 @@ internal sealed class GitHubRepositorySnapshotProvider(
 {
     public string Provider => nameof(GitProviderKind.GitHub);
 
+    public async Task<CheckRepositoryAccessOutcome> CheckAccessAsync(
+        RepositorySourceReference reference,
+        CancellationToken cancellationToken) => await LoadAccessAsync(reference, cancellationToken) switch
+        {
+            GitHubRepositoryAccess access => new RepositoryAccessGranted(access.Repository.HtmlUrl),
+            RepositoryAccessDenied denied => denied,
+            RepositoryNotFound missing => missing,
+            RepositoryTemporarilyUnavailable unavailable => unavailable
+        };
+
     public async Task<ResolveRepositoryCommitOutcome> ResolveCommitAsync(
         ResolveRepositoryCommitRequest request,
         CancellationToken cancellationToken)
@@ -92,8 +102,11 @@ internal sealed class GitHubRepositorySnapshotProvider(
 
             await using var archive = new FileStream(path, fileOptions);
             using var limited = new ArchiveLimitStream(archive, options.MaxCompressedBytes);
-            await client.DownloadRepositoryArchiveAsync(repository.InstallationId, repository.Repository.Id,
-                request.Commit, limited, cancellationToken);
+            await client.DownloadRepositoryArchiveAsync(repository.InstallationId,
+                repository.Repository.Id,
+                request.Commit,
+                limited,
+                cancellationToken);
             await archive.FlushAsync(cancellationToken);
             archive.Position = 0;
             return await reader.ReadAsync(new(archive, request.Commit, request.ManifestDirectory, tree),
@@ -137,7 +150,8 @@ internal sealed class GitHubRepositorySnapshotProvider(
         try
         {
             var repository = await client.GetRepositoryAsync(connection.ExternalInstallationId,
-                reference.ExternalRepositoryId, ct);
+                reference.ExternalRepositoryId,
+                ct);
             return new GitHubRepositoryAccess(connection.ExternalInstallationId, repository);
         }
         catch (GitHubApiException exception) when (AccessDenied(exception))
@@ -157,8 +171,12 @@ internal sealed class GitHubRepositorySnapshotProvider(
     private static bool IsCommit(string commit) => commit is { Length: 40 } && commit.All(char.IsAsciiHexDigit);
 
     private static bool AccessDenied(GitHubApiException exception) => !exception.IsRateLimited &&
-        (exception.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden ||
-         exception.StatusCode == HttpStatusCode.NotFound && exception.Target == GitHubRequestTarget.Installation);
+                                                                      (exception.StatusCode is HttpStatusCode
+                                                                           .Unauthorized or HttpStatusCode.Forbidden ||
+                                                                       exception.StatusCode ==
+                                                                       HttpStatusCode.NotFound &&
+                                                                       exception.Target ==
+                                                                       GitHubRequestTarget.Installation);
 
     private static bool Temporary(Exception exception, CancellationToken ct) =>
         exception is GitHubApiException or HttpRequestException or JsonException ||

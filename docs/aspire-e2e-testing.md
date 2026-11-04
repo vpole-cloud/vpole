@@ -40,7 +40,9 @@ The suite covers:
   generated names, alias replacement/reload and confirmed detach. Zone details link the owning
   resource and group; desktop/mobile light/dark screenshots exercise both domain workspaces.
 
-The GitHub stub serves deterministic `v1` and `v2` source archives and never records credentials,
+The GitHub stub serves deterministic source archives and a separate YAML-only GitOps repository.
+Repository-flow E2E covers create/apply, signed push dispatch, polling after a missed push and branch
+deletion without inventory removal. It never records credentials,
 OAuth state, private keys, or bearer tokens.
 
 ## Prerequisites and run
@@ -260,19 +262,19 @@ prerequisites and pre-existing failures block it. No focused result alone is a f
 Each family establishes an authoritative condition and owns restoration before changing state.
 Shared helpers do not remove tenant, ownership, UID, revision or generation fences.
 
-| Family | Required condition | Owned changes and cleanup |
-| --- | --- | --- |
-| Runtime logs | Exact deployment, replacement Pod UID, container and read mode; one click starts one request | Owned workload; cancel exact stream on replacement, scope exit or close |
-| Source builds | Accepted build/release IDs and terminal server state | Register BuildKit recovery and Git stub revision restoration before mutation |
-| Multi-cluster | Placement target and accepted rollout with current native observed generation | Register target restoration before disable; remove each owned namespace with UID checks |
-| Releases | Accepted new release revision and current native readiness after retry | Restore target settings even if the mutation response was lost; then remove owned workload |
-| Tenant workspace | Known resource IDs and owned Pod/container, isolated tenant callbacks | Restore tenant context; cancel the exact old runtime request |
-| Auth and GitHub | Non-null journal and explicit authentication/source state | Restore stub revision and temporary client/user settings |
-| Functions / Orleans | Both owned silos admitted and expected cross-silo execution/stop behavior | Remove owned function/release resources; preserve normal stop budget |
-| Provider journeys | Known profile/resource IDs and read-back configuration; loaded workspace before screenshots | Remove owned workloads before disabling their eligible profiles |
-| Health | Accepted revision/generation, Applied distinct from readiness, native observed rollout | Remove owned workload and probe configuration; preserve freshness windows |
-| Storage | Current target, known discovery IDs and bounded monotonic probes | Restore temporary target/storage settings; remove only owned resources |
-| Realtime | Current acknowledged coverage and successful reads, independent transport outcomes | Clear coverage on close/unsubscribe/navigation; fault held phases on intercepted request failure |
+| Family              | Required condition                                                                           | Owned changes and cleanup                                                                        |
+| ------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Runtime logs        | Exact deployment, replacement Pod UID, container and read mode; one click starts one request | Owned workload; cancel exact stream on replacement, scope exit or close                          |
+| Source builds       | Accepted build/release IDs and terminal server state                                         | Register BuildKit recovery and Git stub revision restoration before mutation                     |
+| Multi-cluster       | Placement target and accepted rollout with current native observed generation                | Register target restoration before disable; remove each owned namespace with UID checks          |
+| Releases            | Accepted new release revision and current native readiness after retry                       | Restore target settings even if the mutation response was lost; then remove owned workload       |
+| Tenant workspace    | Known resource IDs and owned Pod/container, isolated tenant callbacks                        | Restore tenant context; cancel the exact old runtime request                                     |
+| Auth and GitHub     | Non-null journal and explicit authentication/source state                                    | Restore stub revision and temporary client/user settings                                         |
+| Functions / Orleans | Both owned silos admitted and expected cross-silo execution/stop behavior                    | Remove owned function/release resources; preserve normal stop budget                             |
+| Provider journeys   | Known profile/resource IDs and read-back configuration; loaded workspace before screenshots  | Remove owned workloads before disabling their eligible profiles                                  |
+| Health              | Accepted revision/generation, Applied distinct from readiness, native observed rollout       | Remove owned workload and probe configuration; preserve freshness windows                        |
+| Storage             | Current target, known discovery IDs and bounded monotonic probes                             | Restore temporary target/storage settings; remove only owned resources                           |
+| Realtime            | Current acknowledged coverage and successful reads, independent transport outcomes           | Clear coverage on close/unsubscribe/navigation; fault held phases on intercepted request failure |
 
 Use `TestResourceScope.RunAsync` to preserve body and cleanup failures together. Register every
 restoration before changing shared state, then attempt remaining cleanup even if one action fails.

@@ -6,6 +6,9 @@ namespace Pole.Features.GitProviders.Application.Persistence;
 
 internal static class GitProviderFilters
 {
+    internal static FilterDefinition<GitHubDeliveryReceipt> GitHubDeliveryById(string id) =>
+        Builders<GitHubDeliveryReceipt>.Filter.Eq(item => item.Id, id);
+
     internal static FilterDefinition<GitProviderConnection> ConnectionsByTenant(string tenantId) =>
         Builders<GitProviderConnection>.Filter.ForTenant(tenantId);
 

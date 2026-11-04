@@ -1,6 +1,5 @@
 using Pole.Features.GitOps.Contracts;
 // ReSharper disable MemberCanBePrivate.Global
-
 using System.Collections.Immutable;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Request;
@@ -63,7 +62,9 @@ public sealed record WebServiceReleaseProvenanceDto(
     string? DeploymentTokenId,
     string? DeploymentTokenName,
     string? BuildJobId = null,
-    string? SourceRepositoryId = null);
+    string? SourceRepositoryId = null,
+    string? GitOpsSourceId = null,
+    string? GitOpsRunId = null);
 
 public sealed record WebServiceDeploymentTokenDto(
     string Id,
@@ -91,10 +92,12 @@ public sealed record WebServiceSpecDto(
     WebServiceConfigDto Config,
     AutoscalingSpecDto? Autoscaling,
     ProbeSpecDto Probes);
+
 public sealed record AutoscalingSpecDto(
     int MinReplicas,
     int MaxReplicas,
     AutoscalingMetricDto Metric);
+
 public sealed record AutoscalingMetricDto(
     string Type,
     int TargetAverageUtilization);
@@ -103,6 +106,7 @@ public record ProbeSpecDto(
     ProbeConfigDto Startup,
     ProbeConfigDto Liveness,
     ProbeConfigDto Readiness);
+
 public record ProbeConfigDto(
     string Path,
     string Port,
@@ -116,8 +120,14 @@ public sealed record WebServiceConfigDto
 {
     public required ImmutableDictionary<string, string> EnvironmentVariables { get; init; }
     public required ImmutableList<PortMappingDto> PortMappings { get; init; }
-    public ImmutableDictionary<string, ConnectionEnvironmentReferenceDto> ConnectionEnvironmentReferences { get; init; } = ImmutableDictionary<string, ConnectionEnvironmentReferenceDto>.Empty;
-    public ImmutableDictionary<string, SecretEnvironmentReferenceDto> SecretEnvironmentReferences { get; init; } = ImmutableDictionary<string, SecretEnvironmentReferenceDto>.Empty;
+
+    public ImmutableDictionary<string, ConnectionEnvironmentReferenceDto>
+        ConnectionEnvironmentReferences
+    { get; init; } =
+        ImmutableDictionary<string, ConnectionEnvironmentReferenceDto>.Empty;
+
+    public ImmutableDictionary<string, SecretEnvironmentReferenceDto> SecretEnvironmentReferences { get; init; } =
+        ImmutableDictionary<string, SecretEnvironmentReferenceDto>.Empty;
 }
 
 public sealed record ConnectionEnvironmentReferenceDto(
@@ -154,6 +164,7 @@ public static class WebServiceDtoExtensions
         webService.Exposure.ToDto(),
         deployments ?? [],
         webService.Tags);
+
     public static WebServiceReleaseDto ToDto(this WebServiceRelease release) => new(
         release.Id,
         release.ResourceRevision,
@@ -170,10 +181,18 @@ public static class WebServiceDtoExtensions
         release.Deployments.Select(item => item.ToDto()).ToImmutableList(),
         release.Spec.ToDto()
     );
+
     public static WebServiceReleaseDeploymentDto ToDto(this WebServiceReleaseDeployment deployment) => new(
-        deployment.ResourceDeploymentId, deployment.DeploymentTargetId, deployment.ResourceRevision,
-        deployment.DeploymentGeneration, deployment.Operation.ToString(), deployment.Outcome.ToString(),
-        deployment.CompletedAtUtc, deployment.FailureCode, deployment.FailureMessage);
+        deployment.ResourceDeploymentId,
+        deployment.DeploymentTargetId,
+        deployment.ResourceRevision,
+        deployment.DeploymentGeneration,
+        deployment.Operation.ToString(),
+        deployment.Outcome.ToString(),
+        deployment.CompletedAtUtc,
+        deployment.FailureCode,
+        deployment.FailureMessage);
+
     public static WebServiceReleaseProvenanceDto ToDto(this WebServiceReleaseProvenance provenance) =>
         provenance switch
         {
@@ -201,8 +220,23 @@ public static class WebServiceDtoExtensions
                 BuildJobId = sourceBuild.BuildJobId,
                 SourceRepositoryId = sourceBuild.SourceRepositoryId
             },
+            GitOpsReleaseProvenance gitOps => new(
+                "PoleGitOps",
+                gitOps.CommitSha,
+                null,
+                null,
+                gitOps.PreviousImageTag,
+                gitOps.NewImageTag,
+                "GitOps",
+                null,
+                null)
+            {
+                GitOpsSourceId = gitOps.SourceId,
+                GitOpsRunId = gitOps.RunId
+            },
             _ => throw new ArgumentOutOfRangeException(nameof(provenance), provenance, null)
         };
+
     public static WebServiceDeploymentTokenDto ToDto(this WebServiceDeploymentToken token) => new(
         token.Id,
         token.Name,
@@ -216,23 +250,28 @@ public static class WebServiceDtoExtensions
         token.LastUsedAtUtc,
         token.LastUsedSource
     );
+
     public static WebServiceExposureDto ToDto(this WebServiceExposure exposure) =>
         new(exposure.Mode.ToString(), exposure.GeneratedHostnameLabelPrefix);
+
     public static WebServiceSpecDto ToDto(this WebServiceSpec spec) => new(
         spec.Image.ToDto(),
         spec.Config.ToDto(),
         spec.Autoscaling?.ToDto(),
         spec.Probes.ToDto()
     );
+
     public static AutoscalingSpecDto ToDto(this AutoscalingSpec autoscaling) => new(
         autoscaling.MinReplicas,
         autoscaling.MaxReplicas,
         autoscaling.Metric.ToDto()
     );
+
     public static AutoscalingMetricDto ToDto(this AutoscalingMetric metric) => new(
         metric.Type,
         metric.TargetAverageUtilization
     );
+
     public static ProbeSpecDto ToDto(this ProbeSpec probes) => new(
         probes.Startup.ToDto(),
         probes.Liveness.ToDto(),
@@ -248,13 +287,20 @@ public static class WebServiceDtoExtensions
         probe.FailureThreshold,
         probe.SuccessThreshold
     );
+
     public static WebServiceConfigDto ToDto(this WebServiceConfig config) => new()
     {
         EnvironmentVariables = config.EnvironmentVariables,
-        PortMappings = config.PortMappings.Select(pm => new PortMappingDto(pm.ServicePort, pm.TargetPort, pm.Protocol, pm.Name)).ToImmutableList(),
-        ConnectionEnvironmentReferences = config.ConnectionEnvironmentReferences.ToImmutableDictionary(pair => pair.Key, pair => new ConnectionEnvironmentReferenceDto(pair.Value.ConnectionId, pair.Value.ValueKind, pair.Value.ConfigurationKey)),
-        SecretEnvironmentReferences = config.SecretEnvironmentReferences.ToImmutableDictionary(pair => pair.Key, pair => new SecretEnvironmentReferenceDto(pair.Value.SecretId, pair.Value.Key))
+        PortMappings = config.PortMappings
+            .Select(pm => new PortMappingDto(pm.ServicePort, pm.TargetPort, pm.Protocol, pm.Name)).ToImmutableList(),
+        ConnectionEnvironmentReferences = config.ConnectionEnvironmentReferences.ToImmutableDictionary(pair => pair.Key,
+            pair => new ConnectionEnvironmentReferenceDto(pair.Value.ConnectionId,
+                pair.Value.ValueKind,
+                pair.Value.ConfigurationKey)),
+        SecretEnvironmentReferences = config.SecretEnvironmentReferences.ToImmutableDictionary(pair => pair.Key,
+            pair => new SecretEnvironmentReferenceDto(pair.Value.SecretId, pair.Value.Key))
     };
+
     public static ImageInfoDto ToDto(this ImageInfo image) => new(
         image.Server,
         image.Name,
@@ -267,20 +313,24 @@ public static class WebServiceDtoExtensions
         dto.Autoscaling?.ToDomain(),
         dto.Probes.ToDomain()
     );
+
     public static AutoscalingSpec ToDomain(this AutoscalingSpecDto dto) => new(
         dto.MinReplicas,
         dto.MaxReplicas,
         dto.Metric.ToDomain()
     );
+
     public static AutoscalingMetric ToDomain(this AutoscalingMetricDto dto) => new(
         dto.Type,
         dto.TargetAverageUtilization
     );
+
     public static ProbeSpec ToDomain(this ProbeSpecDto dto) => new(
         dto.Startup.ToDomain(),
         dto.Liveness.ToDomain(),
         dto.Readiness.ToDomain()
     );
+
     public static ProbeConfig ToDomain(this ProbeConfigDto dto) => new(
         dto.Path,
         dto.Port,
@@ -290,17 +340,30 @@ public static class WebServiceDtoExtensions
         dto.FailureThreshold,
         dto.SuccessThreshold
     );
+
     public static WebServiceConfig ToDomain(this WebServiceConfigDto dto) => new()
     {
         EnvironmentVariables = dto.EnvironmentVariables ?? ImmutableDictionary<string, string>.Empty,
-        PortMappings = dto.PortMappings.Select(pm => new PortMapping(pm.ServicePort, pm.TargetPort, pm.Protocol, pm.Name)).ToImmutableList(),
-        ConnectionEnvironmentReferences = (dto.ConnectionEnvironmentReferences ?? ImmutableDictionary<string, ConnectionEnvironmentReferenceDto>.Empty).ToImmutableDictionary(pair => pair.Key, pair => new ConnectionEnvironmentReference(MongoDB.Bson.ObjectId.Parse(pair.Value.ConnectionId).ToString(), pair.Value.ValueKind, pair.Value.ConfigurationKey)),
-        SecretEnvironmentReferences = (dto.SecretEnvironmentReferences ?? ImmutableDictionary<string, SecretEnvironmentReferenceDto>.Empty).ToImmutableDictionary(pair => pair.Key, pair => new SecretEnvironmentReference(MongoDB.Bson.ObjectId.Parse(pair.Value.SecretId).ToString(), pair.Value.Key))
+        PortMappings = dto.PortMappings
+            .Select(pm => new PortMapping(pm.ServicePort, pm.TargetPort, pm.Protocol, pm.Name)).ToImmutableList(),
+        ConnectionEnvironmentReferences =
+            (dto.ConnectionEnvironmentReferences ??
+             ImmutableDictionary<string, ConnectionEnvironmentReferenceDto>.Empty).ToImmutableDictionary(
+                pair => pair.Key,
+                pair => new ConnectionEnvironmentReference(
+                    MongoDB.Bson.ObjectId.Parse(pair.Value.ConnectionId).ToString(),
+                    pair.Value.ValueKind,
+                    pair.Value.ConfigurationKey)),
+        SecretEnvironmentReferences =
+            (dto.SecretEnvironmentReferences ?? ImmutableDictionary<string, SecretEnvironmentReferenceDto>.Empty)
+            .ToImmutableDictionary(pair => pair.Key,
+                pair => new SecretEnvironmentReference(MongoDB.Bson.ObjectId.Parse(pair.Value.SecretId).ToString(),
+                    pair.Value.Key))
     };
+
     public static ImageInfo ToDomain(this ImageInfoDto dto) => new(
         dto.Server,
         dto.Name,
-        dto.Tag
-,
+        dto.Tag,
         SecretName: null);
 }

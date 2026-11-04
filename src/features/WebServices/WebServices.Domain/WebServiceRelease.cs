@@ -4,9 +4,16 @@ using MongoDB.Bson.Serialization.Attributes;
 
 namespace Pole.Features.WebServices.Domain;
 
-public enum WebServiceReleaseAction { Create, Update, Redeploy, Rollback, ImageTagUpdate, SourceBuild, AddDeployment, UpdateDeployment, RemoveDeployment, RetryDeployment, HostnameChanged }
+public enum WebServiceReleaseAction
+{
+    Create, Update, Redeploy, Rollback, ImageTagUpdate, SourceBuild, AddDeployment, UpdateDeployment, RemoveDeployment,
+    RetryDeployment, HostnameChanged
+}
+
 public enum WebServiceReleaseOutcome { Pending, Succeeded, PartiallyFailed, Failed, Superseded }
+
 public enum WebServiceReleaseDeploymentOperation { Apply, Delete }
+
 public enum WebServiceReleaseDeploymentOutcome { Pending, Succeeded, Failed, Removed }
 
 public sealed record WebServiceReleaseDeployment(
@@ -14,8 +21,10 @@ public sealed record WebServiceReleaseDeployment(
     string DeploymentTargetId,
     long ResourceRevision,
     long DeploymentGeneration,
-    [property: BsonRepresentation(BsonType.String)] WebServiceReleaseDeploymentOperation Operation,
-    [property: BsonRepresentation(BsonType.String)] WebServiceReleaseDeploymentOutcome Outcome,
+    [property: BsonRepresentation(BsonType.String)]
+    WebServiceReleaseDeploymentOperation Operation,
+    [property: BsonRepresentation(BsonType.String)]
+    WebServiceReleaseDeploymentOutcome Outcome,
     DateTime? CompletedAtUtc,
     string? FailureCode,
     string? FailureMessage)
@@ -25,12 +34,15 @@ public sealed record WebServiceReleaseDeployment(
 
 public sealed record WebServiceRelease(
     [property: BsonId]
-    [property: BsonRepresentation(BsonType.ObjectId)] string Id,
+    [property: BsonRepresentation(BsonType.ObjectId)]
+    string Id,
     string TenantId,
     string WebServiceId,
     long ResourceRevision,
-    [property: BsonRepresentation(BsonType.String)] WebServiceReleaseAction Action,
-    [property: BsonRepresentation(BsonType.String)] WebServiceReleaseOutcome Outcome,
+    [property: BsonRepresentation(BsonType.String)]
+    WebServiceReleaseAction Action,
+    [property: BsonRepresentation(BsonType.String)]
+    WebServiceReleaseOutcome Outcome,
     string? ActorUserId,
     string? ActorEmail,
     DateTime RequestedAtUtc,
@@ -44,8 +56,11 @@ public sealed record WebServiceRelease(
     WebServiceExposure Exposure);
 
 [BsonDiscriminator(RootClass = true)]
-[BsonKnownTypes(typeof(ExternalImageTagUpdateProvenance), typeof(SourceBuildReleaseProvenance))]
+[BsonKnownTypes(typeof(ExternalImageTagUpdateProvenance),
+    typeof(SourceBuildReleaseProvenance),
+    typeof(GitOpsReleaseProvenance))]
 public abstract record WebServiceReleaseProvenance;
+
 public sealed record ExternalImageTagUpdateProvenance(
     string Source,
     string? CommitSha,
@@ -56,6 +71,7 @@ public sealed record ExternalImageTagUpdateProvenance(
     string ActorType,
     string? DeploymentTokenId,
     string? DeploymentTokenName) : WebServiceReleaseProvenance;
+
 public sealed record SourceBuildReleaseProvenance(
     string BuildJobId,
     string SourceRepositoryId,
@@ -64,6 +80,13 @@ public sealed record SourceBuildReleaseProvenance(
     string PreviousImageReference,
     string NewImageReference) : WebServiceReleaseProvenance;
 
+public sealed record GitOpsReleaseProvenance(
+    string SourceId,
+    string RunId,
+    string CommitSha,
+    string PreviousImageTag,
+    string NewImageTag) : WebServiceReleaseProvenance;
+
 public static class WebServiceReleaseFactory
 {
     public sealed record CreateOptions(
@@ -71,9 +94,16 @@ public static class WebServiceReleaseFactory
         DateTime RequestedAtUtc);
 
     public static WebServiceRelease CreatePending(
-        string tenantId, string webServiceId, long resourceRevision, WebServiceReleaseAction action,
-        string? actorUserId, string? actorEmail, WebServiceSpec spec,
-        IEnumerable<WebServiceReleaseDeployment> deployments, string? traceId, string? correlationId,
+        string tenantId,
+        string webServiceId,
+        long resourceRevision,
+        WebServiceReleaseAction action,
+        string? actorUserId,
+        string? actorEmail,
+        WebServiceSpec spec,
+        IEnumerable<WebServiceReleaseDeployment> deployments,
+        string? traceId,
+        string? correlationId,
         CreateOptions options,
         WebServiceExposure exposure,
         WebServiceReleaseProvenance? provenance = null)
@@ -84,20 +114,41 @@ public static class WebServiceReleaseFactory
         var entries = deployments.ToImmutableList();
         if (entries.Count == 0)
             throw new ArgumentException("A release must snapshot at least one deployment.", nameof(deployments));
-        if (entries.Select(entry => entry.ResourceDeploymentId).Distinct(StringComparer.Ordinal).Count() != entries.Count)
+        if (entries.Select(entry => entry.ResourceDeploymentId).Distinct(StringComparer.Ordinal).Count() !=
+            entries.Count)
             throw new ArgumentException("A release may contain each deployment once.", nameof(deployments));
         var requestedAtUtc = WebServiceFactory.Utc(options.RequestedAtUtc);
         var outcome = Aggregate(entries);
-        return new WebServiceRelease(options.Id, tenantId, webServiceId, resourceRevision, action,
-            outcome, actorUserId, actorEmail, requestedAtUtc,
+        return new WebServiceRelease(options.Id,
+            tenantId,
+            webServiceId,
+            resourceRevision,
+            action,
+            outcome,
+            actorUserId,
+            actorEmail,
+            requestedAtUtc,
             outcome is WebServiceReleaseOutcome.Pending ? null : requestedAtUtc,
-            null, traceId, correlationId, provenance, entries, spec, exposure);
+            null,
+            traceId,
+            correlationId,
+            provenance,
+            entries,
+            spec,
+            exposure);
     }
 
     public static WebServiceRelease ApplyCompletion(
-        WebServiceRelease release, string resourceDeploymentId, long resourceRevision,
-        long deploymentGeneration, WebServiceReleaseDeploymentOperation operation,
-        bool succeeded, bool retryable, string? failureCode, string? failureMessage, DateTime completedAtUtc)
+        WebServiceRelease release,
+        string resourceDeploymentId,
+        long resourceRevision,
+        long deploymentGeneration,
+        WebServiceReleaseDeploymentOperation operation,
+        bool succeeded,
+        bool retryable,
+        string? failureCode,
+        string? failureMessage,
+        DateTime completedAtUtc)
     {
         ArgumentNullException.ThrowIfNull(release);
         if (release.Outcome is WebServiceReleaseOutcome.Superseded || retryable)
@@ -131,13 +182,19 @@ public static class WebServiceReleaseFactory
             Outcome = outcome,
             CompletedAtUtc = outcome is WebServiceReleaseOutcome.Pending ? null : completed.CompletedAtUtc,
             FailureMessage = outcome is WebServiceReleaseOutcome.Failed or WebServiceReleaseOutcome.PartiallyFailed
-                ? aggregateFailureMessage : null
+                ? aggregateFailureMessage
+                : null
         };
     }
 
     public static WebServiceRelease Supersede(WebServiceRelease release, DateTime atUtc) =>
         release.Outcome is WebServiceReleaseOutcome.Pending
-            ? release with { Outcome = WebServiceReleaseOutcome.Superseded, CompletedAtUtc = WebServiceFactory.Utc(atUtc), FailureMessage = null }
+            ? release with
+            {
+                Outcome = WebServiceReleaseOutcome.Superseded,
+                CompletedAtUtc = WebServiceFactory.Utc(atUtc),
+                FailureMessage = null
+            }
             : release;
 
     public static WebServiceReleaseOutcome Aggregate(IEnumerable<WebServiceReleaseDeployment> entries)

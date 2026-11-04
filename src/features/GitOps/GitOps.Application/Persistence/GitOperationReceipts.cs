@@ -10,9 +10,10 @@ internal sealed class GitOperationReceipts(IMongoCollection<GitOperationReceipt>
     public string? DiagnosticCode(
         GitOperation operation,
         GitOperationResult result) => DeclarationFailureDiagnostics.Code(
-            result.Failure, services.GetRequiredService<DeclarativeProviderRegistry>()
-                .Find(operation.Declaration.Address.Kind)
-            ?? throw new InvalidOperationException("The declaration provider is no longer registered."));
+        result.Failure,
+        services.GetRequiredService<DeclarativeProviderRegistry>()
+            .Find(operation.Declaration.Address.Kind)
+        ?? throw new InvalidOperationException("The declaration provider is no longer registered."));
 
     public Task StoreAsync(
         GitOperation operation,
@@ -24,10 +25,19 @@ internal sealed class GitOperationReceipts(IMongoCollection<GitOperationReceipt>
         var address = operation.Declaration.Address;
         var receipt = new GitOperationReceipt(
             ReceiptId(operation),
-            context.TenantId, context.SourceId, context.RunId, context.Fence, address.Kind, address.Name,
-            operation.Phase.ToString(), result.ResourceId, operation.Declaration.Hash, DiagnosticCode(
+            context.TenantId,
+            context.SourceId,
+            context.RunId,
+            context.Fence,
+            address.Kind,
+            address.Name,
+            operation.Phase.ToString(),
+            result.ResourceId,
+            operation.Declaration.Hash,
+            DiagnosticCode(
                 operation,
-                result), result.Changed);
+                result),
+            result.Changed);
 
         return receipts.ReplaceOneAsync(
             session,
@@ -37,7 +47,7 @@ internal sealed class GitOperationReceipts(IMongoCollection<GitOperationReceipt>
             ct);
     }
 
-    private static string ReceiptId(GitOperation operation)
+    internal static string ReceiptId(GitOperation operation)
     {
         var context = operation.Context;
         var address = operation.Declaration.Address;
