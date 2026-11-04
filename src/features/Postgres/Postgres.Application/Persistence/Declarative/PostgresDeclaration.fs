@@ -91,6 +91,9 @@ module PostgresDeclarations =
     [<Literal>]
     let Kind = "PostgresCluster"
 
+    [<Literal>]
+    let private BootstrapPasswordField = "spec.bootstrapPassword"
+
     let failure reason = { Reason = reason } : PostgresDeclarationRejected
     let blocked reason = DeclarationReadBlocked(failure reason)
     let instances (spec : PostgresDeclaration) = spec.Instances.GetValueOrDefault(PostgresCluster.DefaultInstances)
@@ -119,7 +122,7 @@ module PostgresDeclarations =
             not (String.IsNullOrWhiteSpace value.Username)
             && PostgresManagedSecret.totalValueBytes [value.Username] <= PostgresManagedSecret.maximumValueBytes,
             "spec.username")
-        DeclarationJson.Require(not (isNull (box value.BootstrapPassword)), "spec.bootstrapPassword")
+        DeclarationJson.Require(not (isNull (box value.BootstrapPassword)), BootstrapPasswordField)
         DeclarationJson.Require(
             DeclarationNames.Valid value.BootstrapPassword.Secret, "spec.bootstrapPassword.secret")
         DeclarationJson.Require(
@@ -130,7 +133,7 @@ module PostgresDeclarations =
         let value = DeclarationJson.Read<PostgresDeclaration> spec
         let references = ResizeArray<DeclaredReference>()
         references.Add(DeclaredReference(
-            ResourceAddress("Secret", value.BootstrapPassword.Secret), "spec.bootstrapPassword",
+            ResourceAddress("Secret", value.BootstrapPassword.Secret), BootstrapPasswordField,
             value.BootstrapPassword.Key, RequiresAccess = true))
 
         if not (isNull value.Placement.IsolationScope) then

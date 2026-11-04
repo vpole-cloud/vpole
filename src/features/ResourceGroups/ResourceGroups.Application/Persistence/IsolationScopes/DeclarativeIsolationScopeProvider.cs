@@ -47,7 +47,7 @@ internal sealed class DeclarativeIsolationScopeProvider(
     public IReadOnlyList<DeclarationStep> Steps(ResourceAddress address, JsonElement spec)
     {
         DeclarationJson.Require(ResourceTechnicalName.IsValid(address.Name) &&
-            address.Name != IsolationScopeFactory.DefaultScopeName, "metadata.name");
+            address.Name != IsolationScopeFactory.DefaultScopeName, DeclarationFieldPaths.MetadataName);
         return
         [
             new(DeclarationPhase.Prepare,

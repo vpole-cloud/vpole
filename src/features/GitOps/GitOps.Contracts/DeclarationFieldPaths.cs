@@ -8,6 +8,8 @@ public static class DeclarationFieldPaths
 
     public const string Image = "spec.image";
 
+    public const string MetadataName = "metadata.name";
+
     public const string Placement = "spec.placement";
 
     public const string PlacementComputeProfile = "spec.placement.computeProfile";
@@ -17,6 +19,8 @@ public static class DeclarationFieldPaths
     public const string PlacementIsolationScope = "spec.placement.isolationScope";
 
     public const string ResourceGroup = "spec.resourceGroup";
+
+    public const string Spec = "spec";
 
     public const string StorageProfile = "spec.storage.profile";
 

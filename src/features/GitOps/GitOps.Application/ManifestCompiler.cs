@@ -39,6 +39,10 @@ public sealed class DeclarativeProviderRegistry
 
 public sealed class ManifestCompiler(DeclarativeProviderRegistry providers)
 {
+    private const string KindField = "kind";
+
+    private const string ReferencesField = "spec.references";
+
     public const string ApiVersion = SnapshotSchema.ApiVersion;
 
     public CompiledSnapshot Compile(IReadOnlyList<ManifestFile> files)
@@ -73,12 +77,13 @@ public sealed class ManifestCompiler(DeclarativeProviderRegistry providers)
                         var root = Convert(stream.Documents[index].RootNode, 0, new HashSet<YamlNode>());
                         var envelope = DeclarationJson.Read<Envelope>(JsonSerializer.SerializeToElement(root));
                         DeclarationJson.Require(envelope.ApiVersion == ApiVersion, "apiVersion");
-                        DeclarationJson.Require(DeclarationNames.Valid(envelope.Metadata?.Name), "metadata.name");
+                        DeclarationJson.Require(DeclarationNames.Valid(envelope.Metadata?.Name),
+                            DeclarationFieldPaths.MetadataName);
                         var provider = providers.Find(envelope.Kind ?? "") ?? throw new DeclarationSchemaException(
-                            "kind");
+                            KindField);
                         DeclarationJson.Require(
                             envelope.Metadata!.Name!.Length <= provider.MaximumNameLength,
-                            "metadata.name");
+                            DeclarationFieldPaths.MetadataName);
                         var address = new ResourceAddress(provider.Kind, envelope.Metadata!.Name!);
                         var spec = Canonical(provider.NormalizeAndValidate(envelope.Spec));
                         var hash = System.Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
@@ -101,7 +106,10 @@ public sealed class ManifestCompiler(DeclarativeProviderRegistry providers)
                                 "yaml",
                                 "InvalidYamlStructure"));
                     }
-                    catch (JsonException) { diagnostics.Add(new(file.Path, index + 1, "spec", "InvalidSchema")); }
+                    catch (JsonException)
+                    {
+                        diagnostics.Add(new(file.Path, index + 1, DeclarationFieldPaths.Spec, "InvalidSchema"));
+                    }
                 }
             }
             catch (YamlException) { diagnostics.Add(new(file.Path, 0, "", "MalformedYaml")); }
@@ -134,10 +142,10 @@ public sealed class ManifestCompiler(DeclarativeProviderRegistry providers)
             var file = $"{item.Kind}/{item.Name}.json";
             try
             {
-                var provider = providers.Find(item.Kind) ?? throw new DeclarationSchemaException("kind");
+                var provider = providers.Find(item.Kind) ?? throw new DeclarationSchemaException(KindField);
                 DeclarationJson.Require(
                     DeclarationNames.Valid(item.Name) && item.Name.Length <= provider.MaximumNameLength,
-                    "metadata.name");
+                    DeclarationFieldPaths.MetadataName);
                 var address = new ResourceAddress(item.Kind, item.Name);
                 var spec = Canonical(provider.NormalizeAndValidate(JsonSerializer.Deserialize<JsonElement>(
                             item.SpecJson)));
@@ -145,7 +153,7 @@ public sealed class ManifestCompiler(DeclarativeProviderRegistry providers)
                 declarations.Add(new(address, spec, hash, provider.Steps(address, spec), file, 1));
             }
             catch (DeclarationSchemaException ex) { diagnostics.Add(new(file, 1, ex.Field, "InvalidDeclaration")); }
-            catch (JsonException) { diagnostics.Add(new(file, 1, "spec", "InvalidSchema")); }
+            catch (JsonException) { diagnostics.Add(new(file, 1, DeclarationFieldPaths.Spec, "InvalidSchema")); }
         }
 
         return Validate(declarations, diagnostics);
@@ -162,7 +170,7 @@ public sealed class ManifestCompiler(DeclarativeProviderRegistry providers)
             foreach (var item in duplicate) diagnostics.Add(new(
                         item.File,
                         item.Document,
-                        "metadata.name",
+                        DeclarationFieldPaths.MetadataName,
                         "DuplicateIdentity"));
 
         if (diagnostics.Count == 0)
@@ -177,7 +185,7 @@ public sealed class ManifestCompiler(DeclarativeProviderRegistry providers)
                 foreach (var item in duplicate) diagnostics.Add(new(
                             item.Declaration.File,
                             item.Declaration.Document,
-                            "spec.references",
+                            ReferencesField,
                             "DuplicateRelationship"));
             foreach (var item in declarations)
             {
@@ -207,7 +215,7 @@ public sealed class ManifestCompiler(DeclarativeProviderRegistry providers)
                 }
 
                 if (own.ReferencesShareScope && scopes.Distinct().Count() > 1)
-                    diagnostics.Add(new(item.File, item.Document, "spec.references", "ContradictoryReferenceScope"));
+                    diagnostics.Add(new(item.File, item.Document, ReferencesField, "ContradictoryReferenceScope"));
             }
         }
 

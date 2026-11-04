@@ -35,6 +35,10 @@ internal sealed class DeclarativeResourceConnectionProvider(
     private readonly IReadOnlyDictionary<string, ResourceTypeId> kinds = registeredKinds
         .ToDictionary(item => item.Kind, item => item.ResourceType, StringComparer.Ordinal);
 
+    private const string DestinationField = "spec.destination";
+
+    private const string SourceField = "spec.source";
+
     internal const string ResourceKind = "ResourceConnection";
 
     public string Kind => ResourceKind;
@@ -54,11 +58,11 @@ internal sealed class DeclarativeResourceConnectionProvider(
         var declaration = DeclarationJson.Read<ResourceConnectionDeclaration>(spec);
         DeclarationJson.Require(declaration.Source is not null && DeclarationNames.Valid(declaration.Source.Name) &&
             kinds.TryGetValue(declaration.Source.Kind, out var source) &&
-            endpoints.SupportsSource(source), "spec.source");
+            endpoints.SupportsSource(source), SourceField);
         DeclarationJson.Require(declaration.Destination is not null &&
             DeclarationNames.Valid(declaration.Destination.Name) &&
             kinds.TryGetValue(declaration.Destination.Kind, out var destination) &&
-            endpoints.SupportsDestination(destination), "spec.destination");
+            endpoints.SupportsDestination(destination), DestinationField);
         DeclarationJson.Require(!string.IsNullOrWhiteSpace(declaration.Endpoint) &&
             declaration.Endpoint.Length <= 100 && !declaration.Endpoint.Any(char.IsControl), "spec.endpoint");
         return DeclarationJson.Write(declaration);
@@ -67,7 +71,7 @@ internal sealed class DeclarativeResourceConnectionProvider(
     public DeclarationFacts Facts(JsonElement spec)
     {
         var declaration = DeclarationJson.Read<ResourceConnectionDeclaration>(spec);
-        return new(null, [], [new(declaration.Source, "spec.source"), new(declaration.Destination, "spec.destination")],
+        return new(null, [], [new(declaration.Source, SourceField), new(declaration.Destination, DestinationField)],
             [], [], ReferencesShareScope: false);
     }
 

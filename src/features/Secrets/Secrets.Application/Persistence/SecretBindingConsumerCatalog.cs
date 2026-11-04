@@ -27,7 +27,7 @@ internal sealed class SecretBindingConsumerCatalog(IEnumerable<SecretDeclaration
                                 value.KeyMappings.All(pair => SecretKeyReferenceRules.ValidKey(pair.Key) &&
                                     SecretKeyReferenceRules.ValidKey(pair.Value)) &&
                                 value.KeyMappings.Values.Distinct().Count() == value.KeyMappings.Count,
-            "spec");
+            DeclarationFieldPaths.Spec);
         return DeclarationJson.Write(value);
     }
 }

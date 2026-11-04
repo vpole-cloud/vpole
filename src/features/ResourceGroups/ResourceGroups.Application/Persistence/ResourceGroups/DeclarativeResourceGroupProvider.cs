@@ -57,7 +57,7 @@ internal sealed class DeclarativeResourceGroupProvider(
         DeclarationJson.Require(value.Description is { Length: <= ResourceGroupFactory.MaximumDescriptionLength }
             && value.Tags is not null &&
             value.Tags.All(tag => tag is { Length: > 0 and <= ResourceGroupFactory.MaximumTagLength }
-                && !string.IsNullOrWhiteSpace(tag)), "spec");
+                && !string.IsNullOrWhiteSpace(tag)), DeclarationFieldPaths.Spec);
 
         return DeclarationJson.Write(value with
         {

@@ -65,6 +65,8 @@ public sealed record FunctionDeclaration
 
 internal static class FunctionDeclarationJson
 {
+    private const string HandlersField = "spec.handlers";
+
     private static readonly JsonSerializerOptions Options = new(DeclarationJson.Options)
     {
         AllowOutOfOrderMetadataProperties = true,
@@ -72,7 +74,8 @@ internal static class FunctionDeclarationJson
     };
 
     public static FunctionDeclaration Read(JsonElement spec) =>
-        spec.Deserialize<FunctionDeclaration>(Options) ?? throw new DeclarationSchemaException("spec");
+        spec.Deserialize<FunctionDeclaration>(Options) ??
+        throw new DeclarationSchemaException(DeclarationFieldPaths.Spec);
 
     public static JsonElement Normalize(JsonElement spec)
     {
@@ -106,12 +109,12 @@ internal static class FunctionDeclarationJson
         DeclarationJson.Require(value.Handlers is { Count: > 0 } &&
             value.Handlers.All(handler => ValidHandler(handler, value.Scaling.MaxConcurrencyPerInstance)) &&
             value.Handlers.Select(handler => handler.Name).Distinct(StringComparer.Ordinal).Count() ==
-            value.Handlers.Count, "spec.handlers");
+            value.Handlers.Count, HandlersField);
         var routes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         DeclarationJson.Require(value.Handlers.All(handler =>
             handler.Trigger is not FunctionDeclarationHttpTrigger http ||
             http.Methods.All(method => routes.Add($"{FunctionTriggerRules.CanonicalizeRoute(http.Route)}:{method}"))),
-            "spec.handlers");
+            HandlersField);
         DeclarationJson.Require(value.Tags is not null && value.Tags.All(tag => !string.IsNullOrWhiteSpace(tag)),
             DeclarationFieldPaths.Tags);
         return JsonSerializer.SerializeToElement(value with

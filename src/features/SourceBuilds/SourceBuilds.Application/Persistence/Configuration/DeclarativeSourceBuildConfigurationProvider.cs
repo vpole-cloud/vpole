@@ -32,13 +32,17 @@ internal sealed class DeclarativeSourceBuildConfigurationProvider(
         IDeclarativeResourceLifecycleProvider, IDeclarativeLifecycleDependencyProvider,
         IDeclarativeAdoptionPreviewProvider
 {
+    private const string RepositoryField = "spec.repository";
+
+    private const string WebServiceField = "spec.webService";
+
     public string Kind => "SourceBuildConfiguration";
 
     public JsonElement NormalizeAndValidate(JsonElement spec)
     {
         var declaration = DeclarationJson.Read<SourceBuildConfigurationDeclaration>(spec);
-        DeclarationJson.Require(DeclarationNames.Valid(declaration.Repository), "spec.repository");
-        DeclarationJson.Require(DeclarationNames.Valid(declaration.WebService), "spec.webService");
+        DeclarationJson.Require(DeclarationNames.Valid(declaration.Repository), RepositoryField);
+        DeclarationJson.Require(DeclarationNames.Valid(declaration.WebService), WebServiceField);
         DeclarationJson.Require(declaration.Recipe is not null &&
             !string.IsNullOrWhiteSpace(declaration.Recipe.Dockerfile) &&
             declaration.Recipe.Dockerfile.Length <= 100_000, "spec.recipe.dockerfile");
@@ -49,8 +53,8 @@ internal sealed class DeclarativeSourceBuildConfigurationProvider(
     {
         var declaration = DeclarationJson.Read<SourceBuildConfigurationDeclaration>(spec);
         return new(null, [],
-            [new(new("SourceRepository", declaration.Repository), "spec.repository"),
-                new(new("WebService", declaration.WebService), "spec.webService")], [], [],
+            [new(new("SourceRepository", declaration.Repository), RepositoryField),
+                new(new("WebService", declaration.WebService), WebServiceField)], [], [],
             ReferencesShareScope: false);
     }
 
