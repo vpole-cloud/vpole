@@ -18,7 +18,8 @@ public sealed class WebServiceSecretRolloutObserver(
 {
     public ResourceTypeId ResourceType => WebServiceResourceDeployment.ResourceType;
 
-    public async Task<SecretConsumerRolloutOutcome> ObserveAsync(string tenantId, string consumerId, CancellationToken ct)
+    public async Task<SecretConsumerRolloutOutcome> ObserveAsync(string tenantId, string consumerId,
+        CancellationToken ct)
     {
         var resource = await loadResource(tenantId, consumerId, ct);
         if (resource is null) return new SecretConsumerRolloutPending();
@@ -64,14 +65,16 @@ public sealed class WebServiceSecretRolloutObserver(
             // A recreated Deployment has a new UID. Its ready pod summary excludes ReplicaSets
             // from the old controller, so also check every pod with the placement's identity.
             var pods = await client.CoreV1.ListNamespacedPodAsync(placement.KubernetesNamespace,
-                labelSelector: string.Join(",", identity.ToDictionary().OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                labelSelector: string.Join(",", identity.ToDictionary().OrderBy(pair => pair.Key,
+                    StringComparer.Ordinal)
                     .Select(pair => $"{pair.Key}={pair.Value}")),
                 limit: KubernetesWorkloadObservation.MaximumPods, cancellationToken: ct);
             if (!string.IsNullOrEmpty(pods.Metadata.ContinueProperty) || pods.Items.Any(pod =>
                     pod.Metadata.NamespaceProperty == placement.KubernetesNamespace &&
                     KubernetesWorkloadObservation.Owns(pod.Metadata, identity) &&
                     (pod.Metadata.DeletionTimestamp is not null ||
-                     KubernetesWorkloadObservation.Generation(pod.Metadata, KubernetesWorkloadObservation.TemplateGenerationAnnotation) != placement.DesiredGeneration)))
+                     KubernetesWorkloadObservation.Generation(pod.Metadata,
+                         KubernetesWorkloadObservation.TemplateGenerationAnnotation) != placement.DesiredGeneration)))
                 return new UnavailableWorkloadObservation("PreviousPodsNotRetired");
             return observed;
         }

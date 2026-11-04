@@ -26,7 +26,8 @@ internal sealed class MongoReleaseRetainedSecretKeys(
         string bindingId, IReadOnlyList<SecretConsumerDeploymentProof> proofs, CancellationToken ct) =>
         transactions.InvokeOutcomeAsync<bool>(async (tx, token) =>
         {
-            var current = await secrets.Find(tx.Session, SecretFilters.Identity(tenantId, secretId)).FirstOrDefaultAsync(token);
+            var current = await secrets.Find(tx.Session, SecretFilters.Identity(tenantId,
+                secretId)).FirstOrDefaultAsync(token);
             if (current is null || current.Revision != revision || current.ReferenceFence != referenceFence)
                 return tx.Abort(false);
             var binding = current.Bindings.SingleOrDefault(item => item.Id == bindingId);
@@ -40,8 +41,11 @@ internal sealed class MongoReleaseRetainedSecretKeys(
                 session: tx.Session,
                 cancellationToken: token);
             if (placements.Count == 0 || placements.Any(item => item.DeletionRequested) ||
-                proofs.Count != placements.Count || proofs.Select(item => item.DeploymentId).Distinct().Count() != proofs.Count ||
-                !placements.Select(item => item.DeploymentId).ToHashSet(StringComparer.Ordinal).SetEquals(proofs.Select(item => item.DeploymentId)))
+                proofs.Count != placements.Count
+                    || proofs.Select(item => item.DeploymentId).Distinct().Count() != proofs.Count ||
+                !placements.Select(item =>
+                    item.DeploymentId).ToHashSet(StringComparer.Ordinal).SetEquals(proofs.Select(item =>
+                    item.DeploymentId)))
                 return tx.Abort(false);
             foreach (var proof in proofs)
             {
@@ -53,9 +57,12 @@ internal sealed class MongoReleaseRetainedSecretKeys(
                         DeploymentId: proof.DeploymentId),
                     session: tx.Session,
                     cancellationToken: token);
-                if (placement is null || placement.ResourceGroupId != current.ResourceGroupId || placement.IsolationScopeId != current.IsolationScopeId ||
-                    placement.DeploymentRevision != proof.DeploymentRevision || placement.DesiredGeneration != proof.DesiredGeneration ||
-                    placement.Status != ResourceDeploymentStatus.Applied || placement.DesiredOperation != ResourceDeploymentDesiredOperation.Apply)
+                if (placement is null || placement.ResourceGroupId != current.ResourceGroupId
+                    || placement.IsolationScopeId != current.IsolationScopeId ||
+                    placement.DeploymentRevision != proof.DeploymentRevision
+                        || placement.DesiredGeneration != proof.DesiredGeneration ||
+                    placement.Status != ResourceDeploymentStatus.Applied
+                        || placement.DesiredOperation != ResourceDeploymentDesiredOperation.Apply)
                     return tx.Abort(false);
             }
             // Admission-only state: do not publish a projection revision or a value event.

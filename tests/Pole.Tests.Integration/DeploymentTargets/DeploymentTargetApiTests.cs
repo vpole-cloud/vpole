@@ -120,7 +120,9 @@ public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
 
         var duplicateResponse = await Client.PostAsJsonAsync(
             "/api/v1/platform/deployment-targets/",
-            CreateBody("Duplicate cluster", "https://cluster-one.test:6443", certificateAuthorityData, RotatedToken) with { TechnicalName = "different-cluster-name" });
+            CreateBody("Duplicate cluster", "https://cluster-one.test:6443", certificateAuthorityData,
+                RotatedToken) with
+            { TechnicalName = "different-cluster-name" });
         Assert.Equal(HttpStatusCode.Conflict, duplicateResponse.StatusCode);
         var conflict = await duplicateResponse.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("deployment-targets.identity-conflict", conflict.GetProperty("code").GetString());

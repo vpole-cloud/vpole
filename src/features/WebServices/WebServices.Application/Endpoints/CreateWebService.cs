@@ -155,7 +155,8 @@ public sealed class CreateWebServiceHandler(
         return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             WebServiceQuotaInput,
             CreateWebServiceOutcome>(
-            new ExecuteQuotaAdmissionRequest<global::Pole.Features.WebServices.Application.Common.WebServiceQuotaInput, global::Pole.Features.WebServices.Application.Endpoints.CreateWebServiceOutcome>(
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.WebServices.Application.Common.WebServiceQuotaInput,
+                global::Pole.Features.WebServices.Application.Endpoints.CreateWebServiceOutcome>(
                 TenantId: request.TenantId,
                 ResourceKey: WebServiceQuotaResourceKey.Create(options.Id),
                 Mutation: new CreateQuotaMutation<WebServiceQuotaInput>(quotaInput),
@@ -379,8 +380,10 @@ public sealed class CreateWebServiceHandler(
         var eventCore = EventCore.Create(webService.TenantId);
         var createdEvent = webService.ToCreateEvent(
             WebServiceDeploymentWorkflow.ToEventDeployments(deployments));
-        var persisted = await persistCreatedWebService(transaction.Session, webService, createdEvent, cancellationToken);
-        if (persisted.Value is WebServiceNameAlreadyExists duplicate) return Abort(transaction, new CreateWebServiceError(duplicate));
+        var persisted = await persistCreatedWebService(transaction.Session, webService, createdEvent,
+            cancellationToken);
+        if (persisted.Value is WebServiceNameAlreadyExists duplicate) return Abort(transaction,
+            new CreateWebServiceError(duplicate));
 
         if (webService.Lifecycle is PreparedWebServiceLifecycle)
             return transaction.Commit(new CreateWebServiceOutcome(

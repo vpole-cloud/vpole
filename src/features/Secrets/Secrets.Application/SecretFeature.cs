@@ -40,7 +40,8 @@ public static class SecretFeature
         services.AddScoped<SecretProjectionRecoveryJob>();
         services.AddScoped<SecretKeyRetirementReconciler>();
         services.AddScoped<MongoReleaseRetainedSecretKeys>();
-        services.AddScoped<ReleaseRetainedSecretKeys>(sp => sp.GetRequiredService<MongoReleaseRetainedSecretKeys>().InvokeAsync);
+        services.AddScoped<ReleaseRetainedSecretKeys>(sp =>
+            sp.GetRequiredService<MongoReleaseRetainedSecretKeys>().InvokeAsync);
         services.AddScoped<ISecretProjectionTarget, KubernetesSecretProjectionTarget>();
         return services;
     }

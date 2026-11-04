@@ -34,7 +34,7 @@ internal sealed partial class DeclarativeSecretProvider(
     StoreSecretChange publish,
     TimeProvider clock) : ITransactionalDeclarativeResourceProvider, IDeclarativeResourceLifecycleProvider,
     IDeclarativeRegisteredResourceProvider, IDeclarativeLifecycleWarningProvider,
-    IDeclarativeRegistrationOwnershipProvider
+    IDeclarativeRegistrationOwnershipProvider, IDeclarativeAdoptionPreviewProvider
 {
     public string Kind => "Secret";
     public ResourceTypeId ResourceType => SecretResource.Type;

@@ -44,12 +44,17 @@ internal sealed class ResourceConnectionReferenceProvider(
             cancellationToken: ct)).Where(item => !item.DeletionRequested).ToArray();
         foreach (var group in request.References.GroupBy(reference => reference.ConnectionId, StringComparer.Ordinal))
         {
-            var current = await connections.Find(session, ResourceConnectionFilters.ByTenantAndId(request.TenantId, group.Key)).FirstOrDefaultAsync(ct);
-            if (current is null || current.SourceResourceTypeId != request.SourceType.Value || current.SourceResourceId != request.SourceId || current.Lifecycle is not ActiveResourceConnection active)
+            var current = await connections.Find(session, ResourceConnectionFilters.ByTenantAndId(request.TenantId,
+                group.Key)).FirstOrDefaultAsync(ct);
+            if (current is null || current.SourceResourceTypeId != request.SourceType.Value
+                || current.SourceResourceId != request.SourceId
+                || current.Lifecycle is not ActiveResourceConnection active)
                 return Unavailable(group.Key, "ConnectionUnavailable");
             if (placements.Length == 0 || placements.Any(placement => !active.Targets.Any(target => Covers(target.Snapshot, placement))))
                 return Unavailable(group.Key, "DeploymentCoverageUnavailable");
-            var endpoint = await endpoints.ResolveAsync(request.TenantId, ResourceTypeId.Create(current.DestinationResourceTypeId), current.DestinationResourceId, current.EndpointId, session, ct);
+            var endpoint = await endpoints.ResolveAsync(request.TenantId,
+                ResourceTypeId.Create(current.DestinationResourceTypeId), current.DestinationResourceId,
+                current.EndpointId, session, ct);
             if (endpoint is not ResolvedConnectionEndpoint resolved || group.Any(reference => !ValidField(reference, resolved.Configuration)))
                 return Unavailable(group.Key, "EndpointFieldUnavailable");
             if (active.Targets.Any(target => target.Snapshot.DestinationServiceName != resolved.ServiceName || target.Snapshot.DestinationServicePort != resolved.ServicePort.Value || target.Snapshot.DestinationPort != resolved.TargetPort.Value))
@@ -74,18 +79,27 @@ internal sealed class ResourceConnectionReferenceProvider(
                 ResourceId: request.SourceId,
                 DeploymentId: request.DeploymentId),
             cancellationToken: ct);
-        if (placement is null || placement.DesiredOperation == ResourceDeploymentDesiredOperation.Delete) return Unavailable(request.References.First().ConnectionId, "SourceDeploymentUnavailable");
+        if (placement is null
+            || placement.DesiredOperation == ResourceDeploymentDesiredOperation.Delete) return Unavailable(
+            request.References.First().ConnectionId, "SourceDeploymentUnavailable");
         var values = ImmutableArray.CreateBuilder<ResolvedResourceConnectionValue>();
-        foreach (var group in request.References.Distinct().GroupBy(reference => reference.ConnectionId, StringComparer.Ordinal))
+        foreach (var group in request.References.Distinct().GroupBy(reference => reference.ConnectionId,
+            StringComparer.Ordinal))
         {
-            var current = await connections.Find(ResourceConnectionFilters.ByTenantAndId(request.TenantId, group.Key)).FirstOrDefaultAsync(ct);
-            if (current is null || current.SourceResourceTypeId != request.SourceType.Value || current.SourceResourceId != request.SourceId || current.Lifecycle is not ActiveResourceConnection active)
+            var current = await connections.Find(ResourceConnectionFilters.ByTenantAndId(request.TenantId,
+                group.Key)).FirstOrDefaultAsync(ct);
+            if (current is null || current.SourceResourceTypeId != request.SourceType.Value
+                || current.SourceResourceId != request.SourceId
+                || current.Lifecycle is not ActiveResourceConnection active)
                 return Unavailable(group.Key, "ConnectionUnavailable");
             var matches = active.Targets.Where(target => target.Snapshot.TargetId == placement.DeploymentTargetId &&
-                target.Snapshot.Sources.Any(source => source.ResourceDeploymentId == request.DeploymentId && source.RuntimeCellId == placement.RuntimeCellId && source.Namespace == placement.KubernetesNamespace)).ToArray();
+                target.Snapshot.Sources.Any(source => source.ResourceDeploymentId == request.DeploymentId
+                    && source.RuntimeCellId == placement.RuntimeCellId
+                    && source.Namespace == placement.KubernetesNamespace)).ToArray();
             if (matches.Length != 1) return Unavailable(group.Key, "DeploymentCoverageUnavailable");
             var snapshot = matches[0].Snapshot;
-            var published = await endpoints.LoadAvailableAsync(request.TenantId, ResourceTypeId.Create(current.DestinationResourceTypeId), current.DestinationResourceId, ct);
+            var published = await endpoints.LoadAvailableAsync(request.TenantId,
+                ResourceTypeId.Create(current.DestinationResourceTypeId), current.DestinationResourceId, ct);
             var endpoint = published?.Endpoints.SingleOrDefault(item => item.Id == current.EndpointId);
             if (endpoint is null || group.Any(reference => !ValidField(reference, endpoint.Configuration))) return Unavailable(group.Key, "EndpointFieldUnavailable");
             if (snapshot.DestinationServiceName != endpoint.ServiceName || snapshot.DestinationServicePort != endpoint.ServicePort.Value || snapshot.DestinationPort != endpoint.TargetPort.Value)
@@ -102,7 +116,8 @@ internal sealed class ResourceConnectionReferenceProvider(
                 values.Add(new(reference, value));
             }
             // A deletion or refreshed topology during provider discovery must not authorize a stale snapshot.
-            var latest = await connections.Find(ResourceConnectionFilters.ByTenantAndId(request.TenantId, current.Id)).FirstOrDefaultAsync(ct);
+            var latest = await connections.Find(ResourceConnectionFilters.ByTenantAndId(request.TenantId,
+                current.Id)).FirstOrDefaultAsync(ct);
             if (latest?.Generation != current.Generation || latest.Lifecycle is not ActiveResourceConnection)
                 return Unavailable(group.Key, "ConnectionChanged");
         }

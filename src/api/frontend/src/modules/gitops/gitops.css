@@ -1,0 +1,11 @@
+.gitops-source {
+  overflow-wrap: anywhere;
+}
+
+.gitops-source code {
+  white-space: normal;
+}
+
+.gitops-source .ui-table {
+  overflow-wrap: normal;
+}

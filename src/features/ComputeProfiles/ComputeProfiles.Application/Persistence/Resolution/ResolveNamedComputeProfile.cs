@@ -8,9 +8,11 @@ internal sealed class MongoResolveNamedComputeProfile(
     IMongoCollection<ComputeProfile> profiles,
     ResolveComputeProfiles resolve)
 {
-    public async Task<ResolveNamedComputeProfileOutcome> InvokeAsync(NamedComputeProfileRequest request, CancellationToken ct = default)
+    public async Task<ResolveNamedComputeProfileOutcome> InvokeAsync(NamedComputeProfileRequest request,
+        CancellationToken ct = default)
     {
-        var candidates = await profiles.Find(ComputeProfileFilters.NamedForWorkload(request.Name, request.TenantId, request.DeploymentTargetId, request.ResourceType))
+        var candidates = await profiles.Find(ComputeProfileFilters.NamedForWorkload(request.Name, request.TenantId,
+            request.DeploymentTargetId, request.ResourceType))
             .Limit(2).ToListAsync(ct);
         if (candidates.Count == 0) return new NamedComputeProfileUnavailable(request.Name);
         if (candidates.Count != 1) return new NamedComputeProfileAmbiguous(request.Name);

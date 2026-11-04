@@ -13,8 +13,13 @@ public sealed class ComputeProfileHistoryMigration : IMigration
     {
         var history = context.GetCollection<BsonDocument>("ComputeProfileRevisions");
         await history.Indexes.CreateOneAsync(new CreateIndexModel<BsonDocument>(Builders<BsonDocument>.IndexKeys
-            .Ascending("ComputeProfileId").Ascending("Revision"), new CreateIndexOptions { Unique = true }), cancellationToken: cancellationToken);
-        using var collections = await context.ListCollectionsAsync(new ListCollectionsOptions { Filter = new BsonDocument("name", "ComputeProfiles") }, cancellationToken);
+            .Ascending("ComputeProfileId").Ascending("Revision"), new CreateIndexOptions { Unique = true }),
+                cancellationToken: cancellationToken);
+        using var collections = await context.ListCollectionsAsync(new ListCollectionsOptions
+        {
+            Filter =
+            new BsonDocument("name", "ComputeProfiles")
+        }, cancellationToken);
         var collection = await collections.FirstAsync(cancellationToken);
         var snapshotSchema = collection["options"]["validator"]["$jsonSchema"].AsBsonDocument;
         var schema = new BsonDocument

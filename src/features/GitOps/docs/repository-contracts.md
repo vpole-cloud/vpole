@@ -2,8 +2,8 @@
 
 This is the canonical contract for the single #88/#98 delivery. Repository acquisition, the source
 API, durable execution, polling, push webhooks and managed drift reconciliation are implemented.
-All thirteen resource providers are registered, including stage-6 connectivity, domains and source
-delivery. Stage 7 implements public lifecycle commands with server-owned previews and explicit confirmation. Manual snapshot entrypoints are removed.
+All thirteen resource providers are registered, including connectivity, domains and source
+delivery. Lifecycle commands use server-owned previews and explicit confirmation. Manual snapshot entrypoints are removed.
 The verification section describes required evidence separately from implementation scope.
 
 ## Ownership and module boundaries
@@ -41,14 +41,14 @@ Prune defaults to Retain in the source factory. The reviewed lifecycle below def
 Resolve the configured branch to an immutable commit, then read only that exact commit and directory.
 The snapshot result must prove a complete successful read, including a valid empty directory.
 Access denial, repository/ref/directory absence and rejected archive/content are distinct outcomes;
-none may be converted to an empty desired set. The stage-2 GitHub adapter implements the repository input described below; the stage-3 worker orchestrates these contracts.
+none may be converted to an empty desired set. The GitHub adapter implements the repository input described below; the durable worker orchestrates these contracts.
 
 Resource providers normalize desired declarations, describe dependencies, resolve names, read current
 managed configuration, project desired configuration and apply operations. The generic planner compares
 normalized projections and returns create, update, no-op, blocked, adoption, replacement or removal.
 Providers perform create/update mutations and guard no-op preconditions; the engine records the
-operation result. Adoption/replacement/removal return typed blockers because those lifecycle
-operations are not connected. Read projections contain only managed fields. Runtime observations,
+operation result. Adoption, replacement and removal use the reviewed lifecycle flow below;
+ordinary reconciliation cannot silently perform those actions. Read projections contain only managed fields. Runtime observations,
 revision timestamps, credentials and Secret values must never enter a projection or diff.
 
 Projection references use resolved internal IDs inside the server boundary, so a renamed/recreated
@@ -91,7 +91,7 @@ lifecycle decisions of stage 7; they never imply silent adoption or replacement.
 Schemas and phase evidence live with their owners: `DeclarativeResourceGroupProvider`,
 `DeclarativeIsolationScopeProvider`, `DeclarativeSecretProvider`, `DeclarativeSecretBindingProvider`,
 `DeclarativeWebServiceProvider`, `DeclarativeRedisProvider`, `PostgresDeclaration.fs` and
-`FunctionDeclaration.cs`. Later-provider API evidence remains in the Domains, ResourceConnections,
+`FunctionDeclaration.cs`. Provider API evidence is in the Domains, ResourceConnections,
 GitProviders and SourceBuilds endpoints. Build output cannot mutate Git-owned desired image configuration.
 
 ## Source API
@@ -118,6 +118,27 @@ Preview list/detail use GET `{id}/previews` and `{id}/previews/{previewId}` with
 no separate detach execution endpoint. Manual snapshot entrypoints are removed; no public YAML
 apply API or compatibility API is exposed.
 
+### Console metadata reads
+
+`GET /{id}/resources` returns bounded source inventory metadata with its completeness revision:
+kind/name, concrete ID, reserved or previously-created state, pending removal, stored blocker and
+last run. Source inventory summaries include that revision. These reads do not expose stored desired
+or applied projections and do not infer current runtime existence/readiness from inventory history.
+
+`GET /{id}/adoption-candidates` performs tenant-scoped kind/name lookup and reports concrete identity,
+ownership and sanitized unavailability. Unnamed SecretBinding lookup uses its owner capability with
+Secret and consumer filters; declaration name is selected separately. Generated/default identities,
+other Git ownership and deleting resources are not selectable. Lookup alone grants no adoption
+permission or declaration compatibility; the preview remains authoritative. The engine reads no
+foreign collections and branches on capabilities rather than concrete resource kinds.
+
+Preview reads include typed inventory-only/repository input and the saved repository location,
+including relocation destination. Summary counts and warnings cover the entire server plan even
+when action rows are paginated. Console confirmation waits for every page with matching ID/revision/
+total and requires explicit data-loss acknowledgment for the selected revision. A failed refresh or
+known source/inventory revision change disables the old confirmation. The server revalidates all
+resource/reference/dependency preconditions; the UI cannot certify freshness from cached metadata.
+
 ## Preview and confirmation
 
 A stored preview binds tenant/source, source configuration revision, commit, desired hash,
@@ -129,7 +150,7 @@ Confirmation carries only a preview reference/revision. The server rereads the p
 state under authorized tenant context. Any changed precondition invalidates it; source/commit changes
 cannot reuse an old confirmation. Approval does not waive admission, data protection or ownership.
 Protected deletion, empty-set deletion, adoption, immutable replacement and relocation require the
-concrete reviewed action. Failed read/preflight never authorizes deletion. Stage 7 implements these commands.
+concrete reviewed action. Failed read/preflight never authorizes deletion. The lifecycle API implements these commands.
 
 ## Verification and delivery
 
@@ -139,15 +160,15 @@ policy, mutation/quota/ownership/receipt/revision/outbox atomicity, fencing, ret
 rollout retention and absence of no-op side effects. Architecture checks enforce Domain ownership,
 provider boundaries, records and the three-parameter contract limit. No legacy documents exist.
 
-Stage 5 requires solution build; the affected feature and architecture suites; full
+Verification requires solution build; the affected feature and architecture suites; full
 `Pole.Tests.Integration`; frontend `npm test`, `npm run build`, `npm run lint`; GitHub setup and mixed
 repository Aspire E2E; and the dedicated PostgreSQL/Function live checks. See the
 [E2E boundaries](../../../../docs/aspire-e2e-testing.md#gitops-repository-scenarios). Test definitions
 and fixture image publication are not evidence that runtime activation or a full suite passed.
 Record actual results at delivery; unavailable infrastructure is a verification blocker. A fresh,
-unfiltered publication quality gate and independent review remain required after all stages.
+unfiltered publication quality gate and independent review cover the complete accumulated PR diff.
 
-## Stage 2: GitHub repository input
+## GitHub repository input
 
 GitOps accesses public and private repositories through the current tenant's GitHub App connection
 and external repository ID. It neither links a build SourceRepository nor runs build analysis.
@@ -180,34 +201,34 @@ configured timeout bounds the complete download, including redirects and streame
 caller cancellation still propagates. Expected access,
 missing repository/ref/path, snapshot rejection and temporary service failures have distinct outcomes.
 
-Stage 2 supplied this adapter; stage 3 now connects it to durable execution, webhook and polling.
+The adapter is connected to durable execution, webhook and polling.
 No public YAML apply API is exposed. Verification includes
 GitProviders/GitOps/SourceBuilds unit suites, architecture, full shared integration, frontend gates and
 GitHub setup E2E. The publication gate runs after all stages of the single PR.
 
-## Stage 3: durable repository execution
+## Durable repository execution
 
-Stage 3 replaces the manual source/execution storage and HTTP input with repository
-sources, synchronization generations and durable runs. Ownership inventory and receipts remain the
-single transactional authority. Runs exist before Git resolution and retain typed acquisition failures.
+Repository sources, synchronization generations and durable runs are the active persisted execution
+model. Ownership inventory and receipts remain the single transactional authority. Runs exist before Git resolution and retain typed acquisition failures.
 An accepted input never changes SHA; Retry targets the last failed/blocked pinned run, while Sync
 resolves the current branch. Requested work arriving during a run remains pending for the next pass.
 
 Mongo owns claims, expiry, fencing and recovery. Lease expiry predicates use database time. Provider
 mutations write the current fence and atomically retain ownership, receipts, releases and outbox.
 Source authors are audit metadata; execution uses server authority and current tenant/connection access.
-The source API exposes create/read/polling-policy update/sync/retry/run operations; no new UI is added.
+The source API exposes configuration, synchronization, run/operation reads and reviewed lifecycle.
+The console uses those same endpoints; it adds no parallel apply or execution path.
 Signed GitHub pushes and polling request generations through a generic GitOps-owned boundary.
-Prune stays Retain. Stage 4 below adds drift planning; lifecycle commands remain later stages of this single PR.
+Prune defaults to Retain. Managed drift planning and reviewed lifecycle execution share this durable scheduling model.
 
 The active API, defaults, operational flow and webhook configuration are documented in
-[Repository GitOps](../README.md#source-api). Source updates currently accept polling policy only.
+[Repository GitOps](../README.md#source-api). Source updates accept polling and prune policy; repository location changes through reviewed relocation.
 Source/run IDs are canonicalized at the HTTP boundary; views include sanitized latest-run blockers.
 Run completion verifies receipts for the complete accepted operation list before advancing the
 fully applied marker. Retry and dependency wakeup reserve their immutable input transactionally.
 GitOps-owned scheduling contracts keep GitProviders/Secrets event adapters in their owning features.
 
-## Stage 4: managed configuration reconciliation
+## Managed configuration reconciliation
 
 Every poll and Sync evaluates provider-owned managed projections, including unchanged commits.
 The worker may reuse accepted input from the latest successful run at the same source revision/SHA,
@@ -225,10 +246,11 @@ resource events or releases. Preconditions are replanned at most three times imm
 the persisted recovery backoff and five-failure bound. Applied projections require the final phase.
 
 API summaries count operations rather than resources and expose actions and field paths only.
-Adoption, replacement, removal and other lifecycle commands remain blocked until their later stage;
-prune stays Retain. No new timer, endpoint family or UI is introduced.
+Adoption, replacement and removal require the authority defined by the reviewed lifecycle below.
+Prune policy can authorize only its concrete unprotected removal plan; protected and ambiguous cases
+require user confirmation.
 
-## Stage 5: catalog references and workload providers
+## Catalog references and workload providers
 
 ### Catalog and placement rules
 
@@ -291,213 +313,33 @@ exclusive; omitting both means one fixed replica. Autoscaling accepts `minReplic
 `metric: { type: cpu|memory, targetAverageUtilization }`; observed replica counts are excluded from drift.
 Image, ordinary/logical-secret environment, numeric TCP/UDP ports, HTTP probes and tags remain managed.
 Probe `port` is numeric text, not a named port. Connection environment references and server credentials
-are preserved. Custom hostname/connectivity declarations are specified in the stage-6 section below.
+are preserved. Custom hostname/connectivity declarations are specified below.
 
 All operations retain revisioned plans, session-consistent reads, real resource/dependency fences,
 bounded replanning, receipts and atomic mutation/quota/ownership/revision/release/outbox writes. Manual
 configuration changes and deletion are blocked server-side for Git-owned resources; existing DTO/UI
 ownership indicators disable those actions. Supported operational actions and PostgreSQL password
-rotation retain their ordinary workflow and restrictions. Prune stays Retain; lifecycle operations
-including adoption, replacement, relocation, pause/resume, detach/delete and public preview/confirm
-remain unavailable.
+rotation retain their ordinary workflow and restrictions. Prune defaults to Retain; reviewed lifecycle
+commands provide explicit authority for adoption, deletion, replacement, rename, relocation and detach.
 
-### Mixed repository example
+### Complete authoring examples
 
-Create catalog entries named `lab`, `small` and `standard` first, with the shown revision available
-and current policy allowing all selected workloads. The target must admit workloads; Public WebService
-also needs ingress configuration. Replace the Function image below with a published application built
-with the real Pole Function SDK and a registered `hello` handler. Supply `PASSWORD` through the protected
-Secret API/UI after the metadata exists. The example intentionally contains no Secret values.
+The [canonical examples](../examples/README.md) contain a minimal snapshot, all thirteen kinds with
+fifteen declarations/nineteen phase operations, and isolated before/after lifecycle snapshots.
+They document catalog and GitHub prerequisites, the real SDK Function image, out-of-Git Secret values,
+manual Build, drift/no-op, adoption, protected deletion, rename, relocation and offline detach.
+Compiler regression tests load these YAML files directly instead of duplicating their schemas here.
 
-```yaml
-apiVersion: pole.io/v1alpha1
-kind: ResourceGroup
-metadata:
-  name: demo
-spec:
-  description: Mixed GitOps application
-  tags: [gitops]
----
-apiVersion: pole.io/v1alpha1
-kind: IsolationScope
-metadata:
-  name: demo-scope
-spec:
-  resourceGroup: demo
----
-apiVersion: pole.io/v1alpha1
-kind: Secret
-metadata:
-  name: demo-credentials
-spec:
-  resourceGroup: demo
-  isolationScope: demo-scope
-  purpose: Application and bootstrap credentials
-  keys: [PASSWORD]
----
-apiVersion: pole.io/v1alpha1
-kind: RedisService
-metadata:
-  name: demo-cache
-spec:
-  resourceGroup: demo
-  placement:
-    deploymentTarget: lab
-    isolationScope: demo-scope
-    computeProfile: { name: small, revision: 1 }
-  storage:
-    sizeGb: 1
-    profile: { name: standard, revision: 1 }
-  tags: [gitops]
----
-apiVersion: pole.io/v1alpha1
-kind: PostgresCluster
-metadata:
-  name: demo-database
-spec:
-  resourceGroup: demo
-  placement:
-    deploymentTarget: lab
-    isolationScope: demo-scope
-    computeProfile: { name: small, revision: 1 }
-  storage:
-    sizeGb: 1
-    profile: { name: standard, revision: 1 }
-  version: 16
-  instances: 1
-  username: app
-  bootstrapPassword: { secret: demo-credentials, key: PASSWORD }
----
-apiVersion: pole.io/v1alpha1
-kind: WebService
-metadata:
-  name: demo-web
-spec:
-  resourceGroup: demo
-  placement:
-    deploymentTarget: lab
-    isolationScope: demo-scope
-    computeProfile: { name: small, revision: 1 }
-  image: { server: docker.io, name: traefik/whoami, tag: v1.11.0 }
-  exposure: Public
-  autoscaling:
-    minReplicas: 1
-    maxReplicas: 3
-    metric: { type: cpu, targetAverageUtilization: 70 }
-  ports:
-    - { name: http, servicePort: 80, targetPort: "80", protocol: TCP }
-  probes:
-    startup:
-      path: /
-      port: "80"
-      initialDelaySeconds: 0
-      periodSeconds: 5
-      timeoutSeconds: 1
-      failureThreshold: 3
-      successThreshold: 1
-    readiness:
-      path: /
-      port: "80"
-      initialDelaySeconds: 0
-      periodSeconds: 5
-      timeoutSeconds: 1
-      failureThreshold: 3
-      successThreshold: 1
-    liveness:
-      path: /
-      port: "80"
-      initialDelaySeconds: 0
-      periodSeconds: 5
-      timeoutSeconds: 1
-      failureThreshold: 3
-      successThreshold: 1
-  secretEnvironment:
-    APP_PASSWORD: { secret: demo-credentials, key: PASSWORD }
-  tags: [gitops]
----
-apiVersion: pole.io/v1alpha1
-kind: FunctionApp
-metadata:
-  name: demo-function
-spec:
-  resourceGroup: demo
-  functionRoute: demo-function
-  placement:
-    deploymentTarget: lab
-    isolationScope: demo-scope
-    computeProfile: { name: small, revision: 1 }
-  image: { server: registry.example.test, name: apps/functions, tag: v1 }
-  environment: {}
-  secretEnvironment:
-    STAGE_FIVE_SECRET: { secret: demo-credentials, key: PASSWORD }
-  resources:
-    requests: { cpuMillis: 100, memoryMi: 256 }
-    limits: { cpuMillis: 500, memoryMi: 512 }
-  scaling:
-    minInstances: 1
-    maxInstances: 1
-    targetConcurrencyPerInstance: 1
-    maxConcurrencyPerInstance: 10
-    scaleDownDelaySeconds: 60
-    activationTimeoutSeconds: 120
-  handlers:
-    - name: hello
-      maxConcurrencyPerInstance: 10
-      trigger:
-        type: http
-        route: hello
-        methods: [GET]
-        exposure: Internal
-  tags: [gitops]
----
-apiVersion: pole.io/v1alpha1
-kind: SecretBinding
-metadata:
-  name: demo-web-access
-spec:
-  secret: demo-credentials
-  consumer: { kind: WebService, name: demo-web }
-  usage: Runtime
----
-apiVersion: pole.io/v1alpha1
-kind: SecretBinding
-metadata:
-  name: demo-function-access
-spec:
-  secret: demo-credentials
-  consumer: { kind: FunctionApp, name: demo-function }
-  usage: Runtime
----
-apiVersion: pole.io/v1alpha1
-kind: SecretBinding
-metadata:
-  name: demo-database-bootstrap
-spec:
-  secret: demo-credentials
-  consumer: { kind: PostgresCluster, name: demo-database }
-  usage: Bootstrap
-```
-
-This is ten declarations across eight kinds and fourteen phase operations. The Function HTTP trigger
-route is `hello`, without a leading slash. Timer handlers instead use `type: timer`, `cron`,
+The Function HTTP trigger route has no leading slash. Timer handlers use `type: timer`, `cron`,
 `concurrencyPolicy` (`Allow`/`Forbid`), `misfirePolicy` (`Skip`/`FireOnce`) and
 `retry: { maxAttempts, backoffSeconds }`; trigger identities and schedule versions are generated.
 Function resources/scaling/handlers are explicit. Redis tags, Function/WebService environment and tags,
 Secret purpose and binding key mappings default to empty collections/text; PostgreSQL instances default
 to one. Omission resets managed optional fields to their documented defaults, not to their prior value.
 
-### Stage 7 handoff
+## Connectivity, domains and source delivery
 
-All thirteen schemas/providers use the same generic planning, accepted-ID, transactional fencing,
-ownership and no-op contracts. Repository snapshot acquisition uses connection plus external
-repository ID independently of SourceRepository and optional build analysis. Stage 7 supplies
-preview/confirmation, pause/resume, detach/delete, adoption, replacement, relocation and prune
-lifecycle decisions; these actions have no successful placeholders in the current implementation.
-
-## Stage 6: connectivity, domains and source delivery
-
-The following schemas complete the thirteen-kind contract. Their implementation is delivered
-as Stage 6; lifecycle commands remain Stage 7. All declarations retain tenant-local technical
+The following schemas complete the thirteen-kind contract and participate in reviewed lifecycle execution. All declarations retain tenant-local technical
 identity and accepted reference IDs. Missing previously created resources are blockers, not creates.
 
 | Kind                     | Managed fields                                                           | Phase and dependencies                                           | Mutation policy                                 |
@@ -546,7 +388,7 @@ association, uses a verified digest, and preserves current non-image fields. Pla
 state, release, promotion receipt and outbox commit atomically. Failed or superseded builds keep
 the previous running artifact; replay cannot create duplicate releases.
 
-## Stage 7: reviewed lifecycle
+## Reviewed lifecycle
 
 Lifecycle uses the existing source execution slot, lease, fencing and durable recovery. Pause
 retains ownership and interrupts future GitOps writes; resume requests a fresh branch synchronization.
@@ -610,7 +452,7 @@ explicit confirmed removal remains available regardless of the default retention
 Run and operation reads expose preview ID, authorization type, action/replacement identities and
 pending cleanup/confirmation counts. Lifecycle actions have no invented configuration phase.
 Pause/resume and guarded source DELETE remain separate commands. Preview reads are bounded and
-sanitized; the console lifecycle experience belongs to stage 8 of the same PR.
+sanitized. The console reviews this same server-owned plan and follows its persisted execution.
 
 ### Preview request examples
 

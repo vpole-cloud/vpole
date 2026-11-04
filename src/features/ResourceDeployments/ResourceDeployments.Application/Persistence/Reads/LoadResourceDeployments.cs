@@ -31,7 +31,8 @@ internal sealed class MongoLoadResourceDeployments(
                 {
                     var candidates = group.Take(2).ToArray();
                     return candidates.Length == 1
-                        ? candidates[0].ToPlacementSummaryDto(policies[candidates[0].ResolvedPlacement.DeploymentTargetId])
+                        ? candidates[0].ToPlacementSummaryDto(policies[candidates[
+                            0].ResolvedPlacement.DeploymentTargetId])
                         : throw new InvalidOperationException(
                             $"Single-target resource '{group.Key}' has multiple deployments.");
                 },

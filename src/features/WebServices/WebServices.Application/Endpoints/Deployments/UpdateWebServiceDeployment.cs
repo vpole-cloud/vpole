@@ -138,7 +138,8 @@ public sealed class UpdateWebServiceDeploymentHandler(
         return await quotaAdmission.ExecuteOutcomeAsync<
             WebServiceQuotaInput,
             UpdateWebServiceDeploymentOutcome>(
-            new ExecuteQuotaAdmissionRequest<global::Pole.Features.WebServices.Application.Common.WebServiceQuotaInput, global::Pole.Features.WebServices.Application.Endpoints.Deployments.UpdateWebServiceDeploymentOutcome>(
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.WebServices.Application.Common.WebServiceQuotaInput,
+                global::Pole.Features.WebServices.Application.Endpoints.Deployments.UpdateWebServiceDeploymentOutcome>(
                 TenantId: webService.TenantId,
                 ResourceKey: WebServiceQuotaResourceKey.Create(webService.Id),
                 Mutation: new UpdateQuotaMutation<WebServiceQuotaInput>(currentQuota, nextQuota),

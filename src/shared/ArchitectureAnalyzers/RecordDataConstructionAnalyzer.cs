@@ -74,7 +74,8 @@ public sealed class RecordDataConstructionAnalyzer : DiagnosticAnalyzer
             if (constructor.Parameters.Length == 1 && SymbolEqualityComparer.Default.Equals(
                     constructor.Parameters[0].Type, type))
                 continue;
-            if (constructor.DeclaringSyntaxReferences.Any(reference => reference.GetSyntax() is ConstructorDeclarationSyntax))
+            if (constructor.DeclaringSyntaxReferences.Any(reference =>
+                reference.GetSyntax() is ConstructorDeclarationSyntax))
                 yield return constructor;
         }
     }
@@ -93,7 +94,8 @@ public sealed class RecordDataConstructionAnalyzer : DiagnosticAnalyzer
             }
         }
         var name = member is IMethodSymbol constructor
-            ? ".ctor(" + string.Join(",", constructor.Parameters.Select(parameter => parameter.Type.ToDisplayString())) + ")"
+            ? ".ctor(" + string.Join(",",
+                constructor.Parameters.Select(parameter => parameter.Type.ToDisplayString())) + ")"
             : member.Name;
         var kind = member switch
         {

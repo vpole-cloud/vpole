@@ -120,7 +120,8 @@ public sealed class GetResourceConnectionEndpointsHandler(LoadRegisteredResource
     }
 
     private static IEnumerable<string> DesiredTargets(IEnumerable<PlacementSummaryDto> placements) => placements
-        .Where(item => item.DesiredOperation != ResourceDeploymentDesiredOperation.Delete && item.Status != ResourceDeploymentStatus.Deleted).Select(item => item.DeploymentTargetId);
+        .Where(item => item.DesiredOperation != ResourceDeploymentDesiredOperation.Delete
+            && item.Status != ResourceDeploymentStatus.Deleted).Select(item => item.DeploymentTargetId);
 }
 
 public static class GetResourceConnectionEndpointsEndpoint

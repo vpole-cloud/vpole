@@ -63,7 +63,8 @@ internal sealed class MongoPromoteFunctionRevision(
         var promotion = await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             FunctionQuotaAllocation,
             FunctionRevisionLifecycleOutcome>(
-            new ExecuteQuotaAdmissionRequest<global::Pole.Features.Functions.Domain.FunctionQuotaAllocation, global::Pole.Features.Functions.Application.Common.FunctionRevisionLifecycleOutcome>(
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.Functions.Domain.FunctionQuotaAllocation,
+                global::Pole.Features.Functions.Application.Common.FunctionRevisionLifecycleOutcome>(
                 TenantId: tenantId,
                 ResourceKey: FunctionAppQuotaResourceKey.Create(functionAppId),
                 Mutation: new UpdateQuotaMutation<FunctionQuotaAllocation>(state.App.AdmittedQuota, targetAllocation),

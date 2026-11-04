@@ -47,11 +47,13 @@ public sealed class WebServiceResourceDeploymentAdapterTests
             new FixedKubernetesClientProvider(kubernetes), (_, _) => throw new InvalidOperationException("Unresolved references must not reach policy or workload writes."), EmptyConnectionReferences,
 (request, _) =>
             {
-                Assert.Equal(TenantId, request.TenantId); Assert.Equal(ResourceId, request.ConsumerId); Assert.Equal(DeploymentId, request.DeploymentId);
+                Assert.Equal(TenantId, request.TenantId); Assert.Equal(ResourceId, request.ConsumerId);
+                Assert.Equal(DeploymentId, request.DeploymentId);
                 Assert.Equal("token", Assert.Single(request.References).Key);
                 return Task.FromResult<Pole.Features.Secrets.Contracts.EnsureConsumerSecretProjectionsOutcome>(pending
                     ? new Pole.Features.Secrets.Contracts.ConsumerSecretProjectionPending("secret")
-                    : new ConsumerSecretReferenceUnavailable("secret", ConsumerSecretReferenceError.SecretBindingUnavailable));
+                    : new ConsumerSecretReferenceUnavailable("secret",
+                        ConsumerSecretReferenceError.SecretBindingUnavailable));
             });
         var result = Assert.IsType<ResourceDeploymentAdapterResult.Failed>(await subject.ApplyAsync(CreateContext(includeIngress: true)));
         Assert.Equal(pending ? "SecretProjectionPending" : "SecretConfigurationUnavailable", result.FailureCode);
@@ -877,7 +879,15 @@ public sealed class WebServiceResourceDeploymentAdapterTests
         public Task<PlacementSummaryDto?> LoadExactDeployment(
             LoadExactResourceDeploymentRequest request,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<PlacementSummaryDto?>(new PlacementSummaryDto(DeploymentId, IsolationScopeId, RuntimeCellId, TargetId, DesiredGeneration: CurrentGeneration, ObservedGeneration: 0, Status: ResourceDeploymentStatus.Pending, FailureCode: null, Compute: new ComputeConfigurationSummaryDto(new ComputeProfileReference("profile-1", 1), "test", new ComputeResourceValuesDto(100, 128), new ComputeResourceValuesDto(100, 128), []), Endpoints: [], ResourceRevision: 1, FixedReplicas: 1, Ingress: null, DeploymentRevision: 1, DesiredOperation: ResourceDeploymentDesiredOperation.Apply, Isolation: new ResourceDeploymentIsolationDto("Unknown", "EnforcementRequired", "EnforcementNotEstablished", null)));
+            Task.FromResult<PlacementSummaryDto?>(new PlacementSummaryDto(DeploymentId, IsolationScopeId, RuntimeCellId,
+                TargetId, DesiredGeneration: CurrentGeneration, ObservedGeneration: 0,
+                Status: ResourceDeploymentStatus.Pending, FailureCode: null,
+                Compute: new ComputeConfigurationSummaryDto(new ComputeProfileReference("profile-1", 1), "test",
+                new ComputeResourceValuesDto(100, 128), new ComputeResourceValuesDto(100, 128), []), Endpoints: [],
+                ResourceRevision: 1, FixedReplicas: 1, Ingress: null, DeploymentRevision: 1,
+                DesiredOperation: ResourceDeploymentDesiredOperation.Apply,
+                Isolation: new ResourceDeploymentIsolationDto("Unknown", "EnforcementRequired",
+                "EnforcementNotEstablished", null)));
     }
 
     private static Task<ResolveRuntimeRegistryAccessOutcome>

@@ -179,8 +179,11 @@ public sealed class WebServiceLifecycleTests(MongoReplicaSetFixture fixture) : M
         Assert.IsType<ActiveWebServiceLifecycle>((await Load(current.Id)).Lifecycle);
     }
 
-    [Fact]
-    public async Task Preview_and_adoption_preserve_server_credentials_identity_and_business_revision()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("own")]
+    [InlineData("dependency")]
+    public async Task Preview_and_adoption_preserve_server_credentials_identity_and_business_revision(string? change)
     {
         var current = await CreateService();
         current = current with
@@ -217,8 +220,24 @@ public sealed class WebServiceLifecycleTests(MongoReplicaSetFixture fixture) : M
             1, "https://example.test/source", new(1, 1, "worker", 1, new string('a', 40)));
         var operation = new GitOperationInput(context, declaration, DeclarationPhase.Prepare, current.Id);
         var adoption = Assert.IsAssignableFrom<IDeclarativeResourceAdoptionProvider>(Provider);
+        var expected = new DeclarationVersionToken(snapshot.Version.Documents
+            .Concat(preview.Desired.Dependencies!.Documents).Distinct().ToArray());
+        if (change is not null)
+        {
+            var changedDocument = change == "own"
+                ? $"WebService/{current.Id}"
+                : $"ComputeProfile/{TestData.DefaultComputeProfileId}/Policy";
+            expected = new(expected.Documents.Select(item => item.DocumentId == changedDocument
+                ? item with { Revision = item.Revision + 1 } : item).ToArray());
+            Assert.IsType<DeclarationPreconditionsChanged>((await adoption.AdoptAsync(
+                new(authority.Authority, operation, expected), session, default)).Value);
+            await session.AbortTransactionAsync();
+            Assert.True(before == await State(), "Rejected adoption must roll back owner and dependency writes.");
+            return;
+        }
+
         Assert.IsType<GitLifecycleResourceAdopted>((await adoption.AdoptAsync(
-            new(authority.Authority, operation, snapshot.Version), session, default)).Value);
+            new(authority.Authority, operation, expected), session, default)).Value);
         await session.CommitTransactionAsync();
         Assert.Equal(GitLifecycleMutationEffect.Adopt, authority.Effect);
         var adopted = await Load(current.Id);

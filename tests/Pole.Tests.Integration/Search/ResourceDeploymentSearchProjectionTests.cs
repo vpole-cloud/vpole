@@ -206,7 +206,14 @@ public sealed class ResourceDeploymentSearchProjectionTests(
         long observedGeneration,
         ResourceDeploymentStatus status,
         string? failureCode = null) =>
-        new(deploymentId, ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString(), TestData.DefaultDeploymentTargetId, desiredGeneration, observedGeneration, status, failureCode, new ComputeConfigurationSummaryDto(new ComputeProfileReference(TestData.DefaultComputeProfileId, 1), "General purpose", new ComputeResourceValuesDto(250, 256), new ComputeResourceValuesDto(1000, 1024), []), ImmutableList<ResourceDeploymentEndpointDto>.Empty, ResourceRevision: desiredGeneration, FixedReplicas: 1, Ingress: null, DeploymentRevision: 1, DesiredOperation: ResourceDeploymentDesiredOperation.Apply, Isolation: new ResourceDeploymentIsolationDto("Unknown", "EnforcementRequired", "EnforcementNotEstablished", null));
+        new(deploymentId, ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString(),
+            TestData.DefaultDeploymentTargetId, desiredGeneration, observedGeneration, status, failureCode,
+            new ComputeConfigurationSummaryDto(new ComputeProfileReference(TestData.DefaultComputeProfileId, 1),
+            "General purpose", new ComputeResourceValuesDto(250, 256), new ComputeResourceValuesDto(1000, 1024), []),
+            ImmutableList<ResourceDeploymentEndpointDto>.Empty, ResourceRevision: desiredGeneration, FixedReplicas: 1,
+            Ingress: null, DeploymentRevision: 1, DesiredOperation: ResourceDeploymentDesiredOperation.Apply,
+            Isolation: new ResourceDeploymentIsolationDto("Unknown", "EnforcementRequired", "EnforcementNotEstablished",
+            null));
 
     private sealed class StubResourceDeploymentQueryService(
         IReadOnlyList<PlacementSummaryDto> current)

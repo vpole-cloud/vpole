@@ -9,7 +9,8 @@ resource events or releases.
 
 The [canonical repository contract](docs/repository-contracts.md) contains the thirteen-kind
 coverage matrix, supported YAML schemas and examples, identity rules, catalog policy and phase
-semantics. Stage 7 adds lifecycle commands within the same #88/#98 PR.
+semantics. The [authoring examples](examples/README.md) provide minimal, complete thirteen-kind
+and isolated lifecycle snapshots within the same #88/#98 PR.
 
 ## Execution
 
@@ -64,8 +65,8 @@ one for a workload; Secret uses `spec.isolationScope`. Omission selects the grou
 scope. The name `default` is reserved and cannot be declared. Accepted resource/reference IDs stay
 pinned; reusing a name never silently rebinds an existing declaration.
 
-The [canonical mixed YAML example](docs/repository-contracts.md#mixed-repository-example) shows
-the workload kinds; the stage-6 section adds connectivity, domains and source delivery. WebService supports Private/Public exposure and either fixed replicas or autoscaling.
+The [complete repository example](examples/README.md) includes all thirteen kinds and documents
+its catalog, GitHub, image and Secret-value prerequisites. WebService supports Private/Public exposure and either fixed replicas or autoscaling.
 SecretBinding uses `consumer: { kind, name }`: Runtime grants support WebService/FunctionApp;
 Bootstrap grants authorize PostgreSQL initialization without a runtime projection. YAML never
 contains Secret values, credentials, tenant authority or internal Pole IDs.
@@ -124,6 +125,8 @@ Under `/api/v1/gitops/sources`:
 | `GET /{id}/previews`, `GET /{id}/previews/{previewId}` | Bounded sanitized preview reads; detail paginates actions.                                                                                                                                       |
 | `POST /{id}/previews/{previewId}/confirm`              | Only `expectedRevision` of the preview; returns 202 and the same run on replay.                                                                                                                  |
 | `DELETE /{id}?expectedRevision=…`                      | Requires empty ownership and no pending work; preserves an audit/idempotency tombstone.                                                                                                          |
+| `GET /{id}/resources`                                  | Bounded source inventory metadata with an inventory revision; no managed projections or values.                                                                                                  |
+| `GET /{id}/adoption-candidates`                        | Tenant-scoped kind/name lookup; unnamed binding discovery uses Secret and consumer metadata through its owner.                                                                                   |
 | `GET /{id}/runs`, `GET /{id}/runs/{runId}`             | Paginated history and run details.                                                                                                                                                               |
 | `GET /{id}/runs/{runId}/operations`                    | Bounded pending/succeeded/blocked descriptors and sanitized diagnostic codes.                                                                                                                    |
 
@@ -141,6 +144,37 @@ failed or partially applied run prevents this reuse optimization.
 
 The former manual snapshot/resume routes are removed. There is no public YAML apply API.
 Responses do not expose raw manifests, accepted specs, credentials or Secret values.
+
+## Console workflow
+
+The tenant-scoped **GitOps** workspace owns source catalog/create and source tabs for Overview,
+Resources, Runs, Previews and Settings. GitHub connections remain in Integrations. Source creation
+selects a connection, repository and branch directly, without analyzer or SourceRepository creation.
+Settings changes polling/prune with expected revision; relocation uses a reviewed destination.
+
+Visible active execution polls every five seconds; idle sources poll every twenty seconds. Hidden
+pages and inactive tabs do not poll, and slow reads coalesce. The query scope includes authenticated
+session, API, tenant and complete route/page parameters. Drafts and confirmations remain local;
+workspace persistence contains only references. Current credentials are acquired for every request.
+
+Resources exposes reserved/previously-created identities, pending removal, last run and sanitized
+blockers. Adoption lookup returns concrete identities and ownership metadata; compatibility remains
+an owner preview decision. For an unnamed manual SecretBinding, choose Secret and consumer, inspect
+usage/target metadata and provide the desired declaration name from Git.
+
+Preview input identifies inventory-only detach or the immutable repository input, including a saved
+relocation destination. Its summary includes counts and warnings for the whole plan. Preview counts
+are actions; run summaries count phase operations. The console loads every preview action page and
+checks consistent preview identity, revision and total before enabling Confirm. Plans with possible
+data loss require an acknowledgment tied to that exact preview revision. A known source/inventory
+revision change or stale confirmation requires a new reviewed preview.
+
+Confirmation sends only preview identity/revision and follows the server-owned durable run. An
+accepted write whose refresh fails retries the read. Unknown write results can repeat only their
+captured input and idempotency key or preview identity. Tenant/account/permission changes fence old
+callbacks and clear confirmations. Viewers remain read-only. Git ownership notices navigate to the
+managing source; source UI never exposes Secret values, credentials, accepted specs, YAML or Dockerfile.
+Offline detach remains available when repository access fails.
 
 ## Scheduling and GitHub webhook
 
@@ -174,7 +208,7 @@ and WebService use logical Secret/key references. Secrets resolves native names/
 and old references remain pinned until the owning workload confirms the previous rollout has completed.
 `ConfigurationApplied` alone does not release those pins.
 
-## Persistence and remaining stages
+## Persistence and lifecycle
 
 `RepositorySource`, `GitSynchronizationState` and `GitReconciliationRun` replace the manual source
 and execution collections. `ManagedDeclaration` remains ownership inventory, `GitOperationReceipt`
@@ -182,7 +216,7 @@ remains operation truth and `GitAcceptedReference` retains resolved identities. 
 belong to Domain with BSON attributes; Application owns filters, transactions and boundary mappings.
 There are no compatibility readers, backfills or dual writes: Pole has not been deployed.
 
-Stage 4 stores revisioned operation plans and desired/applied projections in the existing inventory.
+GitOps stores revisioned operation plans and desired/applied projections in the existing inventory.
 Allocated IDs may be created; a missing previously created resource or changed identity blocks.
 Accepted references remain pinned. Preconditions use owner-provided transactional reads and real
 fences. Three immediate conflicts fall back to persisted recovery; API summaries count operations
@@ -190,7 +224,7 @@ and expose actions and field paths without projection values. WebService Prepare
 full configuration applied; Configure verifies managed fields while preserving connection references
 and server credentials.
 
-Stage 7 implements pause/resume, guarded deletion, adoption, prune, explicit replacement/rename,
+The lifecycle API implements pause/resume, guarded deletion, adoption, prune, explicit replacement/rename,
 repository relocation and terminal detach for all thirteen providers. Detach uses an inventory-only
 preview and works before any successful Git fetch. Confirmation is the sole durable entrypoint for
 reviewed intents; there is no separate detach command. Pause retains manual-write guards, while
@@ -201,10 +235,11 @@ the approved version vector; unrelated changes stop the unexecuted remainder. Re
 owner's delete/create workflows and can lose data or cause downtime. It does not copy Secret values,
 reset adopted PostgreSQL credentials or promise distributed rollback.
 
-Stage 8 supplies console UX, complete authoring examples and final verification of the single PR.
-Live Kubernetes drift and runtime readiness remain the runtime reconcilers' responsibility.
+The GitOps console uses the same source/run/preview APIs and scoped visible polling. Complete
+authoring examples are maintained beside this feature. Live Kubernetes drift and runtime readiness
+remain the runtime reconcilers' responsibility.
 
-Stage 7 verification requires solution build; affected GitOps, Secrets, PostgreSQL, Redis,
+Feature verification requires solution build; affected GitOps, Secrets, PostgreSQL, Redis,
 Functions, GitProviders, SourceBuilds and architecture suites; full shared Integration; frontend
 test/build/lint when frontend transports change; GitHub setup, repository/source-build/lifecycle
 Aspire E2E; and live workload, PVC/credential, ingress and network cleanup checks. The

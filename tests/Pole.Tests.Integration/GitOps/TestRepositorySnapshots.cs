@@ -21,6 +21,13 @@ internal sealed class TestRepositorySnapshots : IRepositorySnapshotProvider
     public Func<Task>? BeforeAccess { get; set; }
     public ConcurrentQueue<string> ReadCommits { get; } = new();
 
+    public Func<ResolveRepositoryCommitRequest, CancellationToken, Task<ResolveRepositoryCommitOutcome>>?
+        ResolveOverride
+    {
+        get;
+        set;
+    }
+
     public Func<ReadRepositorySnapshotRequest, CancellationToken, Task<ReadRepositorySnapshotOutcome>>? ReadOverride
     {
         get;
@@ -49,10 +56,12 @@ internal sealed class TestRepositorySnapshots : IRepositorySnapshotProvider
     public Task<ResolveRepositoryCommitOutcome> ResolveCommitAsync(
         ResolveRepositoryCommitRequest request,
         CancellationToken cancellationToken) =>
-        Task.FromResult<ResolveRepositoryCommitOutcome>(heads.TryGetValue(request.Repository.ExternalRepositoryId,
-            out var commit)
-            ? new RepositoryCommitResolved(commit)
-            : new RepositoryRefNotFound(request.Branch));
+        ResolveOverride is not null
+            ? ResolveOverride(request, cancellationToken)
+            : Task.FromResult<ResolveRepositoryCommitOutcome>(heads.TryGetValue(request.Repository.ExternalRepositoryId,
+                out var commit)
+                ? new RepositoryCommitResolved(commit)
+                : new RepositoryRefNotFound(request.Branch));
 
     public Task<ReadRepositorySnapshotOutcome> ReadSnapshotAsync(
         ReadRepositorySnapshotRequest request,

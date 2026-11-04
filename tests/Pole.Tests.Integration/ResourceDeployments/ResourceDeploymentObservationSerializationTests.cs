@@ -86,6 +86,8 @@ public sealed class ResourceDeploymentObservationSerializationTests
             UseShellExecute = false
         };
         start.ArgumentList.Add(helper);
+        // The cold serializer probe must not inherit the parent test runner's coverage profiler.
+        start.Environment["DOTNET_EnableDiagnostics_Profiler"] = "0";
         using var process = Process.Start(start)!;
         var output = process.StandardOutput.ReadToEndAsync();
         var error = process.StandardError.ReadToEndAsync();

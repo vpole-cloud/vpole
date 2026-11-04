@@ -67,6 +67,7 @@ public abstract class MediatorIntegrationTestBase(MongoReplicaSetFixture fixture
         services.AddSingleton<IMigration>(new FeatureScopedMigration(
             "pole.redis", new RedisSchemaValidationMigration()));
         services.AddTestDeploymentTargets();
+        services.AddUnavailableSourceBuildTargets();
         ReplaceTenantAuthorizationWithFake(services);
         _serviceProvider = services.BuildServiceProvider(validateScopes: true);
         await _serviceProvider.InitializePolePlatformAsync();

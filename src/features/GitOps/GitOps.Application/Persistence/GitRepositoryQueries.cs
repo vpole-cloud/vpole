@@ -78,7 +78,7 @@ public sealed class GitRepositoryQueries(
                     state.Commits.FullyApplied,
                     state.CurrentRun?.RunId,
                     state.LatestRunId),
-                new(count?.Owned ?? 0, count?.Pending ?? 0),
+                new(count?.Owned ?? 0, count?.Pending ?? 0, state.InventoryRevision),
                 run is null ? null : ToView(run, operations.GetValueOrDefault(run.Id)?.Summary),
                 source.Activity, source.Prune);
         }).ToArray();

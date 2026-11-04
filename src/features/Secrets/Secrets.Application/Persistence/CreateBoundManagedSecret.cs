@@ -57,7 +57,8 @@ internal sealed class MongoCreateBoundManagedSecret(
         var now = clock.GetUtcNow().UtcDateTime;
         var binding = SecretBinding.Create(ObjectId.GenerateNewId().ToString(), request.Prepared.Owner.ResourceType,
             request.Prepared.Owner.ResourceId, new AllSecretDeployments(), []);
-        var secret = SecretFactory.CreateManaged(request.Prepared.SecretId, request.Prepared.TenantId, request.ResourceGroupId, request.IsolationScopeId,
+        var secret = SecretFactory.CreateManaged(request.Prepared.SecretId, request.Prepared.TenantId,
+            request.ResourceGroupId, request.IsolationScopeId,
             request.Prepared.Name, "Provider-managed credentials", request.Prepared.Keys, binding,
             request.Prepared.KubernetesType == ManagedSecretKubernetesType.BasicAuthentication
                 ? KubernetesSecretType.BasicAuthentication : KubernetesSecretType.Opaque, now);
@@ -78,7 +79,8 @@ internal sealed class MongoCreateBoundManagedSecret(
             return new ManagedSecretChanged();
         }
         await versions.InsertOneAsync(session, new SecretVersion($"{secret.Id}:1", secret.TenantId, secret.Id, 1,
-            JsonSerializer.Deserialize<EncryptedValue>(request.Prepared.EncryptedValues.AsSpan())!, now), cancellationToken: ct);
+            JsonSerializer.Deserialize<EncryptedValue>(request.Prepared.EncryptedValues.AsSpan())!, now),
+                cancellationToken: ct);
         await publish(session, secret, new SecretCreated(), ct);
         return new ManagedSecretMutationSucceeded();
     }

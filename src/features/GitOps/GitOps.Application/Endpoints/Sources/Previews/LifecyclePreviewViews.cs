@@ -28,6 +28,34 @@ public sealed record LifecyclePreviewActionPage(
     bool HasMore,
     int Total);
 
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonDerivedType(typeof(LifecycleInventoryPreviewInputView), "Inventory")]
+[JsonDerivedType(typeof(LifecycleRepositoryPreviewInputView), "Repository")]
+public closed record LifecyclePreviewInputView;
+
+public sealed record LifecycleInventoryPreviewInputView : LifecyclePreviewInputView;
+
+public sealed record LifecyclePreviewLocationView(
+    string Provider,
+    string ConnectionId,
+    string ExternalRepositoryId,
+    string Branch,
+    string ManifestDirectory);
+
+public sealed record LifecycleRepositoryPreviewInputView(
+    LifecyclePreviewLocationView Repository,
+    string DesiredHash) : LifecyclePreviewInputView;
+
+public sealed record LifecyclePreviewSummaryView(
+    int Apply,
+    int Adopt,
+    int Remove,
+    int Replace,
+    int Retain,
+    int Detach,
+    int Total,
+    IReadOnlyList<string> Warnings);
+
 public sealed record LifecyclePreviewView(
     string Id,
     long Revision,
@@ -38,7 +66,9 @@ public sealed record LifecyclePreviewView(
     string? Commit,
     DateTime CreatedAtUtc,
     string? RunId,
-    LifecyclePreviewActionPage Actions);
+    LifecyclePreviewActionPage Actions,
+    LifecyclePreviewInputView Input,
+    LifecyclePreviewSummaryView Summary);
 
 public sealed record LifecyclePreviewPage(
     IReadOnlyList<LifecyclePreviewView> Items,
@@ -74,7 +104,25 @@ internal static class LifecyclePreviewViews
         new(preview.Operations.Skip((page - 1) * pageSize).Take(pageSize).Select(item => new LifecyclePreviewActionView(
             item.Id, Resource(item.Resource), item.Action, item.Replacement is { } next ? Resource(next) : null,
             item.Dependencies, item.ChangedFields, item.Warnings)).ToArray(), page, pageSize,
-            (long)page * pageSize < preview.Operations.Length, preview.Operations.Length));
+            (long)page * pageSize < preview.Operations.Length, preview.Operations.Length),
+        Input(preview.Source.Input),
+        new(preview.Operations.Count(item => item.Action == GitLifecycleAction.Apply),
+            preview.Operations.Count(item => item.Action == GitLifecycleAction.Adopt),
+            preview.Operations.Count(item => item.Action == GitLifecycleAction.Remove),
+            preview.Operations.Count(item => item.Action == GitLifecycleAction.Replace),
+            preview.Operations.Count(item => item.Action == GitLifecycleAction.Retain),
+            preview.Operations.Count(item => item.Action == GitLifecycleAction.Detach), preview.Operations.Length,
+            preview.Operations.SelectMany(item => item.Warnings).Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal).ToArray()));
+
+    private static LifecyclePreviewInputView Input(GitPreviewInput input) => input switch
+    {
+        GitPreviewInventoryInput => new LifecycleInventoryPreviewInputView(),
+        GitPreviewRepositoryInput repository => new LifecycleRepositoryPreviewInputView(new(
+            repository.Repository.Provider, repository.Repository.ConnectionId,
+            repository.Repository.ExternalRepositoryId, repository.Repository.Branch,
+            repository.Repository.ManifestDirectory), repository.Snapshot.DesiredHash)
+    };
 
     private static PreviewResourceView Resource(GitResourceIdentity identity) => new(identity.Kind, identity.Name,
         identity.ResourceId);

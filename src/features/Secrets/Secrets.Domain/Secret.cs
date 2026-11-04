@@ -132,7 +132,8 @@ public sealed record Secret(
     public const int MaximumBindings = 256;
     public const long MetadataOnlyVersion = 0;
     public const long FirstValueVersion = 1;
-    public bool HasValue(string key) => CurrentVersion >= FirstValueVersion && (DeclaredKeys ? SuppliedKeys.Contains(key) : KeyNames.Contains(key));
+    public bool HasValue(string key) =>
+        CurrentVersion >= FirstValueVersion && (DeclaredKeys ? SuppliedKeys.Contains(key) : KeyNames.Contains(key));
 
     public UpdateDeclaredSecretOutcome UpdateDeclaredMetadata(string purpose, IEnumerable<string> keys, DateTime now)
     {
@@ -155,9 +156,11 @@ public sealed record Secret(
         var current = Bindings.SingleOrDefault(item => item.Id == binding.Id);
         if (current is not null && current.Usage != binding.Usage)
             return new SecretBindingUsageChanged();
-        if (current is not null && (current.Consumer.ResourceType != binding.Consumer.ResourceType || current.Consumer.ResourceId != binding.Consumer.ResourceId))
+        if (current is not null && (current.Consumer.ResourceType != binding.Consumer.ResourceType
+            || current.Consumer.ResourceId != binding.Consumer.ResourceId))
             return new SecretBindingConsumerChanged(current.Consumer, binding.Consumer);
-        if (current is null && Bindings.Any(item => item.Consumer.ResourceType == binding.Consumer.ResourceType && item.Consumer.ResourceId == binding.Consumer.ResourceId))
+        if (current is null && Bindings.Any(item => item.Consumer.ResourceType == binding.Consumer.ResourceType
+            && item.Consumer.ResourceId == binding.Consumer.ResourceId))
             return new SecretBindingConsumerConflict(binding.Consumer);
         var unknownKeys = binding.KeyMappings.Keys.Except(KeyNames).Order(StringComparer.Ordinal).ToImmutableArray();
         if (!unknownKeys.IsEmpty)
@@ -166,7 +169,8 @@ public sealed record Secret(
             return new SecretBindingCapacityExceeded(MaximumBindings);
         if (current is not null)
         {
-            if (current.KeyMappings.OrderBy(pair => pair.Key).SequenceEqual(binding.KeyMappings.OrderBy(pair => pair.Key))) return this;
+            if (current.KeyMappings.OrderBy(pair => pair.Key).SequenceEqual(binding.KeyMappings.OrderBy(pair =>
+                pair.Key))) return this;
             binding = binding with { Pins = current.Pins };
             var changedKeys = current.Pins.ProtectedKeys
                 .Where(key => !binding.IncludesKey(key) || current.ProjectedKey(key) != binding.ProjectedKey(key))
@@ -186,7 +190,8 @@ public sealed record Secret(
 
     public Secret ReleaseRetainedKeys(string bindingId) => this with
     {
-        Bindings = Bindings.Select(binding => binding.Id == bindingId ? binding with { Pins = binding.Pins with { Retained = [] } } : binding).ToImmutableArray(),
+        Bindings = Bindings.Select(binding => binding.Id == bindingId
+            ? binding with { Pins = binding.Pins with { Retained = [] } } : binding).ToImmutableArray(),
         ReferenceFence = checked(ReferenceFence + 1)
     };
 
@@ -195,7 +200,8 @@ public sealed record Secret(
         DateTime now)
     {
         var ownedKeys = keys.ToImmutableArray();
-        if (Bindings.Any(binding => binding.KeyMappings.Keys.Concat(binding.Pins.ProtectedKeys).Except(ownedKeys).Any()))
+        if (Bindings.Any(binding =>
+            binding.KeyMappings.Keys.Concat(binding.Pins.ProtectedKeys).Except(ownedKeys).Any()))
             throw new InvalidOperationException("Rotation must retain keys used by bindings.");
         return this with
         {
@@ -213,7 +219,8 @@ public sealed record Secret(
     {
         if (Bindings.Length >= MaximumBindings)
             throw new InvalidOperationException("Secret binding limit reached.");
-        if (Bindings.Any(x => x.Consumer.ResourceType == binding.Consumer.ResourceType && x.Consumer.ResourceId == binding.Consumer.ResourceId))
+        if (Bindings.Any(x => x.Consumer.ResourceType == binding.Consumer.ResourceType
+            && x.Consumer.ResourceId == binding.Consumer.ResourceId))
             throw new InvalidOperationException("Consumer already bound.");
         if (binding.KeyMappings.Keys.Except(KeyNames).Any())
             throw new InvalidOperationException("Binding references an unknown key.");
@@ -267,7 +274,8 @@ public static class SecretFactory
         KubernetesSecretType kubernetesType,
         DateTime now) =>
         CreateCore(id, tenantId, resourceGroupId, isolationScopeId, name, purpose, keys,
-            new ProviderManagedSecret(ownerBinding.Consumer.ResourceType, ownerBinding.Consumer.ResourceId, ownerBinding.Id, kubernetesType), now)
+            new ProviderManagedSecret(ownerBinding.Consumer.ResourceType, ownerBinding.Consumer.ResourceId,
+                ownerBinding.Id, kubernetesType), now)
             .Bind(ownerBinding, now);
 
     private static Secret CreateCore(

@@ -32,6 +32,9 @@ internal static class RepositoryHttpMappings
     public static IResult Map(GitRetryNotAvailable _) =>
         Problem(409, "gitops.retry-not-available", "The run cannot be retried; request a sync");
 
+    public static IResult Map(AdoptionCandidateSearchUnsupported _) =>
+        Problem(400, "gitops.candidate-query-unsupported", "The provider does not support this candidate search");
+
     public static IResult Map(RepositoryProviderUnsupported _) =>
         Problem(400, "gitops.provider-unsupported", "Repository provider is not registered");
 

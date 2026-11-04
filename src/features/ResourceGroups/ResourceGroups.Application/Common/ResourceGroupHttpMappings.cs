@@ -108,14 +108,17 @@ public static class ResourceGroupHttpMappings
     private static HttpProblem MapResourceGroupDeleting(ResourceGroupDeleting deleting) =>
         ResourceGroupDeletingProblem(deleting.ResourceGroupId);
 
-    private static HttpProblem MapResourceGroupRevisionConflict(ResourceGroupRevisionConflict conflict) => conflict.Reason switch
-    {
-        ResourceGroupRevisionConflictReason.ExpectedRevisionConflict => Problem(HttpStatusCode.Conflict,
-            "resource-groups.revision-conflict", "Resource group changed", ("resourceGroupId", conflict.ResourceGroupId)),
-        ResourceGroupRevisionConflictReason.GitOwnedConfiguration => Problem(HttpStatusCode.Conflict,
-            "resource-groups.git-owned", "Edit the desired configuration in its managing Git source", ("resourceGroupId", conflict.ResourceGroupId)),
-        _ => throw new ArgumentOutOfRangeException(nameof(conflict.Reason))
-    };
+    private static HttpProblem MapResourceGroupRevisionConflict(ResourceGroupRevisionConflict conflict) =>
+        conflict.Reason switch
+        {
+            ResourceGroupRevisionConflictReason.ExpectedRevisionConflict => Problem(HttpStatusCode.Conflict,
+                "resource-groups.revision-conflict", "Resource group changed", ("resourceGroupId",
+                    conflict.ResourceGroupId)),
+            ResourceGroupRevisionConflictReason.GitOwnedConfiguration => Problem(HttpStatusCode.Conflict,
+                "resource-groups.git-owned", "Edit the desired configuration in its managing Git source",
+                    ("resourceGroupId", conflict.ResourceGroupId)),
+            _ => throw new ArgumentOutOfRangeException(nameof(conflict.Reason))
+        };
 
     private static HttpProblem MapResourceGroupContainsResources(
         ResourceGroupContainsResources conflict) => Problem(

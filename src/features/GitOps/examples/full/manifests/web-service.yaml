@@ -1,0 +1,51 @@
+apiVersion: pole.io/v1alpha1
+kind: WebService
+metadata:
+  name: mixed-web
+spec:
+  resourceGroup: gitops-mixed-group
+  placement:
+    deploymentTarget: demo-target
+    isolationScope: gitops-mixed-scope
+    computeProfile: { name: demo-compute, revision: 1 }
+  image: { sourceBuildConfiguration: mixed-build }
+  exposure: Public
+  connectionEnvironment:
+    CACHE_HOST: { connection: mixed-cache, valueKind: Host }
+    CACHE_PORT: { connection: mixed-cache, valueKind: Port }
+  ports:
+    - { name: http, servicePort: 80, targetPort: "80", protocol: TCP }
+  probes:
+    startup:
+      {
+        path: /,
+        port: "80",
+        initialDelaySeconds: 0,
+        periodSeconds: 2,
+        timeoutSeconds: 1,
+        failureThreshold: 3,
+        successThreshold: 1,
+      }
+    readiness:
+      {
+        path: /,
+        port: "80",
+        initialDelaySeconds: 0,
+        periodSeconds: 2,
+        timeoutSeconds: 1,
+        failureThreshold: 3,
+        successThreshold: 1,
+      }
+    liveness:
+      {
+        path: /,
+        port: "80",
+        initialDelaySeconds: 0,
+        periodSeconds: 2,
+        timeoutSeconds: 1,
+        failureThreshold: 3,
+        successThreshold: 1,
+      }
+  secretEnvironment:
+    STAGE_SIX_SECRET: { secret: gitops-mixed-auth, key: password }
+  tags: [gitops]

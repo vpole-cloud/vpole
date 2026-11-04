@@ -30,7 +30,8 @@ internal sealed class MongoLoadResourceDeploymentSets(
             .ToDictionary(
                 group => group.Key,
                 group => (IReadOnlyList<PlacementSummaryDto>)group
-                    .Select(deployment => deployment.ToPlacementSummaryDto(policies[deployment.ResolvedPlacement.DeploymentTargetId]))
+                    .Select(deployment =>
+                        deployment.ToPlacementSummaryDto(policies[deployment.ResolvedPlacement.DeploymentTargetId]))
                     .ToArray(),
                 StringComparer.Ordinal);
     }

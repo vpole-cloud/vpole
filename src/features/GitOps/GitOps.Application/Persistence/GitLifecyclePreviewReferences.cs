@@ -11,6 +11,10 @@ public sealed record ReadGitPreviewPreconditions(
     GitPreviewOperation Operation,
     IReadOnlyList<GitPreviewPinnedReference> References);
 
+public sealed record RefreshGitPreviewReferenceVersionsRequest(
+    string TenantId,
+    IReadOnlyList<GitPreviewPinnedReference> References);
+
 public sealed class GitLifecyclePreviewReferences(
     DeclarativeProviderRegistry providers,
     GitLifecycleResources resources,
@@ -53,6 +57,29 @@ public sealed class GitLifecyclePreviewReferences(
             result.AddRange(selected.Select(reference => Persist(consumer.ResourceId, reference)));
         }
         return result;
+    }
+
+    // Capture only after approved owner writes. Approval validation still uses reviewed/receipt-advanced versions.
+    public async Task<IReadOnlyList<GitPreviewPinnedReference>> RefreshVersionsAsync(
+        RefreshGitPreviewReferenceVersionsRequest request, IClientSessionHandle session, CancellationToken ct)
+    {
+        var refreshed = request.References.ToArray();
+        for (var index = 0; index < refreshed.Length; index++)
+        {
+            var reference = refreshed[index];
+            if (reference.State != GitPreviewReferenceState.Existing ||
+                providers.Find(reference.Target.Kind) is not IDeclarativeResourceLifecycleProvider)
+                continue;
+
+            var current = await resources.ReadAsync(request.TenantId, reference.Target, session, ct);
+            if (current is GitLifecycleResourceSnapshot snapshot)
+                refreshed[index] = reference with
+                {
+                    Versions = snapshot.Version.Documents.Select(item =>
+                        new GitResourceVersion(item.DocumentId, item.Revision)).ToImmutableArray()
+                };
+        }
+        return refreshed;
     }
 
     public async Task<bool> ValidateAsync(GitPreviewSourceStamp source,

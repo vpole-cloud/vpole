@@ -15,12 +15,17 @@ public sealed class MongoDuplicateKeyTests
     private const string ExpectedIndex = "UX_Resources_Tenant_Name";
 
     [Theory]
-    [InlineData("E11000 duplicate key error collection: db.Resources index: UX_Resources_Tenant_Name dup key: {}", true)]
-    [InlineData("E11000 duplicate key error collection: db.Resources index: UX_Resources_Tenant_Name_extra dup key: {}", false)]
+    [InlineData("E11000 duplicate key error collection: db.Resources index: UX_Resources_Tenant_Name dup key: {}",
+        true)]
+    [InlineData("E11000 duplicate key error collection: db.Resources index: UX_Resources_Tenant_Name_extra dup key: {}",
+        false)]
     [InlineData("E11000 duplicate key error collection: db.Resources index: _id_ dup key: {}", false)]
-    [InlineData("E11000 duplicate key error collection: db.Resources index: other dup key: { value: 'UX_Resources_Tenant_Name' }", false)]
-    [InlineData("E11000 duplicate key error collection: db.Resources index: UX_Resources_Tenant_Name collation: { locale: 'en', strength: 2 } dup key: {}", true)]
-    [InlineData("E11000 duplicate key error collection: db.Resources index: UX_Resources_Tenant_Name_extra collation: { locale: 'en' } dup key: {}", false)]
+    [InlineData(
+        "E11000 duplicate key error collection: db.Resources index: other dup key: { value: 'UX_Resources_Tenant_Name' }", false)]
+    [InlineData(
+        "E11000 duplicate key error collection: db.Resources index: UX_Resources_Tenant_Name collation: { locale: 'en', strength: 2 } dup key: {}", true)]
+    [InlineData(
+        "E11000 duplicate key error collection: db.Resources index: UX_Resources_Tenant_Name_extra collation: { locale: 'en' } dup key: {}", false)]
     [InlineData("unknown duplicate format { value: 'index: UX_Resources_Tenant_Name dup key:' }", false)]
     [InlineData("duplicate UX_Resources_Tenant_Name", false)]
     public void Command_error_matches_only_the_exact_index_marker(string message, bool expected)
@@ -40,7 +45,8 @@ public sealed class MongoDuplicateKeyTests
     [Fact]
     public void Non_duplicate_errors_are_never_mapped_to_name_conflicts()
     {
-        Assert.False(MongoDuplicateKey.IsForIndex(Error($"index: {ExpectedIndex} dup key: {{}}", code: 13), ExpectedIndex));
+        Assert.False(MongoDuplicateKey.IsForIndex(Error($"index: {ExpectedIndex} dup key: {{}}", code: 13),
+            ExpectedIndex));
         Assert.False(MongoDuplicateKey.IsForIndex(new InvalidOperationException(ExpectedIndex), ExpectedIndex));
     }
 
@@ -64,12 +70,14 @@ public sealed class MongoDuplicateKeyTests
     [Fact]
     public void Write_concern_uncertainty_is_not_reported_as_a_name_conflict()
     {
-        var error = Error("E11000 duplicate key error collection: db.Resources index: UX_Resources_Tenant_Name dup key: {}",
+        var error =
+            Error("E11000 duplicate key error collection: db.Resources index: UX_Resources_Tenant_Name dup key: {}",
             writeConcernError: true);
         Assert.False(MongoDuplicateKey.IsForIndex(error, ExpectedIndex));
     }
 
-    private static MongoCommandException Error(string message, int code = 11000, string? indexName = null, bool writeConcernError = false)
+    private static MongoCommandException Error(string message, int code = 11000, string? indexName = null,
+        bool writeConcernError = false)
     {
         var reply = new BsonDocument { ["code"] = code, ["errmsg"] = message };
         if (indexName is not null) reply["indexName"] = indexName;

@@ -14,7 +14,8 @@ internal sealed class SecretScopeReferenceGuard(IMongoCollection<Secret> secrets
     {
         var exists = await secrets.Find(
             session,
-            SecretFilters.Scope(request.TenantId, request.ResourceGroupId, request.IsolationScopeId)).AnyAsync(cancellationToken);
+            SecretFilters.Scope(request.TenantId, request.ResourceGroupId,
+                request.IsolationScopeId)).AnyAsync(cancellationToken);
         return exists ? new IsolationScopeReferenced(request.IsolationScopeId) : new IsolationScopeUnreferenced();
     }
 }

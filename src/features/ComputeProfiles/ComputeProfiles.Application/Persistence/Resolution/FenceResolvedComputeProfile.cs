@@ -42,7 +42,8 @@ internal sealed class MongoFenceResolvedComputeProfile(
                 return Rejected(requests);
             }
             if (request.PinnedRevision && profile.Revision != request.ComputeProfileRevision &&
-                !await revisions.Find(session, ComputeProfileRevisionFilters.Identity(profile.Id, request.ComputeProfileRevision)).AnyAsync(cancellationToken))
+                !await revisions.Find(session, ComputeProfileRevisionFilters.Identity(profile.Id,
+                    request.ComputeProfileRevision)).AnyAsync(cancellationToken))
                 return Rejected(requests);
         }
 

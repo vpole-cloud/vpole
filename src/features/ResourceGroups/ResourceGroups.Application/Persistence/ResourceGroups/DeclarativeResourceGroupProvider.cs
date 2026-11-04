@@ -8,7 +8,9 @@ using MongoDB.Driver;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Persistence.IsolationScopes;
+using Pole.Features.ResourceGroups.Application.Search;
 using Pole.Features.ResourceGroups.Domain;
+using Pole.Workloads;
 
 namespace Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
 
@@ -28,9 +30,11 @@ internal sealed partial class DeclarativeResourceGroupProvider(
     ResourceGroupLifecycleReferences lifecycleReferences,
     MongoRunTransaction transactions) : ITransactionalDeclarativeResourceProvider,
         IDeclarativeResourceLifecycleProvider, IDeclarativeAdoptionPreviewProvider,
-        IDeclarativeDerivedIdentityProvider, IDeclarativeReferencePreparation
+        IDeclarativeDerivedIdentityProvider, IDeclarativeReferencePreparation, IDeclarativeResourceViewProvider
 {
     public string Kind => "ResourceGroup";
+
+    public ResourceTypeId ResourceType => ResourceGroupSearchProjection.SourceType.ResourceTypeId;
 
     public string DescribeFailure(IDeclarationFailure failure) => failure switch
     {

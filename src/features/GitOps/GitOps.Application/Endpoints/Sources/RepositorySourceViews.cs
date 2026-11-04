@@ -30,7 +30,8 @@ public sealed record RepositorySynchronizationView(
 
 public sealed record RepositoryInventorySummary(
     long Owned,
-    long PendingRemoval);
+    long PendingRemoval,
+    long Revision);
 
 public sealed record RepositorySourceView(
     string Id,

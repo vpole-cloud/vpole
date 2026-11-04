@@ -334,7 +334,8 @@ public sealed class WebServiceManifestTests
                     ["ASPNETCORE_ENVIRONMENT"] = "Development",
                     ["LOG_LEVEL"] = "Debug"
                 }.ToImmutableDictionary(),
-                PortMappings = [new PortMapping(80, "8080", "TCP", "http"), new PortMapping(9090, "metrics", "TCP", "metrics")],
+                PortMappings = [new PortMapping(80, "8080", "TCP", "http"), new PortMapping(9090, "metrics", "TCP",
+                    "metrics")],
                 ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty,
                 SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty
             },

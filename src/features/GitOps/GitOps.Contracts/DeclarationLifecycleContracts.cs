@@ -130,6 +130,9 @@ public union AdoptLifecycleResourceOutcome(
     StaleGitExecution);
 
 // Only owners needing an explicit metadata transition implement this capability.
+// Expected includes the full approved resource and dependency vector.
+// Match required owner entries and fence dependencies in this shared session.
+// Do not require equality between the full vector and tokens from only the owner.
 public interface IDeclarativeResourceAdoptionProvider
 {
     Task<AdoptLifecycleResourceOutcome> AdoptAsync(
@@ -188,10 +191,12 @@ public interface IDeclarativeAdoptionPreviewProvider
 }
 
 
-public interface IDeclarativeRegisteredResourceProvider
+public interface IDeclarativeResourceViewProvider
 {
     ResourceTypeId ResourceType { get; }
 }
+
+public interface IDeclarativeRegisteredResourceProvider : IDeclarativeResourceViewProvider;
 
 public sealed record ReadPreviewReferencesRequest(
     string TenantId,

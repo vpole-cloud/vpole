@@ -213,20 +213,36 @@ public sealed class GitLifecycleExecutor(
             return new GitLifecycleActionBlocked(new DeclarationPostconditionFailed());
         var declaration = compiled.Declarations.Single(item => item.Address.Kind == operation.Resource.Kind &&
             item.Address.Name == operation.Resource.Name);
-        if (providers.Find(operation.Resource.Kind) is IDeclarativeResourceAdoptionProvider adopter)
+        var phase = snapshot.Operations.First(item => item.ResourceId == operation.Resource.ResourceId).Phase;
+        var input = new GitOperationInput(claim.ToContext(snapshot.Commit), declaration, phase,
+            operation.Resource.ResourceId);
+        var expected = new DeclarationVersionToken(operation.Expected!.Versions.Select(item =>
+            new DeclarationDocumentVersion(item.DocumentId, item.Revision)).ToArray());
+        AdoptLifecycleResourceOutcome result;
+        switch (providers.Find(operation.Resource.Kind))
         {
-            var phase = snapshot.Operations.First(item => item.ResourceId == operation.Resource.ResourceId).Phase;
-            var input = new GitOperationInput(claim.ToContext(snapshot.Commit), declaration, phase,
-                operation.Resource.ResourceId);
-            var result = await adopter.AdoptAsync(new(authority, input, new(operation.Expected!.Versions.Select(item =>
-                new DeclarationDocumentVersion(item.DocumentId, item.Revision)).ToArray())), session, ct);
-            if (result is DeclarationPreconditionsChanged)
-                return new GitPreviewStale();
-            if (result is StaleGitExecution stale)
-                return stale;
-            if (result is DeclarationReadBlocked blocked)
-                return new GitLifecycleActionBlocked(blocked.Failure);
+            case IDeclarativeResourceAdoptionProvider adopter:
+                result = await adopter.AdoptAsync(new(authority, input, expected), session, ct);
+                break;
+            case ITransactionalDeclarativeResourceProvider transactional:
+                // Claiming ownership must conflict with a manual write that already observed no owner.
+                result = await transactional.FenceAsync(new(input, expected), session, ct) switch
+                {
+                    DeclarationFenced => new GitLifecycleResourceAdopted(),
+                    DeclarationPreconditionsChanged changed => changed,
+                    DeclarationReadBlocked rejected => rejected
+                };
+                break;
+            default:
+                return new GitLifecycleActionBlocked(new GitLifecycleUnsupported());
         }
+
+        if (result is DeclarationPreconditionsChanged)
+            return new GitPreviewStale();
+        if (result is StaleGitExecution stale)
+            return stale;
+        if (result is DeclarationReadBlocked blocked)
+            return new GitLifecycleActionBlocked(blocked.Failure);
 
         var slot = await inventory.Find(session, ManagedDeclarationFilters.Address(authority.TenantId,
             new(operation.Resource.Kind, operation.Resource.Name))).FirstOrDefaultAsync(ct);
@@ -316,6 +332,8 @@ public sealed class GitLifecycleExecutor(
         var run = await runs.TouchAsync(claim.Handle, session, ct)
                   ?? throw new InvalidOperationException("The lifecycle transaction lost its written execution fence.");
         var plan = ((GitInputLifecycle)run.Input).Plan;
+        var referenceVersions = await previewReferences.RefreshVersionsAsync(
+            new(claim.Source.TenantId, plan.References), session, ct);
         var related = new List<GitResourceVersion>();
         GitResourcePreconditions? postcondition = null;
         foreach (var action in plan.Operations)
@@ -323,7 +341,7 @@ public sealed class GitLifecycleExecutor(
             var read = await resources.ReadAsync(claim.Source.TenantId, action.Resource, session, ct);
             if (read is not GitLifecycleResourceSnapshot current)
                 continue;
-            var observed = await previewReferences.PreconditionsAsync(new(plan.Source, action, plan.References),
+            var observed = await previewReferences.PreconditionsAsync(new(plan.Source, action, referenceVersions),
                 session, ct);
             related.AddRange(observed?.Versions ?? current.Version.Documents.Select(item =>
                 new GitResourceVersion(item.DocumentId, item.Revision)).ToImmutableArray());
@@ -331,7 +349,7 @@ public sealed class GitLifecycleExecutor(
             {
                 var owner = await inventory.Find(session, ManagedDeclarationFilters.Resource(claim.Source.TenantId,
                     action.Resource.Kind, action.Resource.ResourceId)).FirstOrDefaultAsync(ct);
-                postcondition = await previewReferences.PreconditionsAsync(new(plan.Source, action, plan.References),
+                postcondition = await previewReferences.PreconditionsAsync(new(plan.Source, action, referenceVersions),
                     session, ct) ?? GitLifecycleResources.Expected(action.Resource, owner?.SourceId, current);
             }
         }
@@ -344,14 +362,14 @@ public sealed class GitLifecycleExecutor(
                 if (providers.Find(consumer.Kind) is not IDeclarativePreviewReferenceProvider)
                     continue;
                 var refreshed = await previewReferences.ResolveAsync(claim.Source.TenantId, input.Snapshot, consumer,
-                    plan.References, session, ct);
+                    referenceVersions, session, ct);
                 if (refreshed is GitPreviewReferencesSnapshot known)
                     related.AddRange(known.References.Where(reference =>
                             providers.Find(reference.Address.Kind) is not IDeclarativeResourceLifecycleProvider)
                         .SelectMany(item => item.Version?.Documents ?? [])
                         .Select(item => new GitResourceVersion(item.DocumentId, item.Revision)));
             }
-        foreach (var reference in plan.References.Where(item => item.State == GitPreviewReferenceState.Existing))
+        foreach (var reference in referenceVersions.Where(item => item.State == GitPreviewReferenceState.Existing))
         {
             var refreshed = await resources.ReadAsync(claim.Source.TenantId, reference.Target, session, ct);
             if (refreshed is GitLifecycleResourceSnapshot current)

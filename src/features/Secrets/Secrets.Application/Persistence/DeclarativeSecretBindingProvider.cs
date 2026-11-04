@@ -40,7 +40,8 @@ internal sealed partial class DeclarativeSecretBindingProvider(
     StoreSecretChange publish,
     MongoRemoveSecretBinding deletion,
     TimeProvider clock) : ITransactionalDeclarativeResourceProvider,
-    IDeclarativeAdoptionPreviewProvider, IDeclarativeResourceAdoptionProvider, IDeclarativeResourceLifecycleProvider
+    IDeclarativeAdoptionPreviewProvider, IDeclarativeResourceAdoptionProvider, IDeclarativeResourceLifecycleProvider,
+    IDeclarativeAdoptionCandidateProvider
 {
     public string Kind => "SecretBinding";
 

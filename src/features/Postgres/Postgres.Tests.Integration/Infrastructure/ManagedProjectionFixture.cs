@@ -40,13 +40,15 @@ internal sealed class ManagedProjectionFixture : IDisposable
             _authority is { } authority && authority.TenantId == tenant && authority.Id == id ? authority : null));
         services.AddScoped<LoadExactResourceDeploymentRuntimePlacement>(_ => (request, ct) =>
             Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(
-                request.TenantId == Projection.TenantId && request.ResourceType == ResourceTypeId.Create("pole/postgresql") &&
+                request.TenantId == Projection.TenantId
+                    && request.ResourceType == ResourceTypeId.Create("pole/postgresql") &&
                 request.ResourceId == Projection.ConsumerId && request.DeploymentId == Projection.DeploymentId
                     ? new ResourceDeploymentRuntimePlacementDto(Projection.DeploymentId, Projection.ConsumerId, Projection.RuntimeCellId,
                         Projection.DeploymentTargetId, Projection.KubernetesNamespace, 1, 1,
                         new ResourceDeploymentComputeConfiguration(PostgresTestData.DefaultComputeProfileId, 1,
                             Projection.DeploymentTargetId, "test", new(250, 256), new(1000, 1024), ComputeArchitecture.Any,
-                            [], [], [], [], [], null), ResourceDeploymentStatus.Applied, ResourceDeploymentDesiredOperation.Apply, Projection.IsolationScopeId)
+                            [], [], [], [], [], null), ResourceDeploymentStatus.Applied,
+                                ResourceDeploymentDesiredOperation.Apply, Projection.IsolationScopeId)
                     : null));
         _services = services.BuildServiceProvider(validateScopes: true);
         _scope = _services.CreateScope();

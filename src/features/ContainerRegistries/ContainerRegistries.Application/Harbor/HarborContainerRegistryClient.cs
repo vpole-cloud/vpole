@@ -71,10 +71,12 @@ public sealed class HarborContainerRegistryClient(
 
         try
         {
-            var path = $"api/v2.0/projects/{Encode(request.ProjectName)}/repositories/{EncodeRepositoryName(request.RepositoryName)}/artifacts/{Encode(request.Reference)}";
+            var path =
+                $"api/v2.0/projects/{Encode(request.ProjectName)}/repositories/{EncodeRepositoryName(request.RepositoryName)}/artifacts/{Encode(request.Reference)}";
             using var response = await SendAsync(HttpMethod.Get, path, null, cancellationToken);
             if (response.StatusCode == HttpStatusCode.NotFound)
-                return new ContainerRegistryArtifactLookupError(new ContainerRegistryArtifactNotFound(request.Reference));
+                return new ContainerRegistryArtifactLookupError(new ContainerRegistryArtifactNotFound(
+                    request.Reference));
             if (!response.IsSuccessStatusCode)
                 return new ContainerRegistryArtifactLookupError(Unavailable());
 

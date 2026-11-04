@@ -73,7 +73,12 @@ public sealed class GetResourceGroupsHandler(
                 ResourceIds: page.Items.Select(item => item.ResourceGroup.Id).ToArray()),
             ct: cancellationToken);
         return new PaginatedResponse<ResourceGroupDto>(
-            Items: page.Items.Select(x => x.ResourceGroup.ToDto(x.ResourceCount) with { GitOps = statuses.GetValueOrDefault(x.ResourceGroup.Id) }),
+            Items
+                : page.Items.Select(x => x.ResourceGroup.ToDto(x.ResourceCount) with
+                {
+                    GitOps =
+                statuses.GetValueOrDefault(x.ResourceGroup.Id)
+                }),
             TotalCount: page.TotalCount,
             PageNumber: request.PageNumber,
             PageSize: request.PageSize);

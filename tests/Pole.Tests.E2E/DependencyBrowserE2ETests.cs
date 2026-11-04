@@ -148,21 +148,21 @@ public sealed class DependencyBrowserE2ETests(PoleE2EFixture fixture)
             await AddSecretReferenceAsync(content, "PGUSER", secretId, "username");
             await AddSecretReferenceAsync(content, "PGPASSWORD", secretId, "password");
             await ApplyConfigurationAsync(page, content, appId);
-            await page.ReloadAsync();
-            await content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = "Application dependencies", Exact = true }).WaitForAsync();
+            await ReloadDependenciesAsync(page, appId);
             await Assertions.Expect(content.GetByLabel("Environment name")).ToHaveCountAsync(2);
             Assert.Equal(new[] { "PGPASSWORD", "PGUSER" }, (await content.GetByLabel("Environment name").EvaluateAllAsync<string[]>("elements => elements.map(element => element.value)")).Order(StringComparer.Ordinal));
             await CaptureAsync(page, "secret-configured-network-missing", appId);
 
             await WaitProbeAsync(groupId, appName, "ConnectionRejected", "ConnectionRejected", ct);
 
-            await page.ReloadAsync();
+            await ReloadDependenciesAsync(page, appId);
             var groupInventory = await SendAsync(HttpMethod.Get, $"/api/v1/resource-groups/{groupId}/resources?pageNumber=1&pageSize=50", null, ct);
             var pgRegistrationId = Text(groupInventory.GetProperty("items").EnumerateArray().Single(item => Text(item, "resourceId") == pgId && Text(item, "resourceTypeId") == "pole/postgresql"), "registrationId");
             var redisRegistrationId = Text(groupInventory.GetProperty("items").EnumerateArray().Single(item => Text(item, "resourceId") == redisId && Text(item, "resourceTypeId") == "pole/redis"), "registrationId");
             var pgConnectionId = await DeclareNetworkAsync(page, content, appId, pgRegistrationId, "postgres", $"postgres-{suffix}");
             resources.Defer("delete PostgreSQL network declaration", cleanup => DeleteIfPresentAsync($"/api/v1/resource-connections/{pgConnectionId}", cleanup));
-            await page.ReloadAsync(); // Persisted partial success must not create another PostgreSQL declaration.
+            // Persisted partial success must not create another PostgreSQL declaration.
+            await ReloadDependenciesAsync(page, appId);
             await content.GetByText($"postgres-{suffix}", new LocatorGetByTextOptions { Exact = true }).WaitForAsync();
             var redisConnectionId = await DeclareNetworkAsync(page, content, appId, redisRegistrationId, "redis", $"redis-{suffix}");
             resources.Defer("delete Redis network declaration", cleanup => DeleteIfPresentAsync($"/api/v1/resource-connections/{redisConnectionId}", cleanup));
@@ -171,8 +171,20 @@ public sealed class DependencyBrowserE2ETests(PoleE2EFixture fixture)
             var latest = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{appId}", null, ct);
             var spec = JsonSerializer.Deserialize<System.Text.Json.Nodes.JsonObject>(latest.GetProperty("spec").GetRawText())!;
             spec["config"]!["environmentVariables"] = new System.Text.Json.Nodes.JsonObject();
-            await SendAsync(HttpMethod.Put, $"/api/v1/web-services/{appId}", new { spec, tags = new[] { "e2e" }, exposure = "Private", expectedRevision = latest.GetProperty("activeRevision").GetInt64() }, ct);
-            await page.ReloadAsync();
+            var artifact = latest.GetProperty("spec").GetProperty("imageAuthority");
+            Assert.Equal("DeliveredSourceBuild", Text(artifact, "mode"));
+            await SendAsync(HttpMethod.Put, $"/api/v1/web-services/{appId}", new
+            {
+                spec,
+                tags = new[] { "e2e" },
+                exposure = "Private",
+                expectedRevision = latest.GetProperty("activeRevision").GetInt64()
+            }, ct);
+            var updated = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{appId}", null, ct);
+            var updatedSpec = updated.GetProperty("spec");
+            Assert.Equal(JsonValueKind.Object, updatedSpec.GetProperty("image").ValueKind);
+            Assert.Equal(Text(artifact, "digest"), Text(updatedSpec.GetProperty("imageAuthority"), "digest"));
+            await ReloadDependenciesAsync(page, appId);
             await AddConnectionReferenceAsync(content, "PGHOST", pgConnectionId, "Host");
             await AddConnectionReferenceAsync(content, "PGPORT", pgConnectionId, "Port");
             await AddConnectionReferenceAsync(content, "PGDATABASE", pgConnectionId, "Configuration", "database");
@@ -183,7 +195,7 @@ public sealed class DependencyBrowserE2ETests(PoleE2EFixture fixture)
             await WaitForLogicalEnvironmentAsync(groupId, appName, ct);
             await fixture.WaitForWebServiceReadyAsync(groupId, appName, ct);
             await WaitProbeAsync(groupId, appName, "Succeeded", "Succeeded", ct);
-            await page.ReloadAsync();
+            await ReloadDependenciesAsync(page, appId);
             await Assertions.Expect(content.GetByLabel("Environment name")).ToHaveCountAsync(8);
             await CaptureAsync(page, "connected-logical-references", appId);
             await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Disconnect network access", Exact = true }).First.ClickAsync();
@@ -318,6 +330,13 @@ public sealed class DependencyBrowserE2ETests(PoleE2EFixture fixture)
         await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Sign In", Exact = true }).ClickAsync();
         await page.GetByLabel("Tenant").SelectOptionAsync(fixture.Alpha.DefaultTenantId);
     }
+
+    private static async Task ReloadDependenciesAsync(IPage page, string resourceId)
+    {
+        await page.ReloadAsync();
+        await BrowserWorkspaceReadiness.AssertAsync(page, resourceId, "Application dependencies", "Dependencies");
+    }
+
     private static async Task AddSecretReferenceAsync(ILocator content, string name, string secret, string key)
     {
         await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Add Secret reference", Exact = true }).ClickAsync();

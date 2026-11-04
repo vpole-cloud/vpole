@@ -78,7 +78,8 @@ public sealed class WebServiceBoundarySerializationTests
         {
             EnvironmentVariables = ImmutableDictionary<string, string>.Empty,
             PortMappings = [],
-            ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReferenceDto>.Empty.Add("HOST", new(ObjectId.GenerateNewId().ToString(), "Host")),
+            ConnectionEnvironmentReferences = ImmutableDictionary<string,
+                ConnectionEnvironmentReferenceDto>.Empty.Add("HOST", new(ObjectId.GenerateNewId().ToString(), "Host")),
             SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReferenceDto>.Empty
         };
         config = failure switch

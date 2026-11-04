@@ -242,16 +242,16 @@ provider edge and leaves the platform persistence implementation extensible.
 
 ## Dependency matrix
 
-| Source project | Allowed feature dependencies | Forbidden feature dependencies |
-| --- | --- | --- |
-| Primitives | None | Every feature project |
-| Domain | Own Primitives | Contracts, Events, Application, another feature |
-| Contracts | Own Primitives | Domain, Events, Application, another feature's Contracts/Primitives |
-| Contracts.HttpMapping | Own Contracts; shared HTTP mapping abstraction | Domain, Events, Application, another feature project |
-| Events | Own Primitives | Domain, Contracts, Application, another feature |
-| Application | Own Primitives/Domain/Contracts/Contracts.HttpMapping/Events; foreign Contracts/Contracts.HttpMapping/Events; contract-exposed foreign Primitives | Foreign Domain/Application |
-| Pole.Server | Application projects required for composition | None imposed by this policy |
-| Tests | Projects required by the test boundary | None imposed by this policy |
+| Source project        | Allowed feature dependencies                                                                                                                      | Forbidden feature dependencies                                      |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Primitives            | None                                                                                                                                              | Every feature project                                               |
+| Domain                | Own Primitives                                                                                                                                    | Contracts, Events, Application, another feature                     |
+| Contracts             | Own Primitives                                                                                                                                    | Domain, Events, Application, another feature's Contracts/Primitives |
+| Contracts.HttpMapping | Own Contracts; shared HTTP mapping abstraction                                                                                                    | Domain, Events, Application, another feature project                |
+| Events                | Own Primitives                                                                                                                                    | Domain, Contracts, Application, another feature                     |
+| Application           | Own Primitives/Domain/Contracts/Contracts.HttpMapping/Events; foreign Contracts/Contracts.HttpMapping/Events; contract-exposed foreign Primitives | Foreign Domain/Application                                          |
+| Pole.Server           | Application projects required for composition                                                                                                     | None imposed by this policy                                         |
+| Tests                 | Projects required by the test boundary                                                                                                            | None imposed by this policy                                         |
 
 References to dependency-leaf shared projects are governed by the shared-primitives rules below,
 not by the feature dependency matrix.

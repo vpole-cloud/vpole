@@ -144,7 +144,8 @@ public sealed class CreateRedisServiceHandler(
         return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             RedisQuotaInput,
             CreateRedisServiceOutcome>(
-            new ExecuteQuotaAdmissionRequest<global::Pole.Features.RedisServices.Application.Common.RedisQuotaInput, global::Pole.Features.RedisServices.Application.Endpoints.CreateRedisServiceOutcome>(
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.RedisServices.Application.Common.RedisQuotaInput,
+                global::Pole.Features.RedisServices.Application.Endpoints.CreateRedisServiceOutcome>(
                 TenantId: request.TenantId,
                 ResourceKey: RedisQuotaResourceKey.Create(newRedis.Id),
                 Mutation: new CreateQuotaMutation<RedisQuotaInput>(quotaInput),

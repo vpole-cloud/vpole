@@ -72,7 +72,8 @@ internal sealed partial class DeclarativeSecretProvider
             is not IsolationScopePlanningSnapshot scope)
             return new DeclarationReadBlocked(new DeclarationReferenceUnavailable(address));
 
-        return Project(groupId, scope.IsolationScopeId, spec.Purpose, spec.Keys);
+        return Project(groupId, scope.IsolationScopeId, spec.Purpose, spec.Keys) with
+        { Dependencies = new(ScopeVersions(scope)) };
     }
 
     public async Task<FenceDeclarationOutcome> FenceAsync(FenceDeclarationRequest request,

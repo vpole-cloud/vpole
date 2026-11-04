@@ -183,7 +183,8 @@ public sealed class UpdateFunctionAppHandler(
         return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             FunctionQuotaAllocation,
             UpdateFunctionAppOutcome>(
-            new ExecuteQuotaAdmissionRequest<global::Pole.Features.Functions.Domain.FunctionQuotaAllocation, global::Pole.Features.Functions.Application.Endpoints.UpdateFunctionAppOutcome>(
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.Functions.Domain.FunctionQuotaAllocation,
+                global::Pole.Features.Functions.Application.Endpoints.UpdateFunctionAppOutcome>(
                 TenantId: app.TenantId,
                 ResourceKey: FunctionAppQuotaResourceKey.Create(app.Id),
                 Mutation: new UpdateQuotaMutation<FunctionQuotaAllocation>(app.AdmittedQuota, admittedQuota),

@@ -1,0 +1,17 @@
+apiVersion: pole.io/v1alpha1
+kind: PostgresCluster
+metadata:
+  name: mixed-postgres
+spec:
+  resourceGroup: gitops-mixed-group
+  placement:
+    deploymentTarget: demo-target
+    isolationScope: gitops-mixed-scope
+    computeProfile: { name: demo-compute, revision: 1 }
+  storage:
+    sizeGb: 1
+    profile: { name: demo-storage, revision: 1 }
+  version: 16
+  instances: 1
+  username: app
+  bootstrapPassword: { secret: gitops-mixed-auth, key: password }

@@ -20,14 +20,16 @@ internal sealed class MongoReleaseManagedSecret(
     {
         if (!session.IsInTransaction)
             throw new InvalidOperationException("Managed Secret release requires the owner transaction.");
-        var current = await secrets.Find(session, ManagedSecretFilters.Owner(request.TenantId, request.Owner)).FirstOrDefaultAsync(ct);
+        var current = await secrets.Find(session, ManagedSecretFilters.Owner(request.TenantId,
+            request.Owner)).FirstOrDefaultAsync(ct);
         if (current is null)
             return new ManagedSecretMutationSucceeded();
         var management = (ProviderManagedSecret)current.Management;
         var released = current.Detach(management.BindingId, clock.GetUtcNow().UtcDateTime);
         if (!released.Bindings.IsEmpty)
         {
-            await secrets.ReplaceOneAsync(session, SecretFilters.Identity(request.TenantId, current.Id), released, cancellationToken: ct);
+            await secrets.ReplaceOneAsync(session, SecretFilters.Identity(request.TenantId, current.Id), released,
+                cancellationToken: ct);
             await publish(session, released, new SecretBindingRemoved(management.BindingId), ct);
         }
         else
@@ -41,8 +43,10 @@ internal sealed class MongoReleaseManagedSecret(
                 session: session,
                 cancellationToken: ct) is ResourceRegistrationMutationError)
                 return new ManagedSecretReferenceRejected();
-            await secrets.DeleteOneAsync(session, SecretFilters.Identity(request.TenantId, current.Id), cancellationToken: ct);
-            await versions.DeleteManyAsync(session, SecretFilters.Versions(request.TenantId, current.Id), cancellationToken: ct);
+            await secrets.DeleteOneAsync(session, SecretFilters.Identity(request.TenantId, current.Id),
+                cancellationToken: ct);
+            await versions.DeleteManyAsync(session, SecretFilters.Versions(request.TenantId, current.Id),
+                cancellationToken: ct);
             await publish(session, released, new SecretDeletedChange(), ct);
         }
         return new ManagedSecretMutationSucceeded();

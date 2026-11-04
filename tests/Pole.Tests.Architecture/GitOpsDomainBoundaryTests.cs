@@ -42,7 +42,8 @@ public sealed class GitOpsDomainBoundaryTests
     [InlineData("Pole.Features.GitOps.Primitives", false)]
     [InlineData("Pole.Features.GitOps.PrimitivesExtra", true)]
     [InlineData("Pole.Features.GitOps.Domainish", true)]
-    public void Boundary_rule_distinguishes_technical_boundaries_from_pure_domain_dependencies(string name, bool forbidden)
+    public void Boundary_rule_distinguishes_technical_boundaries_from_pure_domain_dependencies(string name,
+        bool forbidden)
     {
         var syntax = CSharpSyntaxTree.ParseText("using " + name + ";").GetRoot();
         var directive = Assert.Single(syntax.DescendantNodes().OfType<UsingDirectiveSyntax>());

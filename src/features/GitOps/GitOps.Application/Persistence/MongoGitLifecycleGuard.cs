@@ -75,6 +75,8 @@ public sealed class MongoGitLifecycleGuard(
             return null;
         var subject = Subject(operation);
         var action = lifecycle.Plan.Operations.Single(item => item.Resource == subject || item.Replacement == subject);
+        var referenceVersions = await References.RefreshVersionsAsync(
+            new(run.Stamp.Source.TenantId, lifecycle.Plan.References), session, ct);
         var related = new List<GitResourceVersion>();
         GitResourcePreconditions? postcondition = null;
         foreach (var approved in lifecycle.Plan.Operations)
@@ -90,7 +92,7 @@ public sealed class MongoGitLifecycleGuard(
                     Replacement = null
                 };
                 var observed = await References.PreconditionsAsync(new(lifecycle.Plan.Source, readAction,
-                    lifecycle.Plan.References), session, ct);
+                    referenceVersions), session, ct);
                 related.AddRange(observed?.Versions ?? []);
                 if (target == subject)
                     postcondition = observed;
@@ -105,7 +107,7 @@ public sealed class MongoGitLifecycleGuard(
                 if (providers.Find(consumer.Kind) is not IDeclarativePreviewReferenceProvider)
                     continue;
                 var resolved = await References.ResolveAsync(run.Stamp.Source.TenantId, input.Snapshot, consumer,
-                    lifecycle.Plan.References, session, ct);
+                    referenceVersions, session, ct);
                 if (resolved is GitPreviewReferencesSnapshot metadata)
                     related.AddRange(metadata.References.Where(reference =>
                             providers.Find(reference.Address.Kind) is not IDeclarativeResourceLifecycleProvider)
@@ -113,7 +115,7 @@ public sealed class MongoGitLifecycleGuard(
                         .Select(item => new GitResourceVersion(item.DocumentId, item.Revision)));
             }
         }
-        foreach (var reference in lifecycle.Plan.References.Where(item =>
+        foreach (var reference in referenceVersions.Where(item =>
                      item.State == GitPreviewReferenceState.Existing))
         {
             var current = await Resources.ReadAsync(run.Stamp.Source.TenantId, reference.Target, session, ct);

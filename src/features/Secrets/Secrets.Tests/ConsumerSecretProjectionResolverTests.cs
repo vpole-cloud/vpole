@@ -21,15 +21,19 @@ public sealed class ConsumerSecretProjectionResolverTests
     {
         var type = ResourceTypeId.Create("pole/web-service");
         var binding = SecretBinding.Create("binding", type.Value, "consumer", new AllSecretDeployments(), []);
-        var current = SecretFactory.Create("secret", "tenant", "group", "scope", "name", "purpose", ["token"], DateTime.UtcNow)
+        var current = SecretFactory.Create("secret", "tenant", "group", "scope", "name", "purpose", ["token"],
+            DateTime.UtcNow)
             .Bind(binding, DateTime.UtcNow);
-        var placement = new ResourceDeploymentRuntimePlacementDto("deployment", "consumer", "cell", "target", "namespace",
+        var placement = new ResourceDeploymentRuntimePlacementDto("deployment", "consumer", "cell", "target",
+            "namespace",
             1, 1, null!, ResourceDeploymentStatus.Applied, ResourceDeploymentDesiredOperation.Apply, "scope");
-        LoadExactResourceDeploymentRuntimePlacement loadPlacement = (request, _) => Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(placement);
+        LoadExactResourceDeploymentRuntimePlacement loadPlacement = (request,
+            _) => Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(placement);
         LoadSecretById loadSecret = (_, _, _) => Task.FromResult<Secret?>(current);
         LoadSecretProjections loadProjections = (_, _, _) => Task.FromResult<IReadOnlyList<SecretProjection>>([]);
         var reconciled = 0;
-        var reconciler = new SecretProjectionReconciler(loadSecret, (_, _, _, _) => throw new InvalidOperationException(),
+        var reconciler = new SecretProjectionReconciler(loadSecret, (_, _, _,
+            _) => throw new InvalidOperationException(),
             loadProjections, (request, _) =>
             {
                 reconciled++;
@@ -42,7 +46,8 @@ public sealed class ConsumerSecretProjectionResolverTests
         var services = new ServiceCollection();
         services.AddSecretsFeature();
         services.AddSingleton<LoadRegisteredResource>((request, _) => Task.FromResult<RegisteredResource?>(
-            new("registration", "tenant", "group", type, "consumer", "consumer", null, DateTime.UtcNow, DateTime.UtcNow)));
+            new("registration", "tenant", "group", type, "consumer", "consumer", null, DateTime.UtcNow,
+                DateTime.UtcNow)));
         services.AddSingleton(loadPlacement);
         services.AddSingleton(loadSecret);
         services.AddSingleton(loadProjections);

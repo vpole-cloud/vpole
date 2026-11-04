@@ -1,3 +1,5 @@
+export const gitOpsSourceResourceType = 'pole/gitops-source'
+
 export interface GitOpsStatus {
   sourceId: string
   sourceUrl: string

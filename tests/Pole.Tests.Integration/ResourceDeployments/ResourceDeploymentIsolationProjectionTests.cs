@@ -117,7 +117,8 @@ public sealed class ResourceDeploymentIsolationProjectionTests(
         Assert.Equal(2, page.Items.Count);
         var policy = target.NetworkPolicy;
         var expected = new ResourceDeploymentIsolationDto(
-            policy.Enforcement.ToString(), policy.Readiness.ToString(), policy.Reason.ToString(), policy.LastCheckedAtUtc);
+            policy.Enforcement.ToString(), policy.Readiness.ToString(), policy.Reason.ToString(),
+                policy.LastCheckedAtUtc);
         Assert.All(page.Items, item => Assert.Equal(expected, item.Deployment.Placement.Isolation));
         Assert.Equal(1, lookups);
     }
@@ -129,14 +130,16 @@ public sealed class ResourceDeploymentIsolationProjectionTests(
         var projection = new ResourceDeploymentIsolationProjection((id, _) =>
         {
             lookups++;
-            return Task.FromResult<LookupDeploymentTargetOutcome>(new DeploymentTargetLookupError(new DeploymentTargetNotFound(id)));
+            return Task.FromResult<LookupDeploymentTargetOutcome>(new DeploymentTargetLookupError(
+                new DeploymentTargetNotFound(id)));
         });
         Assert.Empty(await projection.LoadAsync(Array.Empty<string>(), default));
         Assert.Equal(0, lookups);
         var policies = await projection.LoadAsync(new[] { "missing", "missing" }, default);
         var policy = DeploymentTargetNetworkPolicyDto.Unknown;
         Assert.Equal(new ResourceDeploymentIsolationDto(
-            policy.Enforcement.ToString(), policy.Readiness.ToString(), policy.Reason.ToString(), policy.LastCheckedAtUtc), policies["missing"]);
+            policy.Enforcement.ToString(), policy.Readiness.ToString(), policy.Reason.ToString(),
+                policy.LastCheckedAtUtc), policies["missing"]);
         Assert.Equal(1, lookups);
     }
 
@@ -145,7 +148,8 @@ public sealed class ResourceDeploymentIsolationProjectionTests(
     {
         var failure = new InvalidOperationException("synthetic lookup failure");
         var projection = new ResourceDeploymentIsolationProjection((_, _) => throw failure);
-        Assert.Same(failure, await Assert.ThrowsAsync<InvalidOperationException>(() => projection.LoadAsync("target", default)));
+        Assert.Same(failure, await Assert.ThrowsAsync<InvalidOperationException>(() => projection.LoadAsync("target",
+            default)));
     }
 
     private static ResourceDeployment Deployment(

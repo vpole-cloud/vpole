@@ -89,7 +89,10 @@ public sealed class WebServiceResourceDeploymentAdapter(
                 SourceType: WebServiceResourceDeployment.ResourceType,
                 SourceId: webService.Id,
                 DeploymentId: context.Deployment.Id,
-                References: connectionReferences.Values.Select(reference => new ResourceConnectionValueReference(reference.ConnectionId, reference.ValueKind, reference.ConfigurationKey)).ToArray()),
+                References
+                    : connectionReferences.Values.Select(reference =>
+                    new ResourceConnectionValueReference(reference.ConnectionId, reference.ValueKind,
+                    reference.ConfigurationKey)).ToArray()),
             ct: cancellationToken);
         if (connectionValues is ResourceConnectionReferencesUnavailable)
             return ResourceDeploymentAdapterResult.Failed.Create("ConnectionConfigurationUnavailable", "A configured connection or field is no longer available for this deployment.", retryable: true);
@@ -100,7 +103,9 @@ public sealed class WebServiceResourceDeploymentAdapter(
                 ConsumerType: WebServiceResourceDeployment.ResourceType,
                 ConsumerId: webService.Id,
                 DeploymentId: context.Deployment.Id,
-                References: secretReferences.Values.Select(reference => new ConsumerSecretKeyReference(reference.SecretId, reference.Key)).ToArray()),
+                References
+                    : secretReferences.Values.Select(reference => new ConsumerSecretKeyReference(reference.SecretId,
+                    reference.Key)).ToArray()),
             ct: cancellationToken);
         if (projectedSecrets is ConsumerSecretReferenceUnavailable)
             return ResourceDeploymentAdapterResult.Failed.Create("SecretConfigurationUnavailable", "A configured Secret key or binding is no longer authorized for this deployment.", retryable: true);

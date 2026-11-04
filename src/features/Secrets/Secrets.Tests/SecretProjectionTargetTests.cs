@@ -144,8 +144,10 @@ public sealed class SecretProjectionTargetTests
             collection.AddSingleton<IKubernetesClientProvider>(Provider);
             collection.AddSingleton<LoadSecretById>((_, _, _) => StorageFailure is null
                 ? Task.FromResult<Secret?>(Secret) : Task.FromException<Secret?>(StorageFailure));
-            collection.AddSingleton<LoadExactResourceDeploymentRuntimePlacement>((request, _) => Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(
-                new("deployment", "resource", "cell", "target", "namespace", 1, 1, null!, ResourceDeploymentStatus.Pending, ResourceDeploymentDesiredOperation.Apply, "scope")));
+            collection.AddSingleton<LoadExactResourceDeploymentRuntimePlacement>((request,
+                _) => Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(
+                new("deployment", "resource", "cell", "target", "namespace", 1, 1, null!,
+                    ResourceDeploymentStatus.Pending, ResourceDeploymentDesiredOperation.Apply, "scope")));
             services = collection.BuildServiceProvider();
         }
 
