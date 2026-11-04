@@ -1,9 +1,11 @@
+using Pole.Features.GitOps.Application.Lifecycle.Mongo;
+using Pole.Features.GitOps.Application.Runs.Mongo.Filters;
 using Pole.Features.GitOps.Domain;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Contracts;
 
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Application.Runs.Mongo;
 
 internal sealed class GitOperationReceipts(IMongoCollection<GitOperationReceipt> receipts, IServiceProvider services)
 {

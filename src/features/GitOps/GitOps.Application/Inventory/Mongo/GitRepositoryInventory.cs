@@ -1,10 +1,13 @@
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.GitOps.Application.Endpoints.Sources;
+using Pole.Features.GitOps.Application.Inventory.Mongo.Filters;
+using Pole.Features.GitOps.Application.Mongo.Filters;
+using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Application.Inventory.Mongo;
 
 public sealed record ReadRepositoryInventory(
     string TenantId,

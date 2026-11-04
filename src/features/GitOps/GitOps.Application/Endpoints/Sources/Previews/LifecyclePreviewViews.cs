@@ -1,9 +1,10 @@
 using System.Text.Json.Serialization;
 using Pole.ASP.Helpers;
+using Pole.Features.GitOps.Application.Lifecycle.Mongo;
+using Pole.Features.GitOps.Application.Lifecycle;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
-using Pole.Features.GitOps.Application.Persistence;
 
 namespace Pole.Features.GitOps.Application.Endpoints.Sources.Previews;
 

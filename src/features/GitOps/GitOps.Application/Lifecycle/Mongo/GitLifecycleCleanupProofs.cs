@@ -1,11 +1,14 @@
 using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
+using Pole.Features.GitOps.Application.Inventory.Mongo.Filters;
+using Pole.Features.GitOps.Application.Lifecycle.Mongo.Filters;
+using Pole.Features.GitOps.Application.Mongo;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
 
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Application.Lifecycle.Mongo;
 
 public sealed class GitLifecycleCleanupProofs(
     IMongoCollection<GitLifecycleCleanupProof> proofs,

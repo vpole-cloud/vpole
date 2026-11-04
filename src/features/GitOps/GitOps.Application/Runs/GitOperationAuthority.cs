@@ -1,7 +1,7 @@
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Application.Runs;
 
 internal static class GitOperationAuthority
 {

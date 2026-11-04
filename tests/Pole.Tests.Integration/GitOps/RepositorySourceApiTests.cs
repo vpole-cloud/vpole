@@ -1,3 +1,5 @@
+using Pole.Features.GitOps.Application.Lifecycle.Mongo;
+using Pole.Features.GitOps.Application.Sources.Mongo;
 using Pole.Features.GitOps.Migrations;
 using System.Net;
 using Pole.Tests.Integration.Http;
@@ -14,7 +16,6 @@ using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Endpoints.Sources;
 using Pole.Features.GitOps.Application.Jobs;
 using Pole.Features.GitOps.Application.Endpoints.Sources.Previews;
-using Pole.Features.GitOps.Application.Persistence;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.Outbox.Domain;

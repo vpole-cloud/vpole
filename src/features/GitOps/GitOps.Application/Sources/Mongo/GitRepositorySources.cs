@@ -5,11 +5,13 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.GitOps.Application.Mongo.Filters;
+using Pole.Features.GitOps.Application.Mongo;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Events;
 using Pole.Features.Outbox.Contracts;
 
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Application.Sources.Mongo;
 
 public sealed class GitRepositorySources(
     IMongoCollection<RepositorySource> sources,

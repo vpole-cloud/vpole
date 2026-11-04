@@ -1,4 +1,6 @@
-namespace Pole.Features.GitOps.Application.Persistence;
+using Pole.Features.GitOps.Application.Planning.Mongo;
+using Pole.Features.GitOps.Application.Sources.Mongo;
+namespace Pole.Features.GitOps.Application.Mongo;
 
 internal static class RepositoryCollections
 {

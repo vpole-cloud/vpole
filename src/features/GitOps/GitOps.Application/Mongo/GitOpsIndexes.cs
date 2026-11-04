@@ -1,4 +1,4 @@
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Application.Mongo;
 
 internal static class GitOpsIndexes
 {

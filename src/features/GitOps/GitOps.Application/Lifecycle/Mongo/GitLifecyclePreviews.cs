@@ -3,13 +3,18 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.GitOps.Application.Inventory.Mongo.Filters;
+using Pole.Features.GitOps.Application.Lifecycle.Mongo.Filters;
+using Pole.Features.GitOps.Application.Mongo.Filters;
+using Pole.Features.GitOps.Application.Planning.Mongo.Filters;
+using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Events;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.Outbox.Contracts;
 
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Application.Lifecycle.Mongo;
 
 public sealed record CreateLifecyclePreview(
     GitSourceIdentity Source,

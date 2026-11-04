@@ -6,7 +6,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.GitOps.Application.Persistence;
+using Pole.Features.GitOps.Application.Sources.Mongo;
+using Pole.Features.GitOps.Application.Sources;
 using Pole.Mediator;
 using Pole.Validation;
 

@@ -1,7 +1,8 @@
+using Pole.Features.GitOps.Application.Planning.Mongo;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Application.Lifecycle;
 
 public sealed record GitLifecycleSnapshotRead(
     GitAcceptedSnapshot Snapshot,

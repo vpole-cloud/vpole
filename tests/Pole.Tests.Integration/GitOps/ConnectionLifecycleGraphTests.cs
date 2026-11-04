@@ -1,3 +1,5 @@
+using Pole.Features.GitOps.Application.Lifecycle.Mongo;
+using Pole.Features.GitOps.Application.Sources.Mongo;
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Workloads;
 using Pole.Features.GitOps.Application.Jobs;
@@ -8,7 +10,6 @@ using Pole.Features.WebServices.Application.Persistence.Lifecycle;
 using Pole.Features.WebServices.Domain;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
-using Pole.Features.GitOps.Application.Persistence;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.ResourceConnections.Domain;

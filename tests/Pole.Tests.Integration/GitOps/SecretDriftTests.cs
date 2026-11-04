@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
+using Pole.Features.GitOps.Application.Sources.Mongo;
 using Pole.Features.GitOps.Application;
-using Pole.Features.GitOps.Application.Persistence;
 using Pole.Features.GitOps.Application.Endpoints.Sources;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.Secrets.Domain;

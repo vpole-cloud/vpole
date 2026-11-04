@@ -1,7 +1,7 @@
 using Pole.Features.GitOps.Domain;
 using MongoDB.Driver;
 
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Application.Runs.Mongo.Filters;
 
 internal static class GitOperationReceiptFilters
 {

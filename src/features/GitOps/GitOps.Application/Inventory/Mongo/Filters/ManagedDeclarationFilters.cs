@@ -3,7 +3,7 @@ using MongoDB.Driver;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
 
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Application.Inventory.Mongo.Filters;
 
 internal static class ManagedDeclarationFilters
 {

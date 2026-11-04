@@ -1,5 +1,8 @@
 using System.Collections.Immutable;
-using Pole.Features.GitOps.Application.Persistence;
+using Pole.Features.GitOps.Application.Lifecycle.Mongo;
+using Pole.Features.GitOps.Application.Mongo;
+using Pole.Features.GitOps.Application.Planning.Mongo;
+using Pole.Features.GitOps.Application.Runs.Mongo;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 

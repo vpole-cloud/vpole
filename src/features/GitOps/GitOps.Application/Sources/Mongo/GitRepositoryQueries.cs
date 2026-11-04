@@ -1,8 +1,10 @@
 using MongoDB.Driver;
+using Pole.Features.GitOps.Application.Mongo.Filters;
+using Pole.Features.GitOps.Application.Runs.Mongo;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Application.Endpoints.Sources;
 
-namespace Pole.Features.GitOps.Application.Persistence;
+namespace Pole.Features.GitOps.Application.Sources.Mongo;
 
 public sealed class GitRepositoryQueries(
     IMongoCollection<RepositorySource> sources,

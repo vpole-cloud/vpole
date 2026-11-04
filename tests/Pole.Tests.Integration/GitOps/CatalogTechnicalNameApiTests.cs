@@ -17,7 +17,6 @@ using Pole.Features.DeploymentTargets.Application.Endpoints;
 using Pole.Features.DeploymentTargets.Migrations;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.Features.GitOps.Application.Persistence;
 using Pole.Features.Secrets.Domain;
 using Pole.Tests.Integration.ComputeProfiles;
 using Pole.Tests.Integration.DeploymentTargets;
