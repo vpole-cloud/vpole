@@ -44,8 +44,12 @@ internal static class RedisPlanning
 
     internal static DeclarationDocumentVersion[] DependencyVersions(RedisPlanningDependencies dependencies) =>
     [
-        new($"ResourceGroup/{dependencies.Scope.ResourceGroupId}", dependencies.Scope.ResourceGroupRevision),
-        new($"IsolationScope/{dependencies.Scope.IsolationScopeId}", dependencies.Scope.ScopeRevision),
+        new(
+            DeclarationVersionKeys.ResourceGroup(dependencies.Scope.ResourceGroupId),
+            dependencies.Scope.ResourceGroupRevision),
+        new(
+            DeclarationVersionKeys.IsolationScope(dependencies.Scope.IsolationScopeId),
+            dependencies.Scope.ScopeRevision),
         new(
             DeclarationVersionKeys.DeploymentTarget(dependencies.Target.Target.Id),
             dependencies.Target.Target.Revision),
@@ -57,7 +61,8 @@ internal static class RedisPlanning
             DeclarationVersionKeys.StorageProfilePolicy(dependencies.Storage.Storage.ProfileId),
             dependencies.Storage.PolicyRevision),
         .. dependencies.Placements?.Items.Select(item =>
-            new DeclarationDocumentVersion($"ResourceDeployment/{item.DeploymentId}", item.Revision)) ?? []
+            new DeclarationDocumentVersion(
+                DeclarationVersionKeys.ResourceDeployment(item.DeploymentId), item.Revision)) ?? []
     ];
 
     internal static DeclarationProjection Project(

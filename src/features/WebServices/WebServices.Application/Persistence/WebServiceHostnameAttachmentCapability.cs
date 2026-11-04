@@ -1,6 +1,7 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.Domains.Contracts;
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.WebServices.Application.Common;
@@ -59,10 +60,12 @@ internal sealed class WebServiceHostnameAttachmentCapability(
         return new HostnameAttachmentSnapshot(request.TenantId, request.ResourceId, ResourceType,
             request.DeploymentTargetId, placement.DeploymentId, request.Hostname,
             placement.Ingress!.Hostnames.Order(StringComparer.Ordinal).ToArray(),
-            [new($"WebService/{service.Id}", service.Revision),
-                new($"ResourceGroup/{scope.ResourceGroupId}", scope.ResourceGroupRevision),
-                new($"IsolationScope/{scope.IsolationScopeId}", scope.ScopeRevision), .. placements.Items.Select(item =>
-                new HostnameAttachmentDocumentVersion($"ResourceDeployment/{item.DeploymentId}", item.Revision))],
+            [new(DeclarationVersionKeys.WebService(service.Id), service.Revision),
+                new(DeclarationVersionKeys.ResourceGroup(scope.ResourceGroupId), scope.ResourceGroupRevision),
+                new(DeclarationVersionKeys.IsolationScope(scope.IsolationScopeId), scope.ScopeRevision),
+                .. placements.Items.Select(item =>
+                new HostnameAttachmentDocumentVersion(
+                    DeclarationVersionKeys.ResourceDeployment(item.DeploymentId), item.Revision))],
             service.Lifecycle is AwaitingFirstArtifactWebServiceLifecycle
                 ? HostnameAttachmentAvailability.AwaitingArtifact : HostnameAttachmentAvailability.Active);
     }
@@ -112,7 +115,8 @@ internal sealed class WebServiceHostnameAttachmentCapability(
             await fenceScope(scope, session, cancellationToken) is not IsolationScopePlanningFenced)
             return new HostnameAttachmentPreconditionsChanged();
 
-        var version = snapshot.DocumentVersions.Single(item => item.DocumentId == $"WebService/{snapshot.ResourceId}");
+        var version = snapshot.DocumentVersions.Single(item =>
+            item.DocumentId == DeclarationVersionKeys.WebService(snapshot.ResourceId));
         var filter = WebServiceFilters.AtRevision(snapshot.TenantId, snapshot.ResourceId, version.Version);
         var write = await services.UpdateOneAsync(session, filter,
             Builders<WebService>.Update.Inc(item => item.PlanningFence, 1), cancellationToken: cancellationToken);

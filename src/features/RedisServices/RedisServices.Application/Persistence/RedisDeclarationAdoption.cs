@@ -68,8 +68,9 @@ internal sealed class RedisDeclarationAdoption(
             return new DeclarationReadBlocked(new DeclarationReplacementRequired());
         return new GitLifecycleAdoptionPreview(found, desired with
         {
-            Dependencies = new([new($"ResourceGroup/{scopeState.ResourceGroupId}", scopeState.ResourceGroupRevision),
-                new($"IsolationScope/{scopeState.IsolationScopeId}", scopeState.ScopeRevision),
+            Dependencies = new([
+                new(DeclarationVersionKeys.ResourceGroup(scopeState.ResourceGroupId), scopeState.ResourceGroupRevision),
+                new(DeclarationVersionKeys.IsolationScope(scopeState.IsolationScopeId), scopeState.ScopeRevision),
                 .. accepted.SelectMany(item => item.Version?.Documents ?? [])])
         }, accepted);
     }

@@ -155,7 +155,8 @@ internal sealed class DeclarativeResourceConnectionProvider(
         IReadOnlyList<ResourceRegistrationPlanningSnapshot> Registrations)
     {
         public DeclarationDocumentVersion[] Versions => Registrations.Select(item =>
-            new DeclarationDocumentVersion($"ResourceRegistration/{item.Resource.RegistrationId}", item.ReferenceFence))
+            new DeclarationDocumentVersion(
+                DeclarationVersionKeys.ResourceRegistration(item.Resource.RegistrationId), item.ReferenceFence))
             .ToArray();
     }
 
@@ -369,7 +370,8 @@ internal sealed class DeclarativeResourceConnectionProvider(
         if (current.Lifecycle is not ActiveResourceConnection)
             return new DeclarationReadBlocked(new ConnectionDeclarationUnavailable());
 
-        return new CurrentDeclaration(current.Id, new([new($"ResourceConnection/{current.Id}", current.Revision)]),
+        return new CurrentDeclaration(current.Id,
+            new([new(DeclarationVersionKeys.ResourceConnection(current.Id), current.Revision)]),
             Project(new(current.TenantId, current.Name, ResourceTypeId.Create(current.SourceResourceTypeId),
                 current.SourceResourceId, ResourceTypeId.Create(current.DestinationResourceTypeId),
                 current.DestinationResourceId, current.EndpointId)), DeclarationConfigurationState.Configured);
@@ -421,7 +423,7 @@ internal sealed class DeclarativeResourceConnectionProvider(
             return new DeclarationPreconditionsChanged();
 
         var expected = request.Expected.Documents.SingleOrDefault(item =>
-            item.DocumentId == $"ResourceConnection/{operation.ResourceId}");
+            item.DocumentId == DeclarationVersionKeys.ResourceConnection(operation.ResourceId));
         var current = await connections.Find(session,
             ResourceConnectionFilters.ByTenantAndId(operation.Context.TenantId, operation.ResourceId))
             .FirstOrDefaultAsync(cancellationToken);

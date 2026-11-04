@@ -59,9 +59,9 @@ internal sealed class RedisDeclarationPlanner(
         var placement = placements.Items[0];
         var phase = request.Operation?.Phase ?? DeclarationPhase.Configure;
         return new CurrentDeclaration(current.Id,
-            new([new($"RedisService/{current.Id}", current.Revision),
+            new([new(DeclarationVersionKeys.Resource(RedisDeclarations.Kind, current.Id), current.Revision),
                 new(DeclarationVersionKeys.PlanningFence(RedisDeclarations.Kind, current.Id), current.PlanningFence),
-                new($"ResourceDeployment/{placement.DeploymentId}", placement.Revision)]),
+                new(DeclarationVersionKeys.ResourceDeployment(placement.DeploymentId), placement.Revision)]),
             Project(phase, new(current.ResourceGroupId, placement.IsolationScopeId,
                 placement.DeploymentTargetId, current.Spec.Storage.SizeGb, current.Spec.Storage.StorageProfileId,
                 placement.Storage!), placement.Compute, current.Tags),
@@ -107,7 +107,7 @@ internal sealed class RedisDeclarationPlanner(
             return new DeclarationPreconditionsChanged();
 
         var expectedRoot = request.Expected.Documents.SingleOrDefault(item =>
-            item.DocumentId == $"RedisService/{request.Operation.ResourceId}");
+            item.DocumentId == DeclarationVersionKeys.Resource(RedisDeclarations.Kind, request.Operation.ResourceId));
         if (dependencies.Current is { } current)
         {
             if (expectedRoot?.Revision != current.Revision || !request.Expected.Documents.Contains(

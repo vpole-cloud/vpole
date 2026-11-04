@@ -67,9 +67,10 @@ internal sealed class DomainLifecycleDependencies(
 internal static class DomainLifecycleVersions
 {
     public static DeclarationVersionToken Zone(TenantDomainZone zone) => new(
-        [new($"DomainZone/{zone.Id}", zone.Revision), new($"DomainZoneFence/{zone.Id}", zone.ReferenceFence)]);
+        [new(DeclarationVersionKeys.DomainZone(zone.Id), zone.Revision),
+            new(DeclarationVersionKeys.DomainZoneFence(zone.Id), zone.ReferenceFence)]);
     public static DeclarationVersionToken Binding(HostnameBinding binding) => new(
-        [new($"HostnameBinding/{binding.Id}", binding.ReferenceFence)]);
+        [new(DeclarationVersionKeys.HostnameBinding(binding.Id), binding.ReferenceFence)]);
     public static bool Same(DeclarationVersionToken left, DeclarationVersionToken right) =>
         left.Documents.OrderBy(item => item.DocumentId, StringComparer.Ordinal)
             .SequenceEqual(right.Documents.OrderBy(item => item.DocumentId, StringComparer.Ordinal));

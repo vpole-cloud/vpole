@@ -126,7 +126,8 @@ internal sealed class FunctionDeclarationPlanning(
                 return new DeclarationPreconditionsChanged();
         }
         else if (request.Expected.Documents.Any(item =>
-                     item.DocumentId == $"FunctionApp/{request.Operation.ResourceId}"))
+                     item.DocumentId ==
+                         DeclarationVersionKeys.Resource(FunctionDeclarations.Kind, request.Operation.ResourceId)))
         {
             return new DeclarationPreconditionsChanged();
         }

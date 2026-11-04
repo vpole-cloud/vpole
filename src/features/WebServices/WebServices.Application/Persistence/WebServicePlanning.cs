@@ -94,8 +94,12 @@ internal static class WebServicePlanning
 
     internal static DeclarationDocumentVersion[] DependencyVersions(WebServicePlanningDependencies dependencies) =>
     [
-        new($"ResourceGroup/{dependencies.Scope.ResourceGroupId}", dependencies.Scope.ResourceGroupRevision),
-        new($"IsolationScope/{dependencies.Scope.IsolationScopeId}", dependencies.Scope.ScopeRevision),
+        new(
+            DeclarationVersionKeys.ResourceGroup(dependencies.Scope.ResourceGroupId),
+            dependencies.Scope.ResourceGroupRevision),
+        new(
+            DeclarationVersionKeys.IsolationScope(dependencies.Scope.IsolationScopeId),
+            dependencies.Scope.ScopeRevision),
         new(
             DeclarationVersionKeys.DeploymentTarget(dependencies.Target.Target.Id),
             dependencies.Target.Target.Revision),
@@ -104,20 +108,22 @@ internal static class WebServicePlanning
         new(DeclarationVersionKeys.ComputeProfilePolicy(dependencies.Compute.Request.ComputeProfileId),
             dependencies.Compute.PolicyRevision),
         .. (dependencies.Placements?.Items ?? []).Select(item =>
-            new DeclarationDocumentVersion($"ResourceDeployment/{item.DeploymentId}", item.Revision)),
+            new DeclarationDocumentVersion(
+                DeclarationVersionKeys.ResourceDeployment(item.DeploymentId), item.Revision)),
         .. dependencies.BuildConfiguration is { } build ? new DeclarationDocumentVersion[]
-            { new($"SourceBuildConfiguration/{build.Id}", build.Revision) } : [],
+            { new(DeclarationVersionKeys.SourceBuildConfiguration(build.Id), build.Revision) } : [],
         .. (dependencies.Connections?.Connections ?? []).SelectMany(item => new DeclarationDocumentVersion[]
         {
-            new($"ResourceConnection/{item.ConnectionId}", item.Revision),
-            new($"ResourceConnection/{item.ConnectionId}/ReferenceFence", item.ReferenceFence)
+            new(DeclarationVersionKeys.ResourceConnection(item.ConnectionId), item.Revision),
+            new(DeclarationVersionKeys.ResourceConnectionReferenceFence(item.ConnectionId), item.ReferenceFence)
         }),
         .. (dependencies.Connections?.Destinations ?? []).Select(item =>
-            new DeclarationDocumentVersion($"ResourceRegistration/{item.RegistrationId}", item.ReferenceFence)),
+            new DeclarationDocumentVersion(
+                DeclarationVersionKeys.ResourceRegistration(item.RegistrationId), item.ReferenceFence)),
         .. (dependencies.Secrets?.Secrets ?? []).SelectMany(item => new DeclarationDocumentVersion[]
         {
-            new($"Secret/{item.SecretId}", item.Revision),
-            new($"Secret/{item.SecretId}/ReferenceFence", item.ReferenceFence)
+            new(DeclarationVersionKeys.Secret(item.SecretId), item.Revision),
+            new(DeclarationVersionKeys.SecretReferenceFence(item.SecretId), item.ReferenceFence)
         })
     ];
 
@@ -182,12 +188,14 @@ internal static class WebServicePlanning
         IReadOnlyList<GitPreviewResolvedReference> references, ResourceAddress address) =>
         references.SingleOrDefault(item => item.Address == address);
 
+    private static string ManagedVersionKey(string id, string hash) => $"WebService/{id}/Managed/{hash}";
+
     internal static DeclarationDocumentVersion[] LifecycleVersions(WebService current,
         IReadOnlyList<ResourceDeploymentPlanningItem> placements) =>
     [
-        new($"WebService/{current.Id}", current.Revision),
+        new(DeclarationVersionKeys.WebService(current.Id), current.Revision),
         new(DeclarationVersionKeys.PlanningFence(WebServiceDeclarations.Kind, current.Id), current.PlanningFence),
-        new($"WebService/{current.Id}/Managed/{LifecycleConfigurationHash(current, placements)}", 0),
+        new(ManagedVersionKey(current.Id, LifecycleConfigurationHash(current, placements)), 0),
         .. placements.SelectMany(item => LifecyclePlacementVersions(item,
             current.Lifecycle is DeletingWebServiceLifecycle))
     ];
@@ -232,8 +240,8 @@ internal static class WebServicePlanning
         ResourceDeploymentPlanningItem item, bool deleting)
     {
         if (!deleting || item.State != ResourceDeploymentPlanningState.Deleting)
-            return [new($"ResourceDeployment/{item.DeploymentId}/DesiredGeneration", item.DesiredGeneration),
-                new($"ResourceDeployment/{item.DeploymentId}/ResourceRevision", item.ResourceRevision)];
+            return [new(DeclarationVersionKeys.DeploymentDesiredGeneration(item.DeploymentId), item.DesiredGeneration),
+                new(DeclarationVersionKeys.DeploymentResourceRevision(item.DeploymentId), item.ResourceRevision)];
         var intent = new
         {
             item.ResourceGroupId,
@@ -256,7 +264,7 @@ internal static class WebServicePlanning
             item.ResourceRevision
         };
         var hash = Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(intent)));
-        return [new($"ResourceDeployment/{item.DeploymentId}/DeleteIntent/{hash}", item.DesiredGeneration)];
+        return [new(DeclarationVersionKeys.DeploymentDeleteIntent(item.DeploymentId, hash), item.DesiredGeneration)];
     }
 
     internal static bool SameLifecycleVersions(IEnumerable<DeclarationDocumentVersion> current,

@@ -168,10 +168,14 @@ internal sealed class SecretBindingPlanning(
     internal static DeclarationDocumentVersion[] Versions(BindingPlanningDependencies dependencies) =>
     [
         .. SecretPlanningFence.Versions(dependencies.Secret),
-        new($"ResourceGroup/{dependencies.Scope.ResourceGroupId}", dependencies.Scope.ResourceGroupRevision),
-        new($"IsolationScope/{dependencies.Scope.IsolationScopeId}", dependencies.Scope.ScopeRevision),
+        new(
+            DeclarationVersionKeys.ResourceGroup(dependencies.Scope.ResourceGroupId),
+            dependencies.Scope.ResourceGroupRevision),
+        new(
+            DeclarationVersionKeys.IsolationScope(dependencies.Scope.IsolationScopeId),
+            dependencies.Scope.ScopeRevision),
         .. dependencies.Placements.Items.Select(item =>
-            new DeclarationDocumentVersion($"ResourceDeployment/{item.DeploymentId}", item.Revision))
+            new DeclarationDocumentVersion(DeclarationVersionKeys.ResourceDeployment(item.DeploymentId), item.Revision))
     ];
 
     internal static DeclarationProjection Project(

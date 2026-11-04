@@ -33,9 +33,9 @@ type PostgresDeclarationLifecycle(
     let placementVersions (item : ResourceDeploymentPlanningItem) (current : PostgresCluster) =
         if not (current.Lifecycle :? DeletingPostgresClusterLifecycle)
            || item.State <> ResourceDeploymentPlanningState.Deleting then
-            [| DeclarationDocumentVersion($"ResourceDeployment/{item.DeploymentId}/DesiredGeneration",
+            [| DeclarationDocumentVersion(DeclarationVersionKeys.DeploymentDesiredGeneration(item.DeploymentId),
                                           item.DesiredGeneration)
-               DeclarationDocumentVersion($"ResourceDeployment/{item.DeploymentId}/ResourceRevision",
+               DeclarationDocumentVersion(DeclarationVersionKeys.DeploymentResourceRevision(item.DeploymentId),
                                           item.ResourceRevision) |]
         else
             let bootstrap = PostgresPlanning.bootstrap current
@@ -69,12 +69,14 @@ type PostgresDeclarationLifecycle(
                    DesiredGeneration = item.DesiredGeneration
                    ResourceRevision = item.ResourceRevision |}
             let hash = System.Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(intent)))
-            [| DeclarationDocumentVersion($"ResourceDeployment/{item.DeploymentId}/DeleteIntent/{hash}",
+            [| DeclarationDocumentVersion(DeclarationVersionKeys.DeploymentDeleteIntent(item.DeploymentId, hash),
                                           item.DesiredGeneration) |]
 
     let versions (current : PostgresCluster) (placements : LoadResourceDeploymentPlanningSnapshotOutcome) =
         DeclarationVersionToken(
-            [| DeclarationDocumentVersion($"PostgresCluster/{current.Id}", current.Revision)
+            [| DeclarationDocumentVersion(
+                   DeclarationVersionKeys.Resource(PostgresDeclarations.Kind, current.Id),
+                   current.Revision)
                DeclarationDocumentVersion(
                    DeclarationVersionKeys.PlanningFence(PostgresDeclarations.Kind, current.Id), current.PlanningFence)
                match placements.Value with

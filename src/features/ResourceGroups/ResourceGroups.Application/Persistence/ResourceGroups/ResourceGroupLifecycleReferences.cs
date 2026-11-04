@@ -49,7 +49,7 @@ internal sealed class ResourceGroupLifecycleReferences(
 
         return children.Where(item => !item.IsDefault).Select(item => new GitLifecycleDependency(
                 new(new("IsolationScope", item.Name), item.Id), request.Resource,
-                new([new($"IsolationScope/{item.Id}", item.Revision)])))
+                new([new(DeclarationVersionKeys.IsolationScope(item.Id), item.Revision)])))
             .Concat(resources.Select(item => new GitLifecycleDependency(item.Dependent, request.Resource,
                 item.Version)))
             .OrderBy(item => item.Dependent.Address.Kind, StringComparer.Ordinal)
@@ -113,7 +113,7 @@ internal sealed class ResourceGroupLifecycleReferences(
                 return null;
 
             var dependency = new RegistrationDependency(item, new(new(provider.Kind, ""), item.ResourceId),
-                new([new($"ResourceRegistration/{item.Id}", item.ReferenceFence)]));
+                new([new(DeclarationVersionKeys.ResourceRegistration(item.Id), item.ReferenceFence)]));
             if (provider is IDeclarativeRegistrationOwnershipProvider ownership)
             {
                 var read = await ownership.ReadRegistrationOwnershipAsync(new(tenant, item.ResourceId), session, ct);
@@ -168,11 +168,11 @@ internal sealed class ResourceGroupLifecycleReferences(
 internal static class ResourceGroupLifecycleVersions
 {
     public static DeclarationVersionToken Group(ResourceGroup group) => new(
-        [new($"ResourceGroup/{group.Id}", group.Revision),
-            new($"ResourceGroupFence/{group.Id}", group.RegistrationFence)]);
+        [new(DeclarationVersionKeys.ResourceGroup(group.Id), group.Revision),
+            new(DeclarationVersionKeys.ResourceGroupFence(group.Id), group.RegistrationFence)]);
 
     public static DeclarationVersionToken Scope(IsolationScope scope, ResourceGroup group) => new(
-        [new($"IsolationScope/{scope.Id}", scope.Revision), .. Group(group).Documents]);
+        [new(DeclarationVersionKeys.IsolationScope(scope.Id), scope.Revision), .. Group(group).Documents]);
 
     public static bool Same(DeclarationVersionToken left, DeclarationVersionToken right) =>
         left.Documents.OrderBy(item => item.DocumentId, StringComparer.Ordinal)

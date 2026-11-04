@@ -125,7 +125,9 @@ type PostgresDeclarationAdoption(
                 | Some current, Some placements when placements.Items.Count = 1 ->
                     let spec = DeclarationJson.Read<PostgresDeclaration> request.Declaration.Spec
                     let versions = DeclarationVersionToken(
-                        [| DeclarationDocumentVersion($"PostgresCluster/{current.Id}", current.Revision)
+                        [| DeclarationDocumentVersion(
+                               DeclarationVersionKeys.Resource(PostgresDeclarations.Kind, current.Id),
+                               current.Revision)
                            DeclarationDocumentVersion(
                                DeclarationVersionKeys.PlanningFence(PostgresDeclarations.Kind, current.Id),
                                current.PlanningFence)

@@ -364,7 +364,8 @@ internal sealed class DeclarativeSecretProvider(
                 SecretFilters.Identity(request.Operation.Context.TenantId, request.Operation.ResourceId))
             .FirstOrDefaultAsync(cancellationToken);
         if (current is null
-                ? request.Expected.Documents.Any(item => item.DocumentId == $"Secret/{request.Operation.ResourceId}")
+                ? request.Expected.Documents.Any(item =>
+                    item.DocumentId == DeclarationVersionKeys.Secret(request.Operation.ResourceId))
                 : !SecretPlanningFence.Matches(current, request.Expected))
             return new DeclarationPreconditionsChanged();
 
@@ -400,8 +401,8 @@ internal sealed class DeclarativeSecretProvider(
 
     private static DeclarationDocumentVersion[] ScopeVersions(IsolationScopePlanningSnapshot scope) =>
     [
-        new($"ResourceGroup/{scope.ResourceGroupId}", scope.ResourceGroupRevision),
-        new($"IsolationScope/{scope.IsolationScopeId}", scope.ScopeRevision)
+        new(DeclarationVersionKeys.ResourceGroup(scope.ResourceGroupId), scope.ResourceGroupRevision),
+        new(DeclarationVersionKeys.IsolationScope(scope.IsolationScopeId), scope.ScopeRevision)
     ];
 
     private static DeclarationProjection Project(

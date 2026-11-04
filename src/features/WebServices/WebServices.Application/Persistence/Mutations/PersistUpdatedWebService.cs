@@ -272,7 +272,8 @@ internal sealed class MongoPersistUpdatedWebService(
             return previous.TenantId == current.TenantId && previous.ResourceId == current.Id &&
                 previous.ResourceType == Common.WebServiceResourceDeployment.ResourceType &&
                 previous.CurrentHostnames.Contains(previous.Hostname, StringComparer.Ordinal) &&
-                previous.DocumentVersions.Any(item => item.DocumentId == $"WebService/{current.Id}" &&
+                previous.DocumentVersions.Any(item =>
+                    item.DocumentId == DeclarationVersionKeys.WebService(current.Id) &&
                     item.Version == current.Revision) &&
                 await loadHostnameBinding(new(current.TenantId, removed.BindingId), session, cancellationToken) is null;
         }
