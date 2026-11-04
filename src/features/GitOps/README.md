@@ -350,3 +350,9 @@ consumers have stopped using it. Values are never copied or renamed
 implicitly. A direct removal of an in-use key blocks with `SecretKeysInUse`; the working deployment
 remains intact. Missing historical ComputeProfile revisions likewise block rather than being
 reconstructed or silently replaced with the latest revision.
+
+## Repository GitOps target contracts
+
+See [repository contracts](docs/repository-contracts.md) for the stage-1 model, provider boundaries,
+13-kind coverage matrix, target source API and confirmation rules. Repository synchronization and
+lifecycle commands remain scheduled work; the manual snapshot flow above is the current runtime.

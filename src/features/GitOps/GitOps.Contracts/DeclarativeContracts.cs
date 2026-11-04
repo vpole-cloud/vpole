@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Primitives;
 using System.Diagnostics.CodeAnalysis;
 using Pole.Workloads;
 using System.Text.Json;
@@ -9,8 +10,6 @@ namespace Pole.Features.GitOps.Contracts;
 public sealed record ResourceAddress(
     string Kind,
     string Name);
-
-public enum DeclarationPhase { Prepare, Bind, Configure }
 
 public sealed record DeclarationDependency(
     ResourceAddress Resource,

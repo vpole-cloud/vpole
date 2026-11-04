@@ -29,6 +29,7 @@ public static class GitOpsFeature
         services.AddScoped<ResumeSnapshotOnSecretValueChanged>();
         services.AddScoped<DeclarativeProviderRegistry>();
         services.AddScoped<ManifestCompiler>();
+        services.AddScoped<DeclarativeResourcePlanner>();
         services.AddScoped<MongoGitOwnership>();
         services.AddScoped<GitDeclarationCompletion>();
         services.AddScoped<GitOperationReceipts>();

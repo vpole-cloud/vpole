@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Primitives;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 using System.Collections.Immutable;
@@ -41,7 +42,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed class DeclarativePipelineTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
+public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixture)
+    : MediatorIntegrationTestBase(fixture)
 {
     private readonly string source = ObjectId.GenerateNewId().ToString();
     private DeclarativePipeline Pipeline => Services.GetRequiredService<DeclarativePipeline>();
