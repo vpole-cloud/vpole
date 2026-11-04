@@ -200,7 +200,7 @@ internal static class FunctionDeclarations
     internal static DeclarationDocumentVersion[] CurrentVersions(FunctionPlanningCurrent current) =>
     [
         new($"FunctionApp/{current.Root.Id}", current.Root.NextRevisionNumber),
-        new($"FunctionApp/{current.Root.Id}/PlanningFence", current.Root.PlanningFence),
+        new(DeclarationVersionKeys.PlanningFence(Kind, current.Root.Id), current.Root.PlanningFence),
         new($"FunctionApp/{current.Root.Id}/Managed/{PlanningRootHash(current.Root)}", 0),
         new($"FunctionApp/{current.Root.Id}/Pointers/{current.Root.ActiveRevisionId}/{current.Root.PendingRevisionId}",
             0),
@@ -216,10 +216,12 @@ internal static class FunctionDeclarations
     [
         new($"ResourceGroup/{dependencies.Scope.ResourceGroupId}", dependencies.Scope.ResourceGroupRevision),
         new($"IsolationScope/{dependencies.Scope.IsolationScopeId}", dependencies.Scope.ScopeRevision),
-        new($"DeploymentTarget/{dependencies.Target.Target.Id}", dependencies.Target.Target.Revision),
-        new($"DeploymentTarget/{dependencies.Target.Target.Id}/WorkloadConfiguration",
+        new(
+            DeclarationVersionKeys.DeploymentTarget(dependencies.Target.Target.Id),
+            dependencies.Target.Target.Revision),
+        new(DeclarationVersionKeys.TargetWorkloadConfiguration(dependencies.Target.Target.Id),
             dependencies.Target.Target.WorkloadConfiguration.Revision),
-        new($"ComputeProfile/{dependencies.Compute.Compute.ComputeProfileId}/Policy",
+        new(DeclarationVersionKeys.ComputeProfilePolicy(dependencies.Compute.Compute.ComputeProfileId),
             dependencies.Compute.PolicyRevision),
         .. dependencies.Secrets?.Secrets.SelectMany(version => new DeclarationDocumentVersion[]
         {
@@ -231,7 +233,7 @@ internal static class FunctionDeclarations
     internal static DeclarationDocumentVersion[] LifecycleVersions(FunctionLifecycleState state) =>
     [
         new($"FunctionApp/{state.Root.Id}", state.Root.NextRevisionNumber),
-        new($"FunctionApp/{state.Root.Id}/PlanningFence", state.Root.PlanningFence),
+        new(DeclarationVersionKeys.PlanningFence(Kind, state.Root.Id), state.Root.PlanningFence),
         new($"FunctionApp/{state.Root.Id}/Managed/{PlanningRootHash(state.Root)}", 0),
         new($"FunctionApp/{state.Root.Id}/Placements/{LifecyclePlacementHash(state.Placements)}", 0),
         new($"FunctionApp/{state.Root.Id}/Pointers/{state.Root.ActiveRevisionId}/{state.Root.PendingRevisionId}", 0),

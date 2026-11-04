@@ -130,13 +130,17 @@ internal sealed class RedisDeclarationReferences(
             .. request.References.Where(item => item.Address != targetAddress && item.Address != computeAddress &&
                 item.Address != storageAddress),
             new(targetAddress, foundTarget.Id,
-                new([new($"DeploymentTarget/{foundTarget.Id}", foundTarget.Revision),
-                    new($"DeploymentTarget/{foundTarget.Id}/WorkloadConfiguration",
+                new([new(DeclarationVersionKeys.DeploymentTarget(foundTarget.Id), foundTarget.Revision),
+                    new(DeclarationVersionKeys.TargetWorkloadConfiguration(foundTarget.Id),
                         foundTarget.WorkloadConfiguration.Revision)])),
             new(computeAddress, foundCompute.ComputeProfileId,
-                new([new($"ComputeProfile/{foundCompute.ComputeProfileId}/Policy", pinnedCompute.PolicyRevision)])),
+                new([new(
+                    DeclarationVersionKeys.ComputeProfilePolicy(foundCompute.ComputeProfileId),
+                    pinnedCompute.PolicyRevision)])),
             new(storageAddress, foundStorage.ProfileId,
-                new([new($"StorageProfile/{foundStorage.ProfileId}/Policy", pinnedStorage.PolicyRevision)]))
+                new([new(
+                    DeclarationVersionKeys.StorageProfilePolicy(foundStorage.ProfileId),
+                    pinnedStorage.PolicyRevision)]))
         ]);
     }
 

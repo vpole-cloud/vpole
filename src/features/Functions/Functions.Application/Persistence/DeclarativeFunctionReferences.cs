@@ -139,12 +139,14 @@ internal sealed class FunctionDeclarationReferences(
         return new GitPreviewReferencesSnapshot([
             scope,
             new(targetAddress, targetId, new([
-                new($"DeploymentTarget/{targetId}", target.Target.Revision),
-                new($"DeploymentTarget/{targetId}/WorkloadConfiguration",
+                new(DeclarationVersionKeys.DeploymentTarget(targetId), target.Target.Revision),
+                new(DeclarationVersionKeys.TargetWorkloadConfiguration(targetId),
                     target.Target.WorkloadConfiguration.Revision)])),
             new(computeAddress, computeId, new([
-                new($"ComputeProfile/{computeId}/Policy", compute.PolicyRevision),
-                new($"ComputeProfile/{computeId}/Revision/{spec.Placement.ComputeProfile.Revision}", 0)]))]);
+                new(DeclarationVersionKeys.ComputeProfilePolicy(computeId), compute.PolicyRevision),
+                new(
+                    DeclarationVersionKeys.ComputeProfileRevision(computeId, spec.Placement.ComputeProfile.Revision),
+                    0)]))]);
     }
 
 }

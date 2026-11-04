@@ -59,16 +59,18 @@ type PostgresDeclarationAdoption(
                         return ReadPreviewReferencesOutcome(GitPreviewReferencesSnapshot(
                             [| yield! current
                                GitPreviewResolvedReference(targetAddress, target.Id, DeclarationVersionToken(
-                                   [| DeclarationDocumentVersion($"DeploymentTarget/{target.Id}", target.Revision)
-                                      DeclarationDocumentVersion($"DeploymentTarget/{target.Id}/WorkloadConfiguration",
+                                   [| DeclarationDocumentVersion(
+                                          DeclarationVersionKeys.DeploymentTarget(target.Id), target.Revision)
+                                      DeclarationDocumentVersion(
+                                          DeclarationVersionKeys.TargetWorkloadConfiguration(target.Id),
                                           target.WorkloadConfiguration.Revision) |]))
                                GitPreviewResolvedReference(computeAddress, compute.Compute.ComputeProfileId,
                                    DeclarationVersionToken([| DeclarationDocumentVersion(
-                                       $"ComputeProfile/{compute.Compute.ComputeProfileId}/Policy",
+                                       DeclarationVersionKeys.ComputeProfilePolicy(compute.Compute.ComputeProfileId),
                                        compute.PolicyRevision) |]))
                                GitPreviewResolvedReference(storageAddress, storage.Storage.ProfileId,
                                    DeclarationVersionToken([| DeclarationDocumentVersion(
-                                       $"StorageProfile/{storage.Storage.ProfileId}/Policy",
+                                       DeclarationVersionKeys.StorageProfilePolicy(storage.Storage.ProfileId),
                                        storage.PolicyRevision) |])) |]))
                     | _ -> return ReadPreviewReferencesOutcome(
                         PostgresDeclarations.blocked PostgresDeclarationError.StorageProfileUnavailable)
@@ -124,7 +126,8 @@ type PostgresDeclarationAdoption(
                     let spec = DeclarationJson.Read<PostgresDeclaration> request.Declaration.Spec
                     let versions = DeclarationVersionToken(
                         [| DeclarationDocumentVersion($"PostgresCluster/{current.Id}", current.Revision)
-                           DeclarationDocumentVersion($"PostgresCluster/{current.Id}/PlanningFence",
+                           DeclarationDocumentVersion(
+                               DeclarationVersionKeys.PlanningFence(PostgresDeclarations.Kind, current.Id),
                                current.PlanningFence)
                            yield! PostgresPlanning.versions data |])
                     let desired = projection data current true spec

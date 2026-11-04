@@ -75,7 +75,8 @@ type PostgresDeclarationLifecycle(
     let versions (current : PostgresCluster) (placements : LoadResourceDeploymentPlanningSnapshotOutcome) =
         DeclarationVersionToken(
             [| DeclarationDocumentVersion($"PostgresCluster/{current.Id}", current.Revision)
-               DeclarationDocumentVersion($"PostgresCluster/{current.Id}/PlanningFence", current.PlanningFence)
+               DeclarationDocumentVersion(
+                   DeclarationVersionKeys.PlanningFence(PostgresDeclarations.Kind, current.Id), current.PlanningFence)
                match placements.Value with
                | :? ResourceDeploymentPlanningSnapshot as placed ->
                    for item in placed.Items do
