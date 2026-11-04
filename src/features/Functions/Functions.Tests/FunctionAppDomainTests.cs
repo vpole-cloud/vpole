@@ -13,6 +13,64 @@ namespace Pole.Features.Functions.Tests;
 public sealed class FunctionAppDomainTests
 {
     [Fact]
+    public void Prepared_identity_has_no_executable_revision_and_round_trips_current_schema()
+    {
+        var options = FunctionAppFactory.DefaultCreateOptions;
+        var app = FunctionAppFactory.CreatePrepared(
+            "507f1f77bcf86cd799439011", "507f1f77bcf86cd799439012",
+            new("507f1f77bcf86cd799439013", "507f1f77bcf86cd799439014", "507f1f77bcf86cd799439015"),
+            "worker", "worker", DateTimeOffset.UtcNow, options);
+
+        Assert.Equal(FunctionAppDesiredState.Prepared, app.DesiredState);
+        Assert.Equal(FunctionAppStatus.Prepared, app.Status);
+        Assert.Null(app.ActiveRevisionId);
+        Assert.Null(app.PendingRevisionId);
+        Assert.Equal(1, app.NextRevisionNumber);
+        Assert.Equal(0, app.PlanningFence);
+        Assert.Equal(new FunctionQuotaAllocation(1, 0, 0, 0), app.AdmittedQuota);
+        var roundTrip = BsonSerializer.Deserialize<FunctionApp>(app.ToBson());
+        Assert.Equal(app.Id, roundTrip.Id);
+        Assert.Equal(app.DesiredState, roundTrip.DesiredState);
+        Assert.Equal(app.PlanningFence, roundTrip.PlanningFence);
+        var route = FunctionRouteBindingFactory.Reserve(app, app.CreatedAtUtc);
+        Assert.Equal(0, route.PlanningFence);
+        Assert.Equal(FunctionRouteBindingState.Reserved, route.State);
+        Assert.Empty(route.HttpRoutes);
+        Assert.Null(route.ActiveRevisionId);
+        Assert.Equal(0, BsonSerializer.Deserialize<FunctionRouteBinding>(route.ToBson()).PlanningFence);
+    }
+
+    [Fact]
+    public void Logical_secret_references_round_trip_without_native_names()
+    {
+        var configuration = new FunctionConfiguration(
+            ImmutableDictionary<string, string>.Empty,
+            ImmutableDictionary<string, FunctionSecretReference>.Empty
+                .Add("TOKEN", new("507f1f77bcf86cd799439099", "source-token")));
+        var bson = configuration.ToBson();
+        var restored = BsonSerializer.Deserialize<FunctionConfiguration>(bson);
+        Assert.Equal(configuration.SecretReferences["TOKEN"], restored.SecretReferences["TOKEN"]);
+        var json = JsonSerializer.Serialize(configuration);
+        var fromJson = JsonSerializer.Deserialize<FunctionConfiguration>(json)!;
+        Assert.Equal(configuration.SecretReferences["TOKEN"], fromJson.SecretReferences["TOKEN"]);
+        Assert.DoesNotContain("Kubernetes", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Secret_reference_validation_requires_logical_id_and_key()
+    {
+        var validator = new FunctionConfigurationValidator();
+        Assert.True(validator.Validate(new FunctionConfiguration(
+            ImmutableDictionary<string, string>.Empty,
+            ImmutableDictionary<string, FunctionSecretReference>.Empty
+                .Add("TOKEN", new("507f1f77bcf86cd799439099", "token")))).IsValid);
+        Assert.False(validator.Validate(new FunctionConfiguration(
+            ImmutableDictionary<string, string>.Empty,
+            ImmutableDictionary<string, FunctionSecretReference>.Empty
+                .Add("TOKEN", new("native-kubernetes-secret", "token")))).IsValid);
+    }
+
+    [Fact]
     public void Create_owns_runtime_identity_and_reserves_route_without_active_entries()
     {
         var request = CreateRevisionRequest(
@@ -104,6 +162,8 @@ public sealed class FunctionAppDomainTests
         Assert.IsType<HttpFunctionTriggerSpec>(restored.Spec.Handlers[0].Trigger);
         Assert.IsType<TimerFunctionTriggerSpec>(restored.Spec.Handlers[1].Trigger);
         Assert.Equal(readyAtUtc, Assert.IsType<ActiveFunctionRevisionStatus>(restored.Status).ReadyAtUtc);
+        Assert.Equal(0, created.Revision.PlanningFence);
+        Assert.Equal(0, restored.PlanningFence);
     }
 
     [Fact]
@@ -181,7 +241,7 @@ public sealed class FunctionAppDomainTests
             new FunctionImageRequest("registry.example", "team/functions", "v1"),
             new FunctionConfiguration(
                 ImmutableDictionary<string, string>.Empty,
-                ImmutableDictionary<string, string>.Empty),
+                ImmutableDictionary<string, FunctionSecretReference>.Empty),
             new FunctionResources(
                 new FunctionResourceValues(100, 128),
                 new FunctionResourceValues(500, 512)),

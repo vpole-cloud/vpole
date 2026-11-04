@@ -22,10 +22,6 @@ public sealed class RedisResourceDeploymentAdapter(
         if (validationFailure is not null)
             return validationFailure;
 
-        var kubernetes = await kubernetesClientProvider.GetAsync(
-            context.Deployment.Placement.DeploymentTargetId,
-            cancellationToken);
-
         var redis = await loadRedisById(
             context.Deployment.TenantId,
             context.Deployment.ResourceId,
@@ -37,6 +33,14 @@ public sealed class RedisResourceDeploymentAdapter(
                 "The logical Redis resource no longer exists.",
                 retryable: false);
         }
+
+        if (redis.Lifecycle is not ActiveRedisLifecycle)
+            return ResourceDeploymentAdapterResult.Failed.Create(
+                "RedisNotActive", "The Redis resource is not activated.", retryable: false);
+
+        var kubernetes = await kubernetesClientProvider.GetAsync(
+            context.Deployment.Placement.DeploymentTargetId,
+            cancellationToken);
 
         var inKubernetes = redis.ToKubernetes(
             context.Deployment.Placement.KubernetesNamespace,

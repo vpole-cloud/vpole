@@ -185,6 +185,7 @@
     <Project Path="tests/Pole.Tests.ObservationSerializationProbe/Pole.Tests.ObservationSerializationProbe.csproj" />
   </Folder>
   <Folder Name="/features/Secrets/">
+    <Project Path="src/features/Secrets/Secrets.Primitives/Secrets.Primitives.csproj" />
     <Project Path="src/features/Secrets/Secrets.Contracts/Secrets.Contracts.csproj" />
     <Project Path="src/features/Secrets/Secrets.Domain/Secrets.Domain.csproj" />
     <Project Path="src/features/Secrets/Secrets.Tests/Secrets.Tests.csproj" />

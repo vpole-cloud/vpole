@@ -8,6 +8,17 @@ namespace Pole.Features.Functions.Application.Persistence;
 
 internal static class FunctionAppFilters
 {
+    public static FilterDefinition<FunctionApp> ByName(string tenantId, string name) =>
+        ByTenant(tenantId) & Builders<FunctionApp>.Filter.Eq(app => app.NormalizedName, name);
+
+    public static FilterDefinition<FunctionApp> AtPlanningVersion(FunctionApp root) =>
+        ByTenantAndId(root.TenantId, root.Id) &
+        Builders<FunctionApp>.Filter.Eq(app => app.PlanningFence, root.PlanningFence) &
+        Builders<FunctionApp>.Filter.Eq(app => app.NextRevisionNumber, root.NextRevisionNumber) &
+        Builders<FunctionApp>.Filter.Eq(app => app.ActiveRevisionId, root.ActiveRevisionId) &
+        Builders<FunctionApp>.Filter.Eq(app => app.PendingRevisionId, root.PendingRevisionId) &
+        Builders<FunctionApp>.Filter.Eq(app => app.DesiredState, root.DesiredState);
+
     public static FilterDefinition<FunctionApp> ByTenant(string tenantId) =>
         Builders<FunctionApp>.Filter.Eq(app => app.TenantId, tenantId);
 
@@ -47,13 +58,15 @@ internal static class FunctionAppFilters
         Builders<FunctionApp>.Filter.And(
             ByTenantAndId(current.TenantId, current.Id),
             Builders<FunctionApp>.Filter.Eq(app => app.PendingRevisionId, null),
+            Builders<FunctionApp>.Filter.Eq(app => app.PlanningFence, current.PlanningFence),
+            Builders<FunctionApp>.Filter.Eq(app => app.DesiredState, current.DesiredState),
             Builders<FunctionApp>.Filter.Eq(
                 app => app.NextRevisionNumber,
                 current.NextRevisionNumber));
 
     public static FilterDefinition<FunctionApp> ForDeletion(FunctionApp current) =>
         Builders<FunctionApp>.Filter.And(
-            ByTenantAndId(current.TenantId, current.Id),
+            AtPlanningVersion(current),
             Builders<FunctionApp>.Filter.Ne(
                 app => app.DesiredState,
                 FunctionAppDesiredState.Deleting));
@@ -69,6 +82,18 @@ internal static class FunctionAppFilters
 
 internal static class FunctionRevisionFilters
 {
+    public static FilterDefinition<FunctionRevision> AtPlanningVersion(FunctionRevision revision) =>
+        ByFunctionApp(revision.TenantId, revision.FunctionAppId) &
+        Builders<FunctionRevision>.Filter.Eq(item => item.Id, revision.Id) &
+        Builders<FunctionRevision>.Filter.Eq(item => item.PlanningFence, revision.PlanningFence);
+
+    public static FilterDefinition<FunctionRevision> ReferencedConfiguration(
+        FunctionApp app,
+        IReadOnlyCollection<string> revisionIds) =>
+        ByFunctionApp(app.TenantId, app.Id) & Builders<FunctionRevision>.Filter.Or(
+            Builders<FunctionRevision>.Filter.In(revision => revision.Id, revisionIds),
+            Builders<FunctionRevision>.Filter.Eq(revision => revision.RevisionNumber, app.NextRevisionNumber - 1));
+
     public static FilterDefinition<FunctionRevision> ByFunctionApp(
         string tenantId,
         string functionAppId) =>
@@ -87,6 +112,15 @@ internal static class FunctionRevisionFilters
 
 internal static class FunctionRouteBindingFilters
 {
+    public static FilterDefinition<FunctionRouteBinding> ByRoute(string route) =>
+        Builders<FunctionRouteBinding>.Filter.Eq(item => item.NormalizedRoute, route);
+
+    public static FilterDefinition<FunctionRouteBinding> AtPlanningVersion(FunctionRouteBinding route) =>
+        ByRoute(route.NormalizedRoute) &
+        Builders<FunctionRouteBinding>.Filter.Eq(item => item.TenantId, route.TenantId) &
+        Builders<FunctionRouteBinding>.Filter.Eq(item => item.FunctionAppId, route.FunctionAppId) &
+        Builders<FunctionRouteBinding>.Filter.Eq(item => item.PlanningFence, route.PlanningFence);
+
     public static FilterDefinition<FunctionRouteBinding> ByFunctionApp(FunctionApp app) =>
         Builders<FunctionRouteBinding>.Filter.And(
             Builders<FunctionRouteBinding>.Filter.Eq(route => route.TenantId, app.TenantId),

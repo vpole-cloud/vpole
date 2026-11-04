@@ -32,6 +32,7 @@ export interface ResolvedStorageProfile {
 }
 
 export interface StorageProfile {
+  technicalName: string
   id: string
   displayName: string
   description: string
@@ -47,6 +48,7 @@ export interface StorageProfile {
 }
 
 export interface StorageProfileInput {
+  technicalName: string
   displayName: string
   description: string
   mediaType: StorageMediaType

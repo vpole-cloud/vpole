@@ -20,7 +20,11 @@ public sealed record FunctionImageSnapshot(
 
 public sealed record FunctionConfigurationSnapshot(
     ImmutableDictionary<string, string> EnvironmentVariables,
-    ImmutableDictionary<string, string> SecretReferences);
+    ImmutableDictionary<string, FunctionSecretReferenceSnapshot> SecretReferences);
+
+public sealed record FunctionSecretReferenceSnapshot(
+    string SecretId,
+    string Key);
 
 public sealed record FunctionResourcesSnapshot(
     FunctionResourceValuesSnapshot Requests,

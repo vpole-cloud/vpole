@@ -107,10 +107,11 @@ let heldChoices: Promise<Response> | undefined
 let heldUsage: Promise<Response> | undefined
 let choicesFail: boolean
 let usageFail: boolean
-const initialUsage = () => [
+const initialUsage = (): SecretUsage[] => [
   {
     binding: {
       id: 'binding',
+      usage: 'Runtime',
       consumerType: 'pole/web-service',
       consumerId: 'app',
       allDeployments: true,

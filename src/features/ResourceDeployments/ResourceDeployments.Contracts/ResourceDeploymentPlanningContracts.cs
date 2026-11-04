@@ -23,7 +23,10 @@ public sealed record ResourceDeploymentPlanningItem(
     long Revision,
     int FixedReplicas,
     ResourceDeploymentComputeConfiguration Compute,
-    ResourceDeploymentPlanningState State);
+    ResourceDeploymentPlanningState State,
+    ResourceDeploymentStorageConfiguration? Storage,
+    ResourceDeploymentIngressConfiguration? Ingress,
+    long DeploymentTargetConfigurationRevision);
 
 public sealed record ResourceDeploymentPlanningSnapshot(
     string TenantId,

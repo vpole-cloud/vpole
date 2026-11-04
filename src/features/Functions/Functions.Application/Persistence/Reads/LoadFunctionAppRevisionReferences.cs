@@ -6,7 +6,8 @@ namespace Pole.Features.Functions.Application.Persistence.Reads;
 
 public sealed record FunctionAppRevisionReferences(
     FunctionRevision? ActiveRevision,
-    FunctionRevision? PendingRevision);
+    FunctionRevision? PendingRevision,
+    FunctionRevision? LatestConfiguration);
 
 public delegate Task<FunctionAppRevisionReferences> LoadFunctionAppRevisionReferences(
     FunctionApp functionApp,
@@ -27,17 +28,15 @@ internal sealed class MongoLoadFunctionAppRevisionReferences(
             .Where(id => id is not null)
             .Cast<string>()
             .ToArray();
-        if (revisionIds.Length == 0)
-            return new FunctionAppRevisionReferences(null, null);
+        if (revisionIds.Length == 0 && functionApp.NextRevisionNumber == 1)
+            return new FunctionAppRevisionReferences(null, null, null);
 
         var revisions = await functionRevisions
-            .Find(FunctionRevisionFilters.ByFunctionAppAndIds(
-                functionApp.TenantId,
-                functionApp.Id,
-                revisionIds))
+            .Find(FunctionRevisionFilters.ReferencedConfiguration(functionApp, revisionIds))
             .ToListAsync(cancellationToken);
         return new FunctionAppRevisionReferences(
             revisions.FirstOrDefault(revision => revision.Id == functionApp.ActiveRevisionId),
-            revisions.FirstOrDefault(revision => revision.Id == functionApp.PendingRevisionId));
+            revisions.FirstOrDefault(revision => revision.Id == functionApp.PendingRevisionId),
+            revisions.FirstOrDefault(revision => revision.RevisionNumber == functionApp.NextRevisionNumber - 1));
     }
 }

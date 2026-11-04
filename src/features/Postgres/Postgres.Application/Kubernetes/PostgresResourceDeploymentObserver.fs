@@ -190,6 +190,7 @@ type PostgresResourceDeploymentObserver
 
                 match cluster with
                 | None -> return null
+                | Some cluster when cluster.IsPrepared -> return null
                 | Some cluster ->
                     let! client = clients.GetAsync(deployment.Placement.DeploymentTargetId, ct)
                     return! this.WorkloadAsync(cluster, deployment, client, ct)
@@ -220,6 +221,8 @@ type PostgresResourceDeploymentObserver
 
                     match cluster with
                     | None -> return UnavailableWorkloadObservation("ResourceNotFound") :> WorkloadObservation
+                    | Some cluster when cluster.IsPrepared ->
+                        return UnavailableWorkloadObservation("PostgresConfigurationPending") :> WorkloadObservation
                     | Some cluster ->
                         let! client = clients.GetAsync(deployment.Placement.DeploymentTargetId, ct)
                         return! this.ObserveNativeAsync(cluster, deployment, client, ct)
@@ -247,6 +250,9 @@ type PostgresResourceDeploymentObserver
                     | None ->
                         return
                             ResourceDeploymentBoundObservation(null, UnavailableWorkloadObservation("ResourceNotFound"))
+                    | Some cluster when cluster.IsPrepared ->
+                        return ResourceDeploymentBoundObservation(
+                            null, UnavailableWorkloadObservation("PostgresConfigurationPending"))
                     | Some cluster ->
                         let identity = this.Identity(deployment)
                         let name = PostgresClusterKubernetesBuilder.buildResourceName cluster.Id

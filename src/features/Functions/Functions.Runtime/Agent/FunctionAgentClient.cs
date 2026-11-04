@@ -191,17 +191,30 @@ public sealed class FunctionAgentClient(
             return new FunctionAgentProtocolResponse<T>(response.StatusCode, value, null);
         }
 
-        var error = await DeserializeAsync<FunctionProtocolError>(response.Content, cancellationToken) ??
-                    new FunctionProtocolError("invalid_agent_response", "Function Agent returned an invalid error response.");
+        var emptyAuthenticationError = response.StatusCode switch
+        {
+            HttpStatusCode.Unauthorized => new FunctionProtocolError(
+                "agent_unauthorized", "Function Agent rejected authentication."),
+            HttpStatusCode.Forbidden => new FunctionProtocolError(
+                "agent_forbidden", "Function Agent rejected authorization."),
+            _ => null
+        };
+        var error = await DeserializeAsync(
+                        response.Content, cancellationToken, emptyAuthenticationError) ??
+                    new FunctionProtocolError(
+                        "invalid_agent_response", "Function Agent returned an invalid error response.");
         return new FunctionAgentProtocolResponse<T>(response.StatusCode, default, error);
     }
 
-    private static async Task<T?> DeserializeAsync<T>(HttpContent content, CancellationToken cancellationToken)
+    private static async Task<T?> DeserializeAsync<T>(
+        HttpContent content,
+        CancellationToken cancellationToken,
+        T? emptyResponse = default)
     {
+        var responseStream = await content.ReadAsStreamAsync(cancellationToken);
+        await using var boundedStream = new BoundedResponseStream(responseStream, MaxProtocolResponseBytes);
         try
         {
-            var responseStream = await content.ReadAsStreamAsync(cancellationToken);
-            await using var boundedStream = new BoundedResponseStream(responseStream, MaxProtocolResponseBytes);
             return await JsonSerializer.DeserializeAsync<T>(boundedStream, JsonOptions, cancellationToken);
         }
         catch (FunctionAgentResponseTooLargeException exception)
@@ -209,6 +222,11 @@ public sealed class FunctionAgentClient(
             throw new FunctionAgentProtocolException(
                 "Function Agent response exceeded the protocol size limit.",
                 exception);
+        }
+        catch (JsonException) when (boundedStream.BytesRead == 0 && emptyResponse is not null)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return emptyResponse;
         }
         catch (JsonException exception)
         {
@@ -236,6 +254,8 @@ internal sealed class FunctionAgentResponseTooLargeException : Exception;
 internal sealed class BoundedResponseStream(Stream inner, long maxBytes) : Stream
 {
     private long bytesRead;
+
+    public long BytesRead => bytesRead;
 
     public override bool CanRead => inner.CanRead;
     public override bool CanSeek => false;

@@ -545,6 +545,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
         StorageProfileSizeLimitsDto? sizeLimits = null,
         bool isDefault = false) =>
         new(
+            TechnicalName: "storage-" + ObjectId.GenerateNewId(),
             DisplayName: displayName,
             Description: "Fast tenant storage",
             MediaType: "SSD",
@@ -607,6 +608,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
             }
             .Concat(additionalMappings ?? []);
         return StorageProfileFactory.Create(
+            technicalName: "storage-" + MongoDB.Bson.ObjectId.GenerateNewId(),
             displayName,
             description: displayName,
             StorageMediaType.SSD,

@@ -17,6 +17,15 @@ namespace Pole.Features.RedisServices.Tests;
 public sealed class RedisManifestTests
 {
     [Fact]
+    public void PreparedResourceCannotRenderWorkloadOrServiceManifests()
+    {
+        var active = CreateSubject();
+        var prepared = active with { Redis = active.Redis with { Lifecycle = new PreparedRedisLifecycle() } };
+        Assert.Throws<InvalidOperationException>(() => prepared.ToStatefulSet());
+        Assert.Throws<InvalidOperationException>(() => prepared.ToService());
+    }
+
+    [Fact]
     public void PlacementIdentity_IsStableAcrossRevisions_AndSeparatesRecreatedResources()
     {
         var subject = CreateSubject();

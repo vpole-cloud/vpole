@@ -16,6 +16,7 @@ public sealed record Redis(
     ImmutableHashSet<string> Tags,
     ImmutableList<ServiceEvent> Events,
     long Revision,
+    long PlanningFence,
     RedisLifecycle Lifecycle)
 {
     public Redis UpdateDesiredState(
@@ -29,6 +30,20 @@ public sealed record Redis(
         {
             Spec = spec,
             Tags = tags,
+            Revision = checked(Revision + 1)
+        };
+    }
+
+    public Redis ActivatePrepared(ImmutableHashSet<string> tags)
+    {
+        ArgumentNullException.ThrowIfNull(tags);
+        if (Lifecycle is not (PreparedRedisLifecycle or ActiveRedisLifecycle))
+            throw new InvalidOperationException("A deleting Redis service cannot be configured.");
+
+        return this with
+        {
+            Tags = tags,
+            Lifecycle = new ActiveRedisLifecycle(),
             Revision = checked(Revision + 1)
         };
     }
@@ -66,8 +81,10 @@ public sealed record Storage(
     string StorageProfileId);
 
 [BsonDiscriminator(RootClass = true)]
-[BsonKnownTypes(typeof(ActiveRedisLifecycle), typeof(DeletingRedisLifecycle))]
+[BsonKnownTypes(typeof(PreparedRedisLifecycle), typeof(ActiveRedisLifecycle), typeof(DeletingRedisLifecycle))]
 public abstract record RedisLifecycle;
+
+public sealed record PreparedRedisLifecycle : RedisLifecycle;
 
 public sealed record ActiveRedisLifecycle : RedisLifecycle;
 
@@ -105,5 +122,6 @@ public static class RedisFactory
             Tags: options.Tags,
             Events: options.Events,
             Revision: options.Revision,
+            PlanningFence: 0,
             Lifecycle: options.Lifecycle);
 }

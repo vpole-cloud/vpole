@@ -28,6 +28,7 @@ module PostgresStatefulSetKubernetesBuilder =
         (compute : KubernetesComputeConfiguration)
         (metadata : PostgresResourceDeploymentMetadata)
         (settings : PostgresSettings) =
+        cluster.EnsureConfigured()
         let labels = PostgresClusterKubernetesBuilder.buildLabels cluster metadata
         let annotations = PostgresClusterKubernetesBuilder.buildAnnotations ()
         let secretName = projection.KubernetesName

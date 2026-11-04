@@ -36,6 +36,8 @@ public sealed class StorageBrowserE2ETests(PoleE2EFixture fixture)
             var targetId = await target.InputValueAsync();
             Assert.False(string.IsNullOrWhiteSpace(targetId));
             var name = $"UI volume {Guid.NewGuid():N}"[..22];
+            await page.GetByLabel("Technical name", new PageGetByLabelOptions { Exact = true })
+                .FillAsync($"disk-{Guid.NewGuid():N}");
             await page.GetByLabel("Display name", new PageGetByLabelOptions { Exact = true }).FillAsync(name);
             var storageClass = await page.GetByLabel("Storage class", new PageGetByLabelOptions { Exact = true }).InputValueAsync();
             Assert.False(string.IsNullOrWhiteSpace(storageClass));

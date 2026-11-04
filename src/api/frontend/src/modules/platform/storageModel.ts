@@ -7,6 +7,7 @@ import type {
 } from './storageTypes'
 import type { PoleResourceType } from '../../types'
 export interface StorageDraft {
+  technicalName: string
   displayName: string
   description: string
   mediaType: StorageMediaType
@@ -31,6 +32,14 @@ export function storageProfileCommand(
     .filter(Boolean)
   const minSize = draft.minSizeGb.trim() ? Number(draft.minSizeGb) : null
   const maxSize = draft.maxSizeGb.trim() ? Number(draft.maxSizeGb) : null
+  if (
+    !baseline &&
+    (!/^[a-z](?:[a-z0-9-]*[a-z0-9])?$/.test(draft.technicalName) || draft.technicalName.length > 63)
+  )
+    return {
+      error:
+        'Technical name must be a lowercase DNS label starting with a letter (maximum 63 characters).',
+    }
   if (!draft.displayName.trim()) return { error: 'Display name is required.' }
   if (!draft.storageClassName.trim())
     return { error: 'A storage class is required for this target.' }
@@ -52,6 +61,7 @@ export function storageProfileCommand(
     targetMappings.push(mapping)
   return {
     input: {
+      technicalName: baseline?.technicalName ?? draft.technicalName,
       displayName: draft.displayName.trim(),
       description: draft.description.trim(),
       mediaType: draft.mediaType,

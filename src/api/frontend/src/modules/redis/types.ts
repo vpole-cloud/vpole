@@ -1,3 +1,4 @@
+import type { GitOpsStatus } from '../../data/gitOps'
 import type { ResourcePlacement } from '../../types'
 
 export interface RedisService {
@@ -7,7 +8,8 @@ export interface RedisService {
   spec: { storage: { sizeGb: number; storageProfileId: string } }
   tags: string[]
   revision: number
-  lifecycle: 'Active' | 'Deleting'
+  lifecycle: 'Prepared' | 'Active' | 'Deleting'
+  gitOps?: GitOpsStatus | null
   placement: ResourcePlacement | null
 }
 

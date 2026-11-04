@@ -33,7 +33,10 @@ internal sealed class ConsumerSecretReferenceAdmission(
         {
             var desired = request.DesiredReferences.Where(reference => reference.SecretId == id).Select(reference => reference.Key).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToImmutableArray();
             var current = await secrets.Find(session, SecretFilters.Identity(request.TenantId, id)).FirstOrDefaultAsync(ct);
-            var binding = current?.Bindings.SingleOrDefault(item => item.Consumer.ResourceType == request.ConsumerType.Value && item.Consumer.ResourceId == request.ConsumerId);
+            var binding = current?.Bindings.SingleOrDefault(item =>
+                item.Usage == Pole.Features.Secrets.Primitives.SecretBindingUsage.Runtime &&
+                item.Consumer.ResourceType == request.ConsumerType.Value &&
+                item.Consumer.ResourceId == request.ConsumerId);
             if (requireAvailable && desired.Length > 0)
             {
                 if (current is null || binding is null || current.ResourceGroupId != request.ResourceGroupId || current.IsolationScopeId != request.IsolationScopeId)

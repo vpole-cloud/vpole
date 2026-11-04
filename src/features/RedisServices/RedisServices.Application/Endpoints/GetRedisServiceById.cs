@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -52,7 +53,8 @@ public sealed class GetRedisServiceByIdRequestValidator
 
 public sealed class GetRedisServiceByIdHandler(
     LoadRedisById loadRedisById,
-    LoadResourceDeployment loadDeployment)
+    LoadResourceDeployment loadDeployment,
+    IGitOpsMutations git)
     : IMediatorOutcomeHandler<GetRedisServiceByIdRequest, GetRedisServiceByIdOutcome>
 {
     public async Task<GetRedisServiceByIdOutcome> HandleAsync(
@@ -73,7 +75,9 @@ public sealed class GetRedisServiceByIdHandler(
                 ResourceType: RedisResourceDeployment.ResourceType,
                 ResourceId: redis.Id),
             cancellationToken: cancellationToken);
-        return redis.ToDto(placement);
+        var status = await git.StatusAsync(new(request.TenantId, DeclarativeRedisProvider.ResourceKind, redis.Id),
+            cancellationToken);
+        return redis.ToDto(placement) with { GitOps = status };
     }
 }
 

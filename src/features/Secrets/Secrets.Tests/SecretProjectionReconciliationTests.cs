@@ -12,6 +12,22 @@ namespace Pole.Features.Secrets.Tests;
 public sealed class SecretProjectionReconciliationTests
 {
     [Fact]
+    public async Task Bootstrap_grants_never_create_native_projections()
+    {
+        var fixture = new Fixture();
+        fixture.Secret = fixture.Secret with
+        {
+            Bindings = fixture.Secret.Bindings.Select(binding => binding with
+            {
+                Usage = Pole.Features.Secrets.Primitives.SecretBindingUsage.Bootstrap
+            }).ToImmutableArray()
+        };
+        await fixture.Run();
+        Assert.Empty(fixture.Rows);
+        Assert.Empty(fixture.Target.Manifests);
+    }
+
+    [Fact]
     public async Task Partial_failure_is_independent_and_deleted_projection_is_repaired()
     {
         var fixture = new Fixture();

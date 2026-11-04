@@ -28,6 +28,7 @@ public sealed class RedisSchemaValidationTests(MongoReplicaSetFixture fixture) :
         await contract.AssertStrictErrorValidationAsync();
         await contract.AssertAcceptsAsync(
         [
+            CreateRedis(new PreparedRedisLifecycle()),
             CreateRedis(new ActiveRedisLifecycle()),
             CreateRedis(new DeletingRedisLifecycle(DateTime.UtcNow))
         ]);

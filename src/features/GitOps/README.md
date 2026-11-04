@@ -1,14 +1,17 @@
 # Repository GitOps
 
-Pole synchronizes a tenant-owned GitHub repository source through ResourceGroup, Secret,
-SecretBinding and WebService providers. The source API, durable worker, polling, signed push
-webhooks and dependency recovery now use phase-aware managed configuration planning. Every poll
-and Sync checks drift, including unchanged commits, repairs mutable configuration and records
-verified no-op without business revisions, resource events or releases. This remains one part of
-the #88/#98 PR; the other nine providers and lifecycle commands belong to later stages.
+Pole synchronizes tenant-owned GitHub repository sources through eight providers:
+ResourceGroup, IsolationScope, Secret, SecretBinding, WebService, PostgresCluster, RedisService
+and FunctionApp. The durable worker, polling, signed push webhooks and dependency recovery use
+phase-aware managed configuration planning. Every poll and Sync checks drift, including unchanged
+commits, repairs mutable configuration and records verified no-op without business revisions,
+resource events or releases.
 
-The [canonical repository contract](docs/repository-contracts.md) defines all thirteen kinds,
-source/run/inventory boundaries, YAML identity and the remaining delivery stages.
+The [canonical repository contract](docs/repository-contracts.md) contains the thirteen-kind
+coverage matrix, supported YAML schemas and examples, identity rules, catalog policy and phase
+semantics. Five providers remain for stage 6: ResourceConnection, DomainZone, HostnameBinding,
+SourceRepository and SourceBuildConfiguration. Lifecycle commands remain a later stage of the
+single #88/#98 PR.
 
 ## Execution
 
@@ -26,8 +29,9 @@ retained ownership is marked pending removal, never deleted.
 Accepted input stores normalized declarations, allocated resource IDs and ordered operations.
 Internal references use allocated IDs; successful external resolution is pinned durably before
 provider mutation. Recreated names never silently change the accepted target. Execution uses the
-existing Prepare/Bind/Configure phases, preserving inert WebService placement until complete
-configuration can activate it. Runtime readiness and configuration applied are separate facts.
+existing Prepare/Bind/Configure ordering. Workload providers contribute Prepare and Configure;
+SecretBinding contributes Bind for its consumer. Prepared workloads remain inert until complete
+configuration can activate them. Runtime readiness and configuration applied are separate facts.
 
 Every provider transaction performs real fencing writes against source revision/fence, current
 run and worker/attempt/expiry. Resource mutation, ownership, receipt, release and outbox commit
@@ -39,143 +43,37 @@ Source creators and Sync/Retry users remain audit metadata. The worker has serve
 removing an author's membership does not remove tenant-owned automation authority. WebService
 releases record source/run/commit provenance without fabricated user IDs or email addresses.
 
-## Create named catalog entries
+## Named catalogs and YAML
 
-ComputeProfile and DeploymentTarget creation require an explicit immutable `technicalName` in
-addition to the mutable `displayName`. Names use the lowercase DNS-label rule, are unique within
-each platform catalog, and are supplied in the existing platform-admin create request. Creation
-returns a named resource at revision 1, immediately usable by IaC; there is no assignment endpoint
-or second naming request. The API never derives a technical name from a display label.
+DeploymentTarget, ComputeProfile and StorageProfile creation require an immutable `technicalName`
+separate from mutable `displayName`. Names are lowercase DNS labels beginning with a letter,
+up to 63 characters, globally unique within their platform catalog. Use the existing admin create
+endpoints: `/api/v1/platform/deployment-targets/`, `/api/v1/platform/compute-profiles/` and
+`/api/v1/platform/storage/profiles`. Updates cannot rename an entry; concurrent duplicates return
+an explicit conflict. No naming backfill or compatibility assignment exists.
 
-For example, include `"technicalName": "small"` in `POST /api/v1/platform/compute-profiles/`
-and `"technicalName": "lab"` in `POST /api/v1/platform/deployment-targets/`, together with their
-normal configuration fields. Deployment-target connection validation and existing admin permissions
-remain unchanged. Update requests cannot rename the identity; display labels and configuration
-remain editable. Duplicate names return a typed 409 conflict, including concurrent creation.
+Every workload selects one target by technical name and a ComputeProfile by name and explicit
+revision. Redis/PostgreSQL also select StorageProfile name/revision and `storage.sizeGb`.
+Profiles retain immutable history. Pinned history supplies configuration; the current catalog
+still controls enablement, tenant/type access, target availability and size policy. Storage-class
+discovery errors remain typed failures. Revoked access cannot be bypassed by an old revision.
+See [catalog and identity rules](docs/repository-contracts.md#catalog-and-placement-rules).
 
-The built-in ComputeProfile is created with the explicit name `default`. Deployment-target bootstrap
-uses `DeploymentTargets:Bootstrap:TechnicalName` (explicit built-in default `local`), independently
-of its display label. Bootstrap and all catalog creation paths persist names from the start.
-Initial schema/index setup requires names; no compatibility assignment, inferred names or backfill
-is provided. Actual future ComputeProfile configuration edits retain immutable history, and Git
-continues to pin the desired revision explicitly.
+Additional IsolationScopes have tenant-wide technical names. `placement.isolationScope` selects
+one for a workload; Secret uses `spec.isolationScope`. Omission selects the group's system default
+scope. The name `default` is reserved and cannot be declared. Accepted resource/reference IDs stay
+pinned; reusing a name never silently rebinds an existing declaration.
 
-Name resolution runs through provider contracts with the trusted tenant, workload type and placement
-context. Unknown, inaccessible and ambiguous references block. Prepared services retain resolved
-name/ID pairs internally; retries and unchanged replays never switch to another catalog object that
-later reuses a name. An explicit profile revision selects only that bound profile's history.
-Changing the declared profile name is an explicit desired-state change; target replacement remains
-blocked. ID-based YAML is rejected structurally. There are no deployed legacy snapshots to migrate.
+The [canonical mixed YAML example](docs/repository-contracts.md#mixed-repository-example) shows
+all eight kinds. WebService supports Private/Public exposure and either fixed replicas or autoscaling.
+SecretBinding uses `consumer: { kind, name }`: Runtime grants support WebService/FunctionApp;
+Bootstrap grants authorize PostgreSQL initialization without a runtime projection. YAML never
+contains Secret values, credentials, tenant authority or internal Pole IDs.
 
-## Versioned schema and example
-
-Each YAML document has exactly `apiVersion`, `kind`, `metadata.name` and `spec`. Documents
-and files are unordered. Placement references use immutable catalog technical names, never database
-IDs or mutable display labels. ComputeProfile revision is required; it is never resolved implicitly
-to latest. Names are lowercase DNS labels beginning with a letter (at most 63 characters).
-
-```yaml
-apiVersion: pole.io/v1alpha1
-kind: ResourceGroup
-metadata:
-  name: demo
-spec:
-  description: Demo application
----
-apiVersion: pole.io/v1alpha1
-kind: Secret
-metadata:
-  name: demo-api-credentials
-spec:
-  resourceGroup: demo
-  keys: [API_TOKEN]
----
-apiVersion: pole.io/v1alpha1
-kind: WebService
-metadata:
-  name: demo-api
-spec:
-  resourceGroup: demo
-  image:
-    server: docker.io
-    name: nginx
-    tag: "1.27"
-  placement:
-    deploymentTarget: lab
-    computeProfile:
-      name: small
-      revision: 1
-  ports:
-    - name: http
-      servicePort: 80
-      targetPort: "8080"
-      protocol: TCP
-  probes:
-    startup:
-      {
-        path: /health,
-        port: "8080",
-        initialDelaySeconds: 5,
-        periodSeconds: 10,
-        timeoutSeconds: 5,
-        failureThreshold: 3,
-        successThreshold: 1,
-      }
-    liveness:
-      {
-        path: /health,
-        port: "8080",
-        initialDelaySeconds: 5,
-        periodSeconds: 10,
-        timeoutSeconds: 5,
-        failureThreshold: 3,
-        successThreshold: 1,
-      }
-    readiness:
-      {
-        path: /health,
-        port: "8080",
-        initialDelaySeconds: 5,
-        periodSeconds: 10,
-        timeoutSeconds: 5,
-        failureThreshold: 3,
-        successThreshold: 1,
-      }
-  secretEnvironment:
-    API_TOKEN: { secret: demo-api-credentials, key: API_TOKEN }
----
-apiVersion: pole.io/v1alpha1
-kind: SecretBinding
-metadata:
-  name: demo-api-credentials-access
-spec:
-  secret: demo-api-credentials
-  webService: demo-api
-```
-
-Optional fields/defaults: group `description: ''`, `tags: []`; Secret `purpose: ''`;
-WebService `exposure: Private`, `replicas: 1`, `environment: {}`, `secretEnvironment: {}`,
-`tags: []`; binding `keyMappings: {}` (all expected keys, unchanged names). Bindings currently
-select all service deployments in the same default isolation scope. A Secret can be referenced
-across sources; the reference does not transfer ownership or relax group/scope/placement admission.
-
-The first WebService slice deliberately supports one explicitly selected target, default group
-scope, Private exposure, explicit image, numeric TCP/UDP ports, HTTP probes and disabled
-autoscaling. Public exposure, extra scopes, multiple targets, custom domains, connection refs,
-source builds and the remaining resource kinds await the next provider stages. Git fields are
-complete authoritative desired state: omission resets optional fields to these defaults.
-Changing group/target or a binding's Secret/consumer requires an explicit replacement decision;
-the pipeline blocks it and never guesses a rename or adopts a manual resource.
-Changing or removing the projected alias of a key used by the working service blocks with
-`SecretKeysInUse`, including identity-to-alias and alias-to-identity changes. The existing
-projection and service remain usable. Stage a replacement source key and grant, supply its value,
-move the service reference, wait for the replacement rollout to complete successfully on every
-deployment, then retire the old key/alias. The recovery job retains old key/alias pins until complete
-native rollout proof is fenced against current deployments. `ConfigurationApplied` alone is insufficient:
-old runtime consumers may still use the previous key.
-An asynchronous projection replacement
-cannot safely rename a key still referenced by the current workload template. Equivalent aliases
-and remapping keys no longer referenced by the service remain supported.
+Git-owned resources reject manual configuration changes and deletion in the existing API/UI.
+Supported operational actions and PostgreSQL credential rotation retain their ordinary workflows.
+Group/scope/target changes, immutable storage changes and disappeared created resources produce
+blockers; they do not cause implicit adoption, relocation or recreation.
 
 ## Source API
 
@@ -203,8 +101,9 @@ change its commit. A retry reserves its run before later Sync requests can be cl
 
 Observed commit advances after resolution, attempted commit after acceptance, fully applied commit
 only after all phases succeed. Completed generation includes failures/blockers; it is not a success
-flag. Polling can skip an unchanged commit/revision only after the latest successful run, never
-after a later failed or partially applied run.
+flag. For an unchanged commit/revision, the worker may reuse the latest successful accepted snapshot
+without downloading it again. It still rechecks current access and replans every operation. A later
+failed or partially applied run prevents this reuse optimization.
 
 The former manual snapshot/resume routes are removed. There is no public YAML apply API.
 Responses do not expose raw manifests, accepted specs, credentials or Secret values.
@@ -235,7 +134,11 @@ YAML declares Secret metadata and keys, never values. Supply values through the 
 Secret API/UI. The Secrets-owned `SecretChangedEvent` adapter forwards value rotations through the
 generic GitOps dependency wake contract. Eligible blocked runs reserve an accepted-input retry;
 replayed signals are idempotent and do not displace newer pending Sync work. GitOps does not import
-Secrets Events. Existing version-aware projection and old-reference rollout safeguards remain active.
+Secrets Events. PostgreSQL consumes its bootstrap grant once through the Secrets-owned encrypted
+credential workflow; later source-value rotations do not reset the database password. FunctionApp
+and WebService use logical Secret/key references. Secrets resolves native names/keys at provisioning,
+and old references remain pinned until the owning workload confirms the previous rollout has completed.
+`ConfigurationApplied` alone does not release those pins.
 
 ## Persistence and remaining stages
 
@@ -253,14 +156,16 @@ and expose actions and field paths without projection values. WebService Prepare
 full configuration applied; Configure verifies managed fields while preserving connection references
 and server credentials.
 
-Additional providers, source
-pause/resume, detach/delete, adoption, replacement, relocation and preview confirmation remain
-later work. Prune stays `Retain`; there is no parallel ownership inventory or fabricated projection
+Stage 6 adds ResourceConnection, DomainZone, HostnameBinding, SourceRepository and
+SourceBuildConfiguration. Source pause/resume, detach/delete, adoption, replacement, relocation
+and public preview/confirmation remain later lifecycle work. Prune stays `Retain`; there is no parallel ownership inventory or fabricated projection
 state. Live Kubernetes drift and runtime readiness remain the runtime reconcilers' responsibility.
 No new GitOps UI is included.
 
-Stage verification includes solution build, full GitOps/GitProviders/SourceBuilds and architecture
-suites, full Integration and GitHub setup/repository-flow/drift Aspire E2E. Frontend gates apply when
-frontend transports or types change. The E2E fixture
-uses its isolated service graph and the existing full Kubernetes lab. The complete publication gate
-runs after all stages before the single PR; stage evidence does not replace it.
+Stage 5 verification requires solution build; affected GitOps, Secrets, PostgreSQL, Redis,
+Functions, GitProviders, SourceBuilds and architecture suites; full shared Integration; frontend
+test/build/lint; and GitHub setup plus mixed repository Aspire E2E. The
+[E2E guide](../../../docs/aspire-e2e-testing.md#gitops-repository-scenarios) separates the mixed
+configuration scenario from the real SDK Function activation/Secret rollout test. These describe
+verification boundaries, not a record that pending runs passed. The complete unfiltered publication
+gate runs after all stages before the single PR; stage evidence does not replace it.

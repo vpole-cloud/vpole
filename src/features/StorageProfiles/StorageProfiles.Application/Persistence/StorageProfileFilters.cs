@@ -6,6 +6,9 @@ namespace Pole.Features.StorageProfiles.Application.Persistence;
 
 internal static class StorageProfileFilters
 {
+    public static FilterDefinition<StorageProfile> ByTechnicalName(string name) =>
+        Builders<StorageProfile>.Filter.Eq(profile => profile.TechnicalName, name);
+
     public static FilterDefinition<StorageProfile> All() =>
         Builders<StorageProfile>.Filter.Empty;
 
@@ -22,6 +25,10 @@ internal static class StorageProfileFilters
                 candidate => candidate.ResolutionFence,
                 profile.ResolutionFence));
     }
+
+    public static FilterDefinition<StorageProfile> AtPolicy(string id, long revision) =>
+        ById(id) & Builders<StorageProfile>.Filter.Eq(profile => profile.Revision, revision) &
+        Builders<StorageProfile>.Filter.Lt(profile => profile.ResolutionFence, long.MaxValue);
 
     public static FilterDefinition<StorageProfile> Default() =>
         Builders<StorageProfile>.Filter.Eq(profile => profile.IsDefault, true);

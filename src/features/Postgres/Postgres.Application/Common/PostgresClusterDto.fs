@@ -1,5 +1,6 @@
 namespace Pole.Features.Postgres.Application.Common
 
+open Pole.Features.GitOps.Contracts
 open Pole.Features.Postgres.Domain
 open Pole.Features.ResourceDeployments.Contracts
 
@@ -17,17 +18,22 @@ type PostgresClusterDto =
       Revision : int64
       Lifecycle : string
       Spec : PostgresClusterSpecDto
-      Placement : PlacementSummaryDto }
+      Placement : PlacementSummaryDto
+      GitOps : GitResourceStatus }
 
 [<RequireQualifiedAccess>]
 module PostgresClusterDto =
-    let create (cluster : PostgresCluster) (placement : PlacementSummaryDto) : PostgresClusterDto =
+    let create
+        (cluster : PostgresCluster)
+        (placement : PlacementSummaryDto)
+        (gitOps : GitResourceStatus) : PostgresClusterDto =
         { Id = cluster.Id
           Name = cluster.Name
           GroupId = cluster.GroupId
           Revision = cluster.Revision
           Lifecycle =
             match cluster.Lifecycle with
+            | :? ActivePostgresClusterLifecycle when cluster.IsPrepared -> "Prepared"
             | :? ActivePostgresClusterLifecycle -> "Active"
             | :? DeletingPostgresClusterLifecycle -> "Deleting"
             | lifecycle -> invalidOp $"Unsupported PostgreSQL lifecycle '{lifecycle.GetType().Name}'."
@@ -37,4 +43,5 @@ module PostgresClusterDto =
               StorageProfileId = cluster.Spec.StorageProfileId
               Version = cluster.Spec.Version
               DeploymentMode = cluster.Spec.DeploymentMode.ToString() }
-          Placement = placement }
+          Placement = placement
+          GitOps = gitOps }

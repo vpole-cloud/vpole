@@ -265,6 +265,7 @@ public sealed class DependencyBrowserE2ETests(PoleE2EFixture fixture)
         var classes = await Admin(HttpMethod.Get, $"/api/v1/platform/storage/storage-classes?deploymentTargetId={targetId}");
         var profile = await Admin(HttpMethod.Post, "/api/v1/platform/storage/profiles", new
         {
+            technicalName = $"disk-{Guid.NewGuid():N}",
             displayName = "Dependency test disk",
             description = "Ephemeral test profile",
             mediaType = "Network",

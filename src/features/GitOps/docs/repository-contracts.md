@@ -1,18 +1,19 @@
 # Repository GitOps contracts
 
-This is the target contract for the single #88/#98 delivery. Stage 1 provides compiled models,
-source acquisition and resource planning contracts, and read/plan implementations for four providers.
-Stage 2 adds the GitHub source adapter and immutable connection names. Stage 3 connects the source API,
-durable repository worker, polling and push webhooks. Manual snapshot entrypoints are removed.
-Drift repair and lifecycle commands remain subsequent stages.
+This is the canonical contract for the single #88/#98 delivery. Repository acquisition, the source
+API, durable execution, polling, push webhooks and managed drift reconciliation are implemented.
+Stage 5 supplies eight resource providers: ResourceGroup, IsolationScope, Secret, SecretBinding,
+WebService, RedisService, PostgresCluster and FunctionApp. The five remaining providers belong to
+stage 6; public lifecycle commands belong to stage 7. Manual snapshot entrypoints are removed.
+The verification section describes required evidence separately from implementation scope.
 
 ## Ownership and module boundaries
 
 The shared phase identity lives once in dependency-leaf GitOps.Primitives, used by Domain and Contracts.
 GitOps.Domain owns stored source configuration, synchronization state, run/lease, operation,
 inventory and preview records. BSON attributes stay on those models; Application owns collections,
-transactions, codecs and boundary mappings. Repository source/synchronization/run collections are active in stage 3. Manual source/execution
-models and storage are removed; there are no compatibility readers, backfills or dual writes.
+transactions, codecs and boundary mappings. Repository source/synchronization/run collections are active.
+Manual source/execution models and storage are removed; there are no compatibility readers, backfills or dual writes.
 
 GitOps owns source and resource extension contracts. GitProviders.Application implements the
 source extension; each resource provider implements its own resource extension. Generic GitOps
@@ -46,15 +47,16 @@ none may be converted to an empty desired set. The stage-2 GitHub adapter implem
 Resource providers normalize desired declarations, describe dependencies, resolve names, read current
 managed configuration, project desired configuration and apply operations. The generic planner compares
 normalized projections and returns create, update, no-op, blocked, adoption, replacement or removal.
-Stage 1 planners emit create/update/no-op, adoption/replacement requirements and blockers; they do not
-execute adoption/replacement/removal. Read projections contain only managed fields. Runtime observations,
+Providers perform create/update mutations and guard no-op preconditions; the engine records the
+operation result. Adoption/replacement/removal return typed blockers because those lifecycle
+operations are not connected. Read projections contain only managed fields. Runtime observations,
 revision timestamps, credentials and Secret values must never enter a projection or diff.
 
 Projection references use resolved internal IDs inside the server boundary, so a renamed/recreated
 reference cannot appear identical just because a name matches. Current reads return a version vector
 covering all documents that contributed managed state. A plan is advisory until its source, ownership,
-resource versions and references are revalidated in the mutation transaction. Stage 1 does not switch
-the existing apply pipeline to a new execution engine. Drift reconciliation is stage 4.
+resource versions and references are revalidated in the mutation transaction. The durable worker uses
+this phase-aware planning on every poll and Sync, including the same commit.
 
 ## YAML identity and coverage
 
@@ -64,35 +66,35 @@ constraints, not address qualifiers. References are tenant-local, may cross sour
 transfer it. Accepted IDs remain pinned; name reuse cannot silently rebind an accepted declaration.
 
 DeploymentTarget is referenced by technical name. ComputeProfile and StorageProfile require explicit
-technical name **and revision**. StorageProfile naming/history are stage 5 work. GitHub connections get
-an explicit immutable tenant-unique technical name at creation in stage 2; account display names and
-Mongo IDs are not YAML connection identities. Generated runtime objects are never declarations.
+technical name **and revision**, with immutable catalog history. GitHub connections have immutable
+tenant-unique technical names; account display names and Mongo IDs are not YAML connection identities.
+Generated runtime objects are never declarations.
 
-The table records the current API surface as input to later providers, not a claim that all schemas
-are implemented. Absence of an update API requires an explicit future lifecycle decision; it does
-not establish a permanent domain prohibition. New provider schemas are implemented in stages 5–6.
+The first eight rows are implemented provider schemas. The remaining five rows describe existing
+owner API capabilities and the stage-6 boundary, not accepted YAML schemas. A missing update API
+requires an explicit lifecycle decision; it does not establish a permanent domain prohibition.
 
-| Kind / owner                             | Managed fields from current API                                                                                 | References / immutable boundaries                                                                                       | Excluded / phases                                                                                      |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| ResourceGroup / ResourceGroups           | Description, Tags                                                                                               | Name is identity                                                                                                        | Default scope, registrations, lifecycle; Prepare                                                       |
-| IsolationScope / ResourceGroups          | Name, parent group                                                                                              | Group reference; default scope reserved; current names are group-local and need tenant-wide declaration identity        | Runtime cells, lifecycle; Prepare after group                                                          |
-| WebService / WebServices                 | Image server/name/tag, env, ports, secret/connection refs, probes, autoscaling, tags, exposure, target replicas | Group/scope, target, pinned compute, secrets/connections; placement identity changes need explicit handling             | Registry credentials, generated hostnames, releases, observations; Prepare → Bind → Configure/activate |
-| PostgresCluster / Postgres               | Version, Instances, Storage, Username; update supports Instances/Storage/compute                                | Group, placement, pinned storage/compute; creation Password must become a separate secret-reference provisioning design | Password/ciphertext, runtime; Prepare → Bind credentials → Configure/activate                          |
-| RedisService / RedisServices             | Storage, Tags, compute, placement                                                                               | Group/scope, pinned profiles; storage profile changes and any size changes are currently rejected                       | Resolved storage/runtime; Prepare → Bind → Configure/activate                                          |
-| FunctionApp / Functions                  | FunctionRoute, image, env/secret refs, resources, scaling, handlers and triggers, tags                          | Group, compute, secrets; route/group creation-only; current API has no target/scope selector                            | Protocol/runtime data, invocations, generated trigger IDs; Prepare → Bind → Configure/activate         |
-| ResourceConnection / ResourceConnections | Name, source, destination, EndpointId                                                                           | Typed named resource references; endpoint is provider-owned selector; no general update API                             | Resolved network snapshots, fences, cleanup; Bind after both placements                                |
-| DomainZone / Domains                     | DeploymentTarget, Label                                                                                         | Managed label reservation under target base domain; target/label creation-only; separate declaration identity           | Derived Domain, generated zones; Prepare                                                               |
-| HostnameBinding / Domains                | Zone, RelativeName, workload placement selection                                                                | Named zone/workload/target; no generated deployment IDs; no update API                                                  | Computed hostname and generated bindings; Bind                                                         |
-| Secret / Secrets                         | ResourceGroup, Purpose, Keys                                                                                    | Group immutable in current provider                                                                                     | Values/ciphertext, encryption metadata, value versions, bindings; Prepare                              |
-| SecretBinding / Secrets                  | Secret, WebService, KeyMappings                                                                                 | Secret/consumer immutable; current slice all deployments/WebService only                                                | Required/retained rollout pins and projections; Bind                                                   |
-| SourceRepository / GitProviders          | Connection, external repository, Branch; current link also requires CandidateKey                                | Connection technical name; general repository access must be separated from build analysis                              | URL/privacy/analysis observations; Prepare                                                             |
-| SourceBuildConfiguration / SourceBuilds  | Recipe candidate/kind/root/manifest/commands/start command/Dockerfile                                           | Repository + WebService creation-only; candidate changes currently rejected                                             | IsCustomized is server-set; jobs/logs/images/credentials excluded; Configure                           |
+| Kind / owner                             | Status and managed fields                                                                                                                        | References / immutable boundaries                                                                                                    | Excluded fields and phases                                                                                                |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| ResourceGroup / ResourceGroups           | Implemented: description, tags                                                                                                                   | Name is identity                                                                                                                     | Default scope, registrations, lifecycle; Prepare                                                                          |
+| IsolationScope / ResourceGroups          | Implemented: name, parent group                                                                                                                  | Tenant-wide name; parent group immutable; `default` reserved                                                                         | Runtime cells, lifecycle; Prepare after group; create/no-op                                                               |
+| Secret / Secrets                         | Implemented: resourceGroup, isolationScope, purpose, keys                                                                                        | Group/scope immutable; declared key metadata only                                                                                    | Values, ciphertext, value versions, binding state; Prepare                                                                |
+| SecretBinding / Secrets                  | Implemented: secret, consumer kind/name, usage, keyMappings                                                                                      | Secret/consumer/usage immutable; scope admission; Runtime for WebService/FunctionApp, Bootstrap for PostgreSQL                       | Native projections and retained rollout pins; Bind                                                                        |
+| WebService / WebServices                 | Implemented: image, environment, logical secrets, ports, probes, tags, exposure, fixed replicas or autoscaling, pinned compute                   | Group/scope/target immutable; Secret grants required                                                                                 | Connection environment references, registry credentials, generated hostnames, releases, observations; Prepare → Configure |
+| RedisService / RedisServices             | Implemented: tags, pinned compute; storage size/profile and placement on creation                                                                | Group/scope/target and storage profile/revision/size immutable                                                                       | Runtime, timestamps; Prepare → Configure                                                                                  |
+| PostgresCluster / Postgres               | Implemented: version, instances, storage size, username/bootstrap reference, pinned compute/storage, placement                                   | Version, username, bootstrap identity, group/scope/target and storage profile/revision immutable; capacity updates retain mode rules | Credentials, runtime, timestamps; Prepare → Configure with separate Bootstrap binding                                     |
+| FunctionApp / Functions                  | Implemented: functionRoute, image, environment, logical secrets, resources, scaling, handlers/triggers, tags, pinned compute, explicit placement | Route/group/scope/target immutable; runtime Secret grants required                                                                   | Protocol/runtime data, invocations, generated trigger IDs and schedule versions; Prepare → Configure                      |
+| ResourceConnection / ResourceConnections | Stage 6: existing create/read/delete API for source, destination, endpoint                                                                       | Typed named resources; endpoint is a provider-owned selector                                                                         | Resolved network snapshots, fences, cleanup; planned Bind after placements                                                |
+| DomainZone / Domains                     | Stage 6: existing target/label reservation API                                                                                                   | Managed label under target base domain; target/label creation-only                                                                   | Derived domain and generated zones; planned Prepare                                                                       |
+| HostnameBinding / Domains                | Stage 6: existing zone/relative-name/workload binding API                                                                                        | Named zone/workload/target; generated deployment IDs stay internal                                                                   | Computed hostname/generated bindings; planned Bind                                                                        |
+| SourceRepository / GitProviders          | Stage 6: existing connection/repository/branch link also requires CandidateKey                                                                   | Named connection; source provider must separate build-link/candidate concerns from repository access                                 | URL/privacy/analysis observations; planned Prepare                                                                        |
+| SourceBuildConfiguration / SourceBuilds  | Stage 6: existing recipe/candidate/command/Dockerfile API                                                                                        | Repository and WebService creation-only; current candidate changes rejected                                                          | Jobs, logs, images, credentials, server-set customization state; planned Configure                                        |
 
-Canonical evidence is in each owning feature's create/update endpoint and Domain. In particular:
-`WebServices.Application/Common/WebServiceDto.cs`, `Postgres.Application/Endpoints/UpdatePostgresCluster.fs`,
-`RedisServices.Application/Endpoints/UpdateRedisService.cs`, `Functions.Application/Endpoints/CreateFunctionApp.cs`,
-`Domains.Application/Endpoints/CreateDomainZone.cs`, `GitProviders.Application/Endpoints/Repositories/LinkProviderRepository.cs`.
-Build output may publish an image but cannot mutate Git-owned desired image configuration.
+Schemas and phase evidence live with their owners: `DeclarativeResourceGroupProvider`,
+`DeclarativeIsolationScopeProvider`, `DeclarativeSecretProvider`, `DeclarativeSecretBindingProvider`,
+`DeclarativeWebServiceProvider`, `DeclarativeRedisProvider`, `PostgresDeclaration.fs` and
+`FunctionDeclaration.cs`. Later-provider API evidence remains in the Domains, ResourceConnections,
+GitProviders and SourceBuilds endpoints. Build output cannot mutate Git-owned desired image configuration.
 
 ## Target source API
 
@@ -132,12 +134,19 @@ concrete reviewed action. Failed read/preflight never authorizes deletion. Stage
 
 ## Verification and delivery
 
-Unit/BSON tests prove current schema and transitions, lease fencing, projection normalization and
-preview invalidation. Mongo tests prove all four provider projections plus the unchanged snapshot
-transactions, retry/fencing and secret-value recovery. Architecture tests enforce Domain ownership,
-provider boundaries, records, explicit constructors and contract parameter limits. No legacy documents exist.
-Stage 1 runs the solution build, full GitOps unit and architecture suites and full Pole.Tests.Integration.
-The final single PR still requires a fresh unfiltered publication quality gate and independent review.
+Required evidence covers current-schema BSON, factories, phases, normalized projections, explicit
+constructor inputs and pinned identities. Mongo checks cover all eight providers, catalog history/current
+policy, mutation/quota/ownership/receipt/revision/outbox atomicity, fencing, retry, bootstrap recovery,
+rollout retention and absence of no-op side effects. Architecture checks enforce Domain ownership,
+provider boundaries, records and the three-parameter contract limit. No legacy documents exist.
+
+Stage 5 requires solution build; the affected feature and architecture suites; full
+`Pole.Tests.Integration`; frontend `npm test`, `npm run build`, `npm run lint`; GitHub setup and mixed
+repository Aspire E2E; and the dedicated PostgreSQL/Function live checks. See the
+[E2E boundaries](../../../../docs/aspire-e2e-testing.md#gitops-repository-scenarios). Test definitions
+and fixture image publication are not evidence that runtime activation or a full suite passed.
+Record actual results at delivery; unavailable infrastructure is a verification blocker. A fresh,
+unfiltered publication quality gate and independent review remain required after all stages.
 
 ## Stage 2: GitHub repository input
 
@@ -219,3 +228,269 @@ the persisted recovery backoff and five-failure bound. Applied projections requi
 API summaries count operations rather than resources and expose actions and field paths only.
 Adoption, replacement, removal and other lifecycle commands remain blocked until their later stage;
 prune stays Retain. No new timer, endpoint family or UI is introduced.
+
+## Stage 5: catalog references and workload providers
+
+### Catalog and placement rules
+
+Every workload selects one DeploymentTarget and an explicit ComputeProfile name/revision.
+`placement.isolationScope` is optional; omission selects the group's default scope. Secret uses
+`spec.isolationScope`. Additional scopes have immutable tenant-wide names; the system default
+scope remains one per group and `IsolationScope/default` cannot be declared. Accepted scope,
+resource and reference IDs remain pinned. Scope supports create/no-op; changing its parent group
+blocks. Created resources that disappear are not recreated or replaced by same-name objects.
+
+StorageProfile creation takes an immutable globally unique technical name, while display name stays
+mutable. Root changes, immutable revision snapshots and outbox commit together; a no-op creates no
+history revision. A pinned historical revision supplies the storage class for the selected target.
+Current profile enablement, tenant access, allowed workload types, target availability and size policy
+are checked again. Discovery still validates storage-class availability and returns typed failures.
+Transactional fences cover current policy and the pinned snapshot; history cannot bypass revocation.
+
+`storage.profile: { name, revision }` and the selected class are immutable after workload creation.
+Redis additionally fixes `storage.sizeGb`. PostgreSQL allows only its existing supported resize path:
+StatefulSet mode requires one instance and rejects resize; Operator mode permits supported instance
+changes and growth, rejects shrink and unsupported compute runtime classes. Deployment mode is server
+configuration, never YAML. Version, username and the accepted bootstrap Secret/key remain immutable.
+Compute changes use each owner's admission, quota and revision workflows.
+
+### Grants, phases and updates
+
+SecretBinding has `secret`, `consumer: { kind, name }`, optional `keyMappings` and `usage`.
+`usage: Runtime` is the default for WebService/FunctionApp. `usage: Bootstrap` grants PostgreSQL
+credential initialization without creating a Kubernetes projection for that grant. An empty
+`keyMappings` grants all expected keys with unchanged names. A reference alone grants no access;
+current tenant, group/scope and placement admission still apply. The old `webService` field has no alias.
+Removing or remapping a key still required by active/retained consumers is blocked. Move consumers to
+new references and complete their rollout before removing the old grant/key mapping.
+
+PostgreSQL requires `username` and `bootstrapPassword: { secret, key }` plus a Bootstrap grant.
+Secrets validates the grant, scope, key and source version, then atomically creates the encrypted
+owner-managed credential. GitOps snapshots, plans, receipts, diagnostics and events never receive
+plaintext. Missing values block Configure; supplying them wakes eligible runs without a new commit.
+Once bootstrapped, source-value rotation is not a runtime dependency and does not change the database
+password. PostgreSQL's existing rotation workflow remains authoritative; crash replay cannot reset it.
+
+Workload providers contribute Prepare and Configure. SecretBinding contributes the intervening Bind
+operations for consumers that need grants. Redis has no artificial Bind step. Prepare stores an inert
+identity, registration and deferred placement; it starts no workload, HTTP route or timer. Configure
+accepts complete configuration atomically, after owner admission and quota checks. Previous working
+configuration stays in place until an update is accepted. Configuration applied and runtime ready are
+separate facts; Function activation additionally requires its runtime validation/promotion workflow.
+
+FunctionApp stores logical Secret/key references rather than Kubernetes names. Secrets resolves native
+names and keys at provisioning. Admission, projection readiness and rollout confirmation preserve old
+references until older revisions are retired/failed and runtime observations confirm only the ready
+active revision still consumes them. Configuration applied alone does not release retained pins.
+A no-op creates no Function revision, trigger ID or schedule version. Pending configuration is compared as desired state; runtime status
+changes alone are not drift. Explicit resource limits retain the existing Function API semantics
+alongside pinned compute placement.
+
+WebService supports Private/Public exposure, with Private as the default. Public exposure follows
+current ingress admission and generated-hostname workflows. `replicas` and `autoscaling` are mutually
+exclusive; omitting both means one fixed replica. Autoscaling accepts `minReplicas`, `maxReplicas`,
+`metric: { type: cpu|memory, targetAverageUtilization }`; observed replica counts are excluded from drift.
+Image, ordinary/logical-secret environment, numeric TCP/UDP ports, HTTP probes and tags remain managed.
+Probe `port` is numeric text, not a named port. Connection environment references and server credentials
+are preserved. Custom hostname/connectivity declarations await stage 6.
+
+All operations retain revisioned plans, session-consistent reads, real resource/dependency fences,
+bounded replanning, receipts and atomic mutation/quota/ownership/revision/release/outbox writes. Manual
+configuration changes and deletion are blocked server-side for Git-owned resources; existing DTO/UI
+ownership indicators disable those actions. Supported operational actions and PostgreSQL password
+rotation retain their ordinary workflow and restrictions. Prune stays Retain; lifecycle operations
+including adoption, replacement, relocation, pause/resume, detach/delete and public preview/confirm
+remain unavailable.
+
+### Mixed repository example
+
+Create catalog entries named `lab`, `small` and `standard` first, with the shown revision available
+and current policy allowing all selected workloads. The target must admit workloads; Public WebService
+also needs ingress configuration. Replace the Function image below with a published application built
+with the real Pole Function SDK and a registered `hello` handler. Supply `PASSWORD` through the protected
+Secret API/UI after the metadata exists. The example intentionally contains no Secret values.
+
+```yaml
+apiVersion: pole.io/v1alpha1
+kind: ResourceGroup
+metadata:
+  name: demo
+spec:
+  description: Mixed GitOps application
+  tags: [gitops]
+---
+apiVersion: pole.io/v1alpha1
+kind: IsolationScope
+metadata:
+  name: demo-scope
+spec:
+  resourceGroup: demo
+---
+apiVersion: pole.io/v1alpha1
+kind: Secret
+metadata:
+  name: demo-credentials
+spec:
+  resourceGroup: demo
+  isolationScope: demo-scope
+  purpose: Application and bootstrap credentials
+  keys: [PASSWORD]
+---
+apiVersion: pole.io/v1alpha1
+kind: RedisService
+metadata:
+  name: demo-cache
+spec:
+  resourceGroup: demo
+  placement:
+    deploymentTarget: lab
+    isolationScope: demo-scope
+    computeProfile: { name: small, revision: 1 }
+  storage:
+    sizeGb: 1
+    profile: { name: standard, revision: 1 }
+  tags: [gitops]
+---
+apiVersion: pole.io/v1alpha1
+kind: PostgresCluster
+metadata:
+  name: demo-database
+spec:
+  resourceGroup: demo
+  placement:
+    deploymentTarget: lab
+    isolationScope: demo-scope
+    computeProfile: { name: small, revision: 1 }
+  storage:
+    sizeGb: 1
+    profile: { name: standard, revision: 1 }
+  version: 16
+  instances: 1
+  username: app
+  bootstrapPassword: { secret: demo-credentials, key: PASSWORD }
+---
+apiVersion: pole.io/v1alpha1
+kind: WebService
+metadata:
+  name: demo-web
+spec:
+  resourceGroup: demo
+  placement:
+    deploymentTarget: lab
+    isolationScope: demo-scope
+    computeProfile: { name: small, revision: 1 }
+  image: { server: docker.io, name: traefik/whoami, tag: v1.11.0 }
+  exposure: Public
+  autoscaling:
+    minReplicas: 1
+    maxReplicas: 3
+    metric: { type: cpu, targetAverageUtilization: 70 }
+  ports:
+    - { name: http, servicePort: 80, targetPort: "80", protocol: TCP }
+  probes:
+    startup:
+      path: /
+      port: "80"
+      initialDelaySeconds: 0
+      periodSeconds: 5
+      timeoutSeconds: 1
+      failureThreshold: 3
+      successThreshold: 1
+    readiness:
+      path: /
+      port: "80"
+      initialDelaySeconds: 0
+      periodSeconds: 5
+      timeoutSeconds: 1
+      failureThreshold: 3
+      successThreshold: 1
+    liveness:
+      path: /
+      port: "80"
+      initialDelaySeconds: 0
+      periodSeconds: 5
+      timeoutSeconds: 1
+      failureThreshold: 3
+      successThreshold: 1
+  secretEnvironment:
+    APP_PASSWORD: { secret: demo-credentials, key: PASSWORD }
+  tags: [gitops]
+---
+apiVersion: pole.io/v1alpha1
+kind: FunctionApp
+metadata:
+  name: demo-function
+spec:
+  resourceGroup: demo
+  functionRoute: demo-function
+  placement:
+    deploymentTarget: lab
+    isolationScope: demo-scope
+    computeProfile: { name: small, revision: 1 }
+  image: { server: registry.example.test, name: apps/functions, tag: v1 }
+  environment: {}
+  secretEnvironment:
+    STAGE_FIVE_SECRET: { secret: demo-credentials, key: PASSWORD }
+  resources:
+    requests: { cpuMillis: 100, memoryMi: 256 }
+    limits: { cpuMillis: 500, memoryMi: 512 }
+  scaling:
+    minInstances: 1
+    maxInstances: 1
+    targetConcurrencyPerInstance: 1
+    maxConcurrencyPerInstance: 10
+    scaleDownDelaySeconds: 60
+    activationTimeoutSeconds: 120
+  handlers:
+    - name: hello
+      maxConcurrencyPerInstance: 10
+      trigger:
+        type: http
+        route: hello
+        methods: [GET]
+        exposure: Internal
+  tags: [gitops]
+---
+apiVersion: pole.io/v1alpha1
+kind: SecretBinding
+metadata:
+  name: demo-web-access
+spec:
+  secret: demo-credentials
+  consumer: { kind: WebService, name: demo-web }
+  usage: Runtime
+---
+apiVersion: pole.io/v1alpha1
+kind: SecretBinding
+metadata:
+  name: demo-function-access
+spec:
+  secret: demo-credentials
+  consumer: { kind: FunctionApp, name: demo-function }
+  usage: Runtime
+---
+apiVersion: pole.io/v1alpha1
+kind: SecretBinding
+metadata:
+  name: demo-database-bootstrap
+spec:
+  secret: demo-credentials
+  consumer: { kind: PostgresCluster, name: demo-database }
+  usage: Bootstrap
+```
+
+This is ten declarations across eight kinds and fourteen phase operations. The Function HTTP trigger
+route is `hello`, without a leading slash. Timer handlers instead use `type: timer`, `cron`,
+`concurrencyPolicy` (`Allow`/`Forbid`), `misfirePolicy` (`Skip`/`FireOnce`) and
+`retry: { maxAttempts, backoffSeconds }`; trigger identities and schedule versions are generated.
+Function resources/scaling/handlers are explicit. Redis tags, Function/WebService environment and tags,
+Secret purpose and binding key mappings default to empty collections/text; PostgreSQL instances default
+to one. Omission resets managed optional fields to their documented defaults, not to their prior value.
+
+### Stage 6 handoff
+
+The remaining kinds are ResourceConnection, DomainZone, HostnameBinding, SourceRepository and
+SourceBuildConfiguration. Their owners already expose ordinary API capabilities, but their GitOps
+schemas/providers are not registered. Stage 6 must preserve the same generic planning, accepted-ID,
+transactional fencing, ownership and no-op contracts. Repository snapshot acquisition continues to
+use connection plus external repository ID independently of SourceRepository/build analysis.

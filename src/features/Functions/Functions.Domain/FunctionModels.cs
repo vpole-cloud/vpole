@@ -22,6 +22,7 @@ public sealed record FunctionApp(
     FunctionAppStatus Status,
     FunctionQuotaAllocation AdmittedQuota,
     ImmutableHashSet<string> Tags,
+    long PlanningFence,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset UpdatedAtUtc);
 
@@ -34,7 +35,8 @@ public enum FunctionAppDesiredState
 {
     Enabled,
     Suspended,
-    Deleting
+    Deleting,
+    Prepared
 }
 
 public enum FunctionAppStatus
@@ -44,7 +46,8 @@ public enum FunctionAppStatus
     Updating,
     Suspended,
     Failed,
-    Deleting
+    Deleting,
+    Prepared
 }
 
 public sealed record FunctionRevision(
@@ -56,6 +59,7 @@ public sealed record FunctionRevision(
     int RevisionNumber,
     FunctionRevisionSpec Spec,
     FunctionRevisionStatus Status,
+    long PlanningFence,
     DateTimeOffset CreatedAtUtc)
 {
     public static FunctionRevision CreateProvisioning(
@@ -72,6 +76,7 @@ public sealed record FunctionRevision(
             revisionNumber,
             spec,
             new ProvisioningFunctionRevisionStatus(),
+            PlanningFence: 0,
             createdAtUtc);
 
     public FunctionRevision MarkReady(DateTimeOffset readyAtUtc)
@@ -168,7 +173,11 @@ public sealed record FunctionImage(
 
 public sealed record FunctionConfiguration(
     ImmutableDictionary<string, string> EnvironmentVariables,
-    ImmutableDictionary<string, string> SecretReferences);
+    ImmutableDictionary<string, FunctionSecretReference> SecretReferences);
+
+public sealed record FunctionSecretReference(
+    [property: BsonRepresentation(BsonType.ObjectId)] string SecretId,
+    string Key);
 
 public sealed record FunctionResources(
     FunctionResourceValues Requests,
@@ -256,8 +265,16 @@ public sealed record FunctionRouteBinding(
     FunctionRouteBindingState State,
     string? ActiveRevisionId,
     int? ActiveRevisionNumber,
+    long PlanningFence,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset UpdatedAtUtc);
+
+public static class FunctionRouteBindingFactory
+{
+    public static FunctionRouteBinding Reserve(FunctionApp app, DateTimeOffset now) => new(
+        app.FunctionRoute, app.TenantId, app.Id, [], FunctionRouteBindingState.Reserved,
+        ActiveRevisionId: null, ActiveRevisionNumber: null, PlanningFence: 0, now, now);
+}
 
 public sealed record FunctionHttpRouteBinding(
     string TriggerId,
@@ -364,6 +381,7 @@ public static class FunctionAppFactory
             FunctionAppStatus.Provisioning,
             FunctionQuotaAllocation.FromRevision(revisionSpec),
             tags,
+            PlanningFence: 0,
             now,
             now);
         var revision = FunctionRevision.CreateProvisioning(
@@ -373,18 +391,35 @@ public static class FunctionAppFactory
             revisionNumber: 1,
             revisionSpec,
             now);
-        var binding = new FunctionRouteBinding(
-            normalizedRoute,
-            tenantId,
-            functionAppId,
-            [],
-            FunctionRouteBindingState.Reserved,
-            ActiveRevisionId: null,
-            ActiveRevisionNumber: null,
-            now,
-            now);
+        var binding = FunctionRouteBindingFactory.Reserve(app, now);
         return new CreateResult(app, revision, binding);
     }
+
+    public static FunctionApp CreatePrepared(
+        string tenantId,
+        string resourceGroupId,
+        FunctionPlacementIdentity placement,
+        string name,
+        string functionRoute,
+        DateTimeOffset now,
+        CreateOptions options) => new(
+            options.FunctionAppId,
+            tenantId,
+            resourceGroupId,
+            placement,
+            name,
+            name.Trim().ToLowerInvariant(),
+            NormalizeRoute(functionRoute),
+            ActiveRevisionId: null,
+            PendingRevisionId: null,
+            NextRevisionNumber: 1,
+            FunctionAppDesiredState.Prepared,
+            FunctionAppStatus.Prepared,
+            new FunctionQuotaAllocation(1, 0, 0, 0),
+            ImmutableHashSet<string>.Empty,
+            PlanningFence: 0,
+            now,
+            now);
 
     public static string NormalizeRoute(string route) =>
         route.Trim().Trim('/').ToLowerInvariant();

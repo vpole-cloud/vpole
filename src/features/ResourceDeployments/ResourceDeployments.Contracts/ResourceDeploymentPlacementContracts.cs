@@ -46,7 +46,8 @@ public sealed record CreateResourceDeploymentRequest(
     int FixedReplicas = 1,
     long ResourceRevision = 1,
     bool DeferredActivation = false,
-    bool PinnedCompute = false);
+    bool PinnedCompute = false,
+    long? StoragePolicyRevision = null);
 
 public sealed record CreateResourceDeploymentSetRequest(
     IReadOnlyList<CreateResourceDeploymentRequest> Deployments);

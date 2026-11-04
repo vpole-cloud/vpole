@@ -79,7 +79,6 @@ public static class RecordDataConstructionLegacy
         "src/features/SourceBuilds/SourceBuilds.Events/SourceBuildJobStateChangedEvent.cs|Pole.Features.SourceBuilds.Events.SourceBuildJobStateChangedEvent|EventCore|extra-property",
         "src/features/SourceBuilds/SourceBuilds.Events/SourceBuildRequestedEvent.cs|Pole.Features.SourceBuilds.Events.SourceBuildRequestedEvent|EventCore|extra-property",
         "src/features/StorageProfiles/StorageProfiles.Events/StorageObservationChangedEvent.cs|Pole.Features.StorageProfiles.Events.StorageObservationChangedEvent|EventCore|extra-property",
-        "src/features/StorageProfiles/StorageProfiles.Events/StorageProfileCatalogChangedEvent.cs|Pole.Features.StorageProfiles.Events.StorageProfileCatalogChangedEvent|EventCore|extra-property",
         "src/features/Tenants/Tenants.Events/TenantMembershipChangedEvent.cs|Pole.Features.Tenants.Events.TenantMembershipChangedEvent|EventCore|extra-property",
         "src/features/Users/Users.Events/UserCreatedEvent.cs|Pole.Features.Users.Events.UserCreatedEvent|EventCore|extra-property",
         "src/features/WebServices/WebServices.Application/Kubernetes/WebServiceInKubernetes.cs|Pole.Features.WebServices.Application.Kubernetes.WebServiceInKubernetes|ResolvedEnvironment|extra-property",

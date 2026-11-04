@@ -18,6 +18,7 @@ using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence.Mutations;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Quotas.Contracts;
+using Pole.Features.Secrets.Contracts;
 using Pole.Features.Quotas.Contracts.HttpMapping;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
@@ -56,6 +57,7 @@ public static class CreateFunctionApp
     private static HttpProblem MapCreateError(CreateFunctionAppError error) =>
         error switch
         {
+            FunctionSecretReferenceRejected rejected => MapSecretReferenceRejected(rejected),
             FunctionAppDefaultDeploymentTargetUnavailable unavailable =>
                 MapDefaultDeploymentTargetUnavailable(unavailable),
             DeploymentTargetNewWorkloadAdmissionError admission =>
@@ -81,7 +83,12 @@ public sealed record CreateFunctionAppRequestBody(
     string ResourceGroupId,
     FunctionRevisionRequest Spec,
     ImmutableHashSet<string> Tags,
-    string? ComputeProfileId = null);
+    string? ComputeProfileId = null,
+    FunctionPlacementRequest? Placement = null);
+
+public sealed record FunctionPlacementRequest(
+    string DeploymentTargetId,
+    string? IsolationScopeId);
 
 public sealed record FunctionRevisionRequest(
     FunctionImageRequest Image,
@@ -155,6 +162,7 @@ public sealed record CreateFunctionAppResponse(
 
 public union CreateFunctionAppError(
     FunctionAppDefaultDeploymentTargetUnavailable,
+    FunctionSecretReferenceRejected,
     DeploymentTargetNewWorkloadAdmissionError,
     ComputeProfileResolutionError,
     CreateResourceDeploymentError,
@@ -173,27 +181,30 @@ public sealed class CreateFunctionAppHandler(
     ResolveComputeProfile resolveComputeProfile,
     CreateResourceDeployment createResourceDeployment,
     IResourceRegistrar resourceRegistrar,
-    PersistCreatedFunctionApp persistCreatedFunctionApp)
+    PersistCreatedFunctionApp persistCreatedFunctionApp,
+    AdmitConsumerSecretReferences admitSecrets)
     : IMediatorOutcomeHandler<CreateFunctionAppRequest, CreateFunctionAppOutcome>
 {
     public async Task<CreateFunctionAppOutcome> HandleAsync(
         CreateFunctionAppRequest request,
         CancellationToken cancellationToken = default)
     {
-        var defaultTarget = await lookupDefaultDeploymentTarget(cancellationToken);
-        if (defaultTarget is DefaultDeploymentTargetLookupError)
+        var targetId = request.Body.Placement?.DeploymentTargetId;
+        if (targetId is null)
         {
-            return new CreateFunctionAppError(
-                new FunctionAppDefaultDeploymentTargetUnavailable());
+            var defaultTarget = await lookupDefaultDeploymentTarget(cancellationToken);
+            if (defaultTarget is DefaultDeploymentTargetLookupError)
+                return new CreateFunctionAppError(new FunctionAppDefaultDeploymentTargetUnavailable());
+
+            targetId = ((DeploymentTargetLookupDto)defaultTarget.Value).Id;
         }
-        var configuredTarget = (DeploymentTargetLookupDto)defaultTarget.Value;
 
         var targetResult = await admitDeploymentTarget(
             new DeploymentTargetAdmissionRequest(
                 request.TenantId,
                 FunctionResourceDeployment.ResourceType,
-                IsolationScopeId: null,
-                configuredTarget.Id,
+                request.Body.Placement?.IsolationScopeId,
+                targetId,
                 DeploymentTargetRequiredCapabilities.None,
                 FunctionResourceDeployment.GatewaySourceName),
             cancellationToken);
@@ -250,7 +261,7 @@ public sealed class CreateFunctionAppHandler(
                             FunctionResourceDeployment.ResourceType,
                             createOptions.FunctionAppId,
                             request.Body.ResourceGroupId,
-                            IsolationScopeId: null,
+                            IsolationScopeId: request.Body.Placement?.IsolationScopeId,
                             ToResolvedResourceDeploymentTarget(target),
                             compute.ToFunctionResourceDeploymentConfiguration(spec.Resources),
                             Storage: null,
@@ -280,6 +291,16 @@ public sealed class CreateFunctionAppHandler(
                         transaction.Session,
                         created,
                         ct);
+                    var admitted = await admitSecrets(new AdmitConsumerSecretReferencesRequest(
+                        request.TenantId, request.Body.ResourceGroupId, placement.IsolationScopeId,
+                        FunctionResourceDeployment.ResourceType, created.FunctionApp.Id,
+                        [], FunctionSecretReferences.From(created.Revision.Spec.Configuration),
+                        ConsumerSecretAvailabilityPolicy.RequireAvailable,
+                        PreviousSecretReferenceRetention.DoNotRetain), transaction.Session, ct);
+                    if (admitted is ConsumerSecretReferenceUnavailable unavailable)
+                        return transaction.Abort(new CreateFunctionAppError(
+                            new FunctionSecretReferenceRejected(unavailable.Reason)));
+
                     return transaction.Commit(new CreateFunctionAppResponse(
                         created.FunctionApp.Id,
                         created.Revision.Id,
@@ -328,6 +349,11 @@ public sealed class CreateFunctionAppRequestBodyValidator : AbstractValidator<Cr
         RuleFor(body => body.ResourceGroupId).NotEmpty().MongoObjectId("Resource group ID");
         RuleFor(body => body.Spec).NotNull().SetValidator(new FunctionRevisionSpecInputValidator());
         RuleFor(body => body.Tags).NotNull();
+        When(body => body.Placement is not null, () =>
+        {
+            RuleFor(body => body.Placement!.DeploymentTargetId).MongoObjectId("Deployment target ID");
+            RuleFor(body => body.Placement!.IsolationScopeId).OptionalMongoObjectId("Isolation scope ID");
+        });
         RuleFor(body => body.ComputeProfileId)
             .OptionalMongoObjectId("Compute profile ID");
     }
@@ -373,7 +399,7 @@ public sealed class FunctionRevisionSpecInputValidator : AbstractValidator<Funct
             {
                 var trigger = (HttpFunctionTriggerRequest)handler.Trigger;
                 return trigger.Methods?.Select(method =>
-                    $"{FunctionHandlerSpecValidator.CanonicalizeRoute(trigger.Route)}:{method}") ?? [];
+                    $"{FunctionTriggerRules.CanonicalizeRoute(trigger.Route)}:{method}") ?? [];
             })
             .All(seen.Add);
     }
@@ -386,89 +412,6 @@ public sealed class FunctionImageRequestValidator : AbstractValidator<FunctionIm
         RuleFor(image => image.Server).NotEmpty();
         RuleFor(image => image.Name).NotEmpty();
         RuleFor(image => image.Tag).NotEmpty();
-    }
-}
-
-public sealed class FunctionConfigurationValidator : AbstractValidator<FunctionConfiguration>
-{
-    public FunctionConfigurationValidator()
-    {
-        RuleFor(configuration => configuration.EnvironmentVariables).NotNull();
-        RuleFor(configuration => configuration.SecretReferences).NotNull();
-        RuleFor(configuration => configuration)
-            .Must(HasValidEnvironmentNames)
-            .WithMessage("Configuration keys must be valid environment variable names and cannot override Pole runtime settings.");
-        RuleFor(configuration => configuration)
-            .Must(HasNoDuplicateKeys)
-            .WithMessage("Environment variables and secret references cannot use the same key.");
-    }
-
-    private static bool HasValidEnvironmentNames(FunctionConfiguration configuration) =>
-        configuration.EnvironmentVariables is not null &&
-        configuration.SecretReferences is not null &&
-        configuration.EnvironmentVariables.Keys
-            .Concat(configuration.SecretReferences.Keys)
-            .All(IsAllowedEnvironmentName);
-
-    private static bool HasNoDuplicateKeys(FunctionConfiguration configuration) =>
-        configuration.EnvironmentVariables is not null &&
-        configuration.SecretReferences is not null &&
-        !configuration.EnvironmentVariables.Keys.Intersect(
-                configuration.SecretReferences.Keys,
-                StringComparer.OrdinalIgnoreCase)
-            .Any();
-
-    private static bool IsAllowedEnvironmentName(string name) =>
-        !string.IsNullOrWhiteSpace(name) &&
-        (char.IsLetter(name[0]) || name[0] == '_') &&
-        name.All(character => char.IsLetterOrDigit(character) || character == '_') &&
-        !name.StartsWith("PoleFunctions__", StringComparison.OrdinalIgnoreCase) &&
-        !name.Equals("ASPNETCORE_URLS", StringComparison.OrdinalIgnoreCase) &&
-        !name.Equals("DOTNET_EnableDiagnostics", StringComparison.OrdinalIgnoreCase);
-}
-
-public sealed class FunctionResourcesValidator : AbstractValidator<FunctionResources>
-{
-    public FunctionResourcesValidator()
-    {
-        RuleFor(resources => resources.Requests).NotNull().SetValidator(new FunctionResourceValuesValidator());
-        RuleFor(resources => resources.Limits).NotNull().SetValidator(new FunctionResourceValuesValidator());
-        RuleFor(resources => resources).Must(resources =>
-                resources.Requests is not null &&
-                resources.Limits is not null &&
-                resources.Limits.CpuMillis >= resources.Requests.CpuMillis &&
-                resources.Limits.MemoryMi >= resources.Requests.MemoryMi)
-            .WithMessage("Resource limits cannot be lower than requests.");
-    }
-}
-
-public sealed class FunctionResourceValuesValidator : AbstractValidator<FunctionResourceValues>
-{
-    public FunctionResourceValuesValidator()
-    {
-        RuleFor(resources => resources.CpuMillis).GreaterThan(0);
-        RuleFor(resources => resources.MemoryMi).GreaterThan(0);
-    }
-}
-
-public sealed class FunctionScalingPolicyValidator : AbstractValidator<FunctionScalingPolicy>
-{
-    public FunctionScalingPolicyValidator()
-    {
-        RuleFor(scaling => scaling.MinInstances).GreaterThanOrEqualTo(0);
-        RuleFor(scaling => scaling.MaxInstances).GreaterThan(0);
-        RuleFor(scaling => scaling)
-            .Must(value => value.MinInstances <= value.MaxInstances)
-            .WithMessage("MinInstances cannot exceed MaxInstances.");
-        RuleFor(scaling => scaling.TargetConcurrencyPerInstance).GreaterThan(0);
-        RuleFor(scaling => scaling.MaxConcurrencyPerInstance).GreaterThan(0);
-        RuleFor(scaling => scaling.ScaleDownDelaySeconds).InclusiveBetween(0, 3600);
-        RuleFor(scaling => scaling.ActivationTimeoutSeconds).InclusiveBetween(
-            FunctionScalingPolicy.MinimumActivationTimeoutSeconds,
-            FunctionScalingPolicy.MaximumActivationTimeoutSeconds);
-        RuleFor(scaling => scaling)
-            .Must(value => value.TargetConcurrencyPerInstance <= value.MaxConcurrencyPerInstance)
-            .WithMessage("Target concurrency cannot exceed maximum concurrency.");
     }
 }
 
@@ -485,10 +428,10 @@ public sealed class FunctionHandlerSpecValidator : AbstractValidator<FunctionHan
             switch (handler.Trigger)
             {
                 case HttpFunctionTriggerRequest http when
-                    !IsValidHttpRoute(http.Route) ||
+                    !FunctionTriggerRules.IsValidHttpRoute(http.Route) ||
                     http.Methods is null ||
                     http.Methods.Count == 0 ||
-                    http.Methods.Any(method => !AllowedHttpMethods.Contains(method)):
+                    http.Methods.Any(method => !FunctionTriggerRules.AllowedHttpMethods.Contains(method)):
                     context.AddFailure(
                         nameof(handler.Trigger),
                         "HTTP route and at least one supported method are required.");
@@ -507,35 +450,5 @@ public sealed class FunctionHandlerSpecValidator : AbstractValidator<FunctionHan
             }
         });
     }
-
-    private static readonly HashSet<string> AllowedHttpMethods =
-        new(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"], StringComparer.OrdinalIgnoreCase);
-
-    private static bool IsValidHttpRoute(string? route)
-    {
-        if (string.IsNullOrWhiteSpace(route) || route.Length > 200 || route.StartsWith('/') || route.EndsWith('/'))
-            return false;
-
-        var segments = route.Split('/');
-        return segments.All(segment =>
-            segment.Length > 0 &&
-            segment is not "." and not ".." &&
-            (IsLiteralSegment(segment) || IsParameterSegment(segment)));
-    }
-
-    internal static string CanonicalizeRoute(string? route) =>
-        string.Join('/', (route ?? string.Empty).Split('/').Select(segment =>
-            IsParameterSegment(segment) ? "{}" : segment));
-
-    private static bool IsLiteralSegment(string segment) =>
-        char.IsLetterOrDigit(segment[0]) &&
-        segment.All(character => char.IsLetterOrDigit(character) || character is '-' or '_');
-
-    private static bool IsParameterSegment(string segment) =>
-        segment.Length >= 3 &&
-        segment[0] == '{' &&
-        segment[^1] == '}' &&
-        char.IsLetter(segment[1]) &&
-        segment[1..^1].All(character => char.IsLetterOrDigit(character) || character == '_');
 
 }

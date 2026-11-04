@@ -14,11 +14,18 @@ namespace Pole.Features.Functions.Tests;
 public sealed class FunctionRevisionManifestTests
 {
     [Fact]
+    public void Manifest_rejects_unresolved_logical_secret_references()
+    {
+        Assert.Throws<InvalidOperationException>(() => CreateSubject().ToDeployment());
+    }
+
+    [Fact]
     public void Deployment_is_revision_specific_zero_scaled_and_hardened()
     {
         var subject = CreateSubject();
 
-        var deployment = subject.ToDeployment();
+        var deployment = subject.ToDeployment(secretProjections: new Dictionary<string, FunctionSecretProjection>
+        { ["API_KEY"] = new("function-secrets", "API_KEY") });
         var pod = deployment.Spec.Template.Spec;
         var container = Assert.Single(pod.Containers);
 
@@ -76,7 +83,9 @@ public sealed class FunctionRevisionManifestTests
     public void Deployment_maps_runtime_identity_concurrency_config_and_secret_references()
     {
         var subject = CreateSubject();
-        var environment = Assert.Single(subject.ToDeployment().Spec.Template.Spec.Containers)
+        var environment = Assert.Single(subject.ToDeployment(
+            secretProjections: new Dictionary<string, FunctionSecretProjection>
+            { ["API_KEY"] = new("function-secrets", "API_KEY") }).Spec.Template.Spec.Containers)
             .Env.ToDictionary(item => item.Name);
 
         Assert.Equal(subject.App.Id, environment["PoleFunctions__FunctionAppId"].Value);
@@ -98,7 +107,8 @@ public sealed class FunctionRevisionManifestTests
             "pole-agent",
             [new FunctionAgentTrustedKey("key-1", "public-spki")]);
 
-        var environment = Assert.Single(subject.ToDeployment(trust).Spec.Template.Spec.Containers)
+        var environment = Assert.Single(subject.ToDeployment(trust, new Dictionary<string, FunctionSecretProjection>
+        { ["API_KEY"] = new("function-secrets", "API_KEY") }).Spec.Template.Spec.Containers)
             .Env.ToDictionary(item => item.Name);
 
         Assert.Equal("pole-runtime", environment["PoleFunctions__AgentAuthentication__Issuer"].Value);
@@ -156,7 +166,8 @@ public sealed class FunctionRevisionManifestTests
             PoleFunctionProtocol.Version,
             new FunctionConfiguration(
                 ImmutableDictionary<string, string>.Empty.Add("LOG_LEVEL", "Debug"),
-                ImmutableDictionary<string, string>.Empty.Add("API_KEY", "function-secrets")),
+                ImmutableDictionary<string, FunctionSecretReference>.Empty
+                    .Add("API_KEY", new("507f1f77bcf86cd799439099", "api-key"))),
             new FunctionResources(
                 new FunctionResourceValues(250, 256),
                 new FunctionResourceValues(500, 512)),

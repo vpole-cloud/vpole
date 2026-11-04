@@ -74,7 +74,10 @@ public readonly record struct RedisInKubernetes(
         $"{ServiceName}.{Namespace}.svc.cluster.local";
 
     public V1StatefulSet ToStatefulSet(
-        RedisResourceDeploymentMetadata? deploymentMetadata = null) => new()
+        RedisResourceDeploymentMetadata? deploymentMetadata = null)
+    {
+        EnsureRuntimeActive();
+        return new()
         {
             ApiVersion = "apps/v1",
             Kind = "StatefulSet",
@@ -138,28 +141,32 @@ public readonly record struct RedisInKubernetes(
             }
             }
         };
+    }
 
-    public V1Service ToService() => new()
+    public V1Service ToService()
     {
-        ApiVersion = "v1",
-        Kind = "Service",
-        Metadata = new V1ObjectMeta
+        EnsureRuntimeActive();
+        return new()
         {
-            Name = ServiceName,
-            NamespaceProperty = Namespace,
-            Labels = new Dictionary<string, string>
+            ApiVersion = "v1",
+            Kind = "Service",
+            Metadata = new V1ObjectMeta
+            {
+                Name = ServiceName,
+                NamespaceProperty = Namespace,
+                Labels = new Dictionary<string, string>
                 (BuildLabels()),
-            Annotations = DefaultAnnotations
-        },
-        Spec = new V1ServiceSpec
-        {
-            Type = "ClusterIP",
-            ClusterIP = "None", // Headless service for StatefulSet
-            Selector = new Dictionary<string, string>
+                Annotations = DefaultAnnotations
+            },
+            Spec = new V1ServiceSpec
+            {
+                Type = "ClusterIP",
+                ClusterIP = "None", // Headless service for StatefulSet
+                Selector = new Dictionary<string, string>
             {
                 { "pole.io/resource-id", Redis.Id }
             },
-            Ports = new List<V1ServicePort>
+                Ports = new List<V1ServicePort>
             {
                 new()
                 {
@@ -169,8 +176,15 @@ public readonly record struct RedisInKubernetes(
                     Protocol = "TCP"
                 }
             }
-        }
-    };
+            }
+        };
+    }
+
+    internal void EnsureRuntimeActive()
+    {
+        if (Redis.Lifecycle is not ActiveRedisLifecycle)
+            throw new InvalidOperationException("Redis runtime objects require an activated resource.");
+    }
 
     private ImmutableDictionary<string, string> DefaultAnnotations =>
         new Dictionary<string, string>

@@ -51,6 +51,7 @@ const profile: AvailableComputeProfile = {
   revision: 1,
 }
 const disk: StorageProfile = {
+  technicalName: 'test-disk',
   id: 'disk',
   displayName: 'Disk',
   description: '',

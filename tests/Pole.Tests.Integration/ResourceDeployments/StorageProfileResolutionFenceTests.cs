@@ -24,6 +24,7 @@ public sealed class StorageProfileResolutionFenceTests(
     public async Task Fence_WritesAgainstTheExactProfileRevisionAndTargetMapping()
     {
         var profile = StorageProfileFactory.Create(
+            technicalName: "storage-" + MongoDB.Bson.ObjectId.GenerateNewId(),
             "fast",
             "Fast storage",
             StorageMediaType.SSD,
@@ -58,6 +59,7 @@ public sealed class StorageProfileResolutionFenceTests(
     public async Task Fence_RejectsAStaleResolution()
     {
         var profile = StorageProfileFactory.Create(
+            technicalName: "storage-" + MongoDB.Bson.ObjectId.GenerateNewId(),
             "fast",
             "Fast storage",
             StorageMediaType.SSD,

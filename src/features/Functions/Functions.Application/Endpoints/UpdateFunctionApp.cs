@@ -8,6 +8,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence.Mutations;
@@ -17,6 +18,7 @@ using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Contracts.HttpMapping;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
+using Pole.Features.Secrets.Contracts;
 using Pole.Mediator;
 using Pole.ResultType;
 using Pole.Validation;
@@ -48,8 +50,11 @@ public static class UpdateFunctionApp
     private static HttpProblem MapUpdateError(UpdateFunctionAppError error) =>
         error switch
         {
+            FunctionAppConfigurationUnavailable unavailable => MapConfigurationUnavailable(unavailable),
+            FunctionSecretReferenceRejected rejected => MapSecretReferenceRejected(rejected),
             FunctionAppNotFound notFound => MapNotFound(notFound),
             FunctionAppResourceDeploymentMissing missing => MapResourceDeploymentMissing(missing),
+            FunctionAppGitOwnedConfiguration owned => MapGitOwned(owned),
             FunctionAppHasPendingRevision pending => MapPendingRevision(pending),
             FunctionAppIsNotEnabled disabled => MapNotEnabled(disabled),
             FunctionAppRevisionChanged changed => MapRevisionChanged(changed),
@@ -76,9 +81,12 @@ public sealed record UpdateFunctionAppResponse(
     PlacementSummaryDto Placement);
 
 public union UpdateFunctionAppError(
+    FunctionAppConfigurationUnavailable,
+    FunctionSecretReferenceRejected,
     FunctionAppNotFound,
     FunctionAppResourceDeploymentMissing,
     FunctionAppHasPendingRevision,
+    FunctionAppGitOwnedConfiguration,
     FunctionAppIsNotEnabled,
     FunctionAppRevisionChanged,
     ResourceDeploymentMutationError,
@@ -95,7 +103,9 @@ public sealed class UpdateFunctionAppHandler(
     LoadExactResourceDeploymentRuntimePlacement loadDeploymentPlacement,
     RequestExactResourceDeploymentApply requestDeploymentApply,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    AdmitConsumerSecretReferences admitSecrets,
+    IGitOpsMutations git)
     : IMediatorOutcomeHandler<UpdateFunctionAppRequest, UpdateFunctionAppOutcome>
 {
     public async Task<UpdateFunctionAppOutcome> HandleAsync(
@@ -108,8 +118,13 @@ public sealed class UpdateFunctionAppHandler(
             cancellationToken);
         if (app is null)
             return new UpdateFunctionAppError(new FunctionAppNotFound(request.Id));
+
+        if (await git.StatusAsync(new(app.TenantId, "FunctionApp", app.Id), cancellationToken) is not null)
+            return new UpdateFunctionAppError(new FunctionAppGitOwnedConfiguration(app.Id));
+
         if (app.PendingRevisionId is not null)
             return new UpdateFunctionAppError(new FunctionAppHasPendingRevision(app.Id));
+
         if (app.DesiredState != FunctionAppDesiredState.Enabled)
             return new UpdateFunctionAppError(new FunctionAppIsNotEnabled(app.Id));
 
@@ -141,6 +156,14 @@ public sealed class UpdateFunctionAppHandler(
                 "Function App references an active revision that does not exist.");
         }
 
+        if (references.LatestConfiguration is not { } latestConfiguration)
+            return new UpdateFunctionAppError(new FunctionAppConfigurationUnavailable(app.Id));
+
+        var previousSecrets = FunctionSecretReferences.From(latestConfiguration.Spec.Configuration)
+            .Concat(references.ActiveRevision is { } active
+                ? FunctionSecretReferences.From(active.Spec.Configuration) : [])
+            .Distinct().ToArray();
+
         var requestedSpec = request.Body.Spec.ToDomain().ToRevisionSpec();
         var handlers = FunctionTriggerReconciler.Reconcile(
             references.ActiveRevision?.Spec.Handlers ?? [],
@@ -165,17 +188,24 @@ public sealed class UpdateFunctionAppHandler(
                 ResourceKey: FunctionAppQuotaResourceKey.Create(app.Id),
                 Mutation: new UpdateQuotaMutation<FunctionQuotaAllocation>(app.AdmittedQuota, admittedQuota),
                 QuotaError: quotaError => new UpdateFunctionAppError(quotaError),
-                MutationCallback: (transaction, ct) => PersistAsync(
-                transaction,
-                app,
-                candidate,
-                admittedQuota,
-                request.Body.Tags,
-                persistFunctionAppRevision,
-                requestDeploymentApply,
-                deployment,
-                timeProvider.GetUtcNow(),
-                ct)),
+                MutationCallback: async (transaction, ct) =>
+                {
+                    var admitted = await admitSecrets(new AdmitConsumerSecretReferencesRequest(
+                        app.TenantId, app.ResourceGroupId, deployment.IsolationScopeId,
+                        FunctionResourceDeployment.ResourceType, app.Id,
+                        previousSecrets,
+                        FunctionSecretReferences.From(candidateSpec.Configuration),
+                        ConsumerSecretAvailabilityPolicy.RequireAvailable,
+                        PreviousSecretReferenceRetention.KeepUntilRolloutConfirmed), transaction.Session, ct);
+                    if (admitted is ConsumerSecretReferenceUnavailable unavailable)
+                        return transaction.Abort(new UpdateFunctionAppError(
+                            new FunctionSecretReferenceRejected(unavailable.Reason)));
+
+                    return await PersistAsync(
+                        transaction, app, candidate, admittedQuota, request.Body.Tags,
+                        persistFunctionAppRevision, requestDeploymentApply, deployment,
+                        timeProvider.GetUtcNow(), ct);
+                }),
             cancellationToken: cancellationToken);
     }
 
@@ -192,15 +222,13 @@ public sealed class UpdateFunctionAppHandler(
         CancellationToken cancellationToken)
     {
         var persisted = await persistFunctionAppRevision(
-            transaction.Session,
-            current,
-            candidate,
-            admittedQuota,
-            tags,
-            updatedAtUtc,
-            cancellationToken);
+            new(current, candidate, admittedQuota, tags, updatedAtUtc, Context: null),
+            transaction.Session, cancellationToken);
         if (persisted is FunctionAppRevisionChanged persistenceError)
             return transaction.Abort(new UpdateFunctionAppError(persistenceError));
+
+        if (persisted is FunctionAppGitOwnedConfiguration owned)
+            return transaction.Abort(new UpdateFunctionAppError(owned));
 
         var revision = (FunctionRevision)persisted.Value;
 

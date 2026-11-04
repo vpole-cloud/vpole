@@ -37,6 +37,7 @@ public static class RedisTestData
         bool isEnabled = true,
         bool isDefault = true) =>
         StorageProfileFactory.Create(
+            technicalName: "storage-" + MongoDB.Bson.ObjectId.GenerateNewId(),
             "Standard",
             "Default test storage",
             StorageMediaType.SSD,

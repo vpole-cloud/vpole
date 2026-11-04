@@ -8,6 +8,7 @@ using Pole.Features.Outbox.Contracts;
 using Pole.Features.Realtime.Contracts;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Persistence.Mutations;
+using Pole.Features.StorageProfiles.Application.Persistence;
 using Pole.Features.StorageProfiles.Application.Realtime;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.Features.StorageProfiles.Events;
@@ -28,7 +29,7 @@ public sealed class StorageProfileRealtimeOutboxTests(MongoReplicaSetFixture fix
         var candidate = Candidate();
         using var trace = TraceContext.Push(new("0123456789abcdef0123456789abcdef", "storage-catalog-realtime"));
         var create = Services.GetRequiredService<PersistCreatedStorageProfile>();
-        Assert.Equal(candidate.Id, (await create(candidate)).Id);
+        Assert.Equal(candidate.Id, Assert.IsType<StorageProfile>((await create(candidate)).Value).Id);
         var replacement = candidate with
         {
             DisplayName = "Changed private catalog name",
@@ -54,7 +55,7 @@ public sealed class StorageProfileRealtimeOutboxTests(MongoReplicaSetFixture fix
             Assert.Equal(candidate.Id, payload.StorageProfileId);
             Assert.Equal("", payload.EventCore.TenantId);
             using var json = JsonDocument.Parse(message.PayloadJson);
-            Assert.Equal(new[] { "eventCore", "revision", "storageProfileId" },
+            Assert.Equal(new[] { "eventCore", "revision", "storageProfileId", "technicalName" },
                 json.RootElement.EnumerateObject().Select(property => property.Name).Order().ToArray());
             Assert.DoesNotContain(candidate.DisplayName, message.PayloadJson);
             Assert.DoesNotContain(replacement.DisplayName, message.PayloadJson);
@@ -82,7 +83,7 @@ public sealed class StorageProfileRealtimeOutboxTests(MongoReplicaSetFixture fix
         {
             var persistence = new MongoPersistUpdatedStorageProfile(DbContext.StorageProfiles,
                 Services.GetRequiredService<RunMongoOutcomeTransaction<PersistUpdatedStorageProfileOutcome>>(),
-                failingStore);
+                failingStore, Services.GetRequiredService<StorageProfileHistory>());
             await Assert.ThrowsAsync<InvalidOperationException>(() => persistence.InvokeAsync(candidate,
                 candidate with
                 {
@@ -97,8 +98,8 @@ public sealed class StorageProfileRealtimeOutboxTests(MongoReplicaSetFixture fix
         else
         {
             var persistence = new MongoPersistCreatedStorageProfile(DbContext.StorageProfiles,
-                Services.GetRequiredService<RunMongoOutcomeTransaction<StorageProfile>>(),
-                failingStore);
+                Services.GetRequiredService<RunMongoOutcomeTransaction<PersistCreatedStorageProfileOutcome>>(),
+                failingStore, Services.GetRequiredService<StorageProfileHistory>());
             await Assert.ThrowsAsync<InvalidOperationException>(() =>
                 persistence.InvokeAsync(candidate with
                 {
@@ -113,6 +114,8 @@ public sealed class StorageProfileRealtimeOutboxTests(MongoReplicaSetFixture fix
         Assert.Equal(defaultBefore.Revision, defaultAfter.Revision);
         Assert.Equal(defaultBefore.UpdatedAtUtc, defaultAfter.UpdatedAtUtc);
         Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(EventType));
+        var history = Fixture.Database.GetCollection<StorageProfileRevision>("StorageProfileRevisions");
+        Assert.Equal(0, await history.CountDocumentsAsync(Builders<StorageProfileRevision>.Filter.Empty));
     }
 
     [Fact]
@@ -158,7 +161,7 @@ public sealed class StorageProfileRealtimeOutboxTests(MongoReplicaSetFixture fix
                 eligibility.Add(topic);
                 return Task.CompletedTask;
             });
-        await consumer.HandleAsync(new StorageProfileCatalogChangedEvent("profile", 7));
+        await consumer.HandleAsync(new StorageProfileCatalogChangedEvent("profile", 7, "profile", EventCore.Create()));
         var change = Assert.Single(changes);
         Assert.Equal("storage-profiles", change.Topic);
         Assert.Null(change.TenantId);

@@ -5,6 +5,7 @@ using Pole.Workloads;
 using Pole.Database;
 using System.Collections.Immutable;
 using System.Text.Json;
+using Pole.Features.Domains.Contracts;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Contracts;
@@ -28,7 +29,8 @@ public sealed record PinnedComputeProfile(
 
 public sealed record WebServiceDeclarationPlacement(
     string DeploymentTarget,
-    PinnedComputeProfile ComputeProfile);
+    PinnedComputeProfile ComputeProfile,
+    string? IsolationScope = null);
 
 public sealed record DeclaredSecretEnvironmentReference(
     string Secret,
@@ -48,7 +50,11 @@ public sealed record WebServiceDeclaration
 
     public string Exposure { get; init; } = PrivateExposure;
 
-    public int Replicas { get; init; } = DefaultReplicas;
+    public int? Replicas { get; init; }
+
+    public AutoscalingSpecDto? Autoscaling { get; init; }
+
+    internal int FixedReplicas => Replicas ?? Autoscaling?.MinReplicas ?? DefaultReplicas;
 
     public ImmutableDictionary<string, string> Environment { get; init; } = ImmutableDictionary<string, string>.Empty;
 
@@ -63,10 +69,9 @@ public sealed record WebServiceDeclaration
 internal sealed partial class DeclarativeWebServiceProvider(
     IMongoCollection<WebService> services,
     IGitOpsMutations git,
-    GetResourceGroupOwnership groupOwnership,
     MongoRunTransaction planningTransactions,
-    LoadResourceGroupPlanningSnapshot loadPlanningGroup,
-    FenceResourceGroupPlanningSnapshot fencePlanningGroup,
+    LoadIsolationScopePlanningSnapshot loadPlanningScope,
+    FenceIsolationScopePlanningSnapshot fencePlanningScope,
     LoadResourceDeploymentPlanningSnapshot loadPlanningPlacements,
     FenceResourceDeploymentPlanningSnapshot fencePlanningPlacements,
     ResolveComputeProfilePlanningSnapshot resolvePlanningCompute,
@@ -77,16 +82,17 @@ internal sealed partial class DeclarativeWebServiceProvider(
     FenceConsumerSecretPlanningSnapshot fencePlanningSecrets,
     ResolveNamedDeploymentTarget resolveTargetName,
     ResolveNamedComputeProfile resolveProfileName,
-    ResolveComputeProfiles resolveCompute,
     IQuotaAdmissionExecutor quotas,
     IResourceRegistrar registrar,
     CreateResourceDeploymentSet createDeployments,
-    LoadResourceDeploymentSet loadDeployments,
     RequestResourceDeploymentSetApply applyDeployments,
     AdmitConsumerSecretReferences admitSecrets,
     PersistCreatedWebService persistCreated,
     PersistUpdatedWebServiceOutcome persistUpdated,
     PersistCurrentWebServiceRelease persistRelease,
+    GetOrCreateGeneratedDomainZones getOrCreateGeneratedDomainZones,
+    LoadHostnameBindingsForDeploymentInTransaction loadHostnameBindingsForDeployment,
+    CreateGeneratedHostnameBindings createGeneratedHostnameBindings,
     TimeProvider clock) : ITransactionalDeclarativeResourceProvider, IDeclarativeReferencePreparation
 {
     public string Kind => "WebService";
@@ -114,6 +120,7 @@ internal sealed partial class DeclarativeWebServiceProvider(
             WebServiceDeclarationError.PlacementUnavailable => "PlacementUnavailable",
             WebServiceDeclarationError.PlacementChanged => "PlacementChanged",
             WebServiceDeclarationError.SecretUnavailable => "SecretUnavailable",
+            WebServiceDeclarationError.PublicIngressUnavailable => "PublicIngressUnavailable",
             _ => throw new ArgumentOutOfRangeException(nameof(failure))
         },
         _ => throw new ArgumentException("The failure belongs to another declaration provider.", nameof(failure))
@@ -129,12 +136,14 @@ internal sealed partial class DeclarativeWebServiceProvider(
 
         return new(new("ResourceGroup", value.ResourceGroup),
             [],
-            value.SecretEnvironment.Select(pair =>
+            [.. value.Placement.IsolationScope is null ? Array.Empty<DeclaredReference>() :
+                [new(new("IsolationScope", value.Placement.IsolationScope), "spec.placement.isolationScope")],
+            .. value.SecretEnvironment.Select(pair =>
                 new DeclaredReference(
                     new("Secret", pair.Value.Secret),
                     $"spec.secretEnvironment.{pair.Key}",
                     pair.Value.Key,
-                    RequiresAccess: true)).ToArray(),
+                    RequiresAccess: true))],
             [],
             []);
     }
@@ -156,9 +165,14 @@ internal sealed partial class DeclarativeWebServiceProvider(
                                 && ResourceTechnicalName.IsValid(value.Placement.ComputeProfile.Name) &&
                                 value.Placement.ComputeProfile.Revision > 0,
             "spec.placement");
-        DeclarationJson.Require(value.Exposure == PrivateExposure, "spec.exposure");
+        DeclarationJson.Require(value.Placement.IsolationScope is null ||
+                                ResourceTechnicalName.IsValid(value.Placement.IsolationScope) &&
+                                value.Placement.IsolationScope != "default", "spec.placement.isolationScope");
+        DeclarationJson.Require(value.Exposure is PrivateExposure or PublicExposure, "spec.exposure");
+        DeclarationJson.Require(value.Replicas is null || value.Autoscaling is null, "spec.replicas");
+        DeclarationJson.Require(value.Autoscaling is null || ValidAutoscaling(value.Autoscaling), "spec.autoscaling");
         DeclarationJson.Require(
-            value.Replicas is >= DefaultReplicas and <= MaximumReplicas && value.Tags is not null
+            value.FixedReplicas is >= DefaultReplicas and <= MaximumReplicas && value.Tags is not null
                                                                         && value.Tags.All(tag =>
                                                                             tag is
                                                                             {
@@ -178,6 +192,9 @@ internal sealed partial class DeclarativeWebServiceProvider(
                                 value.Ports.Select(port => (port.ServicePort, port.Protocol)).Distinct()
                                     .Count() == value.Ports.Count,
             "spec.ports");
+        DeclarationJson.Require(value.Exposure != PublicExposure ||
+                                value.Ports.OrderBy(port => port.Name, StringComparer.Ordinal).First().Protocol ==
+                                TcpProtocol, "spec.ports");
         DeclarationJson.Require(value.Probes is not null && ValidProbe(value.Probes.Startup)
                                                          && value.Probes.Startup.SuccessThreshold ==
                                                          RequiredLivenessSuccessThreshold &&
@@ -200,10 +217,16 @@ internal sealed partial class DeclarativeWebServiceProvider(
 
         return DeclarationJson.Write(value with
         {
+            Replicas = value.Autoscaling is null ? value.FixedReplicas : null,
             Ports = value.Ports.OrderBy(port => port.Name, StringComparer.Ordinal).ToImmutableList(),
             Tags = value.Tags.Select(tag => tag.Trim()).Distinct().Order(StringComparer.Ordinal).ToArray()
         });
     }
+
+    private static bool ValidAutoscaling(AutoscalingSpecDto value) =>
+        value.MinReplicas is >= DefaultReplicas and <= MaximumReplicas &&
+        value.MaxReplicas >= value.MinReplicas && value.MaxReplicas <= MaximumReplicas &&
+        value.Metric is { Type: "cpu" or "memory", TargetAverageUtilization: >= 1 };
 
     private static bool ValidProbe(ProbeConfigDto? probe) =>
         probe is not null && probe.Path is { Length: > 0 and <= MaximumProbePathLength }
@@ -225,7 +248,11 @@ internal sealed partial class DeclarativeWebServiceProvider(
         [
             new(
                 DeclarationPhase.Prepare,
-                [new(new("ResourceGroup", value.ResourceGroup), DeclarationPhase.Prepare)]),
+                [
+                    new(new("ResourceGroup", value.ResourceGroup), DeclarationPhase.Prepare),
+                    .. value.Placement.IsolationScope is null ? Array.Empty<DeclarationDependency>() :
+                        [new(new("IsolationScope", value.Placement.IsolationScope), DeclarationPhase.Prepare)]
+                ]),
             new(DeclarationPhase.Configure,
             [
                 new(address, DeclarationPhase.Prepare),
@@ -261,7 +288,7 @@ internal sealed partial class DeclarativeWebServiceProvider(
         var binding = new WebServiceDeclaredPlacement(spec.Placement.DeploymentTarget, selectedTarget.Id,
             spec.Placement.ComputeProfile.Name, compute.ComputeProfileId);
         var domainSpec = ToSpec(spec, ImmutableDictionary<string, SecretEnvironmentReference>.Empty, current?.Spec);
-        var nextQuota = WebServiceDeploymentWorkflow.ToQuotaInput([(compute, spec.Replicas)], domainSpec);
+        var nextQuota = WebServiceDeploymentWorkflow.ToQuotaInput([(compute, spec.FixedReplicas)], domainSpec);
         QuotaMutation<WebServiceQuotaInput> quotaChange = current is null
             ? new CreateQuotaMutation<WebServiceQuotaInput>(nextQuota)
             : new UpdateQuotaMutation<WebServiceQuotaInput>(
@@ -312,13 +339,14 @@ internal sealed partial class DeclarativeWebServiceProvider(
                             operation,
                             spec,
                             domainSpec,
-                            groupId,
+                            dependencies.Scope,
                             compute!,
                             selectedTarget!,
                             binding,
                             tx.Session,
                             token);
-                    else if (groupId != current.ResourceGroupId)
+                    else if (groupId != current.ResourceGroupId ||
+                             dependencies.Scope.IsolationScopeId != current.IsolationScopeId)
                         return tx.Abort(new(
                             operation.ResourceId,
                             new WebServiceDeclarationRejected(
@@ -328,7 +356,7 @@ internal sealed partial class DeclarativeWebServiceProvider(
                             operation,
                             spec,
                             current,
-                            deployments,
+                            dependencies,
                             compute,
                             binding,
                             tx.Session,
@@ -364,24 +392,19 @@ internal sealed partial class DeclarativeWebServiceProvider(
     private async Task<GitOperationResult> PrepareAsync(GitOperation operation,
         WebServiceDeclaration spec,
         WebServiceSpec domainSpec,
-        string groupId,
+        IsolationScopePlanningSnapshot scope,
         ResolvedComputeProfile compute,
         DeploymentTargetLookupDto target,
         WebServiceDeclaredPlacement binding,
         IClientSessionHandle session,
         CancellationToken ct)
     {
-        var group = await loadPlanningGroup(new(operation.Context.TenantId, groupId), session, ct);
-
-        if (group is not ResourceGroupPlanningSnapshot owned)
-            return new(
-                operation.ResourceId,
-                new WebServiceDeclarationRejected(WebServiceDeclarationError.ResourceGroupUnavailable));
+        var groupId = scope.ResourceGroupId;
 
         var service = WebServiceFactory.Create(operation.Declaration.Address.Name,
             operation.Context.TenantId,
             groupId,
-            owned.DefaultIsolationScopeId,
+            scope.IsolationScopeId,
             domainSpec,
             WebServiceExposure.Create(),
             WebServiceFactory.DefaultOptions with
@@ -416,7 +439,7 @@ internal sealed partial class DeclarativeWebServiceProvider(
                     compute.ToResourceDeploymentConfiguration(),
                     null,
                     ResourcePlacementCapability.MultiTarget,
-                    spec.Replicas,
+                    spec.FixedReplicas,
                     service.ActiveRevision,
                     DeferredActivation: true,
                     PinnedCompute: true)
@@ -440,7 +463,7 @@ internal sealed partial class DeclarativeWebServiceProvider(
     private async Task<GitOperationResult> ConfigureAsync(GitOperation operation,
         WebServiceDeclaration spec,
         WebService current,
-        IReadOnlyList<ResourceDeploymentPlanningItem> placements,
+        WebServicePlanningDependencies dependencies,
         ResolvedComputeProfile compute,
         WebServiceDeclaredPlacement binding,
         IClientSessionHandle session,
@@ -456,6 +479,7 @@ internal sealed partial class DeclarativeWebServiceProvider(
                 new DeclarationPreconditionsChanged());
 
         current = authoritative;
+        var placements = dependencies.Placements!.Items;
         var references = ImmutableDictionary.CreateBuilder<string, SecretEnvironmentReference>();
         foreach (var pair in spec.SecretEnvironment)
         {
@@ -500,10 +524,14 @@ internal sealed partial class DeclarativeWebServiceProvider(
         var next = current.ActivatePrepared(
             desired,
             spec.Tags,
-            WebServiceExposure.Create()).BindDeclaredPlacement(binding);
+            current.Exposure with
+            {
+                Mode = spec.Exposure == PublicExposure ? WebServiceExposureMode.Public : WebServiceExposureMode.Private
+            }).BindDeclaredPlacement(binding);
         var replacementCompute = compute.ToResourceDeploymentConfiguration();
-        var placementChanged = placements.Any(item => item.FixedReplicas != spec.Replicas ||
+        var placementChanged = placements.Any(item => item.FixedReplicas != spec.FixedReplicas ||
             item.State == ResourceDeploymentPlanningState.Prepared ||
+            IngressProjection(item.Ingress) != DesiredIngress(spec, dependencies.Target.Target) ||
             item.Compute.ComputeProfileId != replacementCompute.ComputeProfileId ||
             item.Compute.ComputeProfileRevision != replacementCompute.ComputeProfileRevision ||
             !JsonElement.DeepEquals(ComputeProjection(item.Compute), ComputeProjection(replacementCompute)));
@@ -514,6 +542,11 @@ internal sealed partial class DeclarativeWebServiceProvider(
         if (next == current)
             next = current.AdvancePlacementDesiredState();
 
+        var exposure = await PrepareIngressAsync(new(next, dependencies.Target.Target, placements), session, ct);
+        if (exposure is WebServiceDeclarationRejected rejected)
+            return new(current.Id, rejected);
+        var ingress = ((PreparedWebServiceIngress)exposure.Value).Changes;
+
         var applied = await applyDeployments(new(current.TenantId,
                 WebServiceResourceDeployment.ResourceType,
                 current.Id,
@@ -521,9 +554,9 @@ internal sealed partial class DeclarativeWebServiceProvider(
                 placements.Select(item => new ResourceDeploymentSetApplyItem(item.DeploymentId,
                     item.Revision,
                     new(item.Compute.ComputeProfileId, item.Compute.ComputeProfileRevision),
-                    new PreserveIngress(),
+                    ingress[item.DeploymentId],
                     replacementCompute,
-                    spec.Replicas,
+                    spec.FixedReplicas,
                     PinnedCompute: true)).ToArray()),
             session,
             ct);
@@ -601,7 +634,7 @@ internal sealed partial class DeclarativeWebServiceProvider(
                     ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty,
                 SecretEnvironmentReferences = references
             },
-            null,
+            value.Autoscaling?.ToDomain(),
             new WebServiceSpecDto(value.Image,
                 new()
                 {

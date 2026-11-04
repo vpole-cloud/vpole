@@ -28,6 +28,9 @@ public static class WebServicesFeatureRegistration
     public static IServiceCollection AddWebServicesFeature(
         this IServiceCollection services)
     {
+        services.AddSingleton(new Pole.Features.Secrets.Contracts.SecretDeclarationConsumer(
+            "WebService", Pole.Workloads.ResourceTypeId.Create("pole/web-service"),
+            Pole.Features.Secrets.Primitives.SecretBindingUsage.Runtime));
         services.AddSingleton(new RealtimeTopic("web-services", RealtimeScope.Tenant));
         services.AddSingleton<SearchSourceType>(WebServiceSearchProjection.SourceType);
         services.AddWebServicePersistence();

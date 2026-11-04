@@ -10,6 +10,7 @@ public sealed record StorageProfile(
     [property: BsonId]
     [property: BsonRepresentation(BsonType.ObjectId)]
     string Id,
+    string TechnicalName,
     string DisplayName,
     string Description,
     StorageMediaType MediaType,
@@ -60,6 +61,7 @@ public sealed record StorageProfile(
 
         return new StorageProfile(
             Id,
+            TechnicalName,
             values.DisplayName,
             values.Description,
             values.MediaType,
@@ -202,6 +204,7 @@ public static class StorageProfileFactory
         new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow);
 
     public static StorageProfile Create(
+        string technicalName,
         string displayName,
         string description,
         StorageMediaType mediaType,
@@ -233,6 +236,7 @@ public static class StorageProfileFactory
 
         return new StorageProfile(
             id,
+            ResourceTechnicalName.Require(technicalName),
             values.DisplayName,
             values.Description,
             values.MediaType,

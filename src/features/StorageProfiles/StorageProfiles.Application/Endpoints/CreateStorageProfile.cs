@@ -12,11 +12,13 @@ using Pole.Features.StorageProfiles.Application.Persistence.Mutations;
 using Pole.Features.StorageProfiles.Application.Validation;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.Mediator;
+using Pole.Workloads;
 using static Pole.Features.StorageProfiles.Application.Common.StorageProfileHttpMappings;
 
 namespace Pole.Features.StorageProfiles.Application.Endpoints;
 
 public sealed record CreateStorageProfileRequestBody(
+    string TechnicalName,
     string DisplayName,
     string Description,
     string MediaType,
@@ -45,6 +47,8 @@ public sealed record CreateStorageProfileRequest(
 
 public union CreateStorageProfileOutcome(
     StorageProfileDto,
+    StorageProfileTechnicalNameConflict,
+    StorageProfileRevisionConflict,
     StorageProfileTargetMappingsInvalid,
     KubernetesStorageDiscoveryUnavailable);
 
@@ -60,6 +64,7 @@ public sealed class CreateStorageProfileHandler(
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var profile = request.Body.ToDomain(
+            request.Body.TechnicalName,
             new StorageProfileFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
                 now));
@@ -73,7 +78,12 @@ public sealed class CreateStorageProfileHandler(
         }
 
         var persisted = await persistCreatedStorageProfile(profile, cancellationToken);
-        return persisted.ToDto();
+        return persisted switch
+        {
+            StorageProfile profileResult => profileResult.ToDto(),
+            StorageProfileTechnicalNameConflict conflict => conflict,
+            StorageProfileRevisionConflict conflict => conflict
+        };
     }
 }
 
@@ -87,7 +97,13 @@ public sealed class CreateStorageProfileRequestValidator
 }
 
 public sealed class CreateStorageProfileRequestBodyValidator
-    : StorageProfileMutationRequestBodyValidator<CreateStorageProfileRequestBody>;
+    : StorageProfileMutationRequestBodyValidator<CreateStorageProfileRequestBody>
+{
+    public CreateStorageProfileRequestBodyValidator() =>
+        RuleFor(body => body.TechnicalName)
+            .Must(ResourceTechnicalName.IsValid)
+            .WithMessage("A lowercase technical name starting with a letter is required (maximum 63 characters).");
+}
 
 public static class CreateStorageProfileEndpoint
 {
@@ -105,6 +121,8 @@ public static class CreateStorageProfileEndpoint
                     StorageProfileDto profile => Results.Created(
                         $"/api/v1/platform/storage/profiles/{profile.Id}",
                         profile),
+                    StorageProfileTechnicalNameConflict error => MapTechnicalNameConflict(error),
+                    StorageProfileRevisionConflict error => MapRevisionConflict(error),
                     StorageProfileTargetMappingsInvalid error => MapTargetMappingsInvalid(error),
                     KubernetesStorageDiscoveryUnavailable error => MapDiscoveryUnavailable(error)
                 });

@@ -162,6 +162,13 @@ type PostgresResourceDeploymentAdapter(
                                 "The logical PostgreSQL cluster no longer exists.",
                                 false)
                             :> ResourceDeploymentAdapterResult
+                    | Some cluster when cluster.IsPrepared ->
+                        return
+                            ResourceDeploymentAdapterResult.Failed.Create(
+                                "PostgresConfigurationPending",
+                                "The PostgreSQL cluster is awaiting complete configuration.",
+                                true)
+                            :> ResourceDeploymentAdapterResult
                     | Some cluster ->
                         if cluster.Spec.DeploymentMode = PostgresDeploymentMode.Operator &&
                            not (String.IsNullOrWhiteSpace deployment.Placement.Compute.RuntimeClassName) then

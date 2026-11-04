@@ -103,7 +103,7 @@ export async function updateStorageProfile(
       method: 'PUT',
       headers: buildHeaders(token),
       signal,
-      body: JSON.stringify(input),
+      body: JSON.stringify({ ...input, technicalName: undefined }),
     },
   )
 }

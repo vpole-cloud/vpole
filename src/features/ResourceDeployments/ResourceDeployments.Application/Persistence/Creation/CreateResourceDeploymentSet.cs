@@ -129,7 +129,8 @@ internal sealed class MongoCreateResourceDeploymentSet(
                          item.Storage!.StorageProfileId,
                          item.Storage.StorageProfileRevision,
                          item.Target.DeploymentTargetId,
-                         item.Storage.StorageClassName))
+                         item.Storage.StorageClassName,
+                         item.StoragePolicyRevision))
                      .Distinct())
         {
             var storageFence = await fenceStorageProfileResolution(

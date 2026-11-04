@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -44,7 +45,8 @@ public union GetRedisServicesOutcome(PaginatedResponse<RedisDto>);
 
 public sealed class GetRedisServicesHandler(
     LoadRedisPage loadRedisPage,
-    LoadResourceDeployments loadDeployments)
+    LoadResourceDeployments loadDeployments,
+    IGitOpsMutations git)
     : IMediatorOutcomeHandler<GetRedisServicesRequest, GetRedisServicesOutcome>
 {
     public async Task<GetRedisServicesOutcome> HandleAsync(
@@ -66,9 +68,12 @@ public sealed class GetRedisServicesHandler(
                 ResourceIds: page.Items.Select(redis => redis.Id).ToArray()),
             cancellationToken: cancellationToken);
 
+        var statuses = await git.StatusesAsync(new(request.TenantId, DeclarativeRedisProvider.ResourceKind,
+            page.Items.Select(redis => redis.Id).ToArray()), cancellationToken);
         return new GetRedisServicesOutcome(new PaginatedResponse<RedisDto>(
             Items: page.Items.Select(redis => redis.ToDto(
-                placements.GetValueOrDefault(redis.Id))),
+                placements.GetValueOrDefault(redis.Id)) with
+            { GitOps = statuses.GetValueOrDefault(redis.Id) }),
             TotalCount: page.TotalCount,
             PageNumber: request.PageNumber,
             PageSize: request.PageSize));

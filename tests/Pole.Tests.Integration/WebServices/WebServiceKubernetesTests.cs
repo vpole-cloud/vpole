@@ -120,7 +120,9 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
         Assert.Equal(HttpStatusCode.OK, httpResponse.StatusCode);
         Assert.Contains("nginx", await httpResponse.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
 
-        await WebServiceKubernetesResourceManager.DeleteAsync(Kubernetes, webService.Name, NamespaceName);
+        await WebServiceKubernetesResourceManager.DeleteAsync(Kubernetes,
+            new WebServiceKubernetesCleanup(webService.Name, NamespaceName,
+                ToKubernetes(webService).PlacementIdentity));
 
         await Task.WhenAll(
             AssertResourceDeletedAsync(() => Kubernetes.CoreV1.ReadNamespacedConfigMapAsync(

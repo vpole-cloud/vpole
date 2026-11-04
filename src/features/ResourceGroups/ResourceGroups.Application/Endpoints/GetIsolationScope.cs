@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using FluentValidation;
 using Pole.Validation;
 using Microsoft.AspNetCore.Builder;
@@ -29,7 +30,8 @@ public union GetIsolationScopeOutcome(
 
 public sealed class GetIsolationScopeHandler(
     LoadResourceGroup loadResourceGroup,
-    LoadIsolationScope loadIsolationScope)
+    LoadIsolationScope loadIsolationScope,
+    IGitOpsMutations git)
     : IMediatorOutcomeHandler<GetIsolationScopeRequest, GetIsolationScopeOutcome>
 {
     public async Task<GetIsolationScopeOutcome> HandleAsync(
@@ -50,7 +52,10 @@ public sealed class GetIsolationScopeHandler(
             cancellationToken);
         return scope is null
             ? new IsolationScopeNotFound(request.ScopeId)
-            : scope.ToDto();
+            : scope.ToDto() with
+            {
+                GitOps = await git.StatusAsync(new(request.TenantId, "IsolationScope", scope.Id), cancellationToken)
+            };
     }
 }
 

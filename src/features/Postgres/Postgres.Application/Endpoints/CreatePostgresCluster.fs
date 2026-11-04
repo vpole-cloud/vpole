@@ -290,7 +290,7 @@ module private CreatePostgresClusterWorkflow =
                                     | :? ManagedSecretMutationSucceeded ->
                                         return
                                             transaction.Commit(
-                                                PostgresClusterDto.create plan.Cluster deployment
+                                                PostgresClusterDto.create plan.Cluster deployment null
                                                 |> PostgresClusterCreated)
                                     | _ -> return invalidOp "Unexpected managed Secret creation outcome."
                     })),

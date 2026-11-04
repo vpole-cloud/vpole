@@ -9,6 +9,7 @@ open Microsoft.AspNetCore.Http
 open Microsoft.AspNetCore.Routing
 open Pole.ASP.Helpers
 open Pole.Features.Core.Multitenancy
+open Pole.Features.GitOps.Contracts
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application.Persistence.Reads
@@ -35,7 +36,8 @@ type GetPostgresClustersRequest() =
 
 type GetPostgresClustersHandler(
     loadClusters : LoadPostgresClusterPage,
-    loadDeployments : LoadResourceDeployments) =
+    loadDeployments : LoadResourceDeployments,
+    git : IGitOpsMutations) =
     interface IMediatorOutcomeHandler<GetPostgresClustersRequest, GetPostgresClustersOutcome> with
         member _.HandleAsync(request, cancellationToken) =
             task {
@@ -58,10 +60,20 @@ type GetPostgresClustersHandler(
                             clusterIds),
                         cancellationToken)
 
+                let! statuses =
+                    git.StatusesAsync(
+                        LoadGitResourceStatusesRequest(request.TenantId, "PostgresCluster", clusterIds),
+                        cancellationToken)
+
                 let toDto (cluster : PostgresCluster) =
+                    let status =
+                        match statuses.TryGetValue(cluster.Id) with
+                        | true, value -> value
+                        | false, _ -> null
+
                     match placements.TryGetValue(cluster.Id) with
                     | true, placement ->
-                        PostgresClusterDto.create cluster placement
+                        PostgresClusterDto.create cluster placement status
                     | false, _ ->
                         invalidOp
                             $"PostgreSQL cluster '{cluster.Id}' has no resource deployment."

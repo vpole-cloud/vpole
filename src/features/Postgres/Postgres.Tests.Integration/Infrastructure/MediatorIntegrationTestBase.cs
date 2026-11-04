@@ -47,6 +47,7 @@ public abstract class MediatorIntegrationTestBase(MongoReplicaSetFixture fixture
             .Build();
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddSingleton<IConfiguration>(configuration);
         services.AddSingleton(Fixture.Client);
         services.AddSingleton(Fixture.Database);
         services.AddSingleton<MongoRunTransaction>();

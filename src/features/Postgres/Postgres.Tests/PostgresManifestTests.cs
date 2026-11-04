@@ -21,6 +21,17 @@ namespace Pole.Features.Postgres.Tests;
 public sealed class PostgresManifestTests
 {
     [Fact]
+    public void PreparedClustersCannotProduceOperatorOrStatefulSetManifests()
+    {
+        var prepared = PostgresProvisioningTests.Prepared();
+        Assert.Throws<InvalidOperationException>(() => PostgresClusterKubernetesBuilder.buildCluster(
+            prepared, ProjectedCredentials(), "pole-data", "fast-db", MinimalCompute(), Metadata(), CreateSettings()));
+        var stateful = PostgresProvisioningTests.Prepared(PostgresDeploymentMode.StatefulSet);
+        Assert.Throws<InvalidOperationException>(() => PostgresStatefulSetKubernetesBuilder.buildStatefulSet(
+            stateful, Projection(), "pole-data", "fast-db", MinimalCompute(), Metadata(), CreateSettings()));
+    }
+
+    [Fact]
     public void BuildCluster_UsesNamespaceSpecAndSecretReference()
     {
         var (cluster, settings) = CreateOperatorSubject();

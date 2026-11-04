@@ -68,7 +68,9 @@ public sealed class GetSecretUsageHandler(
                             ResourceId: binding.Id),
                         ct: cancellationToken)
                 },
-                deployments.Where(x => x.IsolationScopeId == secret.IsolationScopeId &&
+                deployments.Where(x =>
+                    binding.Usage == Pole.Features.Secrets.Primitives.SecretBindingUsage.Runtime &&
+                    x.IsolationScopeId == secret.IsolationScopeId &&
                     x.DesiredOperation != ResourceDeploymentDesiredOperation.Delete &&
                     (binding.Selection is AllSecretDeployments ||
                      binding.Selection is SelectedSecretDeployments selected && selected.DeploymentIds.Contains(x.DeploymentId)))
@@ -106,6 +108,7 @@ public sealed record SecretBindingDto(
     string Id,
     string ConsumerType,
     string ConsumerId,
+    string Usage,
     bool AllDeployments,
     string[] DeploymentIds,
     ImmutableDictionary<string, string> KeyMappings,
@@ -115,6 +118,7 @@ public sealed record SecretBindingDto(
         binding.Id,
         binding.Consumer.ResourceType,
         binding.Consumer.ResourceId,
+        binding.Usage.ToString(),
         binding.Selection is AllSecretDeployments,
         binding.Selection is SelectedSecretDeployments selected ? selected.DeploymentIds.ToArray() : [],
         binding.KeyMappings);

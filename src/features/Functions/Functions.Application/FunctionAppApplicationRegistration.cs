@@ -1,4 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
+using Pole.Features.Secrets.Contracts;
+using Pole.Features.GitOps.Contracts;
+using Pole.Features.Secrets.Primitives;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence;
@@ -14,6 +17,9 @@ public static class FunctionAppApplicationRegistration
         this IServiceCollection services)
     {
         services.AddFunctionAppPersistence();
+        services.AddScoped<IDeclarativeResourceProvider, DeclarativeFunctionProvider>();
+        services.AddSingleton(new SecretDeclarationConsumer(
+            "FunctionApp", FunctionResourceDeployment.ResourceType, SecretBindingUsage.Runtime));
         services.AddSingleton(new ResourceConnectionSourceCapability(
             FunctionResourceDeployment.ResourceType));
         services.TryAddSingleton<FunctionAppCountQuota>();

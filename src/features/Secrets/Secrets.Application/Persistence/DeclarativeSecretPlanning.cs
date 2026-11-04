@@ -37,15 +37,15 @@ internal sealed partial class DeclarativeSecretProvider
     {
         if (request.Operation is { } operation)
         {
-            var acceptedGroup = await AcceptedGroupAsync(operation, session, cancellationToken);
+            var acceptedGroup = await AcceptedScopeAsync(operation, session, cancellationToken);
             if (acceptedGroup is null)
                 return new DeclarationReadBlocked(
                     new SecretDeclarationRejected(SecretDeclarationError.ResourceGroupUnavailable));
 
             var acceptedSpec = DeclarationJson.Read<SecretDeclaration>(request.Declaration.Spec);
-            return Project(acceptedGroup.ResourceGroupId, acceptedGroup.DefaultIsolationScopeId,
+            return Project(acceptedGroup.ResourceGroupId, acceptedGroup.IsolationScopeId,
                 acceptedSpec.Purpose, acceptedSpec.Keys) with
-            { Dependencies = new(GroupVersions(acceptedGroup)) };
+            { Dependencies = new(ScopeVersions(acceptedGroup)) };
         }
 
         // Advisory planning can resolve names; execution above uses accepted IDs and transactional owner reads.
@@ -55,17 +55,27 @@ internal sealed partial class DeclarativeSecretProvider
         if (groupId is null)
             return new DeclarationReadBlocked(new DeclarationReferenceUnavailable(address));
 
-        if (await groupOwnership(request.TenantId, groupId, cancellationToken) is not ResourceGroupOwnership group)
+        string? scopeId = null;
+        if (spec.IsolationScope is not null)
+        {
+            var scopeAddress = new ResourceAddress("IsolationScope", spec.IsolationScope);
+            scopeId = await git.ResolveAsync(new(request.TenantId, scopeAddress), session, cancellationToken);
+            if (scopeId is null)
+                return new DeclarationReadBlocked(new DeclarationReferenceUnavailable(scopeAddress));
+        }
+
+        if (await loadPlanningScope(new(request.TenantId, groupId, scopeId), session, cancellationToken)
+            is not IsolationScopePlanningSnapshot scope)
             return new DeclarationReadBlocked(new DeclarationReferenceUnavailable(address));
 
-        return Project(groupId, group.DefaultIsolationScopeId, spec.Purpose, spec.Keys);
+        return Project(groupId, scope.IsolationScopeId, spec.Purpose, spec.Keys);
     }
 
     public async Task<FenceDeclarationOutcome> FenceAsync(FenceDeclarationRequest request,
         IClientSessionHandle session, CancellationToken cancellationToken)
     {
-        var group = await AcceptedGroupAsync(request.Operation, session, cancellationToken);
-        if (group is null || !GroupVersions(group).All(request.Expected.Documents.Contains))
+        var group = await AcceptedScopeAsync(request.Operation, session, cancellationToken);
+        if (group is null || !ScopeVersions(group).All(request.Expected.Documents.Contains))
             return new DeclarationPreconditionsChanged();
 
         var current = await secrets.Find(session,
@@ -76,7 +86,7 @@ internal sealed partial class DeclarativeSecretProvider
                 : !SecretPlanningFence.Matches(current, request.Expected))
             return new DeclarationPreconditionsChanged();
 
-        if (await fencePlanningGroup(group, session, cancellationToken) is ResourceGroupPlanningFenceRejected)
+        if (await fencePlanningScope(group, session, cancellationToken) is IsolationScopePlanningFenceRejected)
             return new DeclarationPreconditionsChanged();
         if (current is not null && !await planningFence.FenceAsync(current, session, cancellationToken))
             return new DeclarationPreconditionsChanged();
@@ -84,20 +94,32 @@ internal sealed partial class DeclarativeSecretProvider
         return new DeclarationFenced();
     }
 
-    private async Task<ResourceGroupPlanningSnapshot?> AcceptedGroupAsync(GitOperationInput operation,
+    private async Task<IsolationScopePlanningSnapshot?> AcceptedScopeAsync(GitOperationInput operation,
         IClientSessionHandle session, CancellationToken ct)
     {
         var spec = DeclarationJson.Read<SecretDeclaration>(operation.Declaration.Spec);
-        var id = await git.ResolveAcceptedAsync(new(operation.Context, operation.ResourceId,
+        var groupId = await git.ResolveAcceptedAsync(new(operation.Context, operation.ResourceId,
             new("ResourceGroup", spec.ResourceGroup)), session, ct);
-        return id is not null && await loadPlanningGroup(new(operation.Context.TenantId, id), session, ct)
-            is ResourceGroupPlanningSnapshot group ? group : null;
+        if (groupId is null)
+            return null;
+
+        string? scopeId = null;
+        if (spec.IsolationScope is not null)
+        {
+            scopeId = await git.ResolveAcceptedAsync(new(operation.Context, operation.ResourceId,
+                new("IsolationScope", spec.IsolationScope)), session, ct);
+            if (scopeId is null)
+                return null;
+        }
+
+        return await loadPlanningScope(new(operation.Context.TenantId, groupId, scopeId), session, ct)
+            is IsolationScopePlanningSnapshot scope ? scope : null;
     }
 
-    private static DeclarationDocumentVersion[] GroupVersions(ResourceGroupPlanningSnapshot group) =>
+    private static DeclarationDocumentVersion[] ScopeVersions(IsolationScopePlanningSnapshot scope) =>
     [
-        new($"ResourceGroup/{group.ResourceGroupId}", group.Revision),
-        new($"IsolationScope/{group.DefaultIsolationScopeId}", group.ScopeRevision)
+        new($"ResourceGroup/{scope.ResourceGroupId}", scope.ResourceGroupRevision),
+        new($"IsolationScope/{scope.IsolationScopeId}", scope.ScopeRevision)
     ];
 
     private static DeclarationProjection Project(

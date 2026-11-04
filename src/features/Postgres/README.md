@@ -19,6 +19,17 @@ modes: a native Kubernetes StatefulSet and the CloudNativePG operator.
 and lifecycle state. Credentials are managed by the [Secrets feature](../Secrets/README.md). Kubernetes placement and its resolved infrastructure configuration are
 stored in `ResourceDeployment`.
 
+Provisioning is separate from deletion lifecycle. Manual creation explicitly initializes `Direct` provisioning.
+The declarative construction path initializes `Prepared` with a pinned bootstrap Secret/key, managed credential ID,
+and username; it stores no password. Prepared clusters cannot produce workload manifests, apply ingress or Secrets,
+or establish Kubernetes observation sessions. Their placement is deferred and pins the selected catalog revisions.
+
+`PostgresBootstrapInitializer` runs inside the owner mutation transaction. Secrets verifies the bootstrap grant
+and copies the initial password into the encrypted owner credential. Only then does the initializer return a
+`Configured` replacement for the caller to persist and activate in that same transaction. An initialized credential
+is never recopied after password rotation; a missing configured credential blocks instead of restarting bootstrap.
+Every logical mutation also checks `PlanningFence`, preserving conflicts with concurrent planning guards.
+
 The browser keeps native StatefulSet storage fixed after creation. Native reapply preserves the
 existing immutable claim template (including its initial generation labels), so compute changes
 and new pod-template generations do not attempt to mutate that template. Operator-mode storage
@@ -47,6 +58,33 @@ gets a replication policy limited to pods with the same tenant, resource, and de
 TCP 5432. CloudNativePG mode also requires an explicit target `PostgresOperator` network source
 and grants that source TCP 5432 and 8000. Missing operator identity or a failed policy write
 blocks reconciliation with a retryable status; Pole does not open an entire platform namespace.
+
+## Repository GitOps
+
+`PostgresCluster` declarations use `spec.resourceGroup`, `placement.deploymentTarget`, a pinned
+`placement.computeProfile: {name, revision}`, optional `placement.isolationScope`, and
+`storage: {sizeGb, profile: {name, revision}}`. Version is an integer. `instances` defaults to one;
+`username` and `bootstrapPassword: {secret, key}` are required. Deployment mode comes from server
+configuration when the resource is prepared. A `SecretBinding` for the `PostgresCluster` consumer
+must explicitly declare `usage: Bootstrap`; it grants initialization without creating a runtime
+projection of the source Secret.
+
+The provider follows Prepare → Bind → Configure. Prepare creates an inert root and deferred
+placement; Configure accepts the latest desired capacity and encrypted credential together in one
+revision. Group, scope, target, version, username, bootstrap reference and storage profile/revision
+are immutable. Operator instances and storage growth follow the existing workflows. StatefulSet
+instances remain one and storage cannot change after configuration. Compute may move to another
+explicit profile revision without moving the workload.
+
+Polling and Sync compare the actual managed placement and capacity with the accepted snapshot,
+including at unchanged commits. A verified no-op keeps business revisions, credentials and events
+unchanged. Every operation fences the root, registration, placement, scope and current catalog policy.
+Configured planning fences only the owner credential metadata: later source value changes cannot
+recopy an initial password. Missing created roots or initialized credentials block the run.
+
+The ordinary update and delete paths reject Git-owned configuration inside their transactions.
+Detail/list DTOs expose GitOps metadata; the browser keeps configuration read-only while preserving
+credential operations and the existing deployment-mode restrictions on rotation.
 
 ## Persistence and reconciliation
 

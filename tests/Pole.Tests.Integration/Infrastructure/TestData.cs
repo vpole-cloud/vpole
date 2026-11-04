@@ -105,6 +105,7 @@ public static class TestData
         StorageProfileTenantAccess? tenantAccess = null)
     {
         return StorageProfileFactory.Create(
+            technicalName: "storage-" + id,
             displayName: "Standard",
             description: "Default test storage",
             mediaType: StorageMediaType.SSD,

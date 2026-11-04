@@ -23,7 +23,7 @@ public sealed class IsolationScopeApiTests(MongoReplicaSetFixture fixture)
 
         using var createResponse = await Client.PostAsJsonAsync(
             $"/api/v1/resource-groups/{resourceGroup.Id}/isolation-scopes",
-            new { name = "Production" });
+            new { name = "production" });
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
         var additional = await createResponse.Content.ReadFromJsonAsync<IsolationScopeDto>();
         Assert.NotNull(additional);
@@ -62,11 +62,11 @@ public sealed class IsolationScopeApiTests(MongoReplicaSetFixture fixture)
 
         using var first = await Client.PostAsJsonAsync(
             $"/api/v1/resource-groups/{resourceGroup.Id}/isolation-scopes",
-            new { name = "Production" });
+            new { name = "production" });
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
         using var duplicate = await Client.PostAsJsonAsync(
             $"/api/v1/resource-groups/{resourceGroup.Id}/isolation-scopes",
-            new { name = " production " });
+            new { name = "production" });
         Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
     }
 

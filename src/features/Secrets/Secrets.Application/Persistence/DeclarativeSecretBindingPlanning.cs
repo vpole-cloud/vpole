@@ -32,12 +32,14 @@ internal sealed partial class DeclarativeSecretBindingProvider
             binding.DeclarationName != request.Address.Name)
             return new DeclarationReadBlocked(new DeclarationIdentityChanged());
 
-        if (binding.Selection is not AllSecretDeployments || binding.Consumer.ResourceType != ConsumerType.Value)
+        if (binding.Selection is not AllSecretDeployments ||
+            !consumers.Values.Any(item => item.ResourceType.Value == binding.Consumer.ResourceType &&
+                item.Usage == binding.Usage))
             return new DeclarationReadBlocked(
                 new SecretBindingDeclarationRejected(SecretBindingDeclarationError.ImmutableBindingChange));
 
         return new CurrentDeclaration(binding.Id, new(SecretPlanningFence.Versions(secret)),
-            Project(secret.Id, binding.Consumer.ResourceId, binding.KeyMappings),
+            Project(secret.Id, binding.Consumer, binding.Usage, binding.KeyMappings),
             DeclarationConfigurationState.Configured);
     }
 
@@ -54,7 +56,8 @@ internal sealed partial class DeclarativeSecretBindingProvider
 
             var dependencies = (BindingPlanningDependencies)read.Value;
             var accepted = DeclarationJson.Read<SecretBindingDeclaration>(request.Declaration.Spec);
-            return Project(dependencies.Secret.Id, dependencies.ConsumerId, accepted.KeyMappings) with
+            return Project(dependencies.Secret.Id, new(ConsumerType(accepted).Value, dependencies.ConsumerId),
+                accepted.Usage, accepted.KeyMappings) with
             {
                 Dependencies = new(Versions(dependencies))
             };
@@ -66,12 +69,12 @@ internal sealed partial class DeclarativeSecretBindingProvider
         if (secretId is null)
             return new DeclarationReadBlocked(new DeclarationReferenceUnavailable(secretAddress));
 
-        var consumerAddress = new ResourceAddress("WebService", spec.WebService);
+        var consumerAddress = spec.Consumer;
         var consumerId = await git.ResolveAsync(new(request.TenantId, consumerAddress), session, cancellationToken);
         if (consumerId is null)
             return new DeclarationReadBlocked(new DeclarationReferenceUnavailable(consumerAddress));
 
-        return Project(secretId, consumerId, spec.KeyMappings);
+        return Project(secretId, new(ConsumerType(spec).Value, consumerId), spec.Usage, spec.KeyMappings);
     }
 
     public async Task<FenceDeclarationOutcome> FenceAsync(FenceDeclarationRequest request,
@@ -84,8 +87,8 @@ internal sealed partial class DeclarativeSecretBindingProvider
         var dependencies = (BindingPlanningDependencies)read.Value;
         if (!Versions(dependencies).All(request.Expected.Documents.Contains))
             return new DeclarationPreconditionsChanged();
-        if (await fencePlanningGroup(dependencies.Group, session, cancellationToken)
-            is ResourceGroupPlanningFenceRejected)
+        if (await fencePlanningScope(dependencies.Scope, session, cancellationToken)
+            is IsolationScopePlanningFenceRejected)
             return new DeclarationPreconditionsChanged();
         if (await fencePlanningPlacements(dependencies.Placements, session, cancellationToken)
             is ResourceDeploymentPlanningFenceRejected)
@@ -103,7 +106,7 @@ internal sealed partial class DeclarativeSecretBindingProvider
         var secretId = await git.ResolveAcceptedAsync(new(operation.Context, operation.ResourceId,
             new("Secret", spec.Secret)), session, ct);
         var consumerId = await git.ResolveAcceptedAsync(new(operation.Context, operation.ResourceId,
-            new("WebService", spec.WebService)), session, ct);
+            spec.Consumer), session, ct);
         if (secretId is null || consumerId is null)
             return BindingPlanningBlocked(SecretBindingDeclarationError.BindingPrerequisiteUnavailable);
 
@@ -114,12 +117,12 @@ internal sealed partial class DeclarativeSecretBindingProvider
         if (spec.KeyMappings.Keys.Any(key => !secret.KeyNames.Contains(key)))
             return BindingPlanningBlocked(SecretBindingDeclarationError.SecretKeyUnavailable);
 
-        var group = await loadPlanningGroup(new(operation.Context.TenantId, secret.ResourceGroupId), session, ct);
-        var placements = await loadPlanningPlacements(new(operation.Context.TenantId, ConsumerType, consumerId),
+        var scope = await loadPlanningScope(new(operation.Context.TenantId, secret.ResourceGroupId,
+            secret.IsolationScopeId), session, ct);
+        var placements = await loadPlanningPlacements(new(operation.Context.TenantId, ConsumerType(spec), consumerId),
             session, ct);
-        if (group is not ResourceGroupPlanningSnapshot owned ||
+        if (scope is not IsolationScopePlanningSnapshot owned ||
             placements is not ResourceDeploymentPlanningSnapshot placed ||
-            owned.DefaultIsolationScopeId != secret.IsolationScopeId ||
             placed.Items.Any(item => item.ResourceGroupId != secret.ResourceGroupId ||
                                      item.IsolationScopeId != secret.IsolationScopeId ||
                                      item.State == ResourceDeploymentPlanningState.Deleting))
@@ -134,17 +137,24 @@ internal sealed partial class DeclarativeSecretBindingProvider
     private static DeclarationDocumentVersion[] Versions(BindingPlanningDependencies dependencies) =>
     [
         .. SecretPlanningFence.Versions(dependencies.Secret),
-        new($"ResourceGroup/{dependencies.Group.ResourceGroupId}", dependencies.Group.Revision),
-        new($"IsolationScope/{dependencies.Group.DefaultIsolationScopeId}", dependencies.Group.ScopeRevision),
+        new($"ResourceGroup/{dependencies.Scope.ResourceGroupId}", dependencies.Scope.ResourceGroupRevision),
+        new($"IsolationScope/{dependencies.Scope.IsolationScopeId}", dependencies.Scope.ScopeRevision),
         .. dependencies.Placements.Items.Select(item =>
             new DeclarationDocumentVersion($"ResourceDeployment/{item.DeploymentId}", item.Revision))
     ];
 
     private static DeclarationProjection Project(
         string secretId,
-        string consumerId,
+        SecretConsumerIdentity consumer,
+        Pole.Features.Secrets.Primitives.SecretBindingUsage usage,
         IEnumerable<KeyValuePair<string, string>> keyMappings) => new(
-            DeclarationJson.Write(new { secretId, consumerId }),
+            DeclarationJson.Write(new
+            {
+                secretId,
+                consumerId = consumer.ResourceId,
+                consumerType = consumer.ResourceType,
+                usage = usage.ToString()
+            }),
             DeclarationJson.Write(new
             {
                 keyMappings = keyMappings.OrderBy(item => item.Key, StringComparer.Ordinal)
@@ -155,7 +165,7 @@ internal sealed partial class DeclarativeSecretBindingProvider
 internal sealed record BindingPlanningDependencies(
     Secret Secret,
     string ConsumerId,
-    ResourceGroupPlanningSnapshot Group,
+    IsolationScopePlanningSnapshot Scope,
     ResourceDeploymentPlanningSnapshot Placements);
 
 internal union ReadBindingPlanningOutcome(

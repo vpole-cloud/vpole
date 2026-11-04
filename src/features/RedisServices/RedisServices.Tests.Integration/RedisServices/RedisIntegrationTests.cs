@@ -72,9 +72,8 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
             DbContext.RunOutcomeInTransactionAsync<Unit>(async (transaction, cancellationToken) =>
             {
                 await persistUpdatedRedis(
+                    new(current, replacement, null),
                     transaction.Session,
-                    current,
-                    replacement,
                     cancellationToken);
                 return transaction.Commit(Unit.Value);
             }));
@@ -92,9 +91,8 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
             DbContext.RunOutcomeInTransactionAsync<Unit>(async (transaction, cancellationToken) =>
             {
                 await persistUpdatedRedis(
+                    new(current, replacement, null),
                     transaction.Session,
-                    current,
-                    replacement,
                     cancellationToken);
                 return transaction.Commit(Unit.Value);
             }));
@@ -525,14 +523,14 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
             PersistUpdatedRedisOutcome>(async (transaction, cancellationToken) =>
         {
             var outcome = await persistUpdatedRedis(
-                transaction.Session,
-                current,
-                intended,
+                new(current, intended, null),
+                    transaction.Session,
                 cancellationToken);
             return outcome switch
             {
                 RedisUpdated success => transaction.Commit(success),
-                RedisUpdateConflict error => transaction.Abort(error)
+                RedisUpdateConflict error => transaction.Abort(error),
+                RedisGitOwnedConfiguration error => transaction.Abort(error)
             };
         });
 
@@ -563,14 +561,14 @@ public sealed class RedisIntegrationTests(MongoReplicaSetFixture fixture)
             BeginRedisDeletionOutcome>(async (transaction, cancellationToken) =>
         {
             var outcome = await beginRedisDeletion(
+                new(current, deleting),
                 transaction.Session,
-                current,
-                deleting,
                 cancellationToken);
             return outcome switch
             {
                 RedisDeletionStarted success => transaction.Commit(success),
-                RedisDeletionConflict error => transaction.Abort(error)
+                RedisDeletionConflict error => transaction.Abort(error),
+                RedisGitOwnedConfiguration error => transaction.Abort(error)
             };
         });
 

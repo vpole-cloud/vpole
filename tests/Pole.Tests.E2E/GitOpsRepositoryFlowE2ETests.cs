@@ -10,7 +10,7 @@ using Xunit;
 namespace Pole.Tests.E2E;
 
 [Collection(PoleE2ECollection.Name)]
-public sealed class GitOpsRepositoryFlowE2ETests(PoleE2EFixture fixture)
+public sealed partial class GitOpsRepositoryFlowE2ETests(PoleE2EFixture fixture)
 {
     private const string Root = "/api/v1/gitops/sources";
 

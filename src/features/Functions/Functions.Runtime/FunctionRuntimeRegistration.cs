@@ -14,6 +14,7 @@ using Pole.Features.Functions.Runtime.Scaling;
 using Pole.Features.Functions.Runtime.Security;
 using Pole.Features.Functions.Runtime.Timers;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.Secrets.Contracts;
 
 namespace Pole.Features.Functions.Runtime;
 
@@ -48,6 +49,7 @@ public static class FunctionRuntimeRegistration
         services.TryAddSingleton<IFunctionRevisionKubernetesManager, FunctionRevisionKubernetesManager>();
         services.TryAddSingleton<IFunctionResourcePlacementResolver, FunctionResourcePlacementResolver>();
         services.TryAddScoped<FunctionResourceDeploymentAdapter>();
+        services.AddScoped<ISecretConsumerRolloutObserver, FunctionSecretRolloutObserver>();
         services.TryAddSingleton(FunctionResourceDeploymentAdapterRegistration.Descriptor);
         services.AddSingleton<ResourceIngressPolicyDefinition>(FunctionIngressPolicyDefinition.Gateway);
         services.TryAddSingleton<IFunctionEndpointSliceSource, KubernetesFunctionEndpointSliceSource>();

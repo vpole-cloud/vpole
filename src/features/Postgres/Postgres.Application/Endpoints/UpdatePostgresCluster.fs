@@ -118,8 +118,10 @@ module private UpdatePostgresClusterWorkflow =
                 return
                     Completed(
                         UpdatePostgresClusterRejected(
-                            UpdateConflict { ClusterId = cluster.Id }))
-            | Some cluster when (cluster.Lifecycle :? DeletingPostgresClusterLifecycle) ->
+                            UpdateConflict
+                                { ClusterId = cluster.Id
+                                  Reason = PostgresMutationConflictReason.ExpectedRevisionConflict }))
+            | Some cluster when (cluster.Lifecycle :? DeletingPostgresClusterLifecycle) || cluster.IsPrepared ->
                 return
                     Completed(
                         UpdatePostgresClusterRejected(
@@ -244,9 +246,8 @@ module private UpdatePostgresClusterWorkflow =
                     task {
                         let! persisted =
                             persistUpdatedCluster.Invoke(
+                                { Current = plan.Cluster; Replacement = plan.UpdatedCluster; Mutation = None },
                                 transaction.Session,
-                                plan.Cluster,
-                                plan.UpdatedCluster,
                                 ct)
 
                         match persisted with

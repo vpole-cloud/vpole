@@ -105,6 +105,7 @@ public sealed class StorageProfileDomainTests
     private static StorageProfile CreateProfile(
         IEnumerable<StorageProfileTargetMapping> targetMappings) =>
         StorageProfileFactory.Create(
+            technicalName: "storage-" + MongoDB.Bson.ObjectId.GenerateNewId(),
             "Domain test",
             "Domain test profile",
             StorageMediaType.SSD,

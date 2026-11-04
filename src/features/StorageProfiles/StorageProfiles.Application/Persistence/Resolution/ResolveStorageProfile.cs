@@ -8,117 +8,96 @@ using Pole.Features.StorageProfiles.Domain;
 namespace Pole.Features.StorageProfiles.Application.Persistence.Resolution;
 
 internal sealed class MongoResolveStorageProfile(
-    IMongoCollection<StorageProfile> storageProfiles,
-    DiscoverKubernetesStorageClassNames discoverStorageClassNames)
+    IMongoCollection<StorageProfile> profiles,
+    IMongoCollection<StorageProfileRevision> revisions,
+    DiscoverKubernetesStorageClassNames discover)
 {
     public async Task<ResolveStorageProfileOutcome> InvokeAsync(
         StorageProfileResolutionRequest request,
         CancellationToken cancellationToken = default)
     {
-        EnsureValidRequest(request);
-
-        var profile = await storageProfiles
-            .Find(StorageProfileFilters.ById(request.StorageProfileId))
+        StorageProfileResolution.EnsureValid(request);
+        var current = await profiles.Find(StorageProfileFilters.ById(request.StorageProfileId))
             .FirstOrDefaultAsync(cancellationToken);
-        if (profile is null)
+        if (current is null)
+            return new StorageProfileResolutionError(new StorageProfileNotFound(request.StorageProfileId));
+
+        var unavailable = StorageProfileResolution.ValidatePolicy(current, request);
+        if (unavailable is not null)
+            return unavailable.Value;
+
+        var selected = current;
+        if (request.Revision is { } revision && revision != current.Revision)
         {
-            return new StorageProfileResolutionError(
-                new StorageProfileNotFound(request.StorageProfileId));
+            var historical = await revisions.Find(StorageProfileRevisionFilters.Identity(current.Id, revision))
+                .FirstOrDefaultAsync(cancellationToken);
+            if (historical is null)
+                return new StorageProfileResolutionError(new StorageProfileRevisionUnavailable(current.Id, revision));
+
+            selected = historical.Snapshot;
         }
+
+        return await StorageProfileResolution.ResolveAsync(selected, request, discover, cancellationToken);
+    }
+}
+
+internal static class StorageProfileResolution
+{
+    public static StorageProfileResolutionError? ValidatePolicy(
+        StorageProfile profile,
+        StorageProfileResolutionRequest request)
+    {
         if (!profile.IsEnabled)
-        {
-            return new StorageProfileResolutionError(
-                new StorageProfileDisabled(profile.Id));
-        }
+            return new StorageProfileDisabled(profile.Id);
+
         if (!MongoLoadAvailableStorageProfiles.AllowsTenant(profile, request.TenantId))
-        {
-            return new StorageProfileResolutionError(
-                new StorageProfileTenantAccessDenied(profile.Id, request.TenantId));
-        }
+            return new StorageProfileTenantAccessDenied(profile.Id, request.TenantId);
+
         if (!profile.AllowedResourceTypes.Contains(request.ResourceType.Value))
-        {
-            return new StorageProfileResolutionError(
-                new StorageProfileResourceTypeNotAllowed(profile.Id, request.ResourceType));
-        }
-        if (!AllowsSize(profile, request.SizeGb))
-        {
-            return new StorageProfileResolutionError(
-                new StorageProfileSizeNotAllowed(profile.Id, request.SizeGb));
-        }
+            return new StorageProfileResourceTypeNotAllowed(profile.Id, request.ResourceType);
 
-        var targetMapping = profile.TargetMappings.SingleOrDefault(mapping =>
-            string.Equals(
-                mapping.DeploymentTargetId,
-                request.DeploymentTargetId,
-                StringComparison.Ordinal));
-        if (targetMapping is null)
-        {
-            return new StorageProfileResolutionError(
-                new StorageProfileDeploymentTargetNotConfigured(
-                    profile.Id,
-                    request.DeploymentTargetId));
-        }
+        if ((profile.SizeLimits?.MinSizeGb is { } min && request.SizeGb < min) ||
+            (profile.SizeLimits?.MaxSizeGb is { } max && request.SizeGb > max))
+            return new StorageProfileSizeNotAllowed(profile.Id, request.SizeGb);
 
-        var storageClasses = await discoverStorageClassNames(
-            request.DeploymentTargetId,
-            cancellationToken);
-        if (storageClasses is KubernetesStorageDiscoveryUnavailable)
-        {
-            return new StorageProfileResolutionError(
-                new StorageProfileDiscoveryUnavailable(request.DeploymentTargetId));
-        }
-        var names = (IReadOnlySet<string>)storageClasses.Value;
-        if (!names.Contains(targetMapping.StorageClassName))
-        {
-            return new StorageProfileResolutionError(
-                new StorageProfileStorageClassUnavailable(
-                    profile.Id,
-                    request.DeploymentTargetId,
-                    targetMapping.StorageClassName));
-        }
+        if (!profile.TargetMappings.Any(mapping => mapping.DeploymentTargetId == request.DeploymentTargetId))
+            return new StorageProfileDeploymentTargetNotConfigured(profile.Id, request.DeploymentTargetId);
 
-        return new ResolvedStorageProfile(
-            profile.Id,
-            profile.Revision,
-            request.DeploymentTargetId,
-            profile.DisplayName,
-            targetMapping.StorageClassName,
-            profile.MediaType,
-            profile.PerformanceTier);
+        return null;
     }
 
-    private static bool AllowsSize(StorageProfile profile, int sizeGb) =>
-        (profile.SizeLimits?.MinSizeGb is null || sizeGb >= profile.SizeLimits.MinSizeGb) &&
-        (profile.SizeLimits?.MaxSizeGb is null || sizeGb <= profile.SizeLimits.MaxSizeGb);
-
-    private static void EnsureValidRequest(StorageProfileResolutionRequest request)
+    public static async Task<ResolveStorageProfileOutcome> ResolveAsync(
+        StorageProfile selected,
+        StorageProfileResolutionRequest request,
+        DiscoverKubernetesStorageClassNames discover,
+        CancellationToken ct)
     {
-        ArgumentNullException.ThrowIfNull(request);
-        if (!ObjectId.TryParse(request.StorageProfileId, out _))
-        {
+        var mapping = selected.TargetMappings.SingleOrDefault(item =>
+            item.DeploymentTargetId == request.DeploymentTargetId);
+        if (mapping is null)
+            return new StorageProfileResolutionError(
+                new StorageProfileDeploymentTargetNotConfigured(selected.Id, request.DeploymentTargetId));
+
+        var classes = await discover(request.DeploymentTargetId, ct);
+        if (classes is KubernetesStorageDiscoveryUnavailable)
+            return new StorageProfileResolutionError(
+                new StorageProfileDiscoveryUnavailable(request.DeploymentTargetId));
+        if (!((IReadOnlySet<string>)classes.Value).Contains(mapping.StorageClassName))
+            return new StorageProfileResolutionError(new StorageProfileStorageClassUnavailable(
+                selected.Id, request.DeploymentTargetId, mapping.StorageClassName));
+
+        return new ResolvedStorageProfile(selected.Id, selected.Revision, request.DeploymentTargetId,
+            selected.DisplayName, mapping.StorageClassName, selected.MediaType, selected.PerformanceTier);
+    }
+
+    public static void EnsureValid(StorageProfileResolutionRequest request)
+    {
+        if (!ObjectId.TryParse(request.StorageProfileId, out _) ||
+            !ObjectId.TryParse(request.DeploymentTargetId, out _) ||
+            !ObjectId.TryParse(request.TenantId, out _) || string.IsNullOrWhiteSpace(request.ResourceType.Value))
             throw new ArgumentException(
-                "Storage profile ID must be a MongoDB ObjectId.",
-                nameof(request));
-        }
-        if (!ObjectId.TryParse(request.DeploymentTargetId, out _))
-        {
-            throw new ArgumentException(
-                "Deployment target ID must be a MongoDB ObjectId.",
-                nameof(request));
-        }
-        if (!ObjectId.TryParse(request.TenantId, out _))
-        {
-            throw new ArgumentException(
-                "Tenant ID must be a MongoDB ObjectId.",
-                nameof(request));
-        }
-        if (string.IsNullOrWhiteSpace(request.ResourceType.Value))
-            throw new ArgumentException("Resource type is invalid.", nameof(request));
-        if (request.SizeGb <= 0)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(request),
-                "Requested storage size must be greater than zero.");
-        }
+                "Valid profile, tenant, target and resource type are required.", nameof(request));
+        if (request.SizeGb <= 0 || request.Revision is <= 0)
+            throw new ArgumentOutOfRangeException(nameof(request), "Size and explicit revision must be positive.");
     }
 }

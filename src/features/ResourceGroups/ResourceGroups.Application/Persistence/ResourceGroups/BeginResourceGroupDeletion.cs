@@ -105,6 +105,14 @@ internal sealed class MongoBeginResourceGroupDeletion(
                     transaction.Session,
                     IsolationScopeFilters.ByTenantAndResourceGroup(tenantId, resourceGroupId))
                 .ToListAsync(ct);
+            foreach (var scope in scopes.Where(scope => !scope.IsDefault))
+            {
+                if (!await git.AuthorizeAsync(new(tenantId, "IsolationScope", scope.Id), transaction.Session, ct))
+                    return transaction.Abort(new BeginResourceGroupDeletionOutcome(new ResourceGroupDeletionError(
+                        new ResourceGroupRevisionConflict(resourceGroupId,
+                            ResourceGroupRevisionConflictReason.GitOwnedConfiguration))));
+            }
+
             var cells = await runtimeCells
                 .Find(
                     transaction.Session,

@@ -1,6 +1,7 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Domain;
 
 namespace Pole.Features.Functions.Application.Migrations;
@@ -35,7 +36,7 @@ public sealed class FunctionAppsInitialMigration : IMigration
                     .Ascending(app => app.NormalizedName),
                 new CreateIndexOptions
                 {
-                    Name = "UX_FunctionApps_Tenant_NormalizedName",
+                    Name = FunctionAppIndexes.TenantName,
                     Unique = true
                 })
         ], cancellationToken);

@@ -210,7 +210,8 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
 (request, ct) =>
                     Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
                         new RuntimeCellIngressBaselineReady()),
-                []).ApplyAsync(
+                [],
+            new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>()).ApplyAsync(
                 new FunctionRevisionInKubernetes(
                     null!,
                     null!,

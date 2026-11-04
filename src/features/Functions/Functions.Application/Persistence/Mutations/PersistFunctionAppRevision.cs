@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Persistence;
 using Pole.Features.Functions.Domain;
@@ -11,34 +12,44 @@ public sealed record FunctionAppRevisionChanged(string FunctionAppId);
 
 public union PersistFunctionAppRevisionOutcome(
     FunctionRevision,
-    FunctionAppRevisionChanged);
+    FunctionAppRevisionChanged,
+    FunctionAppGitOwnedConfiguration);
 
-public delegate Task<PersistFunctionAppRevisionOutcome>
-    PersistFunctionAppRevision(
-        IClientSessionHandle session,
-        FunctionApp current,
-        FunctionRevision candidate,
-        FunctionQuotaAllocation admittedQuota,
-        ImmutableHashSet<string> tags,
-        DateTimeOffset updatedAtUtc,
-        CancellationToken cancellationToken = default);
+public sealed record PersistFunctionAppRevisionRequest(
+    FunctionApp Current,
+    FunctionRevision Candidate,
+    FunctionQuotaAllocation AdmittedQuota,
+    ImmutableHashSet<string> Tags,
+    DateTimeOffset UpdatedAtUtc,
+    GitMutationContext? Context);
+
+public delegate Task<PersistFunctionAppRevisionOutcome> PersistFunctionAppRevision(
+    PersistFunctionAppRevisionRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken);
 
 internal sealed class MongoPersistFunctionAppRevision(
     IMongoCollection<FunctionApp> functionApps,
     IMongoCollection<FunctionRevision> functionRevisions,
-    StoreOutboxWrites storeOutboxWrites)
+    StoreOutboxWrites storeOutboxWrites,
+    IGitOpsMutations git)
 {
     public async Task<PersistFunctionAppRevisionOutcome> InvokeAsync(
+        PersistFunctionAppRevisionRequest request,
         IClientSessionHandle session,
-        FunctionApp current,
-        FunctionRevision candidate,
-        FunctionQuotaAllocation admittedQuota,
-        ImmutableHashSet<string> tags,
-        DateTimeOffset updatedAtUtc,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken)
     {
+        var (current, candidate, admittedQuota, tags, updatedAtUtc, context) = request;
+        if (!session.IsInTransaction)
+            throw new InvalidOperationException("Function revision persistence requires an active transaction.");
+
+        if (!await git.AuthorizeAsync(new(current.TenantId, "FunctionApp", current.Id, context), session,
+                cancellationToken))
+            return new FunctionAppGitOwnedConfiguration(current.Id);
+
         var update = Builders<FunctionApp>.Update
             .Set(app => app.PendingRevisionId, candidate.Id)
+            .Set(app => app.DesiredState, FunctionAppDesiredState.Enabled)
             .Set(app => app.NextRevisionNumber, checked(current.NextRevisionNumber + 1))
             .Set(
                 app => app.Status,
@@ -64,7 +75,11 @@ internal sealed class MongoPersistFunctionAppRevision(
             cancellationToken: cancellationToken);
         await storeOutboxWrites(
             session,
-            [OutboxWrite.Create(candidate.ToRevisionCreatedEvent(current))],
+            [
+                .. current.DesiredState == FunctionAppDesiredState.Prepared
+                    ? new[] { OutboxWrite.Create(current.ToCreatedEvent(candidate)) } : [],
+                OutboxWrite.Create(candidate.ToRevisionCreatedEvent(current))
+            ],
             cancellationToken);
         return candidate;
     }

@@ -4,6 +4,7 @@ using Pole.Tests.E2E.GitHubStub;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<GitHubStubState>();
 builder.Services.AddSingleton<GitOpsStubState>();
+builder.Services.AddSingleton<GitOpsMixedStubState>();
 
 var app = builder.Build();
 app.MapGet("/healthz", () => Results.Ok(new { status = "healthy" }));
@@ -187,6 +188,7 @@ app.MapGet("/repos/pole-e2e/source-build-sample/tarball/{commitSha}",
     });
 
 app.MapGitOpsStub(IsAuthorized);
+app.MapGitOpsMixedStub(IsAuthorized);
 
 app.Run();
 

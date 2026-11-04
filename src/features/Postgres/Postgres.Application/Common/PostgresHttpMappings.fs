@@ -100,10 +100,24 @@ module PostgresHttpMappings =
             problem HttpStatusCode.BadRequest "postgres.credentials.values-too-large" "The combined UTF-8 credential values must not exceed 64 KiB" clusterId
 
     let private mapUpdateConflict (error : PostgresClusterUpdateConflict) =
-        problem HttpStatusCode.Conflict "postgres.update.concurrent-change" "PostgreSQL cluster changed concurrently" error.ClusterId
+        match error.Reason with
+        | PostgresMutationConflictReason.GitOwnedConfiguration ->
+            problem HttpStatusCode.Conflict "postgres.git-owned-configuration"
+                "Git owns this PostgreSQL configuration" error.ClusterId
+        | PostgresMutationConflictReason.ExpectedRevisionConflict ->
+            problem HttpStatusCode.Conflict "postgres.update.concurrent-change"
+                "PostgreSQL cluster changed concurrently" error.ClusterId
+        | _ -> invalidArg "error" "Unsupported PostgreSQL mutation conflict."
 
     let private mapDeletionConflict (error : PostgresClusterDeletionConflict) =
-        problem HttpStatusCode.Conflict "postgres.deletion.concurrent-change" "PostgreSQL cluster changed concurrently while deletion was being accepted" error.ClusterId
+        match error.Reason with
+        | PostgresMutationConflictReason.GitOwnedConfiguration ->
+            problem HttpStatusCode.Conflict "postgres.git-owned-configuration"
+                "Git owns this PostgreSQL configuration" error.ClusterId
+        | PostgresMutationConflictReason.ExpectedRevisionConflict ->
+            problem HttpStatusCode.Conflict "postgres.deletion.concurrent-change"
+                "PostgreSQL cluster changed concurrently while deletion was being accepted" error.ClusterId
+        | _ -> invalidArg "error" "Unsupported PostgreSQL mutation conflict."
 
     let private mapNameAlreadyExists (error : PostgresClusterNameAlreadyExists) =
         let extensions = Dictionary<string, obj>()

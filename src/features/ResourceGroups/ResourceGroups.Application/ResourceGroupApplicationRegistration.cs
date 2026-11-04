@@ -92,6 +92,13 @@ public static class ResourceGroupApplicationRegistration
         services.TryAddScoped<RuntimeCellRecoveryPersistence>();
         services.TryAddScoped<RuntimeCellRecoveryJob>();
         services.AddScoped<IDeclarativeResourceProvider, DeclarativeResourceGroupProvider>();
+        services.AddScoped<IDeclarativeResourceProvider, DeclarativeIsolationScopeProvider>();
+        services.AddCapability<MongoIsolationScopePlanningSnapshots, ResolveNamedIsolationScope>(
+            implementation => implementation.ResolveAsync);
+        services.AddCapability<MongoIsolationScopePlanningSnapshots, LoadIsolationScopePlanningSnapshot>(
+            implementation => implementation.ReadAsync);
+        services.AddCapability<MongoIsolationScopePlanningSnapshots, FenceIsolationScopePlanningSnapshot>(
+            implementation => implementation.FenceAsync);
         return services;
     }
 

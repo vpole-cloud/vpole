@@ -106,6 +106,7 @@ type PostgresResourceDeploymentChangeSource
 
             match cluster with
             | None -> return null
+            | Some cluster when cluster.IsPrepared -> return null
             | Some cluster ->
                 let identity =
                     WorkloadIdentityLabels(

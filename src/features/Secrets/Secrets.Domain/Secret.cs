@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using Pole.Encryption;
+using Pole.Features.Secrets.Primitives;
 
 namespace Pole.Features.Secrets.Domain;
 
@@ -61,7 +62,8 @@ public sealed record SecretBinding(
     SecretDeploymentSelection Selection,
     ImmutableDictionary<string, string> KeyMappings,
     string? DeclarationName,
-    SecretKeyPins Pins)
+    SecretKeyPins Pins,
+    [property: BsonRepresentation(BsonType.String)] SecretBindingUsage Usage)
 {
     public SecretBinding RequireKeys(IEnumerable<string> desiredKeys) =>
         this with { Pins = Pins.Require(desiredKeys) };
@@ -77,14 +79,16 @@ public sealed record SecretBinding(
         string consumerType,
         string consumerId,
         SecretDeploymentSelection selection,
-        IEnumerable<KeyValuePair<string, string>> keyMappings) =>
+        IEnumerable<KeyValuePair<string, string>> keyMappings,
+        SecretBindingUsage usage = SecretBindingUsage.Runtime) =>
         new(
             id,
             new SecretConsumerIdentity(consumerType, consumerId),
             selection,
             keyMappings.ToImmutableDictionary(),
             null,
-            SecretKeyPins.Empty);
+            SecretKeyPins.Empty,
+            Enum.IsDefined(usage) ? usage : throw new ArgumentOutOfRangeException(nameof(usage)));
 }
 
 public enum SecretLifecycle
@@ -149,6 +153,8 @@ public sealed record Secret(
     public DeclareSecretBindingOutcome DeclareBinding(SecretBinding binding, DateTime now)
     {
         var current = Bindings.SingleOrDefault(item => item.Id == binding.Id);
+        if (current is not null && current.Usage != binding.Usage)
+            return new SecretBindingUsageChanged();
         if (current is not null && (current.Consumer.ResourceType != binding.Consumer.ResourceType || current.Consumer.ResourceId != binding.Consumer.ResourceId))
             return new SecretBindingConsumerChanged(current.Consumer, binding.Consumer);
         if (current is null && Bindings.Any(item => item.Consumer.ResourceType == binding.Consumer.ResourceType && item.Consumer.ResourceId == binding.Consumer.ResourceId))
@@ -301,6 +307,8 @@ public union UpdateDeclaredSecretOutcome(
 public sealed record SecretBindingConsumerChanged(
     SecretConsumerIdentity Current,
     SecretConsumerIdentity Desired);
+public sealed record SecretBindingUsageChanged;
+
 public sealed record SecretBindingConsumerConflict(SecretConsumerIdentity Consumer);
 public sealed record UnknownSecretBindingKeys(ImmutableArray<string> Keys);
 public sealed record SecretBindingCapacityExceeded(int Maximum);
@@ -308,6 +316,7 @@ public sealed record SecretBindingKeysInUse(ImmutableArray<string> Keys);
 public union DeclareSecretBindingOutcome(
     Secret,
     SecretBindingConsumerChanged,
+    SecretBindingUsageChanged,
     SecretBindingConsumerConflict,
     UnknownSecretBindingKeys,
     SecretBindingCapacityExceeded,

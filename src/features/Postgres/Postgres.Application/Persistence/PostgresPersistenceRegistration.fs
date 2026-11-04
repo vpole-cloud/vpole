@@ -12,6 +12,11 @@ open Pole.Features.Postgres.Application.Persistence.Reads
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Contracts
 open Pole.Features.ResourceConnections.Contracts
+open Pole.Features.Postgres.Application.Common
+open Pole.Features.Secrets.Contracts
+open Pole.Features.Secrets.Primitives
+open Pole.Features.GitOps.Contracts
+open Pole.Features.Postgres.Application.Persistence.Declarative
 
 [<RequireQualifiedAccess>]
 module PostgresPersistenceRegistration =
@@ -54,17 +59,17 @@ module PostgresPersistenceRegistration =
         services.AddScoped<PersistUpdatedPostgresCluster>(
             Func<IServiceProvider, PersistUpdatedPostgresCluster>(fun serviceProvider ->
                 PersistUpdatedPostgresCluster(
-                    fun session current replacement cancellationToken ->
+                    fun request session cancellationToken ->
                         serviceProvider.GetRequiredService<MongoPersistUpdatedPostgresCluster>()
-                            .InvokeAsync(session, current, replacement, cancellationToken))))
+                            .InvokeAsync(request, session, cancellationToken))))
         |> ignore
         services.AddScoped<MongoBeginPostgresClusterDeletion>() |> ignore
         services.AddScoped<BeginPostgresClusterDeletion>(
             Func<IServiceProvider, BeginPostgresClusterDeletion>(fun serviceProvider ->
                 BeginPostgresClusterDeletion(
-                    fun session current replacement cancellationToken ->
+                    fun request session cancellationToken ->
                         serviceProvider.GetRequiredService<MongoBeginPostgresClusterDeletion>()
-                            .InvokeAsync(session, current, replacement, cancellationToken))))
+                            .InvokeAsync(request, session, cancellationToken))))
         |> ignore
         services.AddScoped<MongoFinalizePostgresClusterDeletion>() |> ignore
         services.AddScoped<FinalizePostgresClusterDeletion>(
@@ -74,6 +79,14 @@ module PostgresPersistenceRegistration =
                         serviceProvider.GetRequiredService<MongoFinalizePostgresClusterDeletion>()
                             .InvokeAsync(tenantId, clusterId, cancellationToken))))
         |> ignore
+        services.AddSingleton(SecretDeclarationConsumer(
+            "PostgresCluster", PostgresResourceDeployment.ResourceType, SecretBindingUsage.Bootstrap)) |> ignore
+        services.AddScoped<PostgresBootstrapInitializer>() |> ignore
+        services.AddScoped<PostgresPlanningReader>() |> ignore
+        services.AddScoped<PostgresDeclarationPlanner>() |> ignore
+        services.AddScoped<PostgresDeclarationReferences>() |> ignore
+        services.AddScoped<PostgresDeclarationExecution>() |> ignore
+        services.AddScoped<IDeclarativeResourceProvider, DeclarativePostgresProvider>() |> ignore
         services.AddScoped<PostgresCredentialCreator>() |> ignore
         services.AddScoped<CreatePostgresCredential>(
             Func<IServiceProvider, CreatePostgresCredential>(fun serviceProvider ->

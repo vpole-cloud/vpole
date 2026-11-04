@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
@@ -26,6 +27,7 @@ public static class RedisPersistenceRegistration
             MongoLoadRedisConnectionEndpoints>();
         services.AddScoped<IResourceConnectionDestinationNameCapability,
             MongoLoadRedisConnectionEndpoints>();
+        services.AddScoped<IDeclarativeResourceProvider, DeclarativeRedisProvider>();
         services.AddScoped<MongoLoadRedisById>();
         services.AddScoped<MongoLoadRedisPage>();
         services.AddScoped<MongoPersistCreatedRedis>();

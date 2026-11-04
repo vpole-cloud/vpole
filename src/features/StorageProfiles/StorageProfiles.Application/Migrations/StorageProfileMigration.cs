@@ -1,6 +1,7 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.StorageProfiles.Application.Persistence;
 
 namespace Pole.Features.StorageProfiles.Application.Migrations;
 
@@ -20,6 +21,9 @@ public sealed class StorageProfileMigration : IMigration
         var profiles = context.GetCollection<BsonDocument>("StorageProfiles");
         await profiles.Indexes.CreateManyAsync(
         [
+            new CreateIndexModel<BsonDocument>(
+                Builders<BsonDocument>.IndexKeys.Ascending("TechnicalName"),
+                new CreateIndexOptions { Unique = true, Name = StorageProfileTechnicalNames.UniqueIndexName }),
             new CreateIndexModel<BsonDocument>(
                 Builders<BsonDocument>.IndexKeys.Ascending("IsDefault"),
                 new CreateIndexOptions<BsonDocument>

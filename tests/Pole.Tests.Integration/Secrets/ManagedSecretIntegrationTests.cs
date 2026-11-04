@@ -25,7 +25,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Secrets;
 
-public sealed class ManagedSecretIntegrationTests(MongoReplicaSetFixture fixture)
+public sealed partial class ManagedSecretIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
     private static string Id() => ObjectId.GenerateNewId().ToString();

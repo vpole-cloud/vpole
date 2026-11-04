@@ -31,7 +31,9 @@ public readonly record struct FunctionRevisionInKubernetes(
         return $"fn-{id}-r{revisionNumber.ToString(CultureInfo.InvariantCulture)}";
     }
 
-    public V1Deployment ToDeployment(FunctionAgentTrustBundle? trustBundle = null)
+    public V1Deployment ToDeployment(
+        FunctionAgentTrustBundle? trustBundle = null,
+        IReadOnlyDictionary<string, FunctionSecretProjection>? secretProjections = null)
     {
         var selectorLabels = SelectorLabels();
         var labels = Labels();
@@ -49,7 +51,7 @@ public readonly record struct FunctionRevisionInKubernetes(
                     Protocol = "TCP"
                 }
             ],
-            Env = BuildEnvironment(trustBundle),
+            Env = BuildEnvironment(trustBundle, secretProjections),
             Resources = new V1ResourceRequirements
             {
                 Requests = new Dictionary<string, ResourceQuantity>
@@ -141,11 +143,18 @@ public readonly record struct FunctionRevisionInKubernetes(
         }
     };
 
-    private List<V1EnvVar> BuildEnvironment(FunctionAgentTrustBundle? trustBundle)
+    private List<V1EnvVar> BuildEnvironment(
+        FunctionAgentTrustBundle? trustBundle,
+        IReadOnlyDictionary<string, FunctionSecretProjection>? secretProjections)
     {
         var environment = Revision.Spec.Configuration.EnvironmentVariables
             .Select(pair => Env(pair.Key, pair.Value))
             .ToList();
+        if (Revision.Spec.Configuration.SecretReferences.Keys.Any(key =>
+                secretProjections is null || !secretProjections.ContainsKey(key)))
+            throw new InvalidOperationException(
+                "Function Secret projections must be resolved before manifest creation.");
+
         environment.AddRange(Revision.Spec.Configuration.SecretReferences.Select(pair => new V1EnvVar
         {
             Name = pair.Key,
@@ -153,8 +162,8 @@ public readonly record struct FunctionRevisionInKubernetes(
             {
                 SecretKeyRef = new V1SecretKeySelector
                 {
-                    Name = pair.Value,
-                    Key = pair.Key
+                    Name = secretProjections![pair.Key].KubernetesName,
+                    Key = secretProjections[pair.Key].ProjectedKey
                 }
             }
         }));
@@ -253,3 +262,7 @@ public readonly record struct FunctionRevisionInKubernetes(
         SuccessThreshold = 1
     };
 }
+
+public sealed record FunctionSecretProjection(
+    string KubernetesName,
+    string ProjectedKey);

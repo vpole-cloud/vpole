@@ -10,6 +10,7 @@ open MongoDB.Driver
 open Pole.ASP.Helpers
 open Pole.Database
 open Pole.Features.Core.Multitenancy
+open Pole.Features.GitOps.Contracts
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application.Persistence.Reads
@@ -32,7 +33,8 @@ type GetPostgresClusterByIdRequest =
 
 type GetPostgresClusterHandler(
     loadCluster : LoadPostgresClusterById,
-    loadDeployment : LoadResourceDeployment) =
+    loadDeployment : LoadResourceDeployment,
+    git : IGitOpsMutations) =
     interface IMediatorOutcomeHandler<GetPostgresClusterByIdRequest, GetPostgresClusterByIdOutcome> with
         member this.HandleAsync(request, cancellationToken) =
             task {
@@ -61,8 +63,13 @@ type GetPostgresClusterHandler(
                             GetPostgresClusterByIdRejected(
                                 PostgresClusterDeploymentUnavailable cluster.Id)
                     else
+                        let! status =
+                            git.StatusAsync(
+                                LoadGitResourceStatusRequest(cluster.TenantId, "PostgresCluster", cluster.Id),
+                                cancellationToken)
+
                         return
-                            PostgresClusterDto.create cluster placement
+                            PostgresClusterDto.create cluster placement status
                             |> PostgresClusterFound
             }
 

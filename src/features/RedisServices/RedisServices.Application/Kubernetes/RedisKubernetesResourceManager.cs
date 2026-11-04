@@ -20,6 +20,7 @@ public static class RedisKubernetesResourceManager
         RedisInKubernetes redis,
         CancellationToken cancellationToken = default)
     {
+        redis.EnsureRuntimeActive();
         var statefulSet = redis.ToStatefulSet();
         var service = redis.ToService();
 
@@ -41,6 +42,7 @@ public static class RedisKubernetesResourceManager
         RedisInKubernetes redis,
         CancellationToken cancellationToken = default)
     {
+        redis.EnsureRuntimeActive();
         var statefulSet = redis.ToStatefulSet();
         var service = redis.ToService();
 
@@ -63,6 +65,7 @@ public static class RedisKubernetesResourceManager
         RedisResourceDeploymentMetadata deploymentMetadata,
         CancellationToken cancellationToken = default)
     {
+        redis.EnsureRuntimeActive();
         var stage = "preparing the Redis manifests";
         try
         {

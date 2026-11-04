@@ -44,6 +44,7 @@ public static class UpdateRedisService
                         RedisStorageProfileChangeNotAllowed error => MapStorageProfileChangeNotAllowed(error),
                         RedisStorageResizeUnsupported error => MapStorageResizeUnsupported(error),
                         RedisUpdateConflict error => MapUpdateConflict(error),
+                        RedisGitOwnedConfiguration error => MapGitOwned(error),
                         LoadCurrentResourceDeploymentComputeError error => MapComputeError(error),
                         ComputeProfileResolutionError error => ComputeHttpMappings.MapResolutionError(error),
                         ResourceDeploymentMutationError error => MapMutationError(error),
@@ -73,6 +74,7 @@ public union UpdateRedisServiceOutcome(
     LoadCurrentResourceDeploymentComputeError,
     ComputeProfileResolutionError,
     RedisUpdateConflict,
+    RedisGitOwnedConfiguration,
     ResourceDeploymentMutationError,
     QuotaExecutionError);
 
@@ -184,10 +186,12 @@ public sealed class UpdateRedisServiceHandler(
                         nextSpec,
                         request.Body.Tags);
                     var persistenceResult = await persistUpdatedRedis(
+                        new(redis, updatedRedis, null),
                         transaction.Session,
-                        redis,
-                        updatedRedis,
                         transactionCancellationToken);
+                    if (persistenceResult is RedisGitOwnedConfiguration ownershipError)
+                        return transaction.Abort(ownershipError);
+
                     if (persistenceResult is RedisUpdateConflict persistenceError)
                     {
                         return transaction.Abort(persistenceError);

@@ -34,7 +34,11 @@ export interface SecretBindingInput {
 }
 
 export interface SecretUsage {
-  binding: SecretBindingInput & { id: string; gitOps?: GitOpsStatus | null }
+  binding: SecretBindingInput & {
+    id: string
+    usage: 'Runtime' | 'Bootstrap'
+    gitOps?: GitOpsStatus | null
+  }
   affectedDeploymentIds: string[]
 }
 

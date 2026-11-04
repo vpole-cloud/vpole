@@ -30,7 +30,8 @@ module PostgresFilters =
     let atRevision (cluster : PostgresCluster) : FilterDefinition<PostgresCluster> =
         clusters.And(
             byId cluster.TenantId cluster.Id,
-            clusters.Eq((fun (candidate : PostgresCluster) -> candidate.Revision), cluster.Revision))
+            clusters.Eq((fun (candidate : PostgresCluster) -> candidate.Revision), cluster.Revision),
+            clusters.Eq((fun (candidate : PostgresCluster) -> candidate.PlanningFence), cluster.PlanningFence))
 
     let activeAtRevision (cluster : PostgresCluster) : FilterDefinition<PostgresCluster> =
         clusters.And(

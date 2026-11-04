@@ -1,3 +1,4 @@
+using Pole.Workloads;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
@@ -64,7 +65,7 @@ public sealed record DeletingIsolationScopeLifecycleState(DateTime RequestedAtUt
 public static class IsolationScopeFactory
 {
     public const string DefaultScopeName = "default";
-    public const int MaximumNameLength = ResourceGroupValueGuard.MaximumIsolationScopeNameLength;
+    public const int MaximumNameLength = ResourceTechnicalName.MaximumLength;
 
     public sealed record CreateOptions(
         string Id,
@@ -86,13 +87,6 @@ public static class IsolationScopeFactory
         CreateOptions options) =>
         Create(tenantId, resourceGroupId, name, isDefault: false, options);
 
-    public static string NormalizeName(string name) =>
-        ResourceGroupValueGuard.Required(
-                name,
-                nameof(name),
-                ResourceGroupValueGuard.MaximumIsolationScopeNameLength)
-            .ToLowerInvariant();
-
     private static IsolationScope Create(
         string tenantId,
         string resourceGroupId,
@@ -102,7 +96,7 @@ public static class IsolationScopeFactory
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        var normalizedName = NormalizeName(name);
+        var normalizedName = ResourceTechnicalName.Require(name);
         if (isDefault && !string.Equals(normalizedName, DefaultScopeName, StringComparison.Ordinal))
             throw new ArgumentException("The default isolation scope must use the system default name.", nameof(name));
         if (!isDefault && string.Equals(normalizedName, DefaultScopeName, StringComparison.Ordinal))

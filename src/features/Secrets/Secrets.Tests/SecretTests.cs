@@ -39,6 +39,18 @@ public sealed class SecretTests
             });
 
     [Fact]
+    public void Binding_usage_is_explicit_persisted_and_cannot_change_under_an_existing_identity()
+    {
+        var binding = Binding("binding", "consumer");
+        Assert.Equal(Pole.Features.Secrets.Primitives.SecretBindingUsage.Runtime, binding.Usage);
+        var bootstrap = binding with { Usage = Pole.Features.Secrets.Primitives.SecretBindingUsage.Bootstrap };
+        var roundTrip = BsonSerializer.Deserialize<SecretBinding>(bootstrap.ToBson());
+        Assert.Equal(bootstrap.Usage, roundTrip.Usage);
+        var secret = NewSecret().Bind(binding, DateTime.UtcNow);
+        Assert.IsType<SecretBindingUsageChanged>(secret.DeclareBinding(bootstrap, DateTime.UtcNow).Value);
+    }
+
+    [Fact]
     public async Task One_recovery_pass_can_release_independent_consumers_without_reusing_the_old_reference_fence()
     {
         SecretBinding Retained(string id) => SecretBinding.Create(id, "pole/web-service", id, new AllSecretDeployments(), [])

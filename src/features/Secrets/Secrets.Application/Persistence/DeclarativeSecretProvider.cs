@@ -13,6 +13,8 @@ public sealed record SecretDeclaration
 {
     public required string ResourceGroup { get; init; }
 
+    public string? IsolationScope { get; init; }
+
     public string Purpose { get; init; } = "";
 
     public required string[] Keys { get; init; }
@@ -21,9 +23,8 @@ public sealed record SecretDeclaration
 internal sealed partial class DeclarativeSecretProvider(
     IMongoCollection<Secret> secrets,
     IGitOpsMutations git,
-    GetResourceGroupOwnership groupOwnership,
-    LoadResourceGroupPlanningSnapshot loadPlanningGroup,
-    FenceResourceGroupPlanningSnapshot fencePlanningGroup,
+    LoadIsolationScopePlanningSnapshot loadPlanningScope,
+    FenceIsolationScopePlanningSnapshot fencePlanningScope,
     SecretPlanningFence planningFence,
     AdmitResourceScopeReference admitScope,
     IResourceRegistrar registrar,
@@ -51,13 +52,17 @@ internal sealed partial class DeclarativeSecretProvider(
     {
         var value = DeclarationJson.Read<SecretDeclaration>(spec);
 
-        return new(new("ResourceGroup", value.ResourceGroup), value.Keys, [], [], []);
+        return new(new("ResourceGroup", value.ResourceGroup), value.Keys,
+            value.IsolationScope is null ? [] :
+                [new(new("IsolationScope", value.IsolationScope), "spec.isolationScope")], [], []);
     }
 
     public JsonElement NormalizeAndValidate(JsonElement spec)
     {
         var value = DeclarationJson.Read<SecretDeclaration>(spec);
         DeclarationJson.Require(DeclarationNames.Valid(value.ResourceGroup)
+                                && (value.IsolationScope is null ||
+                                    DeclarationNames.Valid(value.IsolationScope) && value.IsolationScope != "default")
                                 && value.Purpose is { Length: <= SecretDeclarationRules.MaximumPurposeLength } &&
                                 value.Keys is { Length: > 0 and <= SecretKeyReferenceRules.MaximumKeys } && value.Keys
                                     .Distinct()
@@ -72,16 +77,19 @@ internal sealed partial class DeclarativeSecretProvider(
         });
     }
 
-    public IReadOnlyList<DeclarationStep> Steps(ResourceAddress address, JsonElement spec) =>
-    [
-        new(
-            DeclarationPhase.Prepare,
+    public IReadOnlyList<DeclarationStep> Steps(ResourceAddress address, JsonElement spec)
+    {
+        var value = DeclarationJson.Read<SecretDeclaration>(spec);
+        return
+        [
+            new(DeclarationPhase.Prepare,
             [
-                new(
-                    new("ResourceGroup", DeclarationJson.Read<SecretDeclaration>(spec).ResourceGroup),
-                    DeclarationPhase.Prepare)
+                new(new("ResourceGroup", value.ResourceGroup), DeclarationPhase.Prepare),
+                .. value.IsolationScope is null ? Array.Empty<DeclarationDependency>() :
+                    [new(new("IsolationScope", value.IsolationScope), DeclarationPhase.Prepare)]
             ])
-    ];
+        ];
+    }
 
     public async Task<string?> ResolveAsync(
         ResolveDeclaredResourceRequest request,
@@ -100,26 +108,12 @@ internal sealed partial class DeclarativeSecretProvider(
         {
             var context = operation.Context;
             var spec = DeclarationJson.Read<SecretDeclaration>(operation.Declaration.Spec);
-            var groupId = await git.ResolveAcceptedAsync(
-                new ResolveAcceptedGitReferenceRequest(
-                    Context: context,
-                    ConsumerResourceId: operation.ResourceId,
-                    Address: new("ResourceGroup", spec.ResourceGroup)),
-                session: session,
-                ct: token);
+            var owned = await AcceptedScopeAsync(operation.Input, session, token);
+            if (owned is null)
+                return new(operation.ResourceId,
+                    new SecretDeclarationRejected(SecretDeclarationError.ResourceScopeUnavailable));
 
-            if (groupId is null)
-                return new(
-                    operation.ResourceId,
-                    new SecretDeclarationRejected(SecretDeclarationError.ResourceGroupUnavailable));
-
-            var group = await loadPlanningGroup(new(context.TenantId, groupId), session, token);
-
-            if (group is not ResourceGroupPlanningSnapshot owned)
-                return new(
-                    operation.ResourceId,
-                    new SecretDeclarationRejected(SecretDeclarationError.ResourceGroupUnavailable));
-
+            var groupId = owned.ResourceGroupId;
             var current = await secrets.Find(session,
                 SecretFilters.Identity(context.TenantId, operation.ResourceId)).FirstOrDefaultAsync(token);
             current ??= await secrets.Find(session,
@@ -132,7 +126,7 @@ internal sealed partial class DeclarativeSecretProvider(
                     new SecretDeclarationRejected(SecretDeclarationError.ExplicitAdoptionRequired));
 
             if (current is not null && (current.ResourceGroupId != groupId
-                                        || current.IsolationScopeId != owned.DefaultIsolationScopeId))
+                                        || current.IsolationScopeId != owned.IsolationScopeId))
                 return new(
                     current.Id,
                     new SecretDeclarationRejected(SecretDeclarationError.ImmutablePlacementChange));
@@ -141,7 +135,7 @@ internal sealed partial class DeclarativeSecretProvider(
                     new AdmitResourceScopeReferenceRequest(
                         TenantId: context.TenantId,
                         ResourceGroupId: groupId,
-                        IsolationScopeId: owned.DefaultIsolationScopeId,
+                        IsolationScopeId: owned.IsolationScopeId,
                         Consumer: null),
                     session: session,
                     cancellationToken: token) is ResourceScopeReferenceUnavailable)
@@ -154,7 +148,7 @@ internal sealed partial class DeclarativeSecretProvider(
                 var created = SecretFactory.CreateMetadata(operation.ResourceId,
                     context.TenantId,
                     groupId,
-                    owned.DefaultIsolationScopeId,
+                    owned.IsolationScopeId,
                     operation.Declaration.Address.Name,
                     spec.Purpose,
                     spec.Keys,

@@ -42,10 +42,15 @@ public sealed record StorageProfileResolutionRequest(
     string DeploymentTargetId,
     string TenantId,
     ResourceTypeId ResourceType,
-    int SizeGb
+    int SizeGb,
+    long? Revision = null
 );
 
 public sealed record StorageProfileNotFound(string StorageProfileId);
+
+public sealed record StorageProfileRevisionUnavailable(
+    string StorageProfileId,
+    long Revision);
 
 public sealed record StorageProfileDisabled(string StorageProfileId);
 
@@ -78,6 +83,7 @@ public sealed record StorageProfileDiscoveryUnavailable(string DeploymentTargetI
 
 public union StorageProfileResolutionError(
     StorageProfileNotFound,
+    StorageProfileRevisionUnavailable,
     StorageProfileDisabled,
     StorageProfileTenantAccessDenied,
     StorageProfileResourceTypeNotAllowed,
@@ -100,7 +106,8 @@ public sealed record StorageProfileResolutionFenceRequest(
     string StorageProfileId,
     long StorageProfileRevision,
     string DeploymentTargetId,
-    string StorageClassName);
+    string StorageClassName,
+    long? PolicyRevision = null);
 
 public sealed record StorageProfileResolutionFenceRejected(string StorageProfileId);
 

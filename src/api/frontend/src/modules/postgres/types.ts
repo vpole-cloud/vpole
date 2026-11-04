@@ -1,3 +1,4 @@
+import type { GitOpsStatus } from '../../data/gitOps'
 import type { ResourcePlacement } from '../../types'
 
 export interface PostgresCluster {
@@ -5,7 +6,7 @@ export interface PostgresCluster {
   name: string
   groupId: string
   revision: number
-  lifecycle: 'Active' | 'Deleting'
+  lifecycle: 'Prepared' | 'Active' | 'Deleting'
   spec: {
     instances: number
     storage: number
@@ -14,6 +15,7 @@ export interface PostgresCluster {
     deploymentMode: 'Operator' | 'StatefulSet'
   }
   placement: ResourcePlacement
+  gitOps?: GitOpsStatus | null
 }
 
 export interface PostgresCapabilities {
