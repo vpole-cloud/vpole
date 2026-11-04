@@ -23,6 +23,8 @@ public sealed class RepositorySourceJob(
     ManifestCompiler compiler,
     GitSnapshotAcceptance acceptance,
     GitAcceptedReferences references,
+    GitOperationPlanning planning,
+    IGitOpsMutations mutations,
     IOptions<GitOpsWorkerOptions> options,
     TimeProvider clock,
     ILogger<RepositorySourceJob> logger)
@@ -119,36 +121,39 @@ public sealed class RepositorySourceJob(
 
         if (run.Input is GitInputPinned pinned)
         {
-            if (run.RetryOfRunId is null && claim.PreviouslyAppliedCommit == pinned.Commit)
+
+            if (run.RetryOfRunId is null && claim.PreviouslyAppliedSnapshot is { } previous &&
+                previous.Commit == pinned.Commit)
             {
-                var completed = await runs.CompleteAsync(claim.Handle, GitRunCompletion.AlreadyCurrent, [], ct);
-                return completed
-                    ? new(RepositoryExecutionDisposition.Handled, claim.ToContext(pinned.Commit), [])
-                    : Lost();
+                if (!await runs.AcceptAsync(claim.Handle, previous, ct))
+                    return Lost();
+                run = run.Accept(previous);
             }
-
-            var read = await repository.ReadSnapshotAsync(new(reference, pinned.Commit, location.ManifestDirectory),
-                ct);
-            if (read is not RepositorySnapshotRead snapshot)
-                return await HandleReadFailureAsync(claim.Handle, read, ct);
-            if (snapshot.Commit != pinned.Commit)
-                return await FailAsync(claim.Handle, "RepositoryCommitMismatch", ct);
-
-            var compiled = compiler.Compile(snapshot.Files.Select(item => new ManifestFile(item.Path, item.Content))
-                .ToArray());
-            if (!compiled.Valid)
+            else
             {
-                var diagnostics = compiled.Diagnostics.Select(item =>
-                    new GitRunDiagnostic(item.Code, item.File, item.Document, item.Field)).ToImmutableArray();
-                return await runs.CompleteAsync(claim.Handle, GitRunCompletion.Failed, diagnostics, ct)
-                    ? new(RepositoryExecutionDisposition.Handled, null, [])
-                    : Lost();
-            }
+                var read = await repository.ReadSnapshotAsync(new(reference, pinned.Commit, location.ManifestDirectory),
+                    ct);
+                if (read is not RepositorySnapshotRead snapshot)
+                    return await HandleReadFailureAsync(claim.Handle, read, ct);
+                if (snapshot.Commit != pinned.Commit)
+                    return await FailAsync(claim.Handle, "RepositoryCommitMismatch", ct);
 
-            var accepted = await acceptance.BuildAsync(claim with { Run = run }, compiled, ct);
-            if (!await runs.AcceptAsync(claim.Handle, accepted, ct))
-                return Lost();
-            run = run.Accept(accepted);
+                var compiled = compiler.Compile(snapshot.Files.Select(item => new ManifestFile(item.Path, item.Content))
+                    .ToArray());
+                if (!compiled.Valid)
+                {
+                    var diagnostics = compiled.Diagnostics.Select(item =>
+                        new GitRunDiagnostic(item.Code, item.File, item.Document, item.Field)).ToImmutableArray();
+                    return await runs.CompleteAsync(claim.Handle, GitRunCompletion.Failed, diagnostics, ct)
+                        ? new(RepositoryExecutionDisposition.Handled, null, [])
+                        : Lost();
+                }
+
+                var accepted = await acceptance.BuildAsync(claim with { Run = run }, compiled, ct);
+                if (!await runs.AcceptAsync(claim.Handle, accepted, ct))
+                    return Lost();
+                run = run.Accept(accepted);
+            }
         }
 
         var input = ((GitInputAccepted)run.Input).Snapshot;
@@ -178,11 +183,16 @@ public sealed class RepositorySourceJob(
             var provider = providers.Find(descriptor.Kind)
                            ?? throw new InvalidOperationException(
                                "An accepted declaration provider is no longer registered.");
-            var operation = new GitOperation(context, declaration, descriptor.Phase, descriptor.ResourceId);
-            var result = await provider.ApplyAsync(operation, ct);
+            var inputOperation = new GitOperationInput(context, declaration, descriptor.Phase, descriptor.ResourceId);
+            var result = await ApplyPlannedAsync(inputOperation, provider, ct);
             results.Add(result);
             if (result.Failure is StaleGitExecution)
                 return new(RepositoryExecutionDisposition.LeaseLost, context, results);
+            if (result.Failure is DeclarationPreconditionsChanged)
+                return await runs.DelayAsync(claim.Handle,
+                    new(nameof(DeclarationPreconditionsChanged), declaration.File, declaration.Document, null), ct)
+                    ? new(RepositoryExecutionDisposition.Handled, context, results)
+                    : Lost();
             if (result.Failure is not null)
                 diagnosticsList.Add(new(DeclarationFailureDiagnostics.Code(result.Failure, provider)!,
                     declaration.File,
@@ -198,6 +208,30 @@ public sealed class RepositorySourceJob(
                 : RepositoryExecutionDisposition.LeaseLost,
             context,
             results);
+    }
+
+    private async Task<GitOperationResult> ApplyPlannedAsync(GitOperationInput input,
+        IDeclarativeResourceProvider provider, CancellationToken ct)
+    {
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            var outcome = await planning.PlanAsync(input, ct);
+            if (outcome is StaleGitExecution stale)
+                return new(input.ResourceId, stale);
+            if (outcome is GitOperationReplayed replay)
+                return replay.Result;
+
+            var operation = ((GitOperationPlanned)outcome.Value).Operation;
+            var blocker = DeclarationPlanValues.Blocker(operation.Plan.Decision);
+            var result = blocker is not null || operation.Plan.Decision is NoOpDeclarationPlan
+                ? await mutations.ExecuteAsync(operation,
+                    (_, _) => Task.FromResult(new GitOperationResult(input.ResourceId, blocker)), ct)
+                : await provider.ApplyAsync(operation, ct);
+            if (result.Failure is not DeclarationPreconditionsChanged)
+                return result;
+        }
+
+        return new(input.ResourceId, new DeclarationPreconditionsChanged());
     }
 
     private Task<RepositoryExecutionReport> HandleAccessFailureAsync(

@@ -4,6 +4,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.GitOps.Domain;
+using Pole.Features.GitOps.Primitives;
 
 namespace Pole.Features.GitOps.Application.Persistence;
 
@@ -15,7 +16,10 @@ public sealed record GitWorkClaim(
     RepositorySource Source,
     GitReconciliationRun Run,
     GitRunHandle Handle,
-    string? PreviouslyAppliedCommit);
+    GitAcceptedSnapshot? PreviouslyAppliedSnapshot)
+{
+    public string? PreviouslyAppliedCommit => PreviouslyAppliedSnapshot?.Commit;
+}
 
 public sealed record GitNoWorkAvailable;
 
@@ -33,6 +37,7 @@ public sealed class GitRunStore(
     IMongoCollection<GitReconciliationRun> runs,
     IMongoCollection<ManagedDeclaration> inventory,
     IMongoCollection<GitOperationReceipt> receipts,
+    IMongoCollection<GitPlannedOperation> plans,
     MongoRunTransaction transactions,
     IOptions<GitOpsWorkerOptions> options)
 {
@@ -50,7 +55,7 @@ public sealed class GitRunStore(
                     GitRepositoryFilters.State(source.TenantId, source.Id)).SingleAsync(token);
                 var now = await clock.NowAsync(sourceId, tx.Session, token);
                 GitReconciliationRun run;
-                string? previouslyApplied = null;
+                GitAcceptedSnapshot? previouslyApplied = null;
                 if (state.CurrentRun is { } active)
                 {
                     run = await runs.Find(tx.Session,
@@ -67,7 +72,7 @@ public sealed class GitRunStore(
                             {
                                 Completion: GitRunCompletion.ConfigurationApplied or GitRunCompletion.AlreadyCurrent
                             })
-                            previouslyApplied = previous.Commit;
+                            previouslyApplied = (previous.Input as GitInputAccepted)?.Snapshot;
                     }
 
                     run = run.Claim(new(worker, attempt.Value, now.AddSeconds(options.Value.LeaseSeconds)), now);
@@ -92,7 +97,7 @@ public sealed class GitRunStore(
                         {
                             Completion: GitRunCompletion.ConfigurationApplied or GitRunCompletion.AlreadyCurrent
                         })
-                        previouslyApplied = latest.Commit;
+                        previouslyApplied = (latest.Input as GitInputAccepted)?.Snapshot;
 
                     GitRunInput input = new GitInputUnresolved();
                     if (state.Pending.RetryOfRunId is { } retryId)
@@ -269,9 +274,26 @@ public sealed class GitRunStore(
         IClientSessionHandle session,
         CancellationToken ct)
     {
-        if (transition.Run.State is GitRunFinished { Completion: GitRunCompletion.ConfigurationApplied } &&
-            !await HasCompleteReceiptsAsync(transition.Run, session, ct))
-            return false;
+        if (transition.Run.State is GitRunFinished
+            { Completion: GitRunCompletion.ConfigurationApplied or GitRunCompletion.AlreadyCurrent } finished)
+        {
+            if (!await HasCompleteReceiptsAsync(transition.Run, session, ct))
+                return false;
+
+            var decisions = await plans.Find(session, GitOperationPlanFilters.Run(handle.Stamp.Source.TenantId,
+                handle.Stamp.Source.SourceId, handle.Stamp.RunId)).ToListAsync(ct);
+            var onlyNoOps = decisions.All(item => item.Decision.Action == GitPlannedAction.NoOp);
+            if (finished.Completion == GitRunCompletion.AlreadyCurrent && !onlyNoOps)
+                return false;
+            if (onlyNoOps && decisions.Count > 0)
+                transition = transition with
+                {
+                    Run = transition.Run with
+                    {
+                        State = finished with { Completion = GitRunCompletion.AlreadyCurrent }
+                    }
+                };
+        }
 
         var written = await runs.ReplaceOneAsync(session,
             GitRepositoryFilters.LiveClaim(handle.Stamp, handle.Identity),
@@ -300,11 +322,19 @@ public sealed class GitRunStore(
                 run.Stamp.Source.SourceId,
                 run.Id)).ToListAsync(ct);
         var byOperation = stored.ToDictionary(item => (item.Kind, item.Name, item.Phase));
+        var planned = await plans.Find(session, GitOperationPlanFilters.Run(run.Stamp.Source.TenantId,
+            run.Stamp.Source.SourceId, run.Id)).ToListAsync(ct);
+        var byPlan = planned.ToDictionary(item =>
+            (item.Stamp.Resource.Kind, item.Stamp.Resource.Name, item.Stamp.Phase.ToString()));
         var resources = accepted.Snapshot.Resources.ToDictionary(item => (item.Kind, item.Name));
         return accepted.Snapshot.Operations.All(operation =>
             byOperation.TryGetValue((operation.Kind, operation.Name, operation.Phase.ToString()), out var receipt) &&
             receipt.Blocker is null && receipt.Fence == run.Stamp.Fence &&
             receipt.ResourceId == operation.ResourceId &&
+            byPlan.TryGetValue((operation.Kind, operation.Name, operation.Phase.ToString()), out var plan) &&
+            plan.Stamp.Run == run.Stamp && plan.Stamp.Resource.ResourceId == operation.ResourceId &&
+            plan.Revision == receipt.PlanRevision &&
+            plan.Decision.Action is GitPlannedAction.Create or GitPlannedAction.Update or GitPlannedAction.NoOp &&
             receipt.DesiredHash == resources[(operation.Kind, operation.Name)].Hash);
     }
 

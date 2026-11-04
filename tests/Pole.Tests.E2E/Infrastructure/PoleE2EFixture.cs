@@ -24,7 +24,7 @@ using Xunit;
 
 namespace Pole.Tests.E2E.Infrastructure;
 
-public sealed class PoleE2EFixture : IAsyncLifetime
+public sealed partial class PoleE2EFixture : IAsyncLifetime
 {
     public string GitHubWebhookSecret { get; } = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
 

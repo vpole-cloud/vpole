@@ -41,8 +41,10 @@ The suite covers:
   resource and group; desktop/mobile light/dark screenshots exercise both domain workspaces.
 
 The GitHub stub serves deterministic source archives and a separate YAML-only GitOps repository.
-Repository-flow E2E covers create/apply, signed push dispatch, polling after a missed push and branch
-deletion without inventory removal. It never records credentials,
+Repository-flow E2E covers create/apply, signed push dispatch, polling after a missed push, controlled
+managed-field drift in the disposable Mongo database, same-SHA poll repair, verified Sync no-op and
+branch deletion without inventory removal. Fault injection stays in the test fixture; production has
+no test mutation endpoint. It never records credentials,
 OAuth state, private keys, or bearer tokens.
 
 ## Prerequisites and run

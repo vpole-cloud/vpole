@@ -1,0 +1,25 @@
+using MongoDB.Driver;
+using Pole.Features.GitOps.Contracts;
+using Pole.Features.Secrets.Domain;
+
+namespace Pole.Features.Secrets.Application.Persistence;
+
+internal sealed class SecretPlanningFence(IMongoCollection<Secret> secrets)
+{
+    public static DeclarationDocumentVersion[] Versions(Secret secret) =>
+    [
+        new($"Secret/{secret.Id}", secret.Revision),
+        new($"Secret/{secret.Id}/ReferenceFence", secret.ReferenceFence)
+    ];
+
+    public static bool Matches(Secret secret, DeclarationVersionToken expected) =>
+        Versions(secret).All(expected.Documents.Contains);
+
+    public async Task<bool> FenceAsync(Secret secret, IClientSessionHandle session, CancellationToken ct)
+    {
+        var result = await secrets.UpdateOneAsync(session,
+            SecretFilters.AtPlanningVersion(secret),
+            Builders<Secret>.Update.Inc(item => item.ReferenceFence, 1), cancellationToken: ct);
+        return result.ModifiedCount == 1;
+    }
+}

@@ -19,44 +19,75 @@ public sealed record GitResourcePreconditions(
     ImmutableArray<GitResourceVersion> Versions,
     string ConfigurationHash);
 
-public enum GitPlannedAction { Create, Update, NoOp, Adopt, Replace, Remove, Detach }
-
-public sealed record GitOperationDiagnostic(
-    string Field,
-    string Code);
-
-[BsonDiscriminator(RootClass = true)]
-[BsonKnownTypes(typeof(GitOperationPending), typeof(GitOperationSucceeded), typeof(GitOperationBlocked))]
-public closed record GitPlannedOperationState;
-
-public sealed record GitOperationPending : GitPlannedOperationState;
-
-public sealed record GitOperationSucceeded : GitPlannedOperationState;
-
-public sealed record GitOperationBlocked(GitOperationDiagnostic Diagnostic) : GitPlannedOperationState;
-
-public sealed record GitPlannedOperation(
-    [property: BsonId] string Id,
+public sealed record GitPlanStamp(
     GitRunStamp Run,
     GitResourceIdentity Resource,
-    GitPlannedAction Action,
-    DeclarationPhase Phase,
-    GitResourcePreconditions? Expected,
-    string DesiredHash,
-    GitPlannedOperationState State);
+    DeclarationPhase Phase);
 
-// Projection JSON contains only provider-approved managed fields, never secret values or runtime observations.
+public sealed record GitPlanDecision(
+    GitPlannedAction Action,
+    GitResourcePreconditions? Expected,
+    GitManagedConfiguration? Desired,
+    ImmutableArray<GitResourceVersion> Dependencies,
+    ImmutableArray<string> ChangedFields);
+
+// Execution results belong exclusively to GitOperationReceipt.
+public sealed record GitPlannedOperation(
+    [property: BsonId] string Id,
+    GitPlanStamp Stamp,
+    long Revision,
+    GitPlanDecision Decision,
+    DateTime EvaluatedAtUtc);
+
+public static class GitPlannedOperationFactory
+{
+    public static GitPlannedOperation Create(GitPlanStamp stamp, GitPlanDecision decision, DateTime now)
+    {
+        GitSourceGuards.Utc(now);
+        GitSourceGuards.Required(stamp.Resource.ResourceId, nameof(stamp.Resource.ResourceId));
+        var source = stamp.Run.Source;
+        var resource = stamp.Resource;
+        var id = $"{source.TenantId}/{source.SourceId}/{stamp.Run.RunId}/{resource.Kind}/{resource.Name}/{stamp.Phase}";
+        return new(id, stamp, 1, Normalize(decision), now);
+    }
+
+    public static GitPlannedOperation Replan(GitPlannedOperation previous, GitPlanDecision decision, DateTime now)
+    {
+        GitSourceGuards.Utc(now);
+        return previous with
+        {
+            Revision = checked(previous.Revision + 1),
+            Decision = Normalize(decision),
+            EvaluatedAtUtc = now
+        };
+    }
+
+    private static GitPlanDecision Normalize(GitPlanDecision decision)
+    {
+        if (decision.ChangedFields.IsDefault)
+            throw new ArgumentException("Changed fields must be initialized.", nameof(decision));
+
+        return decision with
+        {
+            ChangedFields = decision.ChangedFields.Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal).ToImmutableArray()
+        };
+    }
+}
+
+// Only provider-approved managed fields; never credentials, Secret values or runtime observations.
 public sealed record GitManagedConfiguration(
     string Hash,
     string ProjectionJson);
 
-public sealed record GitManagedResourceState(
-    [property: BsonId] string Id,
-    GitSourceIdentity Owner,
-    GitResourceIdentity Resource,
-    GitManagedConfiguration Desired,
-    GitManagedConfiguration? Applied,
-    bool PendingRemoval)
+public sealed record GitManagedProjections(
+    GitManagedConfiguration? Desired,
+    GitManagedConfiguration? Applied);
+
+public static class GitManagedProjectionsFactory
 {
-    public GitManagedResourceState RetainRemoved() => this with { PendingRemoval = true };
+    public static GitManagedProjections Empty() => Create(null, null);
+
+    public static GitManagedProjections Create(GitManagedConfiguration? desired, GitManagedConfiguration? applied) =>
+        new(desired, applied);
 }

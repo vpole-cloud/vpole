@@ -247,7 +247,6 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.RemoveAll<ListEligiblePublicIngressDeploymentTargetsForNewWorkload>();
         builder.Services.RemoveAll<AdmitDeploymentTargetPublicIngressForDomainReservation>();
         builder.Services.RemoveAll<ApplyDeploymentTargetReferenceChanges>();
-        builder.Services.RemoveAll<FenceDeploymentTargetWorkloadConfigurations>();
         var deploymentTargetLookup = new TestDeploymentTargetLookup();
         builder.Services.AddSingleton<LookupDeploymentTarget>(
             deploymentTargetLookup.LookupAsync);

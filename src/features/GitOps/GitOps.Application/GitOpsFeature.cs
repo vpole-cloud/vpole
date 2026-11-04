@@ -42,6 +42,10 @@ public static class GitOpsFeature
             sp.GetRequiredService<IBackgroundJobClient>().Enqueue<RepositorySourceJob>(job =>
                 job.ExecuteAsync(source.TenantId, source.SourceId, CancellationToken.None)));
         services.AddScoped<GitRunStore>();
+        services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>()
+            .GetCollection<GitPlannedOperation>(GitOpsCollections.Plans));
+        services.AddScoped<GitOperationPlanning>();
+        services.AddScoped<GitOperationReportReader>();
         services.AddScoped<GitSnapshotAcceptance>();
         services.AddScoped<GitAcceptedReferences>();
         services.AddScoped<RepositorySourceJob>();

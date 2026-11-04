@@ -522,7 +522,8 @@ public sealed class RepositorySourceApiTests(MongoReplicaSetFixture fixture) : A
             []);
         using var conflict = await Client.PostAsJsonAsync("/api/v1/web-services/", duplicate);
         Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
-        Assert.Contains("web-services.name-already-exists", await conflict.Content.ReadAsStringAsync());
+        var problem = await conflict.Content.ReadAsStringAsync();
+        Assert.True(problem.Contains("web-services.name-already-exists", StringComparison.Ordinal), problem);
         Assert.Equal(before,
             await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(Builders<OutboxMessage>.Filter.Empty));
         Assert.Equal(placementCount,

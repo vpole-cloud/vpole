@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Primitives;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Contracts;
@@ -7,6 +8,7 @@ namespace Pole.Features.GitOps.Application.Persistence;
 
 internal sealed class MongoGitOwnership(
     GitRunStore runs,
+    GitOperationPlanning planning,
     IMongoCollection<ManagedDeclaration> inventory,
     IMongoCollection<GitOperationReceipt> receipts,
     IServiceProvider services)
@@ -19,15 +21,7 @@ internal sealed class MongoGitOwnership(
         GitTransactionGuard.Require(session);
         var context = operation.Context;
         var run = await runs.TouchAsync(context.ToHandle(), session, ct);
-        if (run?.Input is not GitInputAccepted accepted || run.Commit != context.Authority.Commit ||
-            !accepted.Snapshot.Resources.Any(item => item.Kind == operation.Declaration.Address.Kind &&
-                                                     item.Name == operation.Declaration.Address.Name &&
-                                                     item.ResourceId == operation.ResourceId &&
-                                                     item.Hash == operation.Declaration.Hash) ||
-            !accepted.Snapshot.Operations.Any(item => item.Kind == operation.Declaration.Address.Kind &&
-                                                      item.Name == operation.Declaration.Address.Name &&
-                                                      item.ResourceId == operation.ResourceId &&
-                                                      item.Phase == operation.Phase))
+        if (!GitOperationAuthority.Matches(run, operation.Input))
             return new(operation.ResourceId, new StaleGitExecution());
 
         var receipt = await receipts.Find(session,
@@ -36,6 +30,10 @@ internal sealed class MongoGitOwnership(
         if (receipt is { Blocker: null } && receipt.ResourceId == operation.ResourceId &&
             receipt.DesiredHash == operation.Declaration.Hash)
             return new(operation.ResourceId);
+
+        var precondition = await planning.ValidateAsync(operation, session, ct);
+        if (precondition is not null)
+            return new(operation.ResourceId, precondition);
 
         var current = await inventory.Find(session,
             ManagedDeclarationFilters.Address(context.TenantId, operation.Declaration.Address)).FirstOrDefaultAsync(ct);
@@ -69,7 +67,9 @@ internal sealed class MongoGitOwnership(
                     desired.PendingRemoval,
                     context.RunId,
                     operation.Phase.ToString(),
-                    0),
+                    0,
+                    GitResourceMaterialization.Allocated,
+                    GitManagedProjectionsFactory.Empty()),
                 cancellationToken: ct);
         else
             await inventory.UpdateOneAsync(session,

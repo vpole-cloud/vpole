@@ -35,6 +35,10 @@ internal static class ResourceDeploymentPersistenceRegistration
                 .GetRequiredService<MongoRunTransaction>()
                 .InvokeOutcomeAsync<RetryResourceDeploymentOutcome>);
 
+        AddCapability<MongoResourceDeploymentPlanningSnapshots, LoadResourceDeploymentPlanningSnapshot>(
+            services, implementation => implementation.ReadAsync);
+        AddCapability<MongoResourceDeploymentPlanningSnapshots, FenceResourceDeploymentPlanningSnapshot>(
+            services, implementation => implementation.FenceAsync);
         AddCapability<MongoCreateResourceDeployment, CreateResourceDeployment>(
             services,
             implementation => implementation.InvokeAsync);

@@ -129,6 +129,7 @@ public sealed class GitRunLeaseTests(MongoReplicaSetFixture fixture) : MediatorI
             "recovered",
             default)).Value);
         Assert.Equal(Commit, resumed.PreviouslyAppliedCommit);
+        Assert.True(await Store.AcceptAsync(resumed.Handle, resumed.PreviouslyAppliedSnapshot!, default));
         Assert.True(await Store.CompleteAsync(resumed.Handle, GitRunCompletion.AlreadyCurrent, [], default));
     }
 
@@ -232,10 +233,16 @@ public sealed class GitRunLeaseTests(MongoReplicaSetFixture fixture) : MediatorI
             resourceId,
             "wrong-hash",
             null,
-            false);
+            false,
+            1);
         await receipts.InsertOneAsync(receipt);
         Assert.False(await Store.CompleteAsync(claim.Handle, GitRunCompletion.ConfigurationApplied, [], default));
         await receipts.ReplaceOneAsync(item => item.Id == receipt.Id, receipt with { DesiredHash = "hash" });
+        Assert.False(await Store.CompleteAsync(claim.Handle, GitRunCompletion.ConfigurationApplied, [], default));
+        var plan = GitPlannedOperationFactory.Create(
+            new(claim.Run.Stamp, new("ResourceGroup", "group", resourceId), DeclarationPhase.Prepare),
+            new(Pole.Features.GitOps.Primitives.GitPlannedAction.Create, null, null, [], []), DateTime.UtcNow);
+        await Services.GetRequiredService<IMongoCollection<GitPlannedOperation>>().InsertOneAsync(plan);
         Assert.True(await Store.CompleteAsync(claim.Handle, GitRunCompletion.ConfigurationApplied, [], default));
         Assert.Equal(Commit, (await Sources.StateAsync(source.TenantId, source.Id, default)).Commits.FullyApplied);
     }

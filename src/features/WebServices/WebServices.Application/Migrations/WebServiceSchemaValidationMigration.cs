@@ -72,6 +72,7 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
                     "Tags",
                     "Events",
                     "Revision",
+                    "PlanningFence",
                     "Lifecycle"
                 ],
                 ("_id", Type("objectId")),
@@ -85,6 +86,7 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
                 ("Tags", ArrayOf(StringType(), uniqueItems: true)),
                 ("Events", ArrayOf(ServiceEventSchema())),
                 ("Revision", IntegerType("long", minimum: 1)),
+                ("PlanningFence", IntegerType("long", minimum: 0)),
                 ("Lifecycle", LifecycleSchema())));
 
         private static BsonDocument WebServiceSpecSchema() => Object(

@@ -22,10 +22,13 @@ internal sealed partial class DeclarativeSecretProvider(
     IMongoCollection<Secret> secrets,
     IGitOpsMutations git,
     GetResourceGroupOwnership groupOwnership,
+    LoadResourceGroupPlanningSnapshot loadPlanningGroup,
+    FenceResourceGroupPlanningSnapshot fencePlanningGroup,
+    SecretPlanningFence planningFence,
     AdmitResourceScopeReference admitScope,
     IResourceRegistrar registrar,
     StoreSecretChange publish,
-    TimeProvider clock) : IDeclarativeResourcePlanningProvider
+    TimeProvider clock) : ITransactionalDeclarativeResourceProvider
 {
     public string Kind => "Secret";
 
@@ -110,18 +113,18 @@ internal sealed partial class DeclarativeSecretProvider(
                     operation.ResourceId,
                     new SecretDeclarationRejected(SecretDeclarationError.ResourceGroupUnavailable));
 
-            var group = await groupOwnership(context.TenantId, groupId, token);
+            var group = await loadPlanningGroup(new(context.TenantId, groupId), session, token);
 
-            if (group is not ResourceGroupOwnership owned)
+            if (group is not ResourceGroupPlanningSnapshot owned)
                 return new(
                     operation.ResourceId,
                     new SecretDeclarationRejected(SecretDeclarationError.ResourceGroupUnavailable));
 
-            var current = await secrets.Find(
-                session,
-                SecretFilters.TechnicalName(
-                    context.TenantId,
-                    operation.Declaration.Address.Name)).FirstOrDefaultAsync(token);
+            var current = await secrets.Find(session,
+                SecretFilters.Identity(context.TenantId, operation.ResourceId)).FirstOrDefaultAsync(token);
+            current ??= await secrets.Find(session,
+                SecretFilters.TechnicalName(context.TenantId, operation.Declaration.Address.Name))
+                .FirstOrDefaultAsync(token);
 
             if (current is not null && current.Id != operation.ResourceId)
                 return new(

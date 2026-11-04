@@ -6,6 +6,15 @@ namespace Pole.Features.Secrets.Application.Persistence;
 
 internal static class SecretFilters
 {
+    public static FilterDefinition<Secret> AtPlanningVersion(Secret secret) =>
+        Identity(secret.TenantId, secret.Id) &
+        Builders<Secret>.Filter.Eq(item => item.Revision, secret.Revision) &
+        Builders<Secret>.Filter.Eq(item => item.ReferenceFence, secret.ReferenceFence);
+
+    public static FilterDefinition<Secret> DeclarationBindingId(string tenant, string id) =>
+        Builders<Secret>.Filter.Eq(item => item.TenantId, tenant) &
+        Builders<Secret>.Filter.ElemMatch(item => item.Bindings, binding => binding.Id == id);
+
     public static FilterDefinition<Secret> DeclarationBindingName(string tenant, string name) =>
         Builders<Secret>.Filter.Eq(item => item.TenantId, tenant) &
         Builders<Secret>.Filter.ElemMatch(item => item.Bindings, binding => binding.DeclarationName == name);

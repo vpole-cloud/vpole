@@ -9,7 +9,7 @@ public sealed class GitRepositoryQueries(
     IMongoCollection<GitSynchronizationState> states,
     IMongoCollection<GitReconciliationRun> runs,
     IMongoCollection<ManagedDeclaration> inventory,
-    IMongoCollection<GitOperationReceipt> receipts)
+    GitOperationReportReader reports)
 {
     public async Task<RepositorySourceView?> SourceAsync(string tenant, string id, CancellationToken ct)
     {
@@ -48,6 +48,7 @@ public sealed class GitRepositoryQueries(
                     Owned = group.LongCount(),
                     Pending = group.Sum(item => item.PendingRemoval ? 1L : 0L)
                 }).ToListAsync(ct);
+        var operations = await reports.ReadAsync(tenant, latest, ct);
         var bySource = synchronization.ToDictionary(item => item.Source.SourceId);
         var byRun = latest.ToDictionary(item => item.Id);
         var byCount = counts.ToDictionary(item => item.SourceId);
@@ -78,7 +79,7 @@ public sealed class GitRepositoryQueries(
                     state.CurrentRun?.RunId,
                     state.LatestRunId),
                 new(count?.Owned ?? 0, count?.Pending ?? 0),
-                run is null ? null : ToView(run));
+                run is null ? null : ToView(run, operations.GetValueOrDefault(run.Id)?.Summary));
         }).ToArray();
     }
 
@@ -95,13 +96,19 @@ public sealed class GitRepositoryQueries(
         var items = await runs.Find(GitRepositoryFilters.SourceRuns(tenant, source))
             .SortByDescending(item => item.Stamp.Generation).ThenByDescending(item => item.Id)
             .Skip((page - 1) * pageSize).Limit(pageSize + 1).ToListAsync(ct);
-        return new(items.Take(pageSize).Select(ToView).ToArray(), page, pageSize, items.Count > pageSize);
+        var selected = items.Take(pageSize).ToArray();
+        var operations = await reports.ReadAsync(tenant, selected, ct);
+        return new(selected.Select(run => ToView(run, operations.GetValueOrDefault(run.Id)?.Summary)).ToArray(),
+            page, pageSize, items.Count > pageSize);
     }
 
     public async Task<RepositoryRunView?> RunAsync(string tenant, string source, string runId, CancellationToken ct)
     {
         var run = await runs.Find(GitRepositoryFilters.Run(tenant, source, runId)).FirstOrDefaultAsync(ct);
-        return run is null ? null : ToView(run);
+        if (run is null)
+            return null;
+        var operations = await reports.ReadAsync(tenant, [run], ct);
+        return ToView(run, operations.GetValueOrDefault(run.Id)?.Summary);
     }
 
     public async Task<RepositoryOperationPage?> OperationsAsync(
@@ -118,31 +125,13 @@ public sealed class GitRepositoryQueries(
         if (run.Input is not GitInputAccepted accepted)
             return new([], page, pageSize, false);
 
-        var results = await receipts.Find(GitRepositoryFilters.Receipts(tenant, source, runId)).ToListAsync(ct);
-        var byOperation = results.ToDictionary(item => (item.Kind, item.Name, item.Phase));
-        var operations = accepted.Snapshot.Operations.Skip((page - 1) * pageSize).Take(pageSize + 1).ToArray();
-        return new(operations.Take(pageSize).Select(operation =>
-            {
-                var result =
-                    byOperation.GetValueOrDefault((operation.Kind, operation.Name, operation.Phase.ToString()));
-                return new RepositoryOperationView(operation.Kind,
-                    operation.Name,
-                    operation.ResourceId,
-                    operation.Phase,
-                    result is null
-                        ? RepositoryOperationStatus.Pending
-                        : result.Blocker is null
-                            ? RepositoryOperationStatus.Succeeded
-                            : RepositoryOperationStatus.Blocked,
-                    result?.Blocker,
-                    result?.Changed ?? false);
-            }).ToArray(),
-            page,
-            pageSize,
-            operations.Length > pageSize);
+        var report = (await reports.ReadAsync(tenant, [run], ct))[run.Id];
+        var operations = report.Items.Skip((page - 1) * pageSize).Take(pageSize + 1).ToArray();
+        return new(operations.Take(pageSize).ToArray(), page, pageSize, operations.Length > pageSize);
     }
 
-    private static RepositoryRunView ToView(GitReconciliationRun run) => new(run.Id,
+    private static RepositoryRunView ToView(GitReconciliationRun run, RepositoryOperationSummary? operations) => new(
+        run.Id,
         run.Stamp.Source.SourceId,
         run.Stamp.ConfigurationRevision,
         run.Stamp.Generation,
@@ -153,7 +142,7 @@ public sealed class GitRepositoryQueries(
         Status(run),
         run.CreatedAtUtc,
         run.Diagnostics.Select(item => new RepositoryRunDiagnosticView(item.Code, item.File, item.Document, item.Field))
-            .ToArray());
+            .ToArray(), operations);
 
     private static RepositoryRunStatus Status(GitReconciliationRun run) => run.State switch
     {

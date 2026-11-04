@@ -1,6 +1,7 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using Pole.Features.GitOps.Domain;
+using Pole.Features.GitOps.Primitives;
 using Xunit;
 
 namespace Pole.Features.GitOps.Tests;
@@ -25,7 +26,9 @@ public sealed class GitOpsBsonSerializationTests
             false,
             "run",
             "Prepare",
-            0));
+            0,
+            GitResourceMaterialization.Created,
+            GitManagedProjectionsFactory.Create(new("desired", "{}"), new("applied", "{}"))));
         RoundTrip(new GitOperationReceipt("receipt",
             "tenant",
             "source",
@@ -37,7 +40,8 @@ public sealed class GitOpsBsonSerializationTests
             "resource",
             "desired",
             null,
-            false));
+            false,
+            1));
         RoundTrip(new GitAcceptedReference("reference",
             new("tenant", "source"),
             "consumer",

@@ -89,11 +89,21 @@ public sealed record GitOperationResult(
     public bool Applied => Failure is null;
 }
 
-public sealed record GitOperation(
+public sealed record GitOperationInput(
     GitMutationContext Context,
     CompiledDeclaration Declaration,
     DeclarationPhase Phase,
     string ResourceId);
+
+public sealed record GitOperation(
+    GitOperationInput Input,
+    DeclarationExecutionPlan Plan)
+{
+    public GitMutationContext Context => Input.Context;
+    public CompiledDeclaration Declaration => Input.Declaration;
+    public DeclarationPhase Phase => Input.Phase;
+    public string ResourceId => Input.ResourceId;
+}
 
 public interface IDeclarativeResourceProvider
 {

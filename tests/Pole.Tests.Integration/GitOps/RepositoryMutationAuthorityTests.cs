@@ -54,34 +54,36 @@ public sealed partial class DeclarativePipelineTests
         var accepted = snapshot.Resources.Single();
         var declaration = Services.GetRequiredService<ManifestCompiler>().Restore(snapshot.ApiVersion,
             [new(accepted.Kind, accepted.Name, accepted.SpecJson)]).Declarations.Single();
-        var operation = new GitOperation(context, declaration, DeclarationPhase.Prepare, accepted.ResourceId);
+        var input = new GitOperationInput(context, declaration, DeclarationPhase.Prepare, accepted.ResourceId);
+        var planned = await Services.GetRequiredService<GitOperationPlanning>().PlanAsync(input, default);
+        var operation = Assert.IsType<GitOperationPlanned>(planned.Value).Operation;
         var invalid = new[]
         {
-            operation with { Context = context with { TenantId = Id() } },
-            operation with { Context = context with { SourceId = Id() } },
-            operation with { Context = context with { RunId = Id() } },
-            operation with { Context = context with { Fence = stamp.Fence + 1 } },
-            operation with { Context = context with { Authority = authority with { ConfigurationRevision = 2 } } },
-            operation with
+            input with { Context = context with { TenantId = Id() } },
+            input with { Context = context with { SourceId = Id() } },
+            input with { Context = context with { RunId = Id() } },
+            input with { Context = context with { Fence = stamp.Fence + 1 } },
+            input with { Context = context with { Authority = authority with { ConfigurationRevision = 2 } } },
+            input with
             {
                 Context = context with { Authority = authority with { Generation = stamp.Generation + 1 } }
             },
-            operation with { Context = context with { Authority = authority with { WorkerId = "other" } } },
-            operation with
+            input with { Context = context with { Authority = authority with { WorkerId = "other" } } },
+            input with
             {
                 Context = context with { Authority = authority with { Attempt = authority.Attempt + 1 } }
             },
-            operation with { Context = context with { Authority = authority with { Commit = new string('f', 40) } } },
-            operation with { ResourceId = Id() },
-            operation with { Phase = DeclarationPhase.Configure },
-            operation with { Declaration = declaration with { Hash = "different" } },
-            operation with { Declaration = declaration with { Address = new("Other", "demo") } }
+            input with { Context = context with { Authority = authority with { Commit = new string('f', 40) } } },
+            input with { ResourceId = Id() },
+            input with { Phase = DeclarationPhase.Configure },
+            input with { Declaration = declaration with { Hash = "different" } },
+            input with { Declaration = declaration with { Address = new("Other", "demo") } }
         };
         var mutations = Services.GetRequiredService<IGitOpsMutations>();
         foreach (var value in invalid)
         {
             var called = false;
-            var result = await mutations.ExecuteAsync(value,
+            var result = await mutations.ExecuteAsync(new(value, operation.Plan),
                 (_, _) =>
                 {
                     called = true;

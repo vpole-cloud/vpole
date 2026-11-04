@@ -190,7 +190,7 @@ mutations write the current fence and atomically retain ownership, receipts, rel
 Source authors are audit metadata; execution uses server authority and current tenant/connection access.
 The source API exposes create/read/polling-policy update/sync/retry/run operations; no new UI is added.
 Signed GitHub pushes and polling request generations through a generic GitOps-owned boundary.
-Prune stays Retain; drift planning and lifecycle commands remain later stages of this single PR.
+Prune stays Retain. Stage 4 below adds drift planning; lifecycle commands remain later stages of this single PR.
 
 The active API, defaults, operational flow and webhook configuration are documented in
 [Repository GitOps](../README.md#source-api). Source updates currently accept polling policy only.
@@ -198,3 +198,24 @@ Source/run IDs are canonicalized at the HTTP boundary; views include sanitized l
 Run completion verifies receipts for the complete accepted operation list before advancing the
 fully applied marker. Retry and dependency wakeup reserve their immutable input transactionally.
 GitOps-owned scheduling contracts keep GitProviders/Secrets event adapters in their owning features.
+
+## Stage 4: managed configuration reconciliation
+
+Every poll and Sync evaluates provider-owned managed projections, including unchanged commits.
+The worker may reuse accepted input from the latest successful run at the same source revision/SHA,
+but must recheck repository access and compute fresh phase plans. Retry keeps immutable accepted IDs,
+not stale plans. Kubernetes observations, credentials and Secret values are outside configuration drift.
+
+Plans are persisted per run/resource/phase with a revision, preconditions, action, managed hashes,
+sorted changed field paths and evaluation time. Receipts alone record execution results. Ownership
+and desired/applied projections remain in the single ManagedDeclaration inventory. Allocated IDs
+permit first creation; missing previously created identities block without recreation or rebinding.
+
+Create/update/no-op require transactional source/lease, ownership, identity and dependency fences.
+No-op may write technical fences and GitOps bookkeeping, but never business revisions, timestamps,
+resource events or releases. Preconditions are replanned at most three times immediately, then use
+the persisted recovery backoff and five-failure bound. Applied projections require the final phase.
+
+API summaries count operations rather than resources and expose actions and field paths only.
+Adoption, replacement, removal and other lifecycle commands remain blocked until their later stage;
+prune stays Retain. No new timer, endpoint family or UI is introduced.

@@ -40,7 +40,7 @@ internal sealed class MongoGitOpsMutations(
                         session: tx.Session,
                         ct: token);
 
-                    return completed.Failure is StaleGitExecution ? tx.Abort(completed) : tx.Commit(result);
+                    return completed.Applied ? tx.Commit(result) : tx.Abort(completed);
                 },
                 ct);
 
@@ -59,7 +59,8 @@ internal sealed class MongoGitOpsMutations(
 
         // A blocked provider operation may have staged writes; abort all of them first. Retain only
         // its sanitized diagnostic in a fresh fenced transaction, along with the stable address.
-        if (!outcome.Applied && outcome.Failure is not StaleGitExecution and not GitDeclarationOwnershipConflict)
+        if (!outcome.Applied && outcome.Failure is not StaleGitExecution and not GitDeclarationOwnershipConflict
+            and not DeclarationPreconditionsChanged)
             await transactions.InvokeOutcomeAsync<GitOperationResult>(async (tx, token) =>
                 {
                     var rejected = await BeginAsync(operation, tx.Session, token);
@@ -109,8 +110,7 @@ internal sealed class MongoGitOpsMutations(
         if (await runs.TouchAsync(request.Operation.Context.ToHandle(), session, ct) is null)
             return new(request.Operation.ResourceId, new StaleGitExecution());
 
-        await completion.StoreAsync(request.Operation, request.Result, session, ct);
-        return request.Result;
+        return await completion.StoreAsync(request.Operation, request.Result, session, ct);
     }
 
     public Task<string?> ResolveAcceptedAsync(

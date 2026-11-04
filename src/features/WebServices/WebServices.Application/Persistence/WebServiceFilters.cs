@@ -9,6 +9,9 @@ namespace Pole.Features.WebServices.Application.Persistence;
 
 internal static class WebServiceFilters
 {
+    public static FilterDefinition<WebService> AtPlanningVersion(WebService service) =>
+        AtRevision(service) & Builders<WebService>.Filter.Eq(item => item.PlanningFence, service.PlanningFence);
+
     public static FilterDefinition<WebService> ByTechnicalName(string tenantId, string name) =>
         Builders<WebService>.Filter.ForTenant(tenantId) & Builders<WebService>.Filter.Regex(item => item.Name,
             new MongoDB.Bson.BsonRegularExpression("^" + System.Text.RegularExpressions.Regex.Escape(name) + "$", "i"));
