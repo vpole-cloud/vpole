@@ -586,12 +586,20 @@ public sealed class WebServiceSpecDtoValidator : AbstractValidator<WebServiceSpe
     {
         When(spec => spec.Image is not null, () =>
         {
-            RuleFor(spec => spec.Image!.Server).NotEmpty();
-            RuleFor(spec => spec.Image!.Name).NotEmpty();
-            RuleFor(spec => spec.Image!.Tag).NotEmpty();
+            RuleFor(spec => spec.Image!.Server).NotEmpty().MaximumLength(255);
+            RuleFor(spec => spec.Image!.Name).NotEmpty().MaximumLength(255);
+            RuleFor(spec => spec.Image!.Tag).NotEmpty().MaximumLength(100);
         });
-        RuleFor(spec => spec.Probes).NotNull();
+
+        RuleFor(spec => spec.Probes).NotNull().SetValidator(new WebServiceProbeSpecDtoValidator());
+
         RuleFor(spec => spec.Config).NotNull();
+        When(spec => spec.Config is not null, () =>
+        {
+            RuleFor(spec => spec.Config.PortMappings).NotNull();
+            RuleForEach(spec => spec.Config.PortMappings)
+                .NotNull().SetValidator(new WebServicePortMappingDtoValidator());
+        });
         RuleFor(spec => spec.Config).Must(ValidDependencyReferences)
             .WithMessage("Use distinct environment names and valid logical connection or Secret references.");
     }
@@ -611,5 +619,41 @@ public sealed class WebServiceSpecDtoValidator : AbstractValidator<WebServiceSpe
                        !string.IsNullOrWhiteSpace(reference.ConfigurationKey) && reference.ConfigurationKey.Length <= 128 && !reference.ConfigurationKey.Any(char.IsControl))) &&
                secrets.Values.All(reference => reference is not null && MongoDB.Bson.ObjectId.TryParse(reference.SecretId, out _) &&
                    reference.Key is { Length: > 0 and <= 253 } && System.Text.RegularExpressions.Regex.IsMatch(reference.Key, "^[A-Za-z0-9._-]+$"));
+    }
+}
+
+public sealed class WebServiceProbeSpecDtoValidator : AbstractValidator<ProbeSpecDto>
+{
+    public WebServiceProbeSpecDtoValidator()
+    {
+        RuleFor(probes => probes.Startup).NotNull().SetValidator(new WebServiceProbeConfigDtoValidator());
+        RuleFor(probes => probes.Liveness).NotNull().SetValidator(new WebServiceProbeConfigDtoValidator());
+        RuleFor(probes => probes.Readiness).NotNull().SetValidator(new WebServiceProbeConfigDtoValidator());
+    }
+}
+
+public sealed class WebServiceProbeConfigDtoValidator : AbstractValidator<ProbeConfigDto>
+{
+    public WebServiceProbeConfigDtoValidator()
+    {
+        RuleFor(probe => probe.Path).NotEmpty().MaximumLength(200);
+        RuleFor(probe => probe.Port).NotEmpty().MaximumLength(10);
+        RuleFor(probe => probe.InitialDelaySeconds).InclusiveBetween(0, 300);
+        RuleFor(probe => probe.PeriodSeconds).InclusiveBetween(1, 120);
+        RuleFor(probe => probe.TimeoutSeconds).InclusiveBetween(1, 60);
+        RuleFor(probe => probe.FailureThreshold).InclusiveBetween(1, 10);
+        RuleFor(probe => probe.SuccessThreshold).InclusiveBetween(1, 10);
+    }
+}
+
+public sealed class WebServicePortMappingDtoValidator : AbstractValidator<PortMappingDto>
+{
+    public WebServicePortMappingDtoValidator()
+    {
+        RuleFor(mapping => mapping.ServicePort).InclusiveBetween(1, 65535);
+        RuleFor(mapping => mapping.TargetPort).NotEmpty().MaximumLength(10);
+        RuleFor(mapping => mapping.Protocol).Must(protocol => protocol is "TCP" or "UDP" or "SCTP")
+            .WithMessage("Use a supported port protocol: TCP, UDP or SCTP.");
+        RuleFor(mapping => mapping.Name).NotNull();
     }
 }
