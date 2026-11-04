@@ -23,7 +23,8 @@ public static class ResultAssertionExtensions
         AssertSuccess<CreateResourceGroupOutcome>(result) switch
         {
             ResourceGroupDto success => success,
-            Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups.ResourceGroupNameAlreadyExists error => UnexpectedError<ResourceGroupDto>(error)
+            Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups.ResourceGroupNameAlreadyExists error
+                => UnexpectedError<ResourceGroupDto>(error)
         };
 
     public static PaginatedResponse<WebServiceDto> AssertSuccess(

@@ -46,6 +46,7 @@ VERIFY_TARGET_INDEXES=()
 VERIFY_NAMESPACE_NAMES=()
 VERIFY_RUN_ID=""
 VERIFY_BUILDKIT_FORWARD_PID=""
+VERIFY_BUILDKIT_FORWARD_PORT=""
 VERIFY_BUILDKIT_FORWARD_LOG=""
 VERIFY_HARBOR_PROJECT=""
 VERIFY_HARBOR_IMAGE=""
@@ -1451,6 +1452,7 @@ cleanup_verification_namespaces() {
         wait "${VERIFY_BUILDKIT_FORWARD_PID}" >/dev/null 2>&1
         VERIFY_BUILDKIT_FORWARD_PID=""
     fi
+    VERIFY_BUILDKIT_FORWARD_PORT=""
     if [[ -n "${VERIFY_HARBOR_IMAGE}" ]]; then
         local cluster_name
         for cluster_name in "${PROFILE_CLUSTER_NAMES[@]}"; do
@@ -1490,6 +1492,41 @@ cleanup_verification_namespaces() {
     fi
 }
 
+start_verification_buildkit_forward() {
+    local verify_directory="$1"
+    VERIFY_BUILDKIT_FORWARD_PORT=""
+    VERIFY_BUILDKIT_FORWARD_LOG="${verify_directory}/port-forward.log"
+    : >"${VERIFY_BUILDKIT_FORWARD_LOG}"
+    "${KUBECTL_BIN}" \
+        --kubeconfig "$(kubeconfig_path_for "${PROFILE_CLUSTER_NAMES[0]}")" \
+        --context "$(expected_context_for "${PROFILE_CLUSTER_NAMES[0]}")" \
+        --namespace pole-lab-build port-forward --address 127.0.0.1 service/buildkit \
+        "0:1234" >"${VERIFY_BUILDKIT_FORWARD_LOG}" 2>&1 &
+    VERIFY_BUILDKIT_FORWARD_PID="$!"
+    local attempt
+    local forward_port
+    for attempt in {1..30}; do
+        kill -0 "${VERIFY_BUILDKIT_FORWARD_PID}" >/dev/null 2>&1 \
+            || die "BuildKit verification port-forward exited before becoming ready."
+        forward_port="$(head --bytes=4096 -- "${VERIFY_BUILDKIT_FORWARD_LOG}" | LC_ALL=C awk '
+            !found && /^Forwarding from 127[.]0[.]0[.]1:[1-9][0-9]* -> 1234$/ {
+                split($3, endpoint, ":")
+                if (length(endpoint[2]) <= 5 && endpoint[2] <= 65535) {
+                    print endpoint[2]
+                    found = 1
+                }
+            }')"
+        if [[ -n "${forward_port}" ]]; then
+            kill -0 "${VERIFY_BUILDKIT_FORWARD_PID}" >/dev/null 2>&1 \
+                || die "BuildKit verification port-forward exited before becoming ready."
+            VERIFY_BUILDKIT_FORWARD_PORT="${forward_port}"
+            return
+        fi
+        [[ "${attempt}" -lt 30 ]] || die "BuildKit verification port-forward did not become ready."
+        sleep 1
+    done
+}
+
 verify_harbor_buildkit_path() {
     local credentials_path="${LAB_STATE_ROOT}/generated/harbor/default-credentials.json"
     local harbor_username
@@ -1506,38 +1543,12 @@ verify_harbor_buildkit_path() {
         --data "{\"project_name\":\"${VERIFY_HARBOR_PROJECT}\",\"metadata\":{\"public\":\"true\"}}" \
         "http://127.0.0.1:${HARBOR_PORT}/api/v2.0/projects" >/dev/null
 
-    local forward_port=""
-    local candidate
-    for candidate in $(seq 52100 52199); do
-        if ! ss --no-header --listening --numeric --tcp | awk '{ print $4 }' \
-            | grep --extended-regexp --quiet "(^|:)${candidate}$"; then
-            forward_port="${candidate}"
-            break
-        fi
-    done
-    [[ -n "${forward_port}" ]] || die "Could not reserve a loopback port for BuildKit verification."
-
     local verify_directory="${LAB_STATE_ROOT}/generated/verify-${VERIFY_RUN_ID}"
     local context_directory="${verify_directory}/context"
     local docker_config_directory="${verify_directory}/docker"
     mkdir -p -- "${context_directory}" "${docker_config_directory}"
-    VERIFY_BUILDKIT_FORWARD_LOG="${verify_directory}/port-forward.log"
-    "${KUBECTL_BIN}" \
-        --kubeconfig "$(kubeconfig_path_for "${PROFILE_CLUSTER_NAMES[0]}")" \
-        --context "$(expected_context_for "${PROFILE_CLUSTER_NAMES[0]}")" \
-        --namespace pole-lab-build port-forward --address 127.0.0.1 service/buildkit \
-        "${forward_port}:1234" >"${VERIFY_BUILDKIT_FORWARD_LOG}" 2>&1 &
-    VERIFY_BUILDKIT_FORWARD_PID="$!"
-    local attempt
-    for attempt in {1..30}; do
-        if (printf '' >/dev/tcp/127.0.0.1/"${forward_port}") 2>/dev/null; then
-            break
-        fi
-        kill -0 "${VERIFY_BUILDKIT_FORWARD_PID}" >/dev/null 2>&1 \
-            || die "BuildKit verification port-forward exited: $(<"${VERIFY_BUILDKIT_FORWARD_LOG}")"
-        [[ "${attempt}" -lt 30 ]] || die "BuildKit verification port-forward did not become ready."
-        sleep 1
-    done
+    start_verification_buildkit_forward "${verify_directory}"
+    local forward_port="${VERIFY_BUILDKIT_FORWARD_PORT}"
 
     printf '%s\n' 'FROM scratch' 'LABEL pole.dev/lab-verification=true' >"${context_directory}/Dockerfile"
     local registry_authority

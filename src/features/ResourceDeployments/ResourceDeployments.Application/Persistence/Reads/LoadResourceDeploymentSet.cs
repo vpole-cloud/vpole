@@ -21,7 +21,8 @@ internal sealed class MongoLoadResourceDeploymentSet(
             deployments.Select(item => item.ResolvedPlacement.DeploymentTargetId),
             cancellationToken);
         return deployments
-            .Select(deployment => deployment.ToPlacementSummaryDto(policies[deployment.ResolvedPlacement.DeploymentTargetId]))
+            .Select(deployment =>
+                deployment.ToPlacementSummaryDto(policies[deployment.ResolvedPlacement.DeploymentTargetId]))
             .ToArray();
     }
 }

@@ -122,8 +122,10 @@ internal sealed partial class DeclarativeWebServiceProvider
         var operation = request.Operation;
         var read = await ReadLifecycleAsync(new(request.Authority.TenantId,
             new(operation.Declaration.Address, operation.ResourceId)), session, cancellationToken);
+
+        // The approved vector includes this resource and its accepted dependencies.
         if (read is not GitLifecycleResourceSnapshot snapshot ||
-            !SameLifecycleVersions(snapshot.Version.Documents, request.Expected.Documents))
+            !snapshot.Version.Documents.All(request.Expected.Documents.Contains))
             return new DeclarationPreconditionsChanged();
         if (!await git.AuthorizeAsync(new(request.Authority.TenantId, Kind, operation.ResourceId,
                 Lifecycle: request.Authority, LifecycleEffect: GitLifecycleMutationEffect.Adopt),
@@ -163,6 +165,15 @@ internal sealed partial class DeclarativeWebServiceProvider
             placements.Items[0].DeploymentTargetId != targetId)
             return PlanningBlocked(WebServiceDeclarationError.ImmutablePlacementChange);
 
+        var fenced = await FenceAsync(new(operation, request.Expected), session, cancellationToken);
+        if (fenced is DeclarationReadBlocked blocked)
+            return blocked;
+        if (fenced is DeclarationPreconditionsChanged changed)
+            return changed;
+
+        // The shared fence advanced the root token; bind metadata against that written version.
+        current = await services.Find(session, WebServiceFilters.ById(request.Authority.TenantId,
+            operation.ResourceId)).SingleAsync(cancellationToken);
         var bound = current.BindDeclaredPlacement(new(spec.Placement.DeploymentTarget, targetId,
             spec.Placement.ComputeProfile.Name, computeId));
         var result = await services.UpdateOneAsync(session, WebServiceFilters.AtPlanningVersion(current),

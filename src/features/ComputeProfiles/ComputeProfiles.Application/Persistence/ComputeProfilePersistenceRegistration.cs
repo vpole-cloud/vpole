@@ -23,7 +23,8 @@ public static class ComputeProfilePersistenceRegistration
                 .GetRequiredService<IMongoDatabase>()
                 .GetCollection<ComputeProfile>(CollectionName));
 
-        services.TryAddSingleton(sp => sp.GetRequiredService<IMongoDatabase>().GetCollection<ComputeProfileRevision>("ComputeProfileRevisions"));
+        services.TryAddSingleton(sp =>
+            sp.GetRequiredService<IMongoDatabase>().GetCollection<ComputeProfileRevision>("ComputeProfileRevisions"));
         services.AddScoped<ComputeProfileHistory>();
         services.AddCapability<MongoLoadComputeProfileById, LoadComputeProfileById>(
             implementation => implementation.InvokeAsync);
@@ -43,7 +44,8 @@ public static class ComputeProfilePersistenceRegistration
             implementation => implementation.ReadAsync);
         services.AddCapability<MongoComputeProfilePlanningSnapshots, FenceComputeProfilePlanningSnapshot>(
             implementation => implementation.FenceAsync);
-        services.AddCapability<MongoResolveNamedComputeProfile, ResolveNamedComputeProfile>(implementation => implementation.InvokeAsync);
+        services.AddCapability<MongoResolveNamedComputeProfile,
+            ResolveNamedComputeProfile>(implementation => implementation.InvokeAsync);
         services.AddCapability<MongoResolveComputeProfiles, ResolveComputeProfiles>(
             implementation => implementation.InvokeAsync);
         services.AddCapability<MongoResolveComputeProfile, ResolveComputeProfile>(

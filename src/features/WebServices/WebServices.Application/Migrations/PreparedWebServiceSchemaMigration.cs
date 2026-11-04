@@ -16,8 +16,10 @@ public sealed class PreparedWebServiceSchemaMigration : IMigration
         var collection = await collections.FirstAsync(cancellationToken);
         var validator = collection["options"]["validator"].AsBsonDocument;
         var states = validator["$jsonSchema"]["properties"]["Lifecycle"]["oneOf"].AsBsonArray;
-        var prepared = BsonDocument.Parse(states[0].ToJson().Replace("ActiveWebServiceLifecycle", "PreparedWebServiceLifecycle", StringComparison.Ordinal));
-        if (!states.Any(state => state.ToJson().Contains("PreparedWebServiceLifecycle", StringComparison.Ordinal))) states.Add(prepared);
+        var prepared = BsonDocument.Parse(states[0].ToJson().Replace("ActiveWebServiceLifecycle",
+            "PreparedWebServiceLifecycle", StringComparison.Ordinal));
+        if (!states.Any(state => state.ToJson().Contains("PreparedWebServiceLifecycle",
+            StringComparison.Ordinal))) states.Add(prepared);
         await context.RunCommandAsync<BsonDocument>(new BsonDocument
         {
             ["collMod"] = "WebServices",

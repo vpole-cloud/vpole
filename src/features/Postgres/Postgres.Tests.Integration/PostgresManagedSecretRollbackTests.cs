@@ -33,7 +33,8 @@ public sealed class PostgresManagedSecretRollbackTests(MongoReplicaSetFixture fi
                     ct: ct);
                 Assert.IsType<ManagedSecretMutationSucceeded>(written.Value);
                 Assert.Equal(1, await Fixture.Database.GetCollection<Secret>("Secrets")
-                    .CountDocumentsAsync(session, secret => secret.Id == request.Prepared.SecretId, cancellationToken: ct));
+                    .CountDocumentsAsync(session, secret => secret.Id == request.Prepared.SecretId,
+                        cancellationToken: ct));
                 return new ManagedSecretChanged();
             };
         });

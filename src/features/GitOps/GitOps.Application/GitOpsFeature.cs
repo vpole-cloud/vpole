@@ -70,6 +70,8 @@ public static class GitOpsFeature
         services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>()
             .GetCollection<GitAcceptedReference>(RepositoryCollections.References));
         services.AddScoped<GitRepositoryQueries>();
+        services.AddScoped<GitRepositoryInventory>();
+        services.AddScoped<GitAdoptionCandidates>();
         services.AddScoped<DeclarativeProviderRegistry>();
         services.AddScoped<ManifestCompiler>();
         services.AddScoped<DeclarativeResourcePlanner>();
@@ -92,7 +94,8 @@ public static class GitOpsFeature
             .MapPauseRepositorySourceEndpoint().MapResumeRepositorySourceEndpoint().MapDeleteRepositorySourceEndpoint()
             .MapCreateLifecyclePreviewEndpoint().MapConfirmLifecyclePreviewEndpoint()
             .MapGetLifecyclePreviewEndpoint().MapListLifecyclePreviewEndpoint()
-            .MapListRepositoryRunsEndpoint().MapGetRepositoryRunEndpoint().MapListRepositoryOperationsEndpoint();
+            .MapListRepositoryRunsEndpoint().MapGetRepositoryRunEndpoint().MapListRepositoryOperationsEndpoint()
+            .MapListRepositoryResourcesEndpoint().MapListAdoptionCandidatesEndpoint();
 
         return app;
     }

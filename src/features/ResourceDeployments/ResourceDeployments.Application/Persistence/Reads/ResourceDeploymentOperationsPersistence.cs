@@ -71,13 +71,17 @@ public sealed class ResourceDeploymentOperationsPersistence(
                 };
                 targets[targetId] = target;
             }
-            items.Add(ToOperation(deployment, owner?.TenantId == tenantId && owner.ResourceGroupId == deployment.ResourceGroupId ? owner.DisplayName : null,
-                ResourceDeploymentIsolationProjection.FromPolicy(target?.NetworkPolicy ?? DeploymentTargetNetworkPolicyDto.Unknown))
+            items.Add(ToOperation(deployment,
+                owner?.TenantId == tenantId
+                && owner.ResourceGroupId == deployment.ResourceGroupId ? owner.DisplayName : null,
+                ResourceDeploymentIsolationProjection.FromPolicy(target?.NetworkPolicy
+                    ?? DeploymentTargetNetworkPolicyDto.Unknown))
                 with
             { OperationGeneration = deployment.State.Generation, TargetDisplayName = target?.DisplayName });
         }
         var counts = new ResourceDeploymentOperationCounts(
-            await CountAsync<WaitingForRuntimeCellResourceDeploymentState>() + await CountAsync<PreparedResourceDeploymentState>(),
+            await CountAsync<WaitingForRuntimeCellResourceDeploymentState>(
+                ) + await CountAsync<PreparedResourceDeploymentState>(),
             await CountAsync<PendingResourceDeploymentState>(),
             await CountAsync<ReconcilingResourceDeploymentState>(),
             await CountAsync<AppliedResourceDeploymentState>(),
@@ -88,15 +92,26 @@ public sealed class ResourceDeploymentOperationsPersistence(
             ResourceDeploymentFilters.ForOperationState<TState>(filter), cancellationToken: cancellationToken);
     }
 
-    public static ResourceDeploymentOperationDto ToOperation(ResourceDeployment deployment, string? name, ResourceDeploymentIsolationDto isolation) => deployment.State switch
-    {
-        PreparedResourceDeploymentState state => new(deployment.ToDto(isolation), name, "Prepared", 0, deployment.CreatedAtUtc, false, null),
-        WaitingForRuntimeCellResourceDeploymentState state => new(deployment.ToDto(isolation), name, "Waiting", 0, state.RequestedAtUtc, false, null),
-        PendingResourceDeploymentState state => new(deployment.ToDto(isolation), name, "Accepted", state.AttemptCount, state.RequestedAtUtc, false, null),
-        ReconcilingResourceDeploymentState state => new(deployment.ToDto(isolation), name, "Running", state.AttemptCount, state.StartedAtUtc, false, null),
-        AppliedResourceDeploymentState state => new(deployment.ToDto(isolation), name, "Applied", 0, state.AppliedAtUtc, false, null),
-        FailedResourceDeploymentState state => new(deployment.ToDto(isolation), name, "Failed", state.AttemptCount, state.FailedAtUtc, state.Retryable, state.RetryNotBeforeUtc),
-        DeletedResourceDeploymentState state => new(deployment.ToDto(isolation), name, "Deleted", 0, state.DeletedAtUtc, false, null),
-        _ => throw new InvalidOperationException("Unrecognized resource deployment state.")
-    };
+    public static ResourceDeploymentOperationDto ToOperation(ResourceDeployment deployment, string? name,
+        ResourceDeploymentIsolationDto isolation) => deployment.State switch
+        {
+            PreparedResourceDeploymentState state => new(deployment.ToDto(isolation), name, "Prepared", 0,
+                deployment.CreatedAtUtc, false, null),
+            WaitingForRuntimeCellResourceDeploymentState state => new(deployment.ToDto(isolation), name, "Waiting", 0,
+                state.RequestedAtUtc, false, null),
+            PendingResourceDeploymentState state =>
+                new(deployment.ToDto(isolation), name, "Accepted", state.AttemptCount,
+                state.RequestedAtUtc, false, null),
+            ReconcilingResourceDeploymentState state => new(deployment.ToDto(isolation), name, "Running",
+                state.AttemptCount, state.StartedAtUtc, false, null),
+            AppliedResourceDeploymentState state =>
+                new(deployment.ToDto(isolation), name, "Applied", 0, state.AppliedAtUtc,
+                false, null),
+            FailedResourceDeploymentState state => new(deployment.ToDto(isolation), name, "Failed", state.AttemptCount,
+                state.FailedAtUtc, state.Retryable, state.RetryNotBeforeUtc),
+            DeletedResourceDeploymentState state =>
+                new(deployment.ToDto(isolation), name, "Deleted", 0, state.DeletedAtUtc,
+                false, null),
+            _ => throw new InvalidOperationException("Unrecognized resource deployment state.")
+        };
 }

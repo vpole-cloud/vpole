@@ -16,7 +16,8 @@ internal sealed class MongoLoadResourceDeploymentConnectionPlacements(
             throw new InvalidOperationException("Connection placement reads require an active transaction.");
 
         var found = await deployments
-            .Find(session, ResourceDeploymentFilters.ForResource(request.TenantId, request.ResourceType, request.ResourceId))
+            .Find(session, ResourceDeploymentFilters.ForResource(request.TenantId, request.ResourceType,
+                request.ResourceId))
             .SortBy(item => item.Id)
             .ToListAsync(cancellationToken);
         return found

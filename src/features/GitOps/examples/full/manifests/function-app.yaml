@@ -1,0 +1,35 @@
+apiVersion: pole.io/v1alpha1
+kind: FunctionApp
+metadata:
+  name: mixed-function
+spec:
+  resourceGroup: gitops-mixed-group
+  placement:
+    deploymentTarget: demo-target
+    isolationScope: gitops-mixed-scope
+    computeProfile: { name: demo-compute, revision: 1 }
+  functionRoute: mixed-function
+  image:
+    {
+      server: registry.example.test,
+      name: pole/functions,
+      tag: replace-with-sdk-image,
+    }
+  environment: {}
+  secretEnvironment:
+    STAGE_SIX_SECRET: { secret: gitops-mixed-auth, key: password }
+  resources:
+    requests: { cpuMillis: 100, memoryMi: 256 }
+    limits: { cpuMillis: 500, memoryMi: 512 }
+  scaling:
+    minInstances: 1
+    maxInstances: 1
+    targetConcurrencyPerInstance: 1
+    maxConcurrencyPerInstance: 10
+    scaleDownDelaySeconds: 60
+    activationTimeoutSeconds: 120
+  handlers:
+    - name: hello
+      maxConcurrencyPerInstance: 10
+      trigger: { type: http, route: hello, methods: [GET], exposure: Internal }
+  tags: [gitops]

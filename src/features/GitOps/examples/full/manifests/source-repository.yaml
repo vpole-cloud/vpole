@@ -1,0 +1,8 @@
+apiVersion: pole.io/v1alpha1
+kind: SourceRepository
+metadata:
+  name: mixed-repository
+spec:
+  connection: github-demo
+  repositoryId: "123456789"
+  branch: main

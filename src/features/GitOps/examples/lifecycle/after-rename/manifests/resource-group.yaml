@@ -1,0 +1,7 @@
+apiVersion: pole.io/v1alpha1
+kind: ResourceGroup
+metadata:
+  name: lifecycle-group
+spec:
+  description: Reviewed lifecycle example
+  tags: [gitops]

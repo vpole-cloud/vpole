@@ -118,5 +118,6 @@ internal sealed class ConsumerSecretProjectionResolver(
         secret.IsolationScopeId == placement.IsolationScopeId &&
         SecretProjectionAuthority.IncludesDeployment(binding.Selection, placement.DeploymentId) &&
         references.All(reference =>
-            secret.HasValue(reference.Key) && ConsumerSecretReferenceAuthority.IncludesKey(secret, binding, reference.Key));
+            secret.HasValue(reference.Key) && ConsumerSecretReferenceAuthority.IncludesKey(secret, binding,
+                reference.Key));
 }

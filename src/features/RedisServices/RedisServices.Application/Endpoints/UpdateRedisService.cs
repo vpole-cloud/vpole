@@ -173,7 +173,8 @@ public sealed class UpdateRedisServiceHandler(
         return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             RedisQuotaInput,
             UpdateRedisServiceOutcome>(
-            new ExecuteQuotaAdmissionRequest<global::Pole.Features.RedisServices.Application.Common.RedisQuotaInput, global::Pole.Features.RedisServices.Application.Endpoints.UpdateRedisServiceOutcome>(
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.RedisServices.Application.Common.RedisQuotaInput,
+                global::Pole.Features.RedisServices.Application.Endpoints.UpdateRedisServiceOutcome>(
                 TenantId: redis.TenantId,
                 ResourceKey: RedisQuotaResourceKey.Create(redis.Id),
                 Mutation: new UpdateQuotaMutation<RedisQuotaInput>(

@@ -6,7 +6,8 @@ namespace Pole.Features.ResourceDeployments.Application.Common;
 
 public static class ResourceDeploymentDtoExtensions
 {
-    public static ResourceDeploymentDto ToDto(this ResourceDeployment deployment, ResourceDeploymentIsolationDto isolation) =>
+    public static ResourceDeploymentDto ToDto(this ResourceDeployment deployment,
+        ResourceDeploymentIsolationDto isolation) =>
         new(
             deployment.Id,
             deployment.ResourceType,
@@ -45,12 +46,13 @@ public static class ResourceDeploymentDtoExtensions
             deployment.DesiredOperation.ToContractOperation(),
             isolation);
 
-    public static ResourceDeploymentDesiredOperation ToContractOperation(this ResourceDeploymentOperation operation) => operation switch
-    {
-        ResourceDeploymentOperation.Apply => ResourceDeploymentDesiredOperation.Apply,
-        ResourceDeploymentOperation.Delete => ResourceDeploymentDesiredOperation.Delete,
-        _ => throw new ArgumentOutOfRangeException(nameof(operation))
-    };
+    public static ResourceDeploymentDesiredOperation ToContractOperation(this ResourceDeploymentOperation operation) =>
+        operation switch
+        {
+            ResourceDeploymentOperation.Apply => ResourceDeploymentDesiredOperation.Apply,
+            ResourceDeploymentOperation.Delete => ResourceDeploymentDesiredOperation.Delete,
+            _ => throw new ArgumentOutOfRangeException(nameof(operation))
+        };
 
     public static ComputeConfigurationSummaryDto ToSummaryDto(
         this ResolvedComputeConfiguration compute) =>

@@ -37,28 +37,17 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
     [Fact]
-    public async Task Binding_submodel_migration_preserves_legacy_keys_and_is_repeatable()
+    public async Task Binding_submodels_round_trip_current_mongo_documents_without_migration()
     {
-        var secret = SecretFactory.Create("legacy", TestData.TenantId, "group", "scope", "legacy", "test", ["password", "user"], DateTime.UtcNow)
-            .Bind(SecretBinding.Create("binding", "pole/web-service", "consumer", new AllSecretDeployments(), [])
+        var secret = SecretFactory.Create(Id(), TestData.TenantId, Id(), Id(), "current-bindings", "test",
+                ["password", "user"], DateTime.UtcNow)
+            .Bind(SecretBinding.Create(Id(), "pole/web-service", Id(), new AllSecretDeployments(), [])
                 .RequireKeysThroughRollout(["password"]).RequireKeysThroughRollout(["user"]), DateTime.UtcNow);
-        var document = secret.ToBsonDocument();
-        var legacy = document["Bindings"][0].AsBsonDocument;
-        legacy["ConsumerType"] = legacy["Consumer"]["ResourceType"];
-        legacy["ConsumerId"] = legacy["Consumer"]["ResourceId"];
-        legacy["RequiredKeys"] = legacy["Pins"]["Required"];
-        legacy["RetainedKeys"] = legacy["Pins"]["Retained"];
-        legacy.Remove("Consumer");
-        legacy.Remove("Pins");
-        await Fixture.Database.GetCollection<BsonDocument>("Secrets").InsertOneAsync(document);
-
-        var migration = new SecretBindingSubmodelsMigration();
-        await migration.Up(Fixture.Database);
-        await migration.Up(Fixture.Database);
+        await Fixture.Database.GetCollection<Secret>("Secrets").InsertOneAsync(secret);
 
         var restored = await Services.GetRequiredService<LoadSecretById>()(secret.TenantId, secret.Id, default);
         var binding = Assert.Single(Assert.IsType<Secret>(restored).Bindings);
-        Assert.Equal(new SecretConsumerIdentity("pole/web-service", "consumer"), binding.Consumer);
+        Assert.Equal(secret.Bindings.Single().Consumer, binding.Consumer);
         Assert.Equal(["user"], binding.Pins.Required.ToArray());
         Assert.Equal(["password"], binding.Pins.Retained.ToArray());
         Assert.Throws<InvalidOperationException>(() => restored!.Rotate(["user"], DateTime.UtcNow));
@@ -69,7 +58,8 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
     [InlineData("coverage", ConsumerSecretReferenceError.SecretDeploymentCoverageUnavailable)]
     [InlineData("scope", ConsumerSecretReferenceError.SecretBindingUnavailable)]
     [InlineData("tenant", ConsumerSecretReferenceError.SecretBindingUnavailable)]
-    public async Task Consumer_references_reject_unauthorized_keys_incomplete_coverage_foreign_scope_or_tenant(string scenario, ConsumerSecretReferenceError reason)
+    public async Task Consumer_references_reject_unauthorized_keys_incomplete_coverage_foreign_scope_or_tenant(
+        string scenario, ConsumerSecretReferenceError reason)
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
         var secret = Metadata(await CreateAsync(group.TenantId, group.Id, group.DefaultIsolationScopeId, "authority-refs", "tests", new() { ["password"] = "synthetic", ["other"] = "synthetic" }, default));
@@ -93,7 +83,8 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
             ct: default);
         Assert.Equal(reason, Assert.IsType<ConsumerSecretReferenceUnavailable>(result.Value).Reason);
         await session.AbortTransactionAsync();
-        Assert.Empty((await Services.GetRequiredService<LoadSecretById>()(group.TenantId, secret.Id, default))!.Bindings.Single(item => item.Id == binding.Id).Pins.Required);
+        Assert.Empty((await Services.GetRequiredService<LoadSecretById>()(group.TenantId, secret.Id,
+            default))!.Bindings.Single(item => item.Id == binding.Id).Pins.Required);
     }
 
     [Fact]
@@ -126,7 +117,8 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.IsType<ConsumerSecretReferencesAdmitted>(admitted.Value); await session.CommitTransactionAsync();
         var pinned = (await Services.GetRequiredService<LoadSecretById>()(group.TenantId, secret.Id, default))!;
         Assert.Equal(before.Revision, pinned.Revision); Assert.Equal(before.CurrentVersion, pinned.CurrentVersion);
-        Assert.Equal(new[] { "password" }, pinned.Bindings.Single(item => item.Id == binding.Id).Pins.Required.ToArray());
+        Assert.Equal(new[] { "password" },
+            pinned.Bindings.Single(item => item.Id == binding.Id).Pins.Required.ToArray());
         Assert.Empty(pinned.Bindings.Single(item => item.Id == otherBinding.Id).Pins.Required);
         AssertError<SecretMappedKeysRequired>(await RotateAsync(group.TenantId, secret.Id, 1, new() { ["other"] = "new-value" }, default));
         session.StartTransaction();
@@ -155,10 +147,12 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
         bool retainsOldKey)
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var secret = Metadata(await CreateAsync(group.TenantId, group.Id, group.DefaultIsolationScopeId, "retention", "tests",
+        var secret = Metadata(await CreateAsync(group.TenantId, group.Id, group.DefaultIsolationScopeId, "retention",
+            "tests",
             new() { ["password"] = "synthetic", ["other"] = "synthetic" }, default));
         var consumer = await Consumer(group);
-        var binding = SecretBinding.Create(Id(), "pole/web-service", consumer.ResourceId, new AllSecretDeployments(), []);
+        var binding = SecretBinding.Create(Id(), "pole/web-service", consumer.ResourceId, new AllSecretDeployments(),
+            []);
         Metadata(await BindAsync(group.TenantId, secret.Id, binding, default));
         var admit = Services.GetRequiredService<AdmitConsumerSecretReferences>();
         using var session = await Fixture.Client.StartSessionAsync();
@@ -247,6 +241,12 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
         var indexes = await cursor.ToListAsync();
         Assert.Contains(indexes, index => index["key"].AsBsonDocument.Equals(
             new BsonDocument { { "TenantId", 1 }, { "_id", 1 } }));
+        Assert.Contains(indexes, index => index["key"].AsBsonDocument.Equals(new BsonDocument
+        {
+            { "TenantId", 1 },
+            { "Bindings.Consumer.ResourceType", 1 },
+            { "Bindings.Consumer.ResourceId", 1 }
+        }));
         Assert.Contains(indexes, index => index.GetValue("unique", false).AsBoolean &&
             index["key"].AsBsonDocument.Equals(new BsonDocument
             {
@@ -449,7 +449,8 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
             },
             default));
         AssertError<SecretMissing>(await BindAsync(Id(), secret.Id, binding1, default));
-        await Services.GetRequiredService<RemoveConsumerSecretBindings>()(Id(), group.Id, binding1.Consumer.ResourceType, binding1.Consumer.ResourceId, default);
+        await Services.GetRequiredService<RemoveConsumerSecretBindings>()(Id(), group.Id,
+            binding1.Consumer.ResourceType, binding1.Consumer.ResourceId, default);
         Assert.Equal(2, (await Services.GetRequiredService<LoadSecretById>()(group.TenantId, secret.Id, default))!.Bindings.Length);
         await Services.GetRequiredService<RemoveConsumerSecretBindings>()(
             group.TenantId,

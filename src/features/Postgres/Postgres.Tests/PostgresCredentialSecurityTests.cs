@@ -27,7 +27,8 @@ public sealed class PostgresCredentialSecurityTests
             Assert.Equal("database-user", request.Values["username"]);
             Assert.Equal("private-password", request.Values["password"]);
             return Task.FromResult<PrepareManagedSecretOutcome>(
-                Prepared(request.TenantId, request.SecretId, request.Owner, request.Name, request.Version, request.KubernetesType));
+                Prepared(request.TenantId, request.SecretId, request.Owner, request.Name, request.Version,
+                    request.KubernetesType));
         });
 
         var result = await creator.InvokeAsync(TestData.TenantId, ClusterId, "database-user", "private-password", default);
@@ -50,7 +51,8 @@ public sealed class PostgresCredentialSecurityTests
             Assert.Equal(current.Values["username"], request.Values["username"]);
             Assert.Equal("rotated-password", request.Values["password"]);
             return Task.FromResult<PrepareManagedSecretOutcome>(
-                Prepared(request.TenantId, request.SecretId, request.Owner, request.Name, request.Version, request.KubernetesType));
+                Prepared(request.TenantId, request.SecretId, request.Owner, request.Name, request.Version,
+                    request.KubernetesType));
         });
 
         var result = await rotator.InvokeAsync(TestData.TenantId, ClusterId, current, "rotated-password", default);

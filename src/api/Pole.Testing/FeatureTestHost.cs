@@ -8,12 +8,10 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.Tenants.Domain;
 using Pole.Platform.Hosting;
 using Pole.ResultType;
@@ -77,14 +75,7 @@ public sealed class FeatureTestHost : IAsyncDisposable
             builder.Services.AddSingleton<RecordedBackgroundJobs>();
             builder.Services.AddSingleton<IBackgroundJobClient>(sp =>
                 sp.GetRequiredService<RecordedBackgroundJobs>());
-            builder.Services.TryAddSingleton<SourceBuildWebServiceExists>((_, _, _) => Task.FromResult(false));
-            builder.Services.TryAddSingleton<AdmitSourceBuildWebService>((request, _, _) =>
-                Task.FromResult<AdmitSourceBuildWebServiceOutcome>(
-                    new SourceBuildWebServiceNotFound(request.WebServiceId)));
-            builder.Services.TryAddSingleton<DeploySourceBuildWebService>((request, _) =>
-                Task.FromResult<DeploySourceBuildWebServiceOutcome>(
-                    new SourceBuildWebServiceDeploymentError(
-                        new SourceBuildWebServiceNotFound(request.WebServiceId))));
+            builder.Services.AddUnavailableSourceBuildTargets();
             configureServices?.Invoke(builder.Services);
 
             app = builder.Build();

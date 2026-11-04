@@ -65,6 +65,7 @@ public abstract class MediatorIntegrationTestBase(MongoReplicaSetFixture fixture
         services.AddPostgresFeature(configuration);
         services.AddResourceConnectionsFeature();
         services.AddTestDeploymentTargets();
+        services.AddUnavailableSourceBuildTargets();
         ReplaceTenantAuthorizationWithFake(services);
         ConfigureServices(services);
         _serviceProvider = services.BuildServiceProvider(validateScopes: true);

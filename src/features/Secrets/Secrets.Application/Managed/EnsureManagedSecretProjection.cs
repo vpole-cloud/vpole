@@ -21,7 +21,8 @@ internal sealed class ReconcileManagedSecretProjection(
         var latest = await loadSecret(request.TenantId, request.Owner, ct);
         if (latest is null || latest.Id != secret.Id)
             return new ManagedSecretUnavailable();
-        var projection = (await loadProjections(secret.TenantId, secret.Id, ct)).SingleOrDefault(x => x.DeploymentId == request.DeploymentId);
+        var projection = (await loadProjections(secret.TenantId, secret.Id,
+            ct)).SingleOrDefault(x => x.DeploymentId == request.DeploymentId);
         var management = (ProviderManagedSecret)latest.Management;
         return projection is { State: ReadySecretProjection } && projection.ConsumerType == management.ResourceType &&
                projection.ConsumerId == management.ResourceId && projection.BindingId == management.BindingId &&

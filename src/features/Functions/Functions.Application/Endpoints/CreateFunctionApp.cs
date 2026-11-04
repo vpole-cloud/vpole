@@ -233,7 +233,8 @@ public sealed class CreateFunctionAppHandler(
         return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             FunctionQuotaAllocation,
             CreateFunctionAppOutcome>(
-            new ExecuteQuotaAdmissionRequest<global::Pole.Features.Functions.Domain.FunctionQuotaAllocation, global::Pole.Features.Functions.Application.Endpoints.CreateFunctionAppOutcome>(
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.Functions.Domain.FunctionQuotaAllocation,
+                global::Pole.Features.Functions.Application.Endpoints.CreateFunctionAppOutcome>(
                 TenantId: request.TenantId,
                 ResourceKey: FunctionAppQuotaResourceKey.Create(createOptions.FunctionAppId),
                 Mutation: new CreateQuotaMutation<FunctionQuotaAllocation>(admittedQuota),

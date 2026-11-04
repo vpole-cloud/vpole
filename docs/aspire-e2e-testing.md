@@ -43,7 +43,7 @@ The suite covers:
 
 ## GitOps repository scenarios
 
-The GitHub stub serves deterministic source archives and three isolated YAML-only repositories.
+The GitHub stub serves deterministic source archives and isolated YAML-only repositories.
 Repository `9002` exercises create/apply, signed push dispatch, polling after a missed push, controlled
 managed-field drift in the disposable Mongo database, same-SHA poll repair, verified Sync no-op and
 branch deletion without inventory removal. Repository `9003` (`pole-e2e/gitops-mixed`) has independent
@@ -54,6 +54,8 @@ Repeating identical commit/input is idempotent; changed content at an existing c
 fifteen declarations and nineteen phase operations: ResourceGroup, IsolationScope, Secret,
 WebService, RedisService, PostgresCluster, FunctionApp, three SecretBindings for runtime/bootstrap
 access, ResourceConnection, DomainZone, HostnameBinding, SourceRepository and SourceBuildConfiguration.
+Its fixture reads the canonical `src/features/GitOps/examples/full/manifests` YAML; only lab target,
+profile, connection, application repository/branch and Function image references are substituted.
 It checks the missing-value blocker and dependency recovery without a new Git commit, inert prepared
 consumers, PostgreSQL native credential projection and password-authenticated login.
 
@@ -78,6 +80,27 @@ The mixed thirteen-kind scenario also confirms an empty snapshot and waits for o
 then verifies native namespace/PVC, credential, ingress and network cleanup. Assertions inspect only
 the fixture-owned isolated resources and do not claim public DNS/TLS verification.
 
+Repository `9006` (`pole-e2e/gitops-console`) isolates the browser journeys. Its authenticated
+`/__e2e/gitops-console` control publishes immutable inputs; `/__e2e/gitops-console/access` changes
+access only to that disposable repository, without revoking the shared GitHub connection.
+`BrowserGitOpsSourceRunsSettingsAndTenantAccess` creates a source through the real pickers, proves
+Retry keeps a failed run's resolved SHA while Sync reads the new branch head, follows inventory and
+ownership links, reloads a selected run, resolves a settings revision conflict, and checks pause/resume,
+Viewer commands and foreign-tenant reads. The source is paused before another console snapshot is
+published, so later input cannot race its polling.
+
+`BrowserGitOpsLifecycleReviewsExactPlansAndRestoresManualControl` adopts genuine manual resources,
+including an unnamed SecretBinding selected by Secret/consumer metadata. It changes only the owned
+Secret's reference fence in the disposable Mongo database to force a server-side stale-confirmation
+conflict, then requires a fresh preview and unchecked data-loss acknowledgment. It exercises explicit
+rename, directory relocation, guarded source deletion and inventory-only detach while Git is denied;
+manual configuration writes work again after detach. Confirm requests contain only the preview
+revision. Runtime cleanup/PVC guarantees remain covered by the existing owner/native lifecycle tests.
+
+Screenshots in `.artifacts/frontend-gitops` cover create, overview, runs and protected preview screens
+at desktop/mobile sizes in light/dark themes. Screenshots are captured outside Secret value forms;
+GitOps candidate, preview and metadata responses are checked for sensitive payloads.
+
 The mixed lane checks configuration applied; it does not require Function runtime activation before
 evaluating configuration drift. The no-op check includes Function revision stability.
 
@@ -99,7 +122,8 @@ fixture's labelled namespaces with UID preconditions, then disposes owned test i
 
 Delivery must report actual results and infrastructure blockers for the mixed Aspire scenario and
 separate live checks; the scenario descriptions alone are not evidence of a passing run.
-The complete publication gate remains deferred until all stages of the single PR are implemented.
+A fresh complete publication gate is required after the final stage; focused browser results do not
+replace its evidence.
 
 ## Prerequisites and run
 

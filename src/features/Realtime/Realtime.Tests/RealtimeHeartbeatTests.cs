@@ -642,7 +642,8 @@ public sealed class RealtimeHeartbeatTests
                     Enabled = true,
                     EnabledTopics = enabledTopics ?? []
                 });
-            var access = new RealtimeAccess((request, _, _) => Task.FromResult(scenario.Membership(request.TenantId, request.UserId)),
+            var access = new RealtimeAccess((request, _, _) => Task.FromResult(scenario.Membership(request.TenantId,
+                request.UserId)),
                 (tenant, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(tenant, "name")),
                 registry);
             scenario.Hub = new RealtimeHub(scenario.Subscriptions,

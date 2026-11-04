@@ -49,7 +49,11 @@ public sealed class ListSecretsHandler(LoadSecretPage load, IGitOpsMutations git
                 Kind: "Secret",
                 ResourceIds: page.Items.Select(item => item.Id).ToArray()),
             ct: cancellationToken);
-        return new SecretPage(page.Items.Select(item => SecretMetadata.From(item) with { GitOps = statuses.GetValueOrDefault(item.Id) }).ToArray(), page.NextCursor);
+        return new SecretPage(page.Items.Select(item => SecretMetadata.From(item) with
+        {
+            GitOps =
+            statuses.GetValueOrDefault(item.Id)
+        }).ToArray(), page.NextCursor);
     }
 }
 

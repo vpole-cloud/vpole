@@ -13,6 +13,9 @@ public sealed record GitOpsMixedSnapshotRequest(
     string Commit,
     IReadOnlyList<GitOpsMixedFile> Files);
 
+public sealed record GitOpsRepositoryAccessRequest(
+    bool Denied);
+
 public enum GitOpsMixedPublishResult
 {
     Published,
@@ -88,10 +91,17 @@ public sealed record GitOpsMixedSnapshot(
 
 public sealed class GitOpsMixedStubState
 {
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private readonly object gate = new();
     private readonly Dictionary<string, GitOpsMixedSnapshot> snapshots = new(StringComparer.Ordinal);
     private string? head;
-    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+    private volatile bool accessDenied;
+
+    public bool AccessDenied
+    {
+        get => accessDenied;
+        set => accessDenied = value;
+    }
 
     public string? Head
     {
@@ -165,7 +175,31 @@ public static class GitOpsMixedStubEndpoints
         MapRepository(app, authorized, "9003", "gitops-mixed", app.Services.GetRequiredService<GitOpsMixedStubState>());
         MapRepository(app, authorized, "9004", "gitops-lifecycle", new GitOpsMixedStubState());
         MapRepository(app, authorized, "9005", "gitops-redis-replacement", new GitOpsMixedStubState());
+        var console = new GitOpsMixedStubState();
+        MapRepository(app, authorized, "9006", "gitops-console", console);
+        app.MapPost("/__e2e/gitops-console/access", (HttpRequest request, GitOpsRepositoryAccessRequest body,
+            IConfiguration config) =>
+        {
+            if (!authorized(request, config))
+                return Results.Unauthorized();
+
+            console.AccessDenied = body.Denied;
+            return Results.NoContent();
+        });
     }
+
+    public static object ConsoleRepository(string baseUrl) => Repository("9006", "gitops-console", baseUrl);
+
+    private static object Repository(string id, string name, string baseUrl) => new
+    {
+        id = long.Parse(id, System.Globalization.CultureInfo.InvariantCulture),
+        name,
+        full_name = $"pole-e2e/{name}",
+        html_url = $"{baseUrl.TrimEnd('/')}/pole-e2e/{name}",
+        @private = true,
+        default_branch = "main",
+        updated_at = "2026-10-30T00:00:00Z"
+    };
 
     private static void MapRepository(WebApplication app, Func<HttpRequest, IConfiguration, bool> authorized,
         string repositoryId, string name, GitOpsMixedStubState state)
@@ -188,21 +222,27 @@ public static class GitOpsMixedStubEndpoints
         app.MapGet($"/repositories/{repositoryId}", (HttpRequest request, GitHubStubState journal) =>
         {
             journal.Record(request);
-            return Results.Ok(new
-            {
-                id = long.Parse(repositoryId, System.Globalization.CultureInfo.InvariantCulture),
-                name,
-                full_name = $"pole-e2e/{name}",
-                html_url = $"{request.Scheme}://{request.Host}/pole-e2e/{name}",
-                @private = true,
-                default_branch = "main",
-                updated_at = "2026-10-30T00:00:00Z"
-            });
+            return state.AccessDenied
+                ? Results.StatusCode(StatusCodes.Status403Forbidden)
+                : Results.Ok(Repository(repositoryId, name, $"{request.Scheme}://{request.Host}"));
+        });
+        app.MapGet(repositoryPath + "/branches", (HttpRequest request, GitHubStubState journal) =>
+        {
+            journal.Record(request);
+            if (state.AccessDenied)
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+            return Results.Ok(state.Head is { } commit
+                ? new[] { new { name = "main", commit = new { sha = commit }, @protected = false } }
+                : []);
         });
         app.MapGet(repositoryPath + "/branches/{branch}",
             (string branch, HttpRequest request, GitHubStubState journal) =>
             {
                 journal.Record(request);
+                if (state.AccessDenied)
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+
                 return branch == "main" && state.Head is { } commit
                     ? Results.Ok(new { name = "main", commit = new { sha = commit } })
                     : Results.NotFound();
@@ -211,6 +251,9 @@ public static class GitOpsMixedStubEndpoints
             (string commit, HttpRequest request, GitHubStubState journal) =>
             {
                 journal.Record(request);
+                if (state.AccessDenied)
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+
                 return state.Find(commit) is { } snapshot
                     ? Results.Ok(new { sha = snapshot.Commit, tree = new { sha = snapshot.Commit } })
                     : Results.NotFound();
@@ -219,6 +262,9 @@ public static class GitOpsMixedStubEndpoints
             (string tree, HttpRequest request, GitHubStubState journal) =>
             {
                 journal.Record(request);
+                if (state.AccessDenied)
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+
                 return state.Find(tree) is { } snapshot
                     ? Results.Ok(new { tree = snapshot.Tree(), truncated = false })
                     : Results.NotFound();
@@ -227,6 +273,9 @@ public static class GitOpsMixedStubEndpoints
             (string commit, HttpRequest request, GitHubStubState journal) =>
             {
                 journal.Record(request);
+                if (state.AccessDenied)
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+
                 return state.Find(commit) is { } snapshot
                     ? Results.File(snapshot.Archive(), "application/gzip")
                     : Results.NotFound();

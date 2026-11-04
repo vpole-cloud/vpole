@@ -274,10 +274,13 @@ public sealed class ComputeProfilePersistenceTests(MongoReplicaSetFixture fixtur
         Assert.Equal(259, history.Count);
         foreach (var original in legacy)
         {
-            Assert.True(Assert.Single(history, item => item.ComputeProfileId == original.Id && item.Revision == 1).Snapshot.IsDefault);
-            Assert.False(Assert.Single(history, item => item.ComputeProfileId == original.Id && item.Revision == 2).Snapshot.IsDefault);
+            Assert.True(Assert.Single(history,
+                item => item.ComputeProfileId == original.Id && item.Revision == 1).Snapshot.IsDefault);
+            Assert.False(Assert.Single(history,
+                item => item.ComputeProfileId == original.Id && item.Revision == 2).Snapshot.IsDefault);
         }
-        Assert.Equal(promoted.Id, (await profiles.Find(Builders<ComputeProfile>.Filter.Eq(item => item.IsDefault, true)).SingleAsync()).Id);
+        Assert.Equal(promoted.Id, (await profiles.Find(Builders<ComputeProfile>.Filter.Eq(item => item.IsDefault,
+            true)).SingleAsync()).Id);
     }
 
     [Fact]
@@ -290,9 +293,12 @@ public sealed class ComputeProfilePersistenceTests(MongoReplicaSetFixture fixtur
         await fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles").InsertOneAsync(old);
         using var host = new ComputeProfilePersistenceTestHost(fixture,
             storeOutboxWrites: (_, _, _) => throw new InvalidOperationException("Injected outbox failure"));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => host.GetRequiredService<PersistCreatedComputeProfile>()(
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            host.GetRequiredService<PersistCreatedComputeProfile>()(
             ComputeProfileTestData.CreateProfile(target.Id, isDefault: true)));
-        var remaining = await fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles").Find(AllComputeProfiles()).SingleAsync();
+        var remaining =
+            await fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles").Find(AllComputeProfiles(
+            )).SingleAsync();
         Assert.Equal(old.Id, remaining.Id);
         Assert.Equal(old.Revision, remaining.Revision);
         Assert.True(remaining.IsDefault);

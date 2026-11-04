@@ -16,7 +16,7 @@ public sealed class SecretIndexesMigration : IMigration
         IMongoDatabase context,
         CancellationToken cancellationToken = default)
     {
-        // Index field names are frozen historical BSON contracts, independent of live domain types.
+        // BSON field names define the current persisted schema independently of live domain types.
         await context.GetCollection<BsonDocument>("Secrets").Indexes.CreateManyAsync([
             new CreateIndexModel<BsonDocument>(
                 Builders<BsonDocument>.IndexKeys
@@ -39,8 +39,8 @@ public sealed class SecretIndexesMigration : IMigration
             new CreateIndexModel<BsonDocument>(
                 Builders<BsonDocument>.IndexKeys
                     .Ascending("TenantId")
-                    .Ascending("Bindings.ConsumerType")
-                    .Ascending("Bindings.ConsumerId"))
+                    .Ascending("Bindings.Consumer.ResourceType")
+                    .Ascending("Bindings.Consumer.ResourceId"))
         ], cancellationToken);
 
         await context.GetCollection<BsonDocument>("SecretVersions").Indexes.CreateOneAsync(

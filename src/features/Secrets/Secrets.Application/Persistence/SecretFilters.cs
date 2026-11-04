@@ -19,7 +19,8 @@ internal static class SecretFilters
         Builders<Secret>.Filter.Eq(item => item.TenantId, tenant) &
         Builders<Secret>.Filter.ElemMatch(item => item.Bindings, binding => binding.DeclarationName == name);
     public static FilterDefinition<Secret> TechnicalName(string tenant, string name) =>
-        Builders<Secret>.Filter.Eq(item => item.TenantId, tenant) & Builders<Secret>.Filter.Eq(item => item.NormalizedName, name);
+        Builders<Secret>.Filter.Eq(item => item.TenantId,
+            tenant) & Builders<Secret>.Filter.Eq(item => item.NormalizedName, name);
 
     internal static FilterDefinition<Secret> Identity(
         string tenantId,

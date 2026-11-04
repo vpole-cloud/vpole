@@ -24,7 +24,8 @@ public static class DeploymentTargetHttpMappings
     public static IResult Map(DeploymentTargetPublicBaseDomainConflict error) => MapDomainConflict(error).ToHttpResult();
 
     public static IResult Map(DeploymentTargetTechnicalNameConflict error) => Problem(
-        HttpStatusCode.Conflict, "deployment-targets.technical-name-conflict", "The catalog technical name is already used").ToHttpResult();
+        HttpStatusCode.Conflict, "deployment-targets.technical-name-conflict",
+            "The catalog technical name is already used").ToHttpResult();
 
     public static IResult Map(DeploymentTargetIdentityConflict error) => MapIdentityConflict(error).ToHttpResult();
 

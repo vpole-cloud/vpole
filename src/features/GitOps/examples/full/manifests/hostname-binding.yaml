@@ -1,0 +1,9 @@
+apiVersion: pole.io/v1alpha1
+kind: HostnameBinding
+metadata:
+  name: mixed-hostname
+spec:
+  zone: mixed-zone
+  resource: { kind: WebService, name: mixed-web }
+  deploymentTarget: demo-target
+  relativeName: app

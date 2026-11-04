@@ -39,8 +39,10 @@ public sealed class SecretProjectionKubernetesTests(KubernetesClusterFixture fix
         var services = new ServiceCollection().AddSecretsFeature();
         services.AddSingleton<IKubernetesClientProvider>(new SelectedClient(fixture.Client));
         services.AddSingleton<LoadSecretById>((_, _, _) => Task.FromResult<Secret?>(secret));
-        services.AddSingleton<LoadExactResourceDeploymentRuntimePlacement>((request, _) => Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(
-            new(deploymentId, binding.Consumer.ResourceId, "cell", "selected-target", namespaceName, 1, 1, null!, ResourceDeploymentStatus.Pending, ResourceDeploymentDesiredOperation.Apply, secret.IsolationScopeId)));
+        services.AddSingleton<LoadExactResourceDeploymentRuntimePlacement>((request,
+            _) => Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(
+            new(deploymentId, binding.Consumer.ResourceId, "cell", "selected-target", namespaceName, 1, 1, null!,
+                ResourceDeploymentStatus.Pending, ResourceDeploymentDesiredOperation.Apply, secret.IsolationScopeId)));
         using var provider = services.BuildServiceProvider();
         var target = provider.GetRequiredService<ISecretProjectionTarget>();
         async Task Apply(string password)

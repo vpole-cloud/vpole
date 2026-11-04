@@ -10,14 +10,17 @@ namespace Pole.Tests.Integration.Database;
 public sealed class MongoDuplicateKeyPersistenceTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
 {
     private const string NameIndex = "UX_Classifier_Name";
-    private IMongoCollection<BsonDocument> Documents => fixture.Database.GetCollection<BsonDocument>("DuplicateKeyClassifierTests");
+    private IMongoCollection<BsonDocument> Documents =>
+        fixture.Database.GetCollection<BsonDocument>("DuplicateKeyClassifierTests");
 
     public async Task InitializeAsync()
     {
         await fixture.ResetDatabaseAsync();
         await Documents.Indexes.CreateManyAsync([
-            new(Builders<BsonDocument>.IndexKeys.Ascending("Name"), new CreateIndexOptions { Unique = true, Name = NameIndex, Collation = new Collation("en", strength: CollationStrength.Secondary) }),
-            new(Builders<BsonDocument>.IndexKeys.Ascending("Other"), new CreateIndexOptions { Unique = true, Name = "UX_Classifier_Other" })]);
+            new(Builders<BsonDocument>.IndexKeys.Ascending("Name"), new CreateIndexOptions { Unique = true,
+                Name = NameIndex, Collation = new Collation("en", strength: CollationStrength.Secondary) }),
+            new(Builders<BsonDocument>.IndexKeys.Ascending("Other"), new CreateIndexOptions { Unique = true,
+                Name = "UX_Classifier_Other" })]);
         await Documents.InsertOneAsync(Document("original", "name", "other"));
     }
 
@@ -26,11 +29,14 @@ public sealed class MongoDuplicateKeyPersistenceTests(MongoReplicaSetFixture fix
     [Fact]
     public async Task Driver_write_errors_distinguish_name_other_and_identity_indexes()
     {
-        var name = await Assert.ThrowsAsync<MongoWriteException>(() => Documents.InsertOneAsync(Document("new", "name", "different")));
+        var name = await Assert.ThrowsAsync<MongoWriteException>(() => Documents.InsertOneAsync(Document("new", "name",
+            "different")));
         Assert.True(MongoDuplicateKey.IsForIndex(name, NameIndex));
-        var other = await Assert.ThrowsAsync<MongoWriteException>(() => Documents.InsertOneAsync(Document("new", "different", "other")));
+        var other = await Assert.ThrowsAsync<MongoWriteException>(() => Documents.InsertOneAsync(Document("new",
+            "different", "other")));
         Assert.False(MongoDuplicateKey.IsForIndex(other, NameIndex));
-        var identity = await Assert.ThrowsAsync<MongoWriteException>(() => Documents.InsertOneAsync(Document("original", "different", "different")));
+        var identity = await Assert.ThrowsAsync<MongoWriteException>(() => Documents.InsertOneAsync(Document("original",
+            "different", "different")));
         Assert.False(MongoDuplicateKey.IsForIndex(identity, NameIndex));
     }
 
@@ -41,7 +47,8 @@ public sealed class MongoDuplicateKeyPersistenceTests(MongoReplicaSetFixture fix
             [Document("one", "name", "one")], new InsertManyOptions { IsOrdered = false }));
         Assert.True(MongoDuplicateKey.IsForIndex(expected, NameIndex));
         var mixed = await Assert.ThrowsAsync<MongoBulkWriteException<BsonDocument>>(() => Documents.InsertManyAsync(
-            [Document("two", "name", "two"), Document("three", "three", "other")], new InsertManyOptions { IsOrdered = false }));
+            [Document("two", "name", "two"), Document("three", "three", "other")],
+                new InsertManyOptions { IsOrdered = false }));
         Assert.False(MongoDuplicateKey.IsForIndex(mixed, NameIndex));
     }
 

@@ -1,4 +1,5 @@
 import { createAppRegistry } from '../shell/moduleRegistry'
+import { gitOpsModule } from './gitops/GitOpsModule'
 import {
   domainsModule,
   integrationsModule,
@@ -21,5 +22,6 @@ export const appRegistry = createAppRegistry([
   secretModule,
   domainsModule,
   integrationsModule,
+  gitOpsModule,
   storageModule,
 ])

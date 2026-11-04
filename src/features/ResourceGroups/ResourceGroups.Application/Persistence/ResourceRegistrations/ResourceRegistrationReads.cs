@@ -31,7 +31,8 @@ internal sealed class MongoResourceRegistrationReads(
         LoadRegisteredResourceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var registration = await registrations.Find(ResourceRegistrationFilters.ByIdentity(request.TenantId, request.ResourceTypeId, request.ResourceId))
+        var registration = await registrations.Find(ResourceRegistrationFilters.ByIdentity(request.TenantId,
+            request.ResourceTypeId, request.ResourceId))
             .FirstOrDefaultAsync(cancellationToken);
         return registration is null ? null : new RegisteredResource(registration.Id, registration.TenantId,
             registration.ResourceGroupId, ResourceTypeId.Create(registration.ResourceTypeId), registration.ResourceId,

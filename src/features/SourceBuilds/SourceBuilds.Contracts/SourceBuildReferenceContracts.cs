@@ -142,7 +142,8 @@ public enum SourceBuildWebServiceUpdateConflictReason
 
 public sealed record SourceBuildWebServiceUpdateConflict(
     string WebServiceId,
-    SourceBuildWebServiceUpdateConflictReason Reason = SourceBuildWebServiceUpdateConflictReason.ExpectedRevisionConflict);
+    SourceBuildWebServiceUpdateConflictReason Reason =
+        SourceBuildWebServiceUpdateConflictReason.ExpectedRevisionConflict);
 
 public union SourceBuildWebServiceDeploymentError(
     SourceBuildWebServiceNotFound,

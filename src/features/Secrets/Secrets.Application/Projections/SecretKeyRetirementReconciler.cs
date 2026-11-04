@@ -18,9 +18,11 @@ public sealed class SecretKeyRetirementReconciler(
             if (observer is null) continue;
             // Native reads deliberately occur before the Mongo transaction. Persistence fences
             // the complete placement set and Secret reference identity before releasing any pin.
-            if (await observer.ObserveAsync(tenantId, binding.Consumer.ResourceId, ct) is SecretConsumerRolloutConfirmed confirmed)
+            if (await observer.ObserveAsync(tenantId, binding.Consumer.ResourceId,
+                ct) is SecretConsumerRolloutConfirmed confirmed)
             {
-                if (!await release(tenantId, secretId, secret.Revision, secret.ReferenceFence, binding.Id, confirmed.Deployments, ct))
+                if (!await release(tenantId, secretId, secret.Revision, secret.ReferenceFence, binding.Id,
+                    confirmed.Deployments, ct))
                     return; // Superseded metadata or proof: retry from a fresh snapshot next time.
                 secret = secret.ReleaseRetainedKeys(binding.Id);
             }

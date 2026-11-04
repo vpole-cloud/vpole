@@ -22,6 +22,9 @@ public sealed class DomainBrowserE2ETests(PoleE2EFixture fixture)
         {
             var suffix = Guid.NewGuid().ToString("N")[..10];
             var groupName = $"domains-{suffix}";
+            var zoneTechnicalName = $"zone-{suffix}";
+            var aliasTechnicalName = $"api-{suffix}";
+            var replacementTechnicalName = $"next-{suffix}";
             var group = await SendAsync(HttpMethod.Post,
                 "/api/v1/resource-groups",
                 new
@@ -60,7 +63,11 @@ public sealed class DomainBrowserE2ETests(PoleE2EFixture fixture)
             var targetId = Text(eligibleTargets.EnumerateArray().First(), "id");
             await Assertions.Expect(target.Locator($"option[value='{targetId}']")).ToHaveCountAsync(1);
             await target.SelectOptionAsync(targetId);
+            await content.GetByLabel("Technical name", new LocatorGetByLabelOptions { Exact = true })
+                .FillAsync(zoneTechnicalName);
             await content.GetByLabel("Zone label", new LocatorGetByLabelOptions { Exact = true }).FillAsync($"ui-{suffix}");
+            await Assertions.Expect(content.GetByRole(AriaRole.Button,
+                new LocatorGetByRoleOptions { Name = "Reserve zone", Exact = true })).ToBeEnabledAsync();
             await CaptureAsync(page, "reserve", "create", "Reserve a domain zone");
             var reservation = await page.RunAndWaitForResponseAsync(() =>
                     content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Reserve zone", Exact = true })
@@ -69,6 +76,7 @@ public sealed class DomainBrowserE2ETests(PoleE2EFixture fixture)
                             new Uri(response.Url).AbsolutePath.TrimEnd('/') == "/api/v1/domain-zones");
             Assert.Equal(201, reservation.Status);
             var zone = (await reservation.JsonAsync())!.Value;
+            Assert.Equal(zoneTechnicalName, Text(zone, "technicalName"));
             var zoneId = Text(zone, "id");
             var domain = Text(zone, "domain");
             resources.Defer("delete browser domain reservation",
@@ -131,7 +139,11 @@ public sealed class DomainBrowserE2ETests(PoleE2EFixture fixture)
                 new LocatorGetByRoleOptions { Name = "Domains and hostnames", Exact = true }).WaitForAsync();
             await content.GetByLabel("Reserved zone", new LocatorGetByLabelOptions { Exact = true })
                 .SelectOptionAsync(zoneId);
+            await content.GetByLabel("Binding technical name", new LocatorGetByLabelOptions { Exact = true })
+                .FillAsync(aliasTechnicalName);
             await content.GetByLabel("Hostname label", new LocatorGetByLabelOptions { Exact = true }).FillAsync("api");
+            await Assertions.Expect(content.GetByRole(AriaRole.Button,
+                new LocatorGetByRoleOptions { Name = "Attach alias", Exact = true })).ToBeEnabledAsync();
             var attachRequestsStarted = 0;
             page.Request += (_, request) =>
             {
@@ -161,6 +173,7 @@ public sealed class DomainBrowserE2ETests(PoleE2EFixture fixture)
             await page.ReloadAsync();
             await content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = "api." + domain, Exact = true })
                 .WaitForAsync();
+            await content.GetByText(aliasTechnicalName, new LocatorGetByTextOptions { Exact = true }).WaitForAsync();
             await CaptureAsync(page, "service", appId, "Domains and hostnames");
             await page.GotoAsync(Url("domains", zoneId));
             await content.GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = appName, Exact = true })
@@ -175,7 +188,11 @@ public sealed class DomainBrowserE2ETests(PoleE2EFixture fixture)
                 .ClickAsync();
             await content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Change alias", Exact = true })
                 .ClickAsync();
+            await content.GetByLabel("Binding technical name", new LocatorGetByLabelOptions { Exact = true })
+                .FillAsync(replacementTechnicalName);
             await content.GetByLabel("Hostname label", new LocatorGetByLabelOptions { Exact = true }).FillAsync("next");
+            await Assertions.Expect(content.GetByRole(AriaRole.Button,
+                new LocatorGetByRoleOptions { Name = "Replace alias", Exact = true })).ToBeEnabledAsync();
             var detached = await page.RunAndWaitForResponseAsync(() =>
                     content.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Replace alias", Exact = true })
                         .ClickAsync(),
@@ -185,6 +202,10 @@ public sealed class DomainBrowserE2ETests(PoleE2EFixture fixture)
             await page.ReloadAsync();
             await content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = "next." + domain, Exact = true })
                 .WaitForAsync();
+            await content.GetByText(replacementTechnicalName, new LocatorGetByTextOptions { Exact = true })
+                .WaitForAsync();
+            Assert.Equal(0,
+                await content.GetByText(aliasTechnicalName, new LocatorGetByTextOptions { Exact = true }).CountAsync());
             Assert.Equal(0,
                 await content
                     .GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = "api." + domain, Exact = true })

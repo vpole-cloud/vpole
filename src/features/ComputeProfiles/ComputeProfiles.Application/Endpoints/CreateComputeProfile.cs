@@ -106,7 +106,8 @@ public sealed class CreateComputeProfileRequestValidator
 public sealed class CreateComputeProfileRequestBodyValidator
     : ComputeProfileMutationRequestBodyValidator<CreateComputeProfileRequestBody>
 {
-    public CreateComputeProfileRequestBodyValidator() => RuleFor(body => body.TechnicalName).Must(ResourceTechnicalName.IsValid);
+    public CreateComputeProfileRequestBodyValidator() =>
+        RuleFor(body => body.TechnicalName).Must(ResourceTechnicalName.IsValid);
 }
 
 public static class CreateComputeProfileEndpoint

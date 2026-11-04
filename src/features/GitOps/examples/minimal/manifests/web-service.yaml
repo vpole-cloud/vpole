@@ -1,0 +1,46 @@
+apiVersion: pole.io/v1alpha1
+kind: WebService
+metadata:
+  name: minimal-web
+spec:
+  resourceGroup: gitops-minimal-group
+  placement:
+    deploymentTarget: demo-target
+    computeProfile: { name: demo-compute, revision: 1 }
+  image: { server: docker.io, name: traefik/whoami, tag: v1.11.0 }
+  exposure: Private
+  replicas: 1
+  ports:
+    - { name: http, servicePort: 80, targetPort: "80", protocol: TCP }
+  probes:
+    startup:
+      {
+        path: /,
+        port: "80",
+        initialDelaySeconds: 0,
+        periodSeconds: 2,
+        timeoutSeconds: 1,
+        failureThreshold: 3,
+        successThreshold: 1,
+      }
+    readiness:
+      {
+        path: /,
+        port: "80",
+        initialDelaySeconds: 0,
+        periodSeconds: 2,
+        timeoutSeconds: 1,
+        failureThreshold: 3,
+        successThreshold: 1,
+      }
+    liveness:
+      {
+        path: /,
+        port: "80",
+        initialDelaySeconds: 0,
+        periodSeconds: 2,
+        timeoutSeconds: 1,
+        failureThreshold: 3,
+        successThreshold: 1,
+      }
+  tags: [gitops]

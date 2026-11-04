@@ -41,7 +41,8 @@ public static class TestData
                 "v1.35.0",
                 new DeploymentTargetNamespaceCapabilities(true, true, true, true, true),
                 new DeploymentTargetNetworkPolicyCapabilities(true, true, true, true, true)),
-            workloadConfiguration: DeploymentTargetWorkloadConfiguration.Create(null, DeploymentTargetNetworkSources.None),
+            workloadConfiguration: DeploymentTargetWorkloadConfiguration.Create(null,
+                DeploymentTargetNetworkSources.None),
             enabled: true,
             acceptsWorkloads: true,
             options: new DeploymentTargetFactory.CreateOptions(id, now));
@@ -76,7 +77,8 @@ public static class TestData
         Image: new ImageInfoDto("docker.io", "nginx", "1.27"),
         Config: new WebServiceConfigDto()
         {
-            EnvironmentVariables = ImmutableDictionary<string, string>.Empty.Add("ASPNETCORE_ENVIRONMENT", "Development"),
+            EnvironmentVariables = ImmutableDictionary<string, string>.Empty.Add("ASPNETCORE_ENVIRONMENT",
+                "Development"),
             PortMappings = [new PortMappingDto(80, "8080", "TCP", "http")],
             ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReferenceDto>.Empty,
             SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReferenceDto>.Empty

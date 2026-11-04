@@ -32,6 +32,22 @@ public sealed class BrowserSmokeE2ETests(
                 browserContainer.WebSocketEndpoint,
                 new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
 
+            var sidebarGroupName = $"aa-rename-{Guid.NewGuid():N}"[..20];
+            using var sidebarRequest = fixture.CreateAuthenticatedRequest(HttpMethod.Post,
+                "/api/v1/resource-groups", fixture.Alpha, fixture.Alpha.DefaultTenantId);
+            sidebarRequest.Content = JsonContent.Create(new
+            {
+                name = sidebarGroupName,
+                description = "A sidebar label containing the form field name",
+                tags = new[] { "e2e" }
+            });
+            using var sidebarResponse = await fixture.Api.SendAsync(sidebarRequest, cancellation.Token);
+            Assert.True(sidebarResponse.IsSuccessStatusCode, "The selector regression group must be created.");
+            var sidebarGroup = await sidebarResponse.Content.ReadFromJsonAsync<JsonElement>(cancellation.Token);
+            var sidebarGroupId = sidebarGroup.GetProperty("id").GetString()!;
+            resources.Defer("delete selector regression group",
+                token => DeleteResourceGroupAsync(sidebarGroupId, token));
+
             var servicePrefix = $"browser-{Guid.NewGuid():N}"[..16];
             string? previousServiceName = null;
             foreach (var (name, width, height) in new[]
@@ -103,9 +119,19 @@ public sealed class BrowserSmokeE2ETests(
                 await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Resource groups" }).ClickAsync();
                 await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Environment boundaries" }).WaitForAsync();
                 await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "New group" }).ClickAsync();
+                var sidebarTree = page.GetByTestId("resource-tree");
+                if (await sidebarTree.GetAttributeAsync("open") is null)
+                    await sidebarTree.Locator("summary").ClickAsync();
+
+                await Assertions.Expect(page.GetByRole(AriaRole.Button, new PageGetByRoleOptions
+                {
+                    Name = $"Expand {sidebarGroupName}",
+                    Exact = true
+                })).ToBeVisibleAsync();
 
                 var resourceGroupName = $"{name}-{Guid.NewGuid():N}"[..20];
-                await page.GetByLabel("Name").FillAsync(resourceGroupName);
+                await content.GetByRole(AriaRole.Textbox,
+                    new LocatorGetByRoleOptions { Name = "Name", Exact = true }).FillAsync(resourceGroupName);
                 await page.GetByLabel("Description").FillAsync($"{name} browser smoke test");
                 await page.GetByLabel("Tags").FillAsync("e2e, browser");
                 await CaptureWorkspaceAsync(page, name, "group-create", "create");

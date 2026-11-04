@@ -1,0 +1,7 @@
+apiVersion: pole.io/v1alpha1
+kind: DomainZone
+metadata:
+  name: mixed-zone
+spec:
+  deploymentTarget: demo-target
+  label: gitops-mixed

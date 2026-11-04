@@ -37,7 +37,8 @@ public sealed class SecretValueContractTests
     {
         var request = new PrepareManagedSecretRequest(
             "tenant", "secret", new("pole/postgresql", "cluster"), "credentials", 1,
-            new DiagnosticValues { ["password"] = "synthetic-sensitive-value" }, ManagedSecretKubernetesType.BasicAuthentication);
+            new DiagnosticValues { ["password"] = "synthetic-sensitive-value" },
+                ManagedSecretKubernetesType.BasicAuthentication);
         Assert.DoesNotContain("synthetic-sensitive-value", request.ToString());
         Assert.Contains("[REDACTED]", request.ToString());
     }

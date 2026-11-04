@@ -1723,9 +1723,8 @@ it('keeps Git-owned configuration read-only with source and blocker information'
   expect(visibleText()).toContain('SecretValuesMissing')
   expect(visibleText()).toContain('Edit this configuration in Git')
   expect([...container.querySelectorAll('form')].filter(visible)).toHaveLength(0)
-  expect(
-    container.querySelector<HTMLAnchorElement>('a[href="https://github.com/lsbV/example"]'),
-  ).not.toBeNull()
+  expect(visibleText()).toMatch(/Source\s+source/)
+  expect(container.querySelector('a[href="https://github.com/lsbV/example"]')).toBeNull()
   expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(false)
 })
 

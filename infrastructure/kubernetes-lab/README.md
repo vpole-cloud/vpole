@@ -88,11 +88,11 @@ so CI intentionally does not call `lab.sh down`.
 
 Smaller profiles remain available for focused local work:
 
-| Profile | Clusters | Purpose |
-| --- | --- | --- |
-| `minimal` | `pole-lab-minimal` | One small cluster. |
-| `multi` | `pole-lab-default`, `pole-lab-workload-a`, `pole-lab-workload-b` | Multi-target behavior. |
-| `topology` | `pole-lab-topology` with three agents | Scheduling and topology behavior. |
+| Profile    | Clusters                                                         | Purpose                           |
+| ---------- | ---------------------------------------------------------------- | --------------------------------- |
+| `minimal`  | `pole-lab-minimal`                                               | One small cluster.                |
+| `multi`    | `pole-lab-default`, `pole-lab-workload-a`, `pole-lab-workload-b` | Multi-target behavior.            |
+| `topology` | `pole-lab-topology` with three agents                            | Scheduling and topology behavior. |
 
 Focused profiles accept repeated `--overlay` values for `monitoring`, `cert-manager`, and `cnpg`.
 Harbor and BuildKit are coupled shared services and belong only to the fixed `full` profile, which
@@ -157,7 +157,12 @@ Infrastructure-free recovery regression tests:
 
 ```bash
 bash infrastructure/kubernetes-lab/tests/recovery.sh
+bash infrastructure/kubernetes-lab/tests/verification-port-forward.sh
 ```
+
+BuildKit verification lets kubectl bind an OS-assigned loopback port and reads its bounded readiness output.
+It never reserves a free port before starting the forward; cleanup stops only the recorded child PID.
+The port-forward regression covers readiness, failure, timeout and cleanup without calling a cluster.
 
 The lifecycle lock stays in the lab shell. Container-runtime and k3d subprocesses
 close its descriptor before launch so long-lived Podman networking/monitor daemons

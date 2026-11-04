@@ -15,16 +15,23 @@ public static partial class MongoDuplicateKey
         return IsForIndex(exception, "_id_", collectionName);
     }
 
-    public static bool IsForIndex(Exception exception, string indexName, string? collectionName = null) => exception switch
-    {
-        MongoWriteException { WriteError.Category: ServerErrorCategory.DuplicateKey, WriteConcernError: null } write =>
-            Matches(write.WriteError.Details, write.WriteError.Message, indexName, collectionName),
-        MongoCommandException command when command.Code == DuplicateKeyCode && !command.Result.Contains("writeConcernError") =>
-            Matches(command.Result, command.ErrorMessage, indexName, collectionName),
-        _ => false
-    };
+    public static bool IsForIndex(Exception exception, string indexName,
+        string? collectionName = null) => exception switch
+        {
+            MongoWriteException
+            {
+                WriteError.Category: ServerErrorCategory.DuplicateKey,
+                WriteConcernError: null
+            } write =>
+                Matches(write.WriteError.Details, write.WriteError.Message, indexName, collectionName),
+            MongoCommandException command when command.Code == DuplicateKeyCode
+                && !command.Result.Contains("writeConcernError") =>
+                Matches(command.Result, command.ErrorMessage, indexName, collectionName),
+            _ => false
+        };
 
-    public static bool IsForIndex<T>(MongoBulkWriteException<T> exception, string indexName, string? collectionName = null) =>
+    public static bool IsForIndex<T>(MongoBulkWriteException<T> exception, string indexName,
+        string? collectionName = null) =>
         exception.WriteConcernError is null && exception.WriteErrors.Count > 0 &&
         exception.WriteErrors.All(error => error.Category == ServerErrorCategory.DuplicateKey &&
             Matches(error.Details, error.Message, indexName, collectionName));
@@ -34,7 +41,8 @@ public static partial class MongoDuplicateKey
         if (collectionName is not null)
         {
             var collection = CollectionMarker().Match(message);
-            if (!collection.Success || !collection.Groups[1].Value.EndsWith("." + collectionName, StringComparison.Ordinal))
+            if (!collection.Success || !collection.Groups[1].Value.EndsWith("." + collectionName,
+                StringComparison.Ordinal))
                 return false;
         }
         if (details is not null && details.TryGetValue("indexName", out var index) && index.IsString)
@@ -48,6 +56,8 @@ public static partial class MongoDuplicateKey
     [GeneratedRegex(@"^E11000 duplicate key error collection:\s+(\S+)\s+index:", RegexOptions.CultureInvariant)]
     private static partial Regex CollectionMarker();
 
-    [GeneratedRegex(@"^E11000 duplicate key error collection:\s+\S+\s+index:\s+(\S+)(?:\s+collation:\s+\{[^}]*\})?\s+dup key:", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(
+        @"^E11000 duplicate key error collection:\s+\S+\s+index:\s+(\S+)(?:\s+collation:\s+\{[^}]*\})?\s+dup key:",
+        RegexOptions.CultureInvariant)]
     private static partial Regex IndexMarker();
 }

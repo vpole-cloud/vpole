@@ -64,7 +64,8 @@ internal sealed class MongoPersistCreatedComputeProfile(
                 {
                     await computeProfiles.InsertOneAsync(transaction.Session, profile, cancellationToken: ct);
                 }
-                catch (MongoWriteException duplicate) when (MongoDuplicateKey.IsForIndex(duplicate, ComputeProfileTechnicalNames.UniqueIndexName))
+                catch (MongoWriteException duplicate) when (MongoDuplicateKey.IsForIndex(duplicate,
+                    ComputeProfileTechnicalNames.UniqueIndexName))
                 {
                     return transaction.Abort(new ComputeProfileTechnicalNameConflict(profile.TechnicalName));
                 }

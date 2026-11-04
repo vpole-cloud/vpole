@@ -1,0 +1,6 @@
+apiVersion: pole.io/v1alpha1
+kind: IsolationScope
+metadata:
+  name: gitops-mixed-scope
+spec:
+  resourceGroup: gitops-mixed-group

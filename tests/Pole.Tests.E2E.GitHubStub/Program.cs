@@ -109,7 +109,14 @@ app.MapGet("/installation/repositories",
     (HttpRequest request, GitHubStubState state) =>
     {
         state.Record(request);
-        return Results.Ok(new { total_count = 1, repositories = new[] { state.Repository(BaseUrl(request)) } });
+        return Results.Ok(new
+        {
+            total_count = 2,
+            repositories = new[]
+            {
+                state.Repository(BaseUrl(request)), GitOpsMixedStubEndpoints.ConsoleRepository(BaseUrl(request))
+            }
+        });
     });
 
 app.MapGet("/repositories/9001",

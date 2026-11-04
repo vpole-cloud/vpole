@@ -27,19 +27,25 @@ internal sealed class ConsumerSecretReferenceAdmission(
             ConsumerSecretAvailabilityPolicy.AllowUnavailableForCleanup => false,
             _ => throw new ArgumentOutOfRangeException(nameof(request.Availability))
         };
-        var ids = request.PreviousReferences.Concat(request.DesiredReferences).Select(reference => reference.SecretId).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal);
+        var ids =
+            request.PreviousReferences.Concat(request.DesiredReferences).Select(reference =>
+            reference.SecretId).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal);
         IReadOnlyList<ResourceDeploymentConnectionPlacement>? placements = null;
         foreach (var id in ids)
         {
-            var desired = request.DesiredReferences.Where(reference => reference.SecretId == id).Select(reference => reference.Key).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToImmutableArray();
-            var current = await secrets.Find(session, SecretFilters.Identity(request.TenantId, id)).FirstOrDefaultAsync(ct);
+            var desired =
+                request.DesiredReferences.Where(reference => reference.SecretId == id).Select(reference =>
+                reference.Key).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToImmutableArray();
+            var current = await secrets.Find(session, SecretFilters.Identity(request.TenantId,
+                id)).FirstOrDefaultAsync(ct);
             var binding = current?.Bindings.SingleOrDefault(item =>
                 item.Usage == Pole.Features.Secrets.Primitives.SecretBindingUsage.Runtime &&
                 item.Consumer.ResourceType == request.ConsumerType.Value &&
                 item.Consumer.ResourceId == request.ConsumerId);
             if (requireAvailable && desired.Length > 0)
             {
-                if (current is null || binding is null || current.ResourceGroupId != request.ResourceGroupId || current.IsolationScopeId != request.IsolationScopeId)
+                if (current is null || binding is null || current.ResourceGroupId != request.ResourceGroupId
+                    || current.IsolationScopeId != request.IsolationScopeId)
                     return Unavailable(id, ConsumerSecretReferenceError.SecretBindingUnavailable);
                 if (desired.Any(key => !current.HasValue(key)))
                     return Unavailable(id, ConsumerSecretReferenceError.SecretValuesMissing);
@@ -78,10 +84,12 @@ internal sealed class ConsumerSecretReferenceAdmission(
             var pinned = request.Retention switch
             {
                 PreviousSecretReferenceRetention.DoNotRetain => binding.RequireKeys(desired),
-                PreviousSecretReferenceRetention.KeepUntilRolloutConfirmed => binding.RequireKeysThroughRollout(desired),
+                PreviousSecretReferenceRetention.KeepUntilRolloutConfirmed
+                    => binding.RequireKeysThroughRollout(desired),
                 _ => throw new ArgumentOutOfRangeException(nameof(request.Retention))
             };
-            var updatedBindings = current.Bindings.Select(item => item.Id == binding.Id ? pinned : item).ToImmutableArray();
+            var updatedBindings = current.Bindings.Select(item => item.Id == binding.Id ? pinned
+                : item).ToImmutableArray();
             // Pins affect admission only, not encrypted values or the projection revision.
             await secrets.UpdateOneAsync(session, SecretFilters.Identity(request.TenantId, id), Builders<Secret>.Update
                 .Set(item => item.Bindings, updatedBindings).Inc(item => item.ReferenceFence, 1), cancellationToken: ct);
@@ -89,7 +97,8 @@ internal sealed class ConsumerSecretReferenceAdmission(
         return new ConsumerSecretReferencesAdmitted();
     }
 
-    private static ConsumerSecretReferenceUnavailable Unavailable(string id, ConsumerSecretReferenceError reason) => new(id, reason);
+    private static ConsumerSecretReferenceUnavailable Unavailable(string id,
+        ConsumerSecretReferenceError reason) => new(id, reason);
 }
 
 internal static class ConsumerSecretReferenceAuthority

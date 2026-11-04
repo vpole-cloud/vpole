@@ -199,7 +199,8 @@ public static class ResourceGroupApplicationRegistration
             .GetRequiredService<MongoResourcePlacementResolver>()
             .InvokeManyAsync);
 
-        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistCreatedResourceGroupResult>>(serviceProvider => serviceProvider
+        services.TryAddSingleton<RunMongoOutcomeTransaction<PersistCreatedResourceGroupResult>>(serviceProvider =>
+            serviceProvider
             .GetRequiredService<MongoRunTransaction>()
             .InvokeOutcomeAsync<PersistCreatedResourceGroupResult>);
         services.TryAddSingleton<RunMongoOutcomeTransaction<PersistUpdatedResourceGroupOutcome>>(serviceProvider =>

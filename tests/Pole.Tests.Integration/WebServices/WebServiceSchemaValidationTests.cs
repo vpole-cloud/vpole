@@ -171,8 +171,11 @@ public sealed class WebServiceSchemaValidationTests(MongoReplicaSetFixture fixtu
                 new ImageInfo("registry.example.com", "team/api", "latest", secretName),
                 new WebServiceConfig()
                 {
-                    EnvironmentVariables = withConfiguration ? ImmutableDictionary<string, string>.Empty.Add("ASPNETCORE_ENVIRONMENT", "Development") : ImmutableDictionary<string, string>.Empty,
-                    PortMappings = withConfiguration ? ImmutableList.Create(new PortMapping(80, "8080", "TCP", "http")) : ImmutableList<PortMapping>.Empty,
+                    EnvironmentVariables = withConfiguration ? ImmutableDictionary<string,
+                        string>.Empty.Add("ASPNETCORE_ENVIRONMENT", "Development") : ImmutableDictionary<string,
+                        string>.Empty,
+                    PortMappings = withConfiguration ? ImmutableList.Create(new PortMapping(80, "8080", "TCP",
+                        "http")) : ImmutableList<PortMapping>.Empty,
                     ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty,
                     SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty
                 },

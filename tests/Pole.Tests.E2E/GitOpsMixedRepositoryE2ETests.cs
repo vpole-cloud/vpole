@@ -296,98 +296,12 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
         return await response.Content.ReadFromJsonAsync<JsonElement>(ct);
     }
 
-    private static object[] MixedManifests(string target, FunctionSdkTestImage image)
-    {
-        var placement = new
-        {
-            deploymentTarget = target,
-            isolationScope = MixedScope,
-            computeProfile = new { name = MixedProfile, revision = 1 }
-        };
-        var storage = new { sizeGb = 1, profile = new { name = MixedProfile, revision = 1 } };
-        var secretEnvironment = new Dictionary<string, object>
-        {
-            ["STAGE_SIX_SECRET"] = new { secret = MixedSecret, key = "password" }
-        };
-        var probe = new
-        {
-            path = "/",
-            port = "80",
-            initialDelaySeconds = 0,
-            periodSeconds = 2,
-            timeoutSeconds = 1,
-            failureThreshold = 3,
-            successThreshold = 1
-        };
-        object File(string kind, string name, object spec) => new
-        {
-            path = $"manifests/{kind}-{name}.yaml",
-            content = JsonSerializer.Serialize(new
-            {
-                apiVersion = "pole.io/v1alpha1",
-                kind,
-                metadata = new { name },
-                spec
-            })
-        };
-        object Binding(string name, string kind, string consumer, string usage) => File("SecretBinding", name,
-            new { secret = MixedSecret, consumer = new { kind, name = consumer }, usage });
-        return
-        [
-            File("ResourceGroup", MixedGroup, new { description = "Mixed repository", tags = new[] { "gitops" } }),
-            File("IsolationScope", MixedScope, new { resourceGroup = MixedGroup }),
-            File("Secret", MixedSecret, new { resourceGroup = MixedGroup, isolationScope = MixedScope,
-                keys = new[] { "password" } }),
-            File("RedisService", "mixed-redis", new { resourceGroup = MixedGroup, placement, storage,
-                tags = new[] { "gitops" } }),
-            File("PostgresCluster", "mixed-postgres", new { resourceGroup = MixedGroup, placement, storage,
-                version = 16, instances = 1, username = "app",
-                bootstrapPassword = new { secret = MixedSecret, key = "password" } }),
-            File("WebService", "mixed-web", new { resourceGroup = MixedGroup, placement,
-                image = new { sourceBuildConfiguration = "mixed-build" }, exposure = "Public",
-                connectionEnvironment = new Dictionary<string, object>
-                {
-                    ["CACHE_HOST"] = new { connection = "mixed-cache", valueKind = "Host" },
-                    ["CACHE_PORT"] = new { connection = "mixed-cache", valueKind = "Port" }
-                },
-                ports = new[] { new { name = "http", servicePort = 80, targetPort = "80", protocol = "TCP" } },
-                probes = new { startup = probe, readiness = probe, liveness = probe },
-                secretEnvironment, tags = new[] { "gitops" } }),
-            File("FunctionApp", "mixed-function", new { resourceGroup = MixedGroup, placement,
-                functionRoute = "mixed-function", image = new { server = image.RegistryHost,
-                    name = image.Repository, tag = image.Tag },
-                environment = new Dictionary<string, string>(), secretEnvironment,
-                resources = new { requests = new { cpuMillis = 100, memoryMi = 256 },
-                    limits = new { cpuMillis = 500, memoryMi = 512 } },
-                scaling = new { minInstances = 1, maxInstances = 1, targetConcurrencyPerInstance = 1,
-                    maxConcurrencyPerInstance = 10, scaleDownDelaySeconds = 60, activationTimeoutSeconds = 120 },
-                handlers = new[] { new { name = "hello", maxConcurrencyPerInstance = 10,
-                    trigger = new { type = "http", route = "hello", methods = new[] { "GET" },
-                        exposure = "Internal" } } },
-                tags = new[] { "gitops" } }),
-            File("ResourceConnection", "mixed-cache", new
-            {
-                source = new { kind = "WebService", name = "mixed-web" },
-                destination = new { kind = "RedisService", name = "mixed-redis" }, endpoint = "redis"
-            }),
-            File("DomainZone", "mixed-zone", new { deploymentTarget = target, label = "gitops-mixed" }),
-            File("HostnameBinding", "mixed-hostname", new
-            {
-                zone = "mixed-zone", resource = new { kind = "WebService", name = "mixed-web" },
-                deploymentTarget = target, relativeName = "app"
-            }),
-            File("SourceRepository", "mixed-repository", new
-            {
-                connection = "github-e2e", repositoryId = "9001", branch = "gitops-application"
-            }),
-            File("SourceBuildConfiguration", "mixed-build", new
-            {
-                repository = "mixed-repository", webService = "mixed-web",
-                recipe = new { dockerfile = "FROM traefik/whoami:v1.11.0\nCOPY src/Program.cs /app/revision.txt\n" }
-            }),
-            Binding("mixed-web-binding", "WebService", "mixed-web", "Runtime"),
-            Binding("mixed-function-binding", "FunctionApp", "mixed-function", "Runtime"),
-            Binding("mixed-bootstrap-grant", "PostgresCluster", "mixed-postgres", "Bootstrap")
-        ];
-    }
+    private static IReadOnlyList<RepositoryExampleFile> MixedManifests(string target, FunctionSdkTestImage image) =>
+        GitOpsRepositoryExamples.Full(new GitOpsExampleEnvironment(
+            target,
+            MixedProfile,
+            "github-e2e",
+            "9001",
+            "gitops-application",
+            new(image.RegistryHost, image.Repository, image.Tag)));
 }

@@ -49,7 +49,8 @@ public sealed class UpdateLogTests
             Config = new WebServiceConfig()
             {
                 EnvironmentVariables = ImmutableDictionary<string, string>.Empty,
-                PortMappings = [new PortMapping(80, "8080", "TCP", "http"), new PortMapping(443, "8443", "TCP", "https")],
+                PortMappings = [new PortMapping(80, "8080", "TCP", "http"), new PortMapping(443, "8443", "TCP",
+                    "https")],
                 ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty,
                 SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty
             }

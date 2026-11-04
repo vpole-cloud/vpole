@@ -49,19 +49,22 @@ public static class WebServiceHttpMappings
     public static HttpProblem MapError(WebServiceUpdateConflict error) => error.Reason switch
     {
         WebServiceUpdateConflictReason.ExpectedRevisionConflict => Problem(HttpStatusCode.Conflict,
-            "web-services.update.concurrent-change", "Web service changed concurrently", ("webServiceId", error.WebServiceId)),
+            "web-services.update.concurrent-change", "Web service changed concurrently", ("webServiceId",
+                error.WebServiceId)),
         WebServiceUpdateConflictReason.SecretBindingsRequireRemoval => Problem(HttpStatusCode.Conflict,
             "web-services.secret-bindings-removal-required",
             "Remove Git-owned Secret bindings before deleting the WebService",
             ("webServiceId", error.WebServiceId)),
         WebServiceUpdateConflictReason.GitOwnedConfiguration => Problem(HttpStatusCode.Conflict,
-            "web-services.git-owned", "Edit the desired configuration in its managing Git source", ("webServiceId", error.WebServiceId)),
+            "web-services.git-owned", "Edit the desired configuration in its managing Git source", ("webServiceId",
+                error.WebServiceId)),
         _ => throw new ArgumentOutOfRangeException(nameof(error.Reason))
     };
 
     public static HttpProblem MapError(CreateWebServiceError error) => error switch
     {
-        WebServiceNameAlreadyExists => Problem(HttpStatusCode.Conflict, "web-services.name-already-exists", "Web service name already exists"),
+        WebServiceNameAlreadyExists => Problem(HttpStatusCode.Conflict, "web-services.name-already-exists",
+            "Web service name already exists"),
         ResourceGroupOwnershipError ownership => ResourceGroupContractHttpMappings.MapOwnershipError(ownership),
         CreateWebServicePlacementError placement => MapCreatePlacementError(placement),
         ComputeProfileResolutionError compute => ComputeProfileContractHttpMappings.MapResolutionError(compute),

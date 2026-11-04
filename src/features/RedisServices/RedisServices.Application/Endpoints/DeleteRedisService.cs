@@ -119,7 +119,8 @@ public sealed class DeleteRedisServiceHandler(
         return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             RedisQuotaInput,
             DeleteRedisServiceOutcome>(
-            new ExecuteQuotaAdmissionRequest<global::Pole.Features.RedisServices.Application.Common.RedisQuotaInput, global::Pole.Features.RedisServices.Application.Endpoints.DeleteRedisServiceOutcome>(
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.RedisServices.Application.Common.RedisQuotaInput,
+                global::Pole.Features.RedisServices.Application.Endpoints.DeleteRedisServiceOutcome>(
                 TenantId: redis.TenantId,
                 ResourceKey: RedisQuotaResourceKey.Create(redis.Id),
                 Mutation: new DeleteQuotaMutation<RedisQuotaInput>(quotaInput),

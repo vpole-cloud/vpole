@@ -1,0 +1,7 @@
+apiVersion: pole.io/v1alpha1
+kind: ResourceGroup
+metadata:
+  name: gitops-mixed-group
+spec:
+  description: Mixed repository
+  tags: [gitops]

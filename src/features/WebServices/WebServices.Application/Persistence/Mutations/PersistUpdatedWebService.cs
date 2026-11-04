@@ -196,7 +196,10 @@ internal sealed partial class MongoPersistUpdatedWebService(
                     TenantId: current.TenantId,
                     SourceType: WebServiceResourceDeployment.ResourceType,
                     SourceId: current.Id,
-                    References: replacement.Spec.Config.ConnectionEnvironmentReferences.Values.Select(reference => new ResourceConnectionValueReference(reference.ConnectionId, reference.ValueKind, reference.ConfigurationKey)).ToArray()),
+                    References
+                        : replacement.Spec.Config.ConnectionEnvironmentReferences.Values.Select(reference =>
+                        new ResourceConnectionValueReference(reference.ConnectionId, reference.ValueKind,
+                        reference.ConfigurationKey)).ToArray()),
                 session: session,
                 ct: cancellationToken);
             if (admittedConnections is ResourceConnectionReferencesUnavailable unavailable)
@@ -209,9 +212,14 @@ internal sealed partial class MongoPersistUpdatedWebService(
                 IsolationScopeId: current.IsolationScopeId,
                 ConsumerType: WebServiceResourceDeployment.ResourceType,
                 ConsumerId: current.Id,
-                PreviousReferences: current.Spec.Config.SecretEnvironmentReferences.Values.Select(reference => new ConsumerSecretKeyReference(reference.SecretId, reference.Key)).ToArray(),
-                DesiredReferences: replacement.Spec.Config.SecretEnvironmentReferences.Values.Select(reference => new ConsumerSecretKeyReference(reference.SecretId, reference.Key)).ToArray(),
-                Availability: cleanup ? ConsumerSecretAvailabilityPolicy.AllowUnavailableForCleanup : ConsumerSecretAvailabilityPolicy.RequireAvailable,
+                PreviousReferences
+                    : current.Spec.Config.SecretEnvironmentReferences.Values.Select(reference =>
+                    new ConsumerSecretKeyReference(reference.SecretId, reference.Key)).ToArray(),
+                DesiredReferences
+                    : replacement.Spec.Config.SecretEnvironmentReferences.Values.Select(reference =>
+                    new ConsumerSecretKeyReference(reference.SecretId, reference.Key)).ToArray(),
+                Availability: cleanup ? ConsumerSecretAvailabilityPolicy.AllowUnavailableForCleanup
+                    : ConsumerSecretAvailabilityPolicy.RequireAvailable,
                 Retention: request.Retention),
             session: session,
             ct: cancellationToken);

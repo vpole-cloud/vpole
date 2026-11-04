@@ -1,0 +1,11 @@
+apiVersion: pole.io/v1alpha1
+kind: SourceBuildConfiguration
+metadata:
+  name: mixed-build
+spec:
+  repository: mixed-repository
+  webService: mixed-web
+  recipe:
+    dockerfile: |
+      FROM traefik/whoami:v1.11.0
+      COPY src/Program.cs /app/revision.txt

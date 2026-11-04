@@ -153,6 +153,8 @@ public sealed class GitLifecyclePreviews(
         var access = await CheckRepositoryAsync(preview.Source, ct);
         if (access is GitPreviewReadFailed failed)
             return failed;
+        if (access is GitPreviewStale stale)
+            return stale;
         var displayUrl = ((RepositoryAccessGranted)access.Value).DisplayUrl;
         return await transactions.InvokeOutcomeAsync<ConfirmLifecyclePreviewOutcome>(async (tx, token) =>
         {
@@ -327,8 +329,15 @@ public sealed class GitLifecyclePreviews(
         if (access is not RepositoryAccessGranted granted)
             return new GitPreviewReadFailed("RepositoryAccessUnavailable");
         var commit = await provider.ResolveCommitAsync(new(reference, input.Repository.Branch), ct);
-        return commit is RepositoryCommitResolved resolved && resolved.Commit == input.Snapshot.Commit
-            ? granted : new GitPreviewReadFailed("PreviewCommitChanged");
+        return commit switch
+        {
+            RepositoryCommitResolved resolved => resolved.Commit == input.Snapshot.Commit
+                ? granted : new GitPreviewStale(),
+            RepositoryAccessDenied => new GitPreviewReadFailed(nameof(RepositoryAccessDenied)),
+            RepositoryNotFound => new GitPreviewReadFailed(nameof(RepositoryNotFound)),
+            RepositoryRefNotFound => new GitPreviewReadFailed(nameof(RepositoryRefNotFound)),
+            RepositoryTemporarilyUnavailable => new GitPreviewReadFailed(nameof(RepositoryTemporarilyUnavailable))
+        };
     }
 
     private static bool CanPreview(RepositorySource source, GitPreviewIntent intent) =>
@@ -340,4 +349,5 @@ public sealed class GitLifecyclePreviews(
 
 public union CheckPreviewRepositoryOutcome(
     RepositoryAccessGranted,
-    GitPreviewReadFailed);
+    GitPreviewReadFailed,
+    GitPreviewStale);

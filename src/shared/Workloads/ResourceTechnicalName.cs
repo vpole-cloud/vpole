@@ -11,5 +11,6 @@ public static class ResourceTechnicalName
 
     public static string Require(string value) => IsValid(value)
         ? value
-        : throw new ArgumentException("A technical name must be a lowercase DNS label beginning with a letter.", nameof(value));
+        : throw new ArgumentException("A technical name must be a lowercase DNS label beginning with a letter.",
+            nameof(value));
 }

@@ -143,7 +143,8 @@ public sealed class RollbackWebServiceHandler(
         return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             WebServiceQuotaInput,
             RollbackWebServiceOutcome>(
-            new ExecuteQuotaAdmissionRequest<global::Pole.Features.WebServices.Application.Common.WebServiceQuotaInput, global::Pole.Features.WebServices.Application.Endpoints.Releases.RollbackWebServiceOutcome>(
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.WebServices.Application.Common.WebServiceQuotaInput,
+                global::Pole.Features.WebServices.Application.Endpoints.Releases.RollbackWebServiceOutcome>(
                 TenantId: webService.TenantId,
                 ResourceKey: WebServiceQuotaResourceKey.Create(webService.Id),
                 Mutation: new UpdateQuotaMutation<WebServiceQuotaInput>(currentQuota, targetQuota),
@@ -165,7 +166,8 @@ public sealed class RollbackWebServiceHandler(
                         return transaction.Abort(Error(
                             new RollbackWebServiceError(applyFailure)));
                     var updatedDeployments = ((MutatedResourceDeployments)applied.Value).Placements;
-                    var updatedEvent = updated.ToUpdatedEvent(WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments));
+                    var updatedEvent =
+                        updated.ToUpdatedEvent(WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments));
 
                     var persisted = await persistUpdatedWebService(
                         transaction.Session,

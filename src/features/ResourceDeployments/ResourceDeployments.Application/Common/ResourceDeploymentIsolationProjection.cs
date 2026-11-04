@@ -18,13 +18,15 @@ public sealed class ResourceDeploymentIsolationProjection(LookupDeploymentTarget
         CancellationToken ct)
     {
         var policies = await LoadAsync(deployments.Select(item => item.ResolvedPlacement.DeploymentTargetId), ct);
-        return deployments.Select(item => item.ToPlacementSummaryDto(policies[item.ResolvedPlacement.DeploymentTargetId])).ToArray();
+        return deployments.Select(item =>
+            item.ToPlacementSummaryDto(policies[item.ResolvedPlacement.DeploymentTargetId])).ToArray();
     }
 
     public async Task<ResourceDeploymentIsolationDto> LoadAsync(string targetId, CancellationToken ct)
     {
         var result = await lookupTarget(targetId, ct);
-        return FromPolicy(result is DeploymentTargetLookupDto target ? target.NetworkPolicy : DeploymentTargetNetworkPolicyDto.Unknown);
+        return FromPolicy(result is DeploymentTargetLookupDto target ? target.NetworkPolicy
+            : DeploymentTargetNetworkPolicyDto.Unknown);
     }
 
     public async Task<IReadOnlyDictionary<string, ResourceDeploymentIsolationDto>> LoadAsync(
@@ -38,5 +40,6 @@ public sealed class ResourceDeploymentIsolationProjection(LookupDeploymentTarget
     }
 
     internal static ResourceDeploymentIsolationDto FromPolicy(DeploymentTargetNetworkPolicyDto policy) =>
-        new(policy.Enforcement.ToString(), policy.Readiness.ToString(), policy.Reason.ToString(), policy.LastCheckedAtUtc);
+        new(policy.Enforcement.ToString(), policy.Readiness.ToString(), policy.Reason.ToString(),
+            policy.LastCheckedAtUtc);
 }

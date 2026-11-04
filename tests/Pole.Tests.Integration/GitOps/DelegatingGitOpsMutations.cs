@@ -15,7 +15,7 @@ internal class DelegatingGitOpsMutations(IGitOpsMutations inner) : IGitOpsMutati
     public Task<GitOperationResult> CompleteAsync(CompleteGitOperationRequest request, IClientSessionHandle session,
         CancellationToken ct) => inner.CompleteAsync(request, session, ct);
 
-    public Task<bool> AuthorizeAsync(AuthorizeGitResourceMutationRequest request, IClientSessionHandle session,
+    public virtual Task<bool> AuthorizeAsync(AuthorizeGitResourceMutationRequest request, IClientSessionHandle session,
         CancellationToken ct) => inner.AuthorizeAsync(request, session, ct);
 
     public Task<string?> ResolveAsync(ResolveGitResourceRequest request, IClientSessionHandle session,

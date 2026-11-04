@@ -126,7 +126,8 @@ public sealed class DeleteWebServiceDeploymentHandler(
         return await quotaAdmission.ExecuteOutcomeAsync<
             WebServiceQuotaInput,
             DeleteWebServiceDeploymentOutcome>(
-            new ExecuteQuotaAdmissionRequest<global::Pole.Features.WebServices.Application.Common.WebServiceQuotaInput, global::Pole.Features.WebServices.Application.Endpoints.Deployments.DeleteWebServiceDeploymentOutcome>(
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.WebServices.Application.Common.WebServiceQuotaInput,
+                global::Pole.Features.WebServices.Application.Endpoints.Deployments.DeleteWebServiceDeploymentOutcome>(
                 TenantId: webService.TenantId,
                 ResourceKey: WebServiceQuotaResourceKey.Create(webService.Id),
                 Mutation: new UpdateQuotaMutation<WebServiceQuotaInput>(currentQuota, nextQuota),

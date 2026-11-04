@@ -275,7 +275,8 @@ public sealed class AddWebServiceDeploymentHandler(
         return quotaAdmissionExecutor.ExecuteOutcomeAsync<
             WebServiceQuotaInput,
             AddWebServiceDeploymentOutcome>(
-            new ExecuteQuotaAdmissionRequest<global::Pole.Features.WebServices.Application.Common.WebServiceQuotaInput, global::Pole.Features.WebServices.Application.Endpoints.Deployments.AddWebServiceDeploymentOutcome>(
+            new ExecuteQuotaAdmissionRequest<global::Pole.Features.WebServices.Application.Common.WebServiceQuotaInput,
+                global::Pole.Features.WebServices.Application.Endpoints.Deployments.AddWebServiceDeploymentOutcome>(
                 TenantId: state.WebService.TenantId,
                 ResourceKey: WebServiceQuotaResourceKey.Create(state.WebService.Id),
                 Mutation: new UpdateQuotaMutation<WebServiceQuotaInput>(currentQuota, nextQuota),

@@ -1,4 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Pole.Features.SourceBuilds.Contracts;
 using Pole.Mediator;
 using Pole.Features.DeploymentTargets.Contracts;
 namespace Pole.Testing;
@@ -31,6 +33,25 @@ public static class TestServiceCollectionExtensions
             deploymentTargetLookup.ApplyChangesOutcomeAsync);
         services.AddSingleton<FenceDeploymentTargetWorkloadConfigurations>(
             deploymentTargetLookup.FenceManyOutcomeAsync);
+        return services;
+    }
+
+    /// <summary>
+    /// Call after feature registration in isolated hosts without WebServices; targets remain unavailable.
+    /// </summary>
+    public static IServiceCollection AddUnavailableSourceBuildTargets(this IServiceCollection services)
+    {
+        services.TryAddSingleton<SourceBuildWebServiceExists>((_, _, _) => Task.FromResult(false));
+        services.TryAddSingleton<LoadSourceBuildTarget>((request, _, _) =>
+            Task.FromResult<LoadSourceBuildTargetOutcome>(
+                new SourceBuildWebServiceNotFound(request.WebServiceId)));
+        services.TryAddSingleton<AdmitSourceBuildWebService>((request, _, _) =>
+            Task.FromResult<AdmitSourceBuildWebServiceOutcome>(
+                new SourceBuildWebServiceNotFound(request.WebServiceId)));
+        services.TryAddSingleton<DeploySourceBuildWebService>((request, _) =>
+            Task.FromResult<DeploySourceBuildWebServiceOutcome>(
+                new SourceBuildWebServiceDeploymentError(
+                    new SourceBuildWebServiceNotFound(request.WebServiceId))));
         return services;
     }
 
