@@ -100,18 +100,19 @@ module PostgresDeclarations =
 
     let normalize (settings : PostgresSettings) (spec : JsonElement) =
         let value = DeclarationJson.Read<PostgresDeclaration> spec
-        DeclarationJson.Require(DeclarationNames.Valid value.ResourceGroup, "spec.resourceGroup")
-        DeclarationJson.Require(not (isNull (box value.Placement)), "spec.placement")
+        DeclarationJson.Require(DeclarationNames.Valid value.ResourceGroup, DeclarationFieldPaths.ResourceGroup)
+        DeclarationJson.Require(not (isNull (box value.Placement)), DeclarationFieldPaths.Placement)
         DeclarationJson.Require(
-            DeclarationNames.Valid value.Placement.DeploymentTarget, "spec.placement.deploymentTarget")
+            DeclarationNames.Valid value.Placement.DeploymentTarget, DeclarationFieldPaths.PlacementDeploymentTarget)
         DeclarationJson.Require(
             isNull value.Placement.IsolationScope
             || DeclarationNames.Valid value.Placement.IsolationScope && value.Placement.IsolationScope <> "default",
-            "spec.placement.isolationScope")
-        DeclarationJson.Require(validProfile value.Placement.ComputeProfile, "spec.placement.computeProfile")
+            DeclarationFieldPaths.PlacementIsolationScope)
         DeclarationJson.Require(
-            not (isNull (box value.Storage)) && value.Storage.SizeGb > 0, "spec.storage.sizeGb")
-        DeclarationJson.Require(validProfile value.Storage.Profile, "spec.storage.profile")
+            validProfile value.Placement.ComputeProfile, DeclarationFieldPaths.PlacementComputeProfile)
+        DeclarationJson.Require(
+            not (isNull (box value.Storage)) && value.Storage.SizeGb > 0, DeclarationFieldPaths.StorageSizeGb)
+        DeclarationJson.Require(validProfile value.Storage.Profile, DeclarationFieldPaths.StorageProfile)
         DeclarationJson.Require(PostgresSettings.isSupportedVersion settings value.Version, "spec.version")
         DeclarationJson.Require(instances value > 0, "spec.instances")
         DeclarationJson.Require(
@@ -134,7 +135,8 @@ module PostgresDeclarations =
 
         if not (isNull value.Placement.IsolationScope) then
             references.Add(DeclaredReference(
-                ResourceAddress("IsolationScope", value.Placement.IsolationScope), "spec.placement.isolationScope"))
+                ResourceAddress("IsolationScope", value.Placement.IsolationScope),
+                DeclarationFieldPaths.PlacementIsolationScope))
 
         DeclarationFacts(ResourceAddress("ResourceGroup", value.ResourceGroup), [||], references, [||], [||])
 

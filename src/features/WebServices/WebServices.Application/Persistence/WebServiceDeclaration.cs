@@ -128,15 +128,17 @@ internal static class WebServiceDeclarations
         return new(new("ResourceGroup", value.ResourceGroup),
             [],
             [.. value.Placement.IsolationScope is null ? Array.Empty<DeclaredReference>() :
-                [new(new("IsolationScope", value.Placement.IsolationScope), "spec.placement.isolationScope")],
+                [new(new("IsolationScope", value.Placement.IsolationScope),
+                    DeclarationFieldPaths.PlacementIsolationScope)],
             .. value.Image is DeclaredSourceBuildImage build ? new DeclaredReference[]
-                { new(new("SourceBuildConfiguration", build.SourceBuildConfiguration), "spec.image") } : [],
+                { new(new("SourceBuildConfiguration", build.SourceBuildConfiguration), DeclarationFieldPaths.Image) }
+                : [],
             .. (value.ConnectionEnvironment ?? []).Select(pair => new DeclaredReference(
                 new("ResourceConnection", pair.Value.Connection), $"spec.connectionEnvironment.{pair.Key}")),
             .. value.SecretEnvironment.Select(pair =>
                 new DeclaredReference(
                     new("Secret", pair.Value.Secret),
-                    $"spec.secretEnvironment.{pair.Key}",
+                    DeclarationFieldPaths.SecretEnvironment(pair.Key),
                     pair.Value.Key,
                     RequiresAccess: true))],
             [],
@@ -146,7 +148,7 @@ internal static class WebServiceDeclarations
     public static JsonElement NormalizeAndValidate(JsonElement spec)
     {
         var value = DeclarationJson.Read<WebServiceDeclaration>(spec);
-        DeclarationJson.Require(DeclarationNames.Valid(value.ResourceGroup), "spec.resourceGroup");
+        DeclarationJson.Require(DeclarationNames.Valid(value.ResourceGroup), DeclarationFieldPaths.ResourceGroup);
         DeclarationJson.Require(value.Image switch
         {
             DeclaredContainerImage image =>
@@ -157,16 +159,17 @@ internal static class WebServiceDeclarations
                 !image.Tag.Any(char.IsWhiteSpace),
             DeclaredSourceBuildImage image => DeclarationNames.Valid(image.SourceBuildConfiguration),
             null => false
-        }, "spec.image");
+        }, DeclarationFieldPaths.Image);
         DeclarationJson.Require(value.Placement is not null
                                 && ResourceTechnicalName.IsValid(value.Placement.DeploymentTarget) &&
                                 value.Placement.ComputeProfile is not null
                                 && ResourceTechnicalName.IsValid(value.Placement.ComputeProfile.Name) &&
                                 value.Placement.ComputeProfile.Revision > 0,
-            "spec.placement");
+            DeclarationFieldPaths.Placement);
         DeclarationJson.Require(value.Placement.IsolationScope is null ||
                                 ResourceTechnicalName.IsValid(value.Placement.IsolationScope) &&
-                                value.Placement.IsolationScope != "default", "spec.placement.isolationScope");
+                                value.Placement.IsolationScope != "default",
+            DeclarationFieldPaths.PlacementIsolationScope);
         DeclarationJson.Require(value.Exposure is PrivateExposure or PublicExposure, "spec.exposure");
         DeclarationJson.Require(value.Replicas is null || value.Autoscaling is null, "spec.replicas");
         DeclarationJson.Require(value.Autoscaling is null || ValidAutoscaling(value.Autoscaling), "spec.autoscaling");
@@ -212,7 +215,7 @@ internal static class WebServiceDeclarations
                                 value.SecretEnvironment.Values.All(reference =>
                                     reference is not null && DeclarationNames.Valid(reference.Secret) &&
                                     SecretKeyReferenceRules.ValidKey(reference.Key)),
-            "spec.environment");
+            DeclarationFieldPaths.Environment);
 
         var connections = value.ConnectionEnvironment ?? [];
         DeclarationJson.Require(connections.Count + value.Environment.Count + value.SecretEnvironment.Count <=

@@ -77,20 +77,20 @@ internal static class FunctionDeclarationJson
     public static JsonElement Normalize(JsonElement spec)
     {
         var value = Read(spec);
-        DeclarationJson.Require(DeclarationNames.Valid(value.ResourceGroup), "spec.resourceGroup");
+        DeclarationJson.Require(DeclarationNames.Valid(value.ResourceGroup), DeclarationFieldPaths.ResourceGroup);
         DeclarationJson.Require(DeclarationNames.Valid(value.FunctionRoute) && value.FunctionRoute.Length >= 3 &&
             value.FunctionRoute is not ("api" or "functions" or "health" or "internal" or "_pole"),
             "spec.functionRoute");
         DeclarationJson.Require(value.Placement is not null &&
-            DeclarationNames.Valid(value.Placement.DeploymentTarget), "spec.placement.deploymentTarget");
+            DeclarationNames.Valid(value.Placement.DeploymentTarget), DeclarationFieldPaths.PlacementDeploymentTarget);
         DeclarationJson.Require(value.Placement.ComputeProfile is { Revision: > 0 } profile &&
-            DeclarationNames.Valid(profile.Name), "spec.placement.computeProfile");
+            DeclarationNames.Valid(profile.Name), DeclarationFieldPaths.PlacementComputeProfile);
         DeclarationJson.Require(value.Placement.IsolationScope is null ||
             DeclarationNames.Valid(value.Placement.IsolationScope) && value.Placement.IsolationScope != "default",
-            "spec.placement.isolationScope");
+            DeclarationFieldPaths.PlacementIsolationScope);
         DeclarationJson.Require(value.Image is not null &&
             ValidImagePart(value.Image.Server) && ValidImagePart(value.Image.Name) && ValidImagePart(value.Image.Tag),
-            "spec.image");
+            DeclarationFieldPaths.Image);
         DeclarationJson.Require(value.Resources is not null &&
             new FunctionResourcesValidator().Validate(value.Resources).IsValid, "spec.resources");
         DeclarationJson.Require(value.Scaling is not null &&
@@ -98,11 +98,11 @@ internal static class FunctionDeclarationJson
         DeclarationJson.Require(value.Environment is not null && value.SecretEnvironment is not null &&
             value.Environment.Values.All(item => item is not null) && value.SecretEnvironment.Values.All(item =>
                 item is not null && DeclarationNames.Valid(item.Secret) && SecretKeyReferenceRules.ValidKey(item.Key)),
-            "spec.environment");
+            DeclarationFieldPaths.Environment);
         DeclarationJson.Require(value.Environment.Keys.Concat(value.SecretEnvironment.Keys)
             .All(FunctionConfigurationValidator.IsAllowedEnvironmentName) &&
             !value.Environment.Keys.Intersect(value.SecretEnvironment.Keys, StringComparer.OrdinalIgnoreCase).Any(),
-            "spec.environment");
+            DeclarationFieldPaths.Environment);
         DeclarationJson.Require(value.Handlers is { Count: > 0 } &&
             value.Handlers.All(handler => ValidHandler(handler, value.Scaling.MaxConcurrencyPerInstance)) &&
             value.Handlers.Select(handler => handler.Name).Distinct(StringComparer.Ordinal).Count() ==
@@ -113,7 +113,7 @@ internal static class FunctionDeclarationJson
             http.Methods.All(method => routes.Add($"{FunctionTriggerRules.CanonicalizeRoute(http.Route)}:{method}"))),
             "spec.handlers");
         DeclarationJson.Require(value.Tags is not null && value.Tags.All(tag => !string.IsNullOrWhiteSpace(tag)),
-            "spec.tags");
+            DeclarationFieldPaths.Tags);
         return JsonSerializer.SerializeToElement(value with
         {
             Handlers = value.Handlers.OrderBy(handler => handler.Name, StringComparer.Ordinal)

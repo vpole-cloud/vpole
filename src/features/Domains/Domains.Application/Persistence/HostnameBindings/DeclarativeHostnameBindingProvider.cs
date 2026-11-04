@@ -53,7 +53,8 @@ internal sealed class DeclarativeHostnameBindingProvider(
     {
         var declaration = DeclarationJson.Read<HostnameBindingDeclaration>(spec);
         DeclarationJson.Require(ResourceTechnicalName.IsValid(declaration.Zone), "spec.zone");
-        DeclarationJson.Require(ResourceTechnicalName.IsValid(declaration.DeploymentTarget), "spec.deploymentTarget");
+        DeclarationJson.Require(ResourceTechnicalName.IsValid(declaration.DeploymentTarget),
+            DeclarationFieldPaths.DeploymentTarget);
         DeclarationJson.Require(declaration.Resource is not null &&
             DeclarationNames.Valid(declaration.Resource.Name) &&
             !string.IsNullOrWhiteSpace(declaration.Resource.Kind) &&

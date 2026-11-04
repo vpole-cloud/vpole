@@ -60,9 +60,13 @@ internal static class FunctionDeclarations
         return new(new("ResourceGroup", value.ResourceGroup), [],
         [
             .. value.Placement.IsolationScope is { } scope
-                ? new DeclaredReference[] { new(new("IsolationScope", scope), "spec.placement.isolationScope") } : [],
+                ? new DeclaredReference[]
+                {
+                    new(new("IsolationScope", scope), DeclarationFieldPaths.PlacementIsolationScope)
+                }
+                : [],
             .. value.SecretEnvironment.Select(pair => new DeclaredReference(new("Secret", pair.Value.Secret),
-                $"spec.secretEnvironment.{pair.Key}", pair.Value.Key, RequiresAccess: true))
+                DeclarationFieldPaths.SecretEnvironment(pair.Key), pair.Value.Key, RequiresAccess: true))
         ], [], []);
     }
 

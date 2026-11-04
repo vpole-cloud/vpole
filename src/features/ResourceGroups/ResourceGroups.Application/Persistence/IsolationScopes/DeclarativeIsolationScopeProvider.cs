@@ -40,7 +40,7 @@ internal sealed class DeclarativeIsolationScopeProvider(
     public JsonElement NormalizeAndValidate(JsonElement spec)
     {
         var declaration = DeclarationJson.Read<IsolationScopeDeclaration>(spec);
-        DeclarationJson.Require(DeclarationNames.Valid(declaration.ResourceGroup), "spec.resourceGroup");
+        DeclarationJson.Require(DeclarationNames.Valid(declaration.ResourceGroup), DeclarationFieldPaths.ResourceGroup);
         return DeclarationJson.Write(declaration);
     }
 
