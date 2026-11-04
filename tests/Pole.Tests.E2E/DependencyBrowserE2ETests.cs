@@ -388,6 +388,15 @@ public sealed class DependencyBrowserE2ETests(PoleE2EFixture fixture)
         }
         await page.SetViewportSizeAsync(1440, 900);
     }
-    private static object Probe() => new { path = "/health", port = "8080", initialDelaySeconds = 1, periodSeconds = 6, timeoutSeconds = 1, failureThreshold = 10, successThreshold = 1 };
+    private static object Probe() => new
+    {
+        path = "/health",
+        port = "8080",
+        initialDelaySeconds = 1,
+        periodSeconds = 6,
+        timeoutSeconds = 1,
+        failureThreshold = 10,
+        successThreshold = 1
+    };
     private static string Text(JsonElement value, string name) => value.GetProperty(name).GetString()!;
 }
