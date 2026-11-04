@@ -40,6 +40,7 @@ public static class DeleteRedisService
                     RedisServiceNotFound error => MapNotFound(error),
                     RedisDeletionResourceDeploymentMissing error => MapDeletionResourceDeploymentMissing(error),
                     RedisDeletionConflict error => MapDeletionConflict(error),
+                    RedisSecretBindingRemovalRequired error => MapSecretBindingRemovalRequired(error),
                     RedisGitOwnedConfiguration error => MapGitOwned(error),
                     LoadCurrentResourceDeploymentComputeError error => MapComputeError(error),
                     ResourceDeploymentMutationError error => MapMutationError(error),
@@ -61,6 +62,7 @@ public union DeleteRedisServiceOutcome(
     LoadCurrentResourceDeploymentComputeError,
     RedisDeletionConflict,
     RedisGitOwnedConfiguration,
+    RedisSecretBindingRemovalRequired,
     ResourceDeploymentMutationError,
     QuotaExecutionError);
 
@@ -130,6 +132,8 @@ public sealed class DeleteRedisServiceHandler(
                         new(redis, deleting),
                         transaction.Session,
                         transactionCancellationToken);
+                    if (persistenceResult is RedisSecretBindingRemovalRequired bindingError)
+                        return transaction.Abort(bindingError);
                     if (persistenceResult is RedisGitOwnedConfiguration ownershipError)
                         return transaction.Abort(ownershipError);
 

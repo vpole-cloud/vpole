@@ -19,7 +19,9 @@ namespace Pole.Features.GitOps.Application.Endpoints.Sources;
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record UpdateRepositorySourceBody(
     long ExpectedRevision,
-    int PollIntervalSeconds);
+    int PollIntervalSeconds,
+    [property: JsonConverter(typeof(JsonStringEnumConverter<GitPrunePolicy>))]
+    GitPrunePolicy Prune = GitPrunePolicy.Retain);
 
 public sealed record UpdateRepositorySourceRequest(
     [FromBody] UpdateRepositorySourceBody Body,
@@ -30,7 +32,8 @@ public sealed record UpdateRepositorySourceRequest(
 public union UpdateRepositorySourceOutcome(
     RepositorySourceView,
     GitSourceNotFound,
-    GitSourceRevisionConflict);
+    GitSourceRevisionConflict,
+    GitSourceInactive);
 
 public sealed class UpdateRepositorySourceValidator : AbstractValidator<UpdateRepositorySourceRequest>
 {
@@ -43,6 +46,7 @@ public sealed class UpdateRepositorySourceValidator : AbstractValidator<UpdateRe
             {
                 RuleFor(item => item.Body.ExpectedRevision).GreaterThan(0);
                 RuleFor(item => item.Body.PollIntervalSeconds).InclusiveBetween(60, 86400);
+                RuleFor(item => item.Body.Prune).IsInEnum();
             });
     }
 }
@@ -60,13 +64,15 @@ public sealed class UpdateRepositorySourceHandler(GitRepositorySources sources, 
         var outcome = await sources.ChangePolicyAsync(new(tenantId,
                 sourceId,
                 request.Body.ExpectedRevision,
-                new(TimeSpan.FromSeconds(request.Body.PollIntervalSeconds))),
+                new(TimeSpan.FromSeconds(request.Body.PollIntervalSeconds)), request.Body.Prune),
             cancellationToken);
         return outcome switch
         {
-            RepositorySource source => (await queries.SourceAsync(source.TenantId, source.Id, cancellationToken))!,
+            RepositorySource source => await queries.SourceAsync(source.TenantId, source.Id, cancellationToken)
+                is { } current ? current : new GitSourceNotFound(),
             GitSourceNotFound missing => missing,
-            GitSourceRevisionConflict stale => stale
+            GitSourceRevisionConflict stale => stale,
+            GitSourceInactive inactive => inactive
         };
     }
 }
@@ -82,7 +88,8 @@ public static class UpdateRepositorySourceEndpoint
                     {
                         RepositorySourceView value => Results.Ok(value),
                         GitSourceNotFound value => RepositoryHttpMappings.Map(value),
-                        GitSourceRevisionConflict value => RepositoryHttpMappings.Map(value)
+                        GitSourceRevisionConflict value => RepositoryHttpMappings.Map(value),
+                        GitSourceInactive inactive => RepositoryHttpMappings.Map(inactive)
                     })).WithName("UpdateGitRepositorySource")
             .WithMetadata(new RequestSizeLimitAttribute(SnapshotHttpLimits.MaximumSourceRequestBytes));
         return app;

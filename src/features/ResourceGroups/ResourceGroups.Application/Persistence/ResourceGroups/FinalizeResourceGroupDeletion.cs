@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Persistence.IsolationScopes;
@@ -22,7 +23,8 @@ internal sealed class MongoFinalizeResourceGroupDeletion(
     EnsureNoUnfinishedIsolationScopeDeployments ensureNoUnfinishedDeployments,
     StoreOutboxWrites storeOutboxWrites,
     RunMongoOutcomeTransaction<Unit> runMongoTransaction,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IGitLifecycleCleanupProofRecorder cleanupProofs)
 {
     public Task InvokeAsync(
         string tenantId,
@@ -85,6 +87,14 @@ internal sealed class MongoFinalizeResourceGroupDeletion(
                 cancellationToken: ct);
             if (fence.ModifiedCount != 1)
                 return transaction.Commit(Unit.Value);
+
+            var subject = scopeDeleting && scope is { IsDefault: false }
+                ? new GitDeclaredCleanupResource("IsolationScope", scope.Id)
+                : new GitDeclaredCleanupResource("ResourceGroup", resourceGroup.Id);
+            await cleanupProofs.RecordAsync(new(tenantId, subject,
+                $"ScopeFinalization/{isolationScopeId}/{resourceGroup.Revision}",
+                [new($"ResourceGroup/{resourceGroupId}", resourceGroup.Revision,
+                    checked(resourceGroup.Revision + 1))]), transaction.Session, ct);
 
             if (scope is not null)
             {

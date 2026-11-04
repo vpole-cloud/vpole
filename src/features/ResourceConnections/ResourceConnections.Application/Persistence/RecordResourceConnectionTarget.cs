@@ -1,5 +1,7 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.GitOps.Contracts;
+using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.ResourceConnections.Domain;
 
@@ -48,7 +50,8 @@ internal sealed class MongoRecordResourceConnectionTarget(
     PurgeResourceConnectionIfComplete purgeIfComplete,
     TimeProvider timeProvider,
     MongoRunTransaction transactions,
-    StoreOutboxWrites outbox)
+    StoreOutboxWrites outbox,
+    IGitLifecycleCleanupProofRecorder cleanupProofs)
 {
     public async Task RecordReverificationFailureAsync(
         string tenantId,
@@ -199,6 +202,14 @@ internal sealed class MongoRecordResourceConnectionTarget(
                     cancellationToken: token);
                 if (updated.ModifiedCount != 1)
                     return tx.Abort(new ResourceConnectionTargetConflict());
+                if (current.Lifecycle is DeletingResourceConnection &&
+                    changed.Lifecycle is DeletingResourceConnection && current.Generation == changed.Generation)
+                    await cleanupProofs.RecordAsync(new(current.TenantId,
+                        new GitDeclaredCleanupResource(DeclarativeResourceConnectionProvider.ResourceKind, current.Id),
+                        $"connection-status/{current.Id}/{current.Generation}/{changed.Revision}",
+                        [new(ResourceConnectionPlanningVersion.RevisionDocumentId(current.Id), current.Revision,
+                            changed.Revision)]), tx.Session, token);
+
                 await outbox(tx.Session, [OutboxWrite.Create(changed.ToChangedEvent())], token);
                 return tx.Commit(new ResourceConnectionTargetRecorded(changed));
             },

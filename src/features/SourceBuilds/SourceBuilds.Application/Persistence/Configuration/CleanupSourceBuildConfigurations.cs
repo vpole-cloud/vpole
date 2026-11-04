@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Domain;
@@ -9,7 +10,8 @@ namespace Pole.Features.SourceBuilds.Application.Persistence.Configuration;
 internal sealed class MongoCleanupSourceBuildConfigurations(
     IMongoCollection<SourceBuildConfiguration> configurations,
     MongoRunTransaction transactions,
-    StoreOutboxWrites outbox)
+    StoreOutboxWrites outbox,
+    IGitOpsMutations git)
 {
     public async Task InvokeAsync(
         string tenantId,
@@ -22,13 +24,24 @@ internal sealed class MongoCleanupSourceBuildConfigurations(
                 var removed = await configurations.Find(tx.Session, filter).ToListAsync(ct);
                 if (removed.Count == 0)
                     return tx.Commit(new SourceBuildConfigurationCleanupRecorded(0));
-                var deleted = await configurations.DeleteManyAsync(tx.Session, filter, cancellationToken: ct);
-                if (deleted.DeletedCount != removed.Count)
-                    throw new InvalidOperationException("Source build configuration cleanup changed concurrently.");
-                await outbox(tx.Session,
-                    removed.Select(configuration => OutboxWrite.Create(configuration.ToChangedEvent())).ToArray(),
-                    ct);
-                return tx.Commit(new SourceBuildConfigurationCleanupRecorded(removed.Count));
+                var deleted = new List<SourceBuildConfiguration>();
+                foreach (var configuration in removed)
+                {
+                    if (!await git.AuthorizeAsync(new(tenantId, "SourceBuildConfiguration", configuration.Id),
+                            tx.Session, ct))
+                        continue;
+
+                    var result = await configurations.DeleteOneAsync(tx.Session,
+                        SourceBuildConfigurationFilters.AtPlanningVersion(configuration), cancellationToken: ct);
+                    if (result.DeletedCount != 1)
+                        throw new InvalidOperationException("Source build configuration cleanup changed concurrently.");
+                    deleted.Add(configuration);
+                }
+                if (deleted.Count != 0)
+                    await outbox(tx.Session,
+                        deleted.Select(configuration => OutboxWrite.Create(configuration.ToChangedEvent())).ToArray(),
+                        ct);
+                return tx.Commit(new SourceBuildConfigurationCleanupRecorded(deleted.Count));
             },
             cancellationToken);
     }

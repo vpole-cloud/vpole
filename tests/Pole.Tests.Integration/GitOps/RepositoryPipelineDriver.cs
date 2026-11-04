@@ -90,16 +90,26 @@ internal sealed class RepositoryPipelineDriver(
 
     public async Task<RepositoryPipelineResult> RecoverAsync(GitSourceIdentity identity)
     {
-        var overrides = new List<object>();
-        if (customProviders is not null)
+        RepositorySourceJob worker;
+        if (customProviders is null && customMutations is null)
+            worker = services.GetRequiredService<RepositorySourceJob>();
+        else
         {
-            overrides.Add(customProviders);
-            overrides.Add(new ManifestCompiler(customProviders));
+            var executorOverrides = new List<object>();
+            var workerOverrides = new List<object>();
+            if (customProviders is not null)
+            {
+                var overrideCompiler = new ManifestCompiler(customProviders);
+                executorOverrides.Add(customProviders);
+                executorOverrides.Add(overrideCompiler);
+                workerOverrides.Add(overrideCompiler);
+            }
+            if (customMutations is not null)
+                executorOverrides.Add(customMutations);
+            workerOverrides.Add(ActivatorUtilities.CreateInstance<GitAcceptedSnapshotExecutor>(services,
+                executorOverrides.ToArray()));
+            worker = ActivatorUtilities.CreateInstance<RepositorySourceJob>(services, workerOverrides.ToArray());
         }
-        if (customMutations is not null)
-            overrides.Add(customMutations);
-        var worker = overrides.Count == 0 ? services.GetRequiredService<RepositorySourceJob>() :
-            ActivatorUtilities.CreateInstance<RepositorySourceJob>(services, overrides.ToArray());
         var report = await worker.ProcessAsync(identity, default);
         var state = await Sources.StateAsync(identity.TenantId, identity.SourceId, default);
         var run = (await Sources.RunAsync(identity.TenantId, identity.SourceId, state.LatestRunId!, default))!;

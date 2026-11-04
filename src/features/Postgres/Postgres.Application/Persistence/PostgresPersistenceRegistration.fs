@@ -86,7 +86,17 @@ module PostgresPersistenceRegistration =
         services.AddScoped<PostgresDeclarationPlanner>() |> ignore
         services.AddScoped<PostgresDeclarationReferences>() |> ignore
         services.AddScoped<PostgresDeclarationExecution>() |> ignore
-        services.AddScoped<IDeclarativeResourceProvider, DeclarativePostgresProvider>() |> ignore
+        services.AddScoped<PostgresDeclarationAdoption>() |> ignore
+        services.AddScoped<PostgresDeclarationLifecycle>() |> ignore
+        services.AddScoped<DeclarativePostgresProvider>() |> ignore
+        services.AddScoped<IDeclarativeResourceProvider>(Func<IServiceProvider, IDeclarativeResourceProvider>(fun sp ->
+            sp.GetRequiredService<DeclarativePostgresProvider>())) |> ignore
+        services.AddScoped<IDeclarativeResourceLifecycleProvider>(
+            Func<IServiceProvider, IDeclarativeResourceLifecycleProvider>(fun sp ->
+                sp.GetRequiredService<DeclarativePostgresProvider>())) |> ignore
+        services.AddScoped<IDeclarativeLifecycleDependencyProvider>(
+            Func<IServiceProvider, IDeclarativeLifecycleDependencyProvider>(fun sp ->
+                sp.GetRequiredService<DeclarativePostgresProvider>())) |> ignore
         services.AddScoped<PostgresCredentialCreator>() |> ignore
         services.AddScoped<CreatePostgresCredential>(
             Func<IServiceProvider, CreatePostgresCredential>(fun serviceProvider ->

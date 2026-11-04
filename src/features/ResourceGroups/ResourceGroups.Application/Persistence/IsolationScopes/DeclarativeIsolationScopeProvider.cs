@@ -21,7 +21,9 @@ internal sealed partial class DeclarativeIsolationScopeProvider(
     LoadResourceGroupPlanningSnapshot loadGroup,
     FenceResourceGroupPlanningSnapshot fenceGroup,
     StoreOutboxWrites outbox,
-    TimeProvider clock) : ITransactionalDeclarativeResourceProvider
+    TimeProvider clock,
+    MongoBeginIsolationScopeDeletion deletion) : ITransactionalDeclarativeResourceProvider,
+        IDeclarativeResourceLifecycleProvider, IDeclarativeAdoptionPreviewProvider
 {
     public string Kind => "IsolationScope";
 

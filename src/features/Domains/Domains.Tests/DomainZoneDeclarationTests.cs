@@ -11,7 +11,7 @@ public sealed class DomainZoneDeclarationTests
 {
     private static DeclarativeDomainZoneProvider Provider() => new(
         new MongoClient("mongodb://localhost:27017").GetDatabase("domain-schema-tests"),
-        null!, null!, null!, null!, null!, null!, null!);
+        null!, null!, null!, null!, null!, null!, null!, null!);
 
     [Fact]
     public void Zone_normalizes_dns_label_but_keeps_technical_target_identity()

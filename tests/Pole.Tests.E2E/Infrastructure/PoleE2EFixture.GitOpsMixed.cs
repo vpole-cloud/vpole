@@ -240,8 +240,8 @@ public sealed partial class PoleE2EFixture
         if (!_gitOpsNamespaceCleanup)
             return;
 
-        // Git-owned groups have no detach/delete API in this stage. Stop controllers first, then delete only
-        // this exact fixture's labelled namespaces with UID preconditions; no production ownership bypass exists.
+        // Failure cleanup stops controllers first, then deletes only this exact fixture's labelled namespaces
+        // with UID preconditions. Successful lifecycle scenarios use the production reviewed deletion flow.
         var selector = $"{TestRunIdentity.OwnerLabel}={TestRunIdentity.Owner}," +
             $"{TestRunIdentity.WorktreeLabel}={_identity.WorktreeId},{TestRunIdentity.RunLabel}={_identity.RunId}";
         var namespaces = await _kubernetes.CoreV1.ListNamespaceAsync(labelSelector: selector, cancellationToken: ct);

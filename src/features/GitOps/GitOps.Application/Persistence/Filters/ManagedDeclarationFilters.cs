@@ -1,6 +1,7 @@
 using Pole.Features.GitOps.Domain;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Contracts;
+using Pole.Features.GitOps.Primitives;
 
 namespace Pole.Features.GitOps.Application.Persistence;
 
@@ -27,4 +28,12 @@ internal static class ManagedDeclarationFilters
     public static FilterDefinition<ManagedDeclaration> SourceInventory(string tenant, string source) =>
         Builders<ManagedDeclaration>.Filter.Eq(item => item.TenantId, tenant) &
         Builders<ManagedDeclaration>.Filter.Eq(item => item.SourceId, source);
+
+    public static FilterDefinition<ManagedDeclaration> CreatedResources(string tenant, string source,
+        IReadOnlyCollection<string> ids) => SourceInventory(tenant, source) &
+        Builders<ManagedDeclaration>.Filter.Eq(item => item.Materialization, GitResourceMaterialization.Created) &
+        Builders<ManagedDeclaration>.Filter.In(item => item.ResourceId, ids);
+
+    public static FilterDefinition<ManagedDeclaration> PendingRemoval(string tenant, string source) =>
+        SourceInventory(tenant, source) & Builders<ManagedDeclaration>.Filter.Eq(item => item.PendingRemoval, true);
 }

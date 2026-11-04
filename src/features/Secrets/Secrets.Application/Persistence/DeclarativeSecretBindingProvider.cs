@@ -31,13 +31,16 @@ internal sealed partial class DeclarativeSecretBindingProvider(
     IGitOpsMutations git,
     LoadIsolationScopePlanningSnapshot loadPlanningScope,
     FenceIsolationScopePlanningSnapshot fencePlanningScope,
+    FenceRegisteredResource fenceConsumer,
     LoadResourceDeploymentPlanningSnapshot loadPlanningPlacements,
     FenceResourceDeploymentPlanningSnapshot fencePlanningPlacements,
     SecretPlanningFence planningFence,
     AdmitResourceScopeReference admitScope,
     AdmitResourceDeploymentReferences admitDeployments,
     StoreSecretChange publish,
-    TimeProvider clock) : ITransactionalDeclarativeResourceProvider
+    MongoRemoveSecretBinding deletion,
+    TimeProvider clock) : ITransactionalDeclarativeResourceProvider,
+    IDeclarativeAdoptionPreviewProvider, IDeclarativeResourceAdoptionProvider, IDeclarativeResourceLifecycleProvider
 {
     public string Kind => "SecretBinding";
 

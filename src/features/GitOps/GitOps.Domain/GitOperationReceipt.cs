@@ -15,4 +15,5 @@ public sealed record GitOperationReceipt(
     string DesiredHash,
     string? Blocker,
     bool Changed,
-    long PlanRevision);
+    long PlanRevision,
+    GitLifecycleEffect? Lifecycle);

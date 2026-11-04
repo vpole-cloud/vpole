@@ -13,7 +13,7 @@ public sealed class HostnameBindingDeclarationTests
 {
     private static DeclarativeHostnameBindingProvider Provider() => new(
         new MongoClient("mongodb://localhost:27017").GetDatabase("domain-schema-tests"),
-        null!, null!, null!, null!, null!, null!, null!, null!, [new WorkloadCapability()]);
+        null!, null!, null!, null!, null!, null!, null!, null!, [new WorkloadCapability()], null!);
 
     [Theory]
     [InlineData("@", "@")]

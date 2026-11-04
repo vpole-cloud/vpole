@@ -37,8 +37,8 @@ public sealed class GitAcceptedReferences(
                 var pinned = await transactions.InvokeOutcomeAsync<bool>(async (tx, token) =>
                     {
                         var run = await runs.TouchAsync(request.Handle, tx.Session, token);
-                        if (run?.Input is not GitInputAccepted accepted ||
-                            accepted.Snapshot.DesiredHash != request.Snapshot.DesiredHash)
+                        if (run?.AcceptedSnapshot is not { } accepted ||
+                            accepted.DesiredHash != request.Snapshot.DesiredHash)
                             return tx.Abort(false);
 
                         var key = GitAcceptedReferenceFilters.Key(run.Stamp.Source,
@@ -78,8 +78,8 @@ public sealed class GitAcceptedReferences(
             {
                 var handle = request.Context.ToHandle();
                 var run = await runs.TouchAsync(handle, tx.Session, token);
-                if (run?.Input is not GitInputAccepted accepted ||
-                    !accepted.Snapshot.Resources.Any(item => item.ResourceId == request.ConsumerResourceId))
+                if (run?.AcceptedSnapshot is not { } accepted ||
+                    !accepted.Resources.Any(item => item.ResourceId == request.ConsumerResourceId))
                     return tx.Abort(new StaleGitExecution());
 
                 var target = request.Target;
@@ -108,11 +108,11 @@ public sealed class GitAcceptedReferences(
         CancellationToken ct)
     {
         var run = await runs.TouchAsync(request.Context.ToHandle(), session, ct);
-        if (run?.Input is not GitInputAccepted accepted ||
-            !accepted.Snapshot.Resources.Any(item => item.ResourceId == request.ConsumerResourceId))
+        if (run?.AcceptedSnapshot is not { } accepted ||
+            !accepted.Resources.Any(item => item.ResourceId == request.ConsumerResourceId))
             return null;
 
-        var internalResource = accepted.Snapshot.Resources.SingleOrDefault(item =>
+        var internalResource = accepted.Resources.SingleOrDefault(item =>
             item.Kind == request.Address.Kind && item.Name == request.Address.Name);
         if (internalResource is not null)
             return internalResource.ResourceId;

@@ -5,6 +5,7 @@ using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceConnections.Domain;
 using Pole.Features.ResourceConnections.Events;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.ResourceGroups.Contracts;
 using Pole.Workloads;
 
 namespace Pole.Features.ResourceConnections.Application.Persistence;
@@ -28,6 +29,8 @@ internal sealed class MongoResourceConnectionMutationProvider(
     IMongoCollection<ResourceConnection> connections,
     LoadResourceDeploymentConnectionPlacements loadPlacements,
     ResourceConnectionEndpointCatalog endpointCatalog,
+    LoadResourceRegistrationPlanningSnapshot loadRegistration,
+    FenceResourceRegistrationPlanningSnapshot fenceRegistration,
     StoreOutboxWrites storeOutboxWrites,
     TimeProvider timeProvider)
 {
@@ -110,6 +113,19 @@ internal sealed class MongoResourceConnectionMutationProvider(
         return new ResourceConnectionTopologyValid(1);
     }
 
+    public async Task<IReadOnlyList<ResourceConnectionPlanningVersion>> ReadCascadePlanningAsync(
+        LoadResourceConnectionCascadePlanningRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        RequireTransaction(session);
+        return await connections.Find(session,
+                ResourceConnectionFilters.ByResource(request.TenantId, request.ResourceType, request.ResourceId))
+            .SortBy(item => item.Id).Project(item =>
+                new ResourceConnectionPlanningVersion(item.Id, item.Revision, item.ReferenceFence))
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<CascadeConnectionsForResourceDeletionOutcome> CascadeAsync(
         CascadeConnectionsForResourceDeletionRequest request,
         IClientSessionHandle session,
@@ -121,19 +137,52 @@ internal sealed class MongoResourceConnectionMutationProvider(
                 ResourceConnectionFilters.ByResource(request.TenantId, request.ResourceType, request.ResourceId))
             .SortBy(item => item.Id)
             .ToListAsync(cancellationToken);
+        if (request.ReviewedConnections is { } reviewed)
+        {
+            var expected = reviewed.OrderBy(item => item.ConnectionId, StringComparer.Ordinal).ToArray();
+            var actual = affected.Select(item =>
+                new ResourceConnectionPlanningVersion(item.Id, item.Revision, item.ReferenceFence)).ToArray();
+            if (!actual.SequenceEqual(expected))
+            {
+                var conflicting = actual.FirstOrDefault(item => !expected.Contains(item)) ??
+                    expected.FirstOrDefault(item => !actual.Contains(item)) ?? expected.FirstOrDefault();
+                return new ResourceConnectionCascadeConflict(conflicting?.ConnectionId ?? request.ResourceId);
+            }
+
+            // Both connection admission and parent deletion write this registration, preventing an
+            // unreviewed connection from appearing between the set read and the parent commit.
+            var registration = await loadRegistration(new(request.TenantId, request.ResourceType,
+                request.ResourceId), session, cancellationToken);
+            if (registration is not null && await fenceRegistration(registration, session, cancellationToken)
+                is not ResourceRegistrationSnapshotFenced)
+                return new ResourceConnectionCascadeConflict(request.ResourceId);
+        }
+
         var cascaded = 0;
         var outbox = new List<OutboxWrite>();
         foreach (var current in affected)
         {
             if (current.Lifecycle is DeletingResourceConnection)
+            {
+                if (request.ReviewedConnections is not null)
+                {
+                    var fence = await connections.UpdateOneAsync(session,
+                        ResourceConnectionFilters.AtPlanningVersion(request.TenantId,
+                            new(current.Id, current.Revision, current.ReferenceFence)),
+                        Builders<ResourceConnection>.Update.Inc(item => item.ReferenceFence, 1),
+                        cancellationToken: cancellationToken);
+                    if (fence.ModifiedCount != 1)
+                        return new ResourceConnectionCascadeConflict(current.Id);
+                }
+
                 continue;
+            }
+
             var updated = current.BeginDeletion(timeProvider.GetUtcNow().UtcDateTime);
             var result = await connections.ReplaceOneAsync(
                 session,
-                ResourceConnectionFilters.AtRevision(
-                    request.TenantId,
-                    current.Id,
-                    current.Revision),
+                ResourceConnectionFilters.AtPlanningVersion(request.TenantId,
+                    new(current.Id, current.Revision, current.ReferenceFence)),
                 updated,
                 cancellationToken: cancellationToken);
             if (result.ModifiedCount != 1)

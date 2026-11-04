@@ -162,8 +162,17 @@ public static class GitOpsMixedStubEndpoints
 {
     public static void MapGitOpsMixedStub(this WebApplication app, Func<HttpRequest, IConfiguration, bool> authorized)
     {
-        app.MapPost("/__e2e/gitops-mixed", (HttpRequest request, GitOpsMixedSnapshotRequest body,
-            GitOpsMixedStubState state, IConfiguration config) =>
+        MapRepository(app, authorized, "9003", "gitops-mixed", app.Services.GetRequiredService<GitOpsMixedStubState>());
+        MapRepository(app, authorized, "9004", "gitops-lifecycle", new GitOpsMixedStubState());
+        MapRepository(app, authorized, "9005", "gitops-redis-replacement", new GitOpsMixedStubState());
+    }
+
+    private static void MapRepository(WebApplication app, Func<HttpRequest, IConfiguration, bool> authorized,
+        string repositoryId, string name, GitOpsMixedStubState state)
+    {
+        var repositoryPath = $"/repos/pole-e2e/{name}";
+        app.MapPost($"/__e2e/{name}", (HttpRequest request, GitOpsMixedSnapshotRequest body,
+            IConfiguration config) =>
         {
             if (!authorized(request, config))
                 return Results.Unauthorized();
@@ -176,46 +185,46 @@ public static class GitOpsMixedStubEndpoints
                 _ => throw new ArgumentOutOfRangeException(nameof(body))
             };
         });
-        app.MapGet("/repositories/9003", (HttpRequest request, GitHubStubState journal) =>
+        app.MapGet($"/repositories/{repositoryId}", (HttpRequest request, GitHubStubState journal) =>
         {
             journal.Record(request);
             return Results.Ok(new
             {
-                id = 9003,
-                name = "gitops-mixed",
-                full_name = "pole-e2e/gitops-mixed",
-                html_url = $"{request.Scheme}://{request.Host}/pole-e2e/gitops-mixed",
+                id = long.Parse(repositoryId, System.Globalization.CultureInfo.InvariantCulture),
+                name,
+                full_name = $"pole-e2e/{name}",
+                html_url = $"{request.Scheme}://{request.Host}/pole-e2e/{name}",
                 @private = true,
                 default_branch = "main",
                 updated_at = "2026-10-30T00:00:00Z"
             });
         });
-        app.MapGet("/repos/pole-e2e/gitops-mixed/branches/{branch}",
-            (string branch, HttpRequest request, GitOpsMixedStubState state, GitHubStubState journal) =>
+        app.MapGet(repositoryPath + "/branches/{branch}",
+            (string branch, HttpRequest request, GitHubStubState journal) =>
             {
                 journal.Record(request);
                 return branch == "main" && state.Head is { } commit
                     ? Results.Ok(new { name = "main", commit = new { sha = commit } })
                     : Results.NotFound();
             });
-        app.MapGet("/repos/pole-e2e/gitops-mixed/git/commits/{commit}",
-            (string commit, HttpRequest request, GitOpsMixedStubState state, GitHubStubState journal) =>
+        app.MapGet(repositoryPath + "/git/commits/{commit}",
+            (string commit, HttpRequest request, GitHubStubState journal) =>
             {
                 journal.Record(request);
                 return state.Find(commit) is { } snapshot
                     ? Results.Ok(new { sha = snapshot.Commit, tree = new { sha = snapshot.Commit } })
                     : Results.NotFound();
             });
-        app.MapGet("/repos/pole-e2e/gitops-mixed/git/trees/{tree}",
-            (string tree, HttpRequest request, GitOpsMixedStubState state, GitHubStubState journal) =>
+        app.MapGet(repositoryPath + "/git/trees/{tree}",
+            (string tree, HttpRequest request, GitHubStubState journal) =>
             {
                 journal.Record(request);
                 return state.Find(tree) is { } snapshot
                     ? Results.Ok(new { tree = snapshot.Tree(), truncated = false })
                     : Results.NotFound();
             });
-        app.MapGet("/repos/pole-e2e/gitops-mixed/tarball/{commit}",
-            (string commit, HttpRequest request, GitOpsMixedStubState state, GitHubStubState journal) =>
+        app.MapGet(repositoryPath + "/tarball/{commit}",
+            (string commit, HttpRequest request, GitHubStubState journal) =>
             {
                 journal.Record(request);
                 return state.Find(commit) is { } snapshot

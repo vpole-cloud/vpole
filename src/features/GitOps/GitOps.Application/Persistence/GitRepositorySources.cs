@@ -20,7 +20,7 @@ public sealed class GitRepositorySources(
     StoreOutboxWrites outbox)
 {
     public Task<RepositorySource?> LoadAsync(string tenant, string id, CancellationToken ct) =>
-        sources.Find(GitRepositoryFilters.Source(tenant, id)).FirstOrDefaultAsync(ct)!;
+        sources.Find(GitRepositoryFilters.VisibleSource(tenant, id)).FirstOrDefaultAsync(ct)!;
 
     public Task<GitSynchronizationState> StateAsync(string tenant, string id, CancellationToken ct) =>
         states.Find(GitRepositoryFilters.State(tenant, id)).SingleAsync(ct);
@@ -32,20 +32,23 @@ public sealed class GitRepositorySources(
         CreateGitRepositorySource request,
         CancellationToken ct)
     {
-        var hash = Hash(new { request.Repository, request.Sync });
+        var hash = Hash(new { request.Repository, request.Sync, request.Prune });
         var candidate = RepositorySourceFactory.Create(new(request.TenantId, ObjectId.GenerateNewId().ToString()),
             request.Repository,
             request.Sync,
             request.Audit,
             request.CreationKey,
             hash,
-            request.DisplayUrl);
+            request.DisplayUrl,
+            request.Prune);
         var creation = GitRepositoryFilters.Creation(request.TenantId, request.CreationKey);
         try
         {
             return await transactions.InvokeOutcomeAsync<CreateGitRepositorySourceOutcome>(async (tx, token) =>
                 {
                     var existing = await sources.Find(tx.Session, creation).FirstOrDefaultAsync(token);
+                    if (existing is { Activity: GitSourceActivity.Deleted })
+                        return tx.Abort(new GitSourceCreationDeleted());
                     if (existing is not null)
                         return existing.CreationHash == hash
                             ? tx.Commit(existing)
@@ -66,7 +69,9 @@ public sealed class GitRepositorySources(
                                                         sources.CollectionNamespace.CollectionName))
         {
             var existing = await sources.Find(creation).SingleAsync(ct);
-            return existing.CreationHash == hash ? existing : new GitSourceIdempotencyConflict();
+            return existing.Activity == GitSourceActivity.Deleted
+                ? new GitSourceCreationDeleted()
+                : existing.CreationHash == hash ? existing : new GitSourceIdempotencyConflict();
         }
     }
 
@@ -79,6 +84,7 @@ public sealed class GitRepositorySources(
             GitSourceNotFound missing => missing,
             GitSourceRevisionConflict stale => stale,
             GitSourceIdempotencyConflict conflict => conflict,
+            GitSourceInactive inactive => inactive,
             GitSourceBusy or GitRetryNotAvailable =>
                 throw new InvalidOperationException("Sync cannot be rejected by a retry precondition.")
         };
@@ -101,8 +107,11 @@ public sealed class GitRepositorySources(
                     var source = await sources.Find(tx.Session,
                         GitRepositoryFilters.Source(request.TenantId,
                             request.SourceId)).FirstOrDefaultAsync(token);
-                    if (source is null)
+                    if (source is null || source.Activity == GitSourceActivity.Deleted)
                         return tx.Abort(new GitSourceNotFound());
+
+                    if (source.Activity != GitSourceActivity.Active)
+                        return tx.Abort(new GitSourceInactive(source.Activity));
 
                     var receipt = await requests.Find(tx.Session, GitRepositoryFilters.Request(key))
                         .FirstOrDefaultAsync(token);
@@ -126,7 +135,8 @@ public sealed class GitRepositorySources(
                             GitRepositoryFilters.Run(source.TenantId,
                                 source.Id,
                                 retryOfRunId)).FirstOrDefaultAsync(token);
-                        if (previous is null || state.LatestRunId != previous.Id ||
+                        if (previous is null || previous.Input is GitInputLifecycle or GitInputAwaitingApproval ||
+                            state.LatestRunId != previous.Id ||
                             previous.Stamp.ConfigurationRevision != source.Revision || previous.Commit is null ||
                             previous.State is not GitRunFinished
                             {
@@ -196,11 +206,15 @@ public sealed class GitRepositorySources(
                 var source = await sources.Find(tx.Session,
                     GitRepositoryFilters.Source(request.TenantId,
                         request.SourceId)).FirstOrDefaultAsync(token);
-                if (source is null)
+                if (source is null || source.Activity == GitSourceActivity.Deleted)
                     return tx.Abort(new GitSourceNotFound());
+
+                if (source.Activity is not (GitSourceActivity.Active or GitSourceActivity.Paused))
+                    return tx.Abort(new GitSourceInactive(source.Activity));
+
                 if (source.Revision != request.ExpectedRevision)
                     return tx.Abort(new GitSourceRevisionConflict());
-                if (source.Sync == request.Sync)
+                if (source.Sync == request.Sync && source.Prune == request.Prune)
                     return tx.Commit(source);
 
                 var now = await new GitDatabaseClock(sources).NowAsync(new(source.TenantId, source.Id),
@@ -215,14 +229,23 @@ public sealed class GitRepositorySources(
                             new GitRunFinished(GitRunCompletion.Superseded, now)),
                         cancellationToken: token);
 
-                var next = source with { Sync = request.Sync, Revision = checked(source.Revision + 1) };
-                var nextState = (state with
+                var next = source with
+                {
+                    Sync = request.Sync,
+                    Prune = request.Prune,
+                    Revision = checked(source.Revision + 1)
+                };
+                var nextState = state with
                 {
                     Fence = checked(state.Fence + 1),
+                    MutationVersion = checked(state.MutationVersion + 1),
                     CurrentRun = null,
                     CompletedGeneration = state.RequestedGeneration,
+                    Pending = new(new(GitRunTrigger.Recovery, null), null),
                     NextPollAtUtc = now + next.Sync.PollInterval
-                }).RequestSync(new(new(GitRunTrigger.Recovery, null), null));
+                };
+                if (next.Activity == GitSourceActivity.Active)
+                    nextState = nextState.RequestSync(new(new(GitRunTrigger.Recovery, null), null));
                 await sources.ReplaceOneAsync(tx.Session,
                     GitRepositoryFilters.Source(source.TenantId, source.Id),
                     next,
@@ -231,7 +254,8 @@ public sealed class GitRepositorySources(
                     GitRepositoryFilters.State(source.TenantId, source.Id),
                     nextState,
                     cancellationToken: token);
-                await WakeAsync(next, tx.Session, token);
+                if (next.Activity == GitSourceActivity.Active)
+                    await WakeAsync(next, tx.Session, token);
                 return tx.Commit(next);
             },
             ct);

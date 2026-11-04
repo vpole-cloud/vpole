@@ -835,11 +835,11 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
             (StoreOutboxWrites)(async (session, writes, ct) =>
             {
                 await Services.GetRequiredService<StoreOutboxWrites>()(session, writes, ct);
-                throw new InvalidOperationException("Synthetic failure after outbox staging");
+                throw new InjectedOutboxFailure();
             }));
         var registry = new DeclarativeProviderRegistry([failingProvider]);
         var failing = new RepositoryPipelineDriver(Services, Fixture, repository, registry);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => failing.SubmitAsync(new(TestData.TenantId, source),
+        await Assert.ThrowsAsync<InjectedOutboxFailure>(() => failing.SubmitAsync(new(TestData.TenantId, source),
         [
             new("group.yaml", "apiVersion: pole.io/v1alpha1\nkind: ResourceGroup\nmetadata: {name: demo}\nspec: {}")
         ]));
@@ -1168,4 +1168,6 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
             return result;
         }
     }
+
+    private sealed class InjectedOutboxFailure : Exception;
 }

@@ -22,7 +22,9 @@ An unavailable enqueue cannot lose the request.
 access, resolves the branch to a full SHA, persists it, reads that exact commit and compiles the
 whole snapshot before resource writes. Fetch/compile failures remain inspectable runs and never
 become an empty desired state. A valid existing directory without YAML is an empty snapshot;
-retained ownership is marked pending removal, never deleted.
+Retain marks removed declarations pending removal. Prune may delete unprotected resources only through
+an exact server-owned plan; protected data, an empty desired set and ambiguous create/removal require
+explicit preview confirmation.
 
 Accepted input stores normalized declarations, allocated resource IDs and ordered operations.
 Internal references use allocated IDs; successful external resolution is pinned durably before
@@ -110,15 +112,20 @@ and runs return not-found. Tenant/user authority comes from the server, never th
 
 Under `/api/v1/gitops/sources`:
 
-| Method/path                                | Input and behavior                                                                                                                                                                    |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /`                                   | `idempotencyKey`, `provider`, `connectionId`, `externalRepositoryId`, `branch`, `manifestDirectory`, optional `pollIntervalSeconds`; returns the created source, not an apply result. |
-| `GET /`, `GET /{id}`                       | Configuration, generations, commit markers, current/latest run identity, sanitized latest-run diagnostics and inventory counts. Lists use bounded `page`/`pageSize`.                  |
-| `PUT /{id}`                                | `expectedRevision`, `pollIntervalSeconds`; only polling policy can change in this stage.                                                                                              |
-| `POST /{id}/sync`                          | `expectedRevision`, `idempotencyKey`; returns 202 for a durable request to resolve the current branch.                                                                                |
-| `POST /{id}/retry`                         | `expectedRevision`, `idempotencyKey`, `runId`; returns 202 for a new run using the pinned input.                                                                                      |
-| `GET /{id}/runs`, `GET /{id}/runs/{runId}` | Paginated history and run details.                                                                                                                                                    |
-| `GET /{id}/runs/{runId}/operations`        | Bounded pending/succeeded/blocked descriptors and sanitized diagnostic codes.                                                                                                         |
+| Method/path                                            | Input and behavior                                                                                                                                                                               |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /`                                               | `idempotencyKey`, `provider`, `connectionId`, `externalRepositoryId`, `branch`, `manifestDirectory`, optional `pollIntervalSeconds` and `prune` (Retain by default); returns the created source. |
+| `GET /`, `GET /{id}`                                   | Configuration, generations, commit markers, current/latest run identity, sanitized latest-run diagnostics and inventory counts. Lists use bounded `page`/`pageSize`.                             |
+| `PUT /{id}`                                            | `expectedRevision`, `pollIntervalSeconds`, `prune`; repository location changes through preview only.                                                                                            |
+| `POST /{id}/sync`                                      | `expectedRevision`, `idempotencyKey`; returns 202 for a durable request to resolve the current branch.                                                                                           |
+| `POST /{id}/retry`                                     | `expectedRevision`, `idempotencyKey`, `runId`; returns 202 for a new run using the pinned input.                                                                                                 |
+| `POST /{id}/pause`, `POST /{id}/resume`                | `expectedRevision`; pause fences current execution and retains ownership; resume schedules a fresh Sync.                                                                                         |
+| `POST /{id}/previews`                                  | `intent`, `expectedRevision` and selectors; returns the server-owned action graph.                                                                                                               |
+| `GET /{id}/previews`, `GET /{id}/previews/{previewId}` | Bounded sanitized preview reads; detail paginates actions.                                                                                                                                       |
+| `POST /{id}/previews/{previewId}/confirm`              | Only `expectedRevision` of the preview; returns 202 and the same run on replay.                                                                                                                  |
+| `DELETE /{id}?expectedRevision=…`                      | Requires empty ownership and no pending work; preserves an audit/idempotency tombstone.                                                                                                          |
+| `GET /{id}/runs`, `GET /{id}/runs/{runId}`             | Paginated history and run details.                                                                                                                                                               |
+| `GET /{id}/runs/{runId}/operations`                    | Bounded pending/succeeded/blocked descriptors and sanitized diagnostic codes.                                                                                                                    |
 
 Repeated idempotency keys with identical input do not create another source/generation; changed
 input conflicts. Retry requires the latest failed/blocked run at the same configuration revision,
@@ -183,15 +190,24 @@ and expose actions and field paths without projection values. WebService Prepare
 full configuration applied; Configure verifies managed fields while preserving connection references
 and server credentials.
 
-Stage 6 implements ResourceConnection, DomainZone, HostnameBinding, SourceRepository and
-SourceBuildConfiguration. Source pause/resume, detach/delete, adoption, replacement, relocation
-and public preview/confirmation remain later lifecycle work. Prune stays `Retain`; there is no parallel ownership inventory or fabricated projection
-state. Live Kubernetes drift and runtime readiness remain the runtime reconcilers' responsibility.
-No new GitOps UI is included.
+Stage 7 implements pause/resume, guarded deletion, adoption, prune, explicit replacement/rename,
+repository relocation and terminal detach for all thirteen providers. Detach uses an inventory-only
+preview and works before any successful Git fetch. Confirmation is the sole durable entrypoint for
+reviewed intents; there is no separate detach command. Pause retains manual-write guards, while
+detach returns control after the complete inventory is released.
 
-Stage 6 verification requires solution build; affected GitOps, Secrets, PostgreSQL, Redis,
+Deletion retains ownership through asynchronous cleanup. Receipt-proven own transitions can advance
+the approved version vector; unrelated changes stop the unexecuted remainder. Replacement uses the
+owner's delete/create workflows and can lose data or cause downtime. It does not copy Secret values,
+reset adopted PostgreSQL credentials or promise distributed rollback.
+
+Stage 8 supplies console UX, complete authoring examples and final verification of the single PR.
+Live Kubernetes drift and runtime readiness remain the runtime reconcilers' responsibility.
+
+Stage 7 verification requires solution build; affected GitOps, Secrets, PostgreSQL, Redis,
 Functions, GitProviders, SourceBuilds and architecture suites; full shared Integration; frontend
-test/build/lint; and GitHub setup plus mixed repository Aspire E2E. The
+test/build/lint when frontend transports change; GitHub setup, repository/source-build/lifecycle
+Aspire E2E; and live workload, PVC/credential, ingress and network cleanup checks. The
 [E2E guide](../../../docs/aspire-e2e-testing.md#gitops-repository-scenarios) separates the mixed
 configuration scenario from the real SDK Function activation/Secret rollout test. These describe
 verification boundaries, not a record that pending runs passed. The complete unfiltered publication

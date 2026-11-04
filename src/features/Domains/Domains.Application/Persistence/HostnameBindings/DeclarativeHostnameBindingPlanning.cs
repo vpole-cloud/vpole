@@ -98,11 +98,16 @@ internal sealed partial class DeclarativeHostnameBindingProvider
     [
         new($"DomainZone/{context.Zone.Id}", context.Zone.Revision),
         new($"DomainZone/{context.Zone.Id}/ReferenceFence", context.Zone.ReferenceFence),
-        new($"DeploymentTarget/{context.Zone.DeploymentTargetId}", context.Target.TargetRevision),
-        new($"DeploymentTarget/{context.Zone.DeploymentTargetId}/WorkloadConfiguration",
-            context.Target.PublicIngress.WorkloadConfigurationRevision),
+        .. TargetVersions(context.Target),
         .. context.Workload.DocumentVersions.Select(item =>
             new DeclarationDocumentVersion(item.DocumentId, item.Version))
+    ];
+
+    private static DeclarationDocumentVersion[] TargetVersions(DomainReservationTargetPlanningSnapshot target) =>
+    [
+        new($"DeploymentTarget/{target.PublicIngress.DeploymentTargetId}", target.TargetRevision),
+        new($"DeploymentTarget/{target.PublicIngress.DeploymentTargetId}/WorkloadConfiguration",
+            target.PublicIngress.WorkloadConfigurationRevision)
     ];
 
     private static DeclarationProjection Project(

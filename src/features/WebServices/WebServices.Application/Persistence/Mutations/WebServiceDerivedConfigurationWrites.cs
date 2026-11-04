@@ -11,7 +11,15 @@ internal sealed record WebServiceHostnameAttachmentWrite(
     WebService Current,
     WebService Replacement,
     WebServiceUpdatedEvent Event,
-    string BindingId);
+    WebServiceHostnameAuthorization Authorization);
+
+internal closed record WebServiceHostnameAuthorization;
+
+internal sealed record AttachedWebServiceHostnameBinding(string BindingId) : WebServiceHostnameAuthorization;
+
+internal sealed record RemovedWebServiceHostnameBinding(
+    string BindingId,
+    HostnameAttachmentSnapshot Previous) : WebServiceHostnameAuthorization;
 
 internal delegate Task<PersistWebServiceUpdateResult> PersistWebServiceHostnameAttachment(
     WebServiceHostnameAttachmentWrite request,
@@ -45,14 +53,35 @@ internal sealed partial class MongoPersistUpdatedWebService
             next.Revision != current.Revision + 1 || next.ActiveRevision != current.ActiveRevision + 1)
             return Denied(current);
 
-        var binding = await loadHostnameBinding(new(current.TenantId, request.BindingId), session, cancellationToken);
-        if (binding is null || binding.Binding.Kind != HostnameBindingKinds.Custom ||
-            binding.Binding.ResourceId != current.Id ||
-            binding.Binding.ResourceType != Common.WebServiceResourceDeployment.ResourceType.Value)
+        var authorized = request.Authorization switch
+        {
+            AttachedWebServiceHostnameBinding attached => await IsAttachedAsync(attached.BindingId),
+            RemovedWebServiceHostnameBinding removed => await IsRemovedAsync(removed)
+        };
+        if (!authorized)
             return Denied(current);
 
         return await WriteAuthorizedAsync(new(current, next, request.Event,
             PreviousSecretReferenceRetention.KeepUntilRolloutConfirmed), session, cancellationToken);
+
+        async Task<bool> IsAttachedAsync(string bindingId)
+        {
+            var binding = await loadHostnameBinding(new(current.TenantId, bindingId), session, cancellationToken);
+            return binding is not null && binding.Binding.Kind == HostnameBindingKinds.Custom &&
+                binding.Binding.ResourceId == current.Id &&
+                binding.Binding.ResourceType == Common.WebServiceResourceDeployment.ResourceType.Value;
+        }
+
+        async Task<bool> IsRemovedAsync(RemovedWebServiceHostnameBinding removed)
+        {
+            var previous = removed.Previous;
+            return previous.TenantId == current.TenantId && previous.ResourceId == current.Id &&
+                previous.ResourceType == Common.WebServiceResourceDeployment.ResourceType &&
+                previous.CurrentHostnames.Contains(previous.Hostname, StringComparer.Ordinal) &&
+                previous.DocumentVersions.Any(item => item.DocumentId == $"WebService/{current.Id}" &&
+                    item.Version == current.Revision) &&
+                await loadHostnameBinding(new(current.TenantId, removed.BindingId), session, cancellationToken) is null;
+        }
     }
 
     public async Task<PersistWebServiceUpdateResult> PersistArtifactAsync(

@@ -41,7 +41,7 @@ public sealed class GitOpsBsonSerializationTests
             "desired",
             null,
             false,
-            1));
+            1, null));
         RoundTrip(new GitAcceptedReference("reference",
             new("tenant", "source"),
             "consumer",

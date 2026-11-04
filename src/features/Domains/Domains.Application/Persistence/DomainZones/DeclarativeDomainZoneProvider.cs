@@ -29,7 +29,10 @@ internal sealed partial class DeclarativeDomainZoneProvider(
     ResolveDomainReservationTargetPlanningSnapshot readTarget,
     FenceDomainReservationTargetPlanningSnapshot fenceTarget,
     CreateManagedDomainZoneReservation createZone,
-    FenceDomainZone fenceZone) : ITransactionalDeclarativeResourceProvider, IDeclarativeReferencePreparation
+    FenceDomainZone fenceZone,
+    MongoDeleteManagedDomainZone deletion) : ITransactionalDeclarativeResourceProvider,
+        IDeclarativeReferencePreparation,
+        IDeclarativeResourceLifecycleProvider, IDeclarativeAdoptionPreviewProvider, IDeclarativePreviewReferenceProvider
 {
     private readonly IMongoCollection<TenantDomainZone> zones =
         database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);

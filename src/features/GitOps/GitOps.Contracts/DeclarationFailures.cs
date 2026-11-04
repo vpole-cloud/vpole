@@ -9,7 +9,11 @@ public static class DeclarationFailureDiagnostics
 {
     // Diagnostic codes are produced only at the persistence/transport boundary. Execution branches
     // on the typed reason, never on a diagnostic string.
-    public static string? Code(IDeclarationFailure? failure, IDeclarativeResourceProvider provider) => failure switch
+    public static string? Code(IDeclarationFailure? failure, IDeclarativeResourceProvider provider) =>
+        failure is null ? null : CommonCode(failure) ?? provider.DescribeFailure(failure);
+
+    // Cross-resource preflight has no single resource provider. Unknown owner failures remain unmapped.
+    public static string? CommonCode(IDeclarationFailure? failure) => failure switch
     {
         null => null,
         DeclarationDependencyBlocked => nameof(DeclarationDependencyBlocked),
@@ -21,8 +25,15 @@ public static class DeclarationFailureDiagnostics
         DeclarationIdentityChanged => nameof(DeclarationIdentityChanged),
         DeclarationPlanningUnsupported => nameof(DeclarationPlanningUnsupported),
         DeclarationReferenceUnavailable => nameof(DeclarationReferenceUnavailable),
+        GitLifecycleNoChanges => nameof(GitLifecycleNoChanges),
+        GitLifecycleRetainPolicyRequired => nameof(GitLifecycleRetainPolicyRequired),
+        GitLifecycleUnsupported => nameof(GitLifecycleUnsupported),
+        GitLifecycleResourceProtected => nameof(GitLifecycleResourceProtected),
+        GitLifecycleDependencyCycle => nameof(GitLifecycleDependencyCycle),
+        GitLifecycleDependencyRetained => nameof(GitLifecycleDependencyRetained),
+        GitLifecycleApprovalStale => nameof(GitLifecycleApprovalStale),
         StaleGitExecution => "StaleExecution",
         GitDeclarationOwnershipConflict => "OwnershipConflict",
-        _ => provider.DescribeFailure(failure)
+        _ => null
     };
 }

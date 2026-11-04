@@ -165,41 +165,46 @@ internal sealed partial class DeclarativeFunctionProvider
     private async Task<ReadFunctionPlanningOutcome> ReadPlanningAsync(
         GitOperationInput operation, IClientSessionHandle session, CancellationToken ct)
     {
-        var declaration = FunctionDeclarationJson.Read(operation.Declaration.Spec);
-        var context = operation.Context;
-        var groupId = await git.ResolveAcceptedAsync(new(context, operation.ResourceId,
-            new("ResourceGroup", declaration.ResourceGroup)), session, ct);
+        return await ReadPlanningWithReferencesAsync(new(operation.Context.TenantId, operation.ResourceId,
+            operation.Declaration, operation.Phase, address => git.ResolveAcceptedAsync(
+                new(operation.Context, operation.ResourceId, address), session, ct)), session, ct);
+    }
+
+    private async Task<ReadFunctionPlanningOutcome> ReadPlanningWithReferencesAsync(
+        FunctionPlanningInput input,
+        IClientSessionHandle session,
+        CancellationToken ct)
+    {
+        var declaration = FunctionDeclarationJson.Read(input.Declaration.Spec);
+        var groupId = await input.Reference(new("ResourceGroup", declaration.ResourceGroup));
         if (groupId is null)
             return Blocked(FunctionDeclarationError.ResourceGroupUnavailable);
 
         var scopeId = declaration.Placement.IsolationScope is { } scopeName
-            ? await git.ResolveAcceptedAsync(
-                new(context, operation.ResourceId, new("IsolationScope", scopeName)), session, ct)
+            ? await input.Reference(new("IsolationScope", scopeName))
             : null;
         if (declaration.Placement.IsolationScope is not null && scopeId is null)
             return Blocked(FunctionDeclarationError.IsolationScopeUnavailable);
 
-        if (await loadScope(new(context.TenantId, groupId, scopeId), session, ct)
+        if (await loadScope(new(input.TenantId, groupId, scopeId), session, ct)
             is not IsolationScopePlanningSnapshot scope)
             return Blocked(FunctionDeclarationError.IsolationScopeUnavailable);
 
-        var targetId = await git.ResolveAcceptedAsync(new(context, operation.ResourceId,
-            new("DeploymentTarget", declaration.Placement.DeploymentTarget)), session, ct);
-        if (targetId is null || await loadTarget(new(context.TenantId, FunctionResourceDeployment.ResourceType,
+        var targetId = await input.Reference(new("DeploymentTarget", declaration.Placement.DeploymentTarget));
+        if (targetId is null || await loadTarget(new(input.TenantId, FunctionResourceDeployment.ResourceType,
                 scope.IsolationScopeId, targetId, DeploymentTargetRequiredCapabilities.None,
                 FunctionResourceDeployment.GatewaySourceName), session, ct)
             is not DeploymentTargetPlanningSnapshot target)
             return Blocked(FunctionDeclarationError.DeploymentTargetUnavailable);
 
-        var computeId = await git.ResolveAcceptedAsync(new(context, operation.ResourceId,
-            new("ComputeProfile", declaration.Placement.ComputeProfile.Name)), session, ct);
-        if (computeId is null || await loadCompute(new(context.TenantId, FunctionResourceDeployment.ResourceType,
+        var computeId = await input.Reference(new("ComputeProfile", declaration.Placement.ComputeProfile.Name));
+        if (computeId is null || await loadCompute(new(input.TenantId, FunctionResourceDeployment.ResourceType,
                 computeId, targetId, declaration.Placement.ComputeProfile.Revision), session, ct)
             is not ComputeProfilePlanningSnapshot compute)
             return Blocked(FunctionDeclarationError.ComputeProfileUnavailable);
 
         var root = await resources.Find(session,
-                FunctionAppFilters.ByTenantAndId(context.TenantId, operation.ResourceId))
+                FunctionAppFilters.ByTenantAndId(input.TenantId, input.ResourceId))
             .FirstOrDefaultAsync(ct);
         FunctionPlanningCurrent? current = null;
         if (root is not null)
@@ -210,7 +215,7 @@ internal sealed partial class DeclarativeFunctionProvider
 
             current = (FunctionPlanningCurrent)loaded.Value;
         }
-        else if (operation.Phase != DeclarationPhase.Prepare)
+        else if (input.Phase != DeclarationPhase.Prepare)
         {
             return Blocked(FunctionDeclarationError.PlacementUnavailable);
         }
@@ -222,20 +227,19 @@ internal sealed partial class DeclarativeFunctionProvider
 
         var references = ImmutableDictionary.CreateBuilder<string, FunctionSecretReference>();
         ConsumerSecretPlanningSnapshot? secrets = null;
-        if (operation.Phase == DeclarationPhase.Configure)
+        if (input.Phase == DeclarationPhase.Configure)
         {
             foreach (var (name, reference) in declaration.SecretEnvironment)
             {
-                var secretId = await git.ResolveAcceptedAsync(new(context, operation.ResourceId,
-                    new("Secret", reference.Secret)), session, ct);
+                var secretId = await input.Reference(new("Secret", reference.Secret));
                 if (secretId is null)
                     return Blocked(FunctionDeclarationError.SecretReferenceUnavailable);
 
                 references.Add(name, new(secretId, reference.Key));
             }
 
-            var loaded = await loadSecrets(new(context.TenantId, groupId, scope.IsolationScopeId,
-                FunctionResourceDeployment.ResourceType, operation.ResourceId, PreviousSecrets(current),
+            var loaded = await loadSecrets(new(input.TenantId, groupId, scope.IsolationScopeId,
+                FunctionResourceDeployment.ResourceType, input.ResourceId, PreviousSecrets(current),
                 references.Values.Select(reference => new ConsumerSecretKeyReference(reference.SecretId, reference.Key))
                     .ToArray(), current!.Placements.Items.Select(item => item.DeploymentId).ToArray()), session, ct);
             if (loaded is ConsumerSecretReferenceUnavailable unavailable)
@@ -310,3 +314,10 @@ internal union ReadFunctionPlanningOutcome(
 internal union ReadFunctionCurrentOutcome(
     FunctionPlanningCurrent,
     DeclarationReadBlocked);
+
+internal sealed record FunctionPlanningInput(
+    string TenantId,
+    string ResourceId,
+    CompiledDeclaration Declaration,
+    DeclarationPhase Phase,
+    Func<ResourceAddress, Task<string?>> Reference);

@@ -53,6 +53,7 @@ public static class QuotaServiceCollectionExtensions
 
         services.TryAddSingleton<QuotaCatalog>();
         services.AddQuotaPersistence();
+        services.TryAddScoped<IQuotaUsageRelease, QuotaUsageRelease>();
         services.TryAddScoped<IQuotaAdmissionExecutor, QuotaAdmissionExecutor>();
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IHostedService, QuotaCatalogStartupService>());

@@ -6,5 +6,7 @@ internal static class GitOpsCollections
 
     public const string Plans = "GitOperationPlans";
 
+    public const string CleanupProofs = "GitLifecycleCleanupProofs";
+
     public const string Receipts = "GitOperationReceipts";
 }

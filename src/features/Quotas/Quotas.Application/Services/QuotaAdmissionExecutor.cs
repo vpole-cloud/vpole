@@ -14,6 +14,7 @@ internal sealed class QuotaAdmissionExecutor(
     ReserveQuotaReservation reserveQuotaReservation,
     CommitQuotaReservation commitQuotaReservation,
     ApplyQuotaUsageDelta applyQuotaUsageDelta,
+    IQuotaUsageRelease releaseUsage,
     CancelQuotaReservation cancelQuotaReservation,
     ILogger<QuotaAdmissionExecutor> logger) : IQuotaAdmissionExecutor
 {
@@ -78,7 +79,12 @@ internal sealed class QuotaAdmissionExecutor(
                         }
                     }
 
-                    if (!negativeDelta.IsEmpty)
+                    if (request.Mutation is DeleteQuotaMutation<TSpec> delete)
+                    {
+                        await releaseUsage.ReleaseAsync(new ReleaseQuotaUsageRequest<TSpec>(request.TenantId,
+                            delete.Spec), transaction.Session, transactionCancellationToken);
+                    }
+                    else if (!negativeDelta.IsEmpty)
                     {
                         await applyQuotaUsageDelta(
                             request.TenantId,

@@ -1,9 +1,11 @@
 using MongoDB.Driver;
 using Pole.Features.GitOps.Contracts;
+using Pole.Features.GitOps.Primitives;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.ResourceConnections.Domain;
+using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceConnections.Events;
 
 namespace Pole.Features.ResourceConnections.Application.Persistence;
@@ -19,6 +21,12 @@ public union DeleteResourceConnectionPersistenceOutcome(
     ResourceConnectionGitOwned);
 
 public sealed record ResourceConnectionMissing(string Id);
+
+public sealed record BeginResourceConnectionDeletionRequest(
+    string TenantId,
+    string ConnectionId,
+    ResourceConnectionPlanningVersion? Expected = null,
+    GitLifecycleAuthority? Lifecycle = null);
 
 public delegate Task<DeleteResourceConnectionPersistenceOutcome> BeginResourceConnectionDeletion(
     string tenantId,
@@ -38,42 +46,50 @@ internal sealed class MongoBeginResourceConnectionDeletion(
         CancellationToken cancellationToken = default) =>
         transactions(async (transaction, ct) =>
         {
-            var current = await connections.Find(
-                    transaction.Session,
-                    ResourceConnectionFilters.ByTenantAndId(tenantId, connectionId))
-                .FirstOrDefaultAsync(ct);
-            if (current is null)
-                return transaction.Abort(new DeleteResourceConnectionPersistenceOutcome(
-                    new ResourceConnectionMissing(connectionId)));
-            if (!await git.AuthorizeAsync(new(tenantId, "ResourceConnection", connectionId), transaction.Session, ct))
-                return transaction.Abort(new DeleteResourceConnectionPersistenceOutcome(
-                    new ResourceConnectionGitOwned(connectionId)));
-
-            if (current.Lifecycle is DeletingResourceConnection)
-                return transaction.Commit(new DeleteResourceConnectionPersistenceOutcome(current));
-
-            var deleting = current.BeginDeletion(timeProvider.GetUtcNow().UtcDateTime);
-            var replaced = await connections.ReplaceOneAsync(
-                transaction.Session,
-                ResourceConnectionFilters.AtRevision(
-                    tenantId,
-                    connectionId,
-                    current.Revision),
-                deleting,
-                cancellationToken: ct);
-            if (replaced.ModifiedCount != 1)
-                return transaction.Abort(new DeleteResourceConnectionPersistenceOutcome(
-                    new ResourceConnectionDeletionConflict(connectionId)));
-
-            await storeOutboxWrites(
-                transaction.Session,
-                [OutboxWrite.Create(new ResourceConnectionDeletionRequestedEvent(
-                    connectionId,
-                    deleting.Generation)
-                {
-                    EventCore = EventCore.Create(tenantId)
-                })],
-                ct);
-            return transaction.Commit(new DeleteResourceConnectionPersistenceOutcome(deleting));
+            var outcome = await ExecuteAsync(new(tenantId, connectionId), transaction.Session, ct);
+            return outcome is ResourceConnection
+                ? transaction.Commit(outcome)
+                : transaction.Abort(outcome);
         }, cancellationToken);
+
+    internal async Task<DeleteResourceConnectionPersistenceOutcome> ExecuteAsync(
+        BeginResourceConnectionDeletionRequest request,
+        IClientSessionHandle session,
+        CancellationToken ct)
+    {
+        if (!session.IsInTransaction)
+            throw new InvalidOperationException("Connection deletion requires a caller-owned transaction.");
+
+        var current = await connections.Find(session,
+                ResourceConnectionFilters.ByTenantAndId(request.TenantId, request.ConnectionId))
+            .FirstOrDefaultAsync(ct);
+        if (current is null)
+            return new ResourceConnectionMissing(request.ConnectionId);
+
+        if (request.Expected is { } expected && (expected.ConnectionId != current.Id ||
+                expected.Revision != current.Revision || expected.ReferenceFence != current.ReferenceFence))
+            return new ResourceConnectionDeletionConflict(request.ConnectionId);
+
+        if (!await git.AuthorizeAsync(new(request.TenantId, "ResourceConnection", request.ConnectionId,
+                Lifecycle: request.Lifecycle, LifecycleEffect: GitLifecycleMutationEffect.Remove), session, ct))
+            return new ResourceConnectionGitOwned(request.ConnectionId);
+
+        if (current.Lifecycle is DeletingResourceConnection)
+            return current;
+
+        var deleting = current.BeginDeletion(timeProvider.GetUtcNow().UtcDateTime);
+        var replaced = await connections.ReplaceOneAsync(session,
+            ResourceConnectionFilters.AtPlanningVersion(request.TenantId,
+                new(current.Id, current.Revision, current.ReferenceFence)), deleting,
+            cancellationToken: ct);
+        if (replaced.ModifiedCount != 1)
+            return new ResourceConnectionDeletionConflict(request.ConnectionId);
+
+        await storeOutboxWrites(session,
+            [OutboxWrite.Create(new ResourceConnectionDeletionRequestedEvent(current.Id, deleting.Generation)
+            {
+                EventCore = EventCore.Create(request.TenantId)
+            })], ct);
+        return deleting;
+    }
 }

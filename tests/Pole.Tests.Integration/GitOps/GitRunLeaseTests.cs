@@ -234,7 +234,7 @@ public sealed class GitRunLeaseTests(MongoReplicaSetFixture fixture) : MediatorI
             "wrong-hash",
             null,
             false,
-            1);
+            1, null);
         await receipts.InsertOneAsync(receipt);
         Assert.False(await Store.CompleteAsync(claim.Handle, GitRunCompletion.ConfigurationApplied, [], default));
         await receipts.ReplaceOneAsync(item => item.Id == receipt.Id, receipt with { DesiredHash = "hash" });

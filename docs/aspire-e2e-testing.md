@@ -43,7 +43,7 @@ The suite covers:
 
 ## GitOps repository scenarios
 
-The GitHub stub serves deterministic source archives and two isolated YAML-only repositories.
+The GitHub stub serves deterministic source archives and three isolated YAML-only repositories.
 Repository `9002` exercises create/apply, signed push dispatch, polling after a missed push, controlled
 managed-field drift in the disposable Mongo database, same-SHA poll repair, verified Sync no-op and
 branch deletion without inventory removal. Repository `9003` (`pole-e2e/gitops-mixed`) has independent
@@ -70,6 +70,13 @@ attachment through the Mongo fixture and checks a `HostnameBinding` update resto
 Sync reports nineteen no-op operations, preserves business revisions and the delivered digest, and
 creates no additional build job. Native ingress-rule assertions do not prove routed HTTP, public
 DNS or TLS. Separate routing checks must supply that evidence.
+
+Repository `9004` isolates the lifecycle API journey from active mixed-repository polling. It uses
+two sources, explicit manual adoption, pause/resume guards, protected prune with stale confirmation,
+explicit rename, repository-directory relocation and terminal detach that restores manual control.
+The mixed thirteen-kind scenario also confirms an empty snapshot and waits for owner finalization,
+then verifies native namespace/PVC, credential, ingress and network cleanup. Assertions inspect only
+the fixture-owned isolated resources and do not claim public DNS/TLS verification.
 
 The mixed lane checks configuration applied; it does not require Function runtime activation before
 evaluating configuration drift. The no-op check includes Function revision stability.

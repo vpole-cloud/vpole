@@ -3,7 +3,7 @@
 This is the canonical contract for the single #88/#98 delivery. Repository acquisition, the source
 API, durable execution, polling, push webhooks and managed drift reconciliation are implemented.
 All thirteen resource providers are registered, including stage-6 connectivity, domains and source
-delivery. Public lifecycle commands belong to stage 7. Manual snapshot entrypoints are removed.
+delivery. Stage 7 implements public lifecycle commands with server-owned previews and explicit confirmation. Manual snapshot entrypoints are removed.
 The verification section describes required evidence separately from implementation scope.
 
 ## Ownership and module boundaries
@@ -34,7 +34,7 @@ A push during a run schedules a later pass. Runtime readiness is separate from c
 Pause retains ownership and manual-write guards. Detach fences in-flight work, retains resources
 and returns manual control. Delete source requires zero owned resources, including pending removal;
 otherwise it returns DetachRequired. Neither pause nor delete implicitly deletes workloads.
-Prune defaults to Retain in the source factory. Actual lifecycle commands arrive in stage 7.
+Prune defaults to Retain in the source factory. The reviewed lifecycle below defines explicit deletion authority.
 
 ## Snapshot and planning boundaries
 
@@ -82,11 +82,11 @@ lifecycle decisions of stage 7; they never imply silent adoption or replacement.
 | RedisService / RedisServices             | Implemented: tags, pinned compute; storage size/profile and placement on creation                                                                | Group/scope/target and storage profile/revision/size immutable                                                                       | Runtime, timestamps; Prepare → Configure                                                                                  |
 | PostgresCluster / Postgres               | Implemented: version, instances, storage size, username/bootstrap reference, pinned compute/storage, placement                                   | Version, username, bootstrap identity, group/scope/target and storage profile/revision immutable; capacity updates retain mode rules | Credentials, runtime, timestamps; Prepare → Configure with separate Bootstrap binding                                     |
 | FunctionApp / Functions                  | Implemented: functionRoute, image, environment, logical secrets, resources, scaling, handlers/triggers, tags, pinned compute, explicit placement | Route/group/scope/target immutable; runtime Secret grants required                                                                   | Protocol/runtime data, invocations, generated trigger IDs and schedule versions; Prepare → Configure                      |
-| ResourceConnection / ResourceConnections | Implemented: named source, destination, endpoint | Accepted endpoint IDs and target compatibility; identities immutable | Runtime network observations, credentials; Bind after source Prepare and destination Configure |
-| DomainZone / Domains | Implemented: technical name, target, DNS label | Target and label immutable; current managed target reservation policy | Computed DNS name and generated zones; Prepare |
-| HostnameBinding / Domains | Implemented: technical name, zone, workload, target, relative name; attachment repair | Accepted zone and Public WebService IDs; address/attachment immutable; cross-source references preserve ownership | Generated identities and runtime ingress observations; Bind after zone Prepare/workload Configure |
-| SourceRepository / GitProviders | Implemented: technical name, connection, repository ID, branch | Accepted connection ID; location immutable; no mandatory analyzer | Display URL/privacy metadata, candidates and credentials; Prepare |
-| SourceBuildConfiguration / SourceBuilds | Implemented: technical name, repository, WebService, inline Dockerfile | Accepted repository/target IDs immutable; recipe revisions; explicit image authority | Jobs, application commits, artifacts, logs and credentials; Configure after repository/WebService Prepare |
+| ResourceConnection / ResourceConnections | Implemented: named source, destination, endpoint                                                                                                 | Accepted endpoint IDs and target compatibility; identities immutable                                                                 | Runtime network observations, credentials; Bind after source Prepare and destination Configure                            |
+| DomainZone / Domains                     | Implemented: technical name, target, DNS label                                                                                                   | Target and label immutable; current managed target reservation policy                                                                | Computed DNS name and generated zones; Prepare                                                                            |
+| HostnameBinding / Domains                | Implemented: technical name, zone, workload, target, relative name; attachment repair                                                            | Accepted zone and Public WebService IDs; address/attachment immutable; cross-source references preserve ownership                    | Generated identities and runtime ingress observations; Bind after zone Prepare/workload Configure                         |
+| SourceRepository / GitProviders          | Implemented: technical name, connection, repository ID, branch                                                                                   | Accepted connection ID; location immutable; no mandatory analyzer                                                                    | Display URL/privacy metadata, candidates and credentials; Prepare                                                         |
+| SourceBuildConfiguration / SourceBuilds  | Implemented: technical name, repository, WebService, inline Dockerfile                                                                           | Accepted repository/target IDs immutable; recipe revisions; explicit image authority                                                 | Jobs, application commits, artifacts, logs and credentials; Configure after repository/WebService Prepare                 |
 
 Schemas and phase evidence live with their owners: `DeclarativeResourceGroupProvider`,
 `DeclarativeIsolationScopeProvider`, `DeclarativeSecretProvider`, `DeclarativeSecretBindingProvider`,
@@ -94,28 +94,29 @@ Schemas and phase evidence live with their owners: `DeclarativeResourceGroupProv
 `FunctionDeclaration.cs`. Later-provider API evidence remains in the Domains, ResourceConnections,
 GitProviders and SourceBuilds endpoints. Build output cannot mutate Git-owned desired image configuration.
 
-## Target source API
+## Source API
 
 All routes are under the existing authenticated tenant-context `/api/v1/gitops/sources` root.
 Use normal tenant read/write authorization; input cannot elevate authority. Repository permissions
 are checked through the provider. Optimistic conflicts use typed outcomes mapped to HTTP 409.
 
-| Operation         | Target route / inputs                                                                            | Result                                                          |
-| ----------------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- |
-| Create            | POST root; idempotency key, connection/repository IDs, branch, directory, sync/prune policy      | Source identity and revision; no YAML files                     |
-| List / detail     | GET root / `{id}`                                                                                | Configuration, sync progress, blockers, inventory summary       |
-| Edit              | PUT `{id}`; expected revision, configuration; relocation additionally requires confirmed preview | Updated revision or stale/conflicting preview                   |
-| Sync / retry      | POST `{id}/sync` / `{id}/retry`; expected revision                                               | Durable requested generation, not synchronous apply success     |
-| Pause / resume    | POST `{id}/pause` / `{id}/resume`; expected revision                                             | Revised activity state; pause fences in-flight work             |
-| Preview           | POST `{id}/previews`; intended adoption/removal/replacement/relocation/detach                    | Server-owned reviewed operation set and preconditions           |
-| Confirm           | POST `{id}/previews/{previewId}/confirm`; expected preview revision                              | Confirmation of that exact preview, not client-selected actions |
-| Detach            | POST `{id}/detach`; expected revision and confirmation reference                                 | Retained resources returned to manual control                   |
-| Delete            | DELETE `{id}`; expected revision                                                                 | Deleted only after ownership is empty                           |
-| Runs / operations | GET `{id}/runs`, `{id}/runs/{runId}`, `{id}/runs/{runId}/operations`                             | Tenant-scoped progress and sanitized results                    |
+| Operation         | Target route / inputs                                                                       | Result                                                          |
+| ----------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| Create            | POST root; idempotency key, connection/repository IDs, branch, directory, sync/prune policy | Source identity and revision; no YAML files                     |
+| List / detail     | GET root / `{id}`                                                                           | Configuration, sync progress, blockers, inventory summary       |
+| Edit              | PUT `{id}`; expected revision, polling/prune policy; location changes require a preview     | Updated revision or stale/conflicting preview                   |
+| Sync / retry      | POST `{id}/sync` / `{id}/retry`; expected revision                                          | Durable requested generation, not synchronous apply success     |
+| Pause / resume    | POST `{id}/pause` / `{id}/resume`; expected revision                                        | Revised activity state; pause fences in-flight work             |
+| Preview           | POST `{id}/previews`; intended adoption/removal/replacement/relocation/detach               | Server-owned reviewed operation set and preconditions           |
+| Confirm           | POST `{id}/previews/{previewId}/confirm`; expected preview revision                         | Confirmation of that exact preview, not client-selected actions |
+| Detach / relocate | POST `{id}/previews`, then the same preview confirmation route                              | Inventory-only detach or immutable repository relocation plan   |
+| Delete            | DELETE `{id}`; expected revision                                                            | Deleted only after ownership is empty                           |
+| Runs / operations | GET `{id}/runs`, `{id}/runs/{runId}`, `{id}/runs/{runId}/operations`                        | Tenant-scoped progress and sanitized results                    |
 
-Stage 3 exposes create/list/detail/polling-policy update/sync/retry and run/operation reads.
-Lifecycle routes in this table remain target contracts for later stages. Manual snapshot entrypoints
-are removed; no public YAML apply API or compatibility API is exposed.
+Preview list/detail use GET `{id}/previews` and `{id}/previews/{previewId}` with bounded
+`page`/`pageSize`; detail paginates actions. All confirmed intents share the confirm route. There is
+no separate detach execution endpoint. Manual snapshot entrypoints are removed; no public YAML
+apply API or compatibility API is exposed.
 
 ## Preview and confirmation
 
@@ -499,13 +500,13 @@ The following schemas complete the thirteen-kind contract. Their implementation 
 as Stage 6; lifecycle commands remain Stage 7. All declarations retain tenant-local technical
 identity and accepted reference IDs. Missing previously created resources are blockers, not creates.
 
-| Kind | Managed fields | Phase and dependencies | Mutation policy |
-| --- | --- | --- | --- |
-| ResourceConnection | source `{kind,name}`, destination `{kind,name}`, endpoint | Bind after source Prepare and destination endpoint configuration | Create/no-op; identity changes blocked |
-| DomainZone | deploymentTarget, label | Prepare after target admission | Create/no-op; target/label immutable |
-| HostnameBinding | zone, resource `{kind: WebService,name}`, deploymentTarget, relativeName | Bind after Public WebService Configure and zone Prepare | Create/no-op; repair desired ingress attachment |
-| SourceRepository | connection, repositoryId, branch | Prepare after current repository/ref admission | Create/no-op; location immutable |
-| SourceBuildConfiguration | repository, webService, recipe `{dockerfile}` | Configure after repository and WebService Prepare | Editable Dockerfile; associations immutable |
+| Kind                     | Managed fields                                                           | Phase and dependencies                                           | Mutation policy                                 |
+| ------------------------ | ------------------------------------------------------------------------ | ---------------------------------------------------------------- | ----------------------------------------------- |
+| ResourceConnection       | source `{kind,name}`, destination `{kind,name}`, endpoint                | Bind after source Prepare and destination endpoint configuration | Create/no-op; identity changes blocked          |
+| DomainZone               | deploymentTarget, label                                                  | Prepare after target admission                                   | Create/no-op; target/label immutable            |
+| HostnameBinding          | zone, resource `{kind: WebService,name}`, deploymentTarget, relativeName | Bind after Public WebService Configure and zone Prepare          | Create/no-op; repair desired ingress attachment |
+| SourceRepository         | connection, repositoryId, branch                                         | Prepare after current repository/ref admission                   | Create/no-op; location immutable                |
+| SourceBuildConfiguration | repository, webService, recipe `{dockerfile}`                            | Configure after repository and WebService Prepare                | Editable Dockerfile; associations immutable     |
 
 ResourceConnection uses the existing provider capabilities: WebService, PostgreSQL, Redis and
 FunctionApp sources, with WebService, PostgreSQL and Redis destinations. Networking admission
@@ -544,3 +545,136 @@ Promotion requires the latest eligible build generation and unchanged configurat
 association, uses a verified digest, and preserves current non-image fields. Placement, artifact
 state, release, promotion receipt and outbox commit atomically. Failed or superseded builds keep
 the previous running artifact; replay cannot create duplicate releases.
+
+## Stage 7: reviewed lifecycle
+
+Lifecycle uses the existing source execution slot, lease, fencing and durable recovery. Pause
+retains ownership and interrupts future GitOps writes; resume requests a fresh branch synchronization.
+Previously committed runtime cleanup continues while paused. If a human-confirmed run was interrupted
+before its reviewed effects finished, the next synchronization resolves the current branch but waits
+for a fresh preview confirmation before further mutations. It never resumes cancelled approval.
+Exact terminal action and configuration receipts allow an already completed plan to pass this barrier
+when only finalization was interrupted. Policy-authorized prune history does not create human approval
+requirements. Detach retains resources, works without
+repository access or a first accepted snapshot, and ends in terminal Detached. Source deletion
+requires empty ownership and no pending execution; a tombstone preserves audit and idempotency.
+
+Preview intents cover adoption, removal, explicit replacement/rename, repository relocation and
+complete-source detach. Repository-backed previews bind an immutable complete compiled snapshot;
+detach uses a typed inventory-only input. The server stores action identities, dependency ordering,
+source/configuration and inventory revisions, resource versions, ownership and accepted references.
+Only the server preview identity/revision is submitted for confirmation. Changed preconditions
+invalidate approval; receipt-proven transitions of that same plan are the only allowed advancement.
+
+Workload lifecycle owners provide explicit managed-configuration version vectors: business versions,
+placement desired generation/resource revision and canonical configuration hashes. Runtime apply
+observations and technical observation fences do not change that configuration authority. The engine
+retains managed projection checks and complete dependency sets without merging ordinary runtime
+revision tokens back into destructive or metadata-only lifecycle actions. Normal Apply and adoption
+keep their ordinary planning preconditions. Provider mutations still use fresh conditional writes
+and transactional fences; actual configuration, reference, ownership or source changes invalidate
+the remaining plan. Deleting workloads retain their exact deletion-intent checks.
+
+Prune defaults to Retain. PostgreSQL, Redis and Secret deletion always requires confirmation.
+A valid empty desired set and simultaneous create/removal of a kind also require confirmation.
+Rename is an explicit old-resource/new-address selection, never inferred. The reviewed replacement
+closure may change same-source dependents, but manual or foreign ownership blocks it.
+Replacement uses normal delete then create workflows; it may lose data and does not migrate it.
+Preview reports provider retention, identity loss and downtime. Owners contribute read-only
+consequence codes: Redis deletes PVCs through StatefulSet `WhenDeleted=Delete`; PostgreSQL StatefulSet
+explicitly removes its data claim, while Operator delegates cleanup to CNPG policy. Actual volume data
+retention also depends on the storage class reclaim policy. Secret removal deletes stored versions; replacement
+requires new Secret values and PostgreSQL bootstrap. These warnings describe current owner workflows
+and do not change storage policies. Secret values and credentials are never copied into plans or
+returned by the API. Existing PostgreSQL adoption never reboots credentials.
+
+Owner workflows join the GitOps transaction and authorize only concrete reviewed actions. A delete
+request is not finalization: ownership remains until the owning feature proves cleanup complete.
+Cascades cannot remove user resources outside the reviewed set. Generated registered children such
+as PostgreSQL credentials resolve to their concrete workload owner through an optional owner
+capability; they do not become independent declarations or acquire separate Git inventory. Each
+original registration keeps its own version vector and metadata fence, including when several rows
+map to one owner. Credential and owner unregister operations record separate, contiguous cleanup
+proofs against the owner's exact removal receipt. Missing, foreign or protected ownership blocks
+the plan. No generic engine kind switches, public YAML apply endpoint, compatibility reader or
+distributed rollback is introduced.
+
+Explicit lifecycle execution is admitted through POST `{id}/previews/{previewId}/confirm`.
+After a complete accepted snapshot, Prune policy may authorize only a concrete, unprotected
+Apply/Remove plan in the current run. This records policy authority and configuration revision;
+it never impersonates a user or resolves a different branch head. Empty desired sets, protected
+or missing-created removals, ambiguous create/removal, adoption and replacement wait for a stored
+server preview to be confirmed before any configuration mutation. Incomplete plans block the run.
+Relocation under Retain records metadata-only Retain receipts and keeps pending ownership;
+explicit confirmed removal remains available regardless of the default retention policy.
+Run and operation reads expose preview ID, authorization type, action/replacement identities and
+pending cleanup/confirmation counts. Lifecycle actions have no invented configuration phase.
+Pause/resume and guarded source DELETE remain separate commands. Preview reads are bounded and
+sanitized; the console lifecycle experience belongs to stage 8 of the same PR.
+
+### Preview request examples
+
+An adoption selects exact existing IDs, without ownership transfer of children:
+
+```json
+{
+  "intent": "Adoption",
+  "expectedRevision": 3,
+  "resources": [
+    {
+      "kind": "ResourceGroup",
+      "name": "team",
+      "resourceId": "0123456789abcdef01234567"
+    }
+  ]
+}
+```
+
+An explicit rename maps one original identity to one desired address. The server allocates replacement
+IDs and includes any necessary same-source dependency changes; the client does not author that graph.
+
+```json
+{
+  "intent": "Replacement",
+  "expectedRevision": 3,
+  "replacements": [
+    {
+      "original": {
+        "kind": "ResourceGroup",
+        "name": "old",
+        "resourceId": "0123456789abcdef01234567"
+      },
+      "desired": { "kind": "ResourceGroup", "name": "new" }
+    }
+  ]
+}
+```
+
+`ResourceChanges` discovers adoption/removal/replacement needs from the complete repository snapshot.
+Its optional `removal` field is the string `Remove` (the explicit request default) or `Retain`.
+`Retain` treats omitted declarations and new declarations as independent actions: keep the old IDs
+and ownership marked pending removal, and apply the new declarations without inferring a rename.
+It preserves the complete observed resource preconditions and still requires confirmation when
+create/removal addresses share a kind. When confirmation is needed, automatic reconciliation under
+Retain builds this same Retain/Apply preview; it never gains Prune policy authority. A later poll under Retain keeps those
+pending resources.
+
+```json
+{ "intent": "ResourceChanges", "expectedRevision": 3, "removal": "Retain" }
+```
+
+Explicit `Retain` requires the source prune policy to be Retain. Otherwise the API returns
+`409 gitops.retain-policy-required` before reading the repository or storing a preview. Change the
+source policy through the normal expected-revision update, then request a fresh preview; the
+revision/fence change invalidates earlier approvals. A confirmed explicit `Remove` remains allowed
+under Retain and does not change the source policy. Confirmation never accepts a removal override.
+
+`Removal` selects exact resources absent from that snapshot. `Relocation` includes a `destination`
+with provider, connectionId, externalRepositoryId, branch and manifestDirectory. `Detach` needs only
+intent and expectedRevision and never reads the repository. Preview inputs reject unknown fields.
+Confirmation sends `{"expectedRevision":1}` to the preview's confirm URL; it cannot override actions.
+
+A confirmed run stores claim, removal request, cleanup wait, release and configuration receipts.
+Cleanup proof records exact owner-fence transitions in the same transaction as finalization. Only
+contiguous transitions belonging to this plan may advance its approved observations; an external
+version change remains stale. This preserves crash recovery without widening approval.

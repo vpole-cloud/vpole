@@ -95,3 +95,32 @@ public interface IHostnameBindingWorkloadCapability
         IClientSessionHandle session,
         CancellationToken cancellationToken);
 }
+
+public sealed record RemoveHostnameAttachmentRequest(
+    HostnameAttachmentSnapshot Snapshot,
+    string BindingId,
+    HostnameAttachmentProvenance Provenance);
+
+public sealed record HostnameAttachmentOwnerGone;
+
+public sealed record HostnameAttachmentOwnerDeleting;
+
+public union ReadHostnameAttachmentRemovalOutcome(
+    HostnameAttachmentSnapshot,
+    HostnameAttachmentOwnerGone,
+    HostnameAttachmentOwnerDeleting,
+    HostnameAttachmentUnavailable,
+    HostnameAttachmentPlacementUnavailable);
+
+public interface IHostnameBindingRemovalCapability : IHostnameBindingWorkloadCapability
+{
+    Task<ReadHostnameAttachmentRemovalOutcome> ReadRemovalAsync(
+        ReadHostnameAttachmentRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken);
+
+    Task<ApplyHostnameAttachmentOutcome> RemoveAsync(
+        RemoveHostnameAttachmentRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken);
+}

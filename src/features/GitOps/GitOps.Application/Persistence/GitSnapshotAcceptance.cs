@@ -4,32 +4,44 @@ using System.Text.Json;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Domain;
+using Pole.Features.GitOps.Contracts;
 
 namespace Pole.Features.GitOps.Application.Persistence;
+
+public sealed record GitSnapshotCandidate(
+    string TenantId,
+    string Commit,
+    CompiledSnapshot Compiled,
+    IReadOnlyDictionary<ResourceAddress, string> ResourceIds);
 
 public sealed class GitSnapshotAcceptance(IMongoCollection<ManagedDeclaration> inventory)
 {
     public async Task<GitAcceptedSnapshot> BuildAsync(
         GitWorkClaim claim,
         CompiledSnapshot compiled,
-        CancellationToken ct)
+        CancellationToken ct) => await BuildAsync(new(claim.Source.TenantId,
+        claim.Run.Commit ?? throw new InvalidOperationException("Snapshot acceptance requires a pinned commit."),
+        compiled, new Dictionary<ResourceAddress, string>()), ct);
+
+    public async Task<GitAcceptedSnapshot> BuildAsync(GitSnapshotCandidate candidate, CancellationToken ct)
     {
+        var compiled = candidate.Compiled;
+        var commit = candidate.Commit;
         if (!compiled.Valid || !DeclarationPlan.TryOrder(compiled.Declarations, out var plan))
             throw new InvalidOperationException("Only a complete validated operation graph may be accepted.");
-        if (claim.Run.Commit is not { } commit)
-            throw new InvalidOperationException("Snapshot acceptance requires the persisted immutable commit.");
 
         var resources = new List<AcceptedDeclaration>();
         foreach (var declaration in compiled.Declarations)
         {
             var current = await inventory.Find(ManagedDeclarationFilters.Address(
-                claim.Source.TenantId,
+                candidate.TenantId,
                 declaration.Address)).FirstOrDefaultAsync(ct);
             resources.Add(new(declaration.Address.Kind,
                 declaration.Address.Name,
                 declaration.Hash,
                 declaration.Spec.GetRawText(),
-                current?.ResourceId ?? ObjectId.GenerateNewId().ToString()));
+                candidate.ResourceIds.TryGetValue(declaration.Address, out var selected)
+                    ? selected : current?.ResourceId ?? ObjectId.GenerateNewId().ToString()));
         }
 
         var byAddress = resources.ToDictionary(item => (item.Kind, item.Name));

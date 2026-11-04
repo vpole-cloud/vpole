@@ -88,7 +88,7 @@ public sealed partial class DeclarativePipelineTests
         Assert.Equal(events, await BusinessEvents());
         var view = await queries.RunAsync(TestData.TenantId, source, stable.Context!.RunId, default);
         Assert.Equal(RepositoryRunStatus.AlreadyCurrent, view!.Status);
-        Assert.Equal(new RepositoryOperationSummary(0, 0, 5, 0, 0), view.Operations);
+        Assert.Equal(new RepositoryOperationSummary(0, 0, 5, 0, 0, null), view.Operations);
     }
 
     [Fact]

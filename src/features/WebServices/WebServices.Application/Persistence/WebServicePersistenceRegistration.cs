@@ -50,6 +50,7 @@ public static class WebServicePersistenceRegistration
             x.PersistArtifactAsync);
         services.AddCapability<MongoPersistCurrentWebServiceRelease, PersistCurrentWebServiceRelease>(x => x.InvokeAsync);
         services.AddCapability<MongoBeginWebServiceDeletion, BeginWebServiceDeletionOutcome>(x => x.InvokeOutcomeAsync);
+        services.AddCapability<WebServiceDeletionWorkflow, ApplyWebServiceDeletion>(x => x.ExecuteAsync);
         services.AddCapability<MongoFinalizeWebServiceDeletion, FinalizeWebServiceDeletion>(x => x.InvokeAsync);
         services.AddCapability<MongoCompleteWebServiceDeployment, CompleteWebServiceDeployment>(x => x.InvokeAsync);
         services.AddCapability<MongoLoadWebServiceDeploymentTokenByHash, LoadWebServiceDeploymentTokenByHash>(x => x.InvokeAsync);
@@ -57,7 +58,17 @@ public static class WebServicePersistenceRegistration
         services.AddCapability<MongoLoadWebServiceDeploymentTokens, LoadWebServiceDeploymentTokens>(x => x.InvokeAsync);
         services.AddCapability<MongoRevokeWebServiceDeploymentToken, RevokeWebServiceDeploymentTokenOutcome>(x => x.InvokeOutcomeAsync);
         services.AddCapability<MongoTouchWebServiceDeploymentToken, TouchWebServiceDeploymentToken>(x => x.InvokeAsync);
-        services.AddScoped<IDeclarativeResourceProvider, DeclarativeWebServiceProvider>();
+        services.AddScoped<DeclarativeWebServiceProvider>();
+        services.AddScoped<IDeclarativeResourceProvider>(provider =>
+            provider.GetRequiredService<DeclarativeWebServiceProvider>());
+        services.AddScoped<IDeclarativeResourceLifecycleProvider>(provider =>
+            provider.GetRequiredService<DeclarativeWebServiceProvider>());
+        services.AddScoped<IDeclarativeLifecycleDependencyProvider>(provider =>
+            provider.GetRequiredService<DeclarativeWebServiceProvider>());
+        services.AddScoped<IDeclarativeAdoptionPreviewProvider>(provider =>
+            provider.GetRequiredService<DeclarativeWebServiceProvider>());
+        services.AddScoped<IDeclarativePreviewReferenceProvider>(provider =>
+            provider.GetRequiredService<DeclarativeWebServiceProvider>());
         return services;
     }
 

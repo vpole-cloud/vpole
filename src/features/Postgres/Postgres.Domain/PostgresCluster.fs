@@ -93,6 +93,21 @@ type PostgresCluster =
     [<BsonIgnore>]
     member this.IsPrepared = this.Provisioning :? PreparedPostgresProvisioning
 
+    member this.AdoptConfigured(bootstrap : PostgresBootstrapCredential) =
+        if not (this.Lifecycle :? ActivePostgresClusterLifecycle) then
+            invalidOp "Only an active PostgreSQL cluster can be adopted."
+
+        let validated = PostgresBootstrapCredential.Create(
+            bootstrap.SourceSecretId, bootstrap.SourceKey, bootstrap.CredentialId, bootstrap.Username)
+
+        match this.Provisioning with
+        | :? DirectPostgresProvisioning ->
+            { this with
+                Provisioning = ConfiguredPostgresProvisioning(validated)
+                Revision = PostgresCluster.incrementRevision this.Revision }
+        | :? ConfiguredPostgresProvisioning as configured when configured.Bootstrap = validated -> this
+        | _ -> invalidOp "Adoption cannot replace an existing PostgreSQL bootstrap identity."
+
     member this.EnsureConfigured() =
         if not (this.Lifecycle :? ActivePostgresClusterLifecycle) then
             invalidOp "Only an active PostgreSQL cluster can be applied."

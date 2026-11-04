@@ -83,6 +83,8 @@ public sealed class PlanningDependencyGuardsTests(MongoReplicaSetFixture fixture
             Assert.Equal(1, groupSnapshot.ScopeRevision);
             var planned = Assert.Single(placements.Items);
             Assert.Equal(placement.Id, planned.DeploymentId);
+            Assert.Equal(placement.DesiredGeneration, planned.DesiredGeneration);
+            Assert.Equal(placement.ResourceRevision, planned.ResourceRevision);
             Assert.Equal(ResourceDeploymentPlanningState.Prepared, planned.State);
             Assert.Equal(3, planned.FixedReplicas);
             Assert.Equal(250, planned.Compute.Requests.CpuMillis);

@@ -44,6 +44,6 @@ public sealed partial class DeclarativePipelineTests
         var stable = await Apply(snapshot);
         Assert.Equal(events, await BusinessEvents());
         var view = await queries.RunAsync(TestData.TenantId, source, stable.Context!.RunId, default);
-        Assert.Equal(new RepositoryOperationSummary(0, 0, 5, 0, 0), view!.Operations);
+        Assert.Equal(new RepositoryOperationSummary(0, 0, 5, 0, 0, null), view!.Operations);
     }
 }

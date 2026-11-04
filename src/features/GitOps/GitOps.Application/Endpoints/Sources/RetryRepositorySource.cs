@@ -35,7 +35,8 @@ public union RetryRepositorySourceOutcome(
     GitSourceRevisionConflict,
     GitSourceIdempotencyConflict,
     GitSourceBusy,
-    GitRetryNotAvailable);
+    GitRetryNotAvailable,
+    GitSourceInactive);
 
 public sealed class RetryRepositorySourceValidator : AbstractValidator<RetryRepositorySourceRequest>
 {
@@ -75,6 +76,7 @@ public sealed class RetryRepositorySourceHandler(GitRepositorySources sources)
             GitSourceScheduled value => value,
             GitSourceNotFound value => value,
             GitSourceRevisionConflict value => value,
+            GitSourceInactive inactive => inactive,
             GitSourceIdempotencyConflict value => value,
             GitSourceBusy value => value,
             GitRetryNotAvailable value => value
@@ -94,6 +96,7 @@ public static class RetryRepositorySourceEndpoint
                         GitSourceScheduled value => Results.Accepted(value: value),
                         GitSourceNotFound value => RepositoryHttpMappings.Map(value),
                         GitSourceRevisionConflict value => RepositoryHttpMappings.Map(value),
+                        GitSourceInactive inactive => RepositoryHttpMappings.Map(inactive),
                         GitSourceIdempotencyConflict value => RepositoryHttpMappings.Map(value),
                         GitSourceBusy value => RepositoryHttpMappings.Map(value),
                         GitRetryNotAvailable value => RepositoryHttpMappings.Map(value)

@@ -15,7 +15,7 @@ internal sealed class GitOperationReceipts(IMongoCollection<GitOperationReceipt>
             .Find(operation.Declaration.Address.Kind)
         ?? throw new InvalidOperationException("The declaration provider is no longer registered."));
 
-    public Task StoreAsync(
+    public async Task StoreAsync(
         GitOperation operation,
         GitOperationResult result,
         IClientSessionHandle session,
@@ -38,9 +38,11 @@ internal sealed class GitOperationReceipts(IMongoCollection<GitOperationReceipt>
                 operation,
                 result),
             result.Changed,
-            operation.Plan.Revision);
+            operation.Plan.Revision,
+            result.Applied ? await services.GetRequiredService<MongoGitLifecycleGuard>()
+                .CaptureApplyAsync(operation, session, ct) : null);
 
-        return receipts.ReplaceOneAsync(
+        await receipts.ReplaceOneAsync(
             session,
             GitOperationReceiptFilters.Identity(receipt.Id),
             receipt,

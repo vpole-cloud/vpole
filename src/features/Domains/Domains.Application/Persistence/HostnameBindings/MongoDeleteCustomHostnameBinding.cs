@@ -3,10 +3,15 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.GitOps.Contracts;
+using Pole.Features.GitOps.Primitives;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
 
 namespace Pole.Features.Domains.Application.Persistence.HostnameBindings;
+
+internal sealed record RemoveCustomHostnameBindingRequest(
+    DeleteCustomHostnameBindingRequest Binding,
+    GitLifecycleAuthority? Lifecycle);
 
 internal sealed class MongoDeleteCustomHostnameBinding(
     IMongoDatabase database,
@@ -20,11 +25,17 @@ internal sealed class MongoDeleteCustomHostnameBinding(
     private readonly IMongoCollection<HostnameBinding> bindings =
         database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
 
-    public async Task<DeleteCustomHostnameBindingOutcome> InvokeAsync(
+    public Task<DeleteCustomHostnameBindingOutcome> InvokeAsync(
         DeleteCustomHostnameBindingRequest request,
         IClientSessionHandle session,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) => ExecuteAsync(new(request, null), session, cancellationToken);
+
+    internal async Task<DeleteCustomHostnameBindingOutcome> ExecuteAsync(
+        RemoveCustomHostnameBindingRequest operation,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
     {
+        var request = operation.Binding;
         EnsureRequest(request);
         DomainTransactions.EnsureActive(session);
         var filter = DomainFilters.BindingById(request);
@@ -35,7 +46,9 @@ internal sealed class MongoDeleteCustomHostnameBinding(
                 new CustomHostnameBindingNotFound(request.BindingId));
         }
 
-        if (!await git.AuthorizeAsync(new(request.TenantId, "HostnameBinding", binding.Id, Context: null),
+        if (!await git.AuthorizeAsync(new(request.TenantId, "HostnameBinding", binding.Id,
+                Lifecycle: operation.Lifecycle,
+                LifecycleEffect: GitLifecycleMutationEffect.Remove),
                 session, cancellationToken))
             return new CustomHostnameBindingGitOwned(binding.Id);
 

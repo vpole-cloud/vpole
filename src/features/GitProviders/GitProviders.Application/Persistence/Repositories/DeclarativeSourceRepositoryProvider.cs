@@ -37,7 +37,9 @@ internal sealed partial class DeclarativeSourceRepositoryProvider(
     MongoPersistLinkedSourceRepository creation,
     MongoRunTransaction transactions,
     IGitOpsMutations git,
-    TimeProvider clock) : ITransactionalDeclarativeResourceProvider, IDeclarativeReferencePreparation
+    TimeProvider clock,
+    MongoDeleteSourceRepository deletion) : ITransactionalDeclarativeResourceProvider, IDeclarativeReferencePreparation,
+        IDeclarativeResourceLifecycleProvider, IDeclarativeAdoptionPreviewProvider, IDeclarativePreviewReferenceProvider
 {
     public string Kind => "SourceRepository";
 

@@ -63,8 +63,7 @@ internal static class ArchitectureSources
         $"{source.RelativePath}:{lineNumber}: {message}";
 
     private static IEnumerable<ArchitectureSource> LoadSources(string directory) =>
-        Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories)
-            .Where(path => !IsBuildOutput(path))
+        SourceFiles(directory, "*.cs")
             .OrderBy(path => path, StringComparer.Ordinal)
             .Select(LoadSource);
 
@@ -79,8 +78,7 @@ internal static class ArchitectureSources
     private static IEnumerable<ArchitectureTextSource> LoadTextSources(
         string directory,
         string searchPattern) =>
-        Directory.EnumerateFiles(directory, searchPattern, SearchOption.AllDirectories)
-            .Where(path => !IsBuildOutput(path))
+        SourceFiles(directory, searchPattern)
             .OrderBy(path => path, StringComparer.Ordinal)
             .Select(path => new ArchitectureTextSource(
                 Path.GetRelativePath(RepositoryRoot, path)
@@ -90,9 +88,20 @@ internal static class ArchitectureSources
     private static bool IsInDirectory(ArchitectureSource source, string directory) =>
         source.RelativePath.Contains($"/{directory}/", StringComparison.Ordinal);
 
-    private static bool IsBuildOutput(string path) =>
-        path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
-        path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal);
+    internal static IEnumerable<string> SourceFiles(string directory, string searchPattern)
+    {
+        foreach (var path in Directory.EnumerateFiles(directory, searchPattern))
+            yield return path;
+
+        foreach (var child in Directory.EnumerateDirectories(directory))
+        {
+            if (Path.GetFileName(child) is "bin" or "obj" or ".artifacts")
+                continue;
+
+            foreach (var path in SourceFiles(child, searchPattern))
+                yield return path;
+        }
+    }
 
     private static string FindRepositoryRoot()
     {

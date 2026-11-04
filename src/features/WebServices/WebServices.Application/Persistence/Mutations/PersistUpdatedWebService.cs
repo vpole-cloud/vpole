@@ -14,7 +14,12 @@ namespace Pole.Features.WebServices.Application.Persistence.Mutations;
 
 public sealed record WebServiceUpdateAccepted;
 
-public enum WebServiceUpdateConflictReason { ExpectedRevisionConflict, GitOwnedConfiguration }
+public enum WebServiceUpdateConflictReason
+{
+    ExpectedRevisionConflict,
+    GitOwnedConfiguration,
+    SecretBindingsRequireRemoval
+}
 
 public sealed record WebServiceUpdateConflict(
     string WebServiceId,

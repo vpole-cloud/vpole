@@ -71,6 +71,48 @@ public sealed class PostgresProvisioningTests
     }
 
     [Fact]
+    public void Adoption_records_existing_credential_without_changing_capacity_or_reinitializing()
+    {
+        var prepared = Prepared();
+        var bootstrap = Assert.IsType<PreparedPostgresProvisioning>(prepared.Provisioning).Bootstrap;
+        var direct = PostgresCluster.Create(prepared.TenantId, prepared.Name, prepared.GroupId,
+            prepared.Spec.Version, prepared.Spec.DeploymentMode, prepared.Spec.StorageProfileId,
+            new(FSharpOption<string>.Some(prepared.Id), 3, 40));
+
+        var adopted = direct.AdoptConfigured(bootstrap);
+
+        Assert.Equal(direct.Id, adopted.Id);
+        Assert.Same(direct.Spec, adopted.Spec);
+        Assert.Equal(direct.Revision + 1, adopted.Revision);
+        Assert.Equal(direct.PlanningFence, adopted.PlanningFence);
+        Assert.False(adopted.IsPrepared);
+        Assert.Equal(bootstrap.CredentialId,
+            Assert.IsType<ConfiguredPostgresProvisioning>(adopted.Provisioning).Bootstrap.CredentialId);
+        Assert.Same(adopted, adopted.AdoptConfigured(bootstrap));
+        adopted.EnsureConfigured();
+        Assert.Same(adopted, adopted.ConfigurePrepared(new(3, 40)));
+        Assert.Throws<InvalidOperationException>(() => adopted.ConfigurePrepared(new(4, 40)));
+        Assert.Throws<InvalidOperationException>(() => adopted.AdoptConfigured(
+            PostgresBootstrapCredential.Create(bootstrap.SourceSecretId, bootstrap.SourceKey,
+                ObjectId.GenerateNewId().ToString(), bootstrap.Username)));
+        Assert.Equal(adopted.ToBsonDocument(),
+            BsonSerializer.Deserialize<PostgresCluster>(adopted.ToBsonDocument()).ToBsonDocument());
+    }
+
+    [Fact]
+    public void Adoption_cannot_skip_prepared_bootstrap_or_revive_deleting_cluster()
+    {
+        var prepared = Prepared();
+        var bootstrap = Assert.IsType<PreparedPostgresProvisioning>(prepared.Provisioning).Bootstrap;
+        Assert.Throws<InvalidOperationException>(() => prepared.AdoptConfigured(bootstrap));
+        var direct = PostgresCluster.Create(prepared.TenantId, prepared.Name, prepared.GroupId,
+            prepared.Spec.Version, prepared.Spec.DeploymentMode, prepared.Spec.StorageProfileId,
+            new(FSharpOption<string>.Some(prepared.Id), 1, 20));
+        Assert.Throws<InvalidOperationException>(() =>
+            direct.BeginDeletion(DateTime.UtcNow).AdoptConfigured(bootstrap));
+    }
+
+    [Fact]
     public void ConfigureAcceptsLatestCapacityInOneRevisionBeforeActivation()
     {
         var prepared = Prepared();

@@ -7,6 +7,10 @@ namespace Pole.Features.Functions.Application.Common;
 
 public static class FunctionAppHttpMappings
 {
+    public static HttpProblem MapSecretBindingRemovalRequired(FunctionSecretBindingRemovalRequired error) => Conflict(
+        "function-apps.secret-bindings-removal-required",
+        "Remove Git-owned Secret bindings before deleting the Function App", error.FunctionAppId);
+
     public static HttpProblem MapGitOwned(FunctionAppGitOwnedConfiguration error) => Conflict(
         "function-apps.git-owned", "Function App configuration is managed by GitOps", error.FunctionAppId);
 

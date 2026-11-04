@@ -60,6 +60,11 @@ internal static class SecretFilters
         long version) =>
         Versions(tenantId, secretId) & Builders<SecretVersion>.Filter.Eq(x => x.Version, version);
 
+    internal static FilterDefinition<Secret> Consumer(string tenantId, string resourceType, string resourceId) =>
+        Builders<Secret>.Filter.ForTenant(SecretIdentity.ObjectId(tenantId)) &
+        Builders<Secret>.Filter.ElemMatch(item => item.Bindings, binding =>
+            binding.Consumer.ResourceType == resourceType && binding.Consumer.ResourceId == resourceId);
+
     internal static FilterDefinition<Secret> Consumer(
         string tenantId,
         string groupId,

@@ -1,6 +1,8 @@
 namespace Pole.Features.Postgres.Application.Persistence.Declarative
 
 open System.Threading
+open System.Collections.Generic
+open Pole.Features.GitOps.Primitives
 open MongoDB.Driver
 open Pole.Features.GitOps.Contracts
 open Pole.Features.Postgres.Application.Common
@@ -12,7 +14,9 @@ type DeclarativePostgresProvider(
     settings : PostgresSettings,
     planner : PostgresDeclarationPlanner,
     references : PostgresDeclarationReferences,
-    execution : PostgresDeclarationExecution) =
+    execution : PostgresDeclarationExecution,
+    adoption : PostgresDeclarationAdoption,
+    lifecycle : PostgresDeclarationLifecycle) =
 
     interface IDeclarativeResourceProvider with
         member _.Kind = PostgresDeclarations.Kind
@@ -38,3 +42,51 @@ type DeclarativePostgresProvider(
 
     interface IDeclarativeReferencePreparation with
         member _.PrepareReferencesAsync(operation, ct) = references.PrepareAsync(operation, ct)
+
+    interface IDeclarativeAdoptionPreviewProvider with
+        member _.PreviewAdoptionAsync(request, session, ct) = adoption.PreviewAsync(request, session, ct)
+
+    interface IDeclarativeResourceAdoptionProvider with
+        member _.AdoptAsync(request, session, ct) = adoption.AdoptAsync(request, session, ct)
+
+    interface IDeclarativeResourceLifecycleProvider with
+        member _.Kind = PostgresDeclarations.Kind
+        member _.ReadLifecycleAsync(request, session, ct) = lifecycle.ReadAsync(request, session, ct)
+        member _.RemoveAsync(request, session, ct) = lifecycle.RemoveAsync(request, session, ct)
+
+    interface IDeclarativeRegisteredResourceProvider with
+        member _.ResourceType = PostgresResourceDeployment.ResourceType
+
+    interface IDeclarativePreviewReferenceProvider with
+        member _.ReadPreviewReferencesAsync(request, session, ct) = adoption.ReadReferencesAsync(request, session, ct)
+
+    interface IDeclarativeLifecycleDependencyProvider with
+        member _.DependencyOwner = "Postgres"
+        member _.ReadDependenciesAsync(request, session, ct) = lifecycle.ReadDependenciesAsync(request, session, ct)
+        member _.FenceDependenciesAsync(request, session, ct) = lifecycle.FenceDependenciesAsync(request, session, ct)
+
+    interface IDeclarativeLifecycleWarningProvider with
+        member _.ReadLifecycleWarningsAsync(request, session, ct) =
+            task {
+                if not session.IsInTransaction then
+                    invalidOp "Lifecycle warning reads require an active transaction."
+                if request.Action <> GitLifecycleAction.Remove && request.Action <> GitLifecycleAction.Replace then
+                    return Array.empty<string> :> IReadOnlyList<string>
+                else
+                    let! current = resources.Find(session, PostgresFilters.byId request.TenantId request.ResourceId)
+                                           .FirstOrDefaultAsync(ct)
+                    if isNull (box current) then
+                        return Array.empty<string> :> IReadOnlyList<string>
+                    else
+                        // StatefulSet deletion explicitly removes its data claim; Operator mode deletes the CNPG CR.
+                        let storage =
+                            match current.Spec.DeploymentMode with
+                            | PostgresDeploymentMode.StatefulSet -> "PostgresStatefulSetDataClaimDeleted"
+                            | PostgresDeploymentMode.Operator -> "PostgresOperatorManagesStorageCleanup"
+                            | mode -> invalidOp $"Unsupported PostgreSQL deployment mode '{mode}'."
+                        return
+                            [| storage
+                               "PersistentVolumeReclaimPolicyDeterminesDataRetention"
+                               if request.Action = GitLifecycleAction.Replace then
+                                   "PostgresReplacementRequiresBootstrap" |] :> IReadOnlyList<string>
+            }

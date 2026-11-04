@@ -26,6 +26,10 @@ public sealed class GitOpsIndexesMigration : IMigration
                     .Ascending(item => item.Repository.ExternalRepositoryId).Ascending(item => item.Repository.Branch))
             ],
             cancellationToken);
+        await context.GetCollection<GitOperationPreview>(RepositoryCollections.Previews).Indexes.CreateOneAsync(
+            new CreateIndexModel<GitOperationPreview>(Builders<GitOperationPreview>.IndexKeys
+                .Ascending(item => item.Source.Source.TenantId).Ascending(item => item.Source.Source.SourceId)
+                .Descending(item => item.Id)), cancellationToken: cancellationToken);
         await context.GetCollection<GitSynchronizationState>(RepositoryCollections.Synchronization)
             .Indexes.CreateOneAsync(new CreateIndexModel<GitSynchronizationState>(
                     Builders<GitSynchronizationState>.IndexKeys.Ascending(item => item.NextPollAtUtc)),
@@ -33,6 +37,13 @@ public sealed class GitOpsIndexesMigration : IMigration
         await context.GetCollection<GitReconciliationRun>(RepositoryCollections.Runs).Indexes.CreateManyAsync([
                 new(Builders<GitReconciliationRun>.IndexKeys.Ascending(item => item.Stamp.Source.TenantId)
                     .Ascending(item => item.Stamp.Source.SourceId).Descending(item => item.Stamp.Generation)),
+                new(Builders<GitReconciliationRun>.IndexKeys.Ascending(item => item.Stamp.Source.TenantId)
+                    .Ascending(item => item.Stamp.Source.SourceId).Descending(item => item.Stamp.Generation),
+                    new CreateIndexOptions<GitReconciliationRun>
+                    {
+                        Name = RepositoryCollections.HumanLifecycleHistoryIndex,
+                        PartialFilterExpression = GitRepositoryFilters.HumanConfirmedLifecycle()
+                    }),
                 new(Builders<GitReconciliationRun>.IndexKeys.Ascending("State._t")
                     .Ascending("State.Lease.ExpiresAtUtc").Ascending("State.NextAttemptAtUtc"))
             ],
@@ -52,6 +63,16 @@ public sealed class GitOpsIndexesMigration : IMigration
             .Indexes.CreateOneAsync(new CreateIndexModel<GitPlannedOperation>(
                     Builders<GitPlannedOperation>.IndexKeys.Ascending(item => item.Stamp.Run.Source.TenantId)
                         .Ascending(item => item.Stamp.Run.RunId)), cancellationToken: cancellationToken);
+        await context.GetCollection<GitLifecycleCleanupProof>(GitOpsCollections.CleanupProofs)
+            .Indexes.CreateOneAsync(new CreateIndexModel<GitLifecycleCleanupProof>(
+                Builders<GitLifecycleCleanupProof>.IndexKeys.Ascending(item => item.TenantId)
+                    .Ascending(item => item.SourceId).Ascending(item => item.RunId)),
+                cancellationToken: cancellationToken);
+        await context.GetCollection<GitOperationReceipt>(GitOpsCollections.Receipts)
+            .Indexes.CreateOneAsync(new CreateIndexModel<GitOperationReceipt>(
+                Builders<GitOperationReceipt>.IndexKeys.Ascending(item => item.TenantId)
+                    .Ascending(item => item.SourceId).Ascending(item => item.Kind).Ascending(item => item.ResourceId)),
+                cancellationToken: cancellationToken);
         await context.GetCollection<BsonDocument>(GitOpsCollections.Receipts)
             .Indexes.CreateOneAsync(new CreateIndexModel<BsonDocument>(
                     Builders<BsonDocument>.IndexKeys.Ascending("TenantId").Ascending("SourceId")

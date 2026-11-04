@@ -49,6 +49,19 @@ public sealed class GitRepositorySourceStoreTests(MongoReplicaSetFixture fixture
     }
 
     [Fact]
+    public async Task Prune_is_explicit_and_is_part_of_creation_idempotency()
+    {
+        var request = Request() with { Prune = GitPrunePolicy.Prune };
+        var source = Assert.IsType<RepositorySource>((await Sources.CreateAsync(request, default)).Value);
+        Assert.Equal(GitPrunePolicy.Prune, source.Prune);
+        Assert.IsType<GitSourceIdempotencyConflict>((await Sources.CreateAsync(request with
+        {
+            Prune = GitPrunePolicy.Retain
+        }, default)).Value);
+        Assert.Equal(1, await Documents.CountDocumentsAsync(_ => true));
+    }
+
+    [Fact]
     public async Task SourceAndSynchronizationRollBackWhenOutboxFails()
     {
         var failing = new GitRepositorySources(Documents,

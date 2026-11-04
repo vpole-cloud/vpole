@@ -27,6 +27,7 @@ internal sealed class MongoPersistSecretBinding(
     IMongoCollection<Secret> secrets,
     MongoRunTransaction transactions,
     AdmitResourceScopeReference admitScope,
+    FenceRegisteredResource fenceConsumer,
     AdmitResourceDeploymentReferences admitDeployments,
     StoreSecretChange publish,
     TimeProvider clock)
@@ -53,6 +54,9 @@ internal sealed class MongoPersistSecretBinding(
                 return tx.Abort(new SecretUnknownKeys());
 
             var type = ResourceTypeId.Create(binding.Consumer.ResourceType);
+            if (await fenceConsumer(new(tenantId, type, binding.Consumer.ResourceId), tx.Session, token) is null)
+                return tx.Abort(new SecretReferenceRejected());
+
             if (await admitScope(
                 new AdmitResourceScopeReferenceRequest(
                     TenantId: current.TenantId,

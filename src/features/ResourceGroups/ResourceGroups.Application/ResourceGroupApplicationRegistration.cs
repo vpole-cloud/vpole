@@ -91,8 +91,19 @@ public static class ResourceGroupApplicationRegistration
         services.TryAddScoped<RuntimeCellLifecyclePersistence>();
         services.TryAddScoped<RuntimeCellRecoveryPersistence>();
         services.TryAddScoped<RuntimeCellRecoveryJob>();
-        services.AddScoped<IDeclarativeResourceProvider, DeclarativeResourceGroupProvider>();
-        services.AddScoped<IDeclarativeResourceProvider, DeclarativeIsolationScopeProvider>();
+        services.AddScoped<ResourceGroupLifecycleReferences>();
+        services.AddScoped<IDeclarativeLifecycleDependencyProvider>(provider =>
+            provider.GetRequiredService<ResourceGroupLifecycleReferences>());
+        services.AddScoped<DeclarativeResourceGroupProvider>();
+        services.AddScoped<DeclarativeIsolationScopeProvider>();
+        services.AddScoped<IDeclarativeResourceProvider>(provider =>
+            provider.GetRequiredService<DeclarativeResourceGroupProvider>());
+        services.AddScoped<IDeclarativeResourceProvider>(provider =>
+            provider.GetRequiredService<DeclarativeIsolationScopeProvider>());
+        services.AddScoped<IDeclarativeResourceLifecycleProvider>(provider =>
+            provider.GetRequiredService<DeclarativeResourceGroupProvider>());
+        services.AddScoped<IDeclarativeResourceLifecycleProvider>(provider =>
+            provider.GetRequiredService<DeclarativeIsolationScopeProvider>());
         services.AddCapability<MongoIsolationScopePlanningSnapshots, ResolveNamedIsolationScope>(
             implementation => implementation.ResolveAsync);
         services.AddCapability<MongoIsolationScopePlanningSnapshots, LoadIsolationScopePlanningSnapshot>(

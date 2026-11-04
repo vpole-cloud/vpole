@@ -46,6 +46,7 @@ public static class DeleteFunctionApp
     private static HttpProblem MapDeleteError(DeleteFunctionAppError error) =>
         error switch
         {
+            FunctionSecretBindingRemovalRequired bindings => MapSecretBindingRemovalRequired(bindings),
             FunctionAppGitOwnedConfiguration owned => MapGitOwned(owned),
             FunctionAppNotFound notFound => MapNotFound(notFound),
             FunctionAppResourceDeploymentMissing missing => MapResourceDeploymentMissing(missing),
@@ -64,6 +65,7 @@ public sealed record DeleteFunctionAppRequest(
 public sealed record DeleteFunctionAppResponse(string FunctionAppId);
 
 public union DeleteFunctionAppError(
+    FunctionSecretBindingRemovalRequired,
     FunctionAppNotFound,
     FunctionAppGitOwnedConfiguration,
     FunctionAppResourceDeploymentMissing,
@@ -77,11 +79,9 @@ public union DeleteFunctionAppOutcome(
 
 public sealed class DeleteFunctionAppHandler(
     LoadFunctionAppById loadFunctionAppById,
-    BeginFunctionAppDeletion beginFunctionAppDeletion,
+    ApplyFunctionAppDeletion deleteWorkflow,
     LoadExactResourceDeploymentRuntimePlacement loadDeploymentPlacement,
-    RequestExactResourceDeploymentDeletion requestDeploymentDeletion,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
-    TimeProvider timeProvider,
     IGitOpsMutations git)
     : IMediatorOutcomeHandler<DeleteFunctionAppRequest, DeleteFunctionAppOutcome>
 {
@@ -125,22 +125,14 @@ public sealed class DeleteFunctionAppHandler(
         return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
             FunctionQuotaAllocation,
             DeleteFunctionAppOutcome>(
-            new ExecuteQuotaAdmissionRequest<global::Pole.Features.Functions.Domain.FunctionQuotaAllocation, global::Pole.Features.Functions.Application.Endpoints.DeleteFunctionAppOutcome>(
+            new ExecuteQuotaAdmissionRequest<FunctionQuotaAllocation, DeleteFunctionAppOutcome>(
                 TenantId: app.TenantId,
                 ResourceKey: FunctionAppQuotaResourceKey.Create(app.Id),
                 Mutation: new DeleteQuotaMutation<FunctionQuotaAllocation>(app.AdmittedQuota),
                 QuotaError: quotaError => new DeleteFunctionAppError(quotaError),
                 MutationCallback: async (transaction, ct) =>
                 {
-                    var deleted = await beginFunctionAppDeletion(
-                        new(app, timeProvider.GetUtcNow()), transaction.Session, ct);
-                    if (deleted is FunctionAppDeletionChanged deletionError)
-                        return transaction.Abort(new DeleteFunctionAppError(deletionError));
-
-                    if (deleted is FunctionAppGitOwnedConfiguration owned)
-                        return transaction.Abort(new DeleteFunctionAppError(owned));
-
-                    var deploymentResult = await requestDeploymentDeletion(
+                    var deleted = await deleteWorkflow(new(app,
                         new ResourceDeploymentExactMutationRequest(
                             app.TenantId,
                             FunctionResourceDeployment.ResourceType,
@@ -150,14 +142,15 @@ public sealed class DeleteFunctionAppHandler(
                             new ComputeProfileReference(
                                 deployment.Compute.ComputeProfileId,
                                 deployment.Compute.ComputeProfileRevision),
-                            ResourceRevision: app.NextRevisionNumber),
-                        transaction.Session,
-                        ct);
-                    if (deploymentResult is ResourceDeploymentMutationError deploymentError)
-                    {
-                        return transaction.Abort(
-                            new DeleteFunctionAppError(deploymentError));
-                    }
+                            ResourceRevision: app.NextRevisionNumber)), transaction.Session, ct);
+                    if (deleted is FunctionSecretBindingRemovalRequired bindings)
+                        return transaction.Abort(new DeleteFunctionAppError(bindings));
+                    if (deleted is FunctionAppDeletionChanged changed)
+                        return transaction.Abort(new DeleteFunctionAppError(changed));
+                    if (deleted is FunctionAppGitOwnedConfiguration owned)
+                        return transaction.Abort(new DeleteFunctionAppError(owned));
+                    if (deleted is ResourceDeploymentMutationError deploymentError)
+                        return transaction.Abort(new DeleteFunctionAppError(deploymentError));
 
                     return transaction.Commit(new DeleteFunctionAppResponse(app.Id));
                 }),

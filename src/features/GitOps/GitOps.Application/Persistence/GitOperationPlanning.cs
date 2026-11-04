@@ -57,7 +57,7 @@ public sealed class GitOperationPlanning(
 
             var owner = await LoadOwnerAsync(input, tx.Session, token);
             var dependency = preparationFailure ??
-                await DependencyFailureAsync(input, (GitInputAccepted)run!.Input, tx.Session, token);
+                await DependencyFailureAsync(input, run!.AcceptedSnapshot!, tx.Session, token);
             var decision = dependency is not null
                 ? new BlockedDeclarationPlan(dependency)
                 : Providers.Find(input.Declaration.Address.Kind) is ITransactionalDeclarativeResourceProvider
@@ -80,11 +80,11 @@ public sealed class GitOperationPlanning(
     }
 
     private async Task<IDeclarationFailure?> DependencyFailureAsync(GitOperationInput input,
-        GitInputAccepted accepted, IClientSessionHandle session, CancellationToken ct)
+        GitAcceptedSnapshot accepted, IClientSessionHandle session, CancellationToken ct)
     {
         foreach (var dependency in input.Declaration.Steps.Single(step => step.Phase == input.Phase).Dependencies)
         {
-            var resource = accepted.Snapshot.Resources.SingleOrDefault(item =>
+            var resource = accepted.Resources.SingleOrDefault(item =>
                 item.Kind == dependency.Resource.Kind && item.Name == dependency.Resource.Name);
             if (resource is null)
                 continue;

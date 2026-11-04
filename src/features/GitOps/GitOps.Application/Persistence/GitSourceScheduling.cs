@@ -1,7 +1,9 @@
+using System.Linq.Expressions;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using MongoDB.Bson;
+using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
@@ -11,6 +13,8 @@ using Pole.Features.GitOps.Events;
 using Pole.Features.Outbox.Contracts;
 
 namespace Pole.Features.GitOps.Application.Persistence;
+
+internal enum GitSchedulingEligibility { Active, AdmittedLifecycle }
 
 internal enum GitSignalKind { Repository, Dependency, Poll }
 
@@ -69,12 +73,15 @@ public sealed class GitSourceScheduling(
     {
         var limit = options.Value.BatchSize;
         var result = new List<GitSourceIdentity>();
-        var dueRuns = await runs.Find(GitSchedulingFilters.Recoverable()).SortBy(item => item.CreatedAtUtc)
+        var dueRuns = await ActiveSourceDocuments(runs, GitSchedulingFilters.Recoverable(), item => item.Stamp.Source,
+                GitSchedulingEligibility.AdmittedLifecycle)
+            .SortBy(item => item.CreatedAtUtc)
             .Limit(limit).Project(item => item.Stamp.Source).ToListAsync(ct);
         result.AddRange(dueRuns);
         if (result.Count < limit)
         {
-            var pending = await states.Find(GitSchedulingFilters.Pending()).SortBy(item => item.Id)
+            var pending = await ActiveSourceDocuments(states, GitSchedulingFilters.Pending(), item => item.Source)
+                .SortBy(item => item.Id)
                 .Limit(limit - result.Count).Project(item => item.Source).ToListAsync(ct);
             result.AddRange(pending);
         }
@@ -82,7 +89,8 @@ public sealed class GitSourceScheduling(
         if (result.Count < limit)
         {
             var now = clock.GetUtcNow().UtcDateTime;
-            var polls = await states.Find(GitSchedulingFilters.PollDue(now)).SortBy(item => item.NextPollAtUtc)
+            var polls = await ActiveSourceDocuments(states, GitSchedulingFilters.PollDue(now), item => item.Source)
+                .SortBy(item => item.NextPollAtUtc)
                 .Limit(limit - result.Count).ToListAsync(ct);
             foreach (var state in polls)
                 if (await ScheduleAsync(new(state.Source,
@@ -95,6 +103,48 @@ public sealed class GitSourceScheduling(
         }
 
         return result.Distinct().Take(limit).ToArray();
+    }
+
+    // Filter before Limit: inactive sources must not starve an eligible source later in the scan.
+    private IAggregateFluent<T> ActiveSourceDocuments<T>(
+        IMongoCollection<T> documents,
+        FilterDefinition<T> predicate,
+        Expression<Func<T, GitSourceIdentity>> identity,
+        GitSchedulingEligibility eligibility = GitSchedulingEligibility.Active)
+    {
+        var registry = BsonSerializer.SerializerRegistry;
+        var path = new ExpressionFieldDefinition<T, GitSourceIdentity>(identity)
+            .Render(new(registry.GetSerializer<T>(), registry)).FieldName;
+        var allowed = GitSchedulingFilters.EligibleSources(eligibility);
+        var active = allowed.Render(new(registry.GetSerializer<RepositorySource>(), registry));
+        const string eligible = "EligibleSchedulingSource";
+        var lookup = new BsonDocument("$lookup", new BsonDocument
+        {
+            { "from", sources.CollectionNamespace.CollectionName },
+            { "localField", $"{path}.{nameof(GitSourceIdentity.SourceId)}" },
+            { "foreignField", "_id" },
+            { "pipeline", new BsonArray { new BsonDocument("$match", active) } },
+            { "as", eligible }
+        });
+        var sameTenant = new BsonDocument("$expr", new BsonDocument("$eq", new BsonArray
+        {
+            $"${path}.{nameof(GitSourceIdentity.TenantId)}",
+            new BsonDocument("$arrayElemAt", new BsonArray { $"${eligible}.{nameof(RepositorySource.TenantId)}", 0 })
+        }));
+        var candidates = documents.Aggregate().Match(predicate).AppendStage<T>(lookup)
+            .AppendStage<T>(new BsonDocument("$match", new BsonDocument
+            {
+                { $"{eligible}.0", new BsonDocument("$exists", true) },
+                { "$expr", sameTenant["$expr"] }
+            }))
+            ;
+        if (eligibility == GitSchedulingEligibility.AdmittedLifecycle)
+            candidates = candidates.AppendStage<T>(new BsonDocument("$match", new BsonDocument("$or", new BsonArray
+            {
+                new BsonDocument($"{eligible}.{nameof(RepositorySource.Activity)}", (int)GitSourceActivity.Active),
+                new BsonDocument("Input._t", nameof(GitInputLifecycle))
+            })));
+        return candidates.AppendStage<T>(new BsonDocument("$unset", eligible));
     }
 
     private async Task<bool> ScheduleAsync(ScheduleGitSource request, CancellationToken ct)

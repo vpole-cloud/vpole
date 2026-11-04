@@ -87,6 +87,11 @@ internal sealed partial class DeclarativeSecretBindingProvider
         var dependencies = (BindingPlanningDependencies)read.Value;
         if (!Versions(dependencies).All(request.Expected.Documents.Contains))
             return new DeclarationPreconditionsChanged();
+        var spec = DeclarationJson.Read<SecretBindingDeclaration>(request.Operation.Declaration.Spec);
+        if (await fenceConsumer(new(request.Operation.Context.TenantId, ConsumerType(spec), dependencies.ConsumerId),
+                session, cancellationToken) is null)
+            return new DeclarationPreconditionsChanged();
+
         if (await fencePlanningScope(dependencies.Scope, session, cancellationToken)
             is IsolationScopePlanningFenceRejected)
             return new DeclarationPreconditionsChanged();

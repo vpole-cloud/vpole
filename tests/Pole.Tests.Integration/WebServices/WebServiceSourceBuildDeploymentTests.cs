@@ -317,7 +317,7 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
                     [], [], [], [], [], null),
                 item.DesiredOperation == ResourceDeploymentDesiredOperation.Delete
                     ? ResourceDeploymentPlanningState.Deleting : ResourceDeploymentPlanningState.Prepared,
-                null, item.Ingress, 1)).ToArray();
+                null, item.Ingress, 1, item.DesiredGeneration, item.ResourceRevision)).ToArray();
             return Task.FromResult<LoadResourceDeploymentPlanningSnapshotOutcome>(
                 new ResourceDeploymentPlanningSnapshot(request.TenantId, request.ResourceType, request.ResourceId,
                     items));

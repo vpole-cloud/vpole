@@ -84,7 +84,9 @@ internal sealed class MongoResourceDeploymentPlanningSnapshots(
             state,
             placement.Storage,
             placement.Ingress,
-            placement.TargetWorkloadConfigurationRevision);
+            placement.TargetWorkloadConfigurationRevision,
+            deployment.DesiredGeneration,
+            deployment.ResourceRevision);
     }
 
     private static void RequireTransaction(IClientSessionHandle session)

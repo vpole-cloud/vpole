@@ -10,6 +10,7 @@ internal sealed class MongoGitOpsMutations(
     GitAcceptedReferences references,
     MongoRunTransaction transactions,
     MongoGitOwnership ownership,
+    MongoGitLifecycleGuard lifecycle,
     GitDeclarationCompletion completion,
     GitOperationReceipts receipts,
     GitOwnershipStatuses statuses) : IGitOpsMutations
@@ -125,7 +126,10 @@ internal sealed class MongoGitOpsMutations(
         AuthorizeGitResourceMutationRequest request,
         IClientSessionHandle session,
         CancellationToken ct) =>
-        ownership.AuthorizeAsync(request.TenantId, request.Kind, request.ResourceId, session, ct, request.Context);
+        request.Lifecycle is not null
+            ? lifecycle.AuthorizeAsync(request, session, ct)
+            : ownership.AuthorizeAsync(request.TenantId, request.Kind, request.ResourceId, session, ct,
+                request.Context);
 
     public Task<string?> ResolveAsync(
         ResolveGitResourceRequest request,

@@ -102,6 +102,24 @@ public sealed class ManifestCompilerTests
         Assert.Null(DeclarationFailureDiagnostics.Code(null, new TestProvider()));
     }
 
+    [Fact]
+    public void Common_diagnostics_need_no_provider_and_unknown_owner_errors_still_require_owner_mapping()
+    {
+        Assert.Equal(nameof(GitLifecycleDependencyRetained),
+            DeclarationFailureDiagnostics.CommonCode(new GitLifecycleDependencyRetained()));
+        Assert.Equal(nameof(GitLifecycleDependencyRetained),
+            DeclarationFailureDiagnostics.Code(new GitLifecycleDependencyRetained(), new TestProvider()));
+        Assert.Equal("StaleExecution", DeclarationFailureDiagnostics.CommonCode(new StaleGitExecution()));
+        Assert.Equal("OwnershipConflict",
+            DeclarationFailureDiagnostics.CommonCode(new GitDeclarationOwnershipConflict()));
+        Assert.Null(DeclarationFailureDiagnostics.CommonCode(null));
+        Assert.Null(DeclarationFailureDiagnostics.CommonCode(new WidgetRejected(WidgetRejection.DependencyMissing)));
+        Assert.Throws<ArgumentException>(() =>
+            DeclarationFailureDiagnostics.Code(new UnknownOwnerFailure(), new TestProvider()));
+    }
+
+    private sealed record UnknownOwnerFailure : IDeclarationFailure;
+
     private enum WidgetRejection { DependencyMissing }
     private sealed record WidgetRejected(WidgetRejection Reason) : IDeclarationFailure;
     private sealed record TestSpec(Dictionary<string, string> Values);

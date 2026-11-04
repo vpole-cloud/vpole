@@ -50,6 +50,10 @@ public static class WebServiceHttpMappings
     {
         WebServiceUpdateConflictReason.ExpectedRevisionConflict => Problem(HttpStatusCode.Conflict,
             "web-services.update.concurrent-change", "Web service changed concurrently", ("webServiceId", error.WebServiceId)),
+        WebServiceUpdateConflictReason.SecretBindingsRequireRemoval => Problem(HttpStatusCode.Conflict,
+            "web-services.secret-bindings-removal-required",
+            "Remove Git-owned Secret bindings before deleting the WebService",
+            ("webServiceId", error.WebServiceId)),
         WebServiceUpdateConflictReason.GitOwnedConfiguration => Problem(HttpStatusCode.Conflict,
             "web-services.git-owned", "Edit the desired configuration in its managing Git source", ("webServiceId", error.WebServiceId)),
         _ => throw new ArgumentOutOfRangeException(nameof(error.Reason))
@@ -101,6 +105,10 @@ public static class WebServiceHttpMappings
     public static HttpProblem MapError(DeleteWebServiceError error) => error switch
     {
         DeleteWebServiceStateError state => MapDeleteStateError(state),
+        WebServiceHostnameAttachmentRemovalRequired attachment => Problem(HttpStatusCode.Conflict,
+            "web-services.delete.managed-hostname-attachment",
+            "Remove or detach the managed hostname binding before deleting the web service",
+            ("webServiceId", attachment.WebServiceId), ("bindingId", attachment.BindingId)),
         SourceBuildWebServiceHasActiveJobs jobs => MapSourceBuildWebServiceHasActiveJobs(jobs),
         ResourceDeploymentMutationError deployment => ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
         WebServiceUpdateConflict conflict => MapError(conflict),
