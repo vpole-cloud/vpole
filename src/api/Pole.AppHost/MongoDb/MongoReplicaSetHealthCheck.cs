@@ -1,5 +1,7 @@
-﻿using Microsoft.Extensions.Diagnostics.HealthChecks;
-using MongoDB.Bson;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using MongoDB.Bson.Serialization.Attributes;
+using MongoDB.Bson.Serialization;
+using MongoDB.Bson.Serialization.Serializers;
 using MongoDB.Driver;
 
 namespace Pole.AppHost.MongoDb;
@@ -15,8 +17,8 @@ public class MongoReplicaSetHealthCheck(MongoClientSettings mongoClientSettings)
 
         try
         {
-            var initiateCmd = new BsonDocument { { "replSetInitiate", new BsonDocument() } };
-            await adminDb.RunCommandAsync<BsonDocument>(initiateCmd, cancellationToken: cancellationToken);
+            var initiateCmd = new ObjectCommand<ReplicaSetCommandResult>(new InitiateReplicaSetCommand(new()));
+            await adminDb.RunCommandAsync(initiateCmd, cancellationToken: cancellationToken);
         }
         catch (MongoCommandException ex)
         {
@@ -28,9 +30,9 @@ public class MongoReplicaSetHealthCheck(MongoClientSettings mongoClientSettings)
 
         try
         {
-            var isMasterCmd = new BsonDocument { { "isMaster", 1 } };
-            var result = await adminDb.RunCommandAsync<BsonDocument>(isMasterCmd, cancellationToken: cancellationToken);
-            if (result.TryGetValue("ismaster", out BsonValue isMaster) && isMaster.AsBoolean)
+            var isMasterCmd = new ObjectCommand<ReplicaSetPrimaryResult>(new ReadReplicaSetPrimaryCommand(1));
+            var result = await adminDb.RunCommandAsync(isMasterCmd, cancellationToken: cancellationToken);
+            if (result.IsPrimary)
             {
                 return HealthCheckResult.Healthy();
             }
@@ -42,4 +44,33 @@ public class MongoReplicaSetHealthCheck(MongoClientSettings mongoClientSettings)
             return HealthCheckResult.Unhealthy("Failed to determine MongoDB primary node.", ex);
         }
     }
+}
+
+internal sealed record ReplicaSetInitializationOptions;
+
+internal sealed record InitiateReplicaSetCommand(
+    [property: BsonElement("replSetInitiate")] ReplicaSetInitializationOptions Options);
+
+internal sealed record ReadReplicaSetPrimaryCommand(
+    [property: BsonElement("isMaster")] int IsMaster);
+
+[BsonIgnoreExtraElements]
+internal sealed record ReplicaSetCommandResult;
+
+[BsonIgnoreExtraElements]
+internal sealed record ReplicaSetPrimaryResult
+{
+    [BsonElement("ismaster")]
+    [BsonSerializer(typeof(ReplicaSetPrimaryBooleanSerializer))]
+    public bool IsPrimary { get; init; }
+}
+
+// Keep the original AsBoolean contract: numeric/string/null replies are not primary-state booleans.
+internal sealed class ReplicaSetPrimaryBooleanSerializer : SerializerBase<bool>
+{
+    public override bool Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args) =>
+        context.Reader.ReadBoolean();
+
+    public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, bool value) =>
+        context.Writer.WriteBoolean(value);
 }
