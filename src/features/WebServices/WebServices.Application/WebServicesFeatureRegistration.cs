@@ -8,9 +8,12 @@ using Pole.Features.WebServices.Application.Endpoints.Deployments;
 using Pole.Features.WebServices.Application.Endpoints.Deployments.Hostnames;
 using Pole.Features.WebServices.Application.Endpoints.Releases;
 using Pole.Features.WebServices.Application.Kubernetes;
-using Pole.Features.WebServices.Application.Persistence;
-using Pole.Features.WebServices.Application.Persistence.Deployments;
-using Pole.Features.WebServices.Application.Persistence.Lifecycle;
+using Pole.Features.WebServices.Application.Configuration;
+using Pole.Features.WebServices.Application.Declarations;
+using Pole.Features.WebServices.Application.Hostnames;
+using Pole.Features.WebServices.Application.Lifecycle;
+using Pole.Features.WebServices.Application.Mongo;
+using Pole.Features.WebServices.Application.Deployments;
 using Pole.Features.WebServices.Application.Search;
 using Pole.Features.WebServices.Contracts;
 using Pole.Features.SourceBuilds.Contracts;
@@ -35,7 +38,7 @@ public static class WebServicesFeatureRegistration
         services.AddSingleton<SearchSourceType>(WebServiceSearchProjection.SourceType);
         services.AddWebServicePersistence();
         services.AddScoped<Pole.Features.Domains.Contracts.IHostnameBindingWorkloadCapability,
-            Pole.Features.WebServices.Application.Persistence.WebServiceHostnameAttachmentCapability>();
+            Pole.Features.WebServices.Application.Hostnames.WebServiceHostnameAttachmentCapability>();
         services.AddSingleton(new ResourceConnectionDeclarationKind("WebService",
             WebServiceResourceDeployment.ResourceType));
         services.AddSingleton(new ResourceConnectionSourceCapability(

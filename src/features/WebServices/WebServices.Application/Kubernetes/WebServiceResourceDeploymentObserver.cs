@@ -5,7 +5,8 @@ using Pole.Features.Core.Kubernetes;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Persistence.Reads;
+using Pole.Features.WebServices.Application.Connections;
+using Pole.Features.WebServices.Application.Queries;
 using Pole.Features.WebServices.Domain;
 using Pole.Workloads;
 

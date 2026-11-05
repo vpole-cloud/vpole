@@ -5,7 +5,12 @@ using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.Features.WebServices.Application.Persistence;
+using Pole.Features.WebServices.Application;
+using Pole.Features.WebServices.Application.Configuration;
+using Pole.Features.WebServices.Application.Declarations;
+using Pole.Features.WebServices.Application.Hostnames;
+using Pole.Features.WebServices.Application.Lifecycle;
+using Pole.Features.WebServices.Application.Mongo;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 

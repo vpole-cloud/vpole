@@ -1,6 +1,7 @@
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.Secrets.Contracts;
-using Pole.Features.WebServices.Application.Persistence.Mutations;
+using Pole.Features.WebServices.Application.Configuration;
+using Pole.Features.WebServices.Application.SourceDelivery;
 
 namespace Pole.Features.WebServices.Application.Common;
 

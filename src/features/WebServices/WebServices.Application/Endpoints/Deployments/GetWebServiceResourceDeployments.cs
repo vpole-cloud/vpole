@@ -6,7 +6,8 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Persistence.Reads;
+using Pole.Features.WebServices.Application.Connections;
+using Pole.Features.WebServices.Application.Queries;
 using Pole.Mediator;
 
 using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;

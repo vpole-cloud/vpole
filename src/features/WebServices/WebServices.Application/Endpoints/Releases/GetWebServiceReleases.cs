@@ -7,7 +7,7 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Request;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Persistence.Releases;
+using Pole.Features.WebServices.Application.Releases;
 using Pole.Mediator;
 
 using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;

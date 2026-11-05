@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.WebServices.Application.Persistence.Tokens;
+using Pole.Features.WebServices.Application.Tokens;
 using Pole.Mediator;
 using Pole.ResultType;
 
