@@ -1,7 +1,7 @@
-using Pole.Features.GitOps.Primitives;
 using System.Text.Json;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Contracts;
+using Pole.Features.GitOps.Primitives;
 using Xunit;
 
 namespace Pole.Features.GitOps.Compiler.Tests;

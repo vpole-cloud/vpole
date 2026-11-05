@@ -1,4 +1,3 @@
-using Pole.Features.GitOps.Compiler;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.FSharp.Core;
 using MongoDB.Bson;
@@ -8,6 +7,7 @@ using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Endpoints.Sources;
 using Pole.Features.GitOps.Application.Sources;
+using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;

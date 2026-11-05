@@ -1,13 +1,13 @@
-using Pole.Features.ComputeProfiles.Application.Mongo;
-using Pole.Features.ComputeProfiles.Application.Common;
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.Outbox.Contracts;
-using Pole.Features.ComputeProfiles.Events;
+using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Defaults;
+using Pole.Features.ComputeProfiles.Application.Mongo;
 using Pole.Features.ComputeProfiles.Application.Resolution;
 using Pole.Features.ComputeProfiles.Domain;
+using Pole.Features.ComputeProfiles.Events;
 using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.Outbox.Contracts;
 using Pole.ResultType;
 
 namespace Pole.Features.ComputeProfiles.Application.Catalog;

@@ -1,4 +1,3 @@
-using Pole.Features.GitOps.Compiler;
 using System.Collections.Immutable;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,6 +12,7 @@ using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Migrations;
 using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Sources;
+using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;

@@ -1,10 +1,10 @@
-using Pole.Features.GitProviders.Application.Mongo;
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.Outbox.Contracts;
 using Pole.Features.GitProviders.Application.Common;
-using Pole.Features.GitProviders.Domain;
 using Pole.Features.GitProviders.Application.Connections;
+using Pole.Features.GitProviders.Application.Mongo;
+using Pole.Features.GitProviders.Domain;
+using Pole.Features.Outbox.Contracts;
 
 namespace Pole.Features.GitProviders.Application.Setup;
 

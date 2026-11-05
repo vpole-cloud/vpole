@@ -1,17 +1,17 @@
-using Pole.Features.GitProviders.Application.Mongo;
 using System.Collections.Immutable;
+using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Microsoft.Extensions.DependencyInjection;
 using Pole.Database;
 using Pole.Features.GitOps.Contracts;
-using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.Connections;
+using Pole.Features.GitProviders.Application.Mongo;
 using Pole.Features.GitProviders.Application.Repositories;
 using Pole.Features.GitProviders.Application.Setup;
 using Pole.Features.GitProviders.Domain;
 using Pole.Features.Outbox.Contracts;
+using Pole.Features.SourceBuilds.Contracts;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 

@@ -1,9 +1,9 @@
-using Pole.Features.SourceBuilds.Application.Execution.ContainerBuild;
+using System.Text;
+using Microsoft.Extensions.Logging.Abstractions;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Execution;
-using Microsoft.Extensions.Logging.Abstractions;
-using System.Text;
+using Pole.Features.SourceBuilds.Application.Execution.ContainerBuild;
 using Pole.Features.SourceBuilds.Domain;
 using Xunit;
 

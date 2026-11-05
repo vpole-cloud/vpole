@@ -1,4 +1,3 @@
-using Pole.Features.SourceBuilds.Application.Execution.Queueing;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -9,15 +8,16 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.GitProviders.Contracts;
-using static Pole.Features.GitProviders.Contracts.HttpMapping.GitProviderContractHttpMappings;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Configurations;
 using Pole.Features.SourceBuilds.Application.Execution;
+using Pole.Features.SourceBuilds.Application.Execution.Queueing;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.SourceBuilds.Events;
 using Pole.Mediator;
 using Pole.Validation;
+using static Pole.Features.GitProviders.Contracts.HttpMapping.GitProviderContractHttpMappings;
 using static Pole.Features.SourceBuilds.Application.Common.SourceBuildHttpMappings;
 
 namespace Pole.Features.SourceBuilds.Application.Endpoints.Jobs;

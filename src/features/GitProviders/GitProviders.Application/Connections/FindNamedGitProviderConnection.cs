@@ -1,5 +1,5 @@
-using Pole.Features.GitProviders.Application.Mongo;
 using MongoDB.Driver;
+using Pole.Features.GitProviders.Application.Mongo;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.GitProviders.Domain;
 

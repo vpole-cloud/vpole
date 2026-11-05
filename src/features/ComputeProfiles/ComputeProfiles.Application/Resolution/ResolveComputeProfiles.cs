@@ -1,8 +1,8 @@
-using Pole.Features.ComputeProfiles.Application.Mongo;
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Application.Catalog;
+using Pole.Features.ComputeProfiles.Application.Mongo;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
 
