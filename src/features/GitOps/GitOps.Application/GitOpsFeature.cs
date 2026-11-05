@@ -1,22 +1,20 @@
-using Microsoft.Extensions.Options;
-using Pole.Features.GitOps.Application.Endpoints.Sources.Previews;
-using Pole.Features.GitOps.Application.Endpoints.Sources;
-using Pole.Features.GitOps.Application.Inventory.Mongo;
-using Pole.Features.GitOps.Application.Lifecycle.Mongo;
-using Pole.Features.GitOps.Application.Lifecycle;
-using Pole.Features.GitOps.Application.Mongo;
-using Pole.Features.GitOps.Application.Planning.Mongo;
-using Pole.Features.GitOps.Application.Runs.Mongo;
-using Pole.Features.GitOps.Application.Sources.Mongo;
-using Pole.Features.GitOps.Domain;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Builder;
 using Hangfire;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using Pole.Features.GitOps.Application.Jobs;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using MongoDB.Driver;
+using Pole.Features.GitOps.Application.Endpoints.Sources;
+using Pole.Features.GitOps.Application.Endpoints.Sources.Previews;
+using Pole.Features.GitOps.Application.Inventory;
+using Pole.Features.GitOps.Application.Jobs;
+using Pole.Features.GitOps.Application.Lifecycle;
+using Pole.Features.GitOps.Application.Planning;
+using Pole.Features.GitOps.Application.Runs;
+using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Contracts;
+using Pole.Features.GitOps.Domain;
 
 namespace Pole.Features.GitOps.Application;
 

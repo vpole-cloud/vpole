@@ -1,13 +1,13 @@
+using System.Collections.Immutable;
 using System.Text.Json.Serialization;
-using MongoDB.Bson;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.GitOps.Application.Lifecycle.Mongo;
 using Pole.Features.GitOps.Application.Lifecycle;
 using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Contracts;
@@ -15,7 +15,6 @@ using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
 using Pole.Mediator;
 using Pole.Validation;
-using System.Collections.Immutable;
 
 namespace Pole.Features.GitOps.Application.Endpoints.Sources.Previews;
 

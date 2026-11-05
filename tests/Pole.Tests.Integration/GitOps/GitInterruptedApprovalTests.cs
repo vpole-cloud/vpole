@@ -1,10 +1,10 @@
-using Pole.Features.GitOps.Application.Lifecycle.Mongo;
-using Pole.Features.GitOps.Application.Sources.Mongo;
-using Pole.Features.GitOps.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
+using Pole.Features.GitOps.Application.Lifecycle;
+using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
+using Pole.Features.GitOps.Migrations;
 using Pole.Features.GitOps.Primitives;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;

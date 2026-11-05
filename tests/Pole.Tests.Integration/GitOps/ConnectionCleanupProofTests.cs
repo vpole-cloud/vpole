@@ -1,10 +1,10 @@
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
-using Pole.Features.GitOps.Application.Lifecycle.Mongo;
-using Pole.Features.GitOps.Application.Sources.Mongo;
 using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Jobs;
+using Pole.Features.GitOps.Application.Lifecycle;
+using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;

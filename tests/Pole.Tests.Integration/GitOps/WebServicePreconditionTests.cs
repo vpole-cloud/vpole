@@ -1,5 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
-using Pole.Features.GitOps.Application.Sources.Mongo;
+using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Primitives;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;

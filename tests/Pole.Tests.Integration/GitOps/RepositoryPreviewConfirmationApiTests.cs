@@ -1,10 +1,10 @@
 using System.Net;
-using Pole.Tests.Integration.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.GitOps.Application.Endpoints.Sources.Previews;
-using Pole.Features.GitOps.Application.Lifecycle.Mongo;
+using Pole.Features.GitOps.Application.Lifecycle;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
+using Pole.Tests.Integration.Http;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
