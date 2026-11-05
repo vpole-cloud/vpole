@@ -1,3 +1,4 @@
+using Pole.Features.Functions.Application.Mongo;
 using FluentValidation;
 using MongoDB.Bson;
 using Pole.Features.Functions.Domain;

@@ -3,7 +3,8 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Persistence.Runtime.Timers;
+using Pole.Features.Functions.Application.Mongo;
+using Pole.Features.Functions.Application.Runtime.Timers;
 using Pole.Features.Functions.Domain;
 
 namespace Pole.Features.Functions.Runtime.Timers;

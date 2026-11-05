@@ -2,6 +2,7 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Request;
 using Pole.Features.Functions.Application.Endpoints;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Endpoints;
 using Pole.Features.WebServices.Application.Common;

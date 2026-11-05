@@ -6,7 +6,11 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Persistence.Reads;
+using Pole.Features.Functions.Application.Mongo;
+using Pole.Features.Functions.Application.FunctionApps;
+using Pole.Features.Functions.Application.Invocations;
+using Pole.Features.Functions.Application.Revisions;
+using Pole.Features.Functions.Application.Usage;
 using Pole.Features.Request;
 using Pole.Mediator;
 

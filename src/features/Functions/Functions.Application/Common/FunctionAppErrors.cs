@@ -1,3 +1,4 @@
+using Pole.Features.Functions.Application.Mongo;
 namespace Pole.Features.Functions.Application.Common;
 
 public sealed record FunctionAppNotFound(string FunctionAppId);

@@ -1,5 +1,6 @@
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Persistence.Runtime.Gateway;
+using Pole.Features.Functions.Application.Mongo;
+using Pole.Features.Functions.Application.Runtime.Gateway;
 using Pole.Features.Functions.Domain;
 
 namespace Pole.Features.Functions.Runtime.Gateway;

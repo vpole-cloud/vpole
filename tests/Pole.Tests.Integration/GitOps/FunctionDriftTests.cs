@@ -5,9 +5,11 @@ using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Application.Endpoints;
-using Pole.Features.Functions.Application.Persistence;
-using Pole.Features.Functions.Application.Persistence.Lifecycle;
+using Pole.Features.Functions.Application;
+using Pole.Features.Functions.Application.Declarations;
+using Pole.Features.Functions.Application.Lifecycle;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Migrations;
 using Pole.Features.GitOps.Application;
@@ -357,7 +359,7 @@ public sealed partial class DeclarativePipelineTests
         var providers = Services.GetServices<IDeclarativeResourceProvider>().ToArray();
         var provider = providers.Single(item => item.Kind == "FunctionApp");
         var executionType = provider.GetType().Assembly.GetType(
-            "Pole.Features.Functions.Application.Persistence.FunctionDeclarationExecution", throwOnError: true)!;
+            "Pole.Features.Functions.Application.Declarations.FunctionDeclarationExecution", throwOnError: true)!;
         var execution = ActivatorUtilities.CreateInstance(Services, executionType, rejectAfterApply);
         var failing = (IDeclarativeResourceProvider)ActivatorUtilities.CreateInstance(Services,
             provider.GetType(), execution);

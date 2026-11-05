@@ -1,3 +1,4 @@
+using Pole.Features.Functions.Application.Mongo;
 using System.Collections.Immutable;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.Functions.Domain;

@@ -1,6 +1,7 @@
 using MassTransit;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Persistence.Lifecycle;
+using Pole.Features.Functions.Application.Mongo;
+using Pole.Features.Functions.Application.Lifecycle;
 using Pole.Features.ResourceDeployments.Events;
 
 namespace Pole.Features.Functions.Application.Consumers;

@@ -6,6 +6,7 @@ using k8s.Models;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.ResourceDeployments.Contracts;
 
 namespace Pole.Features.Functions.Runtime.Endpoints;

@@ -1,14 +1,17 @@
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Database;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Persistence.Lifecycle;
-using Pole.Features.Functions.Application.Persistence.Mutations;
-using Pole.Features.Functions.Application.Persistence.Reads;
-using Pole.Features.Functions.Application.Persistence.Runtime.Gateway;
-using Pole.Features.Functions.Application.Persistence.Runtime.Metering;
-using Pole.Features.Functions.Application.Persistence.Runtime.Provisioning;
-using Pole.Features.Functions.Application.Persistence.Runtime.Scaling;
-using Pole.Features.Functions.Application.Persistence.Runtime.Timers;
+using Pole.Features.Functions.Application.Mongo;
+using Pole.Features.Functions.Application.Lifecycle;
+using Pole.Features.Functions.Application.FunctionApps;
+using Pole.Features.Functions.Application.Invocations;
+using Pole.Features.Functions.Application.Revisions;
+using Pole.Features.Functions.Application.Usage;
+using Pole.Features.Functions.Application.Runtime.Gateway;
+using Pole.Features.Functions.Application.Runtime.Metering;
+using Pole.Features.Functions.Application.Runtime.Provisioning;
+using Pole.Features.Functions.Application.Runtime.Scaling;
+using Pole.Features.Functions.Application.Runtime.Timers;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 

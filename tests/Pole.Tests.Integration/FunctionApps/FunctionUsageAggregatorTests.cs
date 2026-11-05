@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
-using Pole.Features.Functions.Application.Persistence.Runtime.Metering;
+using Pole.Features.Functions.Application.Mongo;
+using Pole.Features.Functions.Application.Runtime.Metering;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Metering;
 using Pole.Features.Functions.Runtime.Timers;
