@@ -1,4 +1,6 @@
-using Pole.Features.DeploymentTargets.Application.Persistence;
+using Pole.Features.DeploymentTargets.Application;
+using Pole.Features.DeploymentTargets.Application.Admission;
+using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Features.GitOps.Application;
 using Pole.Features.GitProviders.Application;
 using Pole.Features.Secrets.Application;

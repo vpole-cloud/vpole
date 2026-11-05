@@ -7,8 +7,10 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.DeploymentTargets.Application.Common;
-using Pole.Features.DeploymentTargets.Application.Persistence;
-using Pole.Features.DeploymentTargets.Application.Persistence.Reads;
+using Pole.Features.DeploymentTargets.Application;
+using Pole.Features.DeploymentTargets.Application.Admission;
+using Pole.Features.DeploymentTargets.Application.Mongo;
+using Pole.Features.DeploymentTargets.Application.Catalog;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Mediator;
 
