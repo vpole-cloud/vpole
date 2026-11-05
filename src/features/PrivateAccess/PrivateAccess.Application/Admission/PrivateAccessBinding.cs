@@ -1,7 +1,12 @@
+using Pole.Features.PrivateAccess.Application.Sessions;
+using Pole.Features.PrivateAccess.Application.Mongo;
+using Pole.Features.PrivateAccess.Application.Grants;
+using Pole.Features.PrivateAccess.Application.Gateway;
+using Pole.Features.PrivateAccess.Application.Catalog;
 using Pole.Features.PrivateAccess.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 
-namespace Pole.Features.PrivateAccess.Application.Persistence;
+namespace Pole.Features.PrivateAccess.Application.Admission;
 
 internal sealed record PrivateAccessGrantBinding(
     string SubjectUserId,

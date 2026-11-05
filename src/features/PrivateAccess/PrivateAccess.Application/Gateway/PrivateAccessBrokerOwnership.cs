@@ -1,10 +1,15 @@
+using Pole.Features.PrivateAccess.Application.Sessions;
+using Pole.Features.PrivateAccess.Application.Mongo;
+using Pole.Features.PrivateAccess.Application.Grants;
+using Pole.Features.PrivateAccess.Application.Catalog;
+using Pole.Features.PrivateAccess.Application.Admission;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.PrivateAccess.Contracts;
 using Pole.Features.PrivateAccess.Domain;
 
-namespace Pole.Features.PrivateAccess.Application.Persistence;
+namespace Pole.Features.PrivateAccess.Application.Gateway;
 
 internal sealed class MongoPrivateAccessBrokerOwnership(
     IMongoCollection<PrivateAccessBrokerOwner> owners,
@@ -123,64 +128,4 @@ internal sealed class MongoPrivateAccessBrokerOwnership(
             PipelineDefinition<PrivateAccessBrokerOwner, PrivateAccessBrokerOwner>.Create(
                 [new BsonDocument("$set", fields)]));
     }
-}
-
-internal static class PrivateAccessBrokerOwnerFilters
-{
-    public static FilterDefinition<PrivateAccessBrokerOwner> ByGateway(string gatewayId) =>
-        Builders<PrivateAccessBrokerOwner>.Filter.Eq(item => item.Id, gatewayId);
-
-    public static FilterDefinition<PrivateAccessBrokerOwner> Current(
-        PrivateAccessBrokerOwner owner) =>
-        Builders<PrivateAccessBrokerOwner>.Filter.And(
-            ByGateway(owner.Id),
-            Builders<PrivateAccessBrokerOwner>.Filter.Eq(item => item.Epoch, owner.Epoch),
-            Builders<PrivateAccessBrokerOwner>.Filter.Eq(
-                item => item.GatewayGeneration, owner.GatewayGeneration),
-            Builders<PrivateAccessBrokerOwner>.Filter.Eq(
-                item => item.GatewayRevision, owner.GatewayRevision));
-
-    public static FilterDefinition<PrivateAccessBrokerOwner> Claimable(
-        PrivateAccessBrokerOwner owner,
-        string instanceId) =>
-        Builders<PrivateAccessBrokerOwner>.Filter.And(
-            Current(owner),
-            Builders<PrivateAccessBrokerOwner>.Filter.Or(
-                Builders<PrivateAccessBrokerOwner>.Filter.Eq(
-                    item => item.InstanceId, instanceId),
-                Builders<PrivateAccessBrokerOwner>.Filter.AtOrBeforeServerNow(
-                    item => item.LeaseExpiresAtUtc)));
-
-    public static FilterDefinition<PrivateAccessBrokerOwner> Lease(
-        PrivateAccessBrokerOwnerLease lease) =>
-        Builders<PrivateAccessBrokerOwner>.Filter.And(
-            ByGateway(lease.Gateway.GatewayId),
-            Builders<PrivateAccessBrokerOwner>.Filter.Eq(
-                item => item.TenantId, lease.Gateway.TenantId),
-            Builders<PrivateAccessBrokerOwner>.Filter.Eq(
-                item => item.DeploymentTargetId, lease.Gateway.DeploymentTargetId),
-            Builders<PrivateAccessBrokerOwner>.Filter.Eq(
-                item => item.GatewayGeneration, lease.Gateway.Generation),
-            Builders<PrivateAccessBrokerOwner>.Filter.Eq(
-                item => item.GatewayRevision, lease.Gateway.Revision),
-            Builders<PrivateAccessBrokerOwner>.Filter.Eq(item => item.InstanceId, lease.InstanceId),
-            Builders<PrivateAccessBrokerOwner>.Filter.Eq(item => item.Epoch, lease.Epoch));
-
-    public static FilterDefinition<PrivateAccessBrokerOwner> ActiveLease(
-        PrivateAccessBrokerOwnerLease lease) =>
-        Builders<PrivateAccessBrokerOwner>.Filter.And(Lease(lease),
-            Builders<PrivateAccessBrokerOwner>.Filter.AfterServerNow(item => item.LeaseExpiresAtUtc));
-
-    public static FilterDefinition<PrivateAccessBrokerOwner> ActiveForGateway(
-        string gatewayId,
-        string tenantId,
-        string targetId) =>
-        Builders<PrivateAccessBrokerOwner>.Filter.And(
-            ByGateway(gatewayId),
-            Builders<PrivateAccessBrokerOwner>.Filter.Eq(item => item.TenantId, tenantId),
-            Builders<PrivateAccessBrokerOwner>.Filter.Eq(
-                item => item.DeploymentTargetId, targetId),
-            Builders<PrivateAccessBrokerOwner>.Filter.Ne(item => item.InstanceId, null),
-            Builders<PrivateAccessBrokerOwner>.Filter.Ne(item => item.InternalOrigin, null),
-            Builders<PrivateAccessBrokerOwner>.Filter.AfterServerNow(item => item.LeaseExpiresAtUtc));
 }

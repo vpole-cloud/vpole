@@ -7,7 +7,12 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.PrivateAccess.Application.Endpoints;
-using Pole.Features.PrivateAccess.Application.Persistence;
+using Pole.Features.PrivateAccess.Application.Admission;
+using Pole.Features.PrivateAccess.Application.Catalog;
+using Pole.Features.PrivateAccess.Application.Gateway;
+using Pole.Features.PrivateAccess.Application.Grants;
+using Pole.Features.PrivateAccess.Application.Mongo;
+using Pole.Features.PrivateAccess.Application.Sessions;
 using Pole.Features.PrivateAccess.Domain;
 
 namespace Pole.Features.PrivateAccess.Application;

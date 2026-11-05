@@ -1,3 +1,8 @@
+using Pole.Features.PrivateAccess.Application.Mongo;
+using Pole.Features.PrivateAccess.Application.Grants;
+using Pole.Features.PrivateAccess.Application.Gateway;
+using Pole.Features.PrivateAccess.Application.Catalog;
+using Pole.Features.PrivateAccess.Application.Admission;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.PrivateAccess.Contracts;
@@ -5,7 +10,7 @@ using Pole.Features.PrivateAccess.Domain;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Workloads;
 
-namespace Pole.Features.PrivateAccess.Application.Persistence;
+namespace Pole.Features.PrivateAccess.Application.Sessions;
 
 internal sealed record PrivateAccessCleanupClaim(
     PrivateAccessSessionCleanupSnapshot? Snapshot);
