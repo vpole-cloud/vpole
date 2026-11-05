@@ -38,13 +38,13 @@ internal static class ArchitectureSources
     public static IEnumerable<ArchitectureSource> ServerCSharp() =>
         LoadSources(Path.Combine(RepositoryRoot, "src/api/Pole.Server"));
 
-    public static IEnumerable<ArchitectureSource> RuntimeMongoPersistenceCSharp() =>
+    public static IEnumerable<ArchitectureSource> RuntimeApplicationCSharp() =>
         ProductionCSharp().Where(source =>
-            MongoApplicationPaths.Classify(source.RelativePath) == MongoApplicationPath.Mongo);
+            MongoApplicationPaths.Classify(source.RelativePath) != MongoApplicationPath.OutsideApplication);
 
-    public static IEnumerable<ArchitectureTextSource> RuntimeMongoPersistenceFSharp() =>
+    public static IEnumerable<ArchitectureTextSource> RuntimeApplicationFSharp() =>
         ProductionFSharp().Where(source =>
-            MongoApplicationPaths.Classify(source.RelativePath) == MongoApplicationPath.Mongo);
+            MongoApplicationPaths.Classify(source.RelativePath) != MongoApplicationPath.OutsideApplication);
 
     public static ArchitectureSource ServerProgram() =>
         LoadSource(Path.Combine(RepositoryRoot, "src/api/Pole.Server/Program.cs"));

@@ -13,8 +13,8 @@ public sealed class MongoApplicationBoundaryAnalyzer : DiagnosticAnalyzer
 
     private static readonly DiagnosticDescriptor Rule = new(
         DiagnosticId,
-        "Mongo query API outside persistence",
-        "Mongo query symbol '{0}' must only be used by a persistence capability",
+        "Mongo query API in an entry point",
+        "Mongo query symbol '{0}' cannot be used in Endpoints, Consumers or Jobs",
         "Architecture",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true);
@@ -45,7 +45,7 @@ public sealed class MongoApplicationBoundaryAnalyzer : DiagnosticAnalyzer
     {
         var name = (SimpleNameSyntax)context.Node;
         if (!RawMongoQuerySymbols.Contains(name.Identifier.ValueText) ||
-            MongoApplicationPaths.Classify(name.SyntaxTree.FilePath) != MongoApplicationPath.Application)
+            MongoApplicationPaths.Classify(name.SyntaxTree.FilePath) != MongoApplicationPath.EntryPoint)
             return;
 
         context.ReportDiagnostic(Diagnostic.Create(

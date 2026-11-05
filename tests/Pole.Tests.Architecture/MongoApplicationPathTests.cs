@@ -6,20 +6,23 @@ namespace Pole.Tests.Architecture;
 public sealed class MongoApplicationPathTests
 {
     [Theory]
-    [InlineData("Feature.Application/Mongo/Filters/ItemFilters", MongoApplicationPath.Mongo)]
-    [InlineData("Feature.Application/Runs/Mongo/RunStore", MongoApplicationPath.Mongo)]
-    [InlineData(@"src\Feature.Application\Sources\Mongo\SourceStore", MongoApplicationPath.Mongo)]
-    [InlineData("Feature.Application/Persistence/Store", MongoApplicationPath.Mongo)]
+    [InlineData("Feature.Application/FeatureFilters", MongoApplicationPath.Application)]
     [InlineData("Feature.Application/Runs/RunStore", MongoApplicationPath.Application)]
-    [InlineData("Feature.Application/Endpoints/Handler", MongoApplicationPath.Application)]
-    [InlineData("Feature.Application/Endpoints/Mongo/Handler", MongoApplicationPath.Application)]
-    [InlineData("Feature.Application/Runs/MongoQueries/Store", MongoApplicationPath.Application)]
-    [InlineData("Feature.Application/Runs/Helpers/Mongo/Store", MongoApplicationPath.Application)]
-    [InlineData("Feature.Application/Runs/Persistence/Store", MongoApplicationPath.Application)]
-    [InlineData("Feature.Application/Mongo/Migrations/Index", MongoApplicationPath.Application)]
-    [InlineData("Feature.Migrations/Mongo/Index", MongoApplicationPath.OutsideApplication)]
-    [InlineData("Feature.Application.Tests/Mongo/Store", MongoApplicationPath.OutsideApplication)]
-    public void CSharp_and_FSharp_share_the_same_mongo_boundary(string path, MongoApplicationPath expected)
+    [InlineData("Feature.Application/Persistence/Store", MongoApplicationPath.Application)]
+    [InlineData("Feature.Application/Runs/Mongo/RunStore", MongoApplicationPath.Application)]
+    [InlineData("Feature.Application/Endpoints/Handler", MongoApplicationPath.EntryPoint)]
+    [InlineData("Feature.Application/Consumers/Consumer", MongoApplicationPath.EntryPoint)]
+    [InlineData("Feature.Application/Jobs/Job", MongoApplicationPath.EntryPoint)]
+    [InlineData("Feature.Application/Runs/Jobs/Job", MongoApplicationPath.EntryPoint)]
+    [InlineData("Feature.Application/Endpoints/Mongo/Handler", MongoApplicationPath.EntryPoint)]
+    [InlineData("Feature.Application/Inventory/Consumers/Consumer", MongoApplicationPath.EntryPoint)]
+    [InlineData(@"src\Feature.Application\Runs\Jobs\Job", MongoApplicationPath.EntryPoint)]
+    [InlineData("Feature.Application/JobScheduling/Store", MongoApplicationPath.Application)]
+    [InlineData("Feature.Application/ConsumerModels/Store", MongoApplicationPath.Application)]
+    [InlineData("Feature.Application/Migrations/Index", MongoApplicationPath.Application)]
+    [InlineData("Feature.Migrations/Jobs/Index", MongoApplicationPath.OutsideApplication)]
+    [InlineData("Feature.Application.Tests/Endpoints/Store", MongoApplicationPath.OutsideApplication)]
+    public void CSharp_and_FSharp_share_the_same_entry_point_boundary(string path, MongoApplicationPath expected)
     {
         Assert.Equal(expected, MongoApplicationPaths.Classify($"{path}.cs"));
         Assert.Equal(expected, MongoApplicationPaths.Classify($"{path}.fs"));

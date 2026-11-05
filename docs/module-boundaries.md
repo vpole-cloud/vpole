@@ -216,12 +216,17 @@ history identities. Moving a migration must preserve its ID, scope and schema/in
 `Feature.Application` owns orchestration, persistence implementations, endpoint flows,
 integration-event mapping, consumers, and infrastructure adapters.
 
-Group Application code by feature workflow. Put Mongo implementations under
-`Feature.Application/<Workflow>/Mongo/` and shared feature collections, indexes, mappings and
-filters under `Feature.Application/Mongo/`. Keep raw Mongo query APIs in those implementations.
-Endpoints and workflow orchestration call narrow operations. During the folder transition,
-existing `Feature.Application/Persistence/` implementations remain covered by the same checks.
-`Feature.Migrations` retains its separate project boundary.
+Group Application code by feature workflow. Mongo-backed operations may live directly beside other
+workflow code; no Mongo folder is required. Raw Mongo query APIs are forbidden under any exact
+`Endpoints`, `Consumers` or `Jobs` path segment in an Application project. Those adapters invoke
+workflow operations. C# compiler diagnostics and F# architecture tests share the same path rule.
+The rule permits orchestration and Mongo access in a workflow implementation.
+
+Keep a feature's runtime filter helpers together in `<Feature>Filters.cs`. The file may contain
+multiple named filter classes. GitOps is the first migrated feature; other features retain their
+current layout until their migration is reviewed. Typed-field and named-helper checks cover all
+Application runtime code regardless of folder names. `Feature.Migrations` retains its separate
+project boundary.
 
 Application may reference its own Domain, Contracts, and Events. It may reference another
 feature's Contracts for synchronous capabilities and another feature's Events to consume its

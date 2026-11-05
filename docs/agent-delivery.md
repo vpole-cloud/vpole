@@ -55,9 +55,9 @@ artificial new endpoint or a duplicated review ceremony.
 
 The repository compiler diagnostics complement review:
 
-- `POLE001`: Application raw Mongo query APIs stay in root or workflow `Mongo/` folders.
-  Existing root `Persistence/` folders remain supported during the transition. F# uses the same
-  path rule through architecture tests. Schema migrations live in separate `Feature.Migrations` projects.
+- `POLE001`: raw Mongo query APIs are forbidden below any Application `Endpoints`, `Consumers`
+  or `Jobs` folder. F# architecture tests use the same rule. Workflow implementations may access
+  Mongo directly; no Mongo folder is required.
 - `POLE002`: each endpoint handler owns a colocated outcome.
 - `POLE003`: entities with a matching domain factory are constructed through it.
 - `POLE004`: those entities do not expose mutable collection APIs.
@@ -65,7 +65,9 @@ The repository compiler diagnostics complement review:
 - `POLE006`: one concrete endpoint-handler contract per endpoint file.
 - `POLE007`: each parameter of multi-parameter positional records, record structs,
   unions and delegates starts on its own line; architecture tests cover all sources.
-- `POLE008` rejects inline Mongo filter lambdas in runtime persistence operations; use named `*Filters` helpers. It resolves driver filter arguments semantically, so ordinary collection predicates remain allowed.
+- `POLE008` rejects inline Mongo filter lambdas in Application runtime operations; use named
+  `*Filters` helpers. It resolves driver filter arguments semantically, so ordinary collection
+  predicates remain allowed.
 - `POLE009`: positional records do not add stored instance members or alternate data constructors;
   ordinary-property records, computed/static members and DI classes remain allowed. Existing unrelated
   legacy members have exact per-member allowances, checked by architecture tests.
