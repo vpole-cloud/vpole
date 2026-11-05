@@ -9,7 +9,7 @@ open k8s.Models
 open Pole.Features.Core.Kubernetes
 open Pole.Features.DeploymentTargets.Contracts
 open Pole.Features.Postgres.Application.Common
-open Pole.Features.Postgres.Application.Persistence.Reads
+open Pole.Features.Postgres.Application.Clusters
 open Pole.Features.Postgres.Domain
 open Pole.Features.ResourceDeployments.Contracts
 open Pole.Workloads

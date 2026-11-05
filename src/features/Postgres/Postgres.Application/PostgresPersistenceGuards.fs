@@ -1,4 +1,4 @@
-namespace Pole.Features.Postgres.Application.Persistence
+namespace Pole.Features.Postgres.Application
 
 open System
 open MongoDB.Bson

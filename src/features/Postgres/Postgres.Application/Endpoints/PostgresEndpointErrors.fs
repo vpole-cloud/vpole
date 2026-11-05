@@ -2,10 +2,11 @@ namespace Pole.Features.Postgres.Application.Endpoints
 
 open Pole.Features.ComputeProfiles.Contracts
 open Pole.Features.DeploymentTargets.Contracts
-open Pole.Features.Postgres.Application.Persistence.Credentials
-open Pole.Features.Postgres.Application.Persistence
-open Pole.Features.Postgres.Application.Persistence.Lifecycle
-open Pole.Features.Postgres.Application.Persistence.Mutations
+open Pole.Features.Postgres.Application.Credentials
+open Pole.Features.Postgres.Application
+open Pole.Features.Postgres.Application.Mongo
+open Pole.Features.Postgres.Application.Lifecycle
+open Pole.Features.Postgres.Application.Clusters
 open Pole.Features.Quotas.Contracts
 open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.ResourceGroups.Contracts

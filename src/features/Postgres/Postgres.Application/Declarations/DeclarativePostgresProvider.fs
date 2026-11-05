@@ -1,4 +1,4 @@
-namespace Pole.Features.Postgres.Application.Persistence.Declarative
+namespace Pole.Features.Postgres.Application.Declarations
 
 open System.Threading
 open System.Collections.Generic
@@ -6,7 +6,8 @@ open Pole.Features.GitOps.Primitives
 open MongoDB.Driver
 open Pole.Features.GitOps.Contracts
 open Pole.Features.Postgres.Application.Common
-open Pole.Features.Postgres.Application.Persistence
+open Pole.Features.Postgres.Application
+open Pole.Features.Postgres.Application.Mongo
 open Pole.Features.Postgres.Domain
 
 type DeclarativePostgresProvider(

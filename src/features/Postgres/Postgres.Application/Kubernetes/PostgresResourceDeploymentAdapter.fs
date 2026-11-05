@@ -7,7 +7,7 @@ open System.Threading.Tasks
 open Pole.Features.DeploymentTargets.Contracts
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
-open Pole.Features.Postgres.Application.Persistence.Reads
+open Pole.Features.Postgres.Application.Clusters
 open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.Secrets.Contracts
 open Pole.Workloads

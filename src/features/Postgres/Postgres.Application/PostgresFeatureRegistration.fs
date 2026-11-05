@@ -10,7 +10,7 @@ open Pole.Database
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application.Endpoints
 open Pole.Features.Postgres.Application.Kubernetes
-open Pole.Features.Postgres.Application.Persistence
+open Pole.Features.Postgres.Application.Mongo
 open Pole.Features.Postgres.Application.Search
 open Pole.Features.Postgres.Domain
 open Pole.Features.Quotas.Contracts

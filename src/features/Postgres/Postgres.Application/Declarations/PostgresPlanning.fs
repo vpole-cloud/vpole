@@ -1,4 +1,4 @@
-namespace Pole.Features.Postgres.Application.Persistence.Declarative
+namespace Pole.Features.Postgres.Application.Declarations
 
 open System
 open System.Threading
@@ -9,8 +9,9 @@ open Pole.Features.DeploymentTargets.Contracts
 open Pole.Features.GitOps.Contracts
 open Pole.Features.GitOps.Primitives
 open Pole.Features.Postgres.Application.Common
-open Pole.Features.Postgres.Application.Persistence
-open Pole.Features.Postgres.Application.Persistence.Credentials
+open Pole.Features.Postgres.Application
+open Pole.Features.Postgres.Application.Mongo
+open Pole.Features.Postgres.Application.Credentials
 open Pole.Features.Postgres.Domain
 open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.ResourceGroups.Contracts
