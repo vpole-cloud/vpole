@@ -9,7 +9,8 @@ using Pole.Features.Domains.Contracts;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Persistence.Reads;
+using Pole.Features.WebServices.Application.Connections;
+using Pole.Features.WebServices.Application.Queries;
 using Pole.Mediator;
 using Pole.Validation;
 

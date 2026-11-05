@@ -17,9 +17,14 @@ using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Application.Endpoints.Deployments;
 using Pole.Features.WebServices.Application.Endpoints.Deployments.Hostnames;
 using Pole.Features.WebServices.Application.Endpoints.Releases;
-using Pole.Features.WebServices.Application.Persistence;
-using Pole.Features.WebServices.Application.Persistence.Mutations;
-using Pole.Features.WebServices.Application.Persistence.Tokens;
+using Pole.Features.WebServices.Application;
+using Pole.Features.WebServices.Application.Configuration;
+using Pole.Features.WebServices.Application.Declarations;
+using Pole.Features.WebServices.Application.Hostnames;
+using Pole.Features.WebServices.Application.Lifecycle;
+using Pole.Features.WebServices.Application.Mongo;
+using Pole.Features.WebServices.Application.SourceDelivery;
+using Pole.Features.WebServices.Application.Tokens;
 
 namespace Pole.Features.WebServices.Application.Common;
 

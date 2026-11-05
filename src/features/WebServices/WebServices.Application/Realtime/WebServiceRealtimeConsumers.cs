@@ -3,7 +3,8 @@ using Pole.Features.Events.Abstractions;
 using Pole.Features.Realtime.Contracts;
 using Pole.Features.ResourceDeployments.Events;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Persistence.Reads;
+using Pole.Features.WebServices.Application.Connections;
+using Pole.Features.WebServices.Application.Queries;
 using Pole.Features.WebServices.Events;
 
 namespace Pole.Features.WebServices.Application.Realtime;
