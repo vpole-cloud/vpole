@@ -76,7 +76,7 @@ public sealed class GitProviderBoundaryArchitectureTests
         var violations = Directory
             .EnumerateFiles(ApplicationSourceDirectory, "*.cs", SearchOption.AllDirectories)
             .Where(file => !file.EndsWith(
-                $"{Path.DirectorySeparatorChar}GitProviderFilters.cs",
+                $"{Path.DirectorySeparatorChar}GitProvidersFilters.cs",
                 StringComparison.Ordinal))
             .Where(file => !file.Contains(
                 $"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}",
