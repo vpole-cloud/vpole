@@ -4,6 +4,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>Pole.Features.PrivateAccess.Runtime</AssemblyName>
+    <RootNamespace>Pole.Features.PrivateAccess.Runtime</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
