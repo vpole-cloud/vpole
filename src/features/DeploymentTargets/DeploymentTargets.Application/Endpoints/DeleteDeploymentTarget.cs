@@ -7,9 +7,11 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.DeploymentTargets.Application.Connections;
-using Pole.Features.DeploymentTargets.Application.Persistence;
+using Pole.Features.DeploymentTargets.Application;
+using Pole.Features.DeploymentTargets.Application.Admission;
+using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Features.DeploymentTargets.Application.Common;
-using Pole.Features.DeploymentTargets.Application.Persistence.Mutations;
+using Pole.Features.DeploymentTargets.Application.Catalog;
 using Pole.Mediator;
 
 namespace Pole.Features.DeploymentTargets.Application.Endpoints;

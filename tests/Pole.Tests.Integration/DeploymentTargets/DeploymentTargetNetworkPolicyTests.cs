@@ -1,6 +1,6 @@
 using MongoDB.Bson;
 using Pole.Features.DeploymentTargets.Application.Common;
-using Pole.Features.DeploymentTargets.Application.Persistence.Admission;
+using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.ResultType;

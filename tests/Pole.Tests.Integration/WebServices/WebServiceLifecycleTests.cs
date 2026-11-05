@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.Features.DeploymentTargets.Application.Persistence.Admission;
+using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
 using MongoDB.Bson;

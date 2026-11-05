@@ -7,7 +7,7 @@ using Pole.Features.ComputeProfiles.Application.Catalog;
 using Pole.Features.ComputeProfiles.Application.Realtime;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.ComputeProfiles.Events;
-using Pole.Features.DeploymentTargets.Application.Persistence.References;
+using Pole.Features.DeploymentTargets.Application.References;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.Events.Abstractions;

@@ -55,7 +55,7 @@ using Pole.Features.Search.Application;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Secrets.Application;
 using Pole.Features.PrivateAccess.Application;
-using Pole.Features.DeploymentTargets.Application.Persistence.Admission;
+using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.Secrets.Migrations;
 using Pole.Features.SourceBuilds.Application;
 using Pole.Features.SourceBuilds.Application.Common;

@@ -8,7 +8,7 @@ using k8s;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.DeploymentTargets.Application.Persistence.Admission;
+using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Application.Observation;
 using Pole.Features.StorageProfiles.Application.Discovery.Observation;

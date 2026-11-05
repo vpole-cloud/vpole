@@ -5,7 +5,7 @@ using MongoDB.Driver;
 using MongoDB.Driver.Core.Events;
 using Pole.Database;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.DeploymentTargets.Application.Persistence.Admission;
+using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Observation;
