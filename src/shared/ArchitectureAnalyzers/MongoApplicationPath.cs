@@ -13,7 +13,8 @@ public static class MongoApplicationPaths
     {
         var normalized = path.Replace('\\', '/');
         var segments = normalized.Split('/');
-        var application = Array.FindIndex(segments, segment => segment.EndsWith(".Application", StringComparison.Ordinal));
+        var application = Array.FindIndex(segments,
+            segment => segment.EndsWith(".Application", StringComparison.Ordinal));
         if (application < 0 || application == segments.Length - 1)
             return MongoApplicationPath.OutsideApplication;
 
