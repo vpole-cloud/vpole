@@ -1,3 +1,9 @@
+using Pole.Features.ResourceConnections.Application.Topology;
+using Pole.Features.ResourceConnections.Application.Recovery;
+using Pole.Features.ResourceConnections.Application.Mongo;
+using Pole.Features.ResourceConnections.Application.Declarations;
+using Pole.Features.ResourceConnections.Application.Connections;
+using Pole.Features.ResourceConnections.Application.Common;
 using System.Collections.Immutable;
 using System.Globalization;
 using MongoDB.Driver;
@@ -7,7 +13,7 @@ using Pole.Features.ResourceConnections.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Workloads;
 
-namespace Pole.Features.ResourceConnections.Application.Persistence;
+namespace Pole.Features.ResourceConnections.Application.References;
 
 internal sealed class ResourceConnectionReferenceProvider(
     IMongoCollection<ResourceConnection> connections,

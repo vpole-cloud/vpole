@@ -1,4 +1,10 @@
-namespace Pole.Features.ResourceConnections.Application.Persistence;
+using Pole.Features.ResourceConnections.Application.References;
+using Pole.Features.ResourceConnections.Application.Recovery;
+using Pole.Features.ResourceConnections.Application.Mongo;
+using Pole.Features.ResourceConnections.Application.Declarations;
+using Pole.Features.ResourceConnections.Application.Connections;
+using Pole.Features.ResourceConnections.Application.Common;
+namespace Pole.Features.ResourceConnections.Application.Topology;
 
 internal enum ConnectionTopologyKind { Eligible, SourceHasNoPlacements, DestinationTargetMissing, DestinationTargetAmbiguous }
 internal sealed record ConnectionTopologyAssessment(

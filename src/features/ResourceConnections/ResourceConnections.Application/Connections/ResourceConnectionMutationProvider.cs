@@ -1,3 +1,9 @@
+using Pole.Features.ResourceConnections.Application.Topology;
+using Pole.Features.ResourceConnections.Application.References;
+using Pole.Features.ResourceConnections.Application.Recovery;
+using Pole.Features.ResourceConnections.Application.Mongo;
+using Pole.Features.ResourceConnections.Application.Declarations;
+using Pole.Features.ResourceConnections.Application.Common;
 using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Contracts;
@@ -8,7 +14,7 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Workloads;
 
-namespace Pole.Features.ResourceConnections.Application.Persistence;
+namespace Pole.Features.ResourceConnections.Application.Connections;
 
 internal sealed record ConnectionResolvedSnapshots(
     IReadOnlyList<ConnectionTargetSnapshot> Snapshots);
