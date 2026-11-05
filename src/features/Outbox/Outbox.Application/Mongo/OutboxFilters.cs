@@ -1,5 +1,7 @@
 using MongoDB.Driver;
-namespace Pole.Features.Outbox.Application.Persistence;
+using Pole.Features.Outbox.Application;
+
+namespace Pole.Features.Outbox.Application.Mongo;
 
 internal static class OutboxMessageFilters
 {

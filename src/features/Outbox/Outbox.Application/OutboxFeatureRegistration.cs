@@ -4,7 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
-using Pole.Features.Outbox.Application.Persistence;
+using Pole.Features.Outbox.Application.Mongo;
 
 namespace Pole.Features.Outbox.Application;
 

@@ -1,5 +1,5 @@
 using Pole.Features.GitOps.Application;
-using Pole.Features.Outbox.Application.Persistence.Delivery;
+using Pole.Features.Outbox.Application.Delivery;
 using Pole.Features.Realtime.Application;
 using Pole.Features.Realtime.Application.Redis;
 using System.Reflection;
@@ -38,7 +38,6 @@ using Pole.Features.Tenants.Application.Middleware;
 using Pole.Features.Users.Application;
 using Pole.Features.Users.Application.Common;
 using Pole.Observability;
-using Pole.Platform.Hosting;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;

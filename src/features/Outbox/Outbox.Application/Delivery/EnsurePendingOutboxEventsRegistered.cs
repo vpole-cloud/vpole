@@ -1,6 +1,8 @@
+using Pole.Features.Outbox.Application.Mongo;
+using Pole.Features.Outbox.Application;
 using MongoDB.Driver;
 
-namespace Pole.Features.Outbox.Application.Persistence.Delivery;
+namespace Pole.Features.Outbox.Application.Delivery;
 
 /// <summary>Run before workers start so retained durable work always has a registered event contract.</summary>
 public sealed class EnsurePendingOutboxEventsRegistered(IMongoCollection<OutboxMessage> _messages,

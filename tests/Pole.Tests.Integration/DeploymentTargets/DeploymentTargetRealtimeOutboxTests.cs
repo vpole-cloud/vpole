@@ -12,7 +12,7 @@ using Pole.Features.DeploymentTargets.Application.Realtime;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.DeploymentTargets.Events;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.Outbox.Application.Persistence.Writes;
+using Pole.Features.Outbox.Application.Writes;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.Outbox.Domain;
 using Pole.Features.Realtime.Contracts;
