@@ -1,5 +1,3 @@
-using Pole.Features.GitOps.Compiler;
-using Pole.Features.GitOps.Application.Mongo;
 using Hangfire;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -12,9 +10,11 @@ using Pole.Features.GitOps.Application.Endpoints.Sources.Previews;
 using Pole.Features.GitOps.Application.Inventory;
 using Pole.Features.GitOps.Application.Jobs;
 using Pole.Features.GitOps.Application.Lifecycle;
+using Pole.Features.GitOps.Application.Mongo;
 using Pole.Features.GitOps.Application.Planning;
 using Pole.Features.GitOps.Application.Runs;
 using Pole.Features.GitOps.Application.Sources;
+using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 

@@ -1,4 +1,3 @@
-using Pole.Features.GitOps.Compiler;
 using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
@@ -8,6 +7,7 @@ using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Jobs;
 using Pole.Features.GitOps.Application.Lifecycle;
 using Pole.Features.GitOps.Application.Sources;
+using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;

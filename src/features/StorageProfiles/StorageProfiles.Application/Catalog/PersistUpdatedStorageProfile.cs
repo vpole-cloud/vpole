@@ -1,11 +1,11 @@
-using Pole.Features.StorageProfiles.Application.Mongo;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Outbox.Contracts;
-using Pole.Features.StorageProfiles.Events;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Defaults;
+using Pole.Features.StorageProfiles.Application.Mongo;
 using Pole.Features.StorageProfiles.Domain;
+using Pole.Features.StorageProfiles.Events;
 
 namespace Pole.Features.StorageProfiles.Application.Catalog;
 

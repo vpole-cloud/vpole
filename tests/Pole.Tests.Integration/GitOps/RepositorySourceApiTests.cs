@@ -1,4 +1,3 @@
-using Pole.Features.GitOps.Compiler;
 using System.Net;
 using System.Text;
 using System.Text.Encodings.Web;
@@ -15,6 +14,7 @@ using Pole.Features.GitOps.Application.Endpoints.Sources.Previews;
 using Pole.Features.GitOps.Application.Jobs;
 using Pole.Features.GitOps.Application.Lifecycle;
 using Pole.Features.GitOps.Application.Sources;
+using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Migrations;

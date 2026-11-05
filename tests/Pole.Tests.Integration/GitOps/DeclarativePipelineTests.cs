@@ -1,4 +1,3 @@
-using Pole.Features.GitOps.Compiler;
 using System.Collections.Immutable;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -15,6 +14,7 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Runs;
 using Pole.Features.GitOps.Application.Sources;
+using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Migrations;

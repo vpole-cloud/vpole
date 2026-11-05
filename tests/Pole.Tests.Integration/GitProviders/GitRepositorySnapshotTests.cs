@@ -1,4 +1,3 @@
-using Pole.Features.GitOps.Compiler;
 using System.Collections.Immutable;
 using System.Formats.Tar;
 using System.IO.Compression;
@@ -7,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Application;
+using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitProviders.Application;
 using Pole.Features.GitProviders.Application.Common;

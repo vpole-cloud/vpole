@@ -1,4 +1,3 @@
-using Pole.Features.GitOps.Compiler;
 using System.Net;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
@@ -7,6 +6,7 @@ using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Endpoints.Sources;
 using Pole.Features.GitOps.Application.Endpoints.Sources.Previews;
 using Pole.Features.GitOps.Application.Lifecycle;
+using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.ResourceGroups.Domain;

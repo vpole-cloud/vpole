@@ -1,8 +1,8 @@
-using Pole.Features.GitProviders.Application.Mongo;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.GitProviders.Application.Endpoints.Callbacks;
+using Pole.Features.GitProviders.Application.Mongo;
 using Pole.Features.GitProviders.Domain;
 using Pole.Features.GitProviders.Events;
 using Pole.Features.Outbox.Contracts;

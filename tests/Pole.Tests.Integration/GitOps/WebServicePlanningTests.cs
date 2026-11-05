@@ -1,8 +1,8 @@
-using Pole.Features.GitOps.Compiler;
+using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Database;
-using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.GitOps.Application;
+using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.WebServices.Application.Persistence;

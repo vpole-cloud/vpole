@@ -1,8 +1,8 @@
-using Pole.Features.GitOps.Compiler;
 using System.Collections.Immutable;
-using MongoDB.Driver;
 using Microsoft.Extensions.DependencyInjection;
+using MongoDB.Driver;
 using Pole.Features.GitOps.Application;
+using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.Secrets.Domain;
 using Pole.Tests.Integration.Infrastructure;

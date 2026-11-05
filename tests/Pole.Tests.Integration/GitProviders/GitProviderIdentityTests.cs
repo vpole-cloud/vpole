@@ -1,11 +1,11 @@
-using Pole.Features.GitProviders.Application.Mongo;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
-using Pole.Features.GitProviders.Application;
+using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.GitProviders.Application;
 using Pole.Features.GitProviders.Application.Connections;
+using Pole.Features.GitProviders.Application.Mongo;
 using Pole.Features.GitProviders.Application.Setup;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.GitProviders.Domain;

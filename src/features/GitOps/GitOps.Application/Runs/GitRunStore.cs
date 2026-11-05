@@ -1,9 +1,9 @@
-using Pole.Features.GitOps.Application.Mongo;
 using System.Collections.Immutable;
 using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.GitOps.Application.Mongo;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
 

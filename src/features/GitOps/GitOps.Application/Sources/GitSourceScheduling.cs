@@ -1,4 +1,3 @@
-using Pole.Features.GitOps.Application.Mongo;
 using System.Linq.Expressions;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -8,6 +7,7 @@ using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.GitOps.Application.Mongo;
 using Pole.Features.GitOps.Application.Runs;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;

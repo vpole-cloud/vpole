@@ -1,8 +1,8 @@
-using Pole.Features.GitOps.Compiler;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Pole.Features.GitOps.Application;
+using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Contracts;
 
 namespace Pole.Tests.Integration.GitOps;
