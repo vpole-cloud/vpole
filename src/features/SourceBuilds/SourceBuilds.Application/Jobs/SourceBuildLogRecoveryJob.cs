@@ -1,5 +1,5 @@
 using Hangfire;
-using Pole.Features.SourceBuilds.Application.Persistence.Logs;
+using Pole.Features.SourceBuilds.Application.Logs;
 
 namespace Pole.Features.SourceBuilds.Application.Jobs;
 

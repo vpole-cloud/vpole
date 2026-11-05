@@ -9,7 +9,7 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.GitProviders.Contracts.HttpMapping;
 using Pole.Features.SourceBuilds.Application.Common;
-using Pole.Features.SourceBuilds.Application.Persistence.Configuration;
+using Pole.Features.SourceBuilds.Application.Configurations;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Mediator;
 using Pole.Validation;

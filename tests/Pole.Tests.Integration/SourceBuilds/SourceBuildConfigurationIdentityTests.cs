@@ -7,7 +7,7 @@ using Pole.Features.GitProviders.Contracts;
 using Pole.Features.SourceBuilds.Application;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Migrations;
-using Pole.Features.SourceBuilds.Application.Persistence.Configuration;
+using Pole.Features.SourceBuilds.Application.Configurations;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Domain;
 using Xunit;

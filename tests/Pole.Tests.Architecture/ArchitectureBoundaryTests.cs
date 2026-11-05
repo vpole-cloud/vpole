@@ -292,15 +292,18 @@ public sealed class ArchitectureBoundaryTests
             diagnostic.Id == MongoApplicationBoundaryAnalyzer.DiagnosticId));
     }
 
-    public static IEnumerable<object[]> TemporarySourceBuildPaths =>
-        MongoApplicationLegacyPaths.Files.Select(path => new object[] { path, false });
-
     [Theory]
-    [MemberData(nameof(TemporarySourceBuildPaths))]
-    [InlineData("src/features/SourceBuilds/SourceBuilds.Application/Persistence/Jobs/NewJob.cs", true)]
-    public async Task MongoApplicationBoundaryAnalyzer_LimitsTemporaryAllowancesToExistingFiles(
-        string path,
-        bool rejected)
+    [InlineData("ClaimQueuedSourceBuildJob.cs")]
+    [InlineData("CompleteSourceBuildJobOnDeployment.cs")]
+    [InlineData("LoadSourceBuildJob.cs")]
+    [InlineData("LoadSourceBuildJobPage.cs")]
+    [InlineData("LoadStaleQueuedSourceBuildJobs.cs")]
+    [InlineData("QueueSourceBuildJob.cs")]
+    [InlineData("SourceBuildExecutionLease.cs")]
+    [InlineData("SourceBuildPromotion.cs")]
+    [InlineData("TryPersistSourceBuildJob.cs")]
+    [InlineData("NewJob.cs")]
+    public async Task MongoApplicationBoundaryAnalyzer_RejectsSourceBuildJobsWithoutLegacyAllowances(string name)
     {
         var diagnostics = await AnalyzeAsync(
             """
@@ -309,8 +312,8 @@ public sealed class ArchitectureBoundaryTests
             {
                 public FilterDefinition<string> All() => Builders<string>.Filter.Empty;
             }
-            """, path);
-        Assert.Equal(rejected ? 3 : 0, diagnostics.Count(diagnostic =>
+            """, $"src/features/SourceBuilds/SourceBuilds.Application/Persistence/Jobs/{name}");
+        Assert.Equal(3, diagnostics.Count(diagnostic =>
             diagnostic.Id == MongoApplicationBoundaryAnalyzer.DiagnosticId));
     }
 

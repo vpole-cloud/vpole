@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.SourceBuilds.Application.Common;
-using Pole.Features.SourceBuilds.Application.Persistence.Configuration;
+using Pole.Features.SourceBuilds.Application.Configurations;
 using Pole.Mediator;
 using Pole.Validation;
 using static Pole.Features.SourceBuilds.Application.Common.SourceBuildHttpMappings;

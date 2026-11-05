@@ -20,9 +20,7 @@ public static class MongoApplicationPaths
         for (var index = application + 1; index < segments.Length - 1; index++)
         {
             if (segments[index] is "Endpoints" or "Consumers" or "Jobs")
-                return MongoApplicationLegacyPaths.Contains(normalized)
-                    ? MongoApplicationPath.Application
-                    : MongoApplicationPath.EntryPoint;
+                return MongoApplicationPath.EntryPoint;
         }
 
         return MongoApplicationPath.Application;

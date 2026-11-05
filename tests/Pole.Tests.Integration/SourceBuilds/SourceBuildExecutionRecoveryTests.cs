@@ -9,7 +9,7 @@ using Pole.Features.GitProviders.Domain;
 using Pole.Features.Tenants.Application;
 using Pole.Features.Tenants.Domain;
 using Pole.Features.SourceBuilds.Application;
-using Pole.Features.SourceBuilds.Application.Persistence.Jobs;
+using Pole.Features.SourceBuilds.Application.Execution;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Domain;
 using Xunit;
