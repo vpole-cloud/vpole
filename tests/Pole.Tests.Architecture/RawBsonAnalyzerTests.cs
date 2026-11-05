@@ -73,6 +73,25 @@ public sealed class RawBsonAnalyzerTests
     }
 
     [Fact]
+    public async Task A_callback_exception_does_not_hide_the_callers_raw_result()
+    {
+        var results = await Analyze("""
+            using MongoDB.Bson;
+            using Pole.Architecture;
+            public class Subject
+            {
+                public object Get() => BsonLibrary.Raw.Transform(
+                    [ViolateArchitecture("POLE014", "This callback owns a driver boundary.")]
+                    (BsonDocument document) => document);
+            }
+            """);
+
+        Assert.NotEmpty(results);
+        Assert.All(results, diagnostic => Assert.StartsWith("BsonLibrary.Raw.Transform",
+            diagnostic.Location.SourceTree!.GetText().ToString(diagnostic.Location.SourceSpan)));
+    }
+
+    [Fact]
     public async Task Generated_production_code_requires_the_same_exception()
     {
         Assert.NotEmpty(await Analyze("""
@@ -237,6 +256,8 @@ public sealed class RawBsonAnalyzerTests
                     public static void AcceptValue(MongoDB.Bson.BsonValue value) { }
                     public static void Visit(RawCallback callback) { }
                     public static bool TryValue(out MongoDB.Bson.BsonDocument document) { document = new(); return true; }
+                    public static MongoDB.Bson.BsonDocument Transform(
+                        System.Func<MongoDB.Bson.BsonDocument, MongoDB.Bson.BsonDocument> callback) => null!;
                     public static System.Collections.Generic.IEnumerable<MongoDB.Bson.BsonValue> Values => [];
                     public static System.Threading.Tasks.Task<MongoDB.Bson.BsonDocument> MakeTask() => null!;
                 }

@@ -82,9 +82,16 @@ public sealed class RawBsonAnalyzer : DiagnosticAnalyzer
             Allowed(model, operation.Syntax, context.CancellationToken))
             return;
 
-        // Explicit type syntax already receives a precise diagnostic. Operations also cover
-        // inferred returns/properties, so ToBsonDocument and other raw-BSON factories cannot hide uses.
-        if (operation.Syntax.DescendantNodesAndSelf().OfType<SimpleNameSyntax>().Any(name =>
+        // Only the operation's own explicit type can make its diagnostic redundant. A nested
+        // callback may have an exception while its caller still returns unapproved raw BSON.
+        var explicitType = operation.Syntax switch
+        {
+            ObjectCreationExpressionSyntax creation => creation.Type,
+            ArrayCreationExpressionSyntax creation => creation.Type.ElementType,
+            CastExpressionSyntax conversion => conversion.Type,
+            _ => null
+        };
+        if (explicitType is not null && explicitType.DescendantNodesAndSelf().OfType<SimpleNameSyntax>().Any(name =>
                 model.GetSymbolInfo(name, context.CancellationToken).Symbol is ITypeSymbol type &&
                 ForbiddenType(type) is not null))
             return;
@@ -157,8 +164,10 @@ public sealed class RawBsonAnalyzer : DiagnosticAnalyzer
     {
         var symbols = node.AncestorsAndSelf()
             .Where(ancestor => ancestor is MemberDeclarationSyntax or AccessorDeclarationSyntax or
-                LocalFunctionStatementSyntax or VariableDeclaratorSyntax)
-            .Select(ancestor => model.GetDeclaredSymbol(ancestor, ct))
+                LocalFunctionStatementSyntax or VariableDeclaratorSyntax or AnonymousFunctionExpressionSyntax)
+            .Select(ancestor => ancestor is AnonymousFunctionExpressionSyntax function
+                ? model.GetSymbolInfo(function, ct).Symbol
+                : model.GetDeclaredSymbol(ancestor, ct))
             .Prepend(model.GetEnclosingSymbol(node.SpanStart, ct));
         foreach (var declaration in symbols)
         {
