@@ -1,8 +1,12 @@
 using Hangfire;
 using Pole.Features.ResourceDeployments.Application.Common;
-using Pole.Features.ResourceDeployments.Application.Persistence;
-using Pole.Features.ResourceDeployments.Application.Persistence.Reads;
-using Pole.Features.ResourceDeployments.Application.Persistence.Reconciliation;
+using Pole.Features.ResourceDeployments.Application;
+using Pole.Features.ResourceDeployments.Application.Admission;
+using Pole.Features.ResourceDeployments.Application.Mongo;
+using Pole.Features.ResourceDeployments.Application.Placements;
+using Pole.Features.ResourceDeployments.Application.Planning;
+using Pole.Features.ResourceDeployments.Application.Queries;
+using Pole.Features.ResourceDeployments.Application.Reconciliation;
 
 namespace Pole.Features.ResourceDeployments.Application.Jobs;
 

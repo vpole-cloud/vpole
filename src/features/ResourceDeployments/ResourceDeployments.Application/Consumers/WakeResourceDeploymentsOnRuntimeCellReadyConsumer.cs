@@ -1,7 +1,9 @@
 using MassTransit;
 using Pole.Features.ResourceDeployments.Application.Common;
-using Pole.Features.ResourceDeployments.Application.Persistence;
-using Pole.Features.ResourceDeployments.Application.Persistence.Reconciliation;
+using Pole.Features.ResourceDeployments.Application;
+using Pole.Features.ResourceDeployments.Application.Admission;
+using Pole.Features.ResourceDeployments.Application.Mongo;
+using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceGroups.Events;
 
 namespace Pole.Features.ResourceDeployments.Application.Consumers;
