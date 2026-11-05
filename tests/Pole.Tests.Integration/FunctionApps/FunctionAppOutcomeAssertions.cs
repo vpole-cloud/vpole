@@ -1,6 +1,9 @@
 using Pole.Features.Functions.Application.Endpoints;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Persistence.Mutations;
+using Pole.Features.Functions.Application.Mongo;
+using Pole.Features.Functions.Application.FunctionApps;
+using Pole.Features.Functions.Application.Invocations;
+using Pole.Features.Functions.Application.Revisions;
 using Pole.Features.Quotas.Contracts;
 using Pole.Mediator;
 using Xunit;

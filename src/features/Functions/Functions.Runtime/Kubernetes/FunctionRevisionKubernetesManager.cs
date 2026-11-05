@@ -7,6 +7,7 @@ using k8s.Models;
 using Pole.Features.Core.Kubernetes;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Security;
 using Pole.Features.ResourceGroups.Contracts;

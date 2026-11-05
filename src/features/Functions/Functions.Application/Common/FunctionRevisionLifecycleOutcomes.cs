@@ -1,3 +1,4 @@
+using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Quotas.Contracts;
 
 namespace Pole.Features.Functions.Application.Common;

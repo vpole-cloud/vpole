@@ -5,6 +5,7 @@ using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Functions.Application;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Tests.Integration.Infrastructure;

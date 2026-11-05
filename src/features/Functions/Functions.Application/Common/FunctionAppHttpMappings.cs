@@ -1,7 +1,10 @@
 using System.Net;
 using Pole.ASP.Helpers;
-using Pole.Features.Functions.Application.Persistence.Lifecycle;
-using Pole.Features.Functions.Application.Persistence.Mutations;
+using Pole.Features.Functions.Application.Lifecycle;
+using Pole.Features.Functions.Application.Mongo;
+using Pole.Features.Functions.Application.FunctionApps;
+using Pole.Features.Functions.Application.Invocations;
+using Pole.Features.Functions.Application.Revisions;
 
 namespace Pole.Features.Functions.Application.Common;
 

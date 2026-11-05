@@ -1,3 +1,4 @@
+using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Primitives;

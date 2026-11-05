@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Persistence.Runtime.Metering;
+using Pole.Features.Functions.Application.Mongo;
+using Pole.Features.Functions.Application.Runtime.Metering;
 using Pole.Features.Functions.Domain;
 
 namespace Pole.Features.Functions.Runtime.Metering;

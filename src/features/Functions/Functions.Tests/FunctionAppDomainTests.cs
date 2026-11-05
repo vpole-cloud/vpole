@@ -3,6 +3,7 @@ using System.Text.Json;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Application.Endpoints;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Quotas.Contracts;

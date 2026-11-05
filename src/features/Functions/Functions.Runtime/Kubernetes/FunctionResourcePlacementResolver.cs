@@ -1,4 +1,5 @@
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 

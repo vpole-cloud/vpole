@@ -16,6 +16,7 @@ using Pole.Features.Domains.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Application;
 using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.Outbox.Application;

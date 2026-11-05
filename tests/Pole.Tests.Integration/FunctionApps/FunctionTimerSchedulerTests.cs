@@ -1,7 +1,8 @@
 using System.Collections.Immutable;
 using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
-using Pole.Features.Functions.Application.Persistence.Runtime.Timers;
+using Pole.Features.Functions.Application.Mongo;
+using Pole.Features.Functions.Application.Runtime.Timers;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Timers;
 using Pole.Tests.Integration.Infrastructure;
