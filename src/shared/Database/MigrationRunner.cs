@@ -1,3 +1,4 @@
+using Pole.Architecture;
 using Pole.Migrations;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
@@ -29,6 +30,9 @@ public class MigrationRunner(
     private static readonly TimeSpan LockAcquireTimeout = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan LockRetryDelay = TimeSpan.FromSeconds(2);
 
+    [ViolateArchitecture(ArchitectureRules.RawBson,
+        "Migration bookkeeping stores both ObjectId migration identities and feature-scoped string " +
+        "identities in the same _id field.")]
     private sealed record AppliedMigration(
         [property: BsonId]
         BsonValue Id,
@@ -49,6 +53,9 @@ public class MigrationRunner(
     /// applied only once.
     /// </summary>
     /// <param name="cancellationToken"></param>
+    [ViolateArchitecture(ArchitectureRules.RawBson,
+        "Compare and store migration identities in their exact BSON representation; this shared " +
+        "runner is not a migration-project exemption.")]
     public async Task RunMigrations(CancellationToken cancellationToken = default)
     {
         logger.LogInformation("Running migrations");
@@ -111,6 +118,8 @@ public class MigrationRunner(
         logger.LogInformation("Finished running migrations");
     }
 
+    [ViolateArchitecture(ArchitectureRules.RawBson,
+        "The migration ledger must retain ObjectId and feature-scoped string identifier representations.")]
     private static BsonValue DurableId(IMigration migration) =>
         migration is FeatureScopedMigration scoped ? scoped.DurableId : (BsonValue)migration.Id;
 

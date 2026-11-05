@@ -1,3 +1,4 @@
+using Pole.Architecture;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
@@ -63,6 +64,9 @@ internal sealed class MongoPersistRotatedDeploymentTargetConnection(
             cancellationToken);
     }
 
+    [ViolateArchitecture(ArchitectureRules.RawBson,
+        "Connection equality must compare persisted encrypted byte arrays structurally; record " +
+        "equality compares their references.")]
     private static bool ConnectionFieldsChanged(DeploymentTarget before, DeploymentTarget after) =>
         before.Revision != after.Revision || before.UpdatedAtUtc != after.UpdatedAtUtc ||
         before.Health != after.Health || before.Capabilities != after.Capabilities ||

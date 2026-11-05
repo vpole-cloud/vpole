@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <PoleArchitectureRole>TestSupport</PoleArchitectureRole>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/features/ResourceDeployments/ResourceDeployments.Domain/ResourceDeployments.Domain.csproj" />

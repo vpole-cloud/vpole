@@ -37,7 +37,7 @@ public sealed class MigrationRegistrationTests
             "pole.postgres/6a700003b213917a38c38001",
             "pole.redis/6a700001b213917a38c38001",
             "pole.redis/6a700002b213917a38c38001"
-        }, scoped.Select(migration => migration.DurableId.AsString).Order(StringComparer.Ordinal));
+        }, scoped.Select(migration => migration.DurableId).Order(StringComparer.Ordinal));
         Assert.Equal(migrations.Length, migrations.Select(migration => migration is FeatureScopedMigration scope
             ? scope.DurableId.ToString() : migration.Id.ToString()).Distinct(StringComparer.Ordinal).Count());
     }

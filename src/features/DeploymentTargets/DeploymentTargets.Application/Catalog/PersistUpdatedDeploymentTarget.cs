@@ -1,3 +1,4 @@
+using Pole.Architecture;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
@@ -97,6 +98,9 @@ internal sealed class MongoPersistUpdatedDeploymentTarget(
             cancellationToken);
     }
 
+    [ViolateArchitecture(ArchitectureRules.RawBson,
+        "Compare persisted BSON configuration, including nested collection order and BSON timestamp " +
+        "precision, rather than record reference equality.")]
     private static bool MetadataChanged(DeploymentTarget before, DeploymentTarget after) =>
         before.DisplayName != after.DisplayName || before.Enabled != after.Enabled ||
         before.AcceptsWorkloads != after.AcceptsWorkloads || before.Revision != after.Revision ||

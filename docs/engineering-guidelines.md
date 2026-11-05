@@ -38,6 +38,32 @@ cover F# collection declarations as well. There are no legacy model-placement ex
 GitOps Domain may reference MongoDB and declare BSON mapping attributes, like other Domain projects.
 It stays independent of Contracts and transport; contract conversion and codecs belong to Application.
 
+### Typed MongoDB operations and explicit BSON exceptions
+
+Production C# and F# code must not use `MongoDB.Bson.BsonDocument`, `BsonArray` or `BsonValue`.
+Use typed collection models, field expressions, indexes and commands. `POLE014` checks resolved
+symbols, including aliases and inferred return types; comments, literals and unrelated namesakes
+are not violations. BSON mapping attributes and scalar BSON types retain their existing roles.
+
+C# is checked during compilation. The architecture suite checks F# with the compiler service from
+the pinned SDK, using actual project options and references after the solution build. Missing
+compiler inputs or semantic errors fail the check; they do not turn into an empty passing result.
+
+A deliberate driver boundary uses `[ViolateArchitecture(ArchitectureRules.RawBson, "reason")]`
+(or the F# attribute syntax) on the smallest useful method, property or cohesive infrastructure type.
+The reason explains why typed APIs cannot preserve the required behavior, for example database-time
+aggregation expressions or dynamic driver error metadata. The exception covers its own declaration
+and implementation, never callers, unrelated siblings or inherited types. Assembly-wide exceptions
+are unavailable. Do not hide raw BSON behind JSON strings, bytes or an unannotated facade.
+
+Migration projects and test projects are exempt by project role. `Directory.Build.props` assigns
+`Migration` to the shared Migrations API and feature `.Migrations` projects; the test SDK supplies
+`IsTestProject`. Test-only support libraries/probes explicitly declare
+`<PoleArchitectureRole>TestSupport</PoleArchitectureRole>` without becoming executable test suites.
+Production projects cannot depend on test-only projects. A `Migrations` or `Tests` folder inside a
+production project grants no exemption. Shared production migration infrastructure still needs a
+scoped exception where it handles the migration ledger's BSON identity representations.
+
 ### Explicit Domain construction
 
 Domain constructors, including primary constructors and nested `CreateOptions`, require every

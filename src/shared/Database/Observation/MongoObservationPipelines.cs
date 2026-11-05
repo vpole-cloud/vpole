@@ -1,3 +1,4 @@
+using Pole.Architecture;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Observation;
@@ -6,6 +7,9 @@ using static Pole.Database.Observation.MongoObservationExpressions;
 namespace Pole.Database.Observation;
 
 // Each control transition remains ONE server-side $set stage, including the clock and fences.
+[ViolateArchitecture(ArchitectureRules.RawBson,
+    "Atomic observation transitions combine server timestamps, original expiry bounds and fences in " +
+    "one computed $set pipeline.")]
 internal sealed class MongoObservationPipelines<TContext, TControl, TDemand, TSnapshot>(
     IMongoObservationDefinition<TContext, TControl, TDemand, TSnapshot> definition)
     where TControl : class, IObservationControl

@@ -1,3 +1,4 @@
+using Pole.Architecture;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.SourceBuilds.Application.Mongo;
@@ -15,12 +16,20 @@ public delegate Task<bool> RenewSourceBuildExecution(
     SourceBuildExecutionIdentity identity,
     CancellationToken cancellationToken = default);
 
+[ViolateArchitecture(ArchitectureRules.RawBson,
+    "Build leases calculate expiry with $$NOW in MongoDB; renewal must preserve the atomic computed update.")]
 internal static class SourceBuildExecutionLease
 {
     internal const int LeaseMilliseconds = 120_000;
 
     internal static BsonValue Expiry =>
         new BsonDocument("$add", new BsonArray { "$$NOW", LeaseMilliseconds });
+
+    internal static UpdateDefinition<SourceBuildJob> Renewal() =>
+        new PipelineUpdateDefinition<SourceBuildJob>(new[]
+        {
+            new BsonDocument("$set", new BsonDocument("Execution.ExpiresAtUtc", Expiry))
+        });
 }
 
 internal sealed class MongoRenewSourceBuildExecution(IMongoCollection<SourceBuildJob> jobs)
@@ -28,10 +37,8 @@ internal sealed class MongoRenewSourceBuildExecution(IMongoCollection<SourceBuil
     public async Task<bool> InvokeAsync(SourceBuildExecutionIdentity identity,
         CancellationToken cancellationToken = default)
     {
-        var update = new BsonDocument("$set",
-            new BsonDocument("Execution.ExpiresAtUtc", SourceBuildExecutionLease.Expiry));
         var result = await jobs.UpdateOneAsync(SourceBuildJobFilters.OwnedLease(identity),
-            new PipelineUpdateDefinition<SourceBuildJob>(new[] { update }), cancellationToken: cancellationToken);
+            SourceBuildExecutionLease.Renewal(), cancellationToken: cancellationToken);
         return result.MatchedCount == 1;
     }
 }

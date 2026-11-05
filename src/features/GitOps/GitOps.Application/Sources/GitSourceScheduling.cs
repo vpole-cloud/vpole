@@ -1,3 +1,4 @@
+using Pole.Architecture;
 using System.Linq.Expressions;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -108,6 +109,9 @@ public sealed class GitSourceScheduling(
     }
 
     // Filter before Limit: inactive sources must not starve an eligible source later in the scan.
+    [ViolateArchitecture(ArchitectureRules.RawBson,
+        "The generic scheduling join uses serializer-mapped paths, tenant correlation and lifecycle " +
+        "eligibility before Limit.")]
     private IAggregateFluent<T> ActiveSourceDocuments<T>(
         IMongoCollection<T> documents,
         FilterDefinition<T> predicate,

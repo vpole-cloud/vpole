@@ -1,3 +1,4 @@
+using Pole.Architecture;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
@@ -36,29 +37,7 @@ internal sealed class MongoClaimQueuedSourceBuildJob(
                 var claimed = await jobs.FindOneAndUpdateAsync(
                     transaction.Session,
                     SourceBuildJobFilters.ById(request.BuildJobId) & SourceBuildJobFilters.Recoverable,
-                    new PipelineUpdateDefinition<SourceBuildJob>(new[]
-                    {
-                        new BsonDocument("$unset", "State"),
-                        new BsonDocument("$set", new BsonDocument
-                        {
-                            ["Execution"] = new BsonDocument
-                            {
-                                ["_t"] = new BsonArray
-                                {
-                                    nameof(SourceBuildExecution), nameof(ClaimedSourceBuildExecution)
-                                },
-                                ["WorkerId"] = new BsonDocument("$literal", request.WorkerId),
-                                ["Attempt"] = new BsonDocument("$add", new BsonArray { "$Execution.Attempt", 1L }),
-                                ["ExpiresAtUtc"] = SourceBuildExecutionLease.Expiry
-                            },
-                            ["State"] = new BsonDocument
-                            {
-                                ["_t"] = new BsonArray { nameof(SourceBuildJobState), nameof(CloningSourceBuild) },
-                                ["StartedAtUtc"] = "$$NOW"
-                            },
-                            ["UpdatedAtUtc"] = "$$NOW"
-                        })
-                    }),
+                    ClaimTransition(request),
                     new FindOneAndUpdateOptions<SourceBuildJob> { ReturnDocument = ReturnDocument.After },
                     ct);
                 if (claimed is null)
@@ -78,4 +57,32 @@ internal sealed class MongoClaimQueuedSourceBuildJob(
             SourceBuildJobNotClaimed => null
         };
     }
+
+    [ViolateArchitecture(ArchitectureRules.RawBson,
+        "Atomic build claims replace the state discriminator, increment the attempt and set lease " +
+        "timestamps from $$NOW.")]
+    private static UpdateDefinition<SourceBuildJob> ClaimTransition(ClaimSourceBuildJobRequest request) =>
+        new PipelineUpdateDefinition<SourceBuildJob>(new[]
+        {
+            new BsonDocument("$unset", "State"),
+            new BsonDocument("$set", new BsonDocument
+            {
+                ["Execution"] = new BsonDocument
+                {
+                    ["_t"] = new BsonArray
+                    {
+                        nameof(SourceBuildExecution), nameof(ClaimedSourceBuildExecution)
+                    },
+                    ["WorkerId"] = new BsonDocument("$literal", request.WorkerId),
+                    ["Attempt"] = new BsonDocument("$add", new BsonArray { "$Execution.Attempt", 1L }),
+                    ["ExpiresAtUtc"] = SourceBuildExecutionLease.Expiry
+                },
+                ["State"] = new BsonDocument
+                {
+                    ["_t"] = new BsonArray { nameof(SourceBuildJobState), nameof(CloningSourceBuild) },
+                    ["StartedAtUtc"] = "$$NOW"
+                },
+                ["UpdatedAtUtc"] = "$$NOW"
+            })
+        });
 }

@@ -1,3 +1,4 @@
+using Pole.Architecture;
 using System.Text.RegularExpressions;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -5,6 +6,9 @@ using MongoDB.Driver;
 namespace Pole.Database;
 
 /// <summary>Classifies only the expected unique index; unrelated duplicates remain infrastructure errors.</summary>
+[ViolateArchitecture(ArchitectureRules.RawBson,
+    "Driver duplicate-key details and command results have dynamic BSON metadata; preserve " +
+    "malformed-field fallback and exact index/collection matching.")]
 public static partial class MongoDuplicateKey
 {
     private const int DuplicateKeyCode = 11000;

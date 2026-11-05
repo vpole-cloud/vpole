@@ -23,6 +23,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\shared\ArchitectureAnalyzers\Pole.ArchitectureAnalyzers.csproj" />
+    <ProjectReference Include="../Pole.Architecture.FSharp/Pole.Architecture.FSharp.fsproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="../../src/shared/Architecture/Architecture.csproj" />
+  </ItemGroup>
 </Project>

@@ -1,3 +1,4 @@
+using Pole.Architecture;
 using System.Linq.Expressions;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
@@ -8,6 +9,9 @@ using Pole.Observation;
 namespace Pole.Database.Observation;
 
 // Raw BSON is confined to aggregation expressions that the typed builders cannot express.
+[ViolateArchitecture(ArchitectureRules.RawBson,
+    "Mongo aggregation expressions require $$NOW, $literal and serializer-resolved paths; values " +
+    "must not become executable expressions.")]
 internal static class MongoObservationExpressions
 {
     internal static string Field<T, TValue>(Expression<Func<T, TValue>> expression) =>

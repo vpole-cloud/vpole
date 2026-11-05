@@ -1,3 +1,4 @@
+using Pole.Architecture;
 using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
@@ -118,8 +119,8 @@ public sealed class GitOperationPlanning(
         if (stored is null || stored.Revision != operation.Plan.Revision ||
             stored.Stamp.Run != operation.Context.ToHandle().Stamp ||
             stored.Stamp.Resource.ResourceId != operation.ResourceId ||
-            !stored.Decision.ToBsonDocument().Equals(
-                ToDecision(operation.Input, owner, operation.Plan.Decision).ToBsonDocument()))
+            !SamePersistedDecision(stored.Decision,
+                ToDecision(operation.Input, owner, operation.Plan.Decision)))
             return new DeclarationPreconditionsChanged();
 
         if (DeclarationPlanValues.Blocker(operation.Plan.Decision) is not null)
@@ -171,4 +172,9 @@ public sealed class GitOperationPlanning(
                 new GitResourceVersion(item.DocumentId, item.Revision)).ToImmutableArray(),
             DeclarationPlanValues.ChangedFields(decision).ToImmutableArray());
     }
+
+    [ViolateArchitecture(ArchitectureRules.RawBson,
+        "Plan preconditions compare persisted decision structure, including immutable arrays and ordered versions.")]
+    private static bool SamePersistedDecision(GitPlanDecision before, GitPlanDecision after) =>
+        before.ToBsonDocument().Equals(after.ToBsonDocument());
 }

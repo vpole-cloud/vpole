@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>false</IsTestProject>
+    <PoleArchitectureRole>TestSupport</PoleArchitectureRole>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Pole.Tests.E2E" />
