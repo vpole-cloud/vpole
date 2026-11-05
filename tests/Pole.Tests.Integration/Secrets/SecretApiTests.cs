@@ -12,6 +12,7 @@ using Pole.Features.ResourceGroups.Events;
 using Pole.Features.Secrets.Application;
 using Pole.Features.Secrets.Application.Bindings;
 using Pole.Features.Secrets.Application.Bootstrap;
+using Pole.Features.Secrets.Application.Consumers;
 using Pole.Features.Secrets.Application.Declarations;
 using Pole.Features.Secrets.Application.Endpoints;
 using Pole.Features.Secrets.Application.Lifecycle;

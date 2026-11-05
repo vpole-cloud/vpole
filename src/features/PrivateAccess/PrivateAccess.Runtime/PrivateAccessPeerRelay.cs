@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Net.Security;
 using System.Net.WebSockets;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;

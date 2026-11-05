@@ -2,7 +2,7 @@ using MassTransit;
 using Pole.Features.Secrets.Application.Projections;
 using Pole.Features.Secrets.Events;
 
-namespace Pole.Features.Secrets.Application;
+namespace Pole.Features.Secrets.Application.Consumers;
 
 public sealed class ReconcileSecretOnChanged(SecretProjectionReconciler reconciler) : IConsumer<SecretChangedEvent>
 {

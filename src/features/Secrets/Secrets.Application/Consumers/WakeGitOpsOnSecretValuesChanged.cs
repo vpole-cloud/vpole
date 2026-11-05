@@ -2,7 +2,7 @@ using MassTransit;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.Secrets.Events;
 
-namespace Pole.Features.Secrets.Application;
+namespace Pole.Features.Secrets.Application.Consumers;
 
 public sealed class WakeGitOpsOnSecretValuesChanged(IGitSourceScheduler scheduler) : IConsumer<SecretChangedEvent>
 {

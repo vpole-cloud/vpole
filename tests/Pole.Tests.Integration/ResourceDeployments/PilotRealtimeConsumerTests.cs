@@ -12,7 +12,7 @@ using Pole.Features.WebServices.Application.Realtime;
 using Pole.Features.WebServices.Events;
 using Xunit;
 
-namespace Pole.Tests.Integration.Realtime;
+namespace Pole.Tests.Integration.ResourceDeployments;
 
 public sealed class PilotRealtimeConsumerTests
 {

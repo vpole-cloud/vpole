@@ -5,7 +5,6 @@ using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 using System.Threading.Channels;
 using k8s;
 using Microsoft.AspNetCore.Builder;
