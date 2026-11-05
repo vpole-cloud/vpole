@@ -1,3 +1,4 @@
+using MongoDB.Bson;
 using Pole.Migrations;
 using MongoDB.Driver;
 
