@@ -1,4 +1,5 @@
 using Pole.Features.GitOps.Contracts;
+using Pole.Features.GitOps.Primitives;
 
 namespace Pole.Features.GitOps.Compiler;
 
