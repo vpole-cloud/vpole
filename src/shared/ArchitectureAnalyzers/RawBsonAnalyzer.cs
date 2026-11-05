@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace Pole.ArchitectureAnalyzers;
 
@@ -48,7 +49,8 @@ public sealed class RawBsonAnalyzer : DiagnosticAnalyzer
             start.RegisterOperationAction(AnalyzeOperation,
                 OperationKind.Invocation, OperationKind.ObjectCreation, OperationKind.PropertyReference,
                 OperationKind.FieldReference, OperationKind.LocalReference, OperationKind.ParameterReference,
-                OperationKind.Conversion, OperationKind.ArrayCreation, OperationKind.DelegateCreation);
+                OperationKind.Conversion, OperationKind.ArrayCreation, OperationKind.DelegateCreation,
+                OperationKind.AnonymousFunction);
         });
     }
 
@@ -76,7 +78,7 @@ public sealed class RawBsonAnalyzer : DiagnosticAnalyzer
     {
         var operation = context.Operation;
         if (operation.SemanticModel is not { } model ||
-            ForbiddenType(operation.Type) is not { } forbidden ||
+            ForbiddenOperation(operation) is not { } forbidden ||
             Allowed(model, operation.Syntax, context.CancellationToken))
             return;
 
@@ -119,6 +121,18 @@ public sealed class RawBsonAnalyzer : DiagnosticAnalyzer
 
     private static string Message(string type) =>
         $"Raw BSON type '{type}' is forbidden; use typed APIs or ViolateArchitecture(\"{DiagnosticId}\", reason).";
+
+    private static string? ForbiddenOperation(IOperation operation)
+    {
+        if (ForbiddenType(operation.Type) is { } forbidden)
+            return forbidden;
+
+        if (operation is not IAnonymousFunctionOperation function)
+            return null;
+
+        return ForbiddenType(function.Symbol.ReturnType) ?? function.Symbol.Parameters
+            .Select(parameter => ForbiddenType(parameter.Type)).FirstOrDefault(type => type is not null);
+    }
 
     private static string? ForbiddenType(ITypeSymbol? type)
     {

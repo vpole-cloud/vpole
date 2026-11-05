@@ -57,6 +57,22 @@ public sealed class RawBsonAnalyzerTests
     }
 
     [Fact]
+    public async Task Unused_inferred_callback_parameters_cannot_hide_BSON()
+    {
+        Assert.NotEmpty(await Analyze("""
+            public class Subject { public void Execute() => BsonLibrary.Raw.Visit(document => { }); }
+            """));
+    }
+
+    [Fact]
+    public async Task Out_variables_cannot_hide_BSON()
+    {
+        Assert.NotEmpty(await Analyze("""
+            public class Subject { public bool Execute() => BsonLibrary.Raw.TryValue(out var document); }
+            """));
+    }
+
+    [Fact]
     public async Task Generated_production_code_requires_the_same_exception()
     {
         Assert.NotEmpty(await Analyze("""
@@ -213,11 +229,14 @@ public sealed class RawBsonAnalyzerTests
             }
             namespace BsonLibrary
             {
+                public delegate void RawCallback(MongoDB.Bson.BsonDocument document);
                 public static class Raw
                 {
                     public static MongoDB.Bson.BsonDocument Make() => new();
                     public static MongoDB.Bson.BsonDocument? Maybe() => null;
                     public static void AcceptValue(MongoDB.Bson.BsonValue value) { }
+                    public static void Visit(RawCallback callback) { }
+                    public static bool TryValue(out MongoDB.Bson.BsonDocument document) { document = new(); return true; }
                     public static System.Collections.Generic.IEnumerable<MongoDB.Bson.BsonValue> Values => [];
                     public static System.Threading.Tasks.Task<MongoDB.Bson.BsonDocument> MakeTask() => null!;
                 }
