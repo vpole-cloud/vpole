@@ -5,10 +5,11 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Quotas.Application.Common;
-using Pole.Features.Quotas.Application.Persistence;
-using Pole.Features.Quotas.Application.Persistence.Policies;
-using Pole.Features.Quotas.Application.Persistence.Reservations;
-using Pole.Features.Quotas.Application.Persistence.Usage;
+using Pole.Features.Quotas.Application;
+using Pole.Features.Quotas.Application.Mongo;
+using Pole.Features.Quotas.Application.Policies;
+using Pole.Features.Quotas.Application.Reservations;
+using Pole.Features.Quotas.Application.Usage;
 using Pole.Mediator;
 
 namespace Pole.Features.Quotas.Application.Endpoints;

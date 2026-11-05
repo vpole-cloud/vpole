@@ -1,6 +1,6 @@
 using MongoDB.Driver;
 using Pole.Features.Quotas.Application.Common;
-using Pole.Features.Quotas.Application.Persistence.Usage;
+using Pole.Features.Quotas.Application.Usage;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Primitives;
 

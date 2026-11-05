@@ -1,12 +1,13 @@
+using Pole.Features.Quotas.Application.Mongo;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
-using Pole.Features.Quotas.Application.Persistence.Policies;
-using Pole.Features.Quotas.Application.Persistence.Reservations;
-using Pole.Features.Quotas.Application.Persistence.Usage;
+using Pole.Features.Quotas.Application.Policies;
+using Pole.Features.Quotas.Application.Reservations;
+using Pole.Features.Quotas.Application.Usage;
 using Pole.Features.Quotas.Domain;
 
-namespace Pole.Features.Quotas.Application.Persistence;
+namespace Pole.Features.Quotas.Application;
 
 internal static class QuotaPersistenceRegistration
 {
