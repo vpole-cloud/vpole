@@ -1,10 +1,11 @@
+using Pole.Features.Users.Application.Mongo;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Users.Domain;
 using Pole.Features.Users.Events;
 
-namespace Pole.Features.Users.Application.Persistence.Users;
+namespace Pole.Features.Users.Application.Registration;
 
 public sealed record PersistCreatedUserRequest(
     PoleUser User,

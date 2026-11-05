@@ -1,4 +1,5 @@
-namespace Pole.Features.Users.Application.Persistence;
+using Pole.Features.Users.Application.Mongo;
+namespace Pole.Features.Users.Application.Registration;
 
 public sealed record UserEmailAlreadyExists(string Email);
 

@@ -1,7 +1,8 @@
 using MongoDB.Driver;
+using Pole.Features.Users.Application.Registration;
 using Pole.Features.Users.Domain;
 
-namespace Pole.Features.Users.Application.Persistence;
+namespace Pole.Features.Users.Application.Mongo;
 
 internal static class UserFilters
 {

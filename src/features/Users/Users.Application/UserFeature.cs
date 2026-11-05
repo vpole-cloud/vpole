@@ -4,8 +4,8 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
 using Pole.Features.Users.Domain;
 using Pole.Features.Users.Application.Identity;
-using Pole.Features.Users.Application.Persistence;
-using Pole.Features.Users.Application.Persistence.Users;
+using Pole.Features.Users.Application.Mongo;
+using Pole.Features.Users.Application.Registration;
 
 namespace Pole.Features.Users.Application;
 
