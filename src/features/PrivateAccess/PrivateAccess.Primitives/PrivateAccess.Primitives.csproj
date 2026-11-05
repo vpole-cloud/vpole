@@ -4,5 +4,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>Pole.Features.PrivateAccess.Primitives</AssemblyName>
+    <RootNamespace>Pole.Features.PrivateAccess.Primitives</RootNamespace>
   </PropertyGroup>
 </Project>
