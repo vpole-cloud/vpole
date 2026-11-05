@@ -1,5 +1,5 @@
-using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Features.StorageProfiles.Domain.Observation;
 using Pole.Features.StorageProfiles.Application.Observation;
 
 namespace Pole.Features.StorageProfiles.Application.Mongo;
@@ -8,24 +8,30 @@ internal static class StorageObservationIndexes
 {
     internal static async Task CreateAsync(IMongoDatabase database, CancellationToken ct = default)
     {
-        await database.GetCollection<BsonDocument>(MongoStorageObservationStore.DemandsCollection).Indexes
+        await database.GetCollection<StorageObservationDemandDocument>(MongoStorageObservationStore.DemandsCollection)
+            .Indexes
             .CreateManyAsync(
                 [
-                    new(Builders<BsonDocument>.IndexKeys.Ascending("DeploymentTargetId").Ascending("ExpiresAtUtc"),
+                    new(Builders<StorageObservationDemandDocument>.IndexKeys
+                            .Ascending(item => item.DeploymentTargetId).Ascending(item => item.ExpiresAtUtc),
                         new CreateIndexOptions { Name = "IX_StorageObservationDemands_Active" }),
-                    new(Builders<BsonDocument>.IndexKeys.Ascending("ExpiresAtUtc"),
+                    new(Builders<StorageObservationDemandDocument>.IndexKeys.Ascending(item => item.ExpiresAtUtc),
                         new CreateIndexOptions { Name = "TTL_StorageObservationDemands", ExpireAfter = TimeSpan.Zero })
                 ],
                 ct);
-        await database.GetCollection<BsonDocument>(MongoStorageObservationStore.ControlsCollection).Indexes
+        await database.GetCollection<StorageObservationControlDocument>(MongoStorageObservationStore.ControlsCollection)
+            .Indexes
             .CreateOneAsync(
-                new CreateIndexModel<BsonDocument>(
-                    Builders<BsonDocument>.IndexKeys.Ascending("IdleSinceUtc").Ascending("UpdatedAtUtc"),
+                new CreateIndexModel<StorageObservationControlDocument>(
+                    Builders<StorageObservationControlDocument>.IndexKeys
+                        .Ascending(item => item.IdleSinceUtc).Ascending(item => item.UpdatedAtUtc),
                     new CreateIndexOptions { Name = "IX_StorageObservationControls_Reaping" }),
                 cancellationToken: ct);
-        await database.GetCollection<BsonDocument>(MongoStorageObservationStore.SnapshotsCollection).Indexes
+        await database.GetCollection<StorageObservationSnapshotDocument>(
+                MongoStorageObservationStore.SnapshotsCollection).Indexes
             .CreateOneAsync(
-                new CreateIndexModel<BsonDocument>(Builders<BsonDocument>.IndexKeys.Ascending("ExpiresAtUtc"),
+                new CreateIndexModel<StorageObservationSnapshotDocument>(
+                    Builders<StorageObservationSnapshotDocument>.IndexKeys.Ascending(item => item.ExpiresAtUtc),
                     new CreateIndexOptions { Name = "TTL_StorageObservationSnapshots", ExpireAfter = TimeSpan.Zero }),
                 cancellationToken: ct);
     }
