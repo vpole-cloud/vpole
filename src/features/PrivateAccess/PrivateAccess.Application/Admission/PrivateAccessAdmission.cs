@@ -1,3 +1,8 @@
+using Pole.Features.PrivateAccess.Application.Sessions;
+using Pole.Features.PrivateAccess.Application.Mongo;
+using Pole.Features.PrivateAccess.Application.Grants;
+using Pole.Features.PrivateAccess.Application.Gateway;
+using Pole.Features.PrivateAccess.Application.Catalog;
 using MongoDB.Driver;
 using Pole.Features.PrivateAccess.Contracts;
 using Pole.Features.PrivateAccess.Domain;
@@ -7,7 +12,7 @@ using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Tenants.Contracts;
 using Pole.Workloads;
 
-namespace Pole.Features.PrivateAccess.Application.Persistence;
+namespace Pole.Features.PrivateAccess.Application.Admission;
 
 internal union CheckPrivateAccessSessionOutcome(
     PrivateAccessLeaseSnapshot,

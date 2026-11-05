@@ -1,6 +1,11 @@
 using System.Net;
 using Pole.ASP.Helpers;
-using Pole.Features.PrivateAccess.Application.Persistence;
+using Pole.Features.PrivateAccess.Application.Admission;
+using Pole.Features.PrivateAccess.Application.Catalog;
+using Pole.Features.PrivateAccess.Application.Gateway;
+using Pole.Features.PrivateAccess.Application.Grants;
+using Pole.Features.PrivateAccess.Application.Mongo;
+using Pole.Features.PrivateAccess.Application.Sessions;
 using Pole.Features.PrivateAccess.Contracts;
 
 namespace Pole.Features.PrivateAccess.Application;

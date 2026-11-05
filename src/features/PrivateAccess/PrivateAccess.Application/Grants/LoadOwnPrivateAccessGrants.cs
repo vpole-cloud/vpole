@@ -1,7 +1,12 @@
+using Pole.Features.PrivateAccess.Application.Sessions;
+using Pole.Features.PrivateAccess.Application.Mongo;
+using Pole.Features.PrivateAccess.Application.Gateway;
+using Pole.Features.PrivateAccess.Application.Catalog;
+using Pole.Features.PrivateAccess.Application.Admission;
 using MongoDB.Driver;
 using Pole.Features.PrivateAccess.Domain;
 
-namespace Pole.Features.PrivateAccess.Application.Persistence;
+namespace Pole.Features.PrivateAccess.Application.Grants;
 
 public delegate Task<IReadOnlyList<PrivateAccessGrant>> LoadOwnPrivateAccessGrants(
     string tenantId,
