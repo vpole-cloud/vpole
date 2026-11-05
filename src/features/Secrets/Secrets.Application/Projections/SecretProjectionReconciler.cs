@@ -3,7 +3,16 @@ using System.Text.Json;
 using k8s.Models;
 using Pole.Encryption;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.Secrets.Application.Persistence;
+using Pole.Features.Secrets.Application;
+using Pole.Features.Secrets.Application.Bindings;
+using Pole.Features.Secrets.Application.Bootstrap;
+using Pole.Features.Secrets.Application.Declarations;
+using Pole.Features.Secrets.Application.Lifecycle;
+using Pole.Features.Secrets.Application.Managed;
+using Pole.Features.Secrets.Application.Mongo;
+using Pole.Features.Secrets.Application.References;
+using Pole.Features.Secrets.Application.Secrets;
+using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Domain;
 using Pole.Workloads;
 
