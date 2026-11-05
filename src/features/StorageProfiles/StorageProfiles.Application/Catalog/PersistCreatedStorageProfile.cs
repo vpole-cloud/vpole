@@ -2,11 +2,11 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.StorageProfiles.Events;
-using Pole.Features.StorageProfiles.Application.Persistence.Defaults;
+using Pole.Features.StorageProfiles.Application.Defaults;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.Features.StorageProfiles.Application.Common;
 
-namespace Pole.Features.StorageProfiles.Application.Persistence.Mutations;
+namespace Pole.Features.StorageProfiles.Application.Catalog;
 
 public union PersistCreatedStorageProfileOutcome(
     StorageProfile,

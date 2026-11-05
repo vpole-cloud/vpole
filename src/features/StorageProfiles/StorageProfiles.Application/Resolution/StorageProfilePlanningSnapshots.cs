@@ -3,7 +3,7 @@ using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
 
-namespace Pole.Features.StorageProfiles.Application.Persistence.Resolution;
+namespace Pole.Features.StorageProfiles.Application.Resolution;
 
 internal sealed class MongoStorageProfilePlanningSnapshots(
     IMongoCollection<StorageProfile> profiles,

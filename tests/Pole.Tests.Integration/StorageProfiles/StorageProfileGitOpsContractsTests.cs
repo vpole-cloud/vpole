@@ -5,7 +5,7 @@ using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Migrations;
-using Pole.Features.StorageProfiles.Application.Persistence.Mutations;
+using Pole.Features.StorageProfiles.Application.Catalog;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.Tests.Integration.Infrastructure;

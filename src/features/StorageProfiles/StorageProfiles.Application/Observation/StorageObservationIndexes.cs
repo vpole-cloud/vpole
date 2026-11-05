@@ -1,7 +1,7 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
 
-namespace Pole.Features.StorageProfiles.Application.Persistence.Observation;
+namespace Pole.Features.StorageProfiles.Application.Observation;
 
 internal static class StorageObservationIndexes
 {

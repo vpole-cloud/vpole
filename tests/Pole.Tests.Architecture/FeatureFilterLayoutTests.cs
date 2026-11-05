@@ -10,6 +10,7 @@ public sealed class FeatureFilterLayoutTests
     [InlineData("SourceBuilds")]
     [InlineData("GitProviders")]
     [InlineData("ComputeProfiles")]
+    [InlineData("StorageProfiles")]
     public void MigratedFeatures_KeepWorkflowLayoutAndOneFilterFile(string feature)
     {
         var root = $"src/features/{feature}/{feature}.Application/";

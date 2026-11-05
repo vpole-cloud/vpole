@@ -4,7 +4,6 @@ using k8s;
 using k8s.Models;
 using Pole.Features.Core.Kubernetes;
 using Pole.Features.StorageProfiles.Application.Observation;
-using Pole.Features.StorageProfiles.Application.Persistence.Observation;
 using Pole.Features.StorageProfiles.Contracts;
 
 namespace Pole.Features.StorageProfiles.Application.Discovery.Observation;

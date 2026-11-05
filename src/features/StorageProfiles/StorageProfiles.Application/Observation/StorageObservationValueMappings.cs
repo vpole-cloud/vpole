@@ -1,10 +1,9 @@
 using Pole.Features.StorageProfiles.Domain.Observation;
 using MongoDB.Bson;
 using Pole.Features.StorageProfiles.Application.Common;
-using Pole.Features.StorageProfiles.Application.Observation;
 using Pole.Features.StorageProfiles.Contracts;
 
-namespace Pole.Features.StorageProfiles.Application.Persistence.Observation;
+namespace Pole.Features.StorageProfiles.Application.Observation;
 
 internal static class StorageObservationValueMappings
 {
