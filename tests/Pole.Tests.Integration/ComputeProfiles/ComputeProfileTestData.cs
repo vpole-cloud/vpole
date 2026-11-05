@@ -5,7 +5,7 @@ using Pole.Database;
 using Pole.Features.Outbox.Application.Persistence;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.ComputeProfiles.Application.Endpoints;
-using Pole.Features.ComputeProfiles.Application.Persistence;
+using Pole.Features.ComputeProfiles.Application;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Application.Common;

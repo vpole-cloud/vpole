@@ -1,6 +1,6 @@
 using Pole.Features.ComputeProfiles.Contracts;
 
-namespace Pole.Features.ComputeProfiles.Application.Persistence.Resolution;
+namespace Pole.Features.ComputeProfiles.Application.Resolution;
 
 internal sealed class MongoResolveComputeProfile(
     MongoResolveComputeProfiles batchResolver)

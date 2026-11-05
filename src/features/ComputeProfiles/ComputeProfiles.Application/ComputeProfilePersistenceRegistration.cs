@@ -3,13 +3,12 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ComputeProfiles.Application.Endpoints;
-using Pole.Features.ComputeProfiles.Application.Persistence.Mutations;
-using Pole.Features.ComputeProfiles.Application.Persistence.Reads;
-using Pole.Features.ComputeProfiles.Application.Persistence.Resolution;
+using Pole.Features.ComputeProfiles.Application.Catalog;
+using Pole.Features.ComputeProfiles.Application.Resolution;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
 
-namespace Pole.Features.ComputeProfiles.Application.Persistence;
+namespace Pole.Features.ComputeProfiles.Application;
 
 public static class ComputeProfilePersistenceRegistration
 {

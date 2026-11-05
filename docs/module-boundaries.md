@@ -223,8 +223,8 @@ workflow operations. C# compiler diagnostics and F# architecture tests share the
 The rule permits orchestration and Mongo access in a workflow implementation.
 
 Keep a feature's runtime filter helpers together in `<Feature>Filters.cs`. The file may contain
-multiple named filter classes. GitOps, SourceBuilds and GitProviders have migrated; other features
-retain their current layout until their migration is reviewed. Typed-field and named-helper checks cover all
+multiple named filter classes. GitOps, SourceBuilds, GitProviders and ComputeProfiles have migrated;
+other features retain their current layout until their migration is reviewed. Typed-field and named-helper checks cover all
 Application runtime code regardless of folder names. `Feature.Migrations` retains its separate
 project boundary.
 

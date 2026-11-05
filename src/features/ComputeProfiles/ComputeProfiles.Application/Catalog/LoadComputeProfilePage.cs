@@ -1,7 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Domain;
 
-namespace Pole.Features.ComputeProfiles.Application.Persistence.Reads;
+namespace Pole.Features.ComputeProfiles.Application.Catalog;
 
 public sealed record ComputeProfileListQuery(
     int PageNumber,

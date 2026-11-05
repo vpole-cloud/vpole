@@ -2,7 +2,7 @@ using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Domain;
 
-namespace Pole.Features.ComputeProfiles.Application.Persistence.Defaults;
+namespace Pole.Features.ComputeProfiles.Application.Defaults;
 
 internal sealed record ComputeProfileDefaultsDemoted;
 internal union DemoteComputeProfileDefaultsOutcome(

@@ -3,7 +3,7 @@ using k8s;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pole.Features.ComputeProfiles.Migrations;
-using Pole.Features.ComputeProfiles.Application.Persistence;
+using Pole.Features.ComputeProfiles.Application;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.ComputeProfiles.Application.Validation;
 using Pole.Features.DeploymentTargets.Migrations;

@@ -1,4 +1,4 @@
-namespace Pole.Features.ComputeProfiles.Application.Persistence;
+namespace Pole.Features.ComputeProfiles.Application;
 
 internal static class ComputeProfileTechnicalNames
 {

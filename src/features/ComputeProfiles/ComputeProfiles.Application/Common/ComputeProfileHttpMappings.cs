@@ -1,8 +1,7 @@
 using System.Net;
 using Pole.ASP.Helpers;
 using Pole.Features.ComputeProfiles.Contracts;
-using Pole.Features.ComputeProfiles.Application.Persistence;
-using Pole.Features.ComputeProfiles.Application.Persistence.Mutations;
+using Pole.Features.ComputeProfiles.Application.Catalog;
 
 namespace Pole.Features.ComputeProfiles.Application.Common;
 

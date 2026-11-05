@@ -2,7 +2,7 @@ using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Contracts;
 
-namespace Pole.Features.ComputeProfiles.Application.Persistence.References;
+namespace Pole.Features.ComputeProfiles.Application.Resolution;
 
 internal static class ComputeProfileTargetReferences
 {
