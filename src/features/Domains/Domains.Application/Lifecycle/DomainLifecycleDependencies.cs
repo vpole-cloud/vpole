@@ -1,9 +1,14 @@
+using Pole.Features.Domains.Application.Mongo;
+using Pole.Features.Domains.Application.HostnameBindings;
+using Pole.Features.Domains.Application.DomainZones;
+using Pole.Features.Domains.Application.Common;
+using Pole.Features.Domains.Application;
 using MongoDB.Driver;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
 using Pole.Features.GitOps.Contracts;
 
-namespace Pole.Features.Domains.Application.Persistence;
+namespace Pole.Features.Domains.Application.Lifecycle;
 
 internal sealed class DomainLifecycleDependencies(
     IMongoCollection<TenantDomainZone> zones,

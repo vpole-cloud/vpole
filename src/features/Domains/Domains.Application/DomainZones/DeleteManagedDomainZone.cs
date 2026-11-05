@@ -1,3 +1,8 @@
+using Pole.Features.Domains.Application.Mongo;
+using Pole.Features.Domains.Application.Lifecycle;
+using Pole.Features.Domains.Application.HostnameBindings;
+using Pole.Features.Domains.Application.Common;
+using Pole.Features.Domains.Application;
 using MongoDB.Driver;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
@@ -6,7 +11,7 @@ using Pole.ResultType;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
 
-namespace Pole.Features.Domains.Application.Persistence.DomainZones;
+namespace Pole.Features.Domains.Application.DomainZones;
 
 public sealed record ManagedDomainZoneDeleted(string ZoneId);
 

@@ -1,3 +1,8 @@
+using Pole.Features.Domains.Application.Mongo;
+using Pole.Features.Domains.Application.Lifecycle;
+using Pole.Features.Domains.Application.DomainZones;
+using Pole.Features.Domains.Application.Common;
+using Pole.Features.Domains.Application;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
@@ -7,7 +12,7 @@ using Pole.Features.GitOps.Primitives;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
 
-namespace Pole.Features.Domains.Application.Persistence.HostnameBindings;
+namespace Pole.Features.Domains.Application.HostnameBindings;
 
 internal sealed record RemoveCustomHostnameBindingRequest(
     DeleteCustomHostnameBindingRequest Binding,

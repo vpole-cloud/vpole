@@ -3,7 +3,7 @@ using MongoDB.Driver;
 using Pole.Dns;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.Domains.Application.Endpoints;
-using Pole.Features.Domains.Application.Persistence.DomainZones;
+using Pole.Features.Domains.Application.DomainZones;
 using Pole.Features.Domains.Domain;
 using Pole.Features.Domains.Migrations;
 using Pole.Features.GitOps.Application;
