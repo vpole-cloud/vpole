@@ -34,7 +34,8 @@ public sealed class TypedMongoFieldFilterAnalyzer : DiagnosticAnalyzer
         if (invocation.TargetMethod.ContainingType.Name != "FilterDefinitionBuilder" ||
             invocation.TargetMethod.ContainingNamespace.ToDisplayString() != "MongoDB.Driver")
             return;
-        if (MongoApplicationPaths.Classify(invocation.Syntax.SyntaxTree.FilePath) != MongoApplicationPath.Mongo)
+        if (MongoApplicationPaths.Classify(invocation.Syntax.SyntaxTree.FilePath) ==
+            MongoApplicationPath.OutsideApplication)
             return;
         foreach (var argument in invocation.Arguments)
         {

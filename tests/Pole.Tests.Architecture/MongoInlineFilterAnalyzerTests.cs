@@ -9,9 +9,12 @@ namespace Pole.Tests.Architecture;
 public sealed class MongoInlineFilterAnalyzerTests
 {
     [Theory]
+    [InlineData("Queries", "collection.Find(x => x > 0);", 1, "Endpoints")]
+    [InlineData("Queries", "collection.Find(x => x > 0);", 1, "Consumers")]
+    [InlineData("Queries", "collection.Find(x => x > 0);", 1, "Jobs")]
     [InlineData("Queries", "collection.Find(x => x > 0);", 1, "Mongo")]
     [InlineData("Queries", "collection.Find(x => x > 0);", 1, "Runs/Mongo")]
-    [InlineData("Queries", "collection.Find(x => x > 0);", 0, "Runs")]
+    [InlineData("Queries", "collection.Find(x => x > 0);", 1, "Runs")]
     [InlineData("Queries", "collection.Delete(session: new object(), filter: x => x > 0);", 1, "Persistence")]
     [InlineData("ExampleFilters", "collection.Find(x => x > 0);", 0, "Persistence")]
     [InlineData("Queries", "collection.Find(ExampleFilters.Active());", 0, "Persistence")]

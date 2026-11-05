@@ -32,7 +32,8 @@ public sealed class MongoInlineFilterAnalyzer : DiagnosticAnalyzer
         if (argument.Parameter?.Name != "filter" ||
             argument.Parameter.ContainingSymbol.ContainingNamespace.ToDisplayString() != "MongoDB.Driver")
             return;
-        if (MongoApplicationPaths.Classify(argument.Syntax.SyntaxTree.FilePath) != MongoApplicationPath.Mongo)
+        if (MongoApplicationPaths.Classify(argument.Syntax.SyntaxTree.FilePath) ==
+            MongoApplicationPath.OutsideApplication)
             return;
         if (context.ContainingSymbol.ContainingType?.Name.EndsWith("Filters", System.StringComparison.Ordinal) == true)
             return;

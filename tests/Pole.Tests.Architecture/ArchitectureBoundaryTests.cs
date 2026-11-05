@@ -1,8 +1,8 @@
+using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
-using System.Text.RegularExpressions;
 using Pole.ArchitectureAnalyzers;
 using Xunit;
 
@@ -170,14 +170,14 @@ public sealed class ArchitectureBoundaryTests
     }
 
     [Fact]
-    public void FSharpApplicationSources_KeepRawMongoQueriesInsideMongo()
+    public void FSharpEntryPoints_DoNotUseRawMongoQueryApis()
     {
         var violations = ArchitectureSources.ProductionFSharp()
-            .Where(source => MongoApplicationPaths.Classify(source.RelativePath) == MongoApplicationPath.Application)
+            .Where(source => MongoApplicationPaths.Classify(source.RelativePath) == MongoApplicationPath.EntryPoint)
             .SelectMany(source => FindFSharpSymbols(
                 [source],
                 RawMongoQuerySymbols,
-                symbol => $"raw Mongo query symbol '{symbol}' must only be used by a persistence capability"))
+                symbol => $"raw Mongo query symbol '{symbol}' cannot be used in Endpoints, Consumers or Jobs"))
             .ToArray();
 
         AssertNoViolations(violations);
@@ -186,8 +186,12 @@ public sealed class ArchitectureBoundaryTests
     [Theory]
     [InlineData("Endpoints/Example.cs")]
     [InlineData("Endpoints/Mongo/Example.cs")]
-    [InlineData("Runs/Example.cs")]
-    public async Task MongoApplicationBoundaryAnalyzer_ReportsRawMongoQueryTypesOutsideMongo(string path)
+    [InlineData("Consumers/Example.cs")]
+    [InlineData("Jobs/Example.cs")]
+    [InlineData("Runs/Consumers/Example.cs")]
+    [InlineData("Lifecycle/Jobs/Example.cs")]
+    [InlineData("Mongo/Endpoints/Example.cs")]
+    public async Task MongoApplicationBoundaryAnalyzer_RejectsRawMongoQueryTypesInEntryPoints(string path)
     {
         var diagnostics = await AnalyzeAsync(
             """
@@ -246,10 +250,13 @@ public sealed class ArchitectureBoundaryTests
     }
 
     [Theory]
+    [InlineData("Runs/RunStore.cs")]
+    [InlineData("Inventory/RepositoryInventory.cs")]
+    [InlineData("ExampleFilters.cs")]
     [InlineData("Mongo/ExampleFilters.cs")]
     [InlineData("Runs/Mongo/RunStore.cs")]
     [InlineData("Persistence/ExampleFilters.cs")]
-    public async Task MongoApplicationBoundaryAnalyzer_AllowsMongoImplementations(string path)
+    public async Task MongoApplicationBoundaryAnalyzer_AllowsWorkflowImplementations(string path)
     {
         var diagnostics = await AnalyzeAsync(
             """
@@ -268,7 +275,7 @@ public sealed class ArchitectureBoundaryTests
 
     [Theory]
     [InlineData("/src/features/Example/Example.Migrations/ExampleMigration.cs", false)]
-    [InlineData("/src/features/Example/Example.Application/Migrations/ExampleMigration.cs", true)]
+    [InlineData("/src/features/Example/Example.Application/Migrations/ExampleMigration.cs", false)]
     [InlineData("/src/features/Example/Example.Application/Endpoints/Migrations/Example.cs", true)]
     public async Task MongoApplicationBoundaryAnalyzer_RecognizesTheSeparateMigrationProjectRole(string path,
         bool rejected)
@@ -304,7 +311,7 @@ public sealed class ArchitectureBoundaryTests
     [Fact]
     public void RuntimeMongoFilters_AreDefinedByNamedFilterHelpers()
     {
-        var violations = ArchitectureSources.RuntimeMongoPersistenceCSharp()
+        var violations = ArchitectureSources.RuntimeApplicationCSharp()
             .SelectMany(source => source.Root.DescendantNodes()
                 .OfType<MemberAccessExpressionSyntax>()
                 .Where(IsMongoFilterBuilder)
@@ -319,7 +326,7 @@ public sealed class ArchitectureBoundaryTests
                     "Mongo filter must be defined in a named *Filters helper")))
             .ToArray();
 
-        var fsharpViolations = ArchitectureSources.RuntimeMongoPersistenceFSharp()
+        var fsharpViolations = ArchitectureSources.RuntimeApplicationFSharp()
             .Where(source => !Path.GetFileNameWithoutExtension(source.RelativePath)
                 .EndsWith("Filters", StringComparison.Ordinal))
             .SelectMany(source => source.Lines
