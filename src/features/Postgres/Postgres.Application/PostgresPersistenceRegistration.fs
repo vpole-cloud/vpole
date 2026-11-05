@@ -1,14 +1,13 @@
-namespace Pole.Features.Postgres.Application.Persistence
+namespace Pole.Features.Postgres.Application
 
 open System
 open Microsoft.Extensions.DependencyInjection
 open Microsoft.Extensions.DependencyInjection.Extensions
 open MongoDB.Driver
 open Pole.Database
-open Pole.Features.Postgres.Application.Persistence.Credentials
-open Pole.Features.Postgres.Application.Persistence.Lifecycle
-open Pole.Features.Postgres.Application.Persistence.Mutations
-open Pole.Features.Postgres.Application.Persistence.Reads
+open Pole.Features.Postgres.Application.Credentials
+open Pole.Features.Postgres.Application.Lifecycle
+open Pole.Features.Postgres.Application.Clusters
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Contracts
 open Pole.Features.ResourceConnections.Contracts
@@ -16,7 +15,7 @@ open Pole.Features.Postgres.Application.Common
 open Pole.Features.Secrets.Contracts
 open Pole.Features.Secrets.Primitives
 open Pole.Features.GitOps.Contracts
-open Pole.Features.Postgres.Application.Persistence.Declarative
+open Pole.Features.Postgres.Application.Declarations
 
 [<RequireQualifiedAccess>]
 module PostgresPersistenceRegistration =

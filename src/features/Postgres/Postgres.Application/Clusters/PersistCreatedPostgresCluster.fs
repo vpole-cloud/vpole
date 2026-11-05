@@ -1,4 +1,4 @@
-namespace Pole.Features.Postgres.Application.Persistence.Mutations
+namespace Pole.Features.Postgres.Application.Clusters
 
 open System.Collections.Generic
 open System.Threading
@@ -7,7 +7,8 @@ open MongoDB.Driver
 open Pole.Database
 open Pole.Features.Outbox.Contracts
 open Pole.Features.Postgres.Application.Common
-open Pole.Features.Postgres.Application.Persistence
+open Pole.Features.Postgres.Application
+open Pole.Features.Postgres.Application.Mongo
 open Pole.Features.Postgres.Domain
 
 type PostgresClusterNameAlreadyExists =

@@ -1,4 +1,4 @@
-namespace Pole.Features.Postgres.Application.Persistence.Mutations
+namespace Pole.Features.Postgres.Application.Clusters
 
 open System.Threading
 open System.Threading.Tasks
@@ -7,7 +7,8 @@ open Pole.Database
 open Pole.Features.GitOps.Contracts
 open Pole.Features.Outbox.Contracts
 open Pole.Features.Postgres.Application.Common
-open Pole.Features.Postgres.Application.Persistence
+open Pole.Features.Postgres.Application
+open Pole.Features.Postgres.Application.Mongo
 open Pole.Features.Postgres.Domain
 open Pole.Features.ResourceGroups.Contracts
 

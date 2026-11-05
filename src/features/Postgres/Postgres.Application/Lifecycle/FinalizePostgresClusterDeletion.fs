@@ -1,4 +1,4 @@
-namespace Pole.Features.Postgres.Application.Persistence.Lifecycle
+namespace Pole.Features.Postgres.Application.Lifecycle
 
 open System
 open System.Collections.Generic
@@ -8,12 +8,13 @@ open MongoDB.Driver
 open Pole.Database
 open Pole.Features.Outbox.Contracts
 open Pole.Features.Postgres.Application.Common
-open Pole.Features.Postgres.Application.Persistence
+open Pole.Features.Postgres.Application
+open Pole.Features.Postgres.Application.Mongo
 open Pole.Features.Postgres.Domain
 open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.ResourceGroups.Contracts
 open Pole.Features.Secrets.Contracts
-open Pole.Features.Postgres.Application.Persistence.Credentials
+open Pole.Features.Postgres.Application.Credentials
 open Pole.ResultType
 
 type PostgresClusterDeletionFinalizationError =

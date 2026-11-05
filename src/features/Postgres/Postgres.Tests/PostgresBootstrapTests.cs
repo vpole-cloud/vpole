@@ -1,7 +1,7 @@
 using System.Reflection;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Features.Postgres.Application.Persistence.Credentials;
+using Pole.Features.Postgres.Application.Credentials;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.Secrets.Contracts;
 using Xunit;

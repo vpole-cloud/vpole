@@ -1,4 +1,4 @@
-namespace Pole.Features.Postgres.Application.Persistence.Credentials
+namespace Pole.Features.Postgres.Application.Credentials
 
 open Pole.Features.Secrets.Contracts
 

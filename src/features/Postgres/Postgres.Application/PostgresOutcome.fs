@@ -1,4 +1,4 @@
-namespace Pole.Features.Postgres.Application.Persistence
+namespace Pole.Features.Postgres.Application
 
 /// Internal typed outcome for PostgreSQL persistence capabilities.
 /// Provider-owned C# contract results remain at feature boundaries; F# persistence uses a

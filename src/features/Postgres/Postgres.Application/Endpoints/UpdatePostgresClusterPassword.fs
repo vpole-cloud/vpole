@@ -12,9 +12,10 @@ open Pole.Database
 open Pole.Features.Core.Multitenancy
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
-open Pole.Features.Postgres.Application.Persistence
-open Pole.Features.Postgres.Application.Persistence.Credentials
-open Pole.Features.Postgres.Application.Persistence.Reads
+open Pole.Features.Postgres.Application
+open Pole.Features.Postgres.Application.Mongo
+open Pole.Features.Postgres.Application.Credentials
+open Pole.Features.Postgres.Application.Clusters
 open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.Secrets.Contracts
 open Pole.Mediator

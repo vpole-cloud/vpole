@@ -1,9 +1,10 @@
-namespace Pole.Features.Postgres.Application.Persistence.Reads
+namespace Pole.Features.Postgres.Application.Clusters
 
 open System.Threading
 open System.Threading.Tasks
 open MongoDB.Driver
-open Pole.Features.Postgres.Application.Persistence
+open Pole.Features.Postgres.Application
+open Pole.Features.Postgres.Application.Mongo
 open Pole.Features.Postgres.Domain
 
 type LoadPostgresClusterById =

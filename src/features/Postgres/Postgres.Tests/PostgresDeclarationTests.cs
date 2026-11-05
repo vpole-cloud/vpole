@@ -3,7 +3,7 @@ using System.Text.Json.Nodes;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.Postgres.Application.Common;
-using Pole.Features.Postgres.Application.Persistence.Declarative;
+using Pole.Features.Postgres.Application.Declarations;
 using Xunit;
 
 namespace Pole.Features.Postgres.Tests;

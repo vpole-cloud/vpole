@@ -12,7 +12,7 @@ using Pole.Features.Core.Kubernetes;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Kubernetes;
-using Pole.Features.Postgres.Application.Persistence.Reads;
+using Pole.Features.Postgres.Application.Clusters;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Tests.Integration.ResourceDeployments;

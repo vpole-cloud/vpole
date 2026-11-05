@@ -13,7 +13,7 @@ open Pole.Features.Core.Multitenancy
 open Pole.Features.GitOps.Contracts
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
-open Pole.Features.Postgres.Application.Persistence.Reads
+open Pole.Features.Postgres.Application.Clusters
 open Pole.Features.ResourceDeployments.Contracts
 open Pole.Mediator
 open Pole.Validation

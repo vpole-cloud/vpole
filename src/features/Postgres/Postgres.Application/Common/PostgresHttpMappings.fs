@@ -7,9 +7,9 @@ open Pole.ASP.Helpers
 open Pole.Features.ComputeProfiles.Contracts.HttpMapping
 open Pole.Features.DeploymentTargets.Contracts.HttpMapping
 open Pole.Features.Postgres.Application.Endpoints
-open Pole.Features.Postgres.Application.Persistence.Credentials
-open Pole.Features.Postgres.Application.Persistence.Lifecycle
-open Pole.Features.Postgres.Application.Persistence.Mutations
+open Pole.Features.Postgres.Application.Credentials
+open Pole.Features.Postgres.Application.Lifecycle
+open Pole.Features.Postgres.Application.Clusters
 open Pole.Features.Quotas.Contracts.HttpMapping
 open Pole.Features.ResourceDeployments.Contracts.HttpMapping
 open Pole.Features.ResourceGroups.Contracts.HttpMapping

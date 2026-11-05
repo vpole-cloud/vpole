@@ -1,11 +1,12 @@
-namespace Pole.Features.Postgres.Application.Persistence.Reads
+namespace Pole.Features.Postgres.Application.Clusters
 
 open System
 open System.Collections.Generic
 open System.Collections.Immutable
 open System.Threading
 open MongoDB.Driver
-open Pole.Features.Postgres.Application.Persistence
+open Pole.Features.Postgres.Application
+open Pole.Features.Postgres.Application.Mongo
 open Pole.Features.Postgres.Contracts
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common

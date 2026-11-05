@@ -1,4 +1,4 @@
-namespace Pole.Features.Postgres.Application.Persistence.Declarative
+namespace Pole.Features.Postgres.Application.Declarations
 
 open System
 open System.Collections.Generic

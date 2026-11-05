@@ -1,10 +1,11 @@
-namespace Pole.Features.Postgres.Application.Persistence.Credentials
+namespace Pole.Features.Postgres.Application.Credentials
 
 open System.Threading
 open System.Threading.Tasks
 open MongoDB.Driver
 open Pole.Features.Postgres.Application.Common
-open Pole.Features.Postgres.Application.Persistence
+open Pole.Features.Postgres.Application
+open Pole.Features.Postgres.Application.Mongo
 open Pole.Features.Secrets.Contracts
 
 type PersistRotatedPostgresCredential =

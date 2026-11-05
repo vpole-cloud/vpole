@@ -1,14 +1,15 @@
-namespace Pole.Features.Postgres.Application.Persistence.Lifecycle
+namespace Pole.Features.Postgres.Application.Lifecycle
 
 open System
 open System.Threading
 open System.Threading.Tasks
 open MongoDB.Driver
-open Pole.Features.Postgres.Application.Persistence
+open Pole.Features.Postgres.Application
+open Pole.Features.Postgres.Application.Mongo
 open Pole.Features.Postgres.Domain
 open Pole.Features.GitOps.Contracts
 open Pole.Features.GitOps.Primitives
-open Pole.Features.Postgres.Application.Persistence.Mutations
+open Pole.Features.Postgres.Application.Clusters
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.ResourceGroups.Contracts
 open Pole.Features.ResourceConnections.Contracts
