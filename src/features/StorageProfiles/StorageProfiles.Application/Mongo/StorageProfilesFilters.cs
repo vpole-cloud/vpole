@@ -4,7 +4,7 @@ using MongoDB.Driver;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
 
-namespace Pole.Features.StorageProfiles.Application;
+namespace Pole.Features.StorageProfiles.Application.Mongo;
 
 internal static class StorageProfileFilters
 {

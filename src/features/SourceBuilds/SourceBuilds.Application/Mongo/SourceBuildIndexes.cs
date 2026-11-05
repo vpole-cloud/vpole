@@ -1,4 +1,4 @@
-namespace Pole.Features.SourceBuilds.Application;
+namespace Pole.Features.SourceBuilds.Application.Mongo;
 
 internal static class SourceBuildIndexes
 {

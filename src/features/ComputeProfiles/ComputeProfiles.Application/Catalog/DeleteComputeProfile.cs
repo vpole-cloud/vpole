@@ -1,3 +1,4 @@
+using Pole.Features.ComputeProfiles.Application.Mongo;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Outbox.Contracts;

@@ -1,3 +1,4 @@
+using Pole.Features.ComputeProfiles.Application.Mongo;
 using Pole.Features.ComputeProfiles.Application.Common;
 using MongoDB.Driver;
 using Pole.Database;

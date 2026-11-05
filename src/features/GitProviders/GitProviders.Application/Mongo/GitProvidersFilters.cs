@@ -2,7 +2,7 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.GitProviders.Domain;
 
-namespace Pole.Features.GitProviders.Application;
+namespace Pole.Features.GitProviders.Application.Mongo;
 
 internal static class GitProviderFilters
 {

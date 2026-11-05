@@ -18,7 +18,9 @@ public sealed class FeatureFilterLayoutTests
             .Where(source => source.RelativePath.StartsWith(root, StringComparison.Ordinal))
             .ToArray();
         Assert.DoesNotContain(sources, source => source.RelativePath[root.Length..].Split('/')
-            .Any(segment => segment is "Persistence" or "Mongo"));
+            .Any(segment => segment == "Persistence"));
+        Assert.DoesNotContain(sources, source => source.RelativePath[root.Length..].Split('/')[1..]
+            .Any(segment => segment == "Mongo"));
 
         var helpers = sources.SelectMany(source => source.Root.DescendantNodes().OfType<ClassDeclarationSyntax>()
                 .Where(type => type.Identifier.ValueText.EndsWith("Filters", StringComparison.Ordinal))
@@ -26,6 +28,6 @@ public sealed class FeatureFilterLayoutTests
             .ToArray();
 
         Assert.NotEmpty(helpers);
-        Assert.All(helpers, path => Assert.Equal($"{root}{feature}Filters.cs", path));
+        Assert.All(helpers, path => Assert.Equal($"{root}Mongo/{feature}Filters.cs", path));
     }
 }

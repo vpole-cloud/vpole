@@ -5,7 +5,7 @@ using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
 
-namespace Pole.Features.GitOps.Application;
+namespace Pole.Features.GitOps.Application.Mongo;
 
 internal static class GitRepositoryFilters
 {

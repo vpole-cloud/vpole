@@ -1,4 +1,4 @@
-namespace Pole.Features.ComputeProfiles.Application;
+namespace Pole.Features.ComputeProfiles.Application.Mongo;
 
 internal static class ComputeProfileTechnicalNames
 {

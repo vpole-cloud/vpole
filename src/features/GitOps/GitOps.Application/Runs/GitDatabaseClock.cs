@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Application.Mongo;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Domain;

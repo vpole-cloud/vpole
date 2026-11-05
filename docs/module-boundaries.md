@@ -222,11 +222,16 @@ workflow code; no Mongo folder is required. Raw Mongo query APIs are forbidden u
 workflow operations. C# compiler diagnostics and F# architecture tests share the same path rule.
 The rule permits orchestration and Mongo access in a workflow implementation.
 
-Keep a feature's runtime filter helpers together in `<Feature>Filters.cs`. The file may contain
-multiple named filter classes. GitOps, SourceBuilds, GitProviders, ComputeProfiles and StorageProfiles
-have migrated; other features retain their current layout until their migration is reviewed. Typed-field and named-helper checks cover all
-Application runtime code regardless of folder names. `Feature.Migrations` retains its separate
-project boundary.
+Keep shared technical Mongo definitions in one Application-level `Mongo` folder: collection and
+index identifiers, runtime filter catalogs, and BSON mappings. A migrated feature keeps every runtime
+filter helper in `Mongo/<Feature>Filters.cs`; that file may contain multiple helper classes.
+Workflow reads and mutations remain beside their use cases. Group a large workflow folder by its
+responsibilities, such as queueing, workspace preparation and container builds; do not introduce
+nested Mongo folders per use case. Mongo-folder presence does not grant or restrict query access.
+GitOps, SourceBuilds, GitProviders, ComputeProfiles and StorageProfiles have migrated; other features
+retain their current layout until their migration is reviewed. Typed-field and named-helper checks
+cover all Application runtime code regardless of folder names. `Feature.Migrations` retains its
+separate project boundary.
 
 Application may reference its own Domain, Contracts, and Events. It may reference another
 feature's Contracts for synchronous capabilities and another feature's Events to consume its

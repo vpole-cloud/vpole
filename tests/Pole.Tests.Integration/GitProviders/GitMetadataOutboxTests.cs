@@ -1,3 +1,4 @@
+using Pole.Features.GitProviders.Application.Mongo;
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Driver;
