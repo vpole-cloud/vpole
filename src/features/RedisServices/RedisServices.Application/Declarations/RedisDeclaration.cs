@@ -1,10 +1,13 @@
+using Pole.Features.RedisServices.Application.Services;
+using Pole.Features.RedisServices.Application.Mongo;
+using Pole.Features.RedisServices.Application;
 using System.Text.Json;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Workloads;
 
-namespace Pole.Features.RedisServices.Application.Persistence;
+namespace Pole.Features.RedisServices.Application.Declarations;
 
 public sealed record RedisPinnedProfile(
     string Name,

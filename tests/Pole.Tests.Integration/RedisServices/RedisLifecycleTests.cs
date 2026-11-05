@@ -16,7 +16,7 @@ using Pole.Features.Secrets.Domain;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Domain;
 using Pole.Features.RedisServices.Domain;
-using Pole.Features.RedisServices.Application.Persistence.Lifecycle;
+using Pole.Features.RedisServices.Application.Lifecycle;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
