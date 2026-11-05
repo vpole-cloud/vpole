@@ -51,7 +51,7 @@ public union RetryFunctionInvocationOutcome(
     RetryFunctionInvocationError);
 
 public sealed class RetryFunctionInvocationHandler(
-    Persistence.Mutations.RetryFunctionInvocation retryFunctionInvocation,
+    Invocations.RetryFunctionInvocation retryFunctionInvocation,
     TimeProvider timeProvider)
     : IMediatorOutcomeHandler<RetryFunctionInvocationRequest, RetryFunctionInvocationOutcome>
 {

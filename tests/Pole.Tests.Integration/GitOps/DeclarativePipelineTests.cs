@@ -1006,7 +1006,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         var service = await Service();
         var placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == service.Id).SingleAsync();
         var operations = await Services
-            .GetRequiredService<Pole.Features.ResourceDeployments.Application.Persistence.Reads.
+            .GetRequiredService<Pole.Features.ResourceDeployments.Application.Reconciliation.
                 ResourceDeploymentOperationsPersistence>()
             .PageAsync(service.TenantId, null, "pole/web-service", service.Id, 1, 10, default);
         var operation = Assert.Single(operations.Items);
