@@ -2,15 +2,17 @@ using MongoDB.Driver;
 using Pole.Features.ResourceDeployments.Application.Consumers;
 using Pole.Features.ResourceDeployments.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Application.Jobs;
-using Pole.Features.ResourceDeployments.Application.Persistence;
-using Pole.Features.ResourceDeployments.Application.Persistence.Observation;
-using Pole.Features.ResourceDeployments.Application.Persistence.Creation;
-using Pole.Features.ResourceDeployments.Application.Persistence.Finalization;
-using Pole.Features.ResourceDeployments.Application.Persistence.Reads;
-using Pole.Features.ResourceDeployments.Application.Persistence.Reconciliation;
-using Pole.Features.ResourceDeployments.Application.Persistence.Requests;
-using Pole.Features.ResourceDeployments.Application.Persistence.Validation;
+using Pole.Features.ResourceDeployments.Application;
+using Pole.Features.ResourceDeployments.Application.Admission;
+using Pole.Features.ResourceDeployments.Application.Mongo;
+using Pole.Features.ResourceDeployments.Application.Observation;
+using Pole.Features.ResourceDeployments.Application.Creation;
+using Pole.Features.ResourceDeployments.Application.Finalization;
+using Pole.Features.ResourceDeployments.Application.Placements;
+using Pole.Features.ResourceDeployments.Application.Planning;
+using Pole.Features.ResourceDeployments.Application.Queries;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
+using Pole.Features.ResourceDeployments.Application.Requests;
 using Pole.Features.ResourceDeployments.Contracts;
 using Xunit;
 
@@ -153,7 +155,7 @@ public sealed class ResourceDeploymentBoundaryArchitectureTests
         var violations = Directory
             .EnumerateFiles(ApplicationSourceDirectory, "*.cs", SearchOption.AllDirectories)
             .Where(file => !file.EndsWith(
-                $"{Path.DirectorySeparatorChar}ResourceDeploymentFilters.cs",
+                $"{Path.DirectorySeparatorChar}ResourceDeploymentsFilters.cs",
                 StringComparison.Ordinal))
             .Where(file => !file.Contains(
                 $"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}",

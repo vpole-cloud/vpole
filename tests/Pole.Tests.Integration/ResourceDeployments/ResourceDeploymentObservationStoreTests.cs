@@ -9,7 +9,7 @@ using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Observation;
-using Pole.Features.ResourceDeployments.Application.Persistence.Observation;
+using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Events;

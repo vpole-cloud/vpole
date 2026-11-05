@@ -1,0 +1,28 @@
+using Pole.Features.ResourceDeployments.Application.Mongo;
+using Pole.Features.ResourceDeployments.Application.Admission;
+using Pole.Features.ResourceDeployments.Application;
+using MongoDB.Driver;
+using Pole.Features.ResourceDeployments.Contracts;
+
+namespace Pole.Features.ResourceDeployments.Application.Creation;
+
+internal sealed class MongoCreateResourceDeployment(
+    CreateResourceDeploymentSet createResourceDeploymentSet)
+{
+    public async Task<CreateResourceDeploymentOutcome> InvokeAsync(
+        CreateResourceDeploymentRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var result = await createResourceDeploymentSet(
+            new CreateResourceDeploymentSetRequest([request]),
+            session,
+            cancellationToken);
+        return result switch
+        {
+            CreatedResourceDeployments created => created.Placements.Single(),
+            CreateResourceDeploymentError error => error
+        };
+    }
+}

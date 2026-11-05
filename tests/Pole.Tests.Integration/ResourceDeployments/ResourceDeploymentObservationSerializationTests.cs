@@ -3,7 +3,8 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
 using MongoDB.Bson;
-using Pole.Features.ResourceDeployments.Application.Persistence.Observation;
+using Pole.Features.ResourceDeployments.Application.Mongo;
+using Pole.Features.ResourceDeployments.Application.Observation;
 using Pole.Workloads;
 using Xunit;
 

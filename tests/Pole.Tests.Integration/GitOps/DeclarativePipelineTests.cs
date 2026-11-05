@@ -20,7 +20,7 @@ using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Migrations;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.Outbox.Contracts;
-using Pole.Features.ResourceDeployments.Application.Persistence.Reconciliation;
+using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Application.Common;
