@@ -1,7 +1,7 @@
 using System.Formats.Tar;
 using System.IO.Compression;
 
-namespace Pole.Features.SourceBuilds.Application.Execution;
+namespace Pole.Features.SourceBuilds.Application.Execution.Workspace;
 
 public sealed record SourceBuildRepositoryArchiveInvalid(string Message);
 

@@ -1,4 +1,4 @@
-namespace Pole.Features.SourceBuilds.Application.Execution;
+namespace Pole.Features.SourceBuilds.Application.Execution.Workspace;
 
 public sealed class SourceBuildWorkspace(string rootPath, string sourcePath) : IAsyncDisposable
 {

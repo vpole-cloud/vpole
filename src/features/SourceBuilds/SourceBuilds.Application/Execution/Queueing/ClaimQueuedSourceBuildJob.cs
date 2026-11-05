@@ -4,7 +4,7 @@ using Pole.Database;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Domain;
 
-namespace Pole.Features.SourceBuilds.Application.Execution;
+namespace Pole.Features.SourceBuilds.Application.Execution.Queueing;
 
 public sealed record ClaimSourceBuildJobRequest(
     string BuildJobId,

@@ -2,7 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Pole.Features.SourceBuilds.Domain;
 
-namespace Pole.Features.SourceBuilds.Application.Execution;
+namespace Pole.Features.SourceBuilds.Application.Execution.ContainerBuild;
 
 /// <summary>Per-invocation sanitizer. Lookahead prevents split credential emission on either pipe.</summary>
 public sealed class RedactingBuildOutput : IAsyncDisposable

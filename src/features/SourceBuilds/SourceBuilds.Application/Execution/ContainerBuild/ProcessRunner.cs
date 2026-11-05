@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using Pole.Features.SourceBuilds.Domain;
 
-namespace Pole.Features.SourceBuilds.Application.Execution;
+namespace Pole.Features.SourceBuilds.Application.Execution.ContainerBuild;
 
 public sealed record ProcessSpec(
     string FileName,
