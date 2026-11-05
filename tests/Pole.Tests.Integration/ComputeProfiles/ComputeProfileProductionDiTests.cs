@@ -1,7 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.Outbox.Application.Persistence;
+using Pole.Features.Outbox.Application;
+using Pole.Features.Outbox.Application.Mongo;
 using Pole.Features.ComputeProfiles.Application;
 using Pole.Features.ComputeProfiles.Application.Bootstrap;
 using Pole.Features.ComputeProfiles.Application.Catalog;

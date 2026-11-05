@@ -1,11 +1,12 @@
+using Pole.Features.Outbox.Application.Mongo;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
-using Pole.Features.Outbox.Application.Persistence.Delivery;
-using Pole.Features.Outbox.Application.Persistence.Writes;
+using Pole.Features.Outbox.Application.Delivery;
+using Pole.Features.Outbox.Application.Writes;
 using Pole.Features.Outbox.Contracts;
 
-namespace Pole.Features.Outbox.Application.Persistence;
+namespace Pole.Features.Outbox.Application;
 
 public static class OutboxPersistenceRegistration
 {

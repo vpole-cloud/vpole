@@ -11,7 +11,7 @@ using Pole.Features.DeploymentTargets.Application.Persistence.References;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.Outbox.Application.Persistence.Writes;
+using Pole.Features.Outbox.Application.Writes;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.Outbox.Domain;
 using Pole.Features.Realtime.Contracts;

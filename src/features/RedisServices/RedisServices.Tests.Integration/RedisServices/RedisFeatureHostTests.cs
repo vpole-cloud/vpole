@@ -19,7 +19,7 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.Outbox.Application;
-using Pole.Features.Outbox.Application.Persistence.Delivery;
+using Pole.Features.Outbox.Application.Delivery;
 using Pole.Features.ComputeProfiles.Domain;
 using System.Runtime.Loader;
 

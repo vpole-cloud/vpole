@@ -1,6 +1,8 @@
+using Pole.Features.Outbox.Application.Mongo;
+using Pole.Features.Outbox.Application;
 using MongoDB.Driver;
 
-namespace Pole.Features.Outbox.Application.Persistence.Delivery;
+namespace Pole.Features.Outbox.Application.Delivery;
 
 public sealed record OutboxCleanupRequest(
     DateTime PublishedCutoffUtc,

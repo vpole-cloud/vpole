@@ -1,3 +1,5 @@
+using Pole.Features.Outbox.Application.Mongo;
+using Pole.Features.Outbox.Application;
 using System.Text.Json;
 using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
@@ -5,7 +7,7 @@ using Pole.Features.Outbox.Contracts;
 using Pole.Observability;
 using EventExtensions = Pole.Features.Events.Abstractions.EventExtensions;
 
-namespace Pole.Features.Outbox.Application.Persistence.Writes;
+namespace Pole.Features.Outbox.Application.Writes;
 
 internal sealed class MongoStoreOutboxWrites(IMongoCollection<OutboxMessage> _outboxMessages)
 {
