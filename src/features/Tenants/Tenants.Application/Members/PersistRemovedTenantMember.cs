@@ -1,3 +1,5 @@
+using Pole.Features.Tenants.Application.Tenants;
+using Pole.Features.Tenants.Application.Mongo;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Outbox.Contracts;
@@ -5,31 +7,31 @@ using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Domain;
 
-namespace Pole.Features.Tenants.Application.Persistence.Members;
+namespace Pole.Features.Tenants.Application.Members;
 
-public sealed record UpdateTenantMemberRole(
+public sealed record RemoveTenantMember(
     string TenantId,
-    string MemberId,
-    TenantRole Role);
+    string MemberId);
 
-public union PersistUpdatedTenantMemberRoleOutcome(
-    TenantMember,
+public sealed record TenantMemberRemoved(string MemberId);
+
+public union PersistRemovedTenantMemberOutcome(
+    TenantMemberRemoved,
     TenantNotFound,
     TenantMemberNotFound,
     TenantLastOwner);
 
-public delegate Task<PersistUpdatedTenantMemberRoleOutcome>
-    PersistUpdatedTenantMemberRole(
-        UpdateTenantMemberRole request,
-        CancellationToken cancellationToken = default);
+public delegate Task<PersistRemovedTenantMemberOutcome> PersistRemovedTenantMember(
+    RemoveTenantMember request,
+    CancellationToken cancellationToken = default);
 
-internal sealed class MongoPersistUpdatedTenantMemberRole(
+internal sealed class MongoPersistRemovedTenantMember(
     IMongoCollection<Tenant> _tenants,
     StoreOutboxWrites storeOutboxWrites,
-    RunMongoOutcomeTransaction<PersistUpdatedTenantMemberRoleOutcome> runTransaction)
+    RunMongoOutcomeTransaction<PersistRemovedTenantMemberOutcome> runTransaction)
 {
-    public Task<PersistUpdatedTenantMemberRoleOutcome> InvokeAsync(
-        UpdateTenantMemberRole request,
+    public Task<PersistRemovedTenantMemberOutcome> InvokeAsync(
+        RemoveTenantMember request,
         CancellationToken cancellationToken = default) => runTransaction(async (transaction, ct) =>
         {
             var tenant = await _tenants
@@ -46,34 +48,25 @@ internal sealed class MongoPersistUpdatedTenantMemberRole(
                 return transaction.Abort(new TenantMemberNotFound(request.TenantId, request.MemberId));
             }
 
-            if (existingMember.Role == request.Role)
-                return transaction.Abort(existingMember);
-
-            var removesOwner = request.Role != TenantRole.Owner;
             if (existingMember.Role == TenantRole.Owner &&
-                removesOwner &&
                 tenant.Members.Count(member => member.Role == TenantRole.Owner) == 1)
             {
                 return transaction.Abort(new TenantLastOwner(request.TenantId, request.MemberId));
             }
 
-            var updatedTenant = await _tenants.FindOneAndUpdateAsync(
+            var result = await _tenants.UpdateOneAsync(
                 transaction.Session,
-                removesOwner
-                    ? TenantFilters.ByIdWithMemberAndOwnerCanBeRemoved(
-                        request.TenantId,
-                        request.MemberId)
-                    : TenantFilters.ByIdWithMember(request.TenantId, request.MemberId),
-                TenantUpdates.SetMemberRole(request.Role),
-                new FindOneAndUpdateOptions<Tenant> { ReturnDocument = ReturnDocument.After },
-                ct);
-            var updatedMember = updatedTenant?.Members.FirstOrDefault(member => member.Id == request.MemberId);
-            if (updatedMember is not null)
+                TenantFilters.ByIdWithMemberAndOwnerCanBeRemoved(
+                    request.TenantId,
+                    request.MemberId),
+                TenantUpdates.RemoveMember(request.MemberId),
+                cancellationToken: ct);
+            if (result.ModifiedCount != 0)
             {
                 await storeOutboxWrites(transaction.Session,
-                    [TenantAccessEventExtensions.MembershipChanged(request.TenantId, updatedMember.UserId)],
+                    [TenantAccessEventExtensions.MembershipChanged(request.TenantId, existingMember.UserId)],
                     ct);
-                return transaction.Commit(updatedMember);
+                return transaction.Commit(new TenantMemberRemoved(request.MemberId));
             }
 
             var failure = await TenantMemberMutationFailures.ResolveAsync(
@@ -82,7 +75,7 @@ internal sealed class MongoPersistUpdatedTenantMemberRole(
                 request.TenantId,
                 request.MemberId,
                 ct);
-            PersistUpdatedTenantMemberRoleOutcome outcome = failure switch
+            PersistRemovedTenantMemberOutcome outcome = failure switch
             {
                 TenantNotFound error => error,
                 TenantMemberNotFound error => error,

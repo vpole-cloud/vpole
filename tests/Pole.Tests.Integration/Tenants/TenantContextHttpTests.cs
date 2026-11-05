@@ -14,7 +14,7 @@ using Pole.Features.Search.Application.Common;
 using Pole.Features.Tenants.Application;
 using Pole.Features.Realtime.Application;
 using Pole.Features.Tenants.Application.Middleware;
-using Pole.Features.Tenants.Application.Persistence.Tenants;
+using Pole.Features.Tenants.Application.Tenants;
 using Pole.Features.Tenants.Domain;
 using Pole.Platform.Hosting;
 using Xunit;

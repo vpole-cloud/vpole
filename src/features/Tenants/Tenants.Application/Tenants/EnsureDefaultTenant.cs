@@ -1,3 +1,4 @@
+using Pole.Features.Tenants.Application.Mongo;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Outbox.Contracts;
@@ -5,13 +6,13 @@ using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.Tenants.Application.Persistence.Tenants;
+namespace Pole.Features.Tenants.Application.Tenants;
 
-public delegate Task PersistCreatedTenant(
+public delegate Task EnsureDefaultTenant(
     Tenant tenant,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoPersistCreatedTenant(
+internal sealed class MongoEnsureDefaultTenant(
     IMongoCollection<Tenant> _tenants,
     StoreOutboxWrites storeOutboxWrites,
     RunMongoOutcomeTransaction<Unit> runTransaction)
@@ -20,7 +21,14 @@ internal sealed class MongoPersistCreatedTenant(
         Tenant tenant,
         CancellationToken cancellationToken = default) => runTransaction(async (transaction, ct) =>
         {
-            await _tenants.InsertOneAsync(transaction.Session, tenant, cancellationToken: ct);
+            var result = await _tenants.UpdateOneAsync(
+                transaction.Session,
+                TenantFilters.ById(tenant.Id),
+                TenantUpdates.CreateIfMissing(tenant),
+                new UpdateOptions { IsUpsert = true },
+                ct);
+            if (result.UpsertedId is null)
+                return transaction.Abort(Unit.Value);
             await storeOutboxWrites(transaction.Session,
                 tenant.Members.Select(member => member.UserId).Distinct(StringComparer.Ordinal)
                     .Select(userId => TenantAccessEventExtensions.MembershipChanged(tenant.Id, userId)).ToArray(),

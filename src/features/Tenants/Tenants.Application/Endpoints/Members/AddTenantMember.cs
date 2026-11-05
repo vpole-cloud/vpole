@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Common;
-using Pole.Features.Tenants.Application.Persistence.Members;
+using Pole.Features.Tenants.Application.Members;
 using Pole.Features.Tenants.Domain;
 using Pole.Mediator;
 using static Pole.Features.Tenants.Application.TenantMemberAuthorizationHttpProblemMappings;
