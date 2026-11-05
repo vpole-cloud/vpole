@@ -13,7 +13,7 @@ using Pole.Features.Postgres.Application;
 using Pole.Features.Postgres.Application.Mongo;
 using Pole.Features.Postgres.Application.Lifecycle;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
+using Pole.Features.ResourceGroups.Application.ResourceGroups;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.Secrets.Application.Persistence;
