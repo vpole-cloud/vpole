@@ -3,12 +3,6 @@ using Pole.Features.StorageProfiles.Domain;
 
 namespace Pole.Features.StorageProfiles.Application;
 
-internal static class StorageProfileRevisionFilters
-{
-    public static FilterDefinition<StorageProfileRevision> Identity(string id, long revision) =>
-        Builders<StorageProfileRevision>.Filter.Eq(item => item.Id, $"{id}/{revision}");
-}
-
 internal sealed class StorageProfileHistory(IMongoCollection<StorageProfileRevision> revisions)
 {
     public Task StoreAsync(StorageProfile profile, IClientSessionHandle session, CancellationToken ct) =>

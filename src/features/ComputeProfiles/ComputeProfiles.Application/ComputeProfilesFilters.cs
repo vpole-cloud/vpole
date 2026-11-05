@@ -94,3 +94,9 @@ internal static class ComputeProfileFilters
                 candidate => candidate.ResolutionFence,
                 long.MaxValue));
 }
+
+internal static class ComputeProfileRevisionFilters
+{
+    public static FilterDefinition<ComputeProfileRevision> Identity(string id, long revision) =>
+        Builders<ComputeProfileRevision>.Filter.Eq(item => item.Id, $"{id}/{revision}");
+}
