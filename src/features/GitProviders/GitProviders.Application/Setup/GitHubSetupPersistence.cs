@@ -3,9 +3,9 @@ using Pole.Database;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
-using Pole.Features.GitProviders.Application.Persistence.Connections;
+using Pole.Features.GitProviders.Application.Connections;
 
-namespace Pole.Features.GitProviders.Application.Persistence.Setup;
+namespace Pole.Features.GitProviders.Application.Setup;
 
 /// <summary>
 /// Mongo protocol for one-time GitHub setup attempts. Its operations share the

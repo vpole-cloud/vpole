@@ -4,7 +4,7 @@ using Pole.Features.GitProviders.Contracts;
 using Pole.Features.GitProviders.Domain;
 using Pole.Features.Tenants.Contracts;
 
-namespace Pole.Features.GitProviders.Application.Persistence.Repositories;
+namespace Pole.Features.GitProviders.Application.Repositories;
 
 internal sealed class MongoSourceRepositoryReferences(
     IMongoCollection<SourceRepository> repositories,

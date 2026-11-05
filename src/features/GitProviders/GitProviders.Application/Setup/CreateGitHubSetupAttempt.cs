@@ -1,7 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.GitProviders.Domain;
 
-namespace Pole.Features.GitProviders.Application.Persistence.Setup;
+namespace Pole.Features.GitProviders.Application.Setup;
 
 public delegate Task CreateGitHubSetupAttempt(
     GitHubSetupAttempt attempt,

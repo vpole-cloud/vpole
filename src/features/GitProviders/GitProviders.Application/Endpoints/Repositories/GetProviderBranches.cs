@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Common;
-using Pole.Features.GitProviders.Application.Persistence.Connections;
+using Pole.Features.GitProviders.Application.Connections;
 using Pole.Features.GitProviders.Application.ProviderOperations;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Mediator;

@@ -1,4 +1,4 @@
-using Pole.Features.GitProviders.Application.Persistence.Repositories;
+using Pole.Features.GitProviders.Application.Repositories;
 using Pole.Features.GitProviders.Application.ProviderOperations;
 using Pole.Features.GitProviders.Contracts;
 

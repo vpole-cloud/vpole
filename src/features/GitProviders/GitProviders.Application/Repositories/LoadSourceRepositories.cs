@@ -1,7 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.GitProviders.Domain;
 
-namespace Pole.Features.GitProviders.Application.Persistence.Repositories;
+namespace Pole.Features.GitProviders.Application.Repositories;
 
 public delegate Task<IReadOnlyList<SourceRepository>> LoadSourceRepositories(
     string tenantId,

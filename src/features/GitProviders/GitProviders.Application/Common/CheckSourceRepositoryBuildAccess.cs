@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text.Json;
-using Pole.Features.GitProviders.Application.Persistence.Connections;
-using Pole.Features.GitProviders.Application.Persistence.Repositories;
+using Pole.Features.GitProviders.Application.Connections;
+using Pole.Features.GitProviders.Application.Repositories;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.GitProviders.Domain;
 using Pole.Features.Tenants.Contracts;

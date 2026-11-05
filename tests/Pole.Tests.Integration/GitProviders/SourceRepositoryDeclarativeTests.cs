@@ -8,7 +8,7 @@ using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.GitProviders.Application;
 using Pole.Features.GitProviders.Application.Common;
-using Pole.Features.GitProviders.Application.Persistence.Repositories;
+using Pole.Features.GitProviders.Application.Repositories;
 using Pole.Features.GitProviders.Application.ProviderOperations;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.GitProviders.Domain;

@@ -1,7 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.GitProviders.Domain;
 
-namespace Pole.Features.GitProviders.Application.Persistence.Connections;
+namespace Pole.Features.GitProviders.Application.Connections;
 
 public delegate Task<IReadOnlyList<GitProviderConnection>> LoadGitProviderConnections(
     string tenantId,
