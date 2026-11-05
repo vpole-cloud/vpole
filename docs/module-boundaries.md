@@ -222,6 +222,11 @@ workflow code; no Mongo folder is required. Raw Mongo query APIs are forbidden u
 workflow operations. C# compiler diagnostics and F# architecture tests share the same path rule.
 The rule permits orchestration and Mongo access in a workflow implementation.
 
+During the staged layout review, `MongoApplicationLegacyPaths` lists exactly nine existing
+`SourceBuilds.Application/Persistence/Jobs/*.cs` files allowed to use Mongo query APIs.
+The allowance does not extend to new files or subdirectories. Remove those entries when the
+SourceBuilds layout is migrated. Typed-field and named-filter checks still apply to the listed files.
+
 Keep a feature's runtime filter helpers together in `<Feature>Filters.cs`. The file may contain
 multiple named filter classes. GitOps is the first migrated feature; other features retain their
 current layout until their migration is reviewed. Typed-field and named-helper checks cover all
