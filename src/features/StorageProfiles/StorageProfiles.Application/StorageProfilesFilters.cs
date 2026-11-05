@@ -1,8 +1,10 @@
+using Pole.Database.Observation;
+using Pole.Features.StorageProfiles.Domain.Observation;
 using MongoDB.Driver;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
 
-namespace Pole.Features.StorageProfiles.Application.Persistence;
+namespace Pole.Features.StorageProfiles.Application;
 
 internal static class StorageProfileFilters
 {
@@ -69,4 +71,25 @@ internal static class StorageProfileFilters
                 profile => profile.ResolutionFence,
                 long.MaxValue));
     }
+}
+
+internal static class StorageObservationFilters
+{
+    internal static FilterDefinition<StorageObservationControlDocument> ForControlScope(MongoObservationScope scope) =>
+        Builders<StorageObservationControlDocument>.Filter.Eq(item => item.Id, scope.Id);
+
+    internal static FilterDefinition<StorageObservationDemandDocument> ForDemandScope(MongoObservationScope scope) =>
+        Builders<StorageObservationDemandDocument>.Filter.Eq(item => item.DeploymentTargetId, scope.Id);
+
+    internal static FilterDefinition<StorageObservationSnapshotDocument> ForSnapshotScope(MongoObservationScope scope) =>
+        Builders<StorageObservationSnapshotDocument>.Filter.Eq(item => item.Id, scope.Id);
+
+    internal static FilterDefinition<StorageObservationControlDocument> ForControlContext(
+        StorageObservationContext context) =>
+        Builders<StorageObservationControlDocument>.Filter.Eq(item => item.ConnectionVersion, context.ConnectionVersion);
+
+    internal static FilterDefinition<StorageObservationSnapshotDocument> ForSnapshotContext(
+        StorageObservationContext context) =>
+        Builders<StorageObservationSnapshotDocument>.Filter.Eq(item => item.ConnectionVersion,
+            context.ConnectionVersion);
 }

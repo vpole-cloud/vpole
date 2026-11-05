@@ -1,4 +1,4 @@
-namespace Pole.Features.StorageProfiles.Application.Persistence;
+namespace Pole.Features.StorageProfiles.Application;
 
 internal static class StorageProfileTechnicalNames
 {

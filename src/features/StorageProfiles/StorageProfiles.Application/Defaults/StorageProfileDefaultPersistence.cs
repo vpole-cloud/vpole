@@ -2,7 +2,7 @@ using MongoDB.Driver;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Domain;
 
-namespace Pole.Features.StorageProfiles.Application.Persistence.Defaults;
+namespace Pole.Features.StorageProfiles.Application.Defaults;
 
 internal sealed record StorageProfileDefaultsDemoted;
 

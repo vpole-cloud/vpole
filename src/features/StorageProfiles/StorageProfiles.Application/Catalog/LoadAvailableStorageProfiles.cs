@@ -2,7 +2,7 @@ using MongoDB.Driver;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.Workloads;
 
-namespace Pole.Features.StorageProfiles.Application.Persistence.Reads;
+namespace Pole.Features.StorageProfiles.Application.Catalog;
 
 public sealed record StorageProfileAvailabilityQuery(
     string TenantId,

@@ -3,13 +3,12 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.StorageProfiles.Application.Common;
-using Pole.Features.StorageProfiles.Application.Persistence.Mutations;
-using Pole.Features.StorageProfiles.Application.Persistence.Reads;
-using Pole.Features.StorageProfiles.Application.Persistence.Resolution;
+using Pole.Features.StorageProfiles.Application.Catalog;
+using Pole.Features.StorageProfiles.Application.Resolution;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
 
-namespace Pole.Features.StorageProfiles.Application.Persistence;
+namespace Pole.Features.StorageProfiles.Application;
 
 public static class StorageProfilePersistenceRegistration
 {

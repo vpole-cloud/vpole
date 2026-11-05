@@ -16,7 +16,6 @@ using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Application.Observation;
-using Pole.Features.StorageProfiles.Application.Persistence.Observation;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Events;
 using Pole.Observability;
