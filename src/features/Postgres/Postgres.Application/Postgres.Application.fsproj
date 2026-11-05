@@ -27,6 +27,7 @@
         <Compile Include="PostgresOutcome.fs" />
         <Compile Include="Mongo\PostgresFilters.fs" />
         <Compile Include="PostgresPersistenceGuards.fs" />
+        <Compile Include="Connections\PostgresConnectionEndpoints.fs" />
         <Compile Include="Clusters\LoadPostgresClusterById.fs" />
         <Compile Include="Clusters\LoadPostgresConnectionEndpoints.fs" />
         <Compile Include="Clusters\LoadPostgresClusterPage.fs" />
@@ -103,7 +104,6 @@
       <ProjectReference Include="..\..\Quotas\Quotas.Contracts.HttpMapping\Quotas.Contracts.HttpMapping.csproj" />
       <ProjectReference Include="..\..\Quotas\Quotas.Primitives\Quotas.Primitives.csproj" />
       <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj" />
-      <ProjectReference Include="..\Postgres.Contracts\Postgres.Contracts.csproj" />
       <ProjectReference Include="..\..\Realtime\Realtime.Contracts\Realtime.Contracts.csproj" />
       <ProjectReference Include="..\Postgres.Domain\Postgres.Domain.fsproj" />
       <ProjectReference Include="..\Postgres.Events\Postgres.Events.fsproj" />

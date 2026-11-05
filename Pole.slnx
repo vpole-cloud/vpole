@@ -125,6 +125,7 @@
     <Project Path="src/features/RedisServices/RedisServices.Events/RedisServices.Events.csproj" />
   </Folder>
   <Folder Name="/features/ResourceConnections/">
+    <Project Path="src/features/ResourceConnections/ResourceConnections.Contracts/ResourceConnections.Contracts.csproj" />
     <Project Path="src/features/ResourceConnections/ResourceConnections.Migrations/ResourceConnections.Migrations.csproj" />
     <Project Path="src/features/ResourceConnections/ResourceConnections.Application/ResourceConnections.Application.csproj" />
     <Project Path="src/features/ResourceConnections/ResourceConnections.Domain/ResourceConnections.Domain.csproj" />
@@ -216,8 +217,6 @@
     <Project Path="src/features/Secrets/Secrets.Events/Secrets.Events.csproj" />
     <Project Path="src/features/Secrets/Secrets.Application/Secrets.Application.csproj" />
   </Folder>
-  <Project Path="src/features/Postgres/Postgres.Contracts/Postgres.Contracts.csproj" />
-  <Project Path="src/features/ResourceConnections/ResourceConnections.Contracts/ResourceConnections.Contracts.csproj" />
   <Folder Name="/features/PrivateAccess/">
     <Project Path="src/features/PrivateAccess/PrivateAccess.Migrations/PrivateAccess.Migrations.csproj" />
     <Project Path="src/features/PrivateAccess/PrivateAccess.Tests.Integration/PrivateAccess.Tests.Integration.csproj" />

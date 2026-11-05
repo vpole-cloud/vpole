@@ -4,6 +4,7 @@ open System.Collections.Generic
 open Pole.Features.Core.Kubernetes
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
+open Pole.Features.Postgres.Application.Connections
 open Pole.Features.StorageProfiles.Contracts
 open k8s.Models
 
@@ -19,7 +20,7 @@ module PostgresClusterKubernetesBuilder =
     let buildResourceName (clusterId : string) = $"pg-{clusterId}"
 
     let buildReadWriteServiceName (clusterId : string) =
-        Pole.Features.Postgres.Contracts.PostgresConnectionEndpoints.BuildReadWriteServiceName clusterId
+        PostgresConnectionEndpoints.buildReadWriteServiceName clusterId
     let buildDatabaseName (clusterId : string) = clusterId
 
     let buildLabels (cluster : PostgresCluster) (metadata : PostgresResourceDeploymentMetadata) =

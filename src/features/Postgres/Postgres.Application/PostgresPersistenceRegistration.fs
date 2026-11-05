@@ -9,7 +9,6 @@ open Pole.Features.Postgres.Application.Credentials
 open Pole.Features.Postgres.Application.Lifecycle
 open Pole.Features.Postgres.Application.Clusters
 open Pole.Features.Postgres.Domain
-open Pole.Features.Postgres.Contracts
 open Pole.Features.ResourceConnections.Contracts
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Secrets.Contracts

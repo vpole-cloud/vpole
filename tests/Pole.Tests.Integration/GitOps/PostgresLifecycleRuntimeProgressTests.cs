@@ -7,7 +7,6 @@ using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.Postgres.Application.Common;
-using Pole.Features.Postgres.Contracts;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.ResourceConnections.Application.Common;
 using Pole.Features.ResourceConnections.Application.Connections;
@@ -98,7 +97,7 @@ public sealed partial class DeclarativePipelineTests
                 Assert.IsType<ResourceConnection>((await Services
                     .GetRequiredService<PersistResourceConnectionCreation>()(
                     new(owner.TenantId, "manual-postgres", PostgresResourceDeployment.ResourceType, postgres.Id,
-                        PostgresResourceDeployment.ResourceType, postgres.Id, PostgresConnectionEndpoints.ReadWriteId)))
+                        PostgresResourceDeployment.ResourceType, postgres.Id, "postgres")))
                     .Value);
             else
                 await ChangeRuntimeApprovalAsync(change, owner, postgres.Id);

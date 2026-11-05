@@ -6,7 +6,6 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.Postgres.Application;
 using Pole.Features.Postgres.Application.Kubernetes;
-using Pole.Features.Postgres.Contracts;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.RedisServices.Application;
 using Pole.Features.RedisServices.Contracts;

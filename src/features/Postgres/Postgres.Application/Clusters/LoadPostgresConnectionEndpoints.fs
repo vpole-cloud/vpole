@@ -7,7 +7,7 @@ open System.Threading
 open MongoDB.Driver
 open Pole.Features.Postgres.Application
 open Pole.Features.Postgres.Application.Mongo
-open Pole.Features.Postgres.Contracts
+open Pole.Features.Postgres.Application.Connections
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.ResourceConnections.Contracts
@@ -18,7 +18,7 @@ type MongoLoadPostgresConnectionEndpoints(clusters : IMongoCollection<PostgresCl
         let port = NetworkPort.Create(PostgresConnectionEndpoints.TcpPort)
         let endpoint = ResourceConnectionEndpoint(
             PostgresConnectionEndpoints.ReadWriteId,
-            PostgresConnectionEndpoints.BuildReadWriteServiceName(resource.Id),
+            PostgresConnectionEndpoints.buildReadWriteServiceName(resource.Id),
             port,
             port,
             DisplayName = "PostgreSQL read/write",
