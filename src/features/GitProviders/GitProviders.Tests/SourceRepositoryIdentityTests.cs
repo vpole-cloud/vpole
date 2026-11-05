@@ -3,7 +3,7 @@ using MongoDB.Bson.Serialization;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.Endpoints.Repositories;
 using Pole.Features.GitProviders.Application.Endpoints.SourceRepositories;
-using Pole.Features.GitProviders.Application.Persistence.Repositories;
+using Pole.Features.GitProviders.Application.Repositories;
 using Pole.Features.GitProviders.Application.ProviderOperations;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.GitProviders.Domain;

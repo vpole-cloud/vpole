@@ -2,7 +2,7 @@ using MongoDB.Driver;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.GitProviders.Domain;
 
-namespace Pole.Features.GitProviders.Application.Persistence.Connections;
+namespace Pole.Features.GitProviders.Application.Connections;
 
 internal sealed class MongoFindNamedGitProviderConnection(
     IMongoCollection<GitProviderConnection> gitProviderConnections)

@@ -1,4 +1,4 @@
-namespace Pole.Features.GitProviders.Application.Persistence.Connections;
+namespace Pole.Features.GitProviders.Application.Connections;
 
 internal static class GitProviderConnectionIndexes
 {

@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Options;
 using Pole.Features.GitProviders.Application.Common;
-using Pole.Features.GitProviders.Application.Persistence.Webhooks;
+using Pole.Features.GitProviders.Application.Webhooks;
 using Pole.Features.GitProviders.Domain;
 
 namespace Pole.Features.GitProviders.Application.Endpoints.Callbacks;

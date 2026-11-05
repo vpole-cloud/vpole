@@ -1,4 +1,4 @@
-namespace Pole.Features.GitProviders.Application.Persistence.Repositories;
+namespace Pole.Features.GitProviders.Application.Repositories;
 
 internal static class SourceRepositoryIndexes
 {

@@ -7,7 +7,7 @@ using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
 using Pole.Features.SourceBuilds.Contracts;
 
-namespace Pole.Features.GitProviders.Application.Persistence.Repositories;
+namespace Pole.Features.GitProviders.Application.Repositories;
 
 public sealed record SourceRepositoryDeleted;
 

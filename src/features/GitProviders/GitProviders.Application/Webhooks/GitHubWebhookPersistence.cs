@@ -6,7 +6,7 @@ using Pole.Features.GitProviders.Domain;
 using Pole.Features.GitProviders.Events;
 using Pole.Features.Outbox.Contracts;
 
-namespace Pole.Features.GitProviders.Application.Persistence.Webhooks;
+namespace Pole.Features.GitProviders.Application.Webhooks;
 
 public sealed class GitHubWebhookPersistence(
     IMongoCollection<GitHubDeliveryReceipt> gitHubDeliveryReceipt,

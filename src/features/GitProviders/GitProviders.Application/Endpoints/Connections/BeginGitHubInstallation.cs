@@ -8,7 +8,7 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.GitHub;
-using Pole.Features.GitProviders.Application.Persistence.Setup;
+using Pole.Features.GitProviders.Application.Setup;
 using Pole.Features.GitProviders.Domain;
 using Pole.Mediator;
 using static Pole.Features.GitProviders.Application.Common.GitProviderHttpMappings;

@@ -4,7 +4,7 @@ using Pole.Features.Outbox.Contracts;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
 
-namespace Pole.Features.GitProviders.Application.Persistence.Connections;
+namespace Pole.Features.GitProviders.Application.Connections;
 
 public sealed record GitProviderConnectionDeleted;
 

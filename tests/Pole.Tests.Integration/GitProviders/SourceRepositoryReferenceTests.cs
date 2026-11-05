@@ -4,7 +4,7 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitProviders.Application.Common;
-using Pole.Features.GitProviders.Application.Persistence.Repositories;
+using Pole.Features.GitProviders.Application.Repositories;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.GitProviders.Domain;
 using Pole.Features.SourceBuilds.Contracts;

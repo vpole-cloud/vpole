@@ -10,7 +10,7 @@ using Pole.Workloads;
 using System.Globalization;
 using System.Text.Json;
 
-namespace Pole.Features.GitProviders.Application.Persistence.Repositories;
+namespace Pole.Features.GitProviders.Application.Repositories;
 
 public sealed record SourceRepositoryDeclaration(
     string Connection,

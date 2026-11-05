@@ -8,7 +8,7 @@ using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.GitProviders.Application.Endpoints.Callbacks;
-using Pole.Features.GitProviders.Application.Persistence.Webhooks;
+using Pole.Features.GitProviders.Application.Webhooks;
 using Pole.Features.GitProviders.Domain;
 using Pole.Features.GitProviders.Events;
 using Pole.Features.Outbox.Contracts;
