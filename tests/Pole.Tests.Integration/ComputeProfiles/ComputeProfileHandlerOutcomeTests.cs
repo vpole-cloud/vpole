@@ -1,8 +1,7 @@
 using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Endpoints;
-using Pole.Features.ComputeProfiles.Application.Persistence;
-using Pole.Features.ComputeProfiles.Application.Persistence.Mutations;
-using Pole.Features.ComputeProfiles.Application.Persistence.Reads;
+using Pole.Features.ComputeProfiles.Application;
+using Pole.Features.ComputeProfiles.Application.Catalog;
 using Pole.Features.ComputeProfiles.Application.Validation;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;

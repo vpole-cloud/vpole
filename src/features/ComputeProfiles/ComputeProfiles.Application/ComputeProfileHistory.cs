@@ -1,7 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Domain;
 
-namespace Pole.Features.ComputeProfiles.Application.Persistence;
+namespace Pole.Features.ComputeProfiles.Application;
 
 internal static class ComputeProfileRevisionFilters
 {

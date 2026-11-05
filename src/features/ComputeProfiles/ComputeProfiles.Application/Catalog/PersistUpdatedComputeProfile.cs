@@ -3,13 +3,13 @@ using Pole.Database;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.ComputeProfiles.Events;
 using Pole.Features.ComputeProfiles.Application.Common;
-using Pole.Features.ComputeProfiles.Application.Persistence.Defaults;
-using Pole.Features.ComputeProfiles.Application.Persistence.References;
+using Pole.Features.ComputeProfiles.Application.Defaults;
+using Pole.Features.ComputeProfiles.Application.Resolution;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.ResultType;
 
-namespace Pole.Features.ComputeProfiles.Application.Persistence.Mutations;
+namespace Pole.Features.ComputeProfiles.Application.Catalog;
 
 public union PersistUpdatedComputeProfileOutcome(
     ComputeProfile,

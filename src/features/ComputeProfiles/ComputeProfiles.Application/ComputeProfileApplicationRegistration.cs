@@ -3,7 +3,6 @@ using Pole.Features.Realtime.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pole.Features.ComputeProfiles.Application.Bootstrap;
-using Pole.Features.ComputeProfiles.Application.Persistence;
 using Pole.Features.ComputeProfiles.Application.Validation;
 using Pole.Features.ComputeProfiles.Contracts.HttpMapping;
 

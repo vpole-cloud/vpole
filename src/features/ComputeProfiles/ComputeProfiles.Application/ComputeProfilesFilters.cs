@@ -3,7 +3,7 @@ using Pole.Database;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
 
-namespace Pole.Features.ComputeProfiles.Application.Persistence;
+namespace Pole.Features.ComputeProfiles.Application;
 
 internal static class ComputeProfileFilters
 {

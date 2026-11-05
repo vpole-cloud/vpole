@@ -3,7 +3,7 @@ using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
 
-namespace Pole.Features.ComputeProfiles.Application.Persistence.Resolution;
+namespace Pole.Features.ComputeProfiles.Application.Resolution;
 
 internal sealed class MongoFenceResolvedComputeProfile(
     IMongoCollection<ComputeProfile> computeProfiles,
