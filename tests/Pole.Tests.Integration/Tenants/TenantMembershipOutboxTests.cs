@@ -56,6 +56,8 @@ public sealed class TenantMembershipOutboxTests(MongoReplicaSetFixture fixture) 
         var tenant = CreateTenant();
         var ensure = Services.GetRequiredService<EnsureDefaultTenant>();
         await ensure(tenant);
+        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(EventType));
+        Assert.Equal(tenant.Id, (await DbContext.Tenants.Find(item => item.Id == tenant.Id).SingleAsync()).Id);
         await ensure(tenant);
         Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(EventType));
     }

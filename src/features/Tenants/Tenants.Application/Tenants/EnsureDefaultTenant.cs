@@ -27,7 +27,7 @@ internal sealed class MongoEnsureDefaultTenant(
                 TenantUpdates.CreateIfMissing(tenant),
                 new UpdateOptions { IsUpsert = true },
                 ct);
-            if (result.UpsertedId is null)
+            if (result.MatchedCount != 0)
                 return transaction.Abort(Unit.Value);
             await storeOutboxWrites(transaction.Session,
                 tenant.Members.Select(member => member.UserId).Distinct(StringComparer.Ordinal)
