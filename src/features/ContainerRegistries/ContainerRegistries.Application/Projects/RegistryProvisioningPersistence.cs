@@ -1,3 +1,4 @@
+using Pole.Features.ContainerRegistries.Application.Mongo;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
@@ -6,7 +7,7 @@ using Pole.Features.ContainerRegistries.Application.Provisioning;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.ContainerRegistries.Domain;
 
-namespace Pole.Features.ContainerRegistries.Application.Persistence.Projects;
+namespace Pole.Features.ContainerRegistries.Application.Projects;
 
 public union ClaimRegistryProvisioningOutcome(
     RegistryProject,

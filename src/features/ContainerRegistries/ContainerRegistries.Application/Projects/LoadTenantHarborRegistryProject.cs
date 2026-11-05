@@ -1,7 +1,8 @@
+using Pole.Features.ContainerRegistries.Application.Mongo;
 using MongoDB.Driver;
 using Pole.Features.ContainerRegistries.Domain;
 
-namespace Pole.Features.ContainerRegistries.Application.Persistence.Projects;
+namespace Pole.Features.ContainerRegistries.Application.Projects;
 
 public delegate Task<RegistryProject?> LoadTenantHarborRegistryProject(
     string tenantId,

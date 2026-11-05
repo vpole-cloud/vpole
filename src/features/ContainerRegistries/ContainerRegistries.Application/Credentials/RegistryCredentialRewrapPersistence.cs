@@ -1,8 +1,9 @@
+using Pole.Features.ContainerRegistries.Application.Mongo;
 using MongoDB.Driver;
 using Pole.Encryption;
 using Pole.Features.ContainerRegistries.Domain;
 
-namespace Pole.Features.ContainerRegistries.Application.Persistence.Credentials;
+namespace Pole.Features.ContainerRegistries.Application.Credentials;
 
 public sealed class RegistryCredentialRewrapPersistence(IMongoCollection<RegistryCredential> credentials)
 {

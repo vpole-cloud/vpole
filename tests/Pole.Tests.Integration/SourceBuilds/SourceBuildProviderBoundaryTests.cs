@@ -1,7 +1,7 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Features.ContainerRegistries.Application.Persistence;
-using Pole.Features.ContainerRegistries.Application.Persistence.Projects;
+using Pole.Features.ContainerRegistries.Application.Mongo;
+using Pole.Features.ContainerRegistries.Application.Projects;
 using Pole.Features.ContainerRegistries.Application.Provisioning;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.ContainerRegistries.Domain;
