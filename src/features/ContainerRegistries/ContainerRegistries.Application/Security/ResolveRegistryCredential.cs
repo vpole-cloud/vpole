@@ -1,5 +1,5 @@
-using Pole.Features.ContainerRegistries.Application.Persistence;
-using Pole.Features.ContainerRegistries.Application.Persistence.Credentials;
+using Pole.Features.ContainerRegistries.Application.Mongo;
+using Pole.Features.ContainerRegistries.Application.Credentials;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.ContainerRegistries.Domain;
 

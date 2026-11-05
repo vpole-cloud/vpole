@@ -64,7 +64,7 @@ public sealed class ContainerRegistryBoundaryArchitectureTests
                 "*.cs",
                 SearchOption.AllDirectories)
             .Where(file => !file.EndsWith(
-                $"{Path.DirectorySeparatorChar}ContainerRegistryFilters.cs",
+                $"{Path.DirectorySeparatorChar}ContainerRegistriesFilters.cs",
                 StringComparison.Ordinal))
             .Where(file => !file.Contains(
                 $"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}",
