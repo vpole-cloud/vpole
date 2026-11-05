@@ -1,7 +1,6 @@
-using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Containers;
 using System.Net;
 using System.Net.Sockets;
+using DotNet.Testcontainers.Builders;
 using Npgsql;
 using Pole.Testing;
 using StackExchange.Redis;

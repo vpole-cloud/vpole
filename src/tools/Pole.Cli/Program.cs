@@ -7,15 +7,18 @@ var authenticator = new OidcAuthenticator(httpClient, browser);
 var runner = new CliCommandRunner(httpClient, new CliTokenStore(), authenticator);
 return await runner.RunAsync(args);
 
-internal sealed class SystemBrowser : IOidcBrowser
+namespace Pole.Cli
 {
-    public void Open(Uri uri)
+    internal sealed class SystemBrowser : IOidcBrowser
     {
-        var startInfo = new System.Diagnostics.ProcessStartInfo
+        public void Open(Uri uri)
         {
-            FileName = uri.AbsoluteUri,
-            UseShellExecute = true
-        };
-        System.Diagnostics.Process.Start(startInfo);
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = uri.AbsoluteUri,
+                UseShellExecute = true
+            };
+            System.Diagnostics.Process.Start(startInfo);
+        }
     }
 }
