@@ -1,15 +1,15 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
-using Pole.Features.GitOps.Application.Sources.Mongo;
 using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Endpoints.Sources;
+using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Endpoints;
-using Pole.Features.ResourceGroups.Migrations;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.ResourceGroups.Migrations;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 

@@ -1,6 +1,3 @@
-using Pole.Features.GitOps.Application.Lifecycle.Mongo;
-using Pole.Features.GitOps.Application.Sources.Mongo;
-using Pole.Features.GitOps.Migrations;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
@@ -8,12 +5,15 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Jobs;
+using Pole.Features.GitOps.Application.Lifecycle;
+using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
+using Pole.Features.GitOps.Migrations;
 using Pole.Features.ResourceGroups.Domain;
-using Pole.Features.Secrets.Migrations;
 using Pole.Features.Secrets.Application.Persistence;
 using Pole.Features.Secrets.Domain;
+using Pole.Features.Secrets.Migrations;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 

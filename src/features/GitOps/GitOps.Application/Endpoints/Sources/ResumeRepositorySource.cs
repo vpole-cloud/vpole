@@ -1,13 +1,12 @@
-using MongoDB.Bson;
 using System.Text.Json.Serialization;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.GitOps.Application.Sources.Mongo;
 using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Domain;
 using Pole.Mediator;

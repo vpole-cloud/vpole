@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.GitOps.Application.Inventory.Mongo;
+using Pole.Features.GitOps.Application.Inventory;
 using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Primitives;
 using Pole.Mediator;

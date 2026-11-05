@@ -2,7 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Application.Endpoints.Sources;
-using Pole.Features.GitOps.Application.Inventory.Mongo;
+using Pole.Features.GitOps.Application.Inventory;
 using Pole.Features.GitOps.Primitives;
 using Xunit;
 

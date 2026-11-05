@@ -1,6 +1,3 @@
-using Pole.Features.GitOps.Application.Lifecycle.Mongo;
-using Pole.Features.GitOps.Application.Sources.Mongo;
-using Pole.Features.GitOps.Migrations;
 using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
@@ -12,8 +9,11 @@ using Pole.Features.Functions.Application.Endpoints;
 using Pole.Features.Functions.Application.Persistence.Lifecycle;
 using Pole.Features.Functions.Domain;
 using Pole.Features.GitOps.Application.Jobs;
+using Pole.Features.GitOps.Application.Lifecycle;
+using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
+using Pole.Features.GitOps.Migrations;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;

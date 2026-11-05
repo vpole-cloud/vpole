@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
-using Pole.Features.GitOps.Application.Planning.Mongo;
-using Pole.Features.GitOps.Application.Runs.Mongo;
 using Pole.Features.GitOps.Application;
+using Pole.Features.GitOps.Application.Planning;
+using Pole.Features.GitOps.Application.Runs;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;

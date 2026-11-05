@@ -1,7 +1,7 @@
 using Hangfire;
 using MassTransit;
 using Microsoft.Extensions.Logging;
-using Pole.Features.GitOps.Application.Sources.Mongo;
+using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Events;
 
