@@ -1,9 +1,37 @@
 using MongoDB.Driver;
-using Pole.Features.ResourceConnections.Domain;
+using Pole.Database;
+using Pole.Features.Outbox.Contracts;
+using Pole.Features.ResourceConnections.Application.Common;
+using Pole.Features.ResourceConnections.Application.Connections;
+using Pole.Features.ResourceConnections.Application.Declarations;
+using Pole.Features.ResourceConnections.Application.Recovery;
+using Pole.Features.ResourceConnections.Application.References;
+using Pole.Features.ResourceConnections.Application.Topology;
 using Pole.Features.ResourceConnections.Contracts;
+using Pole.Features.ResourceConnections.Domain;
 using Pole.Workloads;
+using System.Collections.Immutable;
 
-namespace Pole.Features.ResourceConnections.Application.Persistence;
+namespace Pole.Features.ResourceConnections.Application.Mongo;
+
+internal static class ResourceConnectionTombstoneFilters
+{
+    public static FilterDefinition<ResourceConnectionCleanupTombstone> ByTenantAndId(
+        string tenantId,
+        string connectionId) =>
+        Builders<ResourceConnectionCleanupTombstone>.Filter.And(
+            Builders<ResourceConnectionCleanupTombstone>.Filter.Eq(
+                item => item.TenantId,
+                tenantId),
+            Builders<ResourceConnectionCleanupTombstone>.Filter.Eq(
+                item => item.Id,
+                connectionId));
+
+    public static FilterDefinition<ResourceConnectionCleanupTombstone> AfterId(string? id) =>
+        id is null
+            ? Builders<ResourceConnectionCleanupTombstone>.Filter.Empty
+            : Builders<ResourceConnectionCleanupTombstone>.Filter.Gt(item => item.Id, id);
+}
 
 internal static class ResourceConnectionFilters
 {

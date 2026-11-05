@@ -25,7 +25,7 @@ public static class RecordDataConstructionLegacy
         "src/features/RedisServices/RedisServices.Events/RedisServiceCreatedEvent.cs|Pole.Features.RedisServices.Events.RedisServiceCreatedEvent|EventCore|extra-property",
         "src/features/RedisServices/RedisServices.Events/RedisServiceDeletedEvent.cs|Pole.Features.RedisServices.Events.RedisServiceDeletedEvent|EventCore|extra-property",
         "src/features/RedisServices/RedisServices.Events/RedisServiceUpdatedEvent.cs|Pole.Features.RedisServices.Events.RedisServiceUpdatedEvent|EventCore|extra-property",
-        "src/features/ResourceConnections/ResourceConnections.Application/Persistence/ResourceConnectionEndpointCatalog.cs|Pole.Features.ResourceConnections.Application.Persistence.ResolvedConnectionEndpoint|Configuration|extra-property",
+        "src/features/ResourceConnections/ResourceConnections.Application/Topology/ResourceConnectionEndpointCatalog.cs|Pole.Features.ResourceConnections.Application.Topology.ResolvedConnectionEndpoint|Configuration|extra-property",
         "src/features/ResourceConnections/ResourceConnections.Contracts/ResourceConnectionCapabilities.cs|Pole.Features.ResourceConnections.Contracts.ResourceConnectionEndpoint|Configuration|extra-property",
         "src/features/ResourceConnections/ResourceConnections.Contracts/ResourceConnectionCapabilities.cs|Pole.Features.ResourceConnections.Contracts.ResourceConnectionEndpoint|DisplayName|extra-property",
         "src/features/ResourceConnections/ResourceConnections.Contracts/ResourceConnectionCapabilities.cs|Pole.Features.ResourceConnections.Contracts.ResourceConnectionEndpoint|Protocol|extra-property",

@@ -1,8 +1,14 @@
+using Pole.Features.ResourceConnections.Application.References;
+using Pole.Features.ResourceConnections.Application.Recovery;
+using Pole.Features.ResourceConnections.Application.Mongo;
+using Pole.Features.ResourceConnections.Application.Declarations;
+using Pole.Features.ResourceConnections.Application.Connections;
+using Pole.Features.ResourceConnections.Application.Common;
 using MongoDB.Driver;
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Workloads;
 
-namespace Pole.Features.ResourceConnections.Application.Persistence;
+namespace Pole.Features.ResourceConnections.Application.Topology;
 
 internal sealed record ResolvedConnectionEndpoint(
     string Id,

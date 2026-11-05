@@ -1,3 +1,9 @@
+using Pole.Features.ResourceConnections.Application.Topology;
+using Pole.Features.ResourceConnections.Application.References;
+using Pole.Features.ResourceConnections.Application.Recovery;
+using Pole.Features.ResourceConnections.Application.Mongo;
+using Pole.Features.ResourceConnections.Application.Connections;
+using Pole.Features.ResourceConnections.Application.Common;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
@@ -7,7 +13,7 @@ using Pole.Features.ResourceGroups.Contracts;
 using Pole.Workloads;
 using System.Text.Json;
 
-namespace Pole.Features.ResourceConnections.Application.Persistence;
+namespace Pole.Features.ResourceConnections.Application.Declarations;
 
 public sealed record ResourceConnectionDeclaration(
     ResourceAddress Source,
