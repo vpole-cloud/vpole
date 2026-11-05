@@ -1,3 +1,5 @@
+using Pole.Features.RedisServices.Application.Mongo;
+using Pole.Features.RedisServices.Application;
 using Pole.Database;
 using System.Collections.Immutable;
 using MongoDB.Bson;
@@ -7,14 +9,14 @@ using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Application.Persistence.Mutations;
+using Pole.Features.RedisServices.Application.Services;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
-using static Pole.Features.RedisServices.Application.Persistence.RedisDeclarations;
-using static Pole.Features.RedisServices.Application.Persistence.RedisPlanning;
+using static Pole.Features.RedisServices.Application.Declarations.RedisDeclarations;
+using static Pole.Features.RedisServices.Application.Declarations.RedisPlanning;
 
-namespace Pole.Features.RedisServices.Application.Persistence;
+namespace Pole.Features.RedisServices.Application.Declarations;
 
 internal sealed class RedisDeclarationExecution(
     IMongoCollection<Redis> resources,

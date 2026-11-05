@@ -1,3 +1,6 @@
+using Pole.Features.RedisServices.Application.Services;
+using Pole.Features.RedisServices.Application.Mongo;
+using Pole.Features.RedisServices.Application;
 using System.Text.Json;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Contracts;
@@ -6,7 +9,7 @@ using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
 using Pole.Workloads;
 
-namespace Pole.Features.RedisServices.Application.Persistence;
+namespace Pole.Features.RedisServices.Application.Declarations;
 
 internal sealed class DeclarativeRedisProvider(
     IMongoCollection<Redis> resources,

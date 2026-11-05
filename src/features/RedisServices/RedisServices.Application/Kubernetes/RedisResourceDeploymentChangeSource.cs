@@ -5,7 +5,7 @@ using k8s.Models;
 using Pole.Features.Core.Kubernetes;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Application.Persistence.Reads;
+using Pole.Features.RedisServices.Application.Services;
 using Pole.Features.ResourceDeployments.Contracts;
 
 namespace Pole.Features.RedisServices.Application.Kubernetes;

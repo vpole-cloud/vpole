@@ -1,3 +1,6 @@
+using Pole.Features.RedisServices.Application.Services;
+using Pole.Features.RedisServices.Application.Mongo;
+using Pole.Features.RedisServices.Application;
 using System.Text.Json;
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Contracts;
@@ -7,10 +10,10 @@ using Pole.Features.GitOps.Primitives;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.StorageProfiles.Contracts;
-using static Pole.Features.RedisServices.Application.Persistence.RedisDeclarations;
-using static Pole.Features.RedisServices.Application.Persistence.RedisPlanning;
+using static Pole.Features.RedisServices.Application.Declarations.RedisDeclarations;
+using static Pole.Features.RedisServices.Application.Declarations.RedisPlanning;
 
-namespace Pole.Features.RedisServices.Application.Persistence;
+namespace Pole.Features.RedisServices.Application.Declarations;
 
 internal sealed class RedisDeclarationAdoption(
     RedisDeclarationPlanner planner,

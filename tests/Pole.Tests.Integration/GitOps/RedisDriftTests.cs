@@ -13,7 +13,7 @@ using Pole.Features.GitOps.Primitives;
 using Pole.Features.Quotas.Domain;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Endpoints;
-using Pole.Features.RedisServices.Application.Persistence.Mutations;
+using Pole.Features.RedisServices.Application.Services;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Migrations;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -272,7 +272,7 @@ public sealed partial class DeclarativePipelineTests
         var providers = Services.GetServices<IDeclarativeResourceProvider>().ToArray();
         var redisProvider = providers.Single(item => item.Kind == "RedisService");
         var executionType = redisProvider.GetType().Assembly.GetType(
-            "Pole.Features.RedisServices.Application.Persistence.RedisDeclarationExecution", throwOnError: true)!;
+            "Pole.Features.RedisServices.Application.Declarations.RedisDeclarationExecution", throwOnError: true)!;
         var execution = ActivatorUtilities.CreateInstance(Services, executionType, rejectAfterCreate);
         var failing = (IDeclarativeResourceProvider)ActivatorUtilities.CreateInstance(Services,
             redisProvider.GetType(), execution);

@@ -1,9 +1,11 @@
 using Pole.Features.Core.Kubernetes;
 using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Application.Persistence;
+using Pole.Features.RedisServices.Application;
+using Pole.Features.RedisServices.Application.Declarations;
+using Pole.Features.RedisServices.Application.Mongo;
+using Pole.Features.RedisServices.Application.Services;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.RedisServices.Application.Persistence.Reads;
 using Pole.Features.RedisServices.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 
