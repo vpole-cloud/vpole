@@ -1,4 +1,4 @@
-namespace Pole.Features.Search.Application.Persistence
+namespace Pole.Features.Search.Application
 
 open System
 open Microsoft.Extensions.DependencyInjection

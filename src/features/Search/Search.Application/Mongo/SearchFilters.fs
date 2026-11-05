@@ -1,4 +1,4 @@
-namespace Pole.Features.Search.Application.Persistence
+namespace Pole.Features.Search.Application.Mongo
 
 open System.Text.RegularExpressions
 open MongoDB.Bson

@@ -8,7 +8,10 @@ open Microsoft.AspNetCore.Routing
 open Pole.ASP.Helpers
 open Pole.Features.Request
 open Pole.Features.Search.Application.Common
-open Pole.Features.Search.Application.Persistence
+open Pole.Features.Search.Application
+open Pole.Features.Search.Application.Mongo
+open Pole.Features.Search.Application.Projection
+open Pole.Features.Search.Application.Queries
 open Pole.Mediator
 
 type GetSearchHandler(
