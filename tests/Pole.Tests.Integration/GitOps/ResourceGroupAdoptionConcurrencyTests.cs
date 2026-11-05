@@ -12,7 +12,7 @@ using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Migrations;
 using Pole.Features.ResourceGroups.Application.Common;
-using Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
+using Pole.Features.ResourceGroups.Application.ResourceGroups;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
 using Pole.Tests.Integration.Infrastructure;

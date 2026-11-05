@@ -16,7 +16,7 @@ using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Migrations;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
+using Pole.Features.ResourceGroups.Application.ResourceGroups;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Tests.Integration.FunctionApps;

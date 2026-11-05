@@ -25,7 +25,7 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Endpoints;
-using Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups;
+using Pole.Features.ResourceGroups.Application.ResourceGroups;
 using Pole.Features.Secrets.Application;
 using Pole.Features.Secrets.Application.Persistence;
 using Pole.Features.Secrets.Application.Projections;
