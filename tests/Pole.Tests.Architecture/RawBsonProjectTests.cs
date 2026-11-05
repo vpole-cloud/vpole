@@ -52,10 +52,39 @@ public sealed class RawBsonProjectTests
         }
     }
 
+    [Fact]
+    public void Project_discovery_does_not_include_sibling_worktrees_or_build_outputs()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "pole-project-discovery-" + Guid.NewGuid().ToString("N"));
+        var own = new[] { "src/Feature/Feature.fsproj", "tests/Fixture/Fixture.csproj" };
+        var foreign = new[] { ".tmp/worktrees/old/src/Feature/Feature.fsproj", "src/Feature/obj/Probe.csproj" };
+        try
+        {
+            foreach (var relative in own.Concat(foreign))
+            {
+                var path = Path.Combine(root, relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllText(path, "<Project />");
+            }
+
+            Assert.Equal(own, ProjectFiles(root).Select(path => Path.GetRelativePath(root, path))
+                .OrderBy(path => path, StringComparer.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static IEnumerable<string> ProjectFiles(string root) =>
+        new[] { "src", "tests" }.Select(directory => Path.Combine(root, directory))
+            .Where(Directory.Exists)
+            .SelectMany(directory => ArchitectureSources.SourceFiles(directory, "*.*proj"))
+            .Where(path => Path.GetExtension(path) is ".csproj" or ".fsproj");
+
     private static IEnumerable<Project> Projects()
     {
-        foreach (var path in ArchitectureSources.SourceFiles(ArchitectureSources.RepositoryRoot, "*.*proj")
-                     .Where(path => Path.GetExtension(path) is ".csproj" or ".fsproj"))
+        foreach (var path in ProjectFiles(ArchitectureSources.RepositoryRoot))
         {
             var xml = XDocument.Load(path);
             var explicitTest = xml.Descendants("IsTestProject").LastOrDefault()?.Value;
