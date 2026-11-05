@@ -8,7 +8,7 @@ using MongoDB.Driver;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.SourceBuilds.Application;
 using Pole.Features.SourceBuilds.Application.Endpoints.Jobs;
-using Pole.Features.SourceBuilds.Application.Persistence.Logs;
+using Pole.Features.SourceBuilds.Application.Logs;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.Tenants.Domain;
 using Pole.Tests.Integration.Infrastructure;

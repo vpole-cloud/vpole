@@ -1,4 +1,4 @@
-using Pole.Features.SourceBuilds.Application.Persistence.Jobs;
+using Pole.Features.SourceBuilds.Application.Execution;
 
 namespace Pole.Features.SourceBuilds.Application.Jobs;
 

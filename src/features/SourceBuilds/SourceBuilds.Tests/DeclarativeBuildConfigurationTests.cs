@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
-using Pole.Features.SourceBuilds.Application.Persistence.Configuration;
+using Pole.Features.SourceBuilds.Application.Configurations;
 using Xunit;
 
 namespace Pole.Features.SourceBuilds.Tests;

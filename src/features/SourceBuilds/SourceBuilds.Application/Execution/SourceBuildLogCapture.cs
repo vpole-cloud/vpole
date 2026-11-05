@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Pole.Features.SourceBuilds.Application.Common;
-using Pole.Features.SourceBuilds.Application.Persistence.Logs;
+using Pole.Features.SourceBuilds.Application.Logs;
 using Pole.Features.SourceBuilds.Domain;
 
 namespace Pole.Features.SourceBuilds.Application.Execution;

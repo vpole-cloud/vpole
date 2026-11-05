@@ -9,10 +9,8 @@ using Pole.Features.GitOps.Contracts;
 using Pole.Features.SourceBuilds.Application.Execution;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Jobs;
-using Pole.Features.SourceBuilds.Application.Persistence;
-using Pole.Features.SourceBuilds.Application.Persistence.Configuration;
-using Pole.Features.SourceBuilds.Application.Persistence.Jobs;
-using Pole.Features.SourceBuilds.Application.Persistence.Logs;
+using Pole.Features.SourceBuilds.Application.Configurations;
+using Pole.Features.SourceBuilds.Application.Logs;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Domain;
 
