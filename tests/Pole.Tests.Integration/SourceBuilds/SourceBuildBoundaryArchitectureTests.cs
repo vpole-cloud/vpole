@@ -75,7 +75,7 @@ public sealed class SourceBuildBoundaryArchitectureTests
         var violations = Directory
             .EnumerateFiles(ApplicationSourceDirectory, "*.cs", SearchOption.AllDirectories)
             .Where(file => !file.EndsWith(
-                $"{Path.DirectorySeparatorChar}SourceBuildFilters.cs",
+                $"{Path.DirectorySeparatorChar}SourceBuildsFilters.cs",
                 StringComparison.Ordinal))
             .Where(file => !file.Contains(
                 $"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}",
