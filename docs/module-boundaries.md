@@ -211,6 +211,15 @@ The host registers explicit migration assemblies separately from Application ass
 Database runner owns ordering and durable history; provider migrations retain their feature-scoped
 history identities. Moving a migration must preserve its ID, scope and schema/index semantics.
 
+### Compiler
+
+`Feature.Compiler` is an optional feature-owned library for deterministic declaration compilation.
+It may reference only its own Contracts and Primitives among feature projects. It has no Application,
+Domain, Events or shared runtime-project dependencies. Application may reference its own Compiler;
+other features continue to integrate through Contracts. Parsing libraries may be direct packages.
+Contracts can carry a transitive driver dependency; the compiler itself does not use database,
+transport or DI APIs. Compiler tests reference Compiler without Application.
+
 ### Application
 
 `Feature.Application` owns orchestration, persistence implementations, endpoint flows,
@@ -279,7 +288,8 @@ provider edge and leaves the platform persistence implementation extensible.
 | Contracts             | Own Primitives                                                                                                                                    | Domain, Events, Application, another feature's Contracts/Primitives |
 | Contracts.HttpMapping | Own Contracts; shared HTTP mapping abstraction                                                                                                    | Domain, Events, Application, another feature project                |
 | Events                | Own Primitives                                                                                                                                    | Domain, Contracts, Application, another feature                     |
-| Application           | Own Primitives/Domain/Contracts/Contracts.HttpMapping/Events; foreign Contracts/Contracts.HttpMapping/Events; contract-exposed foreign Primitives | Foreign Domain/Application                                          |
+| Compiler              | Own Contracts/Primitives                                                                                                                            | Application, Domain, Events, other features and shared runtime projects |
+| Application           | Own Compiler/Primitives/Domain/Contracts/Contracts.HttpMapping/Events; foreign Contracts/Contracts.HttpMapping/Events; contract-exposed foreign Primitives | Foreign Domain/Application                                          |
 | Pole.Server           | Application and Migrations projects required for composition                                                                                                     | None imposed by this policy                                         |
 | Tests                 | Projects required by the test boundary                                                                                                            | None imposed by this policy                                         |
 

@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Application.Mongo;
 using Hangfire;
 using Microsoft.AspNetCore.Builder;

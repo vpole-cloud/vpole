@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Compiler;
 using System.Net;
 using Pole.Tests.Integration.Http;
 using Microsoft.Extensions.DependencyInjection;

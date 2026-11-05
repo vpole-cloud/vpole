@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Compiler;
 using System.Collections.Immutable;
 using Pole.Features.GitOps.Application.Lifecycle;
 using Pole.Features.GitOps.Application.Planning;

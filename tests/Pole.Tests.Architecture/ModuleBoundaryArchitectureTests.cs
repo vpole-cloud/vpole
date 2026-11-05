@@ -396,6 +396,7 @@ public sealed class ModuleBoundaryArchitectureTests
             ProjectRole.Migrations => targetIdentity is "Migrations",
             ProjectRole.Contracts => targetIdentity is "ResultType" or "Workloads",
             ProjectRole.ContractHttpMapping => targetIdentity is "ASP",
+            ProjectRole.Compiler => false,
             ProjectRole.Events => targetIdentity is "Events" or "Workloads",
             _ => true
         };
@@ -405,6 +406,9 @@ public sealed class ModuleBoundaryArchitectureTests
         source.Role switch
         {
             ProjectRole.Migrations or ProjectRole.Primitives => false,
+            ProjectRole.Compiler when source.Feature == target.Feature =>
+                target.Role is ProjectRole.Contracts or ProjectRole.Primitives,
+            ProjectRole.Compiler => false,
             ProjectRole.Domain or ProjectRole.Contracts or ProjectRole.Events
                 when source.Feature == target.Feature =>
                 target.Role is ProjectRole.Primitives,
@@ -413,7 +417,8 @@ public sealed class ModuleBoundaryArchitectureTests
                 target.Role is ProjectRole.Contracts,
             ProjectRole.ContractHttpMapping => false,
             ProjectRole.Application when source.Feature == target.Feature =>
-                target.Role is ProjectRole.Primitives or
+                target.Role is ProjectRole.Compiler or
+                    ProjectRole.Primitives or
                     ProjectRole.Domain or
                     ProjectRole.Contracts or
                     ProjectRole.ContractHttpMapping or
@@ -510,6 +515,8 @@ public sealed class ModuleBoundaryArchitectureTests
                 return ProjectRole.Application;
             if (identity.EndsWith(".Runtime", StringComparison.Ordinal))
                 return ProjectRole.Runtime;
+            if (identity.EndsWith(".Compiler", StringComparison.Ordinal))
+                return ProjectRole.Compiler;
             if (identity.EndsWith(".Primitives", StringComparison.Ordinal))
                 return ProjectRole.Primitives;
             return ProjectRole.Other;
@@ -574,6 +581,7 @@ public sealed class ModuleBoundaryArchitectureTests
         Events,
         Application,
         Runtime,
+        Compiler,
         Primitives
     }
 }

@@ -1,11 +1,10 @@
 using Pole.Features.GitOps.Primitives;
 using System.Text.Json;
 using MongoDB.Driver;
-using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Contracts;
 using Xunit;
 
-namespace Pole.Features.GitOps.Tests;
+namespace Pole.Features.GitOps.Compiler.Tests;
 
 public sealed class ManifestCompilerTests
 {

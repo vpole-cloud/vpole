@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Compiler;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text.Json;

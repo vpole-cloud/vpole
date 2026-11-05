@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
