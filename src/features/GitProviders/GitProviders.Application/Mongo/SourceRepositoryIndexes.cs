@@ -1,4 +1,4 @@
-namespace Pole.Features.GitProviders.Application.Repositories;
+namespace Pole.Features.GitProviders.Application.Mongo;
 
 internal static class SourceRepositoryIndexes
 {

@@ -5,7 +5,7 @@ using Pole.Database;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.SourceBuilds.Application.Logs;
 
-namespace Pole.Features.SourceBuilds.Application;
+namespace Pole.Features.SourceBuilds.Application.Mongo;
 
 internal static class SourceBuildConfigurationFilters
 {
@@ -188,13 +188,6 @@ internal static class SourceBuildJobFilters
             Builders<SourceBuildJob>.Filter.OfType<SourceBuildJobState, FailedSourceBuild>(
                 item => item.State));
 }
-
-public sealed record SourceBuildJobListQuery(
-    string TenantId,
-    string? ConfigurationId,
-    string? WebServiceId,
-    int PageNumber,
-    int PageSize);
 
 internal static class SourceBuildLogFilters
 {

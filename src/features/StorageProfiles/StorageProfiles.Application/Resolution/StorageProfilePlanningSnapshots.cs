@@ -1,3 +1,4 @@
+using Pole.Features.StorageProfiles.Application.Mongo;
 using MongoDB.Driver;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Contracts;

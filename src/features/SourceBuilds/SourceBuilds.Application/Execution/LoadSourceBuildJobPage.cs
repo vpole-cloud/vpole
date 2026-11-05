@@ -1,9 +1,17 @@
+using Pole.Features.SourceBuilds.Application.Mongo;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Request;
 using Pole.Features.SourceBuilds.Domain;
 
 namespace Pole.Features.SourceBuilds.Application.Execution;
+
+public sealed record SourceBuildJobListQuery(
+    string TenantId,
+    string? ConfigurationId,
+    string? WebServiceId,
+    int PageNumber,
+    int PageSize);
 
 public sealed record SourceBuildJobPage(
     IReadOnlyList<SourceBuildJob> Items,

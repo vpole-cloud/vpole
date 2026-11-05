@@ -1,4 +1,4 @@
-namespace Pole.Features.StorageProfiles.Application;
+namespace Pole.Features.StorageProfiles.Application.Mongo;
 
 internal static class StorageProfileTechnicalNames
 {
