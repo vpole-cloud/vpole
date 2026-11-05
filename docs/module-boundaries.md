@@ -226,21 +226,20 @@ transport or DI APIs. Compiler tests reference Compiler without Application.
 integration-event mapping, consumers, and infrastructure adapters.
 
 Group Application code by feature workflow. Mongo-backed operations may live directly beside other
-workflow code; no Mongo folder is required. Raw Mongo query APIs are forbidden under any exact
-`Endpoints`, `Consumers` or `Jobs` path segment in an Application project. Those adapters invoke
+workflow code. Raw Mongo query APIs are forbidden under any exact `Endpoints`, `Consumers` or `Jobs` path segment in an Application project. Those adapters invoke
 workflow operations. C# compiler diagnostics and F# architecture tests share the same path rule.
 The rule permits orchestration and Mongo access in a workflow implementation.
 
 Keep shared technical Mongo definitions in one Application-level `Mongo` folder: collection and
-index identifiers, runtime filter catalogs, and BSON mappings. A migrated feature keeps every runtime
+index identifiers, runtime filter catalogs, and BSON mappings. Each feature keeps every runtime
 filter helper in `Mongo/<Feature>Filters.cs`; that file may contain multiple helper classes.
 Workflow reads and mutations remain beside their use cases. Group a large workflow folder by its
 responsibilities, such as queueing, workspace preparation and container builds; do not introduce
 nested Mongo folders per use case. Mongo-folder presence does not grant or restrict query access.
-GitOps, SourceBuilds, GitProviders, ComputeProfiles and StorageProfiles have migrated; other features
-retain their current layout until their migration is reviewed. Typed-field and named-helper checks
-cover all Application runtime code regardless of folder names. `Feature.Migrations` retains its
-separate project boundary.
+This layout applies to every feature in C# and F#. Folder and single-catalog architecture checks
+automatically cover every Application project; typed-field and named-helper checks cover all runtime
+code regardless of folder names. F# project files retain the required source compilation order.
+`Feature.Migrations` retains its separate project boundary.
 
 Application may reference its own Domain, Contracts, and Events. It may reference another
 feature's Contracts for synchronous capabilities and another feature's Events to consume its

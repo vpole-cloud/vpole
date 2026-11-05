@@ -23,7 +23,7 @@ This includes aggregate documents, immutable revisions, history, retained cleanu
 stored snapshots and projections, including their feature-owned nested data. Business methods
 are not a condition for Domain ownership. Application workflow implementations own database operations,
 filters, runtime index identifiers, codecs and transport serialization configuration. Raw Mongo query
-APIs are forbidden in `Endpoints`, `Consumers` and `Jobs` at any directory depth. A migrated feature
+APIs are forbidden in `Endpoints`, `Consumers` and `Jobs` at any directory depth. Each feature
 keeps its runtime filters in one `Mongo/<Feature>Filters.cs` file, which may contain multiple helper
 classes. Shared collection/index definitions and BSON mappings use the same Application-level `Mongo`
 folder; workflow reads and mutations remain beside their scenarios.
