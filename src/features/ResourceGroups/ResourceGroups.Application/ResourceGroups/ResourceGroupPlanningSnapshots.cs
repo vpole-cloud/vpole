@@ -1,7 +1,7 @@
-using Pole.Features.ResourceGroups.Application.References;
 using MongoDB.Driver;
 using Pole.Features.ResourceGroups.Application.IsolationScopes;
 using Pole.Features.ResourceGroups.Application.Mongo;
+using Pole.Features.ResourceGroups.Application.References;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 

@@ -1,14 +1,14 @@
-using Pole.Features.Functions.Application;
 using MongoDB.Driver;
+using Pole.Database;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.Functions.Application;
+using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application.Mongo;
+using Pole.Features.Functions.Domain;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.ResourceGroups.Contracts;
-using Pole.Features.Functions.Domain;
-using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Mongo;
-using Pole.Database;
 using static Pole.Features.Functions.Application.Declarations.FunctionDeclarations;
 
 namespace Pole.Features.Functions.Application.Declarations;

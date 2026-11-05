@@ -1,5 +1,3 @@
-using Pole.Observation;
-using Pole.Features.WebServices.Domain;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using k8s;
@@ -10,6 +8,8 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Connections;
 using Pole.Features.WebServices.Application.Queries;
+using Pole.Features.WebServices.Domain;
+using Pole.Observation;
 
 namespace Pole.Features.WebServices.Application.Kubernetes;
 

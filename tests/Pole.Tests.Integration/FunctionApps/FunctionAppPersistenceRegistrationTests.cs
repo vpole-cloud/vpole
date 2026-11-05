@@ -1,17 +1,17 @@
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Database;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Mongo;
-using Pole.Features.Functions.Application.Lifecycle;
 using Pole.Features.Functions.Application.FunctionApps;
 using Pole.Features.Functions.Application.Invocations;
+using Pole.Features.Functions.Application.Lifecycle;
+using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Application.Revisions;
-using Pole.Features.Functions.Application.Usage;
 using Pole.Features.Functions.Application.Runtime.Gateway;
 using Pole.Features.Functions.Application.Runtime.Metering;
 using Pole.Features.Functions.Application.Runtime.Provisioning;
 using Pole.Features.Functions.Application.Runtime.Scaling;
 using Pole.Features.Functions.Application.Runtime.Timers;
+using Pole.Features.Functions.Application.Usage;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 

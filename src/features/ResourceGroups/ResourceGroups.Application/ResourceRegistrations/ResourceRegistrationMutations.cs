@@ -1,9 +1,9 @@
-using Pole.Features.ResourceGroups.Application.References;
-using Pole.Features.ResourceGroups.Application.Mongo;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.GitOps.Contracts;
+using Pole.Features.ResourceGroups.Application.Mongo;
+using Pole.Features.ResourceGroups.Application.References;
 using Pole.Features.ResourceGroups.Application.ResourceGroups;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;

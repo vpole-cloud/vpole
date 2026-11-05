@@ -3,9 +3,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Tenants.Application.Common;
+using Pole.Features.Tenants.Application.Members;
 using Pole.Features.Tenants.Application.Mongo;
 using Pole.Features.Tenants.Application.Tenants;
-using Pole.Features.Tenants.Application.Members;
 using Pole.Mediator;
 
 namespace Pole.Features.Tenants.Application.Endpoints;

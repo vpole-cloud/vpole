@@ -2,10 +2,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
-using Pole.Features.Users.Domain;
 using Pole.Features.Users.Application.Identity;
 using Pole.Features.Users.Application.Mongo;
 using Pole.Features.Users.Application.Registration;
+using Pole.Features.Users.Domain;
 
 namespace Pole.Features.Users.Application;
 

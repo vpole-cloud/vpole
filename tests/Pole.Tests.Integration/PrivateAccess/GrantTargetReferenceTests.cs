@@ -1,13 +1,13 @@
+using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Microsoft.Extensions.DependencyInjection;
 using Pole.Database;
-using Pole.Features.PrivateAccess.Application;
-using Pole.Features.PrivateAccess.Contracts;
 using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Application.References;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
+using Pole.Features.PrivateAccess.Application;
+using Pole.Features.PrivateAccess.Contracts;
 using Pole.Tests.Integration.DeploymentTargets;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;

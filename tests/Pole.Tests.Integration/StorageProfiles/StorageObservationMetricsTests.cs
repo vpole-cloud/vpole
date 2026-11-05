@@ -1,4 +1,3 @@
-using Pole.Observation;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Diagnostics.Metrics;
@@ -21,6 +20,7 @@ using Pole.Features.StorageProfiles.Application.Discovery.Observation;
 using Pole.Features.StorageProfiles.Application.Observation;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain.Observation;
+using Pole.Observation;
 using Pole.Tests.Integration.Infrastructure;
 using Pole.Tests.Integration.ResourceDeployments;
 using Xunit;

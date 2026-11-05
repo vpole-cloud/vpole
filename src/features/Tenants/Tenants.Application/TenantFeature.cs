@@ -1,20 +1,20 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using MongoDB.Driver;
-using Pole.Features.Realtime.Contracts;
-using Pole.ResultType;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.Realtime.Contracts;
 using Pole.Features.Tenants;
 using Pole.Features.Tenants.Application.Common;
-using Pole.Features.Tenants.Application.Mongo;
-using Pole.Features.Tenants.Application.Tenants;
 using Pole.Features.Tenants.Application.Identity;
 using Pole.Features.Tenants.Application.Members;
+using Pole.Features.Tenants.Application.Mongo;
+using Pole.Features.Tenants.Application.Tenants;
 using Pole.Features.Tenants.Contracts;
 using Pole.Features.Tenants.Domain;
 using Pole.Mediator;
+using Pole.ResultType;
 
 namespace Pole.Features.Tenants.Application;
 

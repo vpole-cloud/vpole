@@ -1,7 +1,7 @@
-using Pole.Features.ResourceDeployments.Application.Mongo;
-using Pole.Features.ResourceDeployments.Application;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.ResourceDeployments.Application;
+using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Workloads;

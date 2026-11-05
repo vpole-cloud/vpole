@@ -1,6 +1,6 @@
-using Pole.Features.Outbox.Application.Mongo;
-using Pole.Features.Outbox.Application;
 using MongoDB.Driver;
+using Pole.Features.Outbox.Application;
+using Pole.Features.Outbox.Application.Mongo;
 
 namespace Pole.Features.Outbox.Application.Delivery;
 

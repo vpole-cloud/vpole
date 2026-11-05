@@ -1,23 +1,23 @@
-using Pole.Features.GitOps.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.Outbox.Contracts;
+using Pole.Features.Request;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Endpoints;
 using Pole.Features.ResourceGroups.Application.Mongo;
 using Pole.Features.ResourceGroups.Application.References;
-using Pole.Features.ResourceGroups.Contracts;
-using Pole.Features.ResourceGroups.Domain;
-using Pole.Features.Request;
 using Pole.Features.ResourceGroups.Application.ResourceGroups;
 using Pole.Features.ResourceGroups.Application.ResourceRegistrations;
+using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.ResourceGroups.Domain;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
-using Xunit;
 using Pole.Workloads;
+using Xunit;
 
 namespace Pole.Tests.Integration.ResourceGroups;
 

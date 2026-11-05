@@ -1,8 +1,8 @@
 using Pole.Features.Core.Kubernetes;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Services;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Workloads;
 
 namespace Pole.Features.RedisServices.Application.Kubernetes;

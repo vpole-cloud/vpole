@@ -1,9 +1,8 @@
 using System.Net;
-using Microsoft.Extensions.DependencyInjection;
-using Pole.Features.Secrets.Contracts;
 using k8s;
 using k8s.Autorest;
 using k8s.Models;
+using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Core.Kubernetes;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Functions.Application.Common;
@@ -11,6 +10,7 @@ using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Security;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.Secrets.Contracts;
 
 namespace Pole.Features.Functions.Runtime.Kubernetes;
 

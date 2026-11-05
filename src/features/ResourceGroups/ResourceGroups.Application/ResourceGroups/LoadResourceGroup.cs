@@ -1,6 +1,6 @@
-using Pole.Features.ResourceGroups.Application.References;
-using Pole.Features.ResourceGroups.Application.Mongo;
 using MongoDB.Driver;
+using Pole.Features.ResourceGroups.Application.Mongo;
+using Pole.Features.ResourceGroups.Application.References;
 using Pole.Features.ResourceGroups.Domain;
 
 namespace Pole.Features.ResourceGroups.Application.ResourceGroups;

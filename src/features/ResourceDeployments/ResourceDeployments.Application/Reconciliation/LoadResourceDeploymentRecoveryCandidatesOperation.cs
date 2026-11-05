@@ -1,10 +1,10 @@
-using Pole.Features.ResourceDeployments.Application.Queries;
-using Pole.Features.ResourceDeployments.Application.Planning;
-using Pole.Features.ResourceDeployments.Application.Placements;
-using Pole.Features.ResourceDeployments.Application.Mongo;
-using Pole.Features.ResourceDeployments.Application.Admission;
-using Pole.Features.ResourceDeployments.Application;
 using MongoDB.Driver;
+using Pole.Features.ResourceDeployments.Application;
+using Pole.Features.ResourceDeployments.Application.Admission;
+using Pole.Features.ResourceDeployments.Application.Mongo;
+using Pole.Features.ResourceDeployments.Application.Placements;
+using Pole.Features.ResourceDeployments.Application.Planning;
+using Pole.Features.ResourceDeployments.Application.Queries;
 using Pole.Features.ResourceDeployments.Domain;
 
 namespace Pole.Features.ResourceDeployments.Application.Reconciliation;

@@ -1,6 +1,6 @@
-using Pole.Features.ResourceGroups.Application.References;
-using Pole.Features.ResourceGroups.Application.Mongo;
 using Pole.Features.GitOps.Contracts;
+using Pole.Features.ResourceGroups.Application.Mongo;
+using Pole.Features.ResourceGroups.Application.References;
 
 namespace Pole.Features.ResourceGroups.Application.ResourceGroups;
 

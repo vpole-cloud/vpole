@@ -1,7 +1,8 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
-using MongoDB.Driver;
 using MongoDB.Bson;
+using MongoDB.Driver;
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.Secrets.Application;
 using Pole.Features.Secrets.Application.Bindings;
 using Pole.Features.Secrets.Application.Bootstrap;
@@ -15,7 +16,6 @@ using Pole.Features.Secrets.Application.Secrets;
 using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Contracts;
 using Pole.Features.Secrets.Domain;
-using Pole.Features.GitOps.Contracts;
 using Pole.Features.Secrets.Primitives;
 using Pole.Tests.Integration.Infrastructure;
 using Pole.Tests.Integration.ResourceDeployments;

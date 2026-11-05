@@ -1,7 +1,7 @@
 using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
-using MongoDB.Driver;
 using MongoDB.Bson;
+using MongoDB.Driver;
 using Pole.Features.Secrets.Application;
 using Pole.Features.Secrets.Application.Bindings;
 using Pole.Features.Secrets.Application.Bootstrap;

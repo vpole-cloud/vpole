@@ -1,4 +1,3 @@
-using Pole.Features.GitOps.Contracts;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -7,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.Secrets.Application;
 using Pole.Features.Secrets.Application.Bindings;
 using Pole.Features.Secrets.Application.Bootstrap;

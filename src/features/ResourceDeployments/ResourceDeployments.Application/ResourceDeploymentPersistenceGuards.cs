@@ -1,6 +1,6 @@
-using Pole.Features.ResourceDeployments.Application.Mongo;
-using Pole.Features.ResourceDeployments.Application.Admission;
 using MongoDB.Driver;
+using Pole.Features.ResourceDeployments.Application.Admission;
+using Pole.Features.ResourceDeployments.Application.Mongo;
 
 namespace Pole.Features.ResourceDeployments.Application;
 

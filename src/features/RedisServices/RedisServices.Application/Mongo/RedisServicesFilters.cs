@@ -1,9 +1,9 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.RedisServices.Application;
 using Pole.Features.RedisServices.Application.Declarations;
 using Pole.Features.RedisServices.Application.Services;
-using Pole.Features.RedisServices.Application;
 using Pole.Features.RedisServices.Domain;
 
 namespace Pole.Features.RedisServices.Application.Mongo;

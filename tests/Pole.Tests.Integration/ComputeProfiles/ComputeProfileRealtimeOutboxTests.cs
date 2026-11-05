@@ -1,9 +1,9 @@
 using System.Text.Json;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.ComputeProfiles.Application.Catalog;
 using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Endpoints;
-using Pole.Features.ComputeProfiles.Application.Catalog;
 using Pole.Features.ComputeProfiles.Application.Realtime;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.ComputeProfiles.Events;

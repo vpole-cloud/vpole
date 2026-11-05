@@ -1,14 +1,14 @@
 using Microsoft.Extensions.DependencyInjection;
-using Pole.Features.Secrets.Contracts;
-using Pole.Features.GitOps.Contracts;
-using Pole.Features.Secrets.Primitives;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Application.Declarations;
 using Pole.Features.Functions.Application.Lifecycle;
+using Pole.Features.Functions.Application.Mongo;
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.ResourceConnections.Contracts;
+using Pole.Features.Secrets.Contracts;
+using Pole.Features.Secrets.Primitives;
 
 namespace Pole.Features.Functions.Application;
 

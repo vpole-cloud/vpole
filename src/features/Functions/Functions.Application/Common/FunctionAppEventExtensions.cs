@@ -1,6 +1,6 @@
-using Pole.Features.Functions.Application.Mongo;
 using System.Collections.Immutable;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Events;
 

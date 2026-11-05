@@ -1,11 +1,10 @@
-using Microsoft.Extensions.Logging;
 using k8s.Autorest;
+using Microsoft.Extensions.Logging;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceDeployments.Application.Admission;
+using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Mongo;
-
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Contracts;

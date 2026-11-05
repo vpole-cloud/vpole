@@ -1,7 +1,7 @@
-using Pole.Features.DeploymentTargets.Application.Mongo;
-using Pole.Features.DeploymentTargets.Application.Admission;
-using Pole.Features.DeploymentTargets.Application;
 using MongoDB.Driver;
+using Pole.Features.DeploymentTargets.Application;
+using Pole.Features.DeploymentTargets.Application.Admission;
+using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Features.DeploymentTargets.Domain;
 
 namespace Pole.Features.DeploymentTargets.Application.Bootstrap;

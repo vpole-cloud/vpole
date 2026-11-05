@@ -1,13 +1,13 @@
 using Microsoft.Extensions.DependencyInjection;
 using Pole.ASP.Helpers;
-using Pole.Features.Realtime.Contracts;
-using Pole.Features.GitOps.Contracts;
+using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Application.DomainZones;
 using Pole.Features.Domains.Application.HostnameBindings;
-using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Application.Lifecycle;
 using Pole.Features.Domains.Application.Mongo;
 using Pole.Features.Domains.Contracts.HttpMapping;
+using Pole.Features.GitOps.Contracts;
+using Pole.Features.Realtime.Contracts;
 
 namespace Pole.Features.Domains.Application;
 

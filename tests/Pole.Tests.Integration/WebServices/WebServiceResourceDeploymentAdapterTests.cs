@@ -1,4 +1,3 @@
-using Pole.Features.Secrets.Contracts;
 using System.Collections.Immutable;
 using System.Net;
 using System.Text;
@@ -6,24 +5,25 @@ using System.Text.Json;
 using k8s;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.Core.Kubernetes;
+using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.Secrets.Contracts;
 using Pole.Features.Shared.Models;
-using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Features.WebServices.Application;
+using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Configuration;
 using Pole.Features.WebServices.Application.Declarations;
+using Pole.Features.WebServices.Application.Deployments;
 using Pole.Features.WebServices.Application.Hostnames;
+using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Features.WebServices.Application.Lifecycle;
 using Pole.Features.WebServices.Application.Mongo;
-using Pole.Features.WebServices.Application.Deployments;
 using Pole.Features.WebServices.Domain;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Pole.Tests.Integration.ResourceDeployments;
 using Pole.Workloads;
 using Xunit;
-using Pole.Features.ResourceConnections.Contracts;
 
 namespace Pole.Tests.Integration.WebServices;
 

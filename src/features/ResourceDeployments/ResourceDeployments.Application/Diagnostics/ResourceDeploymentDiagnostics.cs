@@ -1,4 +1,3 @@
-using Pole.Observation;
 using System.Net;
 using k8s.Autorest;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,6 +11,7 @@ using Pole.Features.ResourceDeployments.Application.Queries;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
+using Pole.Observation;
 using Pole.Workloads;
 
 namespace Pole.Features.ResourceDeployments.Application.Diagnostics;

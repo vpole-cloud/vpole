@@ -1,10 +1,10 @@
-using MongoDB.Driver;
-using Pole.Features.Outbox.Application;
-using Pole.Features.Outbox.Domain;
-using Pole.Features.Outbox.Application.Delivery;
-using MassTransit;
-using Pole.Features.Events.Abstractions;
 using System.Reflection;
+using MassTransit;
+using MongoDB.Driver;
+using Pole.Features.Events.Abstractions;
+using Pole.Features.Outbox.Application;
+using Pole.Features.Outbox.Application.Delivery;
+using Pole.Features.Outbox.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 

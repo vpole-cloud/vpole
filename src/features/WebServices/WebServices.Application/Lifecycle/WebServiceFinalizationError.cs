@@ -1,11 +1,11 @@
-using Pole.Features.WebServices.Application.Mongo;
-using Pole.Features.WebServices.Application.Hostnames;
-using Pole.Features.WebServices.Application.Declarations;
-using Pole.Features.WebServices.Application.Configuration;
-using Pole.Features.WebServices.Application;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.WebServices.Application;
+using Pole.Features.WebServices.Application.Configuration;
+using Pole.Features.WebServices.Application.Declarations;
+using Pole.Features.WebServices.Application.Hostnames;
+using Pole.Features.WebServices.Application.Mongo;
 
 namespace Pole.Features.WebServices.Application.Lifecycle;
 

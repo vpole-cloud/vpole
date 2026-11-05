@@ -3,8 +3,8 @@ using Hangfire;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.Outbox.Application.Mongo;
 using Pole.Features.Outbox.Application.Delivery;
+using Pole.Features.Outbox.Application.Mongo;
 using Pole.Observability;
 using EventExtensions = Pole.Features.Events.Abstractions.EventExtensions;
 

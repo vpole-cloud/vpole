@@ -4,7 +4,7 @@ using k8s;
 using k8s.Autorest;
 using k8s.Models;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.Secrets.Domain;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Secrets.Application;
 using Pole.Features.Secrets.Application.Bindings;
 using Pole.Features.Secrets.Application.Bootstrap;
@@ -15,7 +15,7 @@ using Pole.Features.Secrets.Application.Mongo;
 using Pole.Features.Secrets.Application.References;
 using Pole.Features.Secrets.Application.Secrets;
 using Pole.Features.Secrets.Application.Values;
-using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.Secrets.Domain;
 using Pole.Workloads;
 
 namespace Pole.Features.Secrets.Application.Projections;

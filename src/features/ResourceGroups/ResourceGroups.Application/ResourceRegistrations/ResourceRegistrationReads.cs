@@ -1,8 +1,8 @@
-using Pole.Features.ResourceGroups.Application.References;
-using Pole.Features.ResourceGroups.Application.Mongo;
 using MongoDB.Driver;
-using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.ResourceGroups.Application.Mongo;
+using Pole.Features.ResourceGroups.Application.References;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.ResourceGroups.Domain;
 using Pole.Workloads;
 
 namespace Pole.Features.ResourceGroups.Application.ResourceRegistrations;

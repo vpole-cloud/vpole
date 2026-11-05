@@ -1,11 +1,13 @@
-using Pole.Features.Functions.Application;
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Workloads;
+using Pole.Features.Functions.Application;
 using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application.FunctionApps;
+using Pole.Features.Functions.Application.Invocations;
 using Pole.Features.Functions.Application.Mongo;
+using Pole.Features.Functions.Application.Revisions;
 using Pole.Features.Functions.Domain;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
@@ -13,9 +15,7 @@ using Pole.Features.Quotas.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Secrets.Contracts;
-using Pole.Features.Functions.Application.FunctionApps;
-using Pole.Features.Functions.Application.Invocations;
-using Pole.Features.Functions.Application.Revisions;
+using Pole.Workloads;
 using static Pole.Features.Functions.Application.Declarations.FunctionDeclarations;
 
 namespace Pole.Features.Functions.Application.Declarations;

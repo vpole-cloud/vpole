@@ -1,6 +1,4 @@
 using FluentValidation;
-using Pole.Workloads;
-using Pole.Validation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -9,13 +7,15 @@ using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceGroups.Application.Common;
+using Pole.Features.ResourceGroups.Application.IsolationScopes;
 using Pole.Features.ResourceGroups.Application.Mongo;
 using Pole.Features.ResourceGroups.Application.References;
-using Pole.Features.ResourceGroups.Application.IsolationScopes;
 using Pole.Features.ResourceGroups.Application.ResourceGroups;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Mediator;
 using Pole.ResultType;
+using Pole.Validation;
+using Pole.Workloads;
 
 namespace Pole.Features.ResourceGroups.Application.Endpoints;
 

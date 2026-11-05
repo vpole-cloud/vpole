@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Database;
@@ -8,7 +9,6 @@ using Pole.Features.Quotas.Application.Policies;
 using Pole.Features.Quotas.Application.Reservations;
 using Pole.Features.Quotas.Application.Usage;
 using Pole.Features.Quotas.Contracts;
-using Microsoft.Extensions.Configuration;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 

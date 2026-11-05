@@ -1,12 +1,12 @@
 using System.Collections.Immutable;
 using System.Net;
-using Pole.Tests.Integration.Http;
 using System.Text.Json;
 using MongoDB.Driver;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Application.Endpoints;
+using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
+using Pole.Tests.Integration.Http;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 

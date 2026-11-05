@@ -1,4 +1,3 @@
-using Pole.Features.GitOps.Contracts;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -6,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.Secrets.Application;
 using Pole.Features.Secrets.Application.Bindings;
 using Pole.Features.Secrets.Application.Bootstrap;
@@ -19,7 +19,6 @@ using Pole.Features.Secrets.Application.Secrets;
 using Pole.Features.Secrets.Application.Values;
 using Pole.Mediator;
 using Pole.Validation;
-
 using static Pole.Features.Secrets.Application.SecretHttpMappings;
 
 namespace Pole.Features.Secrets.Application.Endpoints;

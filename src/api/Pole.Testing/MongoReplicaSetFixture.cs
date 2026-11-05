@@ -1,13 +1,13 @@
+using System.Net;
+using System.Net.Sockets;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
+using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Outbox.Application.Mongo;
 using Pole.Features.Outbox.Contracts;
-using System.Net;
-using System.Net.Sockets;
 using Xunit;
 
 namespace Pole.Testing;

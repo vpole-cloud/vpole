@@ -1,5 +1,5 @@
-using Pole.Features.Tenants.Application.Tenants;
 using Pole.Features.Tenants.Application.Mongo;
+using Pole.Features.Tenants.Application.Tenants;
 namespace Pole.Features.Tenants.Application.Members;
 
 public sealed record TenantMemberAlreadyExists(

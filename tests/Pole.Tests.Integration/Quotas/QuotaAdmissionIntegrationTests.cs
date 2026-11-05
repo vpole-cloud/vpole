@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
-using MongoDB.Driver;
 using MongoDB.Bson;
+using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.Quotas.Application;

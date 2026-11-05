@@ -1,15 +1,15 @@
+using System.Text.RegularExpressions;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Configuration;
+using Pole.Features.WebServices.Application.Connections;
 using Pole.Features.WebServices.Application.Declarations;
 using Pole.Features.WebServices.Application.Hostnames;
 using Pole.Features.WebServices.Application.Lifecycle;
-using Pole.Features.WebServices.Application.Connections;
 using Pole.Features.WebServices.Application.Queries;
-using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Domain;
-using System.Text.RegularExpressions;
 
 namespace Pole.Features.WebServices.Application.Mongo;
 
