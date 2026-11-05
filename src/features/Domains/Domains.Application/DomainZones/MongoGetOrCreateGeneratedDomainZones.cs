@@ -1,3 +1,7 @@
+using Pole.Features.Domains.Application.Mongo;
+using Pole.Features.Domains.Application.Lifecycle;
+using Pole.Features.Domains.Application.HostnameBindings;
+using Pole.Features.Domains.Application;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
@@ -10,7 +14,7 @@ using Pole.Features.Domains.Domain;
 using Pole.Features.Tenants.Contracts;
 using Pole.ResultType;
 
-namespace Pole.Features.Domains.Application.Persistence.DomainZones;
+namespace Pole.Features.Domains.Application.DomainZones;
 
 internal sealed class MongoGetOrCreateGeneratedDomainZones(
     IMongoCollection<TenantDomainZone> zones,

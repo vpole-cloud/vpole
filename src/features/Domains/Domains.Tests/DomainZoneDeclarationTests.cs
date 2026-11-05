@@ -1,6 +1,6 @@
 using System.Text.Json;
 using MongoDB.Driver;
-using Pole.Features.Domains.Application.Persistence.DomainZones;
+using Pole.Features.Domains.Application.DomainZones;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
 using Xunit;

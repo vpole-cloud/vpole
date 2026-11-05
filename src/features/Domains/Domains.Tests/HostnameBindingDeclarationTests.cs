@@ -1,6 +1,6 @@
 using System.Text.Json;
 using MongoDB.Driver;
-using Pole.Features.Domains.Application.Persistence.HostnameBindings;
+using Pole.Features.Domains.Application.HostnameBindings;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;

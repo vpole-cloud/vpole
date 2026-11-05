@@ -1,8 +1,11 @@
 using System.Net;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.ASP.Helpers;
-using Pole.Features.Domains.Application.Persistence;
-using Pole.Features.Domains.Application.Persistence.DomainZones;
+using Pole.Features.Domains.Application;
+using Pole.Features.Domains.Application.DomainZones;
+using Pole.Features.Domains.Application.HostnameBindings;
+using Pole.Features.Domains.Application.Lifecycle;
+using Pole.Features.Domains.Application.Mongo;
 using Pole.Features.Domains.Contracts;
 
 namespace Pole.Features.Domains.Application.Common;

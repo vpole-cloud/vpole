@@ -1,6 +1,11 @@
+using Pole.Features.Domains.Application.Lifecycle;
+using Pole.Features.Domains.Application.HostnameBindings;
+using Pole.Features.Domains.Application.DomainZones;
+using Pole.Features.Domains.Application.Common;
+using Pole.Features.Domains.Application;
 using MongoDB.Driver;
 
-namespace Pole.Features.Domains.Application.Persistence;
+namespace Pole.Features.Domains.Application.Mongo;
 
 internal static class DomainTransactions
 {

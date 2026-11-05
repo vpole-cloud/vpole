@@ -7,8 +7,12 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.GitOps.Contracts;
-using Pole.Features.Domains.Application.Persistence;
-using Pole.Features.Domains.Application.Persistence.DomainZones;
+using Pole.Features.Domains.Application;
+using Pole.Features.Domains.Application.Common;
+using Pole.Features.Domains.Application.DomainZones;
+using Pole.Features.Domains.Application.HostnameBindings;
+using Pole.Features.Domains.Application.Lifecycle;
+using Pole.Features.Domains.Application.Mongo;
 using Pole.Mediator;
 using Pole.Validation;
 

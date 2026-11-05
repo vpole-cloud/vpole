@@ -1,14 +1,17 @@
+using Pole.Features.Domains.Application.Mongo;
+using Pole.Features.Domains.Application.Lifecycle;
+using Pole.Features.Domains.Application.Common;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Domains.Application.Endpoints;
-using Pole.Features.Domains.Application.Persistence.DomainZones;
-using Pole.Features.Domains.Application.Persistence.HostnameBindings;
+using Pole.Features.Domains.Application.DomainZones;
+using Pole.Features.Domains.Application.HostnameBindings;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
 
-namespace Pole.Features.Domains.Application.Persistence;
+namespace Pole.Features.Domains.Application;
 
 public static class DomainPersistenceRegistration
 {

@@ -1,8 +1,12 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Dns;
-using Pole.Features.Domains.Application.Persistence;
-using Pole.Features.Domains.Application.Persistence.DomainZones;
+using Pole.Features.Domains.Application;
+using Pole.Features.Domains.Application.Common;
+using Pole.Features.Domains.Application.DomainZones;
+using Pole.Features.Domains.Application.HostnameBindings;
+using Pole.Features.Domains.Application.Lifecycle;
+using Pole.Features.Domains.Application.Mongo;
 using Pole.Features.Domains.Domain;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;

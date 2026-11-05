@@ -1,3 +1,8 @@
+using Pole.Features.Domains.Application.Mongo;
+using Pole.Features.Domains.Application.Lifecycle;
+using Pole.Features.Domains.Application.DomainZones;
+using Pole.Features.Domains.Application.Common;
+using Pole.Features.Domains.Application;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Outbox.Contracts;
@@ -6,7 +11,7 @@ using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
 using Pole.ResultType;
 
-namespace Pole.Features.Domains.Application.Persistence.HostnameBindings;
+namespace Pole.Features.Domains.Application.HostnameBindings;
 
 /// <summary>
 /// Owns the shared transactional lifecycle for hostname bindings and their generated zones.
