@@ -12,6 +12,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <InternalsVisibleTo Include="Pole.Tests.E2E" />
       <ProjectReference Include="..\..\examples\Blog\Blog.csproj" />
       <ProjectReference Include="..\Pole.Server\Pole.Server.csproj" />
     </ItemGroup>
