@@ -13,6 +13,12 @@ Git-owned recipe changes go through the managing source. WebServices explicitly 
 ownership at creation: accepted configuration waits in `AwaitingFirstArtifact` until a verified artifact
 is promoted; no starter image or premature workload activation is used.
 
+## Application layout
+
+Execution groups queue admission and claims in `Execution/Queueing`, repository preparation in
+`Execution/Workspace`, and container tooling in `Execution/ContainerBuild`. Job state and promotion
+operations remain in `Execution`; log capture and persistence live together in `Logs`.
+
 ## Integration boundary
 
 Source Builds owns the contribution contracts used by target adapters. WebServices implements

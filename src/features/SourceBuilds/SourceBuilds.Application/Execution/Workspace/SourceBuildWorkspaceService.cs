@@ -1,7 +1,7 @@
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
 
-namespace Pole.Features.SourceBuilds.Application.Execution;
+namespace Pole.Features.SourceBuilds.Application.Execution.Workspace;
 
 public sealed record SourceBuildWorkspaceArchiveLimitExceeded;
 

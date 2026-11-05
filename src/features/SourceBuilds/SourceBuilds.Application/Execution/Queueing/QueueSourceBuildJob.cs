@@ -6,7 +6,7 @@ using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Features.SourceBuilds.Events;
 
-namespace Pole.Features.SourceBuilds.Application.Execution;
+namespace Pole.Features.SourceBuilds.Application.Execution.Queueing;
 
 public union QueueSourceBuildJobOutcome(
     SourceBuildJob,
