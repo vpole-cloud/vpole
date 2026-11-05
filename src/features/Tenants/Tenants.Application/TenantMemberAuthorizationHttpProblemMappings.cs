@@ -1,6 +1,6 @@
 using System.Net;
 using Pole.ASP.Helpers;
-using Pole.Features.Tenants.Application.Persistence.Members;
+using Pole.Features.Tenants.Application.Members;
 
 namespace Pole.Features.Tenants.Application;
 

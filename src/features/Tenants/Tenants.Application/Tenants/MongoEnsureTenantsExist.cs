@@ -1,10 +1,11 @@
+using Pole.Features.Tenants.Application.Mongo;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Contracts;
 using Pole.Features.Tenants.Domain;
 
-namespace Pole.Features.Tenants.Application.Persistence;
+namespace Pole.Features.Tenants.Application.Tenants;
 
 internal sealed class MongoEnsureTenantsExist(IMongoCollection<Tenant> _tenants)
 {

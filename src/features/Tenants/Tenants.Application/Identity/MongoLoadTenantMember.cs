@@ -1,9 +1,11 @@
+using Pole.Features.Tenants.Application.Tenants;
+using Pole.Features.Tenants.Application.Mongo;
 using MongoDB.Driver;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Contracts;
 using Pole.Features.Tenants.Domain;
 
-namespace Pole.Features.Tenants.Application.Persistence.Identity;
+namespace Pole.Features.Tenants.Application.Identity;
 
 internal sealed class MongoLoadTenantMember(IMongoCollection<Tenant> tenants)
 {

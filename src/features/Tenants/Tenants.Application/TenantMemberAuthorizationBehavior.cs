@@ -2,7 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.Tenants.Application.Persistence.Tenants;
+using Pole.Features.Tenants.Application.Tenants;
 using Pole.Mediator;
 
 namespace Pole.Features.Tenants.Application;

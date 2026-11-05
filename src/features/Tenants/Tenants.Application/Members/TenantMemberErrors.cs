@@ -1,4 +1,6 @@
-namespace Pole.Features.Tenants.Application.Persistence.Members;
+using Pole.Features.Tenants.Application.Tenants;
+using Pole.Features.Tenants.Application.Mongo;
+namespace Pole.Features.Tenants.Application.Members;
 
 public sealed record TenantMemberAlreadyExists(
     string TenantId,
