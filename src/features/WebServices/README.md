@@ -116,14 +116,14 @@ maps and validates new logical reference shapes. Domain reads normalize absent m
 
 ## Persistence boundary
 
-`WebServices.Application/Persistence` exposes named delegates for the exact operations used by
-handlers, consumers, SourceBuild integration, and Kubernetes reconciliation. Every delegate is
+`WebServices.Application` exposes named delegates from its configuration, query, lifecycle,
+deployment, release and token workflows for handlers, consumers, SourceBuild integration, and
+Kubernetes reconciliation. Every delegate is
 implemented by one internal Mongo operation class in the same file. `AddWebServicePersistence`
 binds those implementations to their method groups and registers the typed collections.
 
-The pure `WebServiceFilters` hierarchy centralizes tenant ownership, resource identity, optimistic
-revision, and lifecycle predicates. Release and deployment-token filters are centralized beside
-it. The token-hash lookup is the sole intentional unscoped read: the unguessable bearer token
+The shared `Mongo/WebServicesFilters.cs` catalog centralizes tenant ownership, resource identity,
+optimistic revision, lifecycle, release and deployment-token predicates. The token-hash lookup is the sole intentional unscoped read: the unguessable bearer token
 establishes tenant context, and every subsequent operation is tenant-fenced.
 
 Handlers must not inject `IWebServiceDbContext`, `IMongoDatabase`, or Mongo collections. They

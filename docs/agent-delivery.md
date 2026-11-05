@@ -57,7 +57,7 @@ The repository compiler diagnostics complement review:
 
 - `POLE001`: raw Mongo query APIs are forbidden below any Application `Endpoints`, `Consumers`
   or `Jobs` folder. F# architecture tests use the same rule. Workflow implementations may access
-  Mongo directly; no Mongo folder is required.
+  Mongo directly; the shared Application-level `Mongo` folder contains definitions rather than all database operations.
 - `POLE002`: each endpoint handler owns a colocated outcome.
 - `POLE003`: entities with a matching domain factory are constructed through it.
 - `POLE004`: those entities do not expose mutable collection APIs.
