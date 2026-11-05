@@ -14,7 +14,6 @@ using Pole.Features.Domains.Application;
 using Pole.Features.Domains.Application.Common;
 using Pole.Features.Functions.Application;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Runtime;
 using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.Functions.Runtime.Gateway;
