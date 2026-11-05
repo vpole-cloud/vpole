@@ -27,7 +27,7 @@ public union RevokeWebServiceDeploymentTokenOutcome(
 public sealed record RevokeWebServiceDeploymentTokenResponse(string Id);
 
 public sealed class RevokeWebServiceDeploymentTokenHandler(
-    Persistence.Tokens.RevokeWebServiceDeploymentTokenOutcome revokeToken)
+    Tokens.RevokeWebServiceDeploymentTokenOutcome revokeToken)
     : IMediatorOutcomeHandler<
         RevokeWebServiceDeploymentTokenRequest,
         RevokeWebServiceDeploymentTokenOutcome>

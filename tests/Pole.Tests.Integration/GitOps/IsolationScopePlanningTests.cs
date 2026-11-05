@@ -61,7 +61,7 @@ public sealed partial class DeclarativePipelineTests
         Assert.NotNull(Assert.IsType<IsolationScopeDto>(detail.Value).GitOps);
         var deletion = (await Mediator.Send(new DeleteIsolationScopeRequest(scope.ResourceGroupId, scope.Id,
             scope.TenantId))).AssertHandlerOutcome();
-        var error = Assert.IsType<Pole.Features.ResourceGroups.Application.Persistence.IsolationScopes
+        var error = Assert.IsType<Pole.Features.ResourceGroups.Application.IsolationScopes
             .IsolationScopeDeletionError>(deletion.Value);
         Assert.Equal(ResourceGroupRevisionConflictReason.GitOwnedConfiguration,
             Assert.IsType<ResourceGroupRevisionConflict>(error.Value).Reason);
@@ -99,9 +99,9 @@ public sealed partial class DeclarativePipelineTests
         files = [files[0] with { Content = files[0].Content.Split("---", StringSplitOptions.None)[0] }];
         var applied = await Apply(files);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, applied.Status);
-        var result = await Services.GetRequiredService<Pole.Features.ResourceGroups.Application.Persistence
-            .ResourceGroups.BeginResourceGroupDeletion>()(group.TenantId, group.Id, default);
-        var error = Assert.IsType<Pole.Features.ResourceGroups.Application.Persistence.ResourceGroups
+        var result = await Services.GetRequiredService<Pole.Features.ResourceGroups.Application.ResourceGroups
+            .BeginResourceGroupDeletion>()(group.TenantId, group.Id, default);
+        var error = Assert.IsType<Pole.Features.ResourceGroups.Application.ResourceGroups
             .ResourceGroupDeletionError>(result.Value);
         Assert.Equal(ResourceGroupRevisionConflictReason.GitOwnedConfiguration,
             Assert.IsType<ResourceGroupRevisionConflict>(error.Value).Reason);

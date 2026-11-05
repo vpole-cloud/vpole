@@ -156,7 +156,7 @@ public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture) :
                 MongoStorageObservationStore.SnapshotsCollection),
             new Pole.Database.MongoRunTransaction(Fixture.Client),
             (request, session, ct) =>
-                new Pole.Features.DeploymentTargets.Application.Persistence.Admission.
+                new Pole.Features.DeploymentTargets.Application.Admission.
                         MongoFenceDeploymentTargetObservation(Fixture.DbContext.DeploymentTargets)
                     .InvokeAsync(request, session, ct),
             Fixture.StoreOutboxWrites,
