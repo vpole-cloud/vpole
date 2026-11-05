@@ -7,35 +7,7 @@ using Pole.Features.GitOps.Contracts;
 using YamlDotNet.RepresentationModel;
 using YamlDotNet.Core;
 
-namespace Pole.Features.GitOps.Application;
-
-public sealed record ManifestFile(
-    string Path,
-    string Content);
-
-public sealed record AcceptedManifestDeclaration(
-    string Kind,
-    string Name,
-    string SpecJson);
-
-public sealed record CompiledSnapshot(
-    IReadOnlyList<CompiledDeclaration> Declarations,
-    IReadOnlyList<DeclarationDiagnostic> Diagnostics)
-{
-    public bool Valid => Diagnostics.Count == 0;
-}
-
-public sealed class DeclarativeProviderRegistry
-{
-    private readonly IReadOnlyDictionary<string, IDeclarativeResourceProvider> providers;
-
-    public DeclarativeProviderRegistry(IEnumerable<IDeclarativeResourceProvider> contributions)
-    {
-        providers = contributions.ToDictionary(provider => provider.Kind, StringComparer.Ordinal);
-    }
-
-    public IDeclarativeResourceProvider? Find(string kind) => providers.GetValueOrDefault(kind);
-}
+namespace Pole.Features.GitOps.Compiler;
 
 public sealed class ManifestCompiler(DeclarativeProviderRegistry providers)
 {
@@ -291,36 +263,4 @@ public sealed class ManifestCompiler(DeclarativeProviderRegistry providers)
         string? Kind,
         Metadata? Metadata,
         JsonElement Spec);
-}
-
-public static class DeclarationPlan
-{
-    public static bool TryOrder(IReadOnlyList<CompiledDeclaration> declarations,
-        out IReadOnlyList<(CompiledDeclaration Declaration, DeclarationPhase Phase)> ordered)
-    {
-        var pending = declarations.SelectMany(item => item.Steps.Select(step => (Declaration: item, Step: step)))
-            .OrderBy(item => item.Step.Phase).ThenBy(item => item.Declaration.Address.Kind, StringComparer.Ordinal)
-            .ThenBy(item => item.Declaration.Address.Name, StringComparer.Ordinal).ToList();
-        var all = pending.Select(item => (item.Declaration.Address, item.Step.Phase)).ToHashSet();
-        var complete = new HashSet<(ResourceAddress, DeclarationPhase)>();
-        var result = new List<(CompiledDeclaration, DeclarationPhase)>();
-        while (pending.Count > 0)
-        {
-            var next = pending.FindIndex(item => item.Step.Dependencies.All(dependency =>
-                    !all.Contains((dependency.Resource,
-                        dependency.Phase)) || complete.Contains((dependency.Resource, dependency.Phase))));
-
-            if (next < 0)
-            {
-                ordered = [];
-                return false;
-            }
-
-            var item = pending[next]; pending.RemoveAt(next);
-            complete.Add((item.Declaration.Address, item.Step.Phase));
-            result.Add((item.Declaration, item.Step.Phase));
-        }
-        ordered = result;
-        return true;
-    }
 }

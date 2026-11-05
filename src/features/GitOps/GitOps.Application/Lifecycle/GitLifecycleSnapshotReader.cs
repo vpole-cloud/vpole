@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Application.Planning;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;

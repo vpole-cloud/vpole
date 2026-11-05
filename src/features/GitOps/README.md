@@ -12,6 +12,14 @@ coverage matrix, supported YAML schemas and examples, identity rules, catalog po
 semantics. The [authoring examples](examples/README.md) provide minimal, complete thirteen-kind
 and isolated lifecycle snapshots within the same #88/#98 PR.
 
+## Compilation boundary
+
+`GitOps.Compiler` owns YAML parsing, strict envelope validation, provider-driven normalization,
+canonical hashes, and dependency ordering. Its models, schema limits and provider registry are
+independent of Application and Domain. `GitOps.Compiler.Tests` runs compiler checks without loading
+Application. HTTP limits, receipt bounds, provider DI registration and durable execution remain in
+Application. Concrete resource providers still contribute through GitOps-owned Contracts.
+
 ## Execution
 
 `POST /api/v1/gitops/sources/` atomically stores source configuration, the first requested

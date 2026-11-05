@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Compiler;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.FSharp.Core;
 using MongoDB.Bson;

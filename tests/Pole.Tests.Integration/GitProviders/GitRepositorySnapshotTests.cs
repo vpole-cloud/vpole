@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Compiler;
 using System.Collections.Immutable;
 using System.Formats.Tar;
 using System.IO.Compression;

@@ -41,6 +41,8 @@
     <Project Path="src/features/GitOps/GitOps.Domain/GitOps.Domain.csproj" />
     <Project Path="src/features/GitOps/GitOps.Events/GitOps.Events.csproj" />
     <Project Path="src/features/GitOps/GitOps.Contracts/GitOps.Contracts.csproj" />
+    <Project Path="src/features/GitOps/GitOps.Compiler/GitOps.Compiler.csproj" />
+    <Project Path="src/features/GitOps/GitOps.Compiler.Tests/GitOps.Compiler.Tests.csproj" />
     <Project Path="src/features/GitOps/GitOps.Application/GitOps.Application.csproj" />
     <Project Path="src/features/GitOps/GitOps.Tests/GitOps.Tests.csproj" />
   </Folder>

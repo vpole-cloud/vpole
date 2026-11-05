@@ -1,3 +1,4 @@
+using Pole.Features.GitOps.Compiler;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Planning;
