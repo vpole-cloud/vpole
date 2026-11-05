@@ -1,8 +1,3 @@
-using Pole.Features.WebServices.Application.Mongo;
-using Pole.Features.WebServices.Application.Lifecycle;
-using Pole.Features.WebServices.Application.Hostnames;
-using Pole.Features.WebServices.Application.Configuration;
-using Pole.Features.WebServices.Application;
 using System.Collections.Immutable;
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Contracts;
@@ -11,8 +6,13 @@ using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
-using Pole.Features.WebServices.Domain;
+using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
+using Pole.Features.WebServices.Application.Configuration;
+using Pole.Features.WebServices.Application.Hostnames;
+using Pole.Features.WebServices.Application.Lifecycle;
+using Pole.Features.WebServices.Application.Mongo;
+using Pole.Features.WebServices.Domain;
 using static Pole.Features.WebServices.Application.Declarations.WebServiceDeclarations;
 using static Pole.Features.WebServices.Application.Declarations.WebServicePlanning;
 

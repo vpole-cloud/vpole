@@ -1,19 +1,19 @@
-using Pole.Observation;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Outbox.Application.Mongo;
-using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.ResourceDeployments.Application.Observation;
+using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.StorageProfiles.Application;
-using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.StorageProfiles.Application.Catalog;
+using Pole.Features.StorageProfiles.Application.Discovery;
+using Pole.Features.StorageProfiles.Application.Discovery.Observation;
+using Pole.Features.StorageProfiles.Application.Observation;
 using Pole.Features.StorageProfiles.Application.Validation;
 using Pole.Features.StorageProfiles.Contracts;
-using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceDeployments.Application.Observation;
-using Pole.Features.StorageProfiles.Application.Observation;
-using Pole.Features.StorageProfiles.Application.Discovery.Observation;
+using Pole.Observation;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 

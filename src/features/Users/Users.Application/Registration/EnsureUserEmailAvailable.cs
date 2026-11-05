@@ -1,5 +1,5 @@
-using Pole.Features.Users.Application.Mongo;
 using MongoDB.Driver;
+using Pole.Features.Users.Application.Mongo;
 using Pole.Features.Users.Domain;
 
 namespace Pole.Features.Users.Application.Registration;

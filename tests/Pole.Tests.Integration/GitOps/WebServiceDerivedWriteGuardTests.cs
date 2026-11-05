@@ -1,13 +1,13 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
-using Pole.Features.GitOps.Application;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.WebServices.Events;
+using Pole.Features.GitOps.Application;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Configuration;
 using Pole.Features.WebServices.Application.SourceDelivery;
 using Pole.Features.WebServices.Domain;
+using Pole.Features.WebServices.Events;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 

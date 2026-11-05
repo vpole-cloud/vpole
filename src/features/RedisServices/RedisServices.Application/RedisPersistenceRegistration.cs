@@ -1,14 +1,14 @@
-using Pole.Features.RedisServices.Application.Mongo;
-using Pole.Features.RedisServices.Application.Declarations;
-using Pole.Features.GitOps.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.GitOps.Contracts;
+using Pole.Features.RedisServices.Application.Declarations;
 using Pole.Features.RedisServices.Application.Lifecycle;
+using Pole.Features.RedisServices.Application.Mongo;
 using Pole.Features.RedisServices.Application.Services;
-using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Contracts;
+using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceConnections.Contracts;
 
 namespace Pole.Features.RedisServices.Application;

@@ -1,8 +1,8 @@
-using Pole.Features.Outbox.Application.Mongo;
-using Pole.Features.Outbox.Application;
 using System.Text.Json;
 using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.Outbox.Application;
+using Pole.Features.Outbox.Application.Mongo;
 using Pole.Features.Outbox.Contracts;
 using Pole.Observability;
 using EventExtensions = Pole.Features.Events.Abstractions.EventExtensions;

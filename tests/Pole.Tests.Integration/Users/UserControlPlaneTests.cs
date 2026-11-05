@@ -19,8 +19,8 @@ using Pole.Features.Users.Application.Mongo;
 using Pole.Features.Users.Application.Registration;
 using Pole.Features.Users.Domain;
 using Pole.Features.Users.Events;
-using Pole.Server.Extensions;
 using Pole.Platform.Hosting;
+using Pole.Server.Extensions;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 

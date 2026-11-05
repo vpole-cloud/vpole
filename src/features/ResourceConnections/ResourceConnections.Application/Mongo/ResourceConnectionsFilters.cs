@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Outbox.Contracts;
@@ -10,7 +11,6 @@ using Pole.Features.ResourceConnections.Application.Topology;
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceConnections.Domain;
 using Pole.Workloads;
-using System.Collections.Immutable;
 
 namespace Pole.Features.ResourceConnections.Application.Mongo;
 

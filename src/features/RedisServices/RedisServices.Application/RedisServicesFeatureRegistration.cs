@@ -1,19 +1,19 @@
-using Pole.Features.ResourceDeployments.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pole.Database;
-using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Application.Kubernetes;
-using Pole.Features.RedisServices.Application.Declarations;
-using Pole.Features.RedisServices.Application.Mongo;
-using Pole.Features.RedisServices.Application.Services;
-using Pole.Features.RedisServices.Application.Lifecycle;
-using Pole.Features.RedisServices.Application.Search;
-using Pole.Features.Search.Contracts;
 using Pole.Features.Quotas.Contracts;
-using Pole.Features.ResourceConnections.Contracts;
-using Pole.Features.RedisServices.Contracts;
 using Pole.Features.Realtime.Contracts;
+using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.RedisServices.Application.Declarations;
+using Pole.Features.RedisServices.Application.Kubernetes;
+using Pole.Features.RedisServices.Application.Lifecycle;
+using Pole.Features.RedisServices.Application.Mongo;
+using Pole.Features.RedisServices.Application.Search;
+using Pole.Features.RedisServices.Application.Services;
+using Pole.Features.RedisServices.Contracts;
+using Pole.Features.ResourceConnections.Contracts;
+using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.Search.Contracts;
 
 namespace Pole.Features.RedisServices.Application;
 

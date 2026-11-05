@@ -1,22 +1,22 @@
 using System.Net;
-using System.Security.Claims;
 using System.Reflection;
-using Microsoft.AspNetCore.Routing;
-using Pole.Server.Extensions;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.Realtime.Application;
 using Pole.Features.RedisServices.Application.Endpoints;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Tenants.Application;
-using Pole.Features.Realtime.Application;
 using Pole.Features.Tenants.Application.Middleware;
 using Pole.Features.Tenants.Application.Tenants;
 using Pole.Features.Tenants.Domain;
 using Pole.Platform.Hosting;
+using Pole.Server.Extensions;
 using Xunit;
 
 namespace Pole.Tests.Integration.Tenants;

@@ -7,10 +7,10 @@ using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Users.Application.Common;
-using Pole.Features.Users.Domain;
 using Pole.Features.Users.Application.Identity;
 using Pole.Features.Users.Application.Mongo;
 using Pole.Features.Users.Application.Registration;
+using Pole.Features.Users.Domain;
 using Pole.Mediator;
 using static Pole.Features.Users.Application.UserHttpProblemMappings;
 

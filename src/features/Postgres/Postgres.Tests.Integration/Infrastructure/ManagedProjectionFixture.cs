@@ -1,5 +1,5 @@
-using k8s.Models;
 using k8s;
+using k8s.Models;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using Pole.Features.DeploymentTargets.Contracts;

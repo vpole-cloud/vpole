@@ -1,18 +1,18 @@
-using Pole.Features.ResourceDeployments.Application.Mongo;
-using Pole.Features.ResourceDeployments.Application.Admission;
-using Pole.Features.ResourceDeployments.Application;
-using Pole.Features.ResourceDeployments.Domain.Observation;
-using MongoDB.Bson;
 using System.Linq.Expressions;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Database.Observation;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Contracts;
+using Pole.Features.ResourceDeployments.Application;
+using Pole.Features.ResourceDeployments.Application.Admission;
+using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceDeployments.Events;
 using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceDeployments.Domain.Observation;
+using Pole.Features.ResourceDeployments.Events;
 
 namespace Pole.Features.ResourceDeployments.Application.Observation;
 

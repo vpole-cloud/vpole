@@ -1,7 +1,7 @@
-using Pole.Features.Quotas.Application.Mongo;
-using Pole.Features.Quotas.Application;
 using System.Collections.Immutable;
 using MongoDB.Driver;
+using Pole.Features.Quotas.Application;
+using Pole.Features.Quotas.Application.Mongo;
 using Pole.Features.Quotas.Domain;
 
 namespace Pole.Features.Quotas.Application.Usage;

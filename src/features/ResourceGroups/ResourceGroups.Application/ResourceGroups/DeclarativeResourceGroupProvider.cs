@@ -1,4 +1,5 @@
-using Pole.Features.ResourceGroups.Application.References;
+using System.Collections.Immutable;
+using System.Text.Json;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
@@ -7,13 +8,12 @@ using Pole.Features.GitOps.Primitives;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.IsolationScopes;
 using Pole.Features.ResourceGroups.Application.Mongo;
+using Pole.Features.ResourceGroups.Application.References;
 using Pole.Features.ResourceGroups.Application.Search;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
 using Pole.Workloads;
-using System.Collections.Immutable;
-using System.Text.Json;
 
 namespace Pole.Features.ResourceGroups.Application.ResourceGroups;
 

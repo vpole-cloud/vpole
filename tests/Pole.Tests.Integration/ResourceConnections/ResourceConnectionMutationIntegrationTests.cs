@@ -15,13 +15,13 @@ using Pole.Features.ResourceConnections.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Application.Configuration;
+using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Application.SourceDelivery;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
-using Pole.Features.Shared.Models;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 

@@ -1,4 +1,3 @@
-using Pole.Observation;
 using System.Runtime.CompilerServices;
 using k8s;
 using k8s.Models;
@@ -7,6 +6,7 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Services;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Observation;
 
 namespace Pole.Features.RedisServices.Application.Kubernetes;
 

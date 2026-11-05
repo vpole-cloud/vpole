@@ -1,8 +1,8 @@
-using Pole.Features.ResourceDeployments.Application.Observation;
-using Pole.Features.ResourceDeployments.Application.Admission;
-using Pole.Features.ResourceDeployments.Application;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Features.ResourceDeployments.Application;
+using Pole.Features.ResourceDeployments.Application.Admission;
+using Pole.Features.ResourceDeployments.Application.Observation;
 
 namespace Pole.Features.ResourceDeployments.Application.Mongo;
 

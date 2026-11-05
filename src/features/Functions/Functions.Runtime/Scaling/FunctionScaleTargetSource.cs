@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Application.Lifecycle;
+using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Application.Runtime.Scaling;
 using Pole.Features.Functions.Domain;
 

@@ -1,18 +1,18 @@
-using Microsoft.Extensions.Configuration;
 using Hangfire;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
-using Pole.Features.ContainerRegistries.Domain;
 using Pole.Features.ContainerRegistries.Application.Common;
+using Pole.Features.ContainerRegistries.Application.Credentials;
 using Pole.Features.ContainerRegistries.Application.Harbor;
 using Pole.Features.ContainerRegistries.Application.Mongo;
-using Pole.Features.ContainerRegistries.Application.Credentials;
 using Pole.Features.ContainerRegistries.Application.Projects;
 using Pole.Features.ContainerRegistries.Application.Provisioning;
 using Pole.Features.ContainerRegistries.Application.Security;
 using Pole.Features.ContainerRegistries.Contracts;
+using Pole.Features.ContainerRegistries.Domain;
 
 namespace Pole.Features.ContainerRegistries.Application;
 

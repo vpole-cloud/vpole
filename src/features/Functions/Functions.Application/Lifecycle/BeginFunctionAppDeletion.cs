@@ -1,16 +1,16 @@
+using MongoDB.Driver;
+using Pole.Database;
+using Pole.Features.Events.Abstractions;
+using Pole.Features.Functions.Application;
+using Pole.Features.Functions.Application.Common;
+using Pole.Features.Functions.Application.Declarations;
+using Pole.Features.Functions.Application.Mongo;
+using Pole.Features.Functions.Domain;
+using Pole.Features.Functions.Events;
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
-using MongoDB.Driver;
-using Pole.Database;
-using Pole.Features.GitOps.Contracts;
-using Pole.Features.Events.Abstractions;
-using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Mongo;
-using Pole.Features.Functions.Application;
-using Pole.Features.Functions.Application.Declarations;
-using Pole.Features.Functions.Domain;
-using Pole.Features.Functions.Events;
 
 namespace Pole.Features.Functions.Application.Lifecycle;
 

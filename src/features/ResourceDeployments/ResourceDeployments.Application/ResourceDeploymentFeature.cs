@@ -1,26 +1,26 @@
-using Pole.Observation;
-using Microsoft.Extensions.Configuration;
 using Hangfire;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Pole.ASP.Helpers;
 using Pole.Features.Realtime.Contracts;
+using Pole.Features.ResourceDeployments.Application.Admission;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Diagnostics;
+using Pole.Features.ResourceDeployments.Application.Endpoints;
+using Pole.Features.ResourceDeployments.Application.Jobs;
+using Pole.Features.ResourceDeployments.Application.Kubernetes;
+using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Application.Observation;
 using Pole.Features.ResourceDeployments.Application.Placements;
 using Pole.Features.ResourceDeployments.Application.Planning;
 using Pole.Features.ResourceDeployments.Application.Queries;
-using Pole.Features.ResourceDeployments.Application.Reconciliation;
-using Pole.Features.ResourceDeployments.Application.Endpoints;
-using Pole.Features.ResourceDeployments.Application.Jobs;
-using Pole.Features.ResourceDeployments.Application.Kubernetes;
-using Pole.Features.ResourceDeployments.Application.Admission;
-using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Application.Realtime;
+using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
+using Pole.Observation;
 
 namespace Pole.Features.ResourceDeployments.Application;
 

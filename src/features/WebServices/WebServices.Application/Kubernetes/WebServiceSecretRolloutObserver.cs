@@ -1,6 +1,6 @@
-using Pole.Features.Core.Kubernetes;
-using k8s.Autorest;
 using k8s;
+using k8s.Autorest;
+using Pole.Features.Core.Kubernetes;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Secrets.Contracts;

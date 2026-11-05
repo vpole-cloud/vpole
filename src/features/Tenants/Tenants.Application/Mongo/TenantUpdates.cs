@@ -1,6 +1,6 @@
-using Pole.Features.Tenants.Application.Tenants;
 using MongoDB.Driver;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.Tenants.Application.Tenants;
 using Pole.Features.Tenants.Domain;
 
 namespace Pole.Features.Tenants.Application.Mongo;

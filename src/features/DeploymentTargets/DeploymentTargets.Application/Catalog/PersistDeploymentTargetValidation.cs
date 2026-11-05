@@ -1,12 +1,12 @@
-using Pole.Features.DeploymentTargets.Application.Mongo;
-using Pole.Features.DeploymentTargets.Application.Admission;
-using Pole.Features.DeploymentTargets.Application;
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.Outbox.Contracts;
-using Pole.Features.DeploymentTargets.Events;
+using Pole.Features.DeploymentTargets.Application;
+using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Application.Common;
+using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Features.DeploymentTargets.Domain;
+using Pole.Features.DeploymentTargets.Events;
+using Pole.Features.Outbox.Contracts;
 
 namespace Pole.Features.DeploymentTargets.Application.Catalog;
 

@@ -1,18 +1,18 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
+using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.Tenants;
 using Pole.Features.Tenants.Application;
+using Pole.Features.Tenants.Application.Members;
 using Pole.Features.Tenants.Application.Mongo;
 using Pole.Features.Tenants.Application.Tenants;
-using Pole.Features.Tenants.Application.Members;
 using Pole.Features.Tenants.Contracts;
 using Pole.Features.Tenants.Domain;
-using Pole.ASP.Helpers;
 using Pole.Mediator;
-using Pole.Server.Extensions;
 using Pole.Platform.Hosting;
+using Pole.Server.Extensions;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 

@@ -1,6 +1,6 @@
-using Pole.Features.Quotas.Application.Mongo;
-using Pole.Features.Quotas.Application;
 using MongoDB.Driver;
+using Pole.Features.Quotas.Application;
+using Pole.Features.Quotas.Application.Mongo;
 using Pole.Features.Quotas.Domain;
 
 namespace Pole.Features.Quotas.Application.Reservations;

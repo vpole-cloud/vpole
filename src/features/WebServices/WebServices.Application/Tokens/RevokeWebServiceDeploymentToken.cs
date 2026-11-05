@@ -1,10 +1,10 @@
-using Pole.Features.WebServices.Application.Mongo;
-using Pole.Features.WebServices.Application.Lifecycle;
-using Pole.Features.WebServices.Application.Hostnames;
-using Pole.Features.WebServices.Application.Declarations;
-using Pole.Features.WebServices.Application.Configuration;
-using Pole.Features.WebServices.Application;
 using MongoDB.Driver;
+using Pole.Features.WebServices.Application;
+using Pole.Features.WebServices.Application.Configuration;
+using Pole.Features.WebServices.Application.Declarations;
+using Pole.Features.WebServices.Application.Hostnames;
+using Pole.Features.WebServices.Application.Lifecycle;
+using Pole.Features.WebServices.Application.Mongo;
 using Pole.Features.WebServices.Domain;
 
 namespace Pole.Features.WebServices.Application.Tokens;

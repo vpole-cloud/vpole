@@ -1,11 +1,11 @@
 using System.Net;
 using Pole.ASP.Helpers;
-using Pole.Features.RedisServices.Application.Endpoints;
 using Pole.Features.RedisServices.Application;
 using Pole.Features.RedisServices.Application.Declarations;
+using Pole.Features.RedisServices.Application.Endpoints;
+using Pole.Features.RedisServices.Application.Lifecycle;
 using Pole.Features.RedisServices.Application.Mongo;
 using Pole.Features.RedisServices.Application.Services;
-using Pole.Features.RedisServices.Application.Lifecycle;
 
 namespace Pole.Features.RedisServices.Application.Common;
 

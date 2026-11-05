@@ -1,10 +1,10 @@
-using Pole.Features.ResourceDeployments.Domain.Observation;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
 using MongoDB.Bson;
 using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Application.Observation;
+using Pole.Features.ResourceDeployments.Domain.Observation;
 using Pole.Workloads;
 using Xunit;
 

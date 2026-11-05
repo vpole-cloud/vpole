@@ -1,5 +1,4 @@
 using System.Net;
-using Pole.Tests.Integration.Http;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -7,16 +6,17 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Encryption;
-using Pole.Features.ContainerRegistries.Migrations;
+using Pole.Features.ContainerRegistries.Application.Credentials;
 using Pole.Features.ContainerRegistries.Application.Endpoints;
 using Pole.Features.ContainerRegistries.Application.Mongo;
-using Pole.Features.ContainerRegistries.Application.Credentials;
 using Pole.Features.ContainerRegistries.Application.Projects;
 using Pole.Features.ContainerRegistries.Application.Provisioning;
 using Pole.Features.ContainerRegistries.Application.Security;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.ContainerRegistries.Domain;
+using Pole.Features.ContainerRegistries.Migrations;
 using Pole.ResultType;
+using Pole.Tests.Integration.Http;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 

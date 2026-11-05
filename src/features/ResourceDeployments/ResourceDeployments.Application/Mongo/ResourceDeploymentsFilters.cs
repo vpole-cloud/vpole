@@ -1,13 +1,13 @@
 using MongoDB.Driver;
-using Pole.Database.Observation;
 using Pole.Database;
+using Pole.Database.Observation;
+using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceDeployments.Application.Admission;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Observation;
-using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceDeployments.Domain.Observation;
 using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceDeployments.Domain.Observation;
 
 namespace Pole.Features.ResourceDeployments.Application.Mongo;
 

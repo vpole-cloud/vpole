@@ -1,4 +1,3 @@
-using Pole.Observation;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Net;
@@ -10,11 +9,12 @@ using k8s.Models;
 using Microsoft.FSharp.Core;
 using Pole.Features.Core.Kubernetes;
 using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.Postgres.Application.Clusters;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Kubernetes;
-using Pole.Features.Postgres.Application.Clusters;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Observation;
 using Pole.Tests.Integration.ResourceDeployments;
 using Pole.Workloads;
 using Xunit;
