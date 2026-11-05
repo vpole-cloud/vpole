@@ -6,7 +6,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Pole.ASP.Helpers;
 using Pole.Features.Quotas.Application.Common;
-using Pole.Features.Quotas.Application.Persistence;
+using Pole.Features.Quotas.Application.Mongo;
 using Pole.Features.Quotas.Application.Services;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Contracts.HttpMapping;

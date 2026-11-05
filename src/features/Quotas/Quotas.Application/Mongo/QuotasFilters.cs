@@ -1,7 +1,14 @@
 using MongoDB.Driver;
+using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Domain;
 
-namespace Pole.Features.Quotas.Application.Persistence;
+namespace Pole.Features.Quotas.Application.Mongo;
+
+internal static class QuotaPolicyFilters
+{
+    public static FilterDefinition<TenantQuotaPolicy> ByTenant(string tenantId) =>
+        Builders<TenantQuotaPolicy>.Filter.Eq(policy => policy.TenantId, tenantId);
+}
 
 internal static class QuotaReservationFields
 {
@@ -47,4 +54,10 @@ internal static class QuotaReservationFilters
             Builders<QuotaReservation>.Filter.Gt(
                 QuotaReservationFields.StateExpiresAtUtc,
                 nowUtc));
+}
+
+internal static class QuotaUsageFilters
+{
+    public static FilterDefinition<TenantQuotaUsage> ByTenant(string tenantId) =>
+        Builders<TenantQuotaUsage>.Filter.Eq(usage => usage.TenantId, tenantId);
 }

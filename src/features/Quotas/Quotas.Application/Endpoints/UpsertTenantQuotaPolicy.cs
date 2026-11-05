@@ -6,8 +6,9 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Quotas.Application.Common;
-using Pole.Features.Quotas.Application.Persistence;
-using Pole.Features.Quotas.Application.Persistence.Policies;
+using Pole.Features.Quotas.Application;
+using Pole.Features.Quotas.Application.Mongo;
+using Pole.Features.Quotas.Application.Policies;
 using Pole.Mediator;
 
 namespace Pole.Features.Quotas.Application.Endpoints;

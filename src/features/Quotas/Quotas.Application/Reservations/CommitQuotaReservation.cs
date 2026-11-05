@@ -1,9 +1,11 @@
+using Pole.Features.Quotas.Application.Mongo;
+using Pole.Features.Quotas.Application;
 using MongoDB.Driver;
-using Pole.Features.Quotas.Application.Persistence.Usage;
+using Pole.Features.Quotas.Application.Usage;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Domain;
 
-namespace Pole.Features.Quotas.Application.Persistence.Reservations;
+namespace Pole.Features.Quotas.Application.Reservations;
 
 public union CommitQuotaReservationOutcome(
     QuotaReservationCommitted,
