@@ -1,3 +1,4 @@
+using Pole.Architecture;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
@@ -102,6 +103,8 @@ internal sealed class MongoPrivateAccessBrokerOwnership(
         owner.InstanceId!, owner.InternalOrigin!, owner.Epoch,
         owner.LeaseExpiresAtUtc);
 
+    [ViolateArchitecture(ArchitectureRules.RawBson,
+        "Broker lease expiry and optional epoch increment must use one server-time update pipeline.")]
     private static UpdateDefinition<PrivateAccessBrokerOwner> LeaseUpdate(
         string instanceId,
         string internalOrigin,

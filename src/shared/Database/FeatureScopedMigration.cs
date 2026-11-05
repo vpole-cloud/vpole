@@ -1,5 +1,4 @@
 using Pole.Migrations;
-using MongoDB.Bson;
 using MongoDB.Driver;
 
 namespace Pole.Database;
@@ -12,5 +11,5 @@ public sealed class FeatureScopedMigration(string featureId, IMigration migratio
     public string Name => migration.Name;
     public string Description => migration.Description;
     public Task Up(IMongoDatabase context, CancellationToken cancellationToken = default) => migration.Up(context, cancellationToken);
-    public BsonValue DurableId => $"{FeatureId}/{Id}";
+    public string DurableId => $"{FeatureId}/{Id}";
 }

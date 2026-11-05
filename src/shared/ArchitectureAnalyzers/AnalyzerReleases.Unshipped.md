@@ -20,3 +20,5 @@
 | POLE012 | Architecture | Error | Closed hierarchy switches name variants instead of a catch-all. |
 
 | POLE013 | Architecture | Error | Runtime Mongo field filters use typed expressions instead of string literals. |
+
+| POLE014 | Architecture | Error | Raw BSON requires a scoped ViolateArchitecture rule/reason; migration/test roles are exempt. |

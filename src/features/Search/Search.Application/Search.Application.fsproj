@@ -49,4 +49,7 @@
       <ProjectReference Include="..\..\Realtime\Realtime.Contracts\Realtime.Contracts.csproj" />
       <ProjectReference Include="..\Search.Domain\Search.Domain.fsproj" />
     </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../shared/Architecture/Architecture.csproj" />
+  </ItemGroup>
 </Project>

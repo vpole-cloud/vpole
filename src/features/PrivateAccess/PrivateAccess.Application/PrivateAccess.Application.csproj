@@ -31,4 +31,7 @@
     <PackageReference Include="MongoDB.Driver" />
     <PackageReference Include="MassTransit" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../shared/Architecture/Architecture.csproj" />
+  </ItemGroup>
 </Project>

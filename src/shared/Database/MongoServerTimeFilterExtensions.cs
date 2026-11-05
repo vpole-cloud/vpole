@@ -1,3 +1,4 @@
+using Pole.Architecture;
 using System.Linq.Expressions;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -17,6 +18,9 @@ public static class MongoServerTimeFilterExtensions
         new ServerTimeFilter<TDocument>(field, "$lte");
 
     // MongoDB evaluates $$NOW; resolving the field at render time preserves the collection's mapping.
+    [ViolateArchitecture(ArchitectureRules.RawBson,
+        "The driver FilterDefinition.Render contract returns BSON; $$NOW expressions must resolve " +
+        "mapped fields at render time.")]
     private sealed class ServerTimeFilter<TDocument>(
         Expression<Func<TDocument, DateTime>> field,
         string comparison) : FilterDefinition<TDocument>

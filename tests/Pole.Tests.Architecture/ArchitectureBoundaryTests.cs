@@ -318,22 +318,6 @@ public sealed class ArchitectureBoundaryTests
     }
 
     [Fact]
-    public void SharedObservationBson_IsConfinedToExpressionAndPipelineHelpers()
-    {
-        var violations = ArchitectureSources.ProductionCSharp()
-            .Where(source => source.RelativePath.StartsWith("src/shared/Database/Observation/",
-                StringComparison.Ordinal))
-            .Where(source => Path.GetFileName(source.RelativePath) is not
-                "MongoObservationExpressions.cs" and not "MongoObservationPipelines.cs")
-            .SelectMany(source => source.Root.DescendantNodes().OfType<IdentifierNameSyntax>()
-                .Where(name => name.Identifier.ValueText is "BsonDocument" or "BsonArray" or "BsonValue")
-                .Select(name => ArchitectureSources.Describe(source, name,
-                    "Observation orchestration and typed filters must not depend on raw BSON; use expression/pipeline helpers")))
-            .ToArray();
-        AssertNoViolations(violations);
-    }
-
-    [Fact]
     public void RuntimeMongoFilters_AreDefinedByNamedFilterHelpers()
     {
         var violations = ArchitectureSources.RuntimeApplicationCSharp()

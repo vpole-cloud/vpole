@@ -2,7 +2,6 @@ namespace Pole.Features.Search.Application.Mongo
 
 open System.Text.RegularExpressions
 open MongoDB.Bson
-open MongoDB.Bson.Serialization
 open MongoDB.Driver
 open Pole.Features.Search.Application.Common
 open Pole.Features.Search.Application.Projection
@@ -50,7 +49,7 @@ module internal SearchProjectionFilters =
             sourceByIdentity identity,
             acceptsOperationalStatus status)
 
-    let getSourceMatchStage (query : SearchQuery) =
+    let sourceMatch (query : SearchQuery) =
         let filter = Builders<SearchSourceDocument>.Filter
         let regex = BsonRegularExpression($"^{Regex.Escape(SearchDocumentFactory.normalize query.Query)}")
         let conditions =
@@ -63,6 +62,4 @@ module internal SearchProjectionFilters =
             | Some types when not (List.isEmpty types) ->
                 filter.In(_.SourceApiName, types |> Seq.map _.ApiName) :: conditions
             | _ -> conditions
-        let registry = BsonSerializer.SerializerRegistry
-        let arguments = RenderArgs<SearchSourceDocument>(registry.GetSerializer<SearchSourceDocument>(), registry)
-        BsonDocument("$match", filter.And(conditions).Render(arguments))
+        filter.And(conditions)

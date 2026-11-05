@@ -75,6 +75,10 @@ The repository compiler diagnostics complement review:
 - `POLE010`: feature-owned typed Mongo collection roots belong to the owning Domain project.
 - `.editorconfig` and `dotnet format whitespace` verify changed C# source formatting.
 
+- `POLE014`: production code uses typed MongoDB APIs instead of `BsonDocument`, `BsonArray` and
+  `BsonValue`; deliberate boundaries require a reasoned `ViolateArchitecture` attribute. Migration
+  and test project roles are exempt. C# compilation and semantic F# architecture checks enforce it.
+
 Rules use compiler symbols rather than treating every `Store`, array or `Status`
 identifier as a violation. Factory detection follows the existing same-namespace
 `EntityFactory` convention. Read-only interfaces do not prove their backing data

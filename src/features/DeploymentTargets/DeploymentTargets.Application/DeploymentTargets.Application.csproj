@@ -32,4 +32,7 @@
     <PackageReference Include="KubernetesClient" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="../../../shared/Architecture/Architecture.csproj" />
+  </ItemGroup>
 </Project>

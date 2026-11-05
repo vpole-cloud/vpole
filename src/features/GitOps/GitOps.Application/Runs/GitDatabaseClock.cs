@@ -1,3 +1,4 @@
+using Pole.Architecture;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Application.Mongo;
@@ -7,6 +8,8 @@ namespace Pole.Features.GitOps.Application.Runs;
 
 internal sealed class GitDatabaseClock(IMongoCollection<RepositorySource> sources)
 {
+    [ViolateArchitecture(ArchitectureRules.RawBson,
+        "Read $$NOW from MongoDB within the caller transaction; the source match must not use a client clock.")]
     public async Task<DateTime> NowAsync(GitSourceIdentity identity, IClientSessionHandle session, CancellationToken ct)
     {
         var document = await sources.Aggregate(session)

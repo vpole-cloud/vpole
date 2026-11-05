@@ -7,6 +7,7 @@ open System.Text.RegularExpressions
 open System.Threading
 open System.Threading.Tasks
 open MongoDB.Bson
+open Pole.Architecture
 open MongoDB.Bson.Serialization
 open MongoDB.Driver
 open Pole.Features.Events.Abstractions
@@ -25,9 +26,6 @@ type internal SearchProjectionStore(
     versions: IMongoCollection<SearchProjectionVersionDocument>,
     outbox: StoreOutboxWrites
 ) =
-
-    let bsonDocument (elements: BsonElement list) = BsonDocument(elements)
-    let bsonArray (values: BsonValue list) = BsonArray(values)
 
     let storeChanged session (identity: SearchProjectionIdentity) revision generation ct =
         let message =
@@ -352,8 +350,17 @@ type internal SearchProjectionStore(
             return ()
         }
 
+    [<ViolateArchitecture(ArchitectureRules.RawBson,
+        "Search computes regex matches, weights and pagination in one aggregation; decoding stays in this method.")>]
     member _.SearchAsync(query: SearchQuery, cancellationToken: CancellationToken) =
         task {
+            let bsonDocument (elements: BsonElement list) = BsonDocument(elements)
+            let bsonArray (values: BsonValue list) = BsonArray(values)
+            let registry = BsonSerializer.SerializerRegistry
+            let arguments = RenderArgs<SearchSourceDocument>(registry.GetSerializer<SearchSourceDocument>(), registry)
+            let matches = SearchProjectionFilters.sourceMatch query
+            let matchStage = bsonDocument [ BsonElement("$match", matches.Render(arguments)) ]
+
             let skip = (max query.PageNumber 1 - 1) * max query.PageSize 1
             let limit = max query.PageSize 1
 
@@ -361,7 +368,7 @@ type internal SearchProjectionStore(
                 BsonRegularExpression($"^{Regex.Escape(SearchDocumentFactory.normalize query.Query)}")
 
             let pipeline =
-                [| SearchProjectionFilters.getSourceMatchStage query
+                [| matchStage
                    bsonDocument
                        [ BsonElement(
                              "$addFields",
