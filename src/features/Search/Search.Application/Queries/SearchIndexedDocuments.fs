@@ -1,4 +1,6 @@
-namespace Pole.Features.Search.Application.Persistence
+namespace Pole.Features.Search.Application.Queries
+
+open Pole.Features.Search.Application.Projection
 
 open System.Threading
 open System.Threading.Tasks

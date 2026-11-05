@@ -1,4 +1,6 @@
-namespace Pole.Features.Search.Application.Persistence
+namespace Pole.Features.Search.Application.Projection
+
+open Pole.Features.Search.Application.Mongo
 
 open System
 open System.Text.RegularExpressions
