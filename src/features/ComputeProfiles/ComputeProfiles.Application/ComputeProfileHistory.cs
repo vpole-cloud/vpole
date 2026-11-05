@@ -3,12 +3,6 @@ using Pole.Features.ComputeProfiles.Domain;
 
 namespace Pole.Features.ComputeProfiles.Application;
 
-internal static class ComputeProfileRevisionFilters
-{
-    public static FilterDefinition<ComputeProfileRevision> Identity(string id, long revision) =>
-        Builders<ComputeProfileRevision>.Filter.Eq(item => item.Id, $"{id}/{revision}");
-}
-
 internal sealed class ComputeProfileHistory(IMongoCollection<ComputeProfileRevision> revisions)
 {
     public Task StoreAsync(ComputeProfile profile, IClientSessionHandle session, CancellationToken ct) =>

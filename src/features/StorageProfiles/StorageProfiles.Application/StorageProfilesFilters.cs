@@ -93,3 +93,9 @@ internal static class StorageObservationFilters
         Builders<StorageObservationSnapshotDocument>.Filter.Eq(item => item.ConnectionVersion,
             context.ConnectionVersion);
 }
+
+internal static class StorageProfileRevisionFilters
+{
+    public static FilterDefinition<StorageProfileRevision> Identity(string id, long revision) =>
+        Builders<StorageProfileRevision>.Filter.Eq(item => item.Id, $"{id}/{revision}");
+}
