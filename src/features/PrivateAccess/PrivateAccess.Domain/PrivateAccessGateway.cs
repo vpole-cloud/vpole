@@ -1,5 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 
 namespace Pole.Features.PrivateAccess.Domain;
 
@@ -16,7 +17,7 @@ public sealed record PrivateAccessGateway(
     DateTime? LastContactAtUtc,
     string? Version,
     PrivateAccessGatewayState State,
-    IReadOnlyList<PrivateAccessGatewayRoute> Endpoints)
+    IReadOnlyList<PrivateAccessGatewayRoute> Endpoints) : ITenantOwned
 {
     public PrivateAccessGateway Rotate(
         string certificateSha256Pin,

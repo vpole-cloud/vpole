@@ -1,5 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 
 namespace Pole.Features.SourceBuilds.Domain;
 
@@ -16,7 +17,7 @@ public sealed record SourceBuildPromotionReceipt(
     string CommitSha,
     SourceBuildArtifact Artifact,
     string ReleaseId,
-    long WebServiceRevision);
+    long WebServiceRevision) : ITenantOwned;
 
 public static class SourceBuildPromotionReceiptFactory
 {

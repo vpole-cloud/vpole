@@ -3,6 +3,7 @@ namespace Pole.Features.Postgres.Domain
 open System
 open MongoDB.Bson
 open MongoDB.Bson.Serialization.Attributes
+open Pole.Features.Core.Multitenancy
 
 type PostgresDeploymentMode =
     | Operator = 0
@@ -44,6 +45,9 @@ type PostgresCluster =
       Lifecycle : PostgresClusterLifecycle
       Provisioning : PostgresProvisioningState
       PlanningFence : int64 }
+
+    interface ITenantOwned with
+        member this.TenantId = this.TenantId
 
     static member Create(
         tenantId : string,

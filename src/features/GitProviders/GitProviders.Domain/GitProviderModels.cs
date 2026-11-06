@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 using Pole.Workloads;
 
 namespace Pole.Features.GitProviders.Domain;
@@ -37,7 +38,7 @@ public sealed record GitProviderConnection(
     string CreatedByUserId,
     long ReferenceFence,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc) : ITenantOwned;
 
 public static class GitProviderConnectionFactory
 {
@@ -85,7 +86,7 @@ public sealed record GitHubSetupAttempt(
     string TechnicalName,
     GitHubSetupState State,
     DateTime CreatedAtUtc,
-    DateTime ExpiresAtUtc);
+    DateTime ExpiresAtUtc) : ITenantOwned;
 
 [BsonDiscriminator(RootClass = true)]
 [BsonKnownTypes(
@@ -185,7 +186,7 @@ public sealed record SourceRepository(
     long Revision,
     long ReferenceFence,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc) : ITenantOwned;
 
 public static class SourceRepositoryFactory
 {

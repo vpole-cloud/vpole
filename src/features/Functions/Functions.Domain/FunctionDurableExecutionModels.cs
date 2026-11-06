@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 
 namespace Pole.Features.Functions.Domain;
 
@@ -53,7 +54,7 @@ public sealed record FunctionTimerState(
     bool Enabled,
     FunctionExecutionLease? Lease,
     DateTimeOffset CreatedAtUtc,
-    DateTimeOffset UpdatedAtUtc)
+    DateTimeOffset UpdatedAtUtc) : ITenantOwned
 {
     public const string UtcTimeZone = "UTC";
 
@@ -284,7 +285,7 @@ public sealed record FunctionInvocation(
     DateTimeOffset? AttemptStartedAtUtc,
     DateTimeOffset? CompletedAtUtc,
     DateTimeOffset? NextAttemptAtUtc,
-    FunctionInvocationError? Error)
+    FunctionInvocationError? Error) : ITenantOwned
 {
     public static FunctionInvocation CreateTimer(
         string tenantId,
@@ -654,7 +655,7 @@ public sealed record FunctionMeterEvent(
     long? ExecutionDurationMilliseconds,
     DateTimeOffset OccurredAtUtc,
     DateTime OccurredAtUtcDateTime,
-    DateTimeOffset? AggregatedAtUtc)
+    DateTimeOffset? AggregatedAtUtc) : ITenantOwned
 {
     public FunctionMeterDimensions Dimensions =>
         new(TenantId, FunctionAppId, RevisionId, TriggerId, HandlerName, TriggerKind);
@@ -781,7 +782,7 @@ public sealed record FunctionUsageBucket(
     long FailedAttemptCount,
     long SkippedCount,
     long ExecutionDurationMilliseconds,
-    DateTimeOffset UpdatedAtUtc)
+    DateTimeOffset UpdatedAtUtc) : ITenantOwned
 {
     public static FunctionUsageBucket Create(FunctionMeterDimensions dimensions, DateTimeOffset hourUtc)
     {

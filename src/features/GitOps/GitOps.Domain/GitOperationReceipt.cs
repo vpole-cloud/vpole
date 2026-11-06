@@ -1,4 +1,5 @@
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 
 namespace Pole.Features.GitOps.Domain;
 
@@ -16,4 +17,4 @@ public sealed record GitOperationReceipt(
     string? Blocker,
     bool Changed,
     long PlanRevision,
-    GitLifecycleEffect? Lifecycle);
+    GitLifecycleEffect? Lifecycle) : ITenantOwned;

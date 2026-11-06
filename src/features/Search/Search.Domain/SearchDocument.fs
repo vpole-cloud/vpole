@@ -2,6 +2,7 @@ namespace Pole.Features.Search.Domain
 
 open MongoDB.Bson
 open MongoDB.Bson.Serialization.Attributes
+open Pole.Features.Core.Multitenancy
 
 type SearchKeyType =
     | SourceId = 0
@@ -31,6 +32,9 @@ type SearchDocument =
       ResourceGroupId : string option
       ResourceGroupName : string option }
 
+    interface ITenantOwned with
+        member this.TenantId = this.TenantId
+
 type SearchSourceKey =
     { Value : string
       Weight : int }
@@ -52,6 +56,9 @@ type SearchProjectionVersionDocument =
       ResourceRevision : int64
       IsDeleted : bool }
 
+    interface ITenantOwned with
+        member this.TenantId = this.TenantId
+
 [<BsonIgnoreExtraElements>]
 type SearchSourceDocument =
     { [<BsonId>]
@@ -67,6 +74,9 @@ type SearchSourceDocument =
       ResourceGroupName : string option
       SearchKeys : SearchSourceKey array
       OperationalStatus : SearchOperationalStatus option }
+
+    interface ITenantOwned with
+        member this.TenantId = this.TenantId
 
 [<RequireQualifiedAccess>]
 module SearchDocument =

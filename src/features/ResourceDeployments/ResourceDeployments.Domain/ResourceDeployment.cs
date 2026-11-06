@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 using Pole.Dns;
 using Pole.Workloads;
 
@@ -34,7 +35,7 @@ public sealed record ResourceDeployment(
     ImmutableList<ResourceDeploymentEndpoint> Endpoints,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
-    long ReferenceFence)
+    long ReferenceFence) : ITenantOwned
 {
     public ResourceDeployment RequestReconciliation(
         ResolvedResourcePlacement resolvedPlacement,

@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 
 namespace Pole.Features.WebServices.Domain;
 
@@ -22,7 +23,7 @@ public sealed record WebServiceDeploymentToken(
     DateTime? RevokedAtUtc,
     string? RevokedByUserId,
     DateTime? LastUsedAtUtc,
-    string? LastUsedSource);
+    string? LastUsedSource) : ITenantOwned;
 
 public static class WebServiceDeploymentTokenOperations
 {

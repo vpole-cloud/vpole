@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 using Pole.Features.Shared.Models;
 
 namespace Pole.Features.WebServices.Domain;
@@ -20,7 +21,7 @@ public sealed record WebService(
     long Revision,
     WebServiceLifecycle Lifecycle,
     [property: BsonIgnoreIfNull] WebServiceDeclaredPlacement? DeclaredPlacement,
-    long PlanningFence)
+    long PlanningFence) : ITenantOwned
 {
     public WebService BindDeclaredPlacement(WebServiceDeclaredPlacement placement)
     {

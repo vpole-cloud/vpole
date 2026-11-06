@@ -1,5 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 
 namespace Pole.Features.PrivateAccess.Domain;
 
@@ -16,7 +17,7 @@ public sealed record PrivateAccessSession(
     DateTime CreatedAtUtc,
     long Revision,
     PrivateAccessSessionState State,
-    DateTime? CleanupLastAttemptAtUtc);
+    DateTime? CleanupLastAttemptAtUtc) : ITenantOwned;
 
 public sealed record PrivateAccessSessionGrantSnapshot(
     string Id,

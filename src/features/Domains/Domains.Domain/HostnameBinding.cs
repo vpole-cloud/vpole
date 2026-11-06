@@ -1,6 +1,7 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using Pole.Dns;
+using Pole.Features.Core.Multitenancy;
 using Pole.Workloads;
 
 namespace Pole.Features.Domains.Domain;
@@ -30,7 +31,7 @@ public sealed record HostnameBinding(
     string Hostname,
     DomainIdentity Identity,
     long ReferenceFence,
-    DateTime CreatedAtUtc)
+    DateTime CreatedAtUtc) : ITenantOwned
 {
     [BsonIgnore]
     public HostnameBindingKind Kind => Identity switch

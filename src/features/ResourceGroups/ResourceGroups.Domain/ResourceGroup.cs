@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 
 namespace Pole.Features.ResourceGroups.Domain;
 
@@ -19,7 +20,7 @@ public sealed record ResourceGroup(
     long RegistrationFence,
     long Revision,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc)
+    DateTime UpdatedAtUtc) : ITenantOwned
 {
     public ResourceGroup UpdateMetadata(
         string description,

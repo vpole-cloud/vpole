@@ -1,5 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 using Pole.Workloads;
 
 namespace Pole.Features.ResourceGroups.Domain;
@@ -19,7 +20,7 @@ public sealed record ResourceRegistration(
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
     // Written by topology declarations and placement mutations in one transaction.
-    long ReferenceFence);
+    long ReferenceFence) : ITenantOwned;
 
 public static class ResourceRegistrationFactory
 {

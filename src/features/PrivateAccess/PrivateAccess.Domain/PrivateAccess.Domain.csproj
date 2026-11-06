@@ -9,4 +9,8 @@
   <ItemGroup>
     <PackageReference Include="MongoDB.Driver" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../shared/Multitenancy/Multitenancy.csproj" />
+  </ItemGroup>
 </Project>

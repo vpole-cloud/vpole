@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 using Pole.Encryption;
 using Pole.Features.Secrets.Primitives;
 
@@ -104,7 +105,7 @@ public sealed record SecretVersion(
     string SecretId,
     long Version,
     EncryptedValue Value,
-    DateTime CreatedAtUtc)
+    DateTime CreatedAtUtc) : ITenantOwned
 {
     public override string ToString() => $"SecretVersion({SecretId}, {Version})";
 }
@@ -127,7 +128,7 @@ public sealed record Secret(
     DateTime UpdatedAtUtc,
     long ReferenceFence,
     bool DeclaredKeys,
-    ImmutableArray<string> SuppliedKeys)
+    ImmutableArray<string> SuppliedKeys) : ITenantOwned
 {
     public const int MaximumBindings = 256;
     public const long MetadataOnlyVersion = 0;

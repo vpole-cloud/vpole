@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 
 namespace Pole.Features.WebServices.Domain;
 
@@ -53,7 +54,7 @@ public sealed record WebServiceRelease(
     WebServiceReleaseProvenance? Provenance,
     ImmutableList<WebServiceReleaseDeployment> Deployments,
     WebServiceSpec Spec,
-    WebServiceExposure Exposure);
+    WebServiceExposure Exposure) : ITenantOwned;
 
 [BsonDiscriminator(RootClass = true)]
 [BsonKnownTypes(typeof(ExternalImageTagUpdateProvenance),

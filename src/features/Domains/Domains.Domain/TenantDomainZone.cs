@@ -1,6 +1,7 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using Pole.Dns;
+using Pole.Features.Core.Multitenancy;
 
 namespace Pole.Features.Domains.Domain;
 
@@ -35,7 +36,7 @@ public sealed record TenantDomainZone(
     long Revision,
     long ReferenceFence,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc)
+    DateTime UpdatedAtUtc) : ITenantOwned
 {
     [BsonIgnore]
     public TenantDomainZoneKind Kind => Identity switch
