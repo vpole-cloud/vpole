@@ -3,6 +3,7 @@ namespace Pole.Features.Search.Application.Common
 open System
 open FluentValidation
 open Microsoft.AspNetCore.Mvc
+open MongoDB.Bson.Serialization.Attributes
 open Pole.Features.Request
 open Pole.Features.Search.Contracts
 open Pole.Features.Search.Domain
@@ -28,9 +29,21 @@ type SearchQuery =
       PageSize : int
       Types : SearchSourceType list option }
 
-type SearchAggregateResult =
-    { Items : SearchDocument array
-      TotalCount : int64 }
+type SearchFacetCount =
+    { [<BsonElement("value")>]
+      Value : int64 }
+
+type SearchFacetResult =
+    { [<BsonElement("items")>]
+      Items : SearchSourceDocument array
+      [<BsonElement("totalCount")>]
+      TotalCount : SearchFacetCount array }
+
+type SearchMatchedFields =
+    { [<BsonElement("MatchedKeys")>]
+      MatchedKeys : SearchSourceKey array
+      [<BsonElement("BestWeight")>]
+      BestWeight : int }
 
 type SearchDocumentSet =
     { SourceType : SearchSourceType
