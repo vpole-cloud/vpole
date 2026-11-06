@@ -712,7 +712,7 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
 
     private async Task<Seeded> SeedAsync()
     {
-        await StorageObservationIndexes.CreateAsync(fixture.Database);
+        await new Pole.Features.StorageProfiles.Migrations.StorageObservationIndexMigration().Up(fixture.Database);
         var id = ObjectId.GenerateNewId().ToString();
         await fixture.DbContext.DeploymentTargets.InsertOneAsync(TestData.SeedDeploymentTarget(id));
         return new(new(id, 1),
