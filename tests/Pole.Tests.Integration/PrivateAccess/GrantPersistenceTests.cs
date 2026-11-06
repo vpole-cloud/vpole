@@ -524,6 +524,10 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         Assert.InRange(Math.Abs((loaded.ExpiresAtUtc - first.ExpiresAtUtc).TotalMilliseconds),
             0, 1);
         Assert.True(await renew(first));
+        var afterHeartbeat = Assert.IsType<PrivateAccessBrokerOwnerLease>(await load(TenantId, targetId));
+        Assert.Equal(first.Epoch, afterHeartbeat.Epoch);
+        Assert.Equal(first.InstanceId, afterHeartbeat.InstanceId);
+        Assert.Equal(first.InternalOrigin, afterHeartbeat.InternalOrigin);
         Assert.IsType<PrivateAccessBrokerOwnerBusy>((await claim(
             new ClaimPrivateAccessBrokerOwnerRequest(
                 Gateway: gateway,
@@ -541,7 +545,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
                 Gateway: gateway,
                 InstanceId: "replacement",
                 InternalOrigin: "https://replacement.internal:9445"))).Value);
-        Assert.True(recovered.Epoch > first.Epoch);
+        Assert.Equal(first.Epoch + 1, recovered.Epoch);
         await release(first);
         Assert.Equal(recovered.Epoch, (await load(TenantId, targetId))?.Epoch);
 
