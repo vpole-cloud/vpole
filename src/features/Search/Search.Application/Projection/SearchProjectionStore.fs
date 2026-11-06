@@ -10,6 +10,7 @@ open MongoDB.Bson
 open Pole.Architecture
 open MongoDB.Bson.Serialization
 open MongoDB.Driver
+open Pole.Database
 open Pole.Features.Events.Abstractions
 open Pole.Features.Outbox.Contracts
 open Pole.Features.Request
@@ -361,6 +362,28 @@ type internal SearchProjectionStore(
             let matches = SearchProjectionFilters.sourceMatch query
             let matchStage = bsonDocument [ BsonElement("$match", matches.Render(arguments)) ]
 
+            let searchKeyValueField =
+                MongoFields.Field<SearchSourceKey, _>(fun key -> key.Value)
+
+            let searchKeyWeightField =
+                MongoFields.Field<SearchSourceKey, _>(fun key -> key.Weight)
+
+            let matchedKeysField =
+                MongoFields.Field<SearchMatchedFields, _>(fun fields -> fields.MatchedKeys)
+
+            let bestWeightField =
+                MongoFields.Field<SearchMatchedFields, _>(fun fields -> fields.BestWeight)
+
+            let itemsField = MongoFields.Field<SearchFacetResult, _>(fun result -> result.Items)
+            let totalCountField = MongoFields.Field<SearchFacetResult, _>(fun result -> result.TotalCount)
+            let countValueField = MongoFields.Field<SearchFacetCount, _>(fun count -> count.Value)
+            let titleField = MongoFields.Field<SearchSourceDocument, _>(fun document -> document.Title)
+
+            let sourceSortOrderField =
+                MongoFields.Field<SearchSourceDocument, _>(fun document -> document.SourceSortOrder)
+
+            let sourceIdField = MongoFields.Field<SearchSourceDocument, _>(fun document -> document.SourceId)
+
             let skip = (max query.PageNumber 1 - 1) * max query.PageSize 1
             let limit = max query.PageSize 1
 
@@ -374,12 +397,15 @@ type internal SearchProjectionStore(
                              "$addFields",
                              bsonDocument
                                  [ BsonElement(
-                                       "MatchedKeys",
+                                       matchedKeysField,
                                        bsonDocument
                                            [ BsonElement(
                                                  "$filter",
                                                  bsonDocument
-                                                     [ BsonElement("input", "$SearchKeys")
+                                                     [ BsonElement(
+                                                           "input",
+                                                           MongoFields.Reference<SearchSourceDocument, _>(fun document -> document.SearchKeys)
+                                                       )
                                                        BsonElement("as", "key")
                                                        BsonElement(
                                                            "cond",
@@ -387,7 +413,7 @@ type internal SearchProjectionStore(
                                                                [ BsonElement(
                                                                      "$regexMatch",
                                                                      bsonDocument
-                                                                         [ BsonElement("input", "$$key.Value")
+                                                                         [ BsonElement("input", "$$key." + searchKeyValueField)
                                                                            BsonElement("regex", regex) ]
                                                                  ) ]
                                                        ) ]
@@ -399,66 +425,69 @@ type internal SearchProjectionStore(
                              "$addFields",
                              bsonDocument
                                  [ BsonElement(
-                                       "BestWeight",
-                                       bsonDocument [ BsonElement("$max", "$MatchedKeys.Weight") ]
+                                       bestWeightField,
+                                       bsonDocument
+                                           [ BsonElement(
+                                                 "$max",
+                                                 MongoFields.Reference<SearchMatchedFields, _>(fun fields -> fields.MatchedKeys)
+                                                 + "." + searchKeyWeightField
+                                             ) ]
                                    ) ]
                          ) ]
                    bsonDocument
                        [ BsonElement(
                              "$sort",
                              bsonDocument
-                                 [ BsonElement("BestWeight", -1)
-                                   BsonElement("Title", -1)
-                                   BsonElement("SourceSortOrder", 1)
-                                   BsonElement("SourceId", 1) ]
+                                 [ BsonElement(bestWeightField, -1)
+                                   BsonElement(titleField, -1)
+                                   BsonElement(sourceSortOrderField, 1)
+                                   BsonElement(sourceIdField, 1) ]
                          ) ]
                    bsonDocument
                        [ BsonElement(
                              "$project",
-                             bsonDocument [ BsonElement("MatchedKeys", 0); BsonElement("BestWeight", 0) ]
+                             bsonDocument [ BsonElement(matchedKeysField, 0); BsonElement(bestWeightField, 0) ]
                          ) ]
                    bsonDocument
                        [ BsonElement(
                              "$facet",
                              bsonDocument
                                  [ BsonElement(
-                                       "items",
+                                       itemsField,
                                        bsonArray
                                            [ bsonDocument [ BsonElement("$skip", skip) ]
                                              bsonDocument [ BsonElement("$limit", limit) ] ]
                                    )
                                    BsonElement(
-                                       "totalCount",
-                                       bsonArray [ bsonDocument [ BsonElement("$count", "value") ] ]
+                                       totalCountField,
+                                       bsonArray [ bsonDocument [ BsonElement("$count", countValueField) ] ]
                                    ) ]
                          ) ] |]
 
             let! facet =
                 sources
-                    .Aggregate<BsonDocument>(
+                    .Aggregate<SearchFacetResult>(
                         pipeline,
                         AggregateOptions(Comment = "Pole|Feature=Search|Operation=GetSearch")
                     )
                     .FirstOrDefaultAsync(cancellationToken)
 
             let items =
-                if isNull facet || not (facet.Contains("items")) then
+                if isNull (box facet) || isNull facet.Items then
                     [||]
                 else
-                    facet["items"].AsBsonArray
-                    |> Seq.map (fun value -> BsonSerializer.Deserialize<SearchSourceDocument>(value.AsBsonDocument))
-                    |> Seq.toArray
+                    facet.Items
 
             let totalCount =
-                if isNull facet || not (facet.Contains("totalCount")) then
+                if isNull (box facet) || isNull facet.TotalCount then
                     0L
                 else
-                    let counts = facet["totalCount"].AsBsonArray
+                    let counts = facet.TotalCount
 
-                    if counts.Count = 0 then
+                    if counts.Length = 0 then
                         0L
                     else
-                        counts[0].AsBsonDocument["value"].ToInt64()
+                        counts[0].Value
 
             return
                 PaginatedResponse<SearchHitDto>(

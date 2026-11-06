@@ -276,6 +276,59 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
     }
 
     [Fact]
+    public async Task SearchResults_OrdersByMatchedWeightAndPaginatesWithTotalCount()
+    {
+        var highWeightId = ObjectId.GenerateNewId().ToString();
+        var sameWeightId = ObjectId.GenerateNewId().ToString();
+        var middleWeightId = ObjectId.GenerateNewId().ToString();
+        var lowWeightId = ObjectId.GenerateNewId().ToString();
+        var nonPrefixId = ObjectId.GenerateNewId().ToString();
+
+        await CreateProjection(CreateSearchSnapshot(
+            TestData.TenantId,
+            WebServiceSearchProjection.SourceType.ResourceTypeId,
+            highWeightId,
+            "a-title",
+            new(SearchProjectionFieldType.Name, "match-high")));
+        await CreateProjection(CreateSearchSnapshot(
+            TestData.TenantId,
+            WebServiceSearchProjection.SourceType.ResourceTypeId,
+            sameWeightId,
+            "z-title",
+            new(SearchProjectionFieldType.Name, "match-same-weight")));
+        await CreateProjection(CreateSearchSnapshot(
+            TestData.TenantId,
+            WebServiceSearchProjection.SourceType.ResourceTypeId,
+            middleWeightId,
+            "m-title",
+            new(SearchProjectionFieldType.Domain, "match-middle")));
+        await CreateProjection(CreateSearchSnapshot(
+            TestData.TenantId,
+            WebServiceSearchProjection.SourceType.ResourceTypeId,
+            lowWeightId,
+            "z-title",
+            new(SearchProjectionFieldType.Tag, "match-low")));
+        await CreateProjection(CreateSearchSnapshot(
+            TestData.TenantId,
+            WebServiceSearchProjection.SourceType.ResourceTypeId,
+            nonPrefixId,
+            "b-title",
+            new(SearchProjectionFieldType.Name, "unmatched")));
+
+        var firstPage = await SearchAsync(TestData.TenantId, "mat", pageSize: 2);
+        Assert.Equal(4, firstPage.TotalCount);
+        Assert.Equal([sameWeightId, highWeightId], firstPage.Items.Select(item => item.SourceId));
+
+        var secondPage = await SearchAsync(TestData.TenantId, "mat", pageNumber: 2, pageSize: 2);
+        Assert.Equal(4, secondPage.TotalCount);
+        Assert.Equal([middleWeightId, lowWeightId], secondPage.Items.Select(item => item.SourceId));
+
+        var empty = await SearchAsync(TestData.TenantId, "absent");
+        Assert.Empty(empty.Items);
+        Assert.Equal(0, empty.TotalCount);
+    }
+
+    [Fact]
     public void UnregisteredApiTypeFilter_IsRejected()
     {
         var validator = new GetSearchRequestValidator(
@@ -323,14 +376,16 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
     private async Task<PaginatedResponse<SearchHitDto>> SearchAsync(
         string tenantId,
         string query,
-        string[]? types = null)
+        string[]? types = null,
+        int pageNumber = 1,
+        int pageSize = 20)
     {
         var result = await Mediator.Send(new GetSearchRequest
         {
             TenantId = tenantId,
             Query = query,
-            PageNumber = 1,
-            PageSize = 20,
+            PageNumber = pageNumber,
+            PageSize = pageSize,
             Types = types ?? []
         });
         return result.AssertHandlerOutcome().Item;
@@ -359,6 +414,20 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             null,
             [new SearchProjectionField(SearchProjectionFieldType.Name, title)],
             resourceRevision);
+
+    private static SearchProjectionSnapshot CreateSearchSnapshot(
+        string tenantId,
+        ResourceTypeId resourceTypeId,
+        string sourceId,
+        string title,
+        params SearchProjectionField[] fields) =>
+        new(
+            new SearchProjectionIdentity(tenantId, resourceTypeId, sourceId),
+            title,
+            null,
+            null,
+            fields,
+            1);
 
     private static WebServiceCreatedEvent CreateWebServiceEvent(
         string webServiceId,
