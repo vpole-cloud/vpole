@@ -123,31 +123,37 @@ public sealed class GitSourceScheduling(
             .Render(new(registry.GetSerializer<T>(), registry)).FieldName;
         var allowed = GitSchedulingFilters.EligibleSources(eligibility);
         var active = allowed.Render(new(registry.GetSerializer<RepositorySource>(), registry));
-        const string eligible = "EligibleSchedulingSource";
+        var eligible = MongoFields.Field<GitSchedulingLookup, RepositorySource[]>(
+            result => result.EligibleSchedulingSource);
+        var sourceIdField = MongoFields.Field<GitSourceIdentity, string>(source => source.SourceId);
+        var identityTenantField = MongoFields.Field<GitSourceIdentity, string>(source => source.TenantId);
+        var sourceTenantField = MongoFields.Field<RepositorySource, string>(source => source.TenantId);
+        var sourceActivityField = MongoFields.Field<RepositorySource, GitSourceActivity>(source => source.Activity);
         var lookup = new BsonDocument("$lookup", new BsonDocument
         {
             { "from", sources.CollectionNamespace.CollectionName },
-            { "localField", $"{path}.{nameof(GitSourceIdentity.SourceId)}" },
-            { "foreignField", "_id" },
+            { "localField", $"{path}.{sourceIdField}" },
+            { "foreignField", MongoFields.Field<RepositorySource, string>(source => source.Id) },
             { "pipeline", new BsonArray { new BsonDocument("$match", active) } },
             { "as", eligible }
         });
         var sameTenant = new BsonDocument("$expr", new BsonDocument("$eq", new BsonArray
         {
-            $"${path}.{nameof(GitSourceIdentity.TenantId)}",
-            new BsonDocument("$arrayElemAt", new BsonArray { $"${eligible}.{nameof(RepositorySource.TenantId)}", 0 })
+            $"${path}.{identityTenantField}",
+            new BsonDocument("$arrayElemAt", new BsonArray { $"${eligible}.{sourceTenantField}", 0 })
         }));
-        var candidates = documents.Aggregate().Match(predicate).AppendStage<T>(lookup)
+        var candidates = documents.Aggregate()
+            .Match(predicate)
+            .AppendStage<T>(lookup)
             .AppendStage<T>(new BsonDocument("$match", new BsonDocument
             {
                 { $"{eligible}.0", new BsonDocument("$exists", true) },
                 { "$expr", sameTenant["$expr"] }
-            }))
-            ;
+            }));
         if (eligibility == GitSchedulingEligibility.AdmittedLifecycle)
             candidates = candidates.AppendStage<T>(new BsonDocument("$match", new BsonDocument("$or", new BsonArray
             {
-                new BsonDocument($"{eligible}.{nameof(RepositorySource.Activity)}", (int)GitSourceActivity.Active),
+                new BsonDocument($"{eligible}.{sourceActivityField}", (int)GitSourceActivity.Active),
                 GitRepositoryFilters.LifecycleInput()
                     .Render(new(registry.GetSerializer<GitReconciliationRun>(), registry))
             })));
@@ -260,3 +266,5 @@ public sealed class GitSourceScheduling(
     private static string Hash<T>(T value) => Convert.ToHexStringLower(
         SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(value)));
 }
+
+internal sealed record GitSchedulingLookup(RepositorySource[] EligibleSchedulingSource);

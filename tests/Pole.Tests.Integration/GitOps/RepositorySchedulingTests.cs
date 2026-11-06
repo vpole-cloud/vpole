@@ -28,6 +28,22 @@ public sealed partial class DeclarativePipelineTests
         id);
 
     [Fact]
+    public async Task SchedulingLookupRejectsSourceIdentityFromAnotherTenant()
+    {
+        await Apply();
+        var state = await State();
+        await Synchronization.UpdateOneAsync(item => item.Source.SourceId == source,
+            Builders<GitSynchronizationState>.Update
+                .Set(item => item.Source, new GitSourceIdentity(Id(), source))
+                .Set(item => item.RequestedGeneration, state.CompletedGeneration + 1)
+                .Set(item => item.NextPollAtUtc, DateTime.UtcNow.AddMinutes(-1)));
+
+        var candidates = await Scheduler.RecoverableSourcesAsync(default);
+
+        Assert.DoesNotContain(candidates, candidate => candidate.SourceId == source);
+    }
+
+    [Fact]
     public async Task RepositorySignalsCoalesceAndDuplicateDeliveryDoesNotCreateAnotherGeneration()
     {
         await Apply();
