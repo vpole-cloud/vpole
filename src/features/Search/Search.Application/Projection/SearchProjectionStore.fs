@@ -404,7 +404,8 @@ type internal SearchProjectionStore(
                                                  bsonDocument
                                                      [ BsonElement(
                                                            "input",
-                                                           MongoFields.Reference<SearchSourceDocument, _>(fun document -> document.SearchKeys)
+                                                           MongoFields.Reference<SearchSourceDocument, _>(
+                                                               fun document -> document.SearchKeys)
                                                        )
                                                        BsonElement("as", "key")
                                                        BsonElement(
@@ -415,7 +416,8 @@ type internal SearchProjectionStore(
                                                                      bsonDocument
                                                                          [ BsonElement(
                                                                                "input",
-                                                                               BsonString("$$key." + searchKeyValueField))
+                                                                               BsonString(
+                                                                                   "$$key." + searchKeyValueField))
                                                                            BsonElement("regex", regex) ]
                                                                  ) ]
                                                        ) ]

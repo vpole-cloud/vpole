@@ -13,7 +13,8 @@ public sealed class MongoFieldPathTests
     [Fact]
     public void Nested_paths_use_each_members_BSON_mapping()
     {
-        Assert.Equal("identity.tenant", MongoFields.Field<MappedDocument, string>(document => document.Identity.Tenant));
+        Assert.Equal("identity.tenant",
+            MongoFields.Field<MappedDocument, string>(document => document.Identity.Tenant));
         Assert.Equal("$identity.tenant",
             MongoFields.Reference<MappedDocument, string>(document => document.Identity.Tenant));
     }

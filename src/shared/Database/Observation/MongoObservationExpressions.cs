@@ -17,7 +17,8 @@ internal static class MongoObservationExpressions
     internal static string Field<T, TValue>(Expression<Func<T, TValue>> expression) =>
         MongoFields.Field(expression);
 
-    internal static string Reference<T, TValue>(Expression<Func<T, TValue>> expression) => MongoFields.Reference(expression);
+    internal static string Reference<T, TValue>(Expression<Func<T, TValue>> expression) =>
+        MongoFields.Reference(expression);
 
     internal static BsonDocument Literal(BsonValue value) => new("$literal", value);
 
