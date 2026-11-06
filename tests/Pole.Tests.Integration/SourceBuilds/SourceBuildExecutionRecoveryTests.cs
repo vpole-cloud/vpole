@@ -23,6 +23,24 @@ public sealed class SourceBuildExecutionRecoveryTests(Pole.Testing.MongoReplicaS
     private IMongoCollection<SourceBuildJob> Jobs => fixture.Database.GetCollection<SourceBuildJob>("SourceBuildJobs");
 
     [Fact]
+    public async Task ClaimKeepsWorkerAsLiteralAndUsesOneServerTimestamp()
+    {
+        await using var services = Services();
+        var job = Job();
+        await Jobs.InsertOneAsync(job);
+
+        var claimed = Assert.IsType<SourceBuildJob>(await services.GetRequiredService<ClaimQueuedSourceBuildJob>()(
+            new(job.Id, "$worker")));
+
+        var lease = Assert.IsType<ClaimedSourceBuildExecution>(claimed.Execution);
+        Assert.Equal("$worker", lease.WorkerId);
+        Assert.Equal(1, lease.Attempt);
+        Assert.Equal(claimed.UpdatedAtUtc, Assert.IsType<CloningSourceBuild>(claimed.State).StartedAtUtc);
+        Assert.Equal(claimed.UpdatedAtUtc.AddMinutes(2), lease.ExpiresAtUtc);
+        Assert.Equal(job.InputVersion, claimed.InputVersion);
+    }
+
+    [Fact]
     public async Task ConcurrentClaim_HeartbeatAndTakeover_FenceTheOldAttempt()
     {
         await using var services = Services();
