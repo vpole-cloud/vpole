@@ -413,7 +413,9 @@ type internal SearchProjectionStore(
                                                                [ BsonElement(
                                                                      "$regexMatch",
                                                                      bsonDocument
-                                                                         [ BsonElement("input", "$$key." + searchKeyValueField)
+                                                                         [ BsonElement(
+                                                                               "input",
+                                                                               BsonString("$$key." + searchKeyValueField))
                                                                            BsonElement("regex", regex) ]
                                                                  ) ]
                                                        ) ]
@@ -429,8 +431,10 @@ type internal SearchProjectionStore(
                                        bsonDocument
                                            [ BsonElement(
                                                  "$max",
-                                                 MongoFields.Reference<SearchMatchedFields, _>(fun fields -> fields.MatchedKeys)
-                                                 + "." + searchKeyWeightField
+                                                 BsonString(
+                                                     MongoFields.Reference<SearchMatchedFields, _>(
+                                                         fun fields -> fields.MatchedKeys)
+                                                     + "." + searchKeyWeightField)
                                              ) ]
                                    ) ]
                          ) ]
