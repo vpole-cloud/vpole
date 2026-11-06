@@ -22,6 +22,28 @@ public sealed class TenantMembershipOutboxTests(MongoReplicaSetFixture fixture) 
     private const string EventType = "pole.tenants/v1/membership-changed";
 
     [Fact]
+    public async Task RoleUpdateChangesOnlyTheMatchedMemberOfTheImmutableList()
+    {
+        var tenant = CreateTenant();
+        var first = TenantFactory.CreateMember(tenant.Id, "first", "first@example.test", TenantRole.Viewer);
+        var selected = TenantFactory.CreateMember(tenant.Id, "selected", "selected@example.test", TenantRole.Member);
+        tenant = tenant with { Members = tenant.Members.Add(first).Add(selected) };
+        await Services.GetRequiredService<PersistCreatedTenant>()(tenant);
+        var eventsBefore = await DbContext.CountOutboxMessagesAsync(EventType);
+
+        var result = await Services.GetRequiredService<PersistUpdatedTenantMemberRole>()(
+            new(tenant.Id, selected.Id, TenantRole.Admin));
+
+        Assert.Equal(TenantRole.Admin, Assert.IsType<TenantMember>(result.Value).Role);
+        var stored = await DbContext.Tenants.Find(item => item.Id == tenant.Id).SingleAsync();
+        Assert.Equal(TenantRole.Owner, stored.Members[0].Role);
+        Assert.Equal(TenantRole.Viewer, stored.Members[1].Role);
+        Assert.Equal(selected.Id, stored.Members[2].Id);
+        Assert.Equal(TenantRole.Admin, stored.Members[2].Role);
+        Assert.Equal(eventsBefore + 1, await DbContext.CountOutboxMessagesAsync(EventType));
+    }
+
+    [Fact]
     public async Task AcceptedMembershipChangesEmitSubjectHintsAndNoOpsDoNot()
     {
         var tenant = CreateTenant();

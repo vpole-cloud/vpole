@@ -1,4 +1,5 @@
 using MongoDB.Driver;
+using MongoDB.Driver.Linq;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Tenants;
 using Pole.Features.Tenants.Domain;
@@ -11,7 +12,7 @@ internal static class TenantUpdates
         Builders<Tenant>.Update.Push(tenant => tenant.Members, member);
 
     public static UpdateDefinition<Tenant> SetMemberRole(TenantRole role) =>
-        Builders<Tenant>.Update.Set("Members.$.Role", role);
+        Builders<Tenant>.Update.Set(tenant => tenant.Members.FirstMatchingElement().Role, role);
 
     public static UpdateDefinition<Tenant> RemoveMember(string memberId) =>
         Builders<Tenant>.Update.PullFilter(
