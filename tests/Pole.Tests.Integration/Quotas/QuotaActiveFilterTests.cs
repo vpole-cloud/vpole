@@ -15,7 +15,7 @@ public sealed class QuotaActiveFilterTests(MongoReplicaSetFixture fixture) : Med
     [Fact]
     public async Task ActiveFiltersExcludeExpiredFinalizedAndOtherTenantReservations()
     {
-        var reservations = fixture.Database.GetCollection<QuotaReservation>("QuotaReservations");
+        var reservations = Fixture.Database.GetCollection<QuotaReservation>("QuotaReservations");
         var now = DateTime.UtcNow;
         var tenant = ObjectId.GenerateNewId().ToString();
         var active = Create(tenant, new ActiveQuotaReservationState(now.AddMinutes(5), now.AddHours(1)));
