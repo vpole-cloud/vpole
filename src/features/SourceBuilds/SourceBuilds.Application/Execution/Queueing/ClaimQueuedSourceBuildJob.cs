@@ -64,25 +64,33 @@ internal sealed class MongoClaimQueuedSourceBuildJob(
     private static UpdateDefinition<SourceBuildJob> ClaimTransition(ClaimSourceBuildJobRequest request) =>
         new PipelineUpdateDefinition<SourceBuildJob>(new[]
         {
-            new BsonDocument("$unset", "State"),
+            new BsonDocument("$unset", MongoFields.Field<SourceBuildJob, SourceBuildJobState>(job => job.State)),
             new BsonDocument("$set", new BsonDocument
             {
-                ["Execution"] = new BsonDocument
+                [MongoFields.Field<SourceBuildJob, SourceBuildExecution>(job => job.Execution)] = new BsonDocument
                 {
                     ["_t"] = new BsonArray
                     {
                         nameof(SourceBuildExecution), nameof(ClaimedSourceBuildExecution)
                     },
-                    ["WorkerId"] = new BsonDocument("$literal", request.WorkerId),
-                    ["Attempt"] = new BsonDocument("$add", new BsonArray { "$Execution.Attempt", 1L }),
-                    ["ExpiresAtUtc"] = SourceBuildExecutionLease.Expiry
+                    [MongoFields.Field<ClaimedSourceBuildExecution, string>(lease => lease.WorkerId)] =
+                        new BsonDocument("$literal", request.WorkerId),
+                    [MongoFields.Field<ClaimedSourceBuildExecution, long>(lease => lease.Attempt)] =
+                        new BsonDocument("$add", new BsonArray
+                        {
+                            MongoFields.Reference<SourceBuildJob, long>(
+                                job => ((ClaimedSourceBuildExecution)job.Execution).Attempt),
+                            1L
+                        }),
+                    [MongoFields.Field<ClaimedSourceBuildExecution, DateTime>(lease => lease.ExpiresAtUtc)] =
+                        SourceBuildExecutionLease.Expiry
                 },
-                ["State"] = new BsonDocument
+                [MongoFields.Field<SourceBuildJob, SourceBuildJobState>(job => job.State)] = new BsonDocument
                 {
                     ["_t"] = new BsonArray { nameof(SourceBuildJobState), nameof(CloningSourceBuild) },
-                    ["StartedAtUtc"] = "$$NOW"
+                    [MongoFields.Field<CloningSourceBuild, DateTime>(state => state.StartedAtUtc)] = "$$NOW"
                 },
-                ["UpdatedAtUtc"] = "$$NOW"
+                [MongoFields.Field<SourceBuildJob, DateTime>(job => job.UpdatedAtUtc)] = "$$NOW"
             })
         });
 }
