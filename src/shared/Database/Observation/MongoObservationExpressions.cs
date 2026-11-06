@@ -15,9 +15,9 @@ namespace Pole.Database.Observation;
 internal static class MongoObservationExpressions
 {
     internal static string Field<T, TValue>(Expression<Func<T, TValue>> expression) =>
-        new ExpressionFieldDefinition<T, TValue>(expression).Render(Arguments<T>()).FieldName;
+        MongoFields.Field(expression);
 
-    internal static string Reference<T, TValue>(Expression<Func<T, TValue>> expression) => "$" + Field(expression);
+    internal static string Reference<T, TValue>(Expression<Func<T, TValue>> expression) => MongoFields.Reference(expression);
 
     internal static BsonDocument Literal(BsonValue value) => new("$literal", value);
 
@@ -43,9 +43,14 @@ internal static class MongoObservationExpressions
         }));
 
     internal static ProjectionDefinition<TDemand, MongoObservationDemandGroup> DemandSubjects<TDemand>(
-        Expression<Func<TDemand, string>> subject) => new BsonDocument
+        Expression<Func<TDemand, string>> subject,
+        Expression<Func<TDemand, string>>? tenant) => new BsonDocument
     {
-        { "_id", Reference(subject) }, { "TenantId", new BsonDocument("$first", "$TenantId") }
+        { Field<MongoObservationDemandGroup, string>(group => group.Id), Reference(subject) },
+        {
+            Field<MongoObservationDemandGroup, string?>(group => group.TenantId),
+            new BsonDocument("$first", tenant is null ? BsonNull.Value : Reference(tenant))
+        }
     };
 
     // These updates contain literal $set assignments only; never splice their values as expressions.
