@@ -1,3 +1,4 @@
+using Pole.Features.Core.Multitenancy;
 using Pole.Workloads;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
@@ -18,7 +19,7 @@ public sealed record IsolationScope(
     IsolationScopeLifecycleState Lifecycle,
     long Revision,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc)
+    DateTime UpdatedAtUtc) : ITenantOwned
 {
     public IsolationScope RequestDeletion(DateTime requestedAtUtc)
     {

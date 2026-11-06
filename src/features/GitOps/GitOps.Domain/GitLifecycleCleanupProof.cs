@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 
 namespace Pole.Features.GitOps.Domain;
 
@@ -12,7 +13,7 @@ public sealed record GitLifecycleCleanupProof(
     string ActionId,
     GitResourceIdentity Subject,
     string CleanupId,
-    ImmutableArray<GitCleanupDocumentTransition> Transitions);
+    ImmutableArray<GitCleanupDocumentTransition> Transitions) : ITenantOwned;
 
 public sealed record GitCleanupDocumentTransition(
     string DocumentId,

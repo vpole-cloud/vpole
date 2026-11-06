@@ -1,5 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 
 namespace Pole.Features.PrivateAccess.Domain;
 
@@ -14,7 +15,7 @@ public sealed record PrivateAccessBrokerOwner(
     long Epoch,
     string? InstanceId,
     string? InternalOrigin,
-    DateTime LeaseExpiresAtUtc)
+    DateTime LeaseExpiresAtUtc) : ITenantOwned
 {
     public PrivateAccessBrokerOwner Reset(long generation, long revision) => this with
     {

@@ -3,6 +3,7 @@ using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Bson.Serialization.Serializers;
+using Pole.Features.Core.Multitenancy;
 using Pole.Features.Quotas.Primitives;
 
 namespace Pole.Features.Quotas.Domain;
@@ -11,13 +12,13 @@ public sealed record TenantQuotaPolicy(
     [property: BsonId] string TenantId,
     ImmutableList<QuotaValue> Limits,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc) : ITenantOwned;
 
 public sealed record TenantQuotaUsage(
     [property: BsonId] string TenantId,
     ImmutableList<QuotaValue> Values,
     long AdmissionRevision,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc) : ITenantOwned;
 
 public static class QuotaReservationStateKinds
 {
@@ -62,7 +63,7 @@ public sealed record QuotaReservation(
     [property: BsonSerializer(typeof(QuotaResourceKeyBsonSerializer))]
     QuotaResourceKey ResourceKey,
     DateTime CreatedAtUtc,
-    QuotaReservationState State);
+    QuotaReservationState State) : ITenantOwned;
 
 public sealed class QuotaResourceKeyBsonSerializer
     : StructSerializerBase<QuotaResourceKey>

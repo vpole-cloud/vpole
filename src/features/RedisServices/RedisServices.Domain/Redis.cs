@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 using Pole.Features.Shared.Models;
 
 namespace Pole.Features.RedisServices.Domain;
@@ -17,7 +18,7 @@ public sealed record Redis(
     ImmutableList<ServiceEvent> Events,
     long Revision,
     long PlanningFence,
-    RedisLifecycle Lifecycle)
+    RedisLifecycle Lifecycle) : ITenantOwned
 {
     public Redis UpdateDesiredState(
         RedisSpec spec,

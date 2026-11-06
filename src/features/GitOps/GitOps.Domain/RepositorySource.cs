@@ -1,4 +1,5 @@
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitOps.Primitives;
 
 namespace Pole.Features.GitOps.Domain;
@@ -36,7 +37,7 @@ public sealed record RepositorySource(
     GitSourceAudit Audit,
     string CreationKey,
     string CreationHash,
-    string DisplayUrl)
+    string DisplayUrl) : ITenantOwned
 {
     public RepositorySource Pause() => Activity switch
     {

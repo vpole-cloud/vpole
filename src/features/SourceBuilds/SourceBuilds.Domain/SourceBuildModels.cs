@@ -1,3 +1,4 @@
+using Pole.Features.Core.Multitenancy;
 using Pole.Workloads;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
@@ -46,7 +47,7 @@ public sealed record SourceBuildConfiguration(
     long BuildGeneration,
     SourceBuildConfigurationOrigin Origin,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc) : ITenantOwned;
 
 [BsonDiscriminator(RootClass = true)]
 [BsonKnownTypes(typeof(ManualSourceBuildConfigurationOrigin), typeof(GitSourceBuildConfigurationOrigin))]
@@ -112,7 +113,7 @@ public sealed record SourceBuildJob(
     SourceBuildTrigger Trigger,
     SourceBuildJobState State,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc) : ITenantOwned;
 
 public sealed record SourceBuildInputVersion(
     long ConfigurationRevision,

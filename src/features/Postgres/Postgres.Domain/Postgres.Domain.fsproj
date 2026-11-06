@@ -17,4 +17,7 @@
         <Compile Include="PostgresCluster.fs" />
     </ItemGroup>
 
+    <ItemGroup>
+        <ProjectReference Include="../../../shared/Multitenancy/Multitenancy.csproj" />
+    </ItemGroup>
 </Project>

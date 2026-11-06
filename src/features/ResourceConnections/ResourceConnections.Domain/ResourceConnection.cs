@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 using Pole.Workloads;
 
 namespace Pole.Features.ResourceConnections.Domain;
@@ -20,7 +21,7 @@ public sealed record ResourceConnection(
     string EndpointId,
     long Revision,
     long Generation,
-    ResourceConnectionLifecycle Lifecycle)
+    ResourceConnectionLifecycle Lifecycle) : ITenantOwned
 {
     public long ReferenceFence { get; init; }
 

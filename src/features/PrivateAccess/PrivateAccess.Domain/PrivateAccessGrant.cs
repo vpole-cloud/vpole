@@ -1,5 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 
 namespace Pole.Features.PrivateAccess.Domain;
 
@@ -18,7 +19,7 @@ public sealed record PrivateAccessGrant(
     DateTime ExpiresAtUtc,
     long Revision,
     long ReferenceFence,
-    PrivateAccessGrantState State)
+    PrivateAccessGrantState State) : ITenantOwned
 {
     public bool IsActive(DateTime nowUtc) => State is ActivePrivateAccessGrant && ExpiresAtUtc > nowUtc;
 

@@ -1,6 +1,7 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using Pole.Encryption;
+using Pole.Features.Core.Multitenancy;
 
 namespace Pole.Features.ContainerRegistries.Domain;
 
@@ -20,7 +21,7 @@ public sealed record RegistryProject(
     RegistryProjectState State,
     string CreatedByUserId,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc) : ITenantOwned;
 
 [BsonDiscriminator(RootClass = true)]
 [BsonKnownTypes(
@@ -118,7 +119,7 @@ public sealed record RegistryCredential(
     long SecretVersion,
     EncryptedValue EncryptedSecret,
     DateTime CreatedAtUtc,
-    DateTime? ExpiresAtUtc);
+    DateTime? ExpiresAtUtc) : ITenantOwned;
 
 public static class RegistryCredentialFactory
 {

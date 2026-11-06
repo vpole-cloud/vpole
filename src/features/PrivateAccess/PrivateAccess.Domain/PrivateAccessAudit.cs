@@ -1,5 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 
 namespace Pole.Features.PrivateAccess.Domain;
 
@@ -12,7 +13,7 @@ public sealed record PrivateAccessAudit(
     string? SessionId,
     string ActorUserId,
     DateTime AtUtc,
-    PrivateAccessAuditState State);
+    PrivateAccessAuditState State) : ITenantOwned;
 
 public static class PrivateAccessAuditFactory
 {

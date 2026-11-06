@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 
 namespace Pole.Features.ResourceConnections.Domain;
 
@@ -13,4 +14,4 @@ public sealed record ResourceConnectionCleanupTombstone(
     string TenantId,
     long Generation,
     ImmutableList<ConnectionTargetSnapshot> Targets,
-    DateTime CompletedAtUtc);
+    DateTime CompletedAtUtc) : ITenantOwned;

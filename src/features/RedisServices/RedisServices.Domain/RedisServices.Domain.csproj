@@ -9,6 +9,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <ProjectReference Include="../../../shared/Multitenancy/Multitenancy.csproj" />
       <ProjectReference Include="..\..\..\shared\Models\Models.csproj" />
     </ItemGroup>
 

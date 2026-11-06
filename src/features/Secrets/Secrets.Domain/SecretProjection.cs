@@ -1,5 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 
 namespace Pole.Features.Secrets.Domain;
 
@@ -40,7 +41,7 @@ public sealed record SecretProjection(
     SecretProjectionState State,
     DateTime? LastAttemptAtUtc,
     SecretProjectionLease Lease,
-    long StorageRevision)
+    long StorageRevision) : ITenantOwned
 {
     public SecretProjection Claim(string claimId, DateTime now) => this with
     {

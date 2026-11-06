@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 
 namespace Pole.Features.SourceBuilds.Domain;
 
@@ -55,7 +56,7 @@ public sealed record SourceBuildLog(
     bool Truncated,
     long Revision,
     DateTime CreatedAtUtc,
-    DateTime ExpiresAtUtc)
+    DateTime ExpiresAtUtc) : ITenantOwned
 {
     public SourceBuildLog Append(long sequence, SourceBuildLogStream stream, string text, DateTime now)
     {

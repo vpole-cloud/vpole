@@ -115,6 +115,12 @@ requires it, but events and mutations remain fenced by the document tenant id.
 
 ## Resource Scoping
 
+Tenant-owned persisted root models implement the dependency-leaf `ITenantOwned` contract from
+`Multitenancy`, exposing a non-null `TenantId`. Their concrete Domain properties retain BSON
+mapping ownership. `ForTenant<TDocument>` requires that contract and filters through the typed
+property expression, so concrete aliases, `_id` mappings, and BSON representations are preserved.
+Platform-wide and optionally tenant-scoped documents do not implement this contract.
+
 Tenant-owned domain documents include `TenantId`:
 
 * `ResourceGroup`
@@ -225,7 +231,7 @@ restoring a blocked tenant requires a fresh membership read. Discovery also refr
 
 For a new tenant-owned feature:
 
-1. Add `TenantId` to the domain document.
+1. Add `TenantId` and implement `ITenantOwned` on the tenant-owned persisted root document.
 2. Add `TenantId` to create/update/delete events through `EventCore.Create(tenantId)`.
 3. Map resource endpoints under the API group with `RequireTenantContext()` and add a non-nullable
    `[FromTenantHeader]` member to request models. Route-scoped administration/member endpoints

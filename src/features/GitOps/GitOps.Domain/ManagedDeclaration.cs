@@ -1,3 +1,4 @@
+using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitOps.Primitives;
 using MongoDB.Bson.Serialization.Attributes;
 
@@ -19,4 +20,4 @@ public sealed record ManagedDeclaration(
     string LastPhase,
     long MutationFence,
     GitResourceMaterialization Materialization,
-    GitManagedProjections Projections);
+    GitManagedProjections Projections) : ITenantOwned;

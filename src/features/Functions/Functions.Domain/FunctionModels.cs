@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Text.Json.Serialization;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Features.Core.Multitenancy;
 
 namespace Pole.Features.Functions.Domain;
 
@@ -24,7 +25,7 @@ public sealed record FunctionApp(
     ImmutableHashSet<string> Tags,
     long PlanningFence,
     DateTimeOffset CreatedAtUtc,
-    DateTimeOffset UpdatedAtUtc);
+    DateTimeOffset UpdatedAtUtc) : ITenantOwned;
 
 public sealed record FunctionPlacementIdentity(
     string ResourceDeploymentId,
@@ -60,7 +61,7 @@ public sealed record FunctionRevision(
     FunctionRevisionSpec Spec,
     FunctionRevisionStatus Status,
     long PlanningFence,
-    DateTimeOffset CreatedAtUtc)
+    DateTimeOffset CreatedAtUtc) : ITenantOwned
 {
     public static FunctionRevision CreateProvisioning(
         string id,
@@ -267,7 +268,7 @@ public sealed record FunctionRouteBinding(
     int? ActiveRevisionNumber,
     long PlanningFence,
     DateTimeOffset CreatedAtUtc,
-    DateTimeOffset UpdatedAtUtc);
+    DateTimeOffset UpdatedAtUtc) : ITenantOwned;
 
 public static class FunctionRouteBindingFactory
 {
