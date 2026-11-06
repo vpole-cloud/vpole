@@ -58,9 +58,12 @@ public sealed class SourceBuildExecutionRecoveryTests(Pole.Testing.MongoReplicaS
         Assert.Equal(lease.Attempt, ((ClaimedSourceBuildExecution)renewed.Execution).Attempt);
         Assert.True(((ClaimedSourceBuildExecution)renewed.Execution).ExpiresAtUtc >= lease.ExpiresAtUtc);
         Assert.Equal(claimed.UpdatedAtUtc, renewed.UpdatedAtUtc);
+        Assert.Equal(claimed.State, renewed.State);
+        Assert.Equal(lease.WorkerId, ((ClaimedSourceBuildExecution)renewed.Execution).WorkerId);
 
         await Jobs.UpdateOneAsync(item => item.Id == job.Id,
-            Builders<SourceBuildJob>.Update.Set("Execution.ExpiresAtUtc", DateTime.UtcNow.AddMinutes(-1)));
+            Builders<SourceBuildJob>.Update.Set(
+                item => ((ClaimedSourceBuildExecution)item.Execution).ExpiresAtUtc, DateTime.UtcNow.AddMinutes(-1)));
         var recovered = Assert.IsType<SourceBuildJob>(await claim(new(job.Id, "third")));
         Assert.Equal(lease.Attempt + 1, ((ClaimedSourceBuildExecution)recovered.Execution).Attempt);
         Assert.False(await renew(identity));

@@ -1,6 +1,7 @@
 using Pole.Architecture;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Database;
 using Pole.Features.SourceBuilds.Application.Mongo;
 using Pole.Features.SourceBuilds.Domain;
 
@@ -28,7 +29,8 @@ internal static class SourceBuildExecutionLease
     internal static UpdateDefinition<SourceBuildJob> Renewal() =>
         new PipelineUpdateDefinition<SourceBuildJob>(new[]
         {
-            new BsonDocument("$set", new BsonDocument("Execution.ExpiresAtUtc", Expiry))
+            new BsonDocument("$set", new BsonDocument(MongoFields.Field<SourceBuildJob, DateTime>(
+                job => ((ClaimedSourceBuildExecution)job.Execution).ExpiresAtUtc), Expiry))
         });
 }
 
