@@ -13,7 +13,11 @@ public sealed class GitOpsDomainBoundaryTests
         var project = XDocument.Load(Path.Combine(ArchitectureSources.RepositoryRoot,
             "src/features/GitOps/GitOps.Domain/GitOps.Domain.csproj"));
         Assert.All(project.Descendants("ProjectReference"), reference =>
-            Assert.Equal("../GitOps.Primitives/GitOps.Primitives.csproj", reference.Attribute("Include")?.Value));
+            Assert.Contains(reference.Attribute("Include")?.Value, new[]
+            {
+                "../GitOps.Primitives/GitOps.Primitives.csproj",
+                "../../../shared/Multitenancy/Multitenancy.csproj"
+            }));
         Assert.All(project.Descendants("PackageReference"), reference =>
             Assert.Equal("MongoDB.Driver", reference.Attribute("Include")?.Value));
         var sources = ArchitectureSources.ProductionCSharp().Where(source => source.RelativePath.StartsWith(
@@ -40,6 +44,9 @@ public sealed class GitOpsDomainBoundaryTests
     [InlineData("System.Collections.Immutable", false)]
     [InlineData("Pole.Features.GitOps.Domain", false)]
     [InlineData("Pole.Features.GitOps.Primitives", false)]
+    [InlineData("Pole.Features.Core.Multitenancy", false)]
+    [InlineData("Pole.Features.Core.Multitenancy.ITenantOwned", false)]
+    [InlineData("Pole.Features.Core.MultitenancyExtra", true)]
     [InlineData("Pole.Features.GitOps.PrimitivesExtra", true)]
     [InlineData("Pole.Features.GitOps.Domainish", true)]
     public void Boundary_rule_distinguishes_technical_boundaries_from_pure_domain_dependencies(string name,
@@ -70,6 +77,8 @@ public sealed class GitOpsDomainBoundaryTests
             !(name == "Pole.Features.GitOps.Domain" ||
                 name.StartsWith("Pole.Features.GitOps.Domain.", StringComparison.Ordinal) ||
                 name == "Pole.Features.GitOps.Primitives" ||
-                name.StartsWith("Pole.Features.GitOps.Primitives.", StringComparison.Ordinal));
+                name.StartsWith("Pole.Features.GitOps.Primitives.", StringComparison.Ordinal) ||
+                name == "Pole.Features.Core.Multitenancy" ||
+                name.StartsWith("Pole.Features.Core.Multitenancy.", StringComparison.Ordinal));
     }
 }
