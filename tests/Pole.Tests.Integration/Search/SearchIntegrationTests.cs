@@ -289,31 +289,31 @@ public sealed class SearchIntegrationTests(MongoReplicaSetFixture fixture)
             WebServiceSearchProjection.SourceType.ResourceTypeId,
             highWeightId,
             "a-title",
-            new(SearchProjectionFieldType.Name, "match-high")));
+            new SearchProjectionField(SearchProjectionFieldType.Name, "match-high")));
         await CreateProjection(CreateSearchSnapshot(
             TestData.TenantId,
             WebServiceSearchProjection.SourceType.ResourceTypeId,
             sameWeightId,
             "z-title",
-            new(SearchProjectionFieldType.Name, "match-same-weight")));
+            new SearchProjectionField(SearchProjectionFieldType.Name, "match-same-weight")));
         await CreateProjection(CreateSearchSnapshot(
             TestData.TenantId,
             WebServiceSearchProjection.SourceType.ResourceTypeId,
             middleWeightId,
             "m-title",
-            new(SearchProjectionFieldType.Domain, "match-middle")));
+            new SearchProjectionField(SearchProjectionFieldType.Domain, "match-middle")));
         await CreateProjection(CreateSearchSnapshot(
             TestData.TenantId,
             WebServiceSearchProjection.SourceType.ResourceTypeId,
             lowWeightId,
             "z-title",
-            new(SearchProjectionFieldType.Tag, "match-low")));
+            new SearchProjectionField(SearchProjectionFieldType.Tag, "match-low")));
         await CreateProjection(CreateSearchSnapshot(
             TestData.TenantId,
             WebServiceSearchProjection.SourceType.ResourceTypeId,
             nonPrefixId,
             "b-title",
-            new(SearchProjectionFieldType.Name, "unmatched")));
+            new SearchProjectionField(SearchProjectionFieldType.Name, "unmatched")));
 
         var firstPage = await SearchAsync(TestData.TenantId, "mat", pageSize: 2);
         Assert.Equal(4, firstPage.TotalCount);
