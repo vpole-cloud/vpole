@@ -7,7 +7,7 @@
     <RootNamespace>Pole.Features.SourceBuilds.Domain</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../../shared/Multitenancy/Multitenancy.csproj" />
+    <ProjectReference Include="../../../shared/Multitenancy.Primitives/Multitenancy.Primitives.csproj" />
     <ProjectReference Include="../../../shared/Workloads/Workloads.csproj" />
     <PackageReference Include="MongoDB.Driver" />
   </ItemGroup>

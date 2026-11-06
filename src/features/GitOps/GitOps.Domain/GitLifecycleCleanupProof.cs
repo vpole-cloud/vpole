@@ -1,6 +1,6 @@
 using System.Collections.Immutable;
 using MongoDB.Bson.Serialization.Attributes;
-using Pole.Features.Core.Multitenancy;
+using Pole.Multitenancy.Primitives;
 
 namespace Pole.Features.GitOps.Domain;
 

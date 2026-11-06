@@ -4,6 +4,7 @@ using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
+using Pole.Multitenancy.Primitives;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.Quotas.Domain;
 using Pole.Features.Search.Domain;

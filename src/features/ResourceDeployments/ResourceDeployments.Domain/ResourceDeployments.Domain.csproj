@@ -9,7 +9,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="../../../shared/Multitenancy/Multitenancy.csproj" />
+      <ProjectReference Include="../../../shared/Multitenancy.Primitives/Multitenancy.Primitives.csproj" />
       <ProjectReference Include="..\..\..\shared\Kubernetes.Validation\Kubernetes.Validation.csproj" />
       <ProjectReference Include="..\..\..\shared\Dns\Dns.csproj" />
       <ProjectReference Include="..\..\..\shared\Models\Models.csproj" />

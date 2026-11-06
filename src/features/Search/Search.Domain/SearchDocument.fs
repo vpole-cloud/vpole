@@ -2,7 +2,7 @@ namespace Pole.Features.Search.Domain
 
 open MongoDB.Bson
 open MongoDB.Bson.Serialization.Attributes
-open Pole.Features.Core.Multitenancy
+open Pole.Multitenancy.Primitives
 
 type SearchKeyType =
     | SourceId = 0

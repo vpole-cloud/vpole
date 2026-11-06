@@ -24,6 +24,7 @@
     <Project Path="src/shared/Migrations/Migrations.csproj" />
     <Project Path="src/shared/Dns/Dns.csproj" />
     <Project Path="src/shared/Multitenancy/Multitenancy.csproj" />
+    <Project Path="src/shared/Multitenancy.Primitives/Multitenancy.Primitives.csproj" />
     <Project Path="src/shared/Kubernetes/Kubernetes.csproj" />
     <Project Path="src/shared/Kubernetes.Validation/Kubernetes.Validation.csproj" />
     <Project Path="src/shared/Events/Events.csproj" />

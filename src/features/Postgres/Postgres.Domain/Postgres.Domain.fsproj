@@ -18,6 +18,6 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="../../../shared/Multitenancy/Multitenancy.csproj" />
+        <ProjectReference Include="../../../shared/Multitenancy.Primitives/Multitenancy.Primitives.csproj" />
     </ItemGroup>
 </Project>

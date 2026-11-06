@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using Pole.Features.Core.Multitenancy;
+using Pole.Multitenancy.Primitives;
 
 namespace Pole.Database;
 

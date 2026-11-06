@@ -1,4 +1,4 @@
-using Pole.Features.Core.Multitenancy;
+using Pole.Multitenancy.Primitives;
 using Pole.Features.GitOps.Primitives;
 using MongoDB.Bson.Serialization.Attributes;
 

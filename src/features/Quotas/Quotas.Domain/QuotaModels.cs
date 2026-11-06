@@ -3,7 +3,7 @@ using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Bson.Serialization.Serializers;
-using Pole.Features.Core.Multitenancy;
+using Pole.Multitenancy.Primitives;
 using Pole.Features.Quotas.Primitives;
 
 namespace Pole.Features.Quotas.Domain;

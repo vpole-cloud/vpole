@@ -116,10 +116,12 @@ requires it, but events and mutations remain fenced by the document tenant id.
 ## Resource Scoping
 
 Tenant-owned persisted root models implement the dependency-leaf `ITenantOwned` contract from
-`Multitenancy`, exposing a non-null `TenantId`. Their concrete Domain properties retain BSON
+`Multitenancy.Primitives` (`Pole.Multitenancy.Primitives`), exposing a non-null `TenantId`. Their concrete Domain properties retain BSON
 mapping ownership. `ForTenant<TDocument>` requires that contract and filters through the typed
 property expression, so concrete aliases, `_id` mappings, and BSON representations are preserved.
 Platform-wide and optionally tenant-scoped documents do not implement this contract.
+The primitives project has no runtime dependencies. Tenant execution context, access roles and
+HTTP metadata remain in `Multitenancy`; ownership alone does not grant execution authority.
 
 Tenant-owned domain documents include `TenantId`:
 

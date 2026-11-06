@@ -9,7 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../../shared/Multitenancy/Multitenancy.csproj" />
+    <ProjectReference Include="../../../shared/Multitenancy.Primitives/Multitenancy.Primitives.csproj" />
     <ProjectReference Include="..\Quotas.Primitives\Quotas.Primitives.csproj" />
   </ItemGroup>
 

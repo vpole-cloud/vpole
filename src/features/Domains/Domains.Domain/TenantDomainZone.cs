@@ -1,7 +1,7 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using Pole.Dns;
-using Pole.Features.Core.Multitenancy;
+using Pole.Multitenancy.Primitives;
 
 namespace Pole.Features.Domains.Domain;
 

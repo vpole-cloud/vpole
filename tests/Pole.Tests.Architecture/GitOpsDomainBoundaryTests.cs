@@ -16,7 +16,7 @@ public sealed class GitOpsDomainBoundaryTests
             Assert.Contains(reference.Attribute("Include")?.Value, new[]
             {
                 "../GitOps.Primitives/GitOps.Primitives.csproj",
-                "../../../shared/Multitenancy/Multitenancy.csproj"
+                "../../../shared/Multitenancy.Primitives/Multitenancy.Primitives.csproj"
             }));
         Assert.All(project.Descendants("PackageReference"), reference =>
             Assert.Equal("MongoDB.Driver", reference.Attribute("Include")?.Value));
@@ -44,8 +44,9 @@ public sealed class GitOpsDomainBoundaryTests
     [InlineData("System.Collections.Immutable", false)]
     [InlineData("Pole.Features.GitOps.Domain", false)]
     [InlineData("Pole.Features.GitOps.Primitives", false)]
-    [InlineData("Pole.Features.Core.Multitenancy", false)]
-    [InlineData("Pole.Features.Core.Multitenancy.ITenantOwned", false)]
+    [InlineData("Pole.Features.Core.Multitenancy", true)]
+    [InlineData("Pole.Features.Core.Multitenancy.TenantContext", true)]
+    [InlineData("Pole.Multitenancy.Primitives", false)]
     [InlineData("Pole.Features.Core.MultitenancyExtra", true)]
     [InlineData("Pole.Features.GitOps.PrimitivesExtra", true)]
     [InlineData("Pole.Features.GitOps.Domainish", true)]
@@ -77,8 +78,6 @@ public sealed class GitOpsDomainBoundaryTests
             !(name == "Pole.Features.GitOps.Domain" ||
                 name.StartsWith("Pole.Features.GitOps.Domain.", StringComparison.Ordinal) ||
                 name == "Pole.Features.GitOps.Primitives" ||
-                name.StartsWith("Pole.Features.GitOps.Primitives.", StringComparison.Ordinal) ||
-                name == "Pole.Features.Core.Multitenancy" ||
-                name.StartsWith("Pole.Features.Core.Multitenancy.", StringComparison.Ordinal));
+                name.StartsWith("Pole.Features.GitOps.Primitives.", StringComparison.Ordinal));
     }
 }
