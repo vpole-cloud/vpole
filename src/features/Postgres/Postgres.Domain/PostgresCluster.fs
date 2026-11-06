@@ -3,7 +3,7 @@ namespace Pole.Features.Postgres.Domain
 open System
 open MongoDB.Bson
 open MongoDB.Bson.Serialization.Attributes
-open Pole.Features.Core.Multitenancy
+open Pole.Multitenancy.Primitives
 
 type PostgresDeploymentMode =
     | Operator = 0

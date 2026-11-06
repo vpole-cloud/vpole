@@ -1,4 +1,4 @@
-namespace Pole.Features.Core.Multitenancy;
+namespace Pole.Multitenancy.Primitives;
 
 public interface ITenantOwned
 {

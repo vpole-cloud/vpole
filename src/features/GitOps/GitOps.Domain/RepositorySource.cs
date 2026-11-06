@@ -1,5 +1,5 @@
 using MongoDB.Bson.Serialization.Attributes;
-using Pole.Features.Core.Multitenancy;
+using Pole.Multitenancy.Primitives;
 using Pole.Features.GitOps.Primitives;
 
 namespace Pole.Features.GitOps.Domain;

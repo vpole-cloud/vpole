@@ -3,7 +3,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using MongoDB.Bson.Serialization.Attributes;
-using Pole.Features.Core.Multitenancy;
+using Pole.Multitenancy.Primitives;
 
 namespace Pole.Features.Functions.Domain;
 

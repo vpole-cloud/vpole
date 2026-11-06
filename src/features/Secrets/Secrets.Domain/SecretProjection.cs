@@ -1,6 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
-using Pole.Features.Core.Multitenancy;
+using Pole.Multitenancy.Primitives;
 
 namespace Pole.Features.Secrets.Domain;
 

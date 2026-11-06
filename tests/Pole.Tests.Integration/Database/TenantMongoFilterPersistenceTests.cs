@@ -2,7 +2,7 @@ using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.Core.Multitenancy;
+using Pole.Multitenancy.Primitives;
 using Pole.Features.Quotas.Domain;
 using Pole.Features.Quotas.Primitives;
 using Pole.Tests.Integration.Infrastructure;

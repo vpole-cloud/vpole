@@ -10,6 +10,7 @@
 
     <ItemGroup>
       <ProjectReference Include="../Migrations/Migrations.csproj" />
+      <ProjectReference Include="../Multitenancy.Primitives/Multitenancy.Primitives.csproj" />
       <ProjectReference Include="../Observation/Observation.csproj" />
       <ProjectReference Include="..\Multitenancy\Multitenancy.csproj" />
       <ProjectReference Include="..\Events\Events.csproj" />
