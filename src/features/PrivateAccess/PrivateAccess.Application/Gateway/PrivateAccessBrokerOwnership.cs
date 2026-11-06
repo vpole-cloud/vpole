@@ -112,10 +112,10 @@ internal sealed class MongoPrivateAccessBrokerOwnership(
     {
         var fields = new BsonDocument
         {
-            { nameof(PrivateAccessBrokerOwner.InstanceId), instanceId },
-            { nameof(PrivateAccessBrokerOwner.InternalOrigin), internalOrigin },
+            { MongoFields.Field<PrivateAccessBrokerOwner, string?>(owner => owner.InstanceId), instanceId },
+            { MongoFields.Field<PrivateAccessBrokerOwner, string?>(owner => owner.InternalOrigin), internalOrigin },
             {
-                nameof(PrivateAccessBrokerOwner.LeaseExpiresAtUtc),
+                MongoFields.Field<PrivateAccessBrokerOwner, DateTime>(owner => owner.LeaseExpiresAtUtc),
                 new BsonDocument("$dateAdd", new BsonDocument
                 {
                     { "startDate", "$$NOW" },
@@ -125,8 +125,11 @@ internal sealed class MongoPrivateAccessBrokerOwnership(
             }
         };
         if (incrementEpoch)
-            fields.Add(nameof(PrivateAccessBrokerOwner.Epoch),
-                new BsonDocument("$add", new BsonArray { "$Epoch", 1 }));
+            fields.Add(MongoFields.Field<PrivateAccessBrokerOwner, long>(owner => owner.Epoch),
+                new BsonDocument("$add", new BsonArray
+                {
+                    MongoFields.Reference<PrivateAccessBrokerOwner, long>(owner => owner.Epoch), 1
+                }));
         return Builders<PrivateAccessBrokerOwner>.Update.Pipeline(
             PipelineDefinition<PrivateAccessBrokerOwner, PrivateAccessBrokerOwner>.Create(
                 [new BsonDocument("$set", fields)]));
