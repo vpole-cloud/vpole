@@ -953,7 +953,8 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
 
     private async Task<SeededObservation> SeedAsync()
     {
-        await ObservationStoreIndexes.CreateAsync(fixture.Database);
+        await new Pole.Features.ResourceDeployments.Migrations.ResourceDeploymentObservationIndexMigration()
+            .Up(fixture.Database);
         var now = DateTime.UtcNow.AddMinutes(-1);
         var target = ObjectId.GenerateNewId().ToString();
         var deployment = ResourceDeploymentFactory.Create(TestData.TenantId,

@@ -1,9 +1,9 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Application.Observation;
-using Pole.Features.StorageProfiles.Application.Mongo;
+using Pole.Features.ResourceDeployments.Migrations;
 using Pole.Features.StorageProfiles.Application.Observation;
+using Pole.Features.StorageProfiles.Migrations;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -18,12 +18,12 @@ public sealed class ObservationIndexContractTests(MongoReplicaSetFixture fixture
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task Typed_indexes_preserve_field_order_names_and_expiry(bool storage)
+    public async Task Migrations_create_expected_observation_index_fields_names_and_expiry(bool storage)
     {
         if (storage)
-            await StorageObservationIndexes.CreateAsync(fixture.Database);
+            await new StorageObservationIndexMigration().Up(fixture.Database);
         else
-            await ObservationStoreIndexes.CreateAsync(fixture.Database);
+            await new ResourceDeploymentObservationIndexMigration().Up(fixture.Database);
 
         var demands = storage ? MongoStorageObservationStore.DemandsCollection :
             MongoResourceDeploymentObservationStore.DemandsCollection;
