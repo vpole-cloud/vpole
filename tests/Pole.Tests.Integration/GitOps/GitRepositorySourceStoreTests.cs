@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.GitOps.Application.Sources;
+using Pole.Features.GitOps.Application.Runs;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Migrations;
 using Pole.Features.Outbox.Domain;
@@ -25,6 +26,23 @@ public sealed class GitRepositorySourceStoreTests(MongoReplicaSetFixture fixture
     {
         await base.InitializeAsync();
         await new GitOpsIndexesMigration().Up(Fixture.Database);
+    }
+
+    [Fact]
+    public async Task DatabaseClockReadsTypedUtcTimeWithinTheTenantScopedTransaction()
+    {
+        var source = Assert.IsType<RepositorySource>((await Sources.CreateAsync(Request(), default)).Value);
+        using var session = await Fixture.Client.StartSessionAsync();
+        session.StartTransaction();
+        var before = DateTime.UtcNow.AddSeconds(-5);
+
+        var now = await new GitDatabaseClock(Documents).NowAsync(new(source.TenantId, source.Id), session, default);
+
+        Assert.Equal(DateTimeKind.Utc, now.Kind);
+        Assert.InRange(now, before, DateTime.UtcNow.AddSeconds(5));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new GitDatabaseClock(Documents).NowAsync(
+            new(MongoDB.Bson.ObjectId.GenerateNewId().ToString(), source.Id), session, default));
+        await session.AbortTransactionAsync();
     }
 
     [Fact]

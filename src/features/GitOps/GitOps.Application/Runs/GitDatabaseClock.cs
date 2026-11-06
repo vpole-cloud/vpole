@@ -1,6 +1,8 @@
 using Pole.Architecture;
 using MongoDB.Bson;
+using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
+using Pole.Database;
 using Pole.Features.GitOps.Application.Mongo;
 using Pole.Features.GitOps.Domain;
 
@@ -14,7 +16,11 @@ internal sealed class GitDatabaseClock(IMongoCollection<RepositorySource> source
     {
         var document = await sources.Aggregate(session)
             .Match(GitRepositoryFilters.Source(identity.TenantId, identity.SourceId))
-            .Project(new BsonDocument("Now", "$$NOW")).FirstAsync(ct);
-        return document["Now"].AsBsonDateTime.ToUniversalTime();
+            .Project<GitDatabaseTime>(new BsonDocument(
+                MongoFields.Field<GitDatabaseTime, DateTime>(time => time.Now), "$$NOW")).FirstAsync(ct);
+        return document.Now;
     }
 }
+
+[BsonIgnoreExtraElements]
+internal sealed record GitDatabaseTime([property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)] DateTime Now);
