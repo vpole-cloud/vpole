@@ -82,7 +82,7 @@ public sealed class MongoObservationStore<TContext, TControl, TDemand, TSnapshot
     public async Task<MongoObservationPage> ScanAsync(string? after, int limit, CancellationToken ct)
     {
         var rows = await demands.Aggregate().Match(filters.DemandPage(after))
-            .Group(MongoObservationExpressions.DemandSubjects(definition.DemandSubject))
+            .Group(MongoObservationExpressions.DemandSubjects(definition.DemandSubject, definition.DemandTenant))
             .SortBy(item => item.Id).Limit(limit + 1).ToListAsync(ct);
         var selected = rows.Take(limit)
             .Select(row => new MongoObservationScope(row.Id, row.TenantId)).ToArray();

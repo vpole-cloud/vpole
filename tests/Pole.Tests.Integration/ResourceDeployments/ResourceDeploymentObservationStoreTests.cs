@@ -910,6 +910,7 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         Assert.Single(last.Items);
         Assert.Null(last.NextCursor);
         Assert.Equal(3, first.Items.Concat(last.Items).Select(item => item.DeploymentId).Distinct().Count());
+        Assert.All(first.Items.Concat(last.Items), item => Assert.Equal(TestData.TenantId, item.TenantId));
         Assert.Null(await Store()
             .LoadControlAsync(new(ObjectId.GenerateNewId().ToString(), one.Context.Deployment.Id)));
         var foreign = one.Context with

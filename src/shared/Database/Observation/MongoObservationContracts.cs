@@ -62,6 +62,7 @@ public interface IMongoObservationDefinition<TContext, TControl, TDemand, TSnaps
     MongoObservationScope Scope(TContext context);
     MongoObservationScope ScopeOf(TControl control);
     Expression<Func<TDemand, string>> DemandSubject { get; }
+    Expression<Func<TDemand, string>>? DemandTenant { get; }
     Expression<Func<TControl, string?>> Source { get; }
     Expression<Func<TSnapshot, string>> SnapshotSource { get; }
     FilterDefinition<TControl> ControlScope(MongoObservationScope scope);

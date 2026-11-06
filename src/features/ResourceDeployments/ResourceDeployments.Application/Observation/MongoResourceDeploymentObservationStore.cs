@@ -253,6 +253,7 @@ internal sealed class MongoResourceDeploymentObservationStore(
 
         public MongoObservationScope ScopeOf(ObservationControlDocument control) => new(control.Id, control.TenantId);
         public Expression<Func<ObservationDemandDocument, string>> DemandSubject => item => item.DeploymentId;
+        public Expression<Func<ObservationDemandDocument, string>> DemandTenant => item => item.TenantId;
         public Expression<Func<ObservationControlDocument, string?>> Source => item => item.BindingId;
         public Expression<Func<ObservationSnapshotDocument, string>> SnapshotSource => item => item.BindingId;
 
