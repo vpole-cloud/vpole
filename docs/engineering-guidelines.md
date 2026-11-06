@@ -45,6 +45,12 @@ Use typed collection models, field expressions, indexes and commands. `POLE014` 
 symbols, including aliases and inferred return types; comments, literals and unrelated namesakes
 are not violations. BSON mapping attributes and scalar BSON types retain their existing roles.
 
+`POLE013` rejects string field arguments in production C# Mongo filter, update, sort and index
+builders, including constants, local variables and computed strings in shared infrastructure.
+Use expressions directly in builders. Aggregation boundaries that need textual field paths use
+`MongoFields.Field` and `MongoFields.Reference` to preserve concrete serializer mappings.
+Its migration/test exemptions follow the same evaluated project roles as `POLE014`.
+
 C# is checked during compilation. The architecture suite checks F# with the compiler service from
 the pinned SDK, using actual project options and references after the solution build. Missing
 compiler inputs or semantic errors fail the check; they do not turn into an empty passing result.

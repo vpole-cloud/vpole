@@ -34,7 +34,7 @@ public sealed class RawBsonAnalyzer : DiagnosticAnalyzer
             var options = start.Options.AnalyzerConfigOptionsProvider.GlobalOptions;
             options.TryGetValue("build_property.PoleArchitectureRole", out var role);
             options.TryGetValue("build_property.IsTestProject", out var test);
-            if (ArchitectureProjectRoles.ExemptsRawBson(role, bool.TryParse(test, out var value) && value))
+            if (ArchitectureProjectRoles.ExemptsMongoRules(role, bool.TryParse(test, out var value) && value))
                 return;
 
             var aliases = start.Compilation.SyntaxTrees

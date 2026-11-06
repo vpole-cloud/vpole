@@ -177,6 +177,6 @@ public sealed class RawBsonProjectTests
         bool IsTest,
         string[] References)
     {
-        public bool Exempt => ArchitectureProjectRoles.ExemptsRawBson(Role, IsTest);
+        public bool Exempt => ArchitectureProjectRoles.ExemptsMongoRules(Role, IsTest);
     }
 }
