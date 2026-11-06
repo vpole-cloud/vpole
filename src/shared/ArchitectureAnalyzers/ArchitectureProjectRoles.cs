@@ -6,6 +6,6 @@ public static class ArchitectureProjectRoles
     public const string Migration = "Migration";
     public const string TestSupport = "TestSupport";
 
-    public static bool ExemptsRawBson(string? role, bool isTestProject) =>
+    public static bool ExemptsMongoRules(string? role, bool isTestProject) =>
         isTestProject || role is Migration or TestSupport;
 }
