@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using MongoDB.Driver;
 using Pole.Encryption;
 using Pole.Features.DeploymentTargets.Application;
@@ -59,7 +60,7 @@ internal sealed class MongoRewrapDeploymentTargetCredentials(
                 cursor = target.Id;
 
                 EnvelopeRewrapOutcome rewrapResult;
-                string encryptedField;
+                Expression<Func<DeploymentTarget, EncryptedValue>> encryptedField;
                 EncryptedValue currentEnvelope;
                 FilterDefinition<DeploymentTarget> casFilter;
                 switch (target.Connection)
@@ -69,7 +70,8 @@ internal sealed class MongoRewrapDeploymentTargetCredentials(
                     case KubeconfigDeploymentTargetConnection kubeconfig:
                         examined++;
                         currentEnvelope = kubeconfig.EncryptedKubeconfig;
-                        encryptedField = "Connection.EncryptedKubeconfig";
+                        encryptedField = item =>
+                            ((KubeconfigDeploymentTargetConnection)item.Connection).EncryptedKubeconfig;
                         casFilter = DeploymentTargetFilters.AtKubeconfigEnvelope(
                             target.Id,
                             kubeconfig.Version,
@@ -86,7 +88,8 @@ internal sealed class MongoRewrapDeploymentTargetCredentials(
                     case ServiceAccountDeploymentTargetConnection serviceAccount:
                         examined++;
                         currentEnvelope = serviceAccount.EncryptedCredential;
-                        encryptedField = "Connection.EncryptedCredential";
+                        encryptedField = item =>
+                            ((ServiceAccountDeploymentTargetConnection)item.Connection).EncryptedCredential;
                         casFilter = DeploymentTargetFilters.AtServiceAccountCredentialEnvelope(
                             target.Id,
                             serviceAccount.Version,

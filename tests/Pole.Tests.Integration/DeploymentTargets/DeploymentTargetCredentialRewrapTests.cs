@@ -103,6 +103,12 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
             stored.Single(target => target.Id == serviceAccountTargetId).Connection);
         AssertRewrapped(kubeconfigConnection.EncryptedKubeconfig, storedKubeconfig.EncryptedKubeconfig);
         AssertRewrapped(serviceAccountConnection.EncryptedCredential, storedServiceAccount.EncryptedCredential);
+        Assert.Equal(kubeconfigConnection with { EncryptedKubeconfig = storedKubeconfig.EncryptedKubeconfig },
+            storedKubeconfig);
+        Assert.Equal(serviceAccountConnection with { EncryptedCredential = storedServiceAccount.EncryptedCredential },
+            storedServiceAccount);
+        Assert.Equal(inClusterTarget.Connection, (await fixture.DbContext.DeploymentTargets
+            .Find(target => target.Id == inClusterTarget.Id).SingleAsync()).Connection);
 
         var newOnlyConnectionService = CreateConnectionService(encryption.NewOnlyService);
         using var resolvedKubeconfig = Assert.IsAssignableFrom<IKubernetes>((await newOnlyConnectionService.CreateAsync(
