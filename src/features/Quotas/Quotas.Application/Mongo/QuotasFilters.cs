@@ -10,12 +10,6 @@ internal static class QuotaPolicyFilters
         Builders<TenantQuotaPolicy>.Filter.Eq(policy => policy.TenantId, tenantId);
 }
 
-internal static class QuotaReservationFields
-{
-    public const string StateKind = "State.Kind";
-    public const string StateExpiresAtUtc = "State.ExpiresAtUtc";
-}
-
 internal static class QuotaReservationFilters
 {
     public static FilterDefinition<QuotaReservation> ById(string reservationId) =>
@@ -34,7 +28,7 @@ internal static class QuotaReservationFilters
         Builders<QuotaReservation>.Filter.And(
             ById(reservationId),
             Builders<QuotaReservation>.Filter.Eq(
-                QuotaReservationFields.StateKind,
+                reservation => reservation.State.Kind,
                 QuotaReservationStateKinds.Active));
 
     public static FilterDefinition<QuotaReservation> Active(
@@ -43,16 +37,16 @@ internal static class QuotaReservationFilters
         Builders<QuotaReservation>.Filter.And(
             Active(reservationId),
             Builders<QuotaReservation>.Filter.Gt(
-                QuotaReservationFields.StateExpiresAtUtc,
+                reservation => ((ActiveQuotaReservationState)reservation.State).ExpiresAtUtc,
                 nowUtc));
 
     private static FilterDefinition<QuotaReservation> Active(DateTime nowUtc) =>
         Builders<QuotaReservation>.Filter.And(
             Builders<QuotaReservation>.Filter.Eq(
-                QuotaReservationFields.StateKind,
+                reservation => reservation.State.Kind,
                 QuotaReservationStateKinds.Active),
             Builders<QuotaReservation>.Filter.Gt(
-                QuotaReservationFields.StateExpiresAtUtc,
+                reservation => ((ActiveQuotaReservationState)reservation.State).ExpiresAtUtc,
                 nowUtc));
 }
 
