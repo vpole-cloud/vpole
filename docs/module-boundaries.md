@@ -211,6 +211,11 @@ The host registers explicit migration assemblies separately from Application ass
 Database runner owns ordering and durable history; provider migrations retain their feature-scoped
 history identities. Moving a migration must preserve its ID, scope and schema/index semantics.
 
+Keep migration definitions independent of mutable runtime models, filter helpers and collection
+constants. Shared migration helpers must retain the semantics on which existing migrations rely.
+Verify schema/index parity against the actual owner migrations instead of maintaining a second
+runtime copy merely for tests. Dependency isolation alone does not prove a migration stayed frozen.
+
 ### Compiler
 
 `Feature.Compiler` is an optional feature-owned library for deterministic declaration compilation.
@@ -229,6 +234,12 @@ Group Application code by feature workflow. Mongo-backed operations may live dir
 workflow code. Raw Mongo query APIs are forbidden under any exact `Endpoints`, `Consumers` or `Jobs` path segment in an Application project. Those adapters invoke
 workflow operations. C# compiler diagnostics and F# architecture tests share the same path rule.
 The rule permits orchestration and Mongo access in a workflow implementation.
+
+Inject typed `IMongoCollection<T>` dependencies into feature workflow implementations. Collection
+selection and `GetCollection<T>` calls belong to feature composition; shared database infrastructure
+and migration execution retain their own responsibilities. Do not hide collection discovery in a
+feature adapter behind `IMongoDatabase` or a generic repository facade. Operations participating in
+a caller-owned transaction keep the session explicit and do not start nested transactions.
 
 Keep shared technical Mongo definitions in one Application-level `Mongo` folder: collection and
 index identifiers, runtime filter catalogs, and BSON mappings. Each feature keeps every runtime
@@ -279,18 +290,18 @@ provider edge and leaves the platform persistence implementation extensible.
 
 ## Dependency matrix
 
-| Source project        | Allowed feature dependencies                                                                                                                      | Forbidden feature dependencies                                      |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Primitives            | None                                                                                                                                              | Every feature project                                               |
-| Migrations            | Shared migration API only                                                                                                                         | Every feature project and runtime helper                           |
-| Domain                | Own Primitives                                                                                                                                    | Contracts, Events, Application, another feature                     |
-| Contracts             | Own Primitives                                                                                                                                    | Domain, Events, Application, another feature's Contracts/Primitives |
-| Contracts.HttpMapping | Own Contracts; shared HTTP mapping abstraction                                                                                                    | Domain, Events, Application, another feature project                |
-| Events                | Own Primitives                                                                                                                                    | Domain, Contracts, Application, another feature                     |
-| Compiler              | Own Contracts/Primitives                                                                                                                            | Application, Domain, Events, other features and shared runtime projects |
-| Application           | Own Compiler/Primitives/Domain/Contracts/Contracts.HttpMapping/Events; foreign Contracts/Contracts.HttpMapping/Events; contract-exposed foreign Primitives | Foreign Domain/Application                                          |
-| Pole.Server           | Application and Migrations projects required for composition                                                                                                     | None imposed by this policy                                         |
-| Tests                 | Projects required by the test boundary                                                                                                            | None imposed by this policy                                         |
+| Source project        | Allowed feature dependencies                                                                                                                               | Forbidden feature dependencies                                          |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Primitives            | None                                                                                                                                                       | Every feature project                                                   |
+| Migrations            | Shared migration API only                                                                                                                                  | Every feature project and runtime helper                                |
+| Domain                | Own Primitives                                                                                                                                             | Contracts, Events, Application, another feature                         |
+| Contracts             | Own Primitives                                                                                                                                             | Domain, Events, Application, another feature's Contracts/Primitives     |
+| Contracts.HttpMapping | Own Contracts; shared HTTP mapping abstraction                                                                                                             | Domain, Events, Application, another feature project                    |
+| Events                | Own Primitives                                                                                                                                             | Domain, Contracts, Application, another feature                         |
+| Compiler              | Own Contracts/Primitives                                                                                                                                   | Application, Domain, Events, other features and shared runtime projects |
+| Application           | Own Compiler/Primitives/Domain/Contracts/Contracts.HttpMapping/Events; foreign Contracts/Contracts.HttpMapping/Events; contract-exposed foreign Primitives | Foreign Domain/Application                                              |
+| Pole.Server           | Application and Migrations projects required for composition                                                                                               | None imposed by this policy                                             |
+| Tests                 | Projects required by the test boundary                                                                                                                     | None imposed by this policy                                             |
 
 References to dependency-leaf shared projects are governed by the shared-primitives rules below,
 not by the feature dependency matrix.

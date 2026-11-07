@@ -29,7 +29,7 @@ Use the following maintained production implementations where their semantics fi
 | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Endpoint, transport types, validator, handler, flat outcome and direct HTTP mappings | [CreateUser.cs](../src/features/Users/Users.Application/Endpoints/CreateUser.cs) and [UserHttpProblemMappings.cs](../src/features/Users/Users.Application/UserHttpProblemMappings.cs) | [UserControlPlaneTests.cs](../tests/Pole.Tests.Integration/Users/UserControlPlaneTests.cs), [ApiSliceTests.cs](../tests/Pole.Tests.Integration/Api/ApiSliceTests.cs) and architecture tests                                 |
 | Provider-owned named contract outcomes                                               | [TenantIdentityContracts.cs](../src/features/Tenants/Tenants.Contracts/TenantIdentityContracts.cs)                                                                                    | [TenantFeatureProductionDiTests.cs](../tests/Pole.Tests.Integration/Tenants/TenantFeatureProductionDiTests.cs)                                                                                                              |
-| Named persistence capability, internal Mongo implementation, atomic outbox           | [PersistCreatedRedis.cs](../src/features/RedisServices/RedisServices.Application/Services/PersistCreatedRedis.cs)                                                        | `Create_Succeeds_WithValidRequest` and `PersistCreate_AbortsRedisAndOutbox_WhenTransactionFails` in RedisIntegrationTests                                                                                                   |
+| Named persistence capability, internal Mongo implementation, atomic outbox           | [PersistCreatedRedis.cs](../src/features/RedisServices/RedisServices.Application/Services/PersistCreatedRedis.cs)                                                                     | `Create_Succeeds_WithValidRequest` and `PersistCreate_AbortsRedisAndOutbox_WhenTransactionFails` in RedisIntegrationTests                                                                                                   |
 | Factory, immutable collections, explicit lifecycle transitions                       | [Redis.cs](../src/features/RedisServices/RedisServices.Domain/Redis.cs)                                                                                                               | `PersistUpdate_RejectsADeletingReplacement` and update/deletion cases in RedisIntegrationTests                                                                                                                              |
 | Mongo session ownership and explicit commit/abort                                    | [MongoTransactionDecision.cs](../src/shared/Database/MongoTransactionDecision.cs) and [MongoTransactionPersistence.cs](../src/shared/Database/MongoTransactionPersistence.cs)         | [ClientSessionHandleExtensionsTests.cs](../tests/Pole.Tests.Integration/Database/ClientSessionHandleExtensionsTests.cs) and [OutboxPersistenceTests.cs](../tests/Pole.Tests.Integration/Database/OutboxPersistenceTests.cs) |
 
@@ -50,6 +50,24 @@ mutable data ownership, tenant predicates, transaction/outbox boundary, and test
 assertions. This is an internal review checkpoint, not another user approval gate.
 Existing authorization remains valid. Ordinary isolated fixes do not require an
 artificial new endpoint or a duplicated review ceremony.
+
+## Review record and review fixes
+
+Use the [review checklist](review-checklist.md) for self-review and independent review. Record the
+base/head, actual automated evidence, manual dispositions, findings and justified exceptions.
+Keep the policy in the linked engineering documents; a private history of observations is source
+material, not an additional rulebook. Deferred proposals and task-specific commands do not become
+requirements through repetition in notes.
+
+Fix each review finding in its own commit by default, including its needed regression tests and
+documentation. Combine findings only when the user has agreed to that grouping. Do not hide
+independent fixes in a generic cleanup commit. Commit authorization does not authorize push, PR
+creation or merge.
+
+User-facing review handoffs identify committed SHAs and their diff, checks and remaining risks.
+Keep the task's changes committed and its working tree clean; do not discard unrelated user or
+agent work to obtain that state. Self-review during implementation may inspect a working diff,
+but an uncommitted patch does not replace the committed result handed to the user.
 
 ## Automated rules
 
@@ -74,8 +92,11 @@ The repository compiler diagnostics complement review:
   legacy members have exact per-member allowances, checked by architecture tests.
 - `POLE011`: Domain constructors require explicit arguments; factories own initial defaults.
 - `POLE010`: feature-owned typed Mongo collection roots belong to the owning Domain project.
+- `POLE012`: switches over closed hierarchies name their variants instead of hiding new cases
+  behind catch-all arms. Open extension interfaces retain their own unsupported-input boundary.
+- `POLE013`: production C# Mongo filter, update, sort and index builders use typed field expressions.
+  Serializer-aware aggregation paths retain the reviewed analyzer's actual scope.
 - `.editorconfig` and pinned CleanupCode verify changed C# source formatting with `Pole Safe Cleanup`.
-
 - `POLE014`: production code uses typed MongoDB APIs instead of `BsonDocument`, `BsonArray` and
   `BsonValue`; deliberate boundaries require a reasoned `ViolateArchitecture` attribute. Migration
   and test project roles are exempt. C# compilation and semantic F# architecture checks enforce it.

@@ -2,6 +2,9 @@
 
 These guidelines describe how Pole code should divide responsibilities and make design decisions. They complement the focused architecture, multitenancy, observability, and testing documentation.
 
+Use the [review checklist](review-checklist.md) to review an actual diff against these rules.
+The checklist links policy to evidence; it does not replace the rules or their automated checks.
+
 ## Module boundaries
 
 Feature Domain projects do not reference Contracts, Events, Application, or other features.
@@ -85,7 +88,7 @@ provider-owned request record: `(request, cancellationToken)` or
 `(request, session, cancellationToken)`. Keep optional input defaults on that request model;
 do not add compatibility overloads with the old parameter list.
 
-Group fields into smaller models when they form a coherent concept with shared invariants.
+Choose request submodels using [cohesive data and explicit policy](#cohesive-data-and-explicit-policy).
 The parameter limit applies to contract operations, not DTO constructors, dependency injection
 constructors, or pure model factories. `ContractOperationParameterTests` enforces the limit across
 all feature Contracts projects without feature exemptions.
@@ -172,6 +175,44 @@ Before creating a new implementation, check the platform standard library, frame
 - Keep custom code as small as the missing capability permits.
 - Record the reason near the implementation or in an architectural decision when the tradeoff is not evident from the code.
 
+## Readable code and focused responsibilities
+
+Separate adjacent type declarations and distinct logical steps with blank lines. Keep guard checks,
+state reads, decisions, mutations and result construction visually distinguishable. Use meaningful
+intermediate names when a compact expression hides those steps. Follow the existing C# line limit
+of 120 characters; preserve string literals and wire formats when wrapping code.
+
+Prefer cohesive classes over handwritten partial classes. When a provider has too many distinct
+responsibilities, separate planning, reference resolution, execution or lifecycle capabilities
+where those are real boundaries. Required generated partial declarations remain valid. A large
+file alone does not justify splitting one class into partial files.
+
+Treat a large dependency-injection constructor as a reason to inspect responsibilities, not as a
+numeric violation. Split cohesive behavior rather than hiding the same dependencies in a
+`Dependencies` or `Context` bag, a service locator or a new interface for every helper. The contract
+parameter limit does not apply to DI constructors.
+
+A helper should own a rule, transformation, check or useful abstraction. Remove forwarding wrappers
+that merely repeat another method's name and arguments. Capability names should describe the
+operation they provide; a class named `Planning` should actually plan rather than combine unrelated
+reads, lookups and fences.
+
+## Cohesive data and explicit policy
+
+Group related fields in Domain, Contracts and DTOs when they describe one concept with shared
+invariants or lifecycle. An artifact reference and digest can form an artifact model; unrelated
+revision counters do not become one concept because they share a numeric type. Preserve each
+boundary's own representation instead of exporting a foreign Domain model to avoid mapping.
+
+Choose enums for categories or behavior policies whose complete set of values is valid. Prefer an
+explicit policy to a boolean parameter when the call selects consequential behavior, such as
+retaining old references until rollout. Ordinary boolean data does not require an enum. Use typed
+state or outcome variants when different cases require different data or invariants.
+
+Compute reported state at its owner before mapping a DTO. An `Unknown` status must describe a real
+unknown state, not conceal a missing lookup behind a hardcoded fallback. Pass operation-specific
+failure reasons explicitly when a default would hide which decision was made.
+
 ## Model states explicitly
 
 When fields are valid only during particular phases or variants, model those states as separate types instead of combining them into one type with many nullable properties.
@@ -180,6 +221,10 @@ When fields are valid only during particular phases or variants, model those sta
 - A nullable member should represent a genuinely optional value within one state, not the possibility that the object is actually in another state.
 - Use the language and persistence framework's supported polymorphism or discriminated representation when state variants must be stored.
 - Keep state transitions explicit so invalid combinations are difficult to construct and easy to review.
+
+Exhaustiveness applies to closed state families. An open extension interface may need a defensive
+failure for an unsupported implementation; do not remove that boundary merely to eliminate every
+default switch arm.
 
 ## Own mutable collections locally
 
@@ -202,6 +247,20 @@ Name resource identity and address construction rules explicitly: hostname label
 object names, and Service addresses belong to their semantic owner rather than repeated string
 interpolation in handlers or DTO mapping. This does not require wrapping ordinary display text.
 
+Give each document/version-key format a named builder owned by the feature that defines it, even
+when that format currently has one caller. Reuse existing kind constants. Shared YAML field paths
+belong in the declaration field-path catalog; one-off diagnostic paths can remain local. Preserve
+the exact formats while centralizing their construction.
+
+Prefer typed Mongo members and existing polymorphic filter APIs to literal field or discriminator
+paths. `nameof` alone does not account for BSON aliases or identity representation. Where the
+driver cannot express an operation through typed builders, use serializer-aware paths and retain
+the same server-time, literal-value and concurrency semantics. Production use of `BsonDocument`,
+`BsonArray` or `BsonValue` requires a narrow, explicit architecture exception with a reason;
+migration and test project roles are exempt from this type policy. A folder name is not a
+project-role exemption. Verify the actual enforcement available in the reviewed tree before
+calling this check automated.
+
 Validated numeric port values share the range 1..65535 in these workload contracts. Keep parsing
 and range checks in one small value type and protect its default struct value at the boundaries
 that consume it. A numeric port does not establish protocol, endpoint eligibility, or resolve a
@@ -217,6 +276,12 @@ Do not assume unclear framework or library behavior when correctness depends on 
 - Feature tests should verify Pole behavior and only add another dependency-focused case for a distinct shape, edge case, or known upgrade regression.
 - Prefer documented contracts, but retain a focused test when translation, serialization, runtime integration, or version behavior is material and not sufficiently guaranteed by documentation.
 
+Make regressions fail for the intended reason. A duplicate-identity test must avoid an earlier
+duplicate-name rejection and assert the specific conflict, not only HTTP 409. Mongo tests that
+depend on validators or unique indexes must register the real owner migrations. Verify actual
+startup registration when moving migration assemblies. Tests should prove behavior or invariants,
+not reproduce formatting or the implementation's sequence of calls.
+
 ## Treat nullability as a contract
 
 Enable nullable reference types and fail the build on nullable compiler warnings.
@@ -225,6 +290,9 @@ Enable nullable reference types and fail the build on nullable compiler warnings
 - Let the owning boundary report missing required input. Do not repeat null or blank checks in every downstream layer when middleware, a pipeline behavior, or request validation already owns the rule.
 - Do not add `ThrowIfNull` for a non-nullable internal parameter unless the method is a documented runtime boundary that can still receive null from unannotated or reflection-based callers.
 - Use nullable members only for values that are genuinely optional in a valid state.
+- Express conditional guarantees with nullable-flow attributes, such as `[NotNullWhen(true)]` on a
+  nullable `out` parameter when a successful `TryCreate` guarantees a value. Keep the annotation
+  consistent with every return path instead of compensating with caller-side null suppression.
 
 ## Validate configuration at startup
 
