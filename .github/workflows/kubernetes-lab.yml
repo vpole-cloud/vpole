@@ -15,6 +15,28 @@ permissions:
   contents: read
 
 jobs:
+  feature-template:
+    name: Generated feature example
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      POLE_TEST_WORKTREE_ID: ft-${{ github.run_id }}
+      POLE_TEST_RUN_ID: attempt-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 11.0.100-rc.3.26522.148
+      - name: Build and test the generated feature with real architecture and Mongo
+        run: python3 scripts/check_feature_template.py --results-directory .artifacts/feature-template/ci
+      - name: Upload bounded template validation result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: feature-template-result
+          path: .artifacts/feature-template/ci/result.json
+          retention-days: 14
+
   backend:
     name: Backend
     runs-on: ubuntu-24.04
