@@ -469,6 +469,9 @@ def run_full(base, profile="full", config=None):
         command = format_command(base)
         if command:
             execute("format", command, directory, steps)
+        template_directory = ROOT / ".artifacts/feature-template" / directory.name
+        execute("feature-template", [sys.executable, "scripts/check_feature_template.py",
+                "--results-directory", str(template_directory)], directory, steps)
         run_backend(directory, steps, receipt["tests"], profile,
                     {group: settings[group] for group in GROUPS}, settings["integrationMaxParallelThreads"])
         frontend_report = directory / "frontend.json"
