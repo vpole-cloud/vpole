@@ -71,6 +71,7 @@ requirement when adding or changing one feature.
 
 - [Agent delivery and full local publication gate](agent-delivery.md)
 - [Review checklist and evidence record](review-checklist.md)
+- [Working metadata-feature starter](../templates/feature/README.md)
 - [Testing](testing.md)
 - [Feature test contract](feature-test-contract.md)
 - [Local Kubernetes test lab](../infrastructure/kubernetes-lab/README.md)

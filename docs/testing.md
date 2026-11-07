@@ -85,6 +85,19 @@ POLE_TEST_MONGO_IMAGE=mongo:8.0 dotnet test tests/Pole.Tests.Integration/Pole.Te
 
 Run that override before claiming MongoDB 8 support, or add it as a separate CI matrix job.
 
+## Generated feature starter
+
+The [metadata-feature starter](../templates/feature/README.md) is validated through its generated
+output, not by compiling template files as a production module. Run
+`python3 scripts/check_feature_template.py` with the pinned SDK and a Docker-compatible runtime.
+The isolated source snapshot retains production analyzers and runs the full existing architecture
+suite plus generated Domain/BSON/event and HTTP/Mongo/outbox tests with no filters or skips.
+Reports include source fingerprint, test-run ownership, coverage and checked TRX totals.
+
+The full local quality gate and the dedicated CI job require this lane. It does not need the live
+Kubernetes lab and does not replace other publication checks. Plain generator automation tests
+prove safe scaffolding only; they are not evidence for transactions or API binding.
+
 ## Test layers
 
 The current suite intentionally mixes a few different test layers inside one project:
@@ -395,7 +408,6 @@ Use a concurrent cleanup group only for independent resources such as same-run n
 different lab targets.
 Kubernetes cleanup must retain the namespace UID and ownership-label checks; do not register deletion
 of shared operators, volumes, ingress controllers, or other lab infrastructure.
-
 
 ## Deterministic E2E contracts
 
