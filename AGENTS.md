@@ -106,5 +106,5 @@ Do not substitute `Pole Full Cleanup` in the gate; it performs semantic changes.
 - Run focused checks while developing, then the applicable local gate before PR publication. Use `scripts/quality_gate.py record-review`, `verify`, and `open-pr`; do not bypass current evidence with direct PR creation.
 - If tests fail, the first sentence of every summary must name the tests and explain why (or state that diagnosis is pending). If suites cannot run, lead with the suite and missing prerequisite. This applies to progress summaries, handoffs, PR descriptions and final answers.
 - Turn recurring defects into a focused regression test, semantic rule, formatter rule or corrected canonical example; keep rules precise.
-- Inspect the actual diff and use `$pole-post-task-review` before handoff.
+- Inspect the actual diff, complete [the review checklist](docs/review-checklist.md), and use `$pole-post-task-review` before handoff.
 - Report changed files, checks and outcomes, remaining risks, and any action that still requires user authorization.
