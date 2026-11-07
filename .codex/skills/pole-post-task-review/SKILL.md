@@ -19,7 +19,7 @@ For independent review, use the supplied request or issue, approved plan when pr
 
 1. Run `git status --short` and identify whether the review target is the working tree or a branch/commit range.
 2. Inspect the diff stat, complete changed-file list, and relevant diff slices against the supplied base.
-3. For code changes, read `docs/engineering-guidelines.md` and inspect the relevant feature and nearby implementation. For documentation, skills, or agent guidance, inspect the governing source and affected references instead.
+3. Read the [review checklist](../../../docs/review-checklist.md) and its canonical engineering/module rules. For code changes, inspect the owning feature and related callers, serialization, alternate write paths and tests. For documentation, skills, or agent guidance, inspect the governing source and affected references. Honor any explicitly requested repository-wide audit without adding unrelated refactoring.
 4. Identify the changed areas and load the matching focused skills only when relevant:
    - `$pole-tenant-scoping` for tenant-owned resources, auth, headers, Mongo filters, search tenant data, or frontend tenant flow.
    - `$pole-events-outbox` for events, outbox, consumers, trace/correlation, DNS reservation messages, or transaction boundaries.
@@ -29,31 +29,30 @@ For independent review, use the supplied request or issue, approved plan when pr
 
 ## Review Priorities
 
-Review for bugs and regressions first, not style. Focus on:
+Work through R1–R8 in the checklist. Prioritize correctness, tenant/authority failures, data loss
+and regressions, then design and readability. Code style and Pole's agreed design rules are part
+of the review even when the build passes.
 
-- Incorrect behavior against the user request.
-- Minimal API routes separated from their request/validator/handler, or endpoint files containing more than one endpoint-handler pair.
-- `Result<bool>` used for a command precondition where an intention-revealing `Result` guard would express the outcome directly.
-- MongoDB availability or driver exceptions caught only to become a generic `Result` failure instead of reaching the standard 5xx exception path.
-- Cross-tenant access, missing tenant headers, missing tenant filters, or unsafe platform-admin behavior.
-- Domain mutations not persisted atomically with outbox messages.
-- Events missing `EventCore.Create(tenantId)` or consumers ignoring `EventCore.TenantId`.
-- Non-idempotent consumers or external side effects inside Mongo transactions.
-- Kubernetes resources with wrong namespace, labels, selectors, names, ports, storage, ingress, or secret references.
-- Frontend API calls that omit token or tenant id, duplicate fetch logic, or drift from backend DTOs.
-- Tests that prove the wrong boundary, miss the changed invariant, or require live infrastructure unnecessarily.
-- Generated files or unrelated edits that should not be part of the task.
+Distinguish automated coverage from manual inspection. Verify current reports and the actual
+analyzers in the reviewed tree; do not infer complete coverage from a diagnostic name. Record
+each manual area's disposition and supporting paths or evidence. Group areas that are not
+applicable with a reason, and report missing evidence as unverified. A checked box without
+inspection is not a review result.
+
+Use the canonical linked policies rather than copying a private observation history into the
+review. Preserve documented exceptions and leave deferred proposals outside the agreed scope.
 
 ## Output Format
 
 Use the repo's normal code-review stance:
 
 1. If tests fail, first state which tests fail and why. Then list findings ordered by severity.
-2. Include file and line references for each finding when possible.
-3. Explain the failure mode and the concrete consequence.
+2. Include file/line references, the applicable canonical rule and a proposed correction for each finding.
+3. Explain the failure mode and the concrete consequence; distinguish a defect from a deferred proposal.
 4. Add open questions or assumptions only after findings.
 5. Add a short verification note covering what was run and what was not run.
 6. If there are no findings, say that clearly and mention any residual test gaps or risk.
+7. Return a compact [review record](../../../docs/review-checklist.md#compact-review-record) with the exact target, automated evidence and R1–R8 dispositions. The primary agent may save it to ignored notes; an independent reviewer remains read-only. A handoff may link the saved record instead of repeating it.
 
 ## Self-review
 
@@ -61,6 +60,7 @@ When this skill is used by the same agent that implemented the task:
 
 - Fix clear, local defects before final handoff when doing so is within the original task scope.
 - Re-run the relevant validation after fixes.
+- Follow the agreed commit grouping for findings and hand the user a committed result with SHAs; do not infer permission to commit or publish from this skill.
 - Report only unresolved findings, verification gaps, and material follow-up risks in the final handoff.
 - Do not hide meaningful review findings just because they were found late.
 
