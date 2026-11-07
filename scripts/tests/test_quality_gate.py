@@ -419,16 +419,46 @@ class EvidenceTests(unittest.TestCase):
             gate.run_backend(output)
 
     def test_full_gate_uses_the_common_backend_lane(self):
+        def emit_template_report(name, command, *args):
+            if name == "feature-template":
+                output = Path(command[-1])
+                output.mkdir(parents=True)
+                (output / "results.trx").write_text("generated feature evidence")
+
         with patch.object(gate, "ROOT", self.root), patch.object(gate, "ARTIFACTS", self.root / "quality"), \
                 patch.object(gate, "RECEIPT", self.root / "receipt.json"), \
                 patch.object(gate, "git", return_value="base"), patch.object(gate, "source_fingerprint", return_value="unchanged"), \
                 patch.object(gate, "test_projects", return_value=["tests/A.csproj"]), patch.object(gate, "capture_headroom"), \
-                patch.object(gate, "execute"), patch.object(gate, "format_command", return_value=None), \
+                patch.object(gate, "execute", side_effect=emit_template_report) as execute, \
+                patch.object(gate, "format_command", return_value=None), \
                 patch.object(gate, "read_vitest", return_value={"total": 1, "passed": 1}), patch("builtins.print"), \
                 patch.object(gate, "run_backend") as backend:
             gate.run_full("origin/master")
         backend.assert_called_once()
+        template_calls = [call for call in execute.call_args_list if call.args[0] == "feature-template"]
+        self.assertEqual(1, len(template_calls))
+        self.assertEqual("scripts/check_feature_template.py", template_calls[0].args[1][1])
+        self.assertTrue((Path(template_calls[0].args[1][-1]) / "results.trx").is_file())
+        self.assertEqual([], list(backend.call_args.args[0].rglob("*.trx")),
+                         "Generated reports must not trip the backend's fresh-directory or assembly-inventory guards.")
         self.assertEqual("passed", json.loads((self.root / "receipt.json").read_text())["status"])
+
+    def test_failed_generated_feature_blocks_full_gate_success(self):
+        def execute(name, *args):
+            if name == "feature-template":
+                raise gate.GateError("controlled template validation failure")
+
+        with patch.object(gate, "ROOT", self.root), patch.object(gate, "ARTIFACTS", self.root / "quality"), \
+                patch.object(gate, "RECEIPT", self.root / "receipt.json"), \
+                patch.object(gate, "git", return_value="base"), \
+                patch.object(gate, "source_fingerprint", return_value="unchanged"), \
+                patch.object(gate, "test_projects", return_value=["tests/A.csproj"]), \
+                patch.object(gate, "capture_headroom"), patch.object(gate, "format_command", return_value=None), \
+                patch.object(gate, "execute", side_effect=execute), patch.object(gate, "run_backend") as backend:
+            with self.assertRaisesRegex(gate.GateError, "controlled template validation failure"):
+                gate.run_full("origin/master")
+        backend.assert_not_called()
+        self.assertEqual("failed", json.loads((self.root / "receipt.json").read_text())["status"])
 
     def test_headroom_drops_native_messages_specs_and_credentials(self):
         output = self.root / "output"
