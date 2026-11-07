@@ -10,12 +10,28 @@ Read `docs/engineering-guidelines.md`, `docs/module-boundaries.md`, and the owni
 ## Design The Boundary
 
 - Decide which feature owns the behavior and data before choosing files.
-- Add only the project roles the capability needs: Domain and Application, plus optional Primitives, Contracts, Contracts.HttpMapping, Events, Runtime, or Tests as defined in `docs/module-boundaries.md`.
+- Add only the project roles the capability needs: Domain and Application, plus optional Primitives, Contracts, Contracts.HttpMapping, Events, Migrations, Runtime, or Tests as defined in `docs/module-boundaries.md`.
 - Use provider-owned Contracts for synchronous cross-feature capabilities and provider-owned Events for asynchronous integration. Do not reference another feature's Domain or Application.
 - Keep persistence feature-owned under Application. Expose narrow operations or provider contracts and register their Mongo implementations; do not introduce a central feature context or general `MongoDbContext`.
 - Let expected business outcomes remain typed. Let unexpected infrastructure and cancellation exceptions reach the standard exception path.
 
 ## Implement The Slice
+
+For a new C# tenant-owned metadata feature, read the [working starter](../../../templates/feature/README.md).
+After scope/branch authorization, use `scripts/create_feature.py` with the agreed feature, resource
+and route names. It scaffolds only: complete the explicit solution, architecture-role, migration,
+event-catalog and endpoint composition steps in the guide. Inspect one complete Create path and
+its real Mongo/outbox regression before repeating the pattern for other operations.
+
+Use only the roles and behavior the capability needs. For an existing feature, extend its current
+slice. For Kubernetes resources or more complex workflows, choose the maintained production
+references rather than treating the metadata example as complete admission/lifecycle behavior.
+Rules stay in the canonical docs; the starter is an executable example, not another rulebook.
+
+When changing the starter or generator, run `python3 scripts/check_feature_template.py`: it tests
+the materialized projects with production analyzers, the existing architecture suite and real
+Mongo/API tests. Generator unit tests alone are not evidence that the example works. Use the
+[review checklist](../../../docs/review-checklist.md) before handoff.
 
 1. Model valid states and transitions in Domain, using factories or methods that preserve invariants.
 2. Add feature-owned persistence operations, migrations, indexes, and transaction boundaries. Join a caller-owned session only when a published contract requires atomic cross-feature work.

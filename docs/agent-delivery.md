@@ -38,6 +38,12 @@ that can drift. Read the owning [Redis documentation](../src/features/RedisServi
 for transaction and contribution boundaries. Choose another documented pattern
 when the task needs different semantics; name it and explain the difference.
 
+For a new tenant-owned metadata module, the [feature starter](../templates/feature/README.md)
+provides a small Create/Get/Update example. `scripts/check_feature_template.py` builds and tests
+its materialized output with the normal production roles, analyzers and architecture suite.
+Use the real compiled references above when a capability needs different semantics; the metadata
+starter does not supply workload admission or lifecycle behavior.
+
 ## Review the first slice before repeating it
 
 For a new feature or repeated endpoint family, implement one representative
