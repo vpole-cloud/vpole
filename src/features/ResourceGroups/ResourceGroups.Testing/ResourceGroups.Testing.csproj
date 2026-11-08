@@ -6,6 +6,7 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>false</IsTestProject>
     <PoleArchitectureRole>TestSupport</PoleArchitectureRole>
+    <RootNamespace>Pole.Features.ResourceGroups.Testing</RootNamespace>
     <AssemblyName>Pole.Features.ResourceGroups.Testing</AssemblyName>
   </PropertyGroup>
   <ItemGroup>

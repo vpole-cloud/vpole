@@ -192,10 +192,10 @@ def save_receipt(receipt):
 
 def require_current_receipt():
     if not RECEIPT.exists():
-        raise GateError("No full local test evidence; run scripts/quality_gate.py run")
+        raise GateError("No current test evidence; run scripts/quality_gate.py run with the required profile")
     receipt = json.loads(RECEIPT.read_text())
     if receipt.get("status") != "passed":
-        raise GateError(receipt.get("failure", "The full local gate has not passed"))
+        raise GateError(receipt.get("failure", "The selected local gate has not passed"))
     if receipt.get("fingerprint") != source_fingerprint():
         raise GateError("Sources changed after the full local gate; rerun every suite")
     if receipt.get("base_sha") != git("rev-parse", receipt["base"]):
@@ -337,6 +337,7 @@ def run_backend(directory, steps=None, tests=None, profile="full", limits=None):
 
 
 def run_full(base, profile="full", config=None):
+    started = time.monotonic()
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     directory = ARTIFACTS / time.strftime("%Y%m%d-%H%M%S")
     directory.mkdir()
@@ -371,12 +372,13 @@ def run_full(base, profile="full", config=None):
         if receipt["fingerprint"] != source_fingerprint():
             raise GateError("Sources changed while tests ran; full evidence is stale")
         receipt["status"] = "passed"
-        print("All local test projects and frontend tests passed with zero skips.")
+        print(f"All {profile}-profile projects and frontend tests passed with zero skips.")
     except (GateError, OSError, ValueError, ET.ParseError) as error:
         receipt["status"] = "failed"
         receipt["failure"] = str(error)
         raise GateError(str(error)) from error
     finally:
+        receipt["seconds"] = round(time.monotonic() - started, 2)
         if receipt["status"] != "passed":
             try:
                 capture_headroom(directory, "failed-run", include_lab=profile == "full")
