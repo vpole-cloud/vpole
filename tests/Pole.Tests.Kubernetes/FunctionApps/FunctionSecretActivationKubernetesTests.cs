@@ -34,13 +34,11 @@ using Pole.Features.Secrets.Contracts;
 using Pole.Features.Secrets.Domain;
 using Pole.Functions.Protocol;
 using Pole.Testing;
-using Pole.Tests.Integration.Infrastructure;
 using Pole.Workloads;
 using Pole.Testing.Kubernetes;
 using Xunit;
-using TestDeploymentTargetLookup = Pole.Tests.Integration.Infrastructure.TestDeploymentTargetLookup;
 
-namespace Pole.Tests.Integration.FunctionApps;
+namespace Pole.Tests.Kubernetes.FunctionApps;
 
 [Trait("Layer", "Kubernetes")]
 public sealed class FunctionSecretActivationKubernetesTests(KubernetesClusterFixture fixture)
@@ -75,7 +73,7 @@ public sealed class FunctionSecretActivationKubernetesTests(KubernetesClusterFix
             await Kubernetes.AppsV1.PatchNamespacedDeploymentAsync(
                 patch, subject.DeploymentName, NamespaceName, cancellationToken: cancellationToken);
         });
-        using var runtimeKubernetes = new Kubernetes(Target.CreateConfiguration(), scaleConflicts);
+        using var runtimeKubernetes = new k8s.Kubernetes(Target.CreateConfiguration(), scaleConflicts);
         var services = new ServiceCollection().AddSecretsFeature();
         services.AddSingleton<IKubernetesClientProvider>(new FixedKubernetesClientProvider(runtimeKubernetes));
         services.AddSingleton<LoadSecretById>((tenant, id, _) => Task.FromResult(
@@ -245,11 +243,11 @@ public sealed class FunctionSecretActivationKubernetesTests(KubernetesClusterFix
                 new HttpFunctionTriggerSpec(string.Empty, "hello", ["GET"], FunctionExposure.Internal))]);
         var created = FunctionAppFactory.Create("tenant-live", "507f1f77bcf86cd799439043",
             new FunctionPlacementIdentity("507f1f77bcf86cd799439041", "507f1f77bcf86cd799439042",
-                TestData.DefaultDeploymentTargetId), "function-live", "function-live", input, [],
+                TestPlatformDefaults.DeploymentTargetId), "function-live", "function-live", input, [],
             DateTimeOffset.UtcNow);
         return new FunctionRevisionInKubernetes(created.FunctionApp, created.Revision,
             new FunctionResourcePlacement(created.FunctionApp.Placement.ResourceDeploymentId,
-                created.FunctionApp.Placement.RuntimeCellId, TestData.DefaultDeploymentTargetId,
+                created.FunctionApp.Placement.RuntimeCellId, TestPlatformDefaults.DeploymentTargetId,
                 NamespaceName, "507f1f77bcf86cd799439044"));
     }
 

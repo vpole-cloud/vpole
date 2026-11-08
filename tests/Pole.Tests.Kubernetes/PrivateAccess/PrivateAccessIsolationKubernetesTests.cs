@@ -10,7 +10,7 @@ using Pole.Testing;
 using Pole.Workloads;
 using Xunit;
 
-namespace Pole.Tests.Integration.PrivateAccess;
+namespace Pole.Tests.Kubernetes.PrivateAccess;
 
 [Trait("Layer", "Kubernetes")]
 [Trait("Concern", "Feature")]

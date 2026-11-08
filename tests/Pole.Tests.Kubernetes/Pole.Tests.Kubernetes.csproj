@@ -17,6 +17,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../../src/features/ContainerRegistries/ContainerRegistries.Application/ContainerRegistries.Application.csproj" />
+    <ProjectReference Include="../../src/features/SourceBuilds/SourceBuilds.Application/SourceBuilds.Application.csproj" />
+    <ProjectReference Include="../Pole.Testing.Kubernetes/Pole.Testing.Kubernetes.csproj" />
+    <ProjectReference Include="../../src/features/Functions/Functions.Runtime/Functions.Runtime.csproj" />
+    <ProjectReference Include="../../src/features/PrivateAccess/PrivateAccess.Runtime/PrivateAccess.Runtime.csproj" />
+    <ProjectReference Include="../../src/features/ResourceGroups/ResourceGroups.Application/ResourceGroups.Application.csproj" />
+    <ProjectReference Include="../../src/features/ResourceConnections/ResourceConnections.Application/ResourceConnections.Application.csproj" />
+    <ProjectReference Include="../../src/features/ResourceDeployments/ResourceDeployments.Application/ResourceDeployments.Application.csproj" />
     <ProjectReference Include="../../src/features/Secrets/Secrets.Application/Secrets.Application.csproj" />
     <ProjectReference Include="../../src/api/Pole.Testing/Pole.Testing.csproj" />
     <ProjectReference Include="../../src/features/ResourceDeployments/ResourceDeployments.Contracts/ResourceDeployments.Contracts.csproj" />

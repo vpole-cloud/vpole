@@ -6,5 +6,5 @@ namespace Pole.Tests.Kubernetes;
 [CollectionDefinition(Name, DisableParallelization = true)]
 public sealed class KubernetesLabCollection : ICollectionFixture<KubernetesClusterFixture>
 {
-    public const string Name = "Pole Kubernetes lab";
+    public const string Name = KubernetesIntegrationTestBase.CollectionName;
 }

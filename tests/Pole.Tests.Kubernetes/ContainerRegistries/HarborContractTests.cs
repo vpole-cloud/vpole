@@ -10,7 +10,7 @@ using Pole.Features.SourceBuilds.Domain;
 using Pole.Testing;
 using Xunit;
 
-namespace Pole.Tests.Integration.ContainerRegistries;
+namespace Pole.Tests.Kubernetes.ContainerRegistries;
 
 [Collection(HarborContractCollection.Name)]
 public sealed class HarborContractTests(HarborContractFixture fixture)
