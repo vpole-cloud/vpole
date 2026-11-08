@@ -3,14 +3,15 @@ using MongoDB.Bson;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Migrations;
 using Pole.Features.WebServices.Domain;
-using Pole.Tests.Integration.Infrastructure;
+using Pole.Testing;
 using Xunit;
 
-namespace Pole.Tests.Integration.WebServices;
+namespace Pole.Features.WebServices.Tests.Integration;
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class WebServiceSchemaValidationTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+[Collection(nameof(WebServicesMongoCollection))]
+public sealed class WebServiceSchemaValidationTests(WebServicesMongoFixture fixture) : IAsyncLifetime
 {
+    private const string TenantId = "507f1f77bcf86cd799439011";
     private const string CollectionName = "WebServices";
     private const string ReleaseCollectionName = "WebServiceReleases";
 
@@ -133,7 +134,7 @@ public sealed class WebServiceSchemaValidationTests(MongoReplicaSetFixture fixtu
             FailureCode: null,
             FailureMessage: null);
         var release = WebServiceReleaseFactory.CreatePending(
-            TestData.TenantId,
+            TenantId,
             ObjectId.GenerateNewId().ToString(),
             2,
             WebServiceReleaseAction.RetryDeployment,
@@ -164,7 +165,7 @@ public sealed class WebServiceSchemaValidationTests(MongoReplicaSetFixture fixtu
         bool withConfiguration = false) =>
         WebServiceFactory.Create(
             "api",
-            TestData.TenantId,
+            TenantId,
             ObjectId.GenerateNewId().ToString(),
             ObjectId.GenerateNewId().ToString(),
             new WebServiceSpec(
