@@ -1,6 +1,6 @@
 using Pole.Features.Postgres.Domain;
 using Pole.Features.ResourceGroups.Domain;
-using Pole.ResultType;
+using Pole.Features.ResourceGroups.Testing;
 
 namespace Pole.Features.Postgres.Tests.Integration.Infrastructure;
 
@@ -8,14 +8,7 @@ public static class PostgresTestSeedExtensions
 {
     public static async Task<ResourceGroup> InsertResourceGroupAsync(this PostgresTestStore store, ResourceGroup group)
     {
-        var scope = IsolationScopeFactory.CreateDefault(group.TenantId, group.Id,
-            new IsolationScopeFactory.CreateOptions(group.DefaultIsolationScopeId, group.CreatedAtUtc));
-        _ = await store.RunOutcomeInTransactionAsync<Unit>(async (transaction, cancellationToken) =>
-        {
-            await store.ResourceGroups.InsertOneAsync(transaction.Session, group, cancellationToken: cancellationToken);
-            await store.IsolationScopes.InsertOneAsync(transaction.Session, scope, cancellationToken: cancellationToken);
-            return transaction.Commit(Unit.Value);
-        });
+        await new ResourceGroupTestData(store.Database).SeedAsync(group);
         return group;
     }
 

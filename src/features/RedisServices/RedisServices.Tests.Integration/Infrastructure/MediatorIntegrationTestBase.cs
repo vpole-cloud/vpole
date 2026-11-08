@@ -13,7 +13,7 @@ using Pole.Features.RedisServices.Events;
 using Pole.Features.ResourceConnections.Application;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
-using Pole.Features.Tenants.Domain;
+using Pole.Features.Tenants.Testing;
 using Pole.Mediator;
 using Pole.Platform.Hosting;
 using Pole.Testing;
@@ -74,7 +74,7 @@ public abstract class MediatorIntegrationTestBase(MongoReplicaSetFixture fixture
         await DbContext.StorageProfiles.InsertOneAsync(RedisTestData.SeedStorageProfile());
         await Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles")
             .InsertOneAsync(RedisTestData.SeedComputeProfile());
-        await DbContext.Tenants.InsertOneAsync(TenantFactory.Create("Test tenant", RedisTestData.TenantId));
+        await new TenantTestData(Fixture.Database).CreateAsync("Test tenant", RedisTestData.TenantId);
         _scope = _serviceProvider.CreateScope();
     }
 

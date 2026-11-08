@@ -6,9 +6,10 @@ The frontend PostgreSQL provider uses the existing tenant CRUD, credential and r
 the UI does not offer a client-side mode override.
 
 `Postgres.Tests`
-owns infrastructure-free domain, credential, quota, HTTP-mapping, and manifest checks;
-`Postgres.Tests.Integration` owns Mongo, HTTP/outbox, and live Kubernetes checks. The tests use the
-reusable lab described in `docs/testing.md`; they validate an existing lab but do not provision it.
+owns infrastructure-free domain, credential, quota, HTTP-mapping, manifest, registration, and fake
+Kubernetes observation checks. `Postgres.Tests.Integration` owns Mongo and HTTP/outbox checks.
+`Postgres.Tests.Kubernetes` runs live StatefulSet, CloudNativePG, and observation checks against
+the reusable lab described in `docs/testing.md`.
 
 The PostgreSQL feature owns tenant-scoped logical database clusters and supports two deployment
 modes: a native Kubernetes StatefulSet and the CloudNativePG operator.
