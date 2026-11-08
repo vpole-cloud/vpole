@@ -1,7 +1,7 @@
 using Pole.Testing;
 using Xunit;
 
-namespace Pole.Features.RedisServices.Tests.Integration.Infrastructure;
+namespace Pole.Features.Postgres.Tests.Kubernetes.Infrastructure;
 
 [CollectionDefinition(Name)]
 public sealed class KubernetesIntegrationTestCollection : ICollectionFixture<KubernetesClusterFixture>

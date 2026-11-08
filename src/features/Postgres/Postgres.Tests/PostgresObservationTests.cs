@@ -10,12 +10,11 @@ using Pole.Features.Postgres.Application.Clusters;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Kubernetes;
 using Pole.Features.Postgres.Domain;
-using Pole.Features.Postgres.Tests.Integration.Infrastructure;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Workloads;
 using Xunit;
 
-namespace Pole.Features.Postgres.Tests.Integration;
+namespace Pole.Features.Postgres.Tests;
 
 public sealed class PostgresObservationTests
 {
@@ -25,9 +24,9 @@ public sealed class PostgresObservationTests
     [InlineData(PostgresDeploymentMode.StatefulSet, true)]
     public async Task Provider_reads_exact_owned_target_and_requires_current_operator_condition(PostgresDeploymentMode mode, bool currentCondition)
     {
-        var cluster = PostgresCluster.Create(PostgresTestData.TenantId, "health-database", ObjectId.GenerateNewId().ToString(), 17, mode,
-            PostgresTestData.DefaultStorageProfileId, new CreatePostgresClusterOptions(FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()), 1, 1));
-        var targetId = PostgresTestData.DefaultDeploymentTargetId;
+        var cluster = PostgresCluster.Create(TestData.TenantId, "health-database", ObjectId.GenerateNewId().ToString(), 17, mode,
+            TestData.DefaultStorageProfileId, new CreatePostgresClusterOptions(FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()), 1, 1));
+        var targetId = TestData.DefaultDeploymentTargetId;
         var deploymentId = ObjectId.GenerateNewId().ToString();
         var identity = new WorkloadIdentityLabels(cluster.TenantId, cluster.GroupId, "scope", "cell", targetId, "Postgres", cluster.Id, deploymentId);
         var controllerMetadata = new V1ObjectMeta { Name = PostgresClusterKubernetesBuilder.buildResourceName(cluster.Id), NamespaceProperty = "owned", Uid = "controller", Generation = 3, Labels = identity.ToDictionary() };

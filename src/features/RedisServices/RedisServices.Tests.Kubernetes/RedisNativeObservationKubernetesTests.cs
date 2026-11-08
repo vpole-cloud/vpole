@@ -3,6 +3,7 @@ using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Text.Json;
 using k8s;
+using KubernetesClient = k8s.Kubernetes;
 using k8s.Models;
 using MongoDB.Bson;
 using Pole.Features.Core.Kubernetes;
@@ -10,14 +11,14 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Kubernetes;
 using Pole.Features.RedisServices.Domain;
-using Pole.Features.RedisServices.Tests.Integration.Infrastructure;
+using Pole.Features.RedisServices.Tests.Kubernetes.Infrastructure;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Testing;
 using Pole.Workloads;
 using Xunit;
 using Xunit.Abstractions;
 
-namespace Pole.Features.RedisServices.Tests.Integration.RedisServices;
+namespace Pole.Features.RedisServices.Tests.Kubernetes.RedisServices;
 
 [Trait("Layer", "Kubernetes")]
 [Trait("Feature", "RedisServices")]
@@ -28,7 +29,7 @@ public sealed class RedisNativeObservationKubernetesTests(KubernetesClusterFixtu
     public async Task Owned_StatefulSet_source_observes_real_Pod_UID_change_and_withdraws_foreign_controller()
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-        using var client = new Kubernetes(Target.CreateConfiguration(), new KubernetesWatchHeaders());
+        using var client = new KubernetesClient(Target.CreateConfiguration(), new KubernetesWatchHeaders());
         var targetId = RedisTestData.DefaultDeploymentTargetId;
         var resource = RedisFactory.Create(RedisTestData.TenantId,
             "redis-observation",

@@ -8,13 +8,13 @@ using k8s.Models;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Application.Kubernetes;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.RedisServices.Tests.Integration.Infrastructure;
+using Pole.Features.RedisServices.Tests.Kubernetes.Infrastructure;
 using Pole.Testing;
 using StackExchange.Redis;
 using Xunit;
 using RedisEntity = Pole.Features.RedisServices.Domain.Redis;
 
-namespace Pole.Features.RedisServices.Tests.Integration.RedisServices;
+namespace Pole.Features.RedisServices.Tests.Kubernetes.RedisServices;
 
 [Trait("Layer", "Kubernetes")]
 [Trait("Concern", "Feature")]

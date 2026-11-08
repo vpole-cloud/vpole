@@ -5,7 +5,7 @@ using Pole.Features.Postgres.Application.Kubernetes;
 using Pole.Features.ResourceDeployments.Contracts;
 using Xunit;
 
-namespace Pole.Features.Postgres.Tests.Integration;
+namespace Pole.Features.Postgres.Tests;
 
 public sealed class PostgresRegistrationTests
 {
