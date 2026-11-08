@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Text.Json;
 using k8s;
+using KubernetesClient = k8s.Kubernetes;
 using k8s.Models;
 using Microsoft.FSharp.Core;
 using MongoDB.Bson;
@@ -11,7 +12,7 @@ using Pole.Features.Postgres.Application.Clusters;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Kubernetes;
 using Pole.Features.Postgres.Domain;
-using Pole.Features.Postgres.Tests.Integration.Infrastructure;
+using Pole.Features.Postgres.Tests.Kubernetes.Infrastructure;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Observation;
 using Pole.Testing;
@@ -19,7 +20,7 @@ using Pole.Workloads;
 using Xunit;
 using Xunit.Abstractions;
 
-namespace Pole.Features.Postgres.Tests.Integration;
+namespace Pole.Features.Postgres.Tests.Kubernetes;
 
 [Trait("Layer", "Kubernetes")]
 [Trait("Feature", "Postgres")]
@@ -37,7 +38,7 @@ public sealed class PostgresNativeObservationKubernetesTests(KubernetesClusterFi
     private async Task VerifyAsync(PostgresDeploymentMode mode)
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(6));
-        using var client = new Kubernetes(Target.CreateConfiguration(), new KubernetesWatchHeaders());
+        using var client = new KubernetesClient(Target.CreateConfiguration(), new KubernetesWatchHeaders());
         var cluster = PostgresCluster.Create(PostgresTestData.TenantId,
             "postgres-observation",
             Id(),

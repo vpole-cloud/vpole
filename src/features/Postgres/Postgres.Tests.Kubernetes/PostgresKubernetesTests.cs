@@ -11,12 +11,12 @@ using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.Postgres.Application.Kubernetes;
 using Pole.Features.Shared.Models;
-using Pole.Features.Postgres.Tests.Integration.Infrastructure;
+using Pole.Features.Postgres.Tests.Kubernetes.Infrastructure;
 using Pole.Testing;
 using Xunit;
 using PostgresCluster = Pole.Features.Postgres.Domain.PostgresCluster;
 
-namespace Pole.Features.Postgres.Tests.Integration;
+namespace Pole.Features.Postgres.Tests.Kubernetes;
 
 [Trait("Layer", "Kubernetes")]
 [Trait("Concern", "Feature")]

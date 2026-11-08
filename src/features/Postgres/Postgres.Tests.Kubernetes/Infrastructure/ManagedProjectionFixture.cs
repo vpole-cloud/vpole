@@ -21,7 +21,7 @@ using Pole.Features.Secrets.Contracts;
 using Pole.Features.Secrets.Domain;
 using Pole.Workloads;
 
-namespace Pole.Features.Postgres.Tests.Integration.Infrastructure;
+namespace Pole.Features.Postgres.Tests.Kubernetes.Infrastructure;
 
 /// <summary>Real Secrets projection target with controlled authority/placement and a live cluster.</summary>
 internal sealed class ManagedProjectionFixture : IDisposable

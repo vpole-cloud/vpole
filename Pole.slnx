@@ -122,6 +122,7 @@
     <Project Path="src/features/RedisServices/RedisServices.Contracts/RedisServices.Contracts.csproj" />
     <Project Path="src/features/RedisServices/RedisServices.Tests/RedisServices.Tests.csproj" />
     <Project Path="src/features/RedisServices/RedisServices.Tests.Integration/RedisServices.Tests.Integration.csproj" />
+    <Project Path="src/features/RedisServices/RedisServices.Tests.Kubernetes/RedisServices.Tests.Kubernetes.csproj" />
     <Project Path="src/features/RedisServices/RedisServices.Application/RedisServices.Application.csproj" />
     <Project Path="src/features/RedisServices/RedisServices.Domain/RedisServices.Domain.csproj" />
     <Project Path="src/features/RedisServices/RedisServices.Events/RedisServices.Events.csproj" />
@@ -138,6 +139,7 @@
     <Project Path="src/features/Postgres/Postgres.Migrations/Postgres.Migrations.fsproj" />
     <Project Path="src/features/Postgres/Postgres.Tests/Postgres.Tests.csproj" />
     <Project Path="src/features/Postgres/Postgres.Tests.Integration/Postgres.Tests.Integration.csproj" />
+    <Project Path="src/features/Postgres/Postgres.Tests.Kubernetes/Postgres.Tests.Kubernetes.csproj" />
     <Project Path="src/features/Postgres/Postgres.Application/Postgres.Application.fsproj" />
     <Project Path="src/features/Postgres/Postgres.Domain/Postgres.Domain.fsproj" />
     <Project Path="src/features/Postgres/Postgres.Events/Postgres.Events.fsproj" />
