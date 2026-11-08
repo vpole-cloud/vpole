@@ -145,6 +145,7 @@
     <Project Path="src/features/Postgres/Postgres.Events/Postgres.Events.fsproj" />
   </Folder>
   <Folder Name="/features/ResourceGroups/">
+    <Project Path="src/features/ResourceGroups/ResourceGroups.Testing/ResourceGroups.Testing.csproj" />
     <Project Path="src/features/ResourceGroups/ResourceGroups.Migrations/ResourceGroups.Migrations.csproj" />
     <Project Path="src/features/ResourceGroups/ResourceGroups.Contracts/ResourceGroups.Contracts.csproj" />
     <Project Path="src/features/ResourceGroups/ResourceGroups.Contracts.HttpMapping/ResourceGroups.Contracts.HttpMapping.csproj" />
@@ -176,6 +177,7 @@
     <Project Path="src/features/Outbox/Outbox.Domain/Outbox.Domain.csproj" />
   </Folder>
   <Folder Name="/features/Tenants/">
+    <Project Path="src/features/Tenants/Tenants.Testing/Tenants.Testing.csproj" />
     <Project Path="src/features/Tenants/Tenants.Application/Tenants.Application.csproj" />
     <Project Path="src/features/Tenants/Tenants.Contracts/Tenants.Contracts.csproj" />
     <Project Path="src/features/Tenants/Tenants.Domain/Tenants.Domain.csproj" />
