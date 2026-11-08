@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/api/">
+    <Project Path="src/api/Pole.Platform.Resources/Pole.Platform.Resources.csproj" />
     <Project Path="src/api/Pole.Platform.Hosting/Pole.Platform.Hosting.csproj" />
     <Project Path="src/api/Pole.Testing/Pole.Testing.csproj" />
     <Project Path="src/api/Pole.AppHost/Pole.AppHost.csproj" />

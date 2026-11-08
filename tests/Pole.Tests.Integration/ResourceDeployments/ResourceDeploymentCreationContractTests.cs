@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceDeployments.Application.Admission;
@@ -10,6 +11,7 @@ using Pole.Features.ResourceDeployments.Application.Planning;
 using Pole.Features.ResourceDeployments.Application.Queries;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Platform.Resources;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -42,6 +44,29 @@ public sealed class ResourceDeploymentCreationContractTests(
         await AssertStructuralRequestRejectedAsync(
             create,
             new CreateResourceDeploymentSetRequest([deployment, deployment]));
+    }
+
+    [Fact]
+    public async Task InitialPlacements_RejectMixedTenantsBeforeWritingTheGroupEntry()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var first = CreateRequest() with { TenantId = group.TenantId, ResourceGroupId = group.Id };
+        var foreign = first with { TenantId = ObjectId.GenerateNewId().ToString() };
+        var placements = Services.GetRequiredService<InitialResourcePlacements>();
+
+        using var session = await DbContext.Client.StartSessionAsync();
+        session.StartTransaction();
+        try
+        {
+            await Assert.ThrowsAsync<ArgumentException>(() =>
+                placements.CreateAsync(new("mixed", [first, foreign]), session, CancellationToken.None));
+            Assert.False(await DbContext.ResourceRegistrations.Find(session,
+                item => item.TenantId == first.TenantId && item.ResourceId == first.ResourceId).AnyAsync());
+        }
+        finally
+        {
+            await session.AbortTransactionAsync();
+        }
     }
 
     [Fact]

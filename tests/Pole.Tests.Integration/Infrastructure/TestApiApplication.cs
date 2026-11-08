@@ -77,6 +77,7 @@ using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Migrations;
 using Pole.Observability;
 using Pole.Platform.Hosting;
+using Pole.Platform.Resources;
 using Pole.Server.Extensions;
 
 namespace Pole.Tests.Integration.Infrastructure;
@@ -210,6 +211,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddOutboxPersistence();
         builder.Services.AddGitOpsFeature();
         builder.Services.AddFunctionAppsFeature();
+        builder.Services.AddScoped<InitialResourcePlacements>();
         builder.Services.AddResourceDeploymentsFeature(builder.Configuration);
         builder.Services.AddResourceGroupsFeature(builder.Configuration);
         builder.Services.AddResourceConnectionsFeature();

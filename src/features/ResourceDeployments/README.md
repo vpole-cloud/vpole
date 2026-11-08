@@ -8,6 +8,14 @@ providers own logical configuration and native object selection. RuntimeCells ow
 DeploymentTargets owns clients and admission. This feature does not store credentials or audit history.
 
 
+## Initial placements
+
+WebServices and Redis create their initial placements through `Pole.Platform.Resources.InitialResourcePlacements`
+in both API and GitOps create flows. The caller supplies the resource display name, the desired placements and its
+active Mongo transaction. The platform derives the tenant, group, type and resource ID from those placements,
+registers the resource once, then creates its deployment set in the same session. The caller aborts on either
+typed failure. Adding a target to an existing resource uses the existing deployment-set contract directly.
+
 ## Tenant operations and runtime observation
 
 `GET /resource-deployments/operations` pages current persisted placements in the active tenant,

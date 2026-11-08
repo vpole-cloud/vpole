@@ -13,6 +13,7 @@ using Pole.Features.RedisServices.Application.Services;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Platform.Resources;
 using static Pole.Features.RedisServices.Application.Declarations.RedisDeclarations;
 using static Pole.Features.RedisServices.Application.Declarations.RedisPlanning;
 
@@ -24,8 +25,7 @@ internal sealed class RedisDeclarationExecution(
     MongoRunTransaction transactions,
     RedisDeclarationPlanner planner,
     IQuotaAdmissionExecutor quotas,
-    IResourceRegistrar registrar,
-    CreateResourceDeployment createPlacement,
+    InitialResourcePlacements initialPlacements,
     RequestResourceDeploymentSetApply applyPlacements,
     PersistCreatedRedis persistCreated,
     PersistUpdatedRedis persistUpdated)
@@ -106,24 +106,24 @@ internal sealed class RedisDeclarationExecution(
         if (await persistCreated(session, resource, ct) is RedisServiceNameAlreadyExists)
             return new(resource.Id, new RedisDeclarationRejected(RedisDeclarationError.ExplicitAdoptionRequired));
 
-        if (await registrar.RegisterAsync(new(resource.TenantId, resource.ResourceGroupId,
-                new(RedisResourceDeployment.ResourceType, resource.Id, resource.Name)), session, ct)
-            is ResourceRegistrationMutationError)
-            return new(resource.Id,
-                new RedisDeclarationRejected(RedisDeclarationError.ResourceRegistrationUnavailable));
-
         var target = dependencies.Target.Target;
-        var created = await createPlacement(new(ObjectId.GenerateNewId().ToString(), resource.TenantId,
-                RedisResourceDeployment.ResourceType, resource.Id, resource.ResourceGroupId,
-                dependencies.Scope.IsolationScopeId, new(target.Id, target.WorkloadConfiguration.Revision, null),
-                dependencies.Compute.Compute.ToResourceDeploymentConfiguration(),
-                StorageConfiguration(dependencies.Storage.Storage), ResourcePlacementCapability.SingleTarget,
-                DeferredActivation: true, PinnedCompute: true,
-                StoragePolicyRevision: dependencies.Storage.PolicyRevision),
-            session, ct);
-        return created is PlacementSummaryDto
-            ? new(resource.Id, Changed: true)
-            : new(resource.Id, new RedisDeclarationRejected(RedisDeclarationError.PlacementUnavailable));
+        var deployment = new CreateResourceDeploymentRequest(
+            ObjectId.GenerateNewId().ToString(), resource.TenantId,
+            RedisResourceDeployment.ResourceType, resource.Id, resource.ResourceGroupId,
+            dependencies.Scope.IsolationScopeId, new(target.Id, target.WorkloadConfiguration.Revision, null),
+            dependencies.Compute.Compute.ToResourceDeploymentConfiguration(),
+            StorageConfiguration(dependencies.Storage.Storage), ResourcePlacementCapability.SingleTarget,
+            DeferredActivation: true, PinnedCompute: true,
+            StoragePolicyRevision: dependencies.Storage.PolicyRevision);
+        var created = await initialPlacements.CreateAsync(new(resource.Name, [deployment]), session, ct);
+        return created switch
+        {
+            CreatedResourceDeployments => new(resource.Id, Changed: true),
+            ResourceRegistrationMutationError => new(resource.Id,
+                new RedisDeclarationRejected(RedisDeclarationError.ResourceRegistrationUnavailable)),
+            CreateResourceDeploymentError => new(resource.Id,
+                new RedisDeclarationRejected(RedisDeclarationError.PlacementUnavailable))
+        };
     }
 
     private async Task<GitOperationResult> ConfigureAsync(

@@ -14,6 +14,7 @@ using Pole.Features.Quotas.Contracts;
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Platform.Resources;
 using Pole.Features.Secrets.Contracts;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.WebServices.Application;
@@ -38,8 +39,7 @@ internal sealed class WebServiceDeclarationExecution(
     MongoRunTransaction planningTransactions,
     WebServicePlanningReader planningReader,
     IQuotaAdmissionExecutor quotas,
-    IResourceRegistrar registrar,
-    CreateResourceDeploymentSet createDeployments,
+    InitialResourcePlacements initialPlacements,
     RequestResourceDeploymentSetApply applyDeployments,
     AdmitConsumerSecretReferences admitSecrets,
     PersistCreatedWebService persistCreated,
@@ -192,18 +192,7 @@ internal sealed class WebServiceDeclarationExecution(
                 Lifecycle = new PreparedWebServiceLifecycle()
             }).BindDeclaredPlacement(binding);
 
-        if (await registrar.RegisterAsync(
-                new RegisterResourceRequest(
-                    TenantId: service.TenantId,
-                    ResourceGroupId: groupId,
-                    Resource: new(WebServiceResourceDeployment.ResourceType, service.Id, service.Name)),
-                session: session,
-                cancellationToken: ct) is ResourceRegistrationMutationError)
-            return new(
-                service.Id,
-                new WebServiceDeclarationRejected(WebServiceDeclarationError.ResourceRegistrationUnavailable));
-
-        var created = await createDeployments(new([
+        var created = await initialPlacements.CreateAsync(new(service.Name, [
                 new(ObjectId.GenerateNewId().ToString(),
                     service.TenantId,
                     WebServiceResourceDeployment.ResourceType,
@@ -225,7 +214,9 @@ internal sealed class WebServiceDeclarationExecution(
             session,
             ct);
 
-        if (created is not CreatedResourceDeployments)
+        if (created is ResourceRegistrationMutationError)
+            return new(service.Id, new WebServiceDeclarationRejected(WebServiceDeclarationError.ResourceRegistrationUnavailable));
+        if (created is CreateResourceDeploymentError)
             return new(service.Id, new WebServiceDeclarationRejected(WebServiceDeclarationError.PlacementUnavailable));
 
         var persisted = await persistCreated(session, service, service.ToCreateEvent([]), ct);

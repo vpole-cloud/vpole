@@ -46,6 +46,7 @@ using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Mediator;
 using Pole.Platform.Hosting;
+using Pole.Platform.Resources;
 using Pole.Server.Extensions;
 using Pole.Workloads;
 
@@ -102,6 +103,7 @@ public static class TestServiceProviderFactory
             storageDiscovery.GetPersistentVolumeClaimsAsync);
         services.AddSingleton<IKubernetesClientProvider>(
             new FixedKubernetesClientProvider(null!));
+        services.AddScoped<InitialResourcePlacements>();
         services.AddGitOpsFeature();
         services.AddOutboxPersistence();
         services.AddFunctionAppsFeature();
