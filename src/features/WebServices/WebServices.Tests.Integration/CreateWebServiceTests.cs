@@ -7,6 +7,8 @@ using MongoDB.Driver;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.ResourceGroups.Testing;
+using Pole.Features.Tenants.Testing;
 using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
@@ -22,9 +24,17 @@ namespace Pole.Features.WebServices.Tests.Integration;
 [Collection(nameof(WebServicesMongoCollection))]
 public sealed class CreateWebServiceTests(WebServicesMongoFixture fixture) : IAsyncLifetime
 {
-    private readonly CreateWebServicePlatform _platform = new();
+    private CreateWebServicePlatform _platform = null!;
+    private ResourceGroupTestData _groups = null!;
 
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
+    public async Task InitializeAsync()
+    {
+        await fixture.ResetDatabaseAsync();
+        var tenant = await new TenantTestData(fixture.Database).CreateAsync(id: TestPlatformDefaults.TenantId);
+        _groups = new ResourceGroupTestData(fixture.Database);
+        var group = await _groups.CreateAsync(tenant);
+        _platform = new CreateWebServicePlatform(group);
+    }
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
@@ -52,11 +62,8 @@ public sealed class CreateWebServiceTests(WebServicesMongoFixture fixture) : IAs
         Assert.Equal(placement.DeploymentId, binding.ResourceDeploymentId);
         Assert.Equal("webservice-" + service.Id, binding.RelativeName);
         Assert.Equal(binding.RelativeName + ".apps.test.local", Assert.Single(placement.Ingress!.Hostnames));
-        var registration = Assert.Single(_platform.Registrations);
-        Assert.Equal(request.TenantId, registration.TenantId);
-        Assert.Equal(_platform.GroupId, registration.ResourceGroupId);
-        Assert.Equal(new ResourceRegistrationDescriptor(WebServiceResourceDeployment.ResourceType,
-            service.Id, service.Name), registration.Resource);
+        await _groups.AssertRegisteredAsync(request.TenantId, _platform.GroupId,
+            WebServiceResourceDeployment.ResourceType, service.Id, service.Name);
         var release = await fixture.Releases.Find(item => item.WebServiceId == service.Id).SingleAsync();
         Assert.Equal(WebServiceReleaseAction.Create, release.Action);
         Assert.Equal(placement.DeploymentId, Assert.Single(release.Deployments).ResourceDeploymentId);
@@ -119,7 +126,7 @@ public sealed class CreateWebServiceTests(WebServicesMongoFixture fixture) : IAs
     private async Task AssertNoCreationAsync()
     {
         Assert.Empty(_platform.Deployments);
-        Assert.Empty(_platform.Registrations);
+        await _groups.AssertNoRegistrationsAsync(TestPlatformDefaults.TenantId);
         Assert.Empty(_platform.Bindings);
         Assert.Empty(_platform.Zones);
         Assert.Equal(0L, await fixture.WebServices.CountDocumentsAsync(_ => true));
@@ -127,45 +134,12 @@ public sealed class CreateWebServiceTests(WebServicesMongoFixture fixture) : IAs
         Assert.Equal(0L, await fixture.OutboxMessages.CountDocumentsAsync(_ => true));
     }
 
-    private CreateWebServiceRequest Request(string? groupId = null)
-    {
-        var probe = new ProbeConfigDto("/health", "8080", 5, 10, 5, 3, 1);
-        var spec = new WebServiceSpecDto(
-            new ImageInfoDto("docker.io", "nginx", "1.27"),
-            new WebServiceConfigDto
-            {
-                EnvironmentVariables = ImmutableDictionary<string, string>.Empty.Add("ASPNETCORE_ENVIRONMENT", "Development"),
-                PortMappings = [new(80, "8080", "TCP", "http")]
-            },
-            Autoscaling: null,
-            new ProbeSpecDto(probe, probe, probe));
-        var body = new CreateWebServiceRequestBody(
-            "web-api", groupId ?? _platform.GroupId, spec,
-            new WebServicePlacementRequest(null, [new(TestPlatformDefaults.DeploymentTargetId, 2)]), []);
-        return new CreateWebServiceRequest(body, TestPlatformDefaults.TenantId,
-            new(TestPlatformDefaults.UserId), new(TestPlatformDefaults.UserEmail));
-    }
+    private CreateWebServiceRequest Request(string? groupId = null) =>
+        WebServiceTestData.Create(groupId ?? _platform.GroupId);
 
     private async Task<CreateWebServiceOutcome> Send(CreateWebServiceRequest request)
     {
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddHttpContextAccessor();
-        services.AddSingleton<ITenantContextAccessor>(new TenantContextAccessor
-        {
-            Current = new(TestPlatformDefaults.TenantId, "Test tenant", TenantRole.Member, false)
-        });
-        services.AddScoped<IMediator, Mediator.Mediator>();
-        services.AddScoped(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
-        services.AddScoped(typeof(IPipelineBehavior<,>), typeof(TenantAuthorizationBehavior<,>));
-        services.AddScoped<IValidator<CreateWebServiceRequest>, CreateWebServiceRequestValidator>();
-        services.AddScoped<IMediatorOutcomeHandler<CreateWebServiceRequest, CreateWebServiceOutcome>, CreateWebServiceHandler>();
-        services.AddSingleton(TimeProvider.System);
-        services.AddSingleton(fixture.Database);
-        services.AddSingleton(fixture.StoreOutboxWrites);
-        services.AddWebServicePersistence();
-        _platform.RegisterContracts(services, fixture.Client);
-        using var provider = services.BuildServiceProvider(validateScopes: true);
+        using var provider = WebServicesTestHost.Create(fixture, _platform);
         using var scope = provider.CreateScope();
         var result = await scope.ServiceProvider.GetRequiredService<IMediator>().Send(request);
         return Assert.IsType<CreateWebServiceOutcome>(result.Value);

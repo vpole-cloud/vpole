@@ -11,6 +11,7 @@
 
     <ItemGroup>
       <InternalsVisibleTo Include="Pole.Features.WebServices.Tests.Integration" />
+      <InternalsVisibleTo Include="Pole.Features.WebServices.Tests" />
     </ItemGroup>
 
     <ItemGroup>

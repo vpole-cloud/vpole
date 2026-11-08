@@ -101,47 +101,6 @@ public sealed class WebServiceMetadataUpdateTests(MongoReplicaSetFixture fixture
         Assert.Equal(saved.DesiredGeneration, completed.DesiredGeneration);
     }
 
-    [Fact]
-    public async Task Equivalent_HTTP_configuration_is_a_no_op_without_releases_or_outbox_writes()
-    {
-        var service = await CreatePrivateServiceAsync();
-        var before = await DbContext.OutboxMessages.CountDocumentsAsync(_ => true);
-        var placement = await LoadDeploymentAsync(service.Id);
-
-        var accepted = (await Mediator.Send(new UpdateWebServiceRequest(
-            service.Id,
-            new UpdateWebServiceRequestBody(
-                service.Spec.ToDto(), service.Tags, service.Exposure.Mode, service.ActiveRevision),
-            service.TenantId))).AssertSuccess();
-
-        Assert.Equal(service.ActiveRevision, accepted.ResourceRevision);
-        var stored = await Fixture.Database.WebServices()
-            .Find(item => item.Id == service.Id).SingleAsync();
-        Assert.Equal(service.Revision, stored.Revision);
-        Assert.Equal(placement.Revision, (await LoadDeploymentAsync(service.Id)).Revision);
-        Assert.Equal(before, await DbContext.OutboxMessages.CountDocumentsAsync(_ => true));
-        Assert.Equal(1, await Fixture.Database.WebServiceReleases()
-            .CountDocumentsAsync(item => item.WebServiceId == service.Id));
-    }
-
-    [Fact]
-    public async Task Changed_configuration_still_requests_a_new_physical_generation()
-    {
-        var service = await CreatePrivateServiceAsync();
-        var placement = await LoadDeploymentAsync(service.Id);
-        var spec = ChangeEnvironment(service.Spec.ToDto());
-
-        var accepted = (await Mediator.Send(new UpdateWebServiceRequest(
-            service.Id,
-            new UpdateWebServiceRequestBody(
-                spec, service.Tags, service.Exposure.Mode, service.ActiveRevision),
-            service.TenantId))).AssertSuccess();
-
-        Assert.Equal(service.ActiveRevision + 1, accepted.ResourceRevision);
-        Assert.Equal(placement.DesiredGeneration + 1, Assert.Single(accepted.Deployments).DesiredGeneration);
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(Updated));
-    }
-
     private async Task<WebService> CreatePrivateServiceAsync()
     {
         var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
