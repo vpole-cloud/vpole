@@ -165,6 +165,7 @@
     <Project Path="src/features/WebServices/WebServices.Domain/WebServices.Domain.csproj" />
     <Project Path="src/features/WebServices/WebServices.Events/WebServices.Events.csproj" />
     <Project Path="src/features/WebServices/WebServices.Tests/WebServices.Tests.csproj" />
+    <Project Path="src/features/WebServices/WebServices.Tests.Integration/WebServices.Tests.Integration.csproj" />
   </Folder>
   <Folder Name="/features/Outbox/">
     <Project Path="src/features/Outbox/Outbox.Migrations/Outbox.Migrations.csproj" />

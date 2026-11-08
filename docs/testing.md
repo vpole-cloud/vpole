@@ -38,6 +38,8 @@ Independently testable feature behavior can live beside the feature in a dedicat
 - `src/features/RedisServices/RedisServices.Tests.Integration`
 - `src/features/Postgres/Postgres.Tests`
 - `src/features/Postgres/Postgres.Tests.Integration`
+- `src/features/WebServices/WebServices.Tests` runs the infrastructure-free WebServices checks, including those using a fake Kubernetes client.
+- `src/features/WebServices/WebServices.Tests.Integration` starts a Mongo replica set for BSON schema validation and deployment completion, including release and outbox writes.
 
 ## Current approach
 

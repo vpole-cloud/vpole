@@ -10,6 +10,10 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <InternalsVisibleTo Include="Pole.Features.WebServices.Tests.Integration" />
+    </ItemGroup>
+
+    <ItemGroup>
       <ProjectReference Include="../../GitOps/GitOps.Contracts/GitOps.Contracts.csproj" />
       <ProjectReference Include="../../../shared/Observation/Observation.csproj" />
       <ProjectReference Include="../../../shared/Dns/Dns.csproj" />
