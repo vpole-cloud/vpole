@@ -20,7 +20,7 @@ using Pole.Testing;
 using Pole.Workloads;
 using Xunit;
 
-namespace Pole.Tests.Integration.ResourceConnections;
+namespace Pole.Tests.Kubernetes.ResourceConnections;
 
 [Trait("Layer", "Kubernetes")]
 [Trait("Concern", "Feature")]

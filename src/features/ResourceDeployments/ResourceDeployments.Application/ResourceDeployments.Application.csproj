@@ -11,6 +11,7 @@
     <ItemGroup>
       <ProjectReference Include="../../../shared/Observation/Observation.csproj" />
       <InternalsVisibleTo Include="Pole.Tests.Integration" />
+      <InternalsVisibleTo Include="Pole.Tests.Kubernetes" />
     </ItemGroup>
 
     <ItemGroup>

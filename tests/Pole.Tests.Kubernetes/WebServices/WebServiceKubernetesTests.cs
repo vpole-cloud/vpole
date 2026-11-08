@@ -11,12 +11,11 @@ using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Application.Kubernetes;
-using Pole.Tests.Integration.Infrastructure;
-using Pole.Tests.Integration.ResourceDeployments;
+using Pole.Tests.Kubernetes.Infrastructure;
 using Pole.Testing;
 using Xunit;
 
-namespace Pole.Tests.Integration.WebServices;
+namespace Pole.Tests.Kubernetes.WebServices;
 
 [Trait("Layer", "Kubernetes")]
 [Trait("Concern", "Feature")]
@@ -67,7 +66,7 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
 
         return WebServiceFactory.Create(
             name: "source-build-e2e",
-            tenantId: TestData.TenantId,
+            tenantId: TestPlatformDefaults.TenantId,
             resourceGroupId: ResourceGroupId,
             isolationScopeId: IsolationScopeId,
             spec: spec,
@@ -145,7 +144,7 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
 
     private WebService BuildTestWebService()
     {
-        var spec = TestData.ValidWebServiceSpec().ToDomain() with
+        var spec = WebServiceKubernetesTestData.Spec().ToDomain() with
         {
             Image = new ImageInfo("docker.io", "nginx", "1.27",
                 SecretName: null),
@@ -172,7 +171,7 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
 
         return WebServiceFactory.Create(
             name: "web-integration",
-            tenantId: TestData.TenantId,
+            tenantId: TestPlatformDefaults.TenantId,
             resourceGroupId: ResourceGroupId,
             isolationScopeId: IsolationScopeId,
             spec: spec,
@@ -190,7 +189,7 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
                 "pole-lab",
                 Target.PublicBaseDomain,
                 [BuildIngressHost()]),
-            ResourceDeploymentTestData.ContractCompute(
+            KubernetesComputeTestData.ContractCompute(
                 "507f1f77bcf86cd799439020"),
             fixedReplicas: 1,
             new WorkloadIdentityLabels(

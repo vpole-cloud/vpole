@@ -1,3 +1,4 @@
+using Pole.Tests.Kubernetes.Infrastructure;
 using System.Collections.Immutable;
 using k8s;
 using k8s.Models;
@@ -13,7 +14,7 @@ using Pole.Testing;
 using Pole.Workloads;
 using Xunit;
 
-namespace Pole.Tests.Integration.ResourceDeployments;
+namespace Pole.Tests.Kubernetes.ResourceDeployments;
 
 [Trait("Layer", "Kubernetes")]
 [Trait("Concern", "Feature")]
@@ -220,7 +221,7 @@ public sealed class ResourceIngressPolicyKubernetesTests : KubernetesIntegration
         ResolvedResourcePlacement.Create(
             CellId, TargetId, NamespaceName, 1, 1,
             ResolvedIngressConfiguration.Create("traefik", "issuer", "example.test", ["web.example.test"]),
-            null, ResourceDeploymentTestData.Compute(), DateTime.UtcNow),
+            null, KubernetesComputeTestData.Compute(), DateTime.UtcNow),
         ResourcePlacementCapability.SingleTarget, true,
         ResourceDeploymentFactory.DefaultOptions with
         {
