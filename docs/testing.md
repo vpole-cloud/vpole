@@ -36,14 +36,19 @@ Independently testable feature behavior can live beside the feature in a dedicat
 - `src/features/SourceBuilds/SourceBuilds.Tests`
 - `src/features/RedisServices/RedisServices.Tests`
 - `src/features/RedisServices/RedisServices.Tests.Integration`
+- `src/features/RedisServices/RedisServices.Tests.Kubernetes`
 - `src/features/Postgres/Postgres.Tests`
 - `src/features/Postgres/Postgres.Tests.Integration`
+- `src/features/Postgres/Postgres.Tests.Kubernetes`
 - `src/features/WebServices/WebServices.Tests` runs the infrastructure-free WebServices checks, including those using a fake Kubernetes client.
 - `src/features/WebServices/WebServices.Tests.Integration` starts a Mongo replica set for BSON schema validation, WebService creation, and deployment completion. Create tests send requests through Mediator, substitute the platform Contracts, and verify WebService, release, and outbox writes in Mongo.
 
 ## Current approach
 
-Pole uses a **hybrid test layout**. Tests that need shared Mongo, mediator, API, consumer, or live infrastructure fixtures remain in `Pole.Tests.Integration`. Tests that exercise one feature without the shared integration harness belong in that feature's sibling `*.Tests` project.
+Pole uses a **hybrid test layout**. Infrastructure-free feature checks live in sibling `*.Tests`
+projects. Feature-owned Mongo and Mediator scenarios live in `*.Tests.Integration`. Central
+`Pole.Tests.Integration` retains real cross-feature and HTTP slice guarantees. Live cluster checks
+run in `*.Tests.Kubernetes` projects, and full-stack scenarios run in `Pole.Tests.E2E`.
 
 A feature-local test project should reference only the production projects it exercises. Do not reference `Pole.Server`, copy shared integration fixtures, or include test source files from outside the project directory.
 
@@ -176,7 +181,8 @@ dotnet test src/features/Postgres/Postgres.Tests.Integration/Postgres.Tests.Inte
 
 The Functions, GitProviders, SourceBuilds, Redis, and PostgreSQL unit suites do not require Docker or the
 shared integration fixtures. The Redis and PostgreSQL integration suites use feature-owned Mongo
-fixtures; their Kubernetes cases remain separately gated.
+fixtures and owner-provided preparation from Tenants.Testing and ResourceGroups.Testing. Their
+live Kubernetes cases run in provider-owned *.Tests.Kubernetes projects, all in the Kubernetes group.
 
 Run the architecture boundary checks from the repository root with:
 
