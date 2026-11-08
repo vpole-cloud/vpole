@@ -3,10 +3,10 @@ using System.Text.Json.Nodes;
 using Pole.Testing;
 using Xunit;
 
-namespace Pole.Tests.Kubernetes;
+namespace Pole.Testing.Tests;
 
 [Collection(EnvironmentCollection.Name)]
-[Trait(TestTraits.Layer, TestTraits.Layers.Integration)]
+[Trait(TestTraits.Layer, TestTraits.Layers.Fast)]
 [Trait(TestTraits.Concern, "Safety")]
 [Trait(TestTraits.Feature, "KubernetesLab")]
 public sealed class KubernetesLabStateTests

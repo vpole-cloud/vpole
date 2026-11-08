@@ -413,6 +413,9 @@ project, verifies the digest returned by BuildKit, and removes the project after
 
 ## Gate profiles and concurrency
 
+Infrastructure-free tests of CI configuration, lab state parsing and cleanup helpers live in
+`tests/Pole.Testing.Tests`. They run in Fast on every PR.
+
 `python3 scripts/quality_gate.py run --profile pr` runs Fast and Services plus frontend.
 `--profile full` adds Kubernetes and E2E. CI uses full only for manual workflow_dispatch.
 Plain `dotnet test` still discovers all .NET projects in Pole.slnx.

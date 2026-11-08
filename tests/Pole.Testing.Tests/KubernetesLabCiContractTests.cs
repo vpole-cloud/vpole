@@ -1,9 +1,9 @@
 using Pole.Testing;
 using Xunit;
 
-namespace Pole.Tests.Kubernetes;
+namespace Pole.Testing.Tests;
 
-[Trait(TestTraits.Layer, TestTraits.Layers.Integration)]
+[Trait(TestTraits.Layer, TestTraits.Layers.Fast)]
 [Trait(TestTraits.Concern, "CI")]
 [Trait(TestTraits.Feature, "KubernetesLab")]
 public sealed class KubernetesLabCiContractTests
@@ -13,6 +13,8 @@ public sealed class KubernetesLabCiContractTests
     {
         var workflow = ReadRepositoryFile(".github", "workflows", "kubernetes-lab.yml");
 
+        Assert.Contains("--profile \"${{ github.event_name == 'workflow_dispatch' && 'full' || 'pr' }}\"", workflow,
+            StringComparison.Ordinal);
         Assert.Contains("Reclaim runner disk space", workflow, StringComparison.Ordinal);
         Assert.Contains("/usr/local/lib/android", workflow, StringComparison.Ordinal);
         Assert.Contains(

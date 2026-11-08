@@ -9,6 +9,7 @@ public static class TestTraits
 
     public static class Layers
     {
+        public const string Fast = nameof(Fast);
         public const string Integration = nameof(Integration);
         public const string Kubernetes = nameof(Kubernetes);
         public const string Manifest = nameof(Manifest);

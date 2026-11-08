@@ -85,7 +85,7 @@ jobs:
           python3 scripts/quality_gate.py headroom --results-directory .artifacts/coverage/backend/raw --phase after-lab
 
       - name: Run all backend tests with coverage
-        run: python3 scripts/quality_gate.py backend --profile "${{ github.event_name == 'workflow_dispatch' && 'full' || 'pr' }}" --results-directory .artifacts/coverage/backend/raw
+        run: python3 scripts/quality_gate.py backend --results-directory .artifacts/coverage/backend/raw --profile "${{ github.event_name == 'workflow_dispatch' && 'full' || 'pr' }}"
 
       - name: Reject failed, skipped, or missing backend suites
         if: ${{ !cancelled() }}

@@ -1,7 +1,7 @@
 using Pole.Testing;
 using Xunit;
 
-namespace Pole.Tests.Kubernetes;
+namespace Pole.Testing.Tests;
 
 public sealed class TestResourceScopeTests
 {

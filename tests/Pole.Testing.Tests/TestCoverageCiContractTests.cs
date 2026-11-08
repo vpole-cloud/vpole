@@ -1,9 +1,9 @@
 using Pole.Testing;
 using Xunit;
 
-namespace Pole.Tests.Kubernetes;
+namespace Pole.Testing.Tests;
 
-[Trait(TestTraits.Layer, TestTraits.Layers.Integration)]
+[Trait(TestTraits.Layer, TestTraits.Layers.Fast)]
 [Trait(TestTraits.Concern, "CI")]
 [Trait(TestTraits.Feature, "TestCoverage")]
 public sealed class TestCoverageCiContractTests
@@ -13,7 +13,9 @@ public sealed class TestCoverageCiContractTests
     {
         var workflow = ReadRepositoryFile(".github", "workflows", "kubernetes-lab.yml");
 
-        // Collector and sequential execution arguments are exercised by test_quality_gate.py.
+        Assert.Contains("--profile \"${{ github.event_name == 'workflow_dispatch' && 'full' || 'pr' }}\"", workflow,
+            StringComparison.Ordinal);
+        // Collector and bounded execution arguments are exercised by test_quality_gate.py.
         Assert.Contains(
             "run: python3 scripts/quality_gate.py backend --results-directory .artifacts/coverage/backend/raw",
             workflow,
