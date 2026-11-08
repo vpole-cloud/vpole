@@ -45,8 +45,8 @@ Follow [test scheduling](../../../docs/testing.md#parallelism-across-worktrees).
   overlap against the host's current CPU, memory, disk and other active work.
 - Keep worktree/run ownership and scoped cleanup intact. Shared lab lifecycle operations retain their
   existing lock; do not stop/reset shared services during other tests.
-- The full quality-gate runner intentionally executes its projects sequentially. Scheduling independent
-  worktrees does not justify filtering, skipping or changing that publication gate.
+- The quality-gate runner bounds concurrent projects separately for Fast, Services, Kubernetes and E2E.
+  Local limits default to 4, 2, 1 and 1. CI defaults to 2, 1, 1 and 1. Groups execute sequentially.
 
 ## Report
 
@@ -54,6 +54,6 @@ Return the commands run, pass/fail counts, the first actionable failure, skipped
 
 ## Delivery Gate
 
-Follow `docs/agent-delivery.md`. Focused checks are development feedback; before opening any PR, run `python3 scripts/quality_gate.py run` on the final source tree. Every local backend, frontend, automation, and infrastructure test must pass with zero skips, including for documentation or tooling PRs. Missing prerequisites and pre-existing failures block publication; draft PRs are not an exception. Use the recorded full-run evidence and review required by AGENTS.md with the publication wrapper described there.
+Follow `docs/agent-delivery.md`. Focused checks are development feedback; before opening any PR, run `python3 scripts/quality_gate.py run --profile pr` on the final source tree. Run `--profile full` for broad changes and manual CI, including Kubernetes and E2E. Every selected test must pass with zero skips, including for documentation or tooling PRs. Missing prerequisites and pre-existing failures block publication; draft PRs are not an exception. Use the recorded full-run evidence and review required by AGENTS.md with the publication wrapper described there.
 
 If tests fail, the first sentence of every summary must identify the failing tests and explain the known cause (or say it is still unknown). Report unavailable infrastructure as a blocker, never as a passed test.

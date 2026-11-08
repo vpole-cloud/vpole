@@ -86,32 +86,32 @@ is immutable; aliasing and complete state modeling still require review and test
 Do not silence a diagnostic to pass the gate. Correct the boundary, or justify and
 test a refinement to the rule when it misclassifies valid code.
 
-## Full local gate before a pull request
+## Local and CI gate profiles
 
-Every local test must pass on the final source tree before opening a PR. This
-applies to documentation and tooling changes too. No filtered suites, skipped
-tests, expected failures, unavailable infrastructure exceptions, or inherited
-baseline failures qualify as success. Focused checks are useful during development
-but do not replace this publication requirement.
+The PR profile runs every Fast and Services project plus frontend tests, build and lint.
+Use `python3 scripts/quality_gate.py run --profile pr`. Kubernetes and Aspire E2E run in
+the full profile through `python3 scripts/quality_gate.py run --profile full` after
+`bash infrastructure/kubernetes-lab/lab.sh up`. The default profile is full.
+Run full locally before broad changes. CI runs PR on pull requests and master pushes,
+and full on workflow_dispatch.
 
-Start or resume the existing full lab explicitly, then run:
+The selected profile must pass on the final source tree, including documentation/tooling
+changes. Every selected suite runs without test filters and must have zero failed or skipped
+tests. Expected failures, unavailable infrastructure and baseline failures remain failed
+evidence for that profile. A PR receipt proves only Fast, Services and frontend.
 
-```bash
-bash infrastructure/kubernetes-lab/lab.sh up
-python3 scripts/quality_gate.py run
-```
+Both profiles discover projects from Pole.slnx and run restore/build once, followed by bounded
+concurrent project execution with coverage. Local defaults are Fast 4, Services 2, Kubernetes 1,
+E2E 1. CI defaults are 2, 1, 1, 1. Groups execute in that order, so heavy groups do not overlap.
+A local ignored `.quality-gate.local.json` or explicit `--config path.json` overrides limits.
+For example `{"fast": 8, "services": 2}`. Limits must be positive integers.
 
-The gate discovers all backend test projects, requires each in the solution,
-restores/builds the solution, and runs every project sequentially without filters using the same
-coverage-enabled backend executor as CI. The standalone lane is
-`python3 scripts/quality_gate.py backend --results-directory .artifacts/backend-new-run` after
-build/lab preparation; it requires a fresh results directory. Focused `dotnet test` remains valid
-without coverage during development. The complete gate requires each project's current Cobertura
-output and records its command/outcome in a backend manifest.
-It verifies TRX totals and rejects skipped, failed, empty or aborted runs. It also
-runs every automation test, lab recovery regression test, frontend test, frontend
-build/lint, changed-file formatting and the resource leak audit. Frontend pending
-and todo tests fail the gate. Logs and results are under `.artifacts/quality/`.
+After build, the standalone backend lane is
+`python3 scripts/quality_gate.py backend --profile pr --results-directory .artifacts/backend-new-run`.
+Each invocation needs a fresh directory. The backend manifest records profile, project inventory,
+limits and per-project command durations. TRX and Cobertura checks require every selected project.
+Frontend pending/todo tests also fail the gate. The full profile verifies lab readiness and leaks.
+Logs and results live under `.artifacts/quality/`.
 
 Use `python3 scripts/quality_gate.py format` to apply C# whitespace formatting
 before the final run. It uses `origin/master` as the comparison base by default;

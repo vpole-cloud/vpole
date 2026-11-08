@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Local publication gate. Full runs never accept test filters or skipped tests."""
+"""Profiled local and CI gate. Selected suites never accept filters or skipped tests."""
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import json
 import os
@@ -9,6 +10,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import xml.etree.ElementTree as ET
 
@@ -66,6 +68,45 @@ def test_projects(root=ROOT):
     return sorted(projects, key=lambda p: ("E2E" in p, "Kubernetes" in p, "Integration" in p, p))
 
 
+
+GROUPS = ("fast", "services", "kubernetes", "e2e")
+PROFILES = {"pr": GROUPS[:2], "full": GROUPS}
+
+
+def project_group(project):
+    name = Path(project).stem
+    if "E2E" in name:
+        return "e2e"
+    if "Kubernetes" in name:
+        return "kubernetes"
+    if "Integration" in name:
+        return "services"
+    return "fast"
+
+
+def selected_projects(profile, root=ROOT):
+    if profile not in PROFILES:
+        raise GateError(f"Unknown test profile: {profile}")
+    return [project for project in test_projects(root) if project_group(project) in PROFILES[profile]]
+
+
+def parallelism(config=None):
+    defaults = {"fast": 2, "services": 1, "kubernetes": 1, "e2e": 1} if os.environ.get("CI") else {
+        "fast": 4, "services": 2, "kubernetes": 1, "e2e": 1}
+    path = Path(config) if config else ROOT / ".quality-gate.local.json"
+    if path.exists():
+        values = json.loads(path.read_text())
+        if not isinstance(values, dict) or set(values) - set(GROUPS):
+            raise GateError("Parallelism config must contain only fast, services, kubernetes and e2e limits")
+        for group, value in values.items():
+            if type(value) is not int or value < 1:
+                raise GateError(f"Parallelism for {group} must be a positive integer")
+        defaults.update(values)
+    elif config:
+        raise GateError(f"Parallelism config does not exist: {path}")
+    return defaults
+
+
 def read_trx(path):
     tree = ET.parse(path)
     namespace = {"t": "http://microsoft.com/schemas/VisualStudio/TeamTest/2010"}
@@ -97,9 +138,9 @@ def read_vitest(path):
     return {"total": total, "passed": total}
 
 
-def check_backend_reports(directory, root=ROOT):
+def check_backend_reports(directory, root=ROOT, profile="full"):
     expected = set()
-    for project in test_projects(root):
+    for project in selected_projects(profile, root):
         path = root / project
         assembly = ET.parse(path).findtext(".//AssemblyName") or path.stem
         expected.add(assembly.lower())
@@ -159,7 +200,7 @@ def require_current_receipt():
         raise GateError("Sources changed after the full local gate; rerun every suite")
     if receipt.get("base_sha") != git("rev-parse", receipt["base"]):
         raise GateError("Review base changed; rerun the full local gate")
-    if receipt.get("projects") != test_projects():
+    if receipt.get("projects") != selected_projects(receipt.get("profile", "full")):
         raise GateError("Test project inventory changed; rerun the full local gate")
     return receipt
 
@@ -208,8 +249,23 @@ def capture_headroom(directory, phase, include_lab=True):
     (directory / f"headroom-{phase}.json").write_text(json.dumps(result, indent=2) + "\n")
 
 
-def run_backend(directory, steps=None, tests=None):
-    """The one complete, sequential, coverage-enabled backend lane used locally and in CI."""
+
+def sample_host_memory(stop, samples):
+    """Track host capacity, including simultaneously running containers and test hosts."""
+    while not stop.is_set():
+        try:
+            memory = dict(line.split(":", 1) for line in Path("/proc/meminfo").read_text().splitlines())
+            total = int(memory["MemTotal"].split()[0]) * 1024
+            available = int(memory["MemAvailable"].split()[0]) * 1024
+            samples["peak_used_bytes"] = max(samples.get("peak_used_bytes", 0), total - available)
+            samples["minimum_available_bytes"] = min(samples.get("minimum_available_bytes", available), available)
+        except (OSError, KeyError, ValueError):
+            pass
+        stop.wait(0.5)
+
+
+def run_backend(directory, steps=None, tests=None, profile="full", limits=None):
+    """Run every selected project with bounded per-group concurrency and coverage."""
     directory = directory.resolve()
     if not directory.is_relative_to(ROOT):
         raise GateError("Backend results must be inside the workspace")
@@ -219,34 +275,57 @@ def run_backend(directory, steps=None, tests=None):
         raise GateError("Backend results require a fresh directory; previous evidence must be retained")
     steps = steps if steps is not None else []
     tests = tests if tests is not None else {}
-    projects = test_projects()
-    manifest = {"status": "running", "coverage": True, "projects": projects, "steps": steps, "tests": tests}
+    projects = selected_projects(profile)
+    limits = limits or dict.fromkeys(GROUPS, 1)
+    manifest = {"status": "running", "coverage": True, "profile": profile, "parallelism": limits, "projects": projects, "steps": steps, "tests": tests}
+    stop_sampling = threading.Event()
+    manifest["host_memory"] = {}
+    sampler = threading.Thread(target=sample_host_memory, args=(stop_sampling, manifest["host_memory"]), daemon=True)
+    sampler.start()
     environment = dict(os.environ)
     environment.setdefault("POLE_TEST_EVIDENCE_DIRECTORY", str(directory / "phases"))
     try:
-        capture_headroom(directory, "before-backend")
-        for index, project in enumerate(projects):
+        capture_headroom(directory, "before-backend", include_lab=profile == "full")
+        def run_project(index, project):
             name = f"backend-{index}"
             output = directory / name
-            if "Integration" in project or "Kubernetes" in project or "E2E" in project:
-                capture_headroom(directory, f"before-{name}")
             command = ["dotnet", "test", project, "--no-build", "--no-restore", "--nologo", "-maxcpucount:1", "-nodeReuse:false",
                        "--collect:Code Coverage;Format=Cobertura", "--logger", "trx;LogFileName=results.trx", "--results-directory", str(output)]
             execute(name, command, directory, steps, environment)
-            tests[project] = read_trx(output / "results.trx")
+            result = read_trx(output / "results.trx")
             coverage = list(output.rglob("*.cobertura.xml"))
             if not coverage or any(ET.parse(report).getroot().tag != "coverage" for report in coverage):
                 raise GateError(f"Missing or invalid coverage report for {project}")
-            manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
-        check_backend_reports(directory, ROOT)
+            return result
+
+        for group in GROUPS:
+            jobs = [(index, project) for index, project in enumerate(projects) if project_group(project) == group]
+            if not jobs:
+                continue
+            capture_headroom(directory, f"before-{group}", include_lab=profile == "full")
+            failures = []
+            with ThreadPoolExecutor(max_workers=limits[group]) as pool:
+                pending = {pool.submit(run_project, index, project): project for index, project in jobs}
+                for future in as_completed(pending):
+                    project = pending[future]
+                    try:
+                        tests[project] = future.result()
+                    except Exception as error:
+                        failures.append(f"{project}: {error}")
+                    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+            if failures:
+                raise GateError("\n".join(failures))
+        check_backend_reports(directory, ROOT, profile)
         manifest["status"] = "passed"
         return tests
     finally:
+        stop_sampling.set()
+        sampler.join()
         failing = sys.exc_info()[0] is not None
         if manifest["status"] != "passed":
             manifest["status"] = "failed"
         try:
-            capture_headroom(directory, "after-backend" if manifest["status"] == "passed" else "failed-backend")
+            capture_headroom(directory, "after-backend" if manifest["status"] == "passed" else "failed-backend", include_lab=profile == "full")
         except OSError:
             # A diagnostic write failure must not replace the failing test command.
             manifest["headroom_unavailable"] = True
@@ -257,35 +336,37 @@ def run_backend(directory, steps=None, tests=None):
                 raise
 
 
-def run_full(base):
+def run_full(base, profile="full", config=None):
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     directory = ARTIFACTS / time.strftime("%Y%m%d-%H%M%S")
     directory.mkdir()
-    receipt = {"status": "running", "base": base, "base_sha": git("rev-parse", base), "fingerprint": source_fingerprint(), "steps": [], "tests": {}}
+    receipt = {"status": "running", "profile": profile, "base": base, "base_sha": git("rev-parse", base), "fingerprint": source_fingerprint(), "steps": [], "tests": {}}
     save_receipt(receipt)  # An interrupted run invalidates older success evidence.
     steps = receipt["steps"]
     try:
-        projects = test_projects()
+        projects = selected_projects(profile)
         receipt["projects"] = projects
         execute("automation", [sys.executable, "scripts/run_script_tests.py", str(directory / "scripts.json")], directory, steps)
         for index, shell_test in enumerate(sorted((ROOT / "infrastructure").glob("**/tests/*.sh"))):
             execute(f"shell-{index}", ["bash", str(shell_test)], directory, steps)
-        capture_headroom(directory, "before-lab", include_lab=False)
-        execute("lab-verify", ["bash", "infrastructure/kubernetes-lab/lab.sh", "verify"], directory, steps)
-        capture_headroom(directory, "after-lab")
+        if profile == "full":
+            capture_headroom(directory, "before-lab", include_lab=False)
+            execute("lab-verify", ["bash", "infrastructure/kubernetes-lab/lab.sh", "verify"], directory, steps)
+            capture_headroom(directory, "after-lab")
         execute("frontend-install", ["npm", "ci", "--prefix", "src/api/frontend"], directory, steps)
         execute("restore", ["dotnet", "restore", "Pole.slnx", *MSBUILD], directory, steps)
         execute("build", ["dotnet", "build", "Pole.slnx", "--no-restore", *MSBUILD], directory, steps)
         command = format_command(base)
         if command:
             execute("format", command, directory, steps)
-        run_backend(directory, steps, receipt["tests"])
+        run_backend(directory, steps, receipt["tests"], profile, parallelism(config))
         frontend_report = directory / "frontend.json"
         execute("frontend-tests", ["npm", "test", "--prefix", "src/api/frontend", "--", "--reporter=json", f"--outputFile={frontend_report}"], directory, steps)
         receipt["tests"]["frontend"] = read_vitest(frontend_report)
         execute("frontend-build", ["npm", "run", "build", "--prefix", "src/api/frontend"], directory, steps)
         execute("frontend-lint", ["npm", "run", "lint", "--prefix", "src/api/frontend"], directory, steps)
-        execute("resource-audit", ["bash", "infrastructure/kubernetes-lab/lab.sh", "audit-tests"], directory, steps)
+        if profile == "full":
+            execute("resource-audit", ["bash", "infrastructure/kubernetes-lab/lab.sh", "audit-tests"], directory, steps)
         execute("diff-check", ["git", "diff", "--check", receipt["base_sha"]], directory, steps)
         if receipt["fingerprint"] != source_fingerprint():
             raise GateError("Sources changed while tests ran; full evidence is stale")
@@ -298,7 +379,7 @@ def run_full(base):
     finally:
         if receipt["status"] != "passed":
             try:
-                capture_headroom(directory, "failed-run")
+                capture_headroom(directory, "failed-run", include_lab=profile == "full")
             except OSError:
                 pass
         save_receipt(receipt)
@@ -310,14 +391,20 @@ def main():
     for name in ("run", "format", "check-format"):
         sub = commands.add_parser(name)
         sub.add_argument("--base", default="origin/master")
+        if name == "run":
+            sub.add_argument("--profile", choices=PROFILES, default="full")
+            sub.add_argument("--config", type=Path)
     commands.add_parser("verify")
     backend_lane = commands.add_parser("backend")
     backend_lane.add_argument("--results-directory", type=Path, required=True)
+    backend_lane.add_argument("--profile", choices=PROFILES, default="full")
+    backend_lane.add_argument("--config", type=Path)
     headroom = commands.add_parser("headroom")
     headroom.add_argument("--results-directory", type=Path, required=True)
     headroom.add_argument("--phase", choices=("before-lab", "after-lab", "failed-run"), required=True)
     backend = commands.add_parser("check-backend-reports")
     backend.add_argument("--directory", type=Path, required=True)
+    backend.add_argument("--profile", choices=PROFILES, default="full")
     frontend = commands.add_parser("check-frontend-report")
     frontend.add_argument("--report", type=Path, required=True)
     review = commands.add_parser("record-review")
@@ -330,9 +417,9 @@ def main():
     args = parser.parse_args()
     try:
         if args.command == "run":
-            run_full(args.base)
+            run_full(args.base, args.profile, args.config)
         elif args.command == "backend":
-            run_backend(args.results_directory)
+            run_backend(args.results_directory, profile=args.profile, limits=parallelism(args.config))
         elif args.command == "headroom":
             args.results_directory.mkdir(parents=True, exist_ok=True)
             capture_headroom(args.results_directory, args.phase, include_lab=args.phase != "before-lab")
@@ -341,7 +428,7 @@ def main():
             if command:
                 subprocess.run(command, cwd=ROOT, check=True)
         elif args.command == "check-backend-reports":
-            check_backend_reports(args.directory)
+            check_backend_reports(args.directory, profile=args.profile)
         elif args.command == "check-frontend-report":
             print(read_vitest(args.report))
         elif args.command == "record-review":

@@ -133,24 +133,22 @@ container ownership use worktree/run identities; see [E2E isolation and cleanup]
 - **One worktree:** build outputs are shared. Serialize restore/build against builds and tests using
   those outputs. After building, distinct infrastructure-free projects may run in parallel with
   `--no-build --no-restore`; do not split one project into overlapping invocations. Serialize
-  infrastructure lanes within that worktree.
+  infrastructure lanes according to the configured group limits.
 - **Shared lab lifecycle:** existing lifecycle locks and worktree-scoped cleanup still apply. Test
   isolation does not authorize resetting shared services or cleaning another worktree's resources.
 
-The primary agent tracks active heavy runs across its agents. The full quality-gate runner continues
-running all projects sequentially; cross-worktree scheduling does not change its completeness or
-publication requirements.
+The primary agent tracks active heavy runs across its agents. The quality gate uses per-group
+project limits and runs groups in sequence. Each selected profile retains complete suite discovery.
 
 ## Publication requirement
 
-Before opening any PR, all local backend, frontend and automation tests must pass
-on the final source tree without filters or skips. Unavailable Kubernetes, Harbor
-or Aspire services block publication; they are not exceptions. This requirement
-also applies to documentation/tooling PRs. Run `python3 scripts/quality_gate.py run`
-after starting/resuming the full lab. The gate checks test reports, zero skips,
-formatting and current source contents; see [agent delivery](agent-delivery.md).
-Focused commands below are development tools, not substitutes for this full gate.
-Any summary of failing or blocked tests must begin with the affected tests and reason.
+Before opening a PR, run `python3 scripts/quality_gate.py run --profile pr` on the final
+source tree. All selected backend, frontend and automation tests must pass without filters
+or skips. Run `--profile full` locally before broad changes and in manual CI. Missing prerequisites
+block the affected profile. A PR-profile receipt proves Fast, Services and frontend only.
+The gate checks report inventory, formatting and current sources. See
+[agent delivery](agent-delivery.md). Summaries of failing tests must identify the affected
+tests and reason.
 
 ## Running tests
 
@@ -216,9 +214,9 @@ never creates, resets, or deletes one.
 
 ## Code coverage
 
-Both complete local and CI gates require backend coverage. They use the same discovered project
-inventory, sequential executor and built-in Microsoft Cobertura collector. After restoring/building
-the solution and preparing the full lab, the backend lane can also run directly:
+Both local and CI profiles require backend coverage. They use the selected project inventory,
+bounded executor and built-in Microsoft Cobertura collector. After restoring/building, the backend
+lane can run directly. Prepare the full lab when selecting the full profile.
 
 ```bash
 python3 scripts/quality_gate.py backend --results-directory .artifacts/backend-new-run
@@ -405,3 +403,20 @@ service.
 
 This contract test builds a hermetic `FROM scratch` image, pushes it to a unique private Harbor
 project, verifies the digest returned by BuildKit, and removes the project afterward.
+
+
+## Gate profiles and concurrency
+
+`python3 scripts/quality_gate.py run --profile pr` runs Fast and Services plus frontend.
+`--profile full` adds Kubernetes and E2E. CI uses full only for manual workflow_dispatch.
+Plain `dotnet test` still discovers all .NET projects in Pole.slnx.
+
+Each group runs with a separate project concurrency limit. Local defaults are Fast 4,
+Services 2, Kubernetes 1 and E2E 1. CI defaults are 2, 1, 1 and 1. To override local
+limits, create ignored `.quality-gate.local.json`, for example
+`{"fast": 8, "services": 2}`, or pass `--config /path/to/limits.json`.
+Group order prevents Kubernetes and E2E from competing with other test groups.
+Measure project durations and host memory before raising heavy limits.
+Build once before tests. The backend manifest records the selected inventory, configuration
+and per-project elapsed seconds. Each profile rejects failed, skipped and missing reports
+within that inventory.

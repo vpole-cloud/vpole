@@ -1,5 +1,7 @@
 import importlib.util
 import json
+import os
+import threading
 from pathlib import Path
 import subprocess
 import tempfile
@@ -56,6 +58,37 @@ class EvidenceTests(unittest.TestCase):
                 path.write_text(json.dumps({"success": True, "numTotalTests": 1, "numPassedTests": 1, property_name: 1}))
                 with self.assertRaises(gate.GateError):
                     gate.read_vitest(path)
+
+    def test_profiles_partition_all_projects(self):
+        projects = ["tests/A.Tests.csproj", "tests/A.Tests.Integration.csproj",
+                    "tests/A.Tests.Kubernetes.csproj", "tests/A.Tests.E2E.csproj"]
+        with patch.object(gate, "test_projects", return_value=projects):
+            self.assertEqual(projects[:2], gate.selected_projects("pr"))
+            self.assertEqual(projects, gate.selected_projects("full"))
+
+    def test_parallelism_config_validates_and_overrides_defaults(self):
+        path = self.root / "limits.json"
+        path.write_text('{"fast": 8, "services": 3}')
+        with patch.dict(os.environ, {"CI": "true"}):
+            self.assertEqual({"fast": 8, "services": 3, "kubernetes": 1, "e2e": 1}, gate.parallelism(path))
+        for value in ('{"fast": 0}', '{"services": true}', '{"unknown": 1}', '[]'):
+            path.write_text(value)
+            with self.assertRaises(gate.GateError):
+                gate.parallelism(path)
+
+    def test_pr_report_inventory_requires_only_selected_projects(self):
+        (self.root / "tests").mkdir()
+        for name in ("Fast", "Heavy.Kubernetes"):
+            (self.root / "tests" / (name + ".csproj")).write_text(
+                '<Project><PropertyGroup><IsTestProject>true</IsTestProject></PropertyGroup></Project>')
+        (self.root / "Pole.slnx").write_text(
+            '<Solution><Project Path="tests/Fast.csproj" /><Project Path="tests/Heavy.Kubernetes.csproj" /></Solution>')
+        report = self.trx()
+        report.write_text(report.read_text().replace("<Results>",
+            '<TestDefinitions><UnitTest><TestMethod codeBase="/bin/Fast.dll" /></UnitTest></TestDefinitions><Results>'))
+        gate.check_backend_reports(self.root, self.root, "pr")
+        with self.assertRaises(gate.GateError):
+            gate.check_backend_reports(self.root, self.root, "full")
 
     def test_accepts_frontend_success(self):
         path = self.root / "frontend.json"
@@ -212,6 +245,34 @@ class EvidenceTests(unittest.TestCase):
         manifest = json.loads((output / "backend-manifest.json").read_text())
         self.assertEqual("passed", manifest["status"])
         self.assertTrue(manifest["coverage"])
+
+    def test_backend_parallelism_overlaps_independent_projects(self):
+        projects, calls, execute = self.backend_fixture()
+        rendezvous = threading.Barrier(2)
+
+        def simultaneous(*args, **kwargs):
+            rendezvous.wait(timeout=5)
+            execute(*args, **kwargs)
+
+        with patch.object(gate, "ROOT", self.root), patch.object(gate, "test_projects", return_value=projects), \
+                patch.object(gate, "execute", side_effect=simultaneous), patch.object(gate, "capture_headroom"):
+            result = gate.run_backend(self.root / "output", limits=dict.fromkeys(gate.GROUPS, 2))
+        self.assertEqual(set(projects), set(result))
+        self.assertEqual(2, len(calls))
+
+    def test_pr_gate_does_not_require_cluster_commands(self):
+        with patch.object(gate, "ROOT", self.root), patch.object(gate, "ARTIFACTS", self.root / "quality"), \
+                patch.object(gate, "RECEIPT", self.root / "receipt.json"), \
+                patch.object(gate, "git", return_value="base"), patch.object(gate, "source_fingerprint", return_value="unchanged"), \
+                patch.object(gate, "test_projects", return_value=["tests/A.csproj"]), patch.object(gate, "capture_headroom"), \
+                patch.object(gate, "execute") as execute, patch.object(gate, "format_command", return_value=None), \
+                patch.object(gate, "read_vitest", return_value={"total": 1, "passed": 1}), patch("builtins.print"), \
+                patch.object(gate, "run_backend"):
+            gate.run_full("origin/master", "pr")
+        names = [call.args[0] for call in execute.call_args_list]
+        self.assertNotIn("lab-verify", names)
+        self.assertNotIn("resource-audit", names)
+        self.assertIn("frontend-tests", names)
 
     def test_failed_backend_command_retains_failure_manifest_and_headroom(self):
         projects, calls, execute = self.backend_fixture(fail_second=True)
