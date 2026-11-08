@@ -13,6 +13,7 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Tenants.Contracts;
 using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
+using Pole.Testing.Kubernetes;
 using Xunit;
 
 namespace Pole.Tests.Integration.ComputeProfiles;

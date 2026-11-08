@@ -59,6 +59,7 @@
     </ItemGroup>
 
 <ItemGroup>
+    <ProjectReference Include="../Pole.Testing.Kubernetes/Pole.Testing.Kubernetes.csproj" />
     <ProjectReference Include="../../src/api/Pole.Testing/Pole.Testing.csproj" />
 </ItemGroup>
 <Target Name="CopyObservationSerializationProbe" AfterTargets="Build">

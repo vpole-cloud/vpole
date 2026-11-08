@@ -14,6 +14,7 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Tests.Integration.ResourceDeployments;
 using Pole.Workloads;
+using Pole.Testing.Kubernetes;
 using Xunit;
 
 namespace Pole.Tests.Integration.Observability;
@@ -142,7 +143,7 @@ public sealed class ObservationMetricsTests
         using var handler = new NativeWatchTestHandler(_ =>
                 "{\"metadata\":{\"resourceVersion\":\"private-version\"},\"items\":[]}",
             _ => ++watches == 1 ? bad : healthy);
-        using var client = KubernetesNativeWatchTests.Client(handler);
+        using var client = NativeWatchTestClient.Create(handler);
         using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var stream = KubernetesListWatch.WatchAsync<V1Deployment>(async (_, token) =>
             {
@@ -200,7 +201,7 @@ public sealed class ObservationMetricsTests
         using var metrics = new KubernetesWatchMetrics(meter);
         var clock = new NativeWatchTestClock();
         using var handler = new StalledHeadersHandler();
-        using var client = KubernetesNativeWatchTests.Client(handler);
+        using var client = NativeWatchTestClient.Create(handler);
         using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var stream = KubernetesListWatch.WatchAsync<V1Deployment>(async (_, token) =>
             {
@@ -241,7 +242,7 @@ public sealed class ObservationMetricsTests
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
-            if (KubernetesNativeWatchTests.IsWatch(request.RequestUri!))
+            if (NativeWatchTestClient.IsWatch(request.RequestUri!))
             {
                 Entered.TrySetResult();
                 await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
@@ -250,7 +251,7 @@ public sealed class ObservationMetricsTests
             return new(System.Net.HttpStatusCode.OK)
             {
                 RequestMessage = request,
-                Content = new StringContent(KubernetesNativeWatchTests.List("private-version"))
+                Content = new StringContent(NativeWatchTestClient.DeploymentList("private-version"))
             };
         }
     }

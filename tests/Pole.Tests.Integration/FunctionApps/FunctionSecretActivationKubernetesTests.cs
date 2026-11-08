@@ -36,6 +36,7 @@ using Pole.Functions.Protocol;
 using Pole.Testing;
 using Pole.Tests.Integration.Infrastructure;
 using Pole.Workloads;
+using Pole.Testing.Kubernetes;
 using Xunit;
 using TestDeploymentTargetLookup = Pole.Tests.Integration.Infrastructure.TestDeploymentTargetLookup;
 

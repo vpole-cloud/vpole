@@ -7,10 +7,10 @@ using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Application.Kubernetes;
-using Pole.Tests.Integration.Infrastructure;
+using Pole.Workloads;
 using Xunit;
 
-namespace Pole.Tests.Integration.WebServices;
+namespace Pole.Features.WebServices.Tests;
 
 [Trait("Layer", "Manifest")]
 [Trait("Concern", "Rendering")]
@@ -324,7 +324,7 @@ public sealed class WebServiceManifestTests
         string? imageSecretName = "regcred",
         AutoscalingSpec? autoscaling = null)
     {
-        var spec = TestData.ValidWebServiceSpec().ToDomain() with
+        var spec = WebServiceTestData.CreateSpec().ToDomain() with
         {
             Image = new ImageInfo("registry.example.com", "platform/api-gateway", "2026.04.1", imageSecretName),
             Config = new WebServiceConfig()
@@ -353,7 +353,7 @@ public sealed class WebServiceManifestTests
 
         var webService = WebServiceFactory.Create(
             name: "api-gateway",
-            tenantId: TestData.TenantId,
+            tenantId: WebServiceTestData.TenantId,
             resourceGroupId: ResourceGroupId,
             isolationScopeId: IsolationScopeId,
             spec: spec,

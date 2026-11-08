@@ -20,12 +20,11 @@ using Pole.Features.WebServices.Application.Lifecycle;
 using Pole.Features.WebServices.Application.Mongo;
 using Pole.Features.WebServices.Domain;
 using Pole.ResultType;
-using Pole.Tests.Integration.Infrastructure;
-using Pole.Tests.Integration.ResourceDeployments;
 using Pole.Workloads;
+using Pole.Testing.Kubernetes;
 using Xunit;
 
-namespace Pole.Tests.Integration.WebServices;
+namespace Pole.Features.WebServices.Tests;
 
 public sealed class WebServiceResourceDeploymentAdapterTests
 {
@@ -761,7 +760,7 @@ public sealed class WebServiceResourceDeploymentAdapterTests
                     ["api.example.test", "www.api.example.test"])
                 : null,
             Storage: null,
-            ResourceDeploymentTestData.ContractCompute(TargetId));
+            WebServiceTestData.ComputeForTarget(TargetId));
         var deployment = new ResourceDeploymentReconciliationSnapshot(
             DeploymentId,
             TenantId,

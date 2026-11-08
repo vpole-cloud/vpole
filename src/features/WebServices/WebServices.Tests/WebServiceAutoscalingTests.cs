@@ -8,10 +8,10 @@ using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Features.WebServices.Domain;
-using Pole.Tests.Integration.Infrastructure;
+using Pole.Workloads;
 using Xunit;
 
-namespace Pole.Tests.Integration.WebServices;
+namespace Pole.Features.WebServices.Tests;
 
 [Trait("Layer", "Manifest")]
 [Trait("Feature", "WebServices")]
@@ -212,9 +212,9 @@ public sealed class WebServiceAutoscalingTests
 
     private static WebServiceInKubernetes Subject(AutoscalingSpec scaling)
     {
-        var service = WebServiceFactory.Create("autoscale", TestData.TenantId,
+        var service = WebServiceFactory.Create("autoscale", WebServiceTestData.TenantId,
             "507f1f77bcf86cd799439032", "507f1f77bcf86cd799439033",
-            TestData.ValidWebServiceSpec().ToDomain() with { Autoscaling = scaling },
+            WebServiceTestData.CreateSpec().ToDomain() with { Autoscaling = scaling },
             WebServiceExposure.Create(WebServiceExposureMode.Private), WebServiceFactory.DefaultOptions);
         return service.ToKubernetes("workloads", null,
             new ResourceDeploymentComputeConfiguration("compute", 1, "target", "Compute", new(100, 128),

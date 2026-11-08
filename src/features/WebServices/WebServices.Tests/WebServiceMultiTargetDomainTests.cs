@@ -4,7 +4,7 @@ using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Domain;
 using Xunit;
 
-namespace Pole.Tests.Integration.WebServices;
+namespace Pole.Features.WebServices.Tests;
 
 public sealed class WebServiceMultiTargetDomainTests
 {

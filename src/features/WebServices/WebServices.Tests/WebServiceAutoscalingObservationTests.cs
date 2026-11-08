@@ -10,10 +10,11 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Features.WebServices.Domain;
 using Pole.Observation;
-using Pole.Tests.Integration.ResourceDeployments;
+using Pole.Testing.Kubernetes;
+using Pole.Workloads;
 using Xunit;
 
-namespace Pole.Tests.Integration.WebServices;
+namespace Pole.Features.WebServices.Tests;
 
 public sealed class WebServiceAutoscalingObservationTests
 {
@@ -30,7 +31,7 @@ public sealed class WebServiceAutoscalingObservationTests
     public async Task Healthy_deployment_does_not_hide_autoscaler_failure(string change, string reason)
     {
         using var handler = new ObservationHandler();
-        using var client = KubernetesNativeWatchTests.Client(handler);
+        using var client = NativeWatchTestClient.Create(handler);
         var observer = new WebServiceResourceDeploymentObserver((_, _, _) => Task.FromResult<WebService?>(Resource),
             new ClientProvider(client));
         Assert.True(Assert.IsType<ObservedWorkload>(await observer.ObserveAsync(Context.Deployment)).Ready);
@@ -66,7 +67,7 @@ public sealed class WebServiceAutoscalingObservationTests
                 });
             return "{\"metadata\":{\"resourceVersion\":\"1\"},\"items\":[]}";
         }, request => streams.GetOrAdd(request.RequestUri!.AbsolutePath.Split('/')[^1], _ => new()));
-        using var client = KubernetesNativeWatchTests.Client(handler);
+        using var client = NativeWatchTestClient.Create(handler);
         var source = new WebServiceResourceDeploymentChangeSource(
             (_, _, _) => Task.FromResult<WebService?>(Resource), new ClientProvider(client),
             (id, _) => Task.FromResult<LookupDeploymentTargetOutcome>(new DeploymentTargetLookupDto(id,

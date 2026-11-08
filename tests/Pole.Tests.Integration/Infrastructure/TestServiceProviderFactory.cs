@@ -48,6 +48,7 @@ using Pole.Mediator;
 using Pole.Platform.Hosting;
 using Pole.Server.Extensions;
 using Pole.Workloads;
+using Pole.Testing.Kubernetes;
 
 namespace Pole.Tests.Integration.Infrastructure;
 
