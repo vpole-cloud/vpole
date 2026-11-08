@@ -22,6 +22,7 @@ using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Mediator;
+using Pole.Platform.Resources;
 using Pole.ResultType;
 using Pole.Validation;
 using static Pole.Features.DeploymentTargets.Contracts.HttpMapping.DeploymentTargetContractHttpMappings;
@@ -79,8 +80,7 @@ public sealed class CreateRedisServiceHandler(
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     AdmitDeploymentTargetForNewWorkload admitDeploymentTarget,
     ResolveComputeProfile resolveComputeProfile,
-    CreateResourceDeployment createResourceDeployment,
-    IResourceRegistrar resourceRegistrar)
+    InitialResourcePlacements initialPlacements)
     : IMediatorOutcomeHandler<CreateRedisServiceRequest, CreateRedisServiceOutcome>
 {
     public async Task<CreateRedisServiceOutcome> HandleAsync(CreateRedisServiceRequest request,
@@ -164,43 +164,29 @@ public sealed class CreateRedisServiceHandler(
                             new CreateRedisServiceOutcome(nameConflict));
                     }
 
-                    var registration = await resourceRegistrar.RegisterAsync(
-                        new RegisterResourceRequest(
-                            TenantId: newRedis.TenantId,
-                            ResourceGroupId: newRedis.ResourceGroupId,
-                            Resource: new ResourceRegistrationDescriptor(
-                            RedisResourceDeployment.ResourceType,
-                            newRedis.Id,
-                            newRedis.Name)),
-                        session: transaction.Session,
-                        cancellationToken: transactionCancellationToken);
-                    if (registration is ResourceRegistrationMutationError registrationError)
-                    {
-                        return transaction.Abort(registrationError);
-                    }
-
-                    var deploymentResult = await createResourceDeployment(
-                        new CreateResourceDeploymentRequest(
-                            deploymentId,
-                            request.TenantId,
-                            RedisResourceDeployment.ResourceType,
-                            newRedis.Id,
-                            newRedis.ResourceGroupId,
-                            request.Body.Placement?.IsolationScopeId,
-                            ToResolvedResourceDeploymentTarget(target),
-                            computeProfile.ToResourceDeploymentConfiguration(),
-                            resolvedStorage,
-                            ResourcePlacementCapability.SingleTarget),
+                    var deploymentRequest = new CreateResourceDeploymentRequest(
+                        deploymentId,
+                        request.TenantId,
+                        RedisResourceDeployment.ResourceType,
+                        newRedis.Id,
+                        newRedis.ResourceGroupId,
+                        request.Body.Placement?.IsolationScopeId,
+                        ToResolvedResourceDeploymentTarget(target),
+                        computeProfile.ToResourceDeploymentConfiguration(),
+                        resolvedStorage,
+                        ResourcePlacementCapability.SingleTarget);
+                    var result = await initialPlacements.CreateAsync(
+                        new(newRedis.Name, [deploymentRequest]),
                         transaction.Session,
                         transactionCancellationToken);
-                    if (deploymentResult is CreateResourceDeploymentError deploymentError)
+                    return result switch
                     {
-                        return transaction.Abort(deploymentError);
-                    }
-                    var deployment = (PlacementSummaryDto)deploymentResult.Value;
-
-                    return transaction.Commit(new CreateRedisServiceOutcome(
-                        new CreateRedisServiceResponse(newRedis.Id, deployment)));
+                        CreatedResourceDeployments created => transaction.Commit(
+                            new CreateRedisServiceOutcome(new CreateRedisServiceResponse(
+                                newRedis.Id, created.Placements.Single()))),
+                        ResourceRegistrationMutationError error => transaction.Abort(error),
+                        CreateResourceDeploymentError error => transaction.Abort(error)
+                    };
                 }),
             cancellationToken: cancellationToken);
     }

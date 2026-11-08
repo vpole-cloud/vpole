@@ -27,6 +27,7 @@ using Pole.Features.WebServices.Application.Releases;
 using Pole.Features.WebServices.Application.SourceDelivery;
 using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
+using Pole.Platform.Resources;
 using Pole.ResultType;
 using Pole.Validation;
 using Pole.Workloads;
@@ -89,8 +90,7 @@ public sealed class CreateWebServiceHandler(
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     GetOrCreateGeneratedDomainZones getOrCreateGeneratedDomainZones,
     CreateGeneratedHostnameBindings createGeneratedHostnameBindings,
-    CreateResourceDeploymentSet createResourceDeploymentSet,
-    IResourceRegistrar resourceRegistrar,
+    InitialResourcePlacements initialPlacements,
     PersistCreatedWebService persistCreatedWebService,
     PersistCurrentWebServiceRelease persistCurrentWebServiceRelease,
     TimeProvider timeProvider)
@@ -360,23 +360,12 @@ public sealed class CreateWebServiceHandler(
 
         var deploymentRequests =
             (IReadOnlyList<CreateResourceDeploymentRequest>)deploymentRequestsResult.Value;
-        var registration = await resourceRegistrar.RegisterAsync(
-            new RegisterResourceRequest(
-                TenantId: webService.TenantId,
-                ResourceGroupId: webService.ResourceGroupId,
-                Resource: new ResourceRegistrationDescriptor(
-                WebServiceResourceDeployment.ResourceType,
-                webService.Id,
-                webService.Name)),
-            session: transaction.Session,
-            cancellationToken: cancellationToken);
-        if (registration is ResourceRegistrationMutationError registrationError)
-            return Abort(transaction, new CreateWebServiceError(registrationError));
-
-        var deploymentsResult = await createResourceDeploymentSet(
-            new CreateResourceDeploymentSetRequest(deploymentRequests),
+        var deploymentsResult = await initialPlacements.CreateAsync(
+            new(webService.Name, [.. deploymentRequests]),
             transaction.Session,
             cancellationToken);
+        if (deploymentsResult is ResourceRegistrationMutationError registrationError)
+            return Abort(transaction, new CreateWebServiceError(registrationError));
         if (deploymentsResult is CreateResourceDeploymentError deploymentsError)
             return Abort(transaction, new CreateWebServiceError(deploymentsError));
         var deployments = ((CreatedResourceDeployments)deploymentsResult.Value).Placements;

@@ -42,6 +42,7 @@ using Pole.Features.Tenants.Application.Middleware;
 using Pole.Features.Users.Application;
 using Pole.Features.Users.Application.Common;
 using Pole.Observability;
+using Pole.Platform.Resources;
 
 namespace Pole.Platform.Hosting;
 
@@ -117,6 +118,7 @@ public static class PolePlatform
             .Where(assembly => configuration.GetValue<bool>("Realtime:Enabled") ||
                                assembly != typeof(RealtimeFeature).Assembly).ToArray();
         var events = EventAssemblies.Concat(additionalEventAssemblies).Distinct().ToArray();
+        services.AddScoped<InitialResourcePlacements>();
         services.AddPoleHttpJson().AddKubernetes(configuration).AddDatabase()
             .AddRealtimeFeature(configuration, development).AddRealtimeRedis(configuration, development)
             .AddOutboxFeature(configuration, events)

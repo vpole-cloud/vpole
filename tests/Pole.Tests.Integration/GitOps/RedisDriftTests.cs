@@ -19,6 +19,7 @@ using Pole.Features.RedisServices.Migrations;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.StorageProfiles.Domain;
+using Pole.Platform.Resources;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -255,12 +256,13 @@ public sealed partial class DeclarativePipelineTests
     public async Task RedisPrepareRollsBackRootPlacementRegistrationQuotaAndEventsOnPlacementFailure()
     {
         await SeedRedisPlanningCatalog();
-        var original = Services.GetRequiredService<CreateResourceDeployment>();
+        var original = Services.GetRequiredService<CreateResourceDeploymentSet>();
         var called = false;
-        CreateResourceDeployment rejectAfterCreate = async (request, session, ct) =>
+        CreateResourceDeploymentSet rejectAfterCreate = async (set, session, ct) =>
         {
-            var result = await original(request, session, ct);
-            Assert.IsType<PlacementSummaryDto>(result.Value);
+            var result = await original(set, session, ct);
+            Assert.IsType<CreatedResourceDeployments>(result.Value);
+            var request = Assert.Single(set.Deployments);
             var prepared = await RedisResources.Find(session, item => item.Id == request.ResourceId).SingleAsync(ct);
             Assert.IsType<PreparedRedisLifecycle>(prepared.Lifecycle);
             var placement = await DbContext.ResourceDeployments.Find(session, item => item.Id == request.DeploymentId)
@@ -273,7 +275,8 @@ public sealed partial class DeclarativePipelineTests
         var redisProvider = providers.Single(item => item.Kind == "RedisService");
         var executionType = redisProvider.GetType().Assembly.GetType(
             "Pole.Features.RedisServices.Application.Declarations.RedisDeclarationExecution", throwOnError: true)!;
-        var execution = ActivatorUtilities.CreateInstance(Services, executionType, rejectAfterCreate);
+        var placements = ActivatorUtilities.CreateInstance<InitialResourcePlacements>(Services, rejectAfterCreate);
+        var execution = ActivatorUtilities.CreateInstance(Services, executionType, placements);
         var failing = (IDeclarativeResourceProvider)ActivatorUtilities.CreateInstance(Services,
             redisProvider.GetType(), execution);
         var registry = new DeclarativeProviderRegistry(providers.Select(item =>
