@@ -8,10 +8,9 @@ using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
-using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
-namespace Pole.Tests.Integration.WebServices;
+namespace Pole.Features.WebServices.Tests;
 
 public sealed class WebServiceBoundarySerializationTests
 {
@@ -19,7 +18,7 @@ public sealed class WebServiceBoundarySerializationTests
     public void Pending_image_DTO_has_no_placeholder_and_request_metadata_cannot_supply_delivery_authority()
     {
         var configurationId = ObjectId.GenerateNewId().ToString();
-        var spec = TestData.ValidWebServiceSpec().ToDomain() with
+        var spec = WebServiceTestData.CreateSpec().ToDomain() with
         {
             Image = WebServiceImageFactory.Pending(configurationId)
         };
@@ -32,7 +31,7 @@ public sealed class WebServiceBoundarySerializationTests
         Assert.Equal(dto.ImageAuthority, restored.ImageAuthority);
         Assert.IsType<UnboundSourceBuildImage>(restored.ToDomain().Image);
 
-        var direct = TestData.ValidWebServiceSpec().ToDomain();
+        var direct = WebServiceTestData.CreateSpec().ToDomain();
         var artifact = DeliveredSourceBuildImage.Create(configurationId, Assert.IsType<ImageInfo>(direct.Image),
             "sha256:" + new string('a', 64), ObjectId.GenerateNewId().ToString(), 1);
         var deliveredDto = (direct with { Image = artifact }).ToDto();
@@ -89,7 +88,7 @@ public sealed class WebServiceBoundarySerializationTests
             "invalid-kind" => config with { ConnectionEnvironmentReferences = config.ConnectionEnvironmentReferences.SetItem("HOST", new(ObjectId.GenerateNewId().ToString(), "Address")) },
             _ => config with { ConnectionEnvironmentReferences = config.ConnectionEnvironmentReferences.SetItem("HOST", new(ObjectId.GenerateNewId().ToString(), "Host", "database")) }
         };
-        Assert.False(new WebServiceSpecDtoValidator().Validate(TestData.ValidWebServiceSpec() with { Config = config }).IsValid);
+        Assert.False(new WebServiceSpecDtoValidator().Validate(WebServiceTestData.CreateSpec() with { Config = config }).IsValid);
     }
 
     [Fact]
@@ -113,9 +112,9 @@ public sealed class WebServiceBoundarySerializationTests
             WebServiceExposureMode.Public);
         var nonTcpRoute = missingSpec with
         {
-            Spec = TestData.ValidWebServiceSpec() with
+            Spec = WebServiceTestData.CreateSpec() with
             {
-                Config = TestData.ValidWebServiceSpec().Config with
+                Config = WebServiceTestData.CreateSpec().Config with
                 {
                     PortMappings = [new PortMappingDto(80, "8080", "UDP", "http")]
                 }
@@ -129,7 +128,14 @@ public sealed class WebServiceBoundarySerializationTests
     [Fact]
     public void EventOwnedSnapshots_PreserveThePublishedJsonShape()
     {
-        var spec = TestData.ValidWebServiceSpecSnapshot();
+        var probe = new WebServiceProbeConfigSnapshot("/health", "8080", 5, 10, 5, 3, 1);
+        var spec = new WebServiceSpecSnapshot(
+            new WebServiceImageInfoSnapshot("docker.io", "nginx", "1.27"),
+            new WebServiceConfigSnapshot(
+                ImmutableDictionary<string, string>.Empty.Add("ASPNETCORE_ENVIRONMENT", "Development"),
+                [new PortMappingSnapshot(80, "8080", "TCP", "http")]),
+            Autoscaling: null,
+            Probes: new WebServiceProbeSpecSnapshot(probe, probe, probe));
         var @event = new WebServiceCreatedEvent(
             "web-service-1",
             "api",
@@ -150,7 +156,7 @@ public sealed class WebServiceBoundarySerializationTests
         {
             EventCore = new EventCore
             {
-                TenantId = TestData.TenantId,
+                TenantId = WebServiceTestData.TenantId,
                 OccurredOn = new DateTime(2026, 8, 9, 10, 0, 0, DateTimeKind.Utc),
                 TraceId = "trace-1",
                 CorrelationId = "correlation-1"
@@ -179,7 +185,7 @@ public sealed class WebServiceBoundarySerializationTests
             spec.Probes,
             EventExtensions.SerializerOptions);
         var previousSharedProbeShape = JsonSerializer.SerializeToNode(
-            TestData.ValidWebServiceSpec().ToDomain().Probes,
+            WebServiceTestData.CreateSpec().ToDomain().Probes,
             EventExtensions.SerializerOptions);
         Assert.True(JsonNode.DeepEquals(
             previousSharedProbeShape,
@@ -190,13 +196,13 @@ public sealed class WebServiceBoundarySerializationTests
     public void DomainOwnedReleaseSpec_PreservesThePersistedBsonShape()
     {
         var release = WebServiceReleaseFactory.CreatePending(
-            TestData.TenantId,
+            WebServiceTestData.TenantId,
             "web-service-1",
             1,
             WebServiceReleaseAction.Create,
-            TestData.UserId,
-            TestData.UserEmail,
-            TestData.ValidWebServiceSpec().ToDomain(),
+            "test-user",
+            "test-user@example.test",
+            WebServiceTestData.CreateSpec().ToDomain(),
             [new WebServiceReleaseDeployment(
                 "deployment-1",
                 "target-1",

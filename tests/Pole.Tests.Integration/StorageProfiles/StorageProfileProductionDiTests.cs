@@ -15,6 +15,7 @@ using Pole.Features.StorageProfiles.Application.Validation;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Observation;
 using Pole.Tests.Integration.Infrastructure;
+using Pole.Testing.Kubernetes;
 using Xunit;
 
 namespace Pole.Tests.Integration.StorageProfiles;

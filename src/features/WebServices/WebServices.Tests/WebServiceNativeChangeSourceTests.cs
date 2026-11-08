@@ -10,10 +10,10 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Features.WebServices.Domain;
-using Pole.Tests.Integration.ResourceDeployments;
+using Pole.Testing.Kubernetes;
 using Xunit;
 
-namespace Pole.Tests.Integration.WebServices;
+namespace Pole.Features.WebServices.Tests;
 
 public sealed class WebServiceNativeChangeSourceTests
 {
@@ -23,20 +23,20 @@ public sealed class WebServiceNativeChangeSourceTests
     public async Task Empty_controller_watch_stays_open_and_owned_added_recovers_all_source_coverage()
     {
         using var api = new NativeObservationTestApi { ControllerPresent = false };
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(new ClientProvider(() => client), _ => Target(1)).WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.Unavailable);
-        Assert.Single(api.Requests, KubernetesNativeWatchTests.IsWatch);
-        Assert.Equal(1, api.Requests.Count(uri => !KubernetesNativeWatchTests.IsWatch(uri)));
+        Assert.Single(api.Requests, NativeWatchTestClient.IsWatch);
+        Assert.Equal(1, api.Requests.Count(uri => !NativeWatchTestClient.IsWatch(uri)));
         api.ControllerPresent = true;
         api.Stream("deployments").Write(NativeObservationTestApi.Frame("ADDED", api.Controller()));
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.BindingChanged);
         Assert.Equal("controller", changes.Current.BindingId);
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
         Assert.Equal(8,
-            api.Requests.Count(KubernetesNativeWatchTests.IsWatch)); // Five native kinds + three UID Warning interests.
+            api.Requests.Count(NativeWatchTestClient.IsWatch)); // Five native kinds + three UID Warning interests.
         Assert.Equal(1, api.Streams.Sum(stream => stream.FramesWritten));
         cancellation.Cancel();
         await changes.DisposeAsync();
@@ -47,7 +47,7 @@ public sealed class WebServiceNativeChangeSourceTests
     public async Task Coverage_waits_for_every_required_HTTP200_even_when_other_streams_are_healthy_and_idle()
     {
         using var api = new NativeObservationTestApi { DelayServiceHeaders = true };
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(new ClientProvider(() => client), _ => Target(1)).WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
@@ -71,14 +71,14 @@ public sealed class WebServiceNativeChangeSourceTests
     public async Task Only_verified_controller_replica_pod_UIDs_get_at_most_eight_warning_interests()
     {
         using var api = new NativeObservationTestApi { PodCount = 12, IncludeForeignOwner = true };
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(new ClientProvider(() => client), _ => Target(1)).WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
         var eventRequests = api.Requests.Where(uri => uri.AbsolutePath.EndsWith("/events", StringComparison.Ordinal))
             .ToArray();
-        Assert.Equal(8, eventRequests.Count(KubernetesNativeWatchTests.IsWatch));
+        Assert.Equal(8, eventRequests.Count(NativeWatchTestClient.IsWatch));
         foreach (var uri in eventRequests)
         {
             var query = Uri.UnescapeDataString(uri.Query);
@@ -87,7 +87,7 @@ public sealed class WebServiceNativeChangeSourceTests
             Assert.DoesNotContain("foreign", query);
         }
 
-        foreach (var uri in api.Requests.Where(KubernetesNativeWatchTests.IsWatch))
+        foreach (var uri in api.Requests.Where(NativeWatchTestClient.IsWatch))
         {
             var kind = uri.AbsolutePath.Split('/').Last();
             var version = kind switch
@@ -113,7 +113,7 @@ public sealed class WebServiceNativeChangeSourceTests
     public async Task Pod_selector_loss_retires_its_warning_stream_and_replacement_UID_starts_a_fresh_interest()
     {
         using var api = new NativeObservationTestApi();
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(new ClientProvider(() => client), _ => Target(1)).WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
@@ -139,7 +139,7 @@ public sealed class WebServiceNativeChangeSourceTests
     public async Task Replica_selector_loss_withdraws_dependent_Pod_warnings_without_adopting_foreign_owner_chains()
     {
         using var api = new NativeObservationTestApi { IncludeForeignOwner = true };
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(new ClientProvider(() => client), _ => Target(1)).WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
@@ -172,7 +172,7 @@ public sealed class WebServiceNativeChangeSourceTests
             ReplicaCount = kind == "replicasets" ? 100 : 1,
             EventCount = kind == "events" ? 100 : 0
         };
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var source = Source(new ClientProvider(() => client), _ => Target(1));
         var changes = source.WatchAsync(Context, cancellation.Token).GetAsyncEnumerator();
@@ -227,7 +227,7 @@ public sealed class WebServiceNativeChangeSourceTests
     public async Task Oversized_native_metadata_disables_coverage_without_exporting_or_retaining_the_value(string field)
     {
         using var api = new NativeObservationTestApi();
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(new ClientProvider(() => client), _ => Target(1)).WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
@@ -254,7 +254,7 @@ public sealed class WebServiceNativeChangeSourceTests
     public async Task Unverified_warning_frame_cannot_invalidate_the_workload(string mismatch)
     {
         using var api = new NativeObservationTestApi();
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(new ClientProvider(() => client), _ => Target(1)).WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
@@ -286,8 +286,8 @@ public sealed class WebServiceNativeChangeSourceTests
     {
         using var firstApi = new NativeObservationTestApi();
         using var secondApi = new NativeObservationTestApi { ControllerUid = "new-controller" };
-        using var firstClient = KubernetesNativeWatchTests.Client(firstApi);
-        using var secondClient = KubernetesNativeWatchTests.Client(secondApi);
+        using var firstClient = NativeWatchTestClient.Create(firstApi);
+        using var secondClient = NativeWatchTestClient.Create(secondApi);
         var version = 1L;
         var provider = new ClientProvider(() => version == 1 ? firstClient : secondClient);
         var source = Source(provider, _ => Target(version));
@@ -322,7 +322,7 @@ public sealed class WebServiceNativeChangeSourceTests
     public async Task Transient_lookup_failure_disables_coverage_then_restarts_a_fresh_LIST_without_reconnect()
     {
         using var api = new NativeObservationTestApi();
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         var calls = 0;
         var source = Source(new ClientProvider(() => client),
             _ => ++calls == 1
@@ -335,7 +335,7 @@ public sealed class WebServiceNativeChangeSourceTests
         Assert.DoesNotContain("native-canary", JsonSerializer.Serialize(changes.Current));
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
         Assert.Equal("controller", changes.Current.BindingId);
-        Assert.Equal(8, api.Requests.Count(KubernetesNativeWatchTests.IsWatch));
+        Assert.Equal(8, api.Requests.Count(NativeWatchTestClient.IsWatch));
         cancellation.Cancel();
         await changes.DisposeAsync();
     }
@@ -346,7 +346,7 @@ public sealed class WebServiceNativeChangeSourceTests
     public async Task Disabled_or_deleting_target_never_opens_native_reads(bool enabled, bool deleting)
     {
         using var api = new NativeObservationTestApi();
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         var provider = new ClientProvider(() => client);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(provider, _ => Target(1) with { Enabled = enabled, DeletionRequested = deleting })
@@ -461,7 +461,7 @@ internal sealed class NativeObservationTestApi : DelegatingHandler
     {
         Requests.Enqueue(request.RequestUri!);
         var kind = request.RequestUri!.AbsolutePath.Split('/').Last();
-        if (KubernetesNativeWatchTests.IsWatch(request.RequestUri))
+        if (NativeWatchTestClient.IsWatch(request.RequestUri))
         {
             if (kind == "services" && DelayServiceHeaders)
             {

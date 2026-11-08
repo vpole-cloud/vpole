@@ -1,10 +1,8 @@
-using System.Collections.Concurrent;
 using System.Net;
-using System.Text;
-using System.Threading.Channels;
 using k8s;
 using k8s.Models;
 using Pole.Features.Core.Kubernetes;
+using Pole.Testing.Kubernetes;
 using Xunit;
 
 namespace Pole.Tests.Integration.ResourceDeployments;
@@ -15,8 +13,8 @@ public sealed class KubernetesNativeWatchTests
     public async Task Quiet_actual_SDK_watch_is_ready_before_first_frame_and_cancels_only_its_response()
     {
         using var stream = new NativeWatchTestStream();
-        using var handler = new NativeWatchTestHandler(_ => List("opaque-list"), _ => stream);
-        using var client = Client(handler);
+        using var handler = new NativeWatchTestHandler(_ => NativeWatchTestClient.DeploymentList("opaque-list"), _ => stream);
+        using var client = NativeWatchTestClient.Create(handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Changes(client, "first", cancellation.Token).GetAsyncEnumerator(cancellation.Token);
         Assert.True(await changes.MoveNextAsync());
@@ -39,10 +37,10 @@ public sealed class KubernetesNativeWatchTests
     {
         using var first = new NativeWatchTestStream();
         using var second = new NativeWatchTestStream();
-        using var handler = new NativeWatchTestHandler(_ => List("list"),
+        using var handler = new NativeWatchTestHandler(_ => NativeWatchTestClient.DeploymentList("list"),
             request =>
                 request.RequestUri!.AbsolutePath.Contains("/first/", StringComparison.Ordinal) ? first : second);
-        using var client = Client(handler);
+        using var client = NativeWatchTestClient.Create(handler);
         using var firstCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         using var secondCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var a = Changes(client, "first", firstCancellation.Token).GetAsyncEnumerator();
@@ -73,9 +71,9 @@ public sealed class KubernetesNativeWatchTests
         using var healthy = new NativeWatchTestStream();
         var lists = 0;
         var watches = 0;
-        using var handler = new NativeWatchTestHandler(_ => List($"list-{Interlocked.Increment(ref lists)}"),
+        using var handler = new NativeWatchTestHandler(_ => NativeWatchTestClient.DeploymentList($"list-{Interlocked.Increment(ref lists)}"),
             _ => Interlocked.Increment(ref watches) == 1 ? bad : healthy);
-        using var client = Client(handler);
+        using var client = NativeWatchTestClient.Create(handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Changes(client, "first", cancellation.Token).GetAsyncEnumerator();
         await changes.MoveNextAsync();
@@ -102,12 +100,12 @@ public sealed class KubernetesNativeWatchTests
         var watches = 0;
         using var handler = new NativeWatchTestHandler(request =>
                 request.RequestUri!.Query.Contains("continue=", StringComparison.Ordinal)
-                    ? List("opaque/collection",
+                    ? NativeWatchTestClient.DeploymentList("opaque/collection",
                         null,
                         new V1Deployment { Metadata = new V1ObjectMeta { ResourceVersion = "item-version" } })
-                    : List("opaque/collection", "next-page"),
+                    : NativeWatchTestClient.DeploymentList("opaque/collection", "next-page"),
             _ => Interlocked.Increment(ref watches) == 1 ? first : second);
-        using var client = Client(handler);
+        using var client = NativeWatchTestClient.Create(handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Changes(client, "first", cancellation.Token).GetAsyncEnumerator();
         await changes.MoveNextAsync();
@@ -120,9 +118,9 @@ public sealed class KubernetesNativeWatchTests
             changes.Current.Kind); // Bookmark is not an invalidation.
         Assert.True(await changes.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.Equal(KubernetesListWatchChangeKind.Ready, changes.Current.Kind);
-        var watchUris = handler.Requests.Where(IsWatch).ToArray();
+        var watchUris = handler.Requests.Where(NativeWatchTestClient.IsWatch).ToArray();
         Assert.Contains("resourceVersion=opaque/bookmark", Uri.UnescapeDataString(watchUris[1].Query));
-        Assert.Equal(2, handler.Requests.Count(uri => !IsWatch(uri)));
+        Assert.Equal(2, handler.Requests.Count(uri => !NativeWatchTestClient.IsWatch(uri)));
         cancellation.Cancel();
         await changes.DisposeAsync();
     }
@@ -132,15 +130,15 @@ public sealed class KubernetesNativeWatchTests
     {
         using var handler = new NativeWatchTestHandler(request =>
                 request.RequestUri!.Query.Contains("continue=", StringComparison.Ordinal)
-                    ? List("different")
-                    : List("first", "next"),
+                    ? NativeWatchTestClient.DeploymentList("different")
+                    : NativeWatchTestClient.DeploymentList("first", "next"),
             _ => throw new InvalidOperationException("Incomplete lists cannot watch."));
-        using var client = Client(handler);
+        using var client = NativeWatchTestClient.Create(handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Changes(client, "first", cancellation.Token).GetAsyncEnumerator();
         await changes.MoveNextAsync();
         Assert.Equal(KubernetesListWatchChangeKind.Unavailable, changes.Current.Kind);
-        Assert.DoesNotContain(handler.Requests, IsWatch);
+        Assert.DoesNotContain(handler.Requests, NativeWatchTestClient.IsWatch);
         cancellation.Cancel();
         await changes.DisposeAsync();
     }
@@ -150,7 +148,7 @@ public sealed class KubernetesNativeWatchTests
     {
         var clock = new NativeWatchTestClock();
         using var stalled = new NoWatchHeadersHandler();
-        using var stalledClient = Client(stalled);
+        using var stalledClient = NativeWatchTestClient.Create(stalled);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Changes(stalledClient, "first", cancellation.Token, clock).GetAsyncEnumerator();
         await changes.MoveNextAsync();
@@ -167,8 +165,8 @@ public sealed class KubernetesNativeWatchTests
         await changes.DisposeAsync();
 
         using var stream = new NativeWatchTestStream();
-        using var handler = new NativeWatchTestHandler(_ => List("list"), _ => stream);
-        using var client = Client(handler);
+        using var handler = new NativeWatchTestHandler(_ => NativeWatchTestClient.DeploymentList("list"), _ => stream);
+        using var client = NativeWatchTestClient.Create(handler);
         using var openCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var open = Changes(client, "second", openCancellation.Token, clock).GetAsyncEnumerator();
         await open.MoveNextAsync();
@@ -191,9 +189,9 @@ public sealed class KubernetesNativeWatchTests
         using var second = new NativeWatchTestStream();
         using var third = new NativeWatchTestStream();
         var opened = 0;
-        using var handler = new NativeWatchTestHandler(_ => List("list"),
+        using var handler = new NativeWatchTestHandler(_ => NativeWatchTestClient.DeploymentList("list"),
             _ => ++opened switch { 1 => first, 2 => second, _ => third });
-        using var client = Client(handler);
+        using var client = NativeWatchTestClient.Create(handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Changes(client, "first", cancellation.Token, clock).GetAsyncEnumerator();
         await changes.MoveNextAsync();
@@ -277,7 +275,7 @@ public sealed class KubernetesNativeWatchTests
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
-            if (IsWatch(request.RequestUri!))
+            if (NativeWatchTestClient.IsWatch(request.RequestUri!))
             {
                 Entered.TrySetResult();
                 try
@@ -293,28 +291,12 @@ public sealed class KubernetesNativeWatchTests
             return new(HttpStatusCode.OK)
             {
                 RequestMessage = request,
-                Content = new StringContent(List("list"))
+                Content = new StringContent(NativeWatchTestClient.DeploymentList("list"))
             };
         }
     }
 
-    internal static k8s.Kubernetes Client(DelegatingHandler terminal) => new(
-        new KubernetesClientConfiguration { Host = "http://native-watch.test" },
-        new KubernetesWatchHeaders(),
-        terminal);
-
-    internal static bool IsWatch(Uri uri) => uri.Query.Contains("watch=true", StringComparison.OrdinalIgnoreCase);
-
-    internal static string List(string version, string? continuation = null, params V1Deployment[] items) =>
-        KubernetesJson.Serialize(new V1DeploymentList
-        {
-            ApiVersion = "apps/v1",
-            Kind = "DeploymentList",
-            Metadata = new V1ListMeta { ResourceVersion = version, ContinueProperty = continuation },
-            Items = items
-        });
-
-    internal static string Frame(string type, string version) =>
+    private static string Frame(string type, string version) =>
         $"{{\"type\":\"{type}\",\"object\":{{\"apiVersion\":\"apps/v1\",\"kind\":\"Deployment\",\"metadata\":{{\"resourceVersion\":\"{version}\"}}}}}}\n";
 
     private static IAsyncEnumerable<KubernetesListWatchChange<V1Deployment>> Changes(IKubernetes client,
@@ -337,158 +319,4 @@ public sealed class KubernetesNativeWatchTests
             item => item.Metadata.ResourceVersion,
             clock ?? TimeProvider.System,
             cancellationToken: ct);
-}
-
-internal sealed class NativeWatchTestHandler(
-    Func<HttpRequestMessage, string> list,
-    Func<HttpRequestMessage, NativeWatchTestStream> watch) : DelegatingHandler
-{
-    public ConcurrentQueue<Uri> Requests { get; } = new();
-
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
-        CancellationToken cancellationToken)
-    {
-        Requests.Enqueue(request.RequestUri!);
-        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            RequestMessage = request,
-            Content = KubernetesNativeWatchTests.IsWatch(request.RequestUri!)
-                ? new StreamContent(watch(request))
-                : new StringContent(list(request), Encoding.UTF8, "application/json")
-        });
-    }
-}
-
-internal sealed class NativeWatchTestStream : Stream
-{
-    private readonly Channel<byte[]> _chunks = Channel.CreateUnbounded<byte[]>();
-    private byte[]? _current;
-    private int _position;
-
-    public int FramesWritten { get; private set; }
-
-    public bool Disposed { get; private set; }
-
-    private readonly TaskCompletionSource _nextReadAfterFrame = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    public Task NextReadAfterFrame => _nextReadAfterFrame.Task;
-
-    public void Write(string frame)
-    {
-        FramesWritten++;
-        _chunks.Writer.TryWrite(Encoding.UTF8.GetBytes(frame));
-    }
-
-    public void Complete() => _chunks.Writer.TryComplete();
-
-    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
-    {
-        while (_current is null || _position == _current.Length)
-        {
-            if (_current is not null)
-                _nextReadAfterFrame.TrySetResult();
-            if (!await _chunks.Reader.WaitToReadAsync(cancellationToken))
-                return 0;
-            if (!_chunks.Reader.TryRead(out _current))
-                continue;
-            _position = 0;
-        }
-
-        var length = Math.Min(buffer.Length, _current.Length - _position);
-        _current.AsMemory(_position, length).CopyTo(buffer);
-        _position += length;
-        return length;
-    }
-
-    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
-        ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
-
-    protected override void Dispose(bool disposing)
-    {
-        Disposed = true;
-        Complete();
-        base.Dispose(disposing);
-    }
-
-    public override bool CanRead => true;
-    public override bool CanSeek => false;
-    public override bool CanWrite => false;
-    public override long Length => throw new NotSupportedException();
-
-    public override long Position
-    {
-        get => throw new NotSupportedException();
-        set => throw new NotSupportedException();
-    }
-
-    public override void Flush() => throw new NotSupportedException();
-
-    public override int Read(byte[] buffer, int offset, int count) =>
-        ReadAsync(buffer, offset, count, CancellationToken.None).GetAwaiter().GetResult();
-
-    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-    public override void SetLength(long value) => throw new NotSupportedException();
-    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-}
-
-internal sealed class NativeWatchTestClock : TimeProvider
-{
-    private readonly object _gate = new();
-    private readonly List<ManualTimer> _timers = [];
-    private DateTimeOffset _now = DateTimeOffset.UnixEpoch;
-
-    public override DateTimeOffset GetUtcNow()
-    {
-        lock (_gate)
-            return _now;
-    }
-
-    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
-    {
-        var timer = new ManualTimer(this, callback, state);
-        lock (_gate)
-            _timers.Add(timer);
-        timer.Change(dueTime, period);
-        return timer;
-    }
-
-    public void Advance(TimeSpan by)
-    {
-        List<ManualTimer> due;
-        lock (_gate)
-        {
-            _now += by;
-            due = _timers.Where(timer => timer.Due <= _now).ToList();
-            foreach (var timer in due)
-                timer.Due = DateTimeOffset.MaxValue;
-        }
-
-        foreach (var timer in due)
-            timer.Fire();
-    }
-
-    private sealed class ManualTimer(NativeWatchTestClock owner, TimerCallback callback, object? state) : ITimer
-    {
-        public DateTimeOffset Due { get; set; } = DateTimeOffset.MaxValue;
-
-        public void Fire() => callback(state);
-
-        public bool Change(TimeSpan dueTime, TimeSpan period)
-        {
-            lock (owner._gate)
-                Due = dueTime == Timeout.InfiniteTimeSpan ? DateTimeOffset.MaxValue : owner._now + dueTime;
-            return true;
-        }
-
-        public void Dispose()
-        {
-            lock (owner._gate)
-                Due = DateTimeOffset.MaxValue;
-        }
-
-        public ValueTask DisposeAsync()
-        {
-            Dispose();
-            return ValueTask.CompletedTask;
-        }
-    }
 }

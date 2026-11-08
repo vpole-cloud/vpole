@@ -22,7 +22,7 @@ using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain.Observation;
 using Pole.Observation;
 using Pole.Tests.Integration.Infrastructure;
-using Pole.Tests.Integration.ResourceDeployments;
+using Pole.Testing.Kubernetes;
 using Xunit;
 
 namespace Pole.Tests.Integration.StorageProfiles;
@@ -41,7 +41,7 @@ public sealed class StorageObservationReadMetricsTests(MongoReplicaSetFixture fi
     {
         capture = new(meter);
         metrics = new(meter);
-        client = KubernetesNativeWatchTests.Client(api.Handler);
+        client = NativeWatchTestClient.Create(api.Handler);
         services.RemoveAll<StorageObservationMetrics>();
         services.AddSingleton(metrics);
         services.RemoveAll<StorageObservationOptions>();
@@ -170,7 +170,7 @@ public sealed class StorageObservationOwnerMetricsTests(MongoReplicaSetFixture f
                 (await store.ClaimLeaseAsync(context, "private-replica-native-canary")).Value);
         var source = new StorageMetricSource();
         using var handler = new StorageMetricHandler { NativeUnavailable = mode == "native_unavailable" };
-        using var client = KubernetesNativeWatchTests.Client(handler);
+        using var client = NativeWatchTestClient.Create(handler);
         using var budget = new ObservationReadBudget(TimeProvider.System);
         using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var running =
@@ -261,7 +261,7 @@ public sealed class StorageObservationOwnerMetricsTests(MongoReplicaSetFixture f
         var source = new StorageMetricSource();
         using var handler = new StorageMetricHandler();
         handler.Release.TrySetResult();
-        using var client = KubernetesNativeWatchTests.Client(handler);
+        using var client = NativeWatchTestClient.Create(handler);
         using var budget = new ObservationReadBudget(TimeProvider.System);
         using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var running =

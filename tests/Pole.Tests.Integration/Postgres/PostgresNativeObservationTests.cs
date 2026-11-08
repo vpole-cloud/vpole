@@ -17,6 +17,7 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Observation;
 using Pole.Tests.Integration.ResourceDeployments;
 using Pole.Workloads;
+using Pole.Testing.Kubernetes;
 using Xunit;
 
 namespace Pole.Tests.Integration.Postgres;
@@ -30,13 +31,13 @@ public sealed class PostgresNativeObservationTests
         PostgresDeploymentMode mode)
     {
         using var api = new PostgresNativeTestApi(mode) { IncludeBootstrapPod = true };
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(api, client).WatchAsync(api.Context, cancellation.Token).GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
         Assert.Equal("controller", changes.Current.BindingId);
         Assert.Equal(mode == PostgresDeploymentMode.Operator ? 6 : 8,
-            api.Requests.Count(KubernetesNativeWatchTests.IsWatch));
+            api.Requests.Count(NativeWatchTestClient.IsWatch));
         Assert.All(api.Streams, stream => Assert.Equal(0, stream.FramesWritten));
         Assert.DoesNotContain(api.Requests.Where(uri => uri.AbsolutePath.EndsWith("/events", StringComparison.Ordinal)),
             uri => uri.Query.Contains("bootstrap", StringComparison.Ordinal));
@@ -56,7 +57,7 @@ public sealed class PostgresNativeObservationTests
         PostgresDeploymentMode mode)
     {
         using var api = new PostgresNativeTestApi(mode) { ControllerPresent = false };
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(api, client).WatchAsync(api.Context, cancellation.Token).GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.Unavailable);
@@ -82,7 +83,7 @@ public sealed class PostgresNativeObservationTests
     public async Task CNPG_foreign_controller_cannot_be_adopted_from_name_or_inherited_child_labels(string mismatch)
     {
         using var api = new PostgresNativeTestApi(PostgresDeploymentMode.Operator) { ControllerMismatch = mismatch };
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(api, client).WatchAsync(api.Context, cancellation.Token).GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.Unavailable);
@@ -98,7 +99,7 @@ public sealed class PostgresNativeObservationTests
     public async Task Selector_loss_delivers_negative_binding_fence_and_retires_dependents(PostgresDeploymentMode mode)
     {
         using var api = new PostgresNativeTestApi(mode);
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(api, client).WatchAsync(api.Context, cancellation.Token).GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
@@ -119,14 +120,14 @@ public sealed class PostgresNativeObservationTests
         PostgresDeploymentMode mode)
     {
         using var api = new PostgresNativeTestApi(mode) { PodCount = 100 };
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(api, client).WatchAsync(api.Context, cancellation.Token).GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
         Assert.Equal(8,
             api.Requests.Count(uri =>
                 uri.AbsolutePath.EndsWith("/events", StringComparison.Ordinal) &&
-                KubernetesNativeWatchTests.IsWatch(uri)));
+                NativeWatchTestClient.IsWatch(uri)));
         var warning = api.Stream("events", "pod-00");
         var foreign = api.Pod("pod-00", "foreign-controller");
         api.Stream("pods").Write(PostgresNativeTestApi.Frame("MODIFIED", foreign));
@@ -158,7 +159,7 @@ public sealed class PostgresNativeObservationTests
         int replacement)
     {
         using var api = new PostgresNativeTestApi(mode) { ReplaceAtRead = replacement };
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         var result = await Bound(api, client).ObserveBoundAsync(api.Context, "controller");
         Assert.Null(result.BindingId);
         Assert.Equal("BindingChanged", Assert.IsType<UnavailableWorkloadObservation>(result.Observation).Reason);
@@ -172,7 +173,7 @@ public sealed class PostgresNativeObservationTests
         PostgresDeploymentMode mode)
     {
         using var api = new PostgresNativeTestApi(mode) { IncludeBootstrapPod = true };
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         var observer = Bound(api, client);
         var result = await observer.ObserveBoundAsync(api.Context, "controller");
         Assert.Equal("controller", result.BindingId);
@@ -196,7 +197,7 @@ public sealed class PostgresNativeObservationTests
             UnversionedCondition = generation,
             IncludeBootstrapPod = true
         };
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         var result = await Bound(api, client).ObserveBoundAsync(api.Context, "controller");
         Assert.True(Assert.IsType<ObservedWorkload>(result.Observation).Ready);
         Assert.Equal("pod-00",
@@ -228,7 +229,7 @@ public sealed class PostgresNativeObservationTests
             UnversionedCondition = "omitted",
             IntentMismatch = mismatch
         };
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         var result = await Bound(api, client).ObserveBoundAsync(api.Context, "controller");
         Assert.False(result.Observation is ObservedWorkload { Ready: true });
         Assert.DoesNotContain("native-canary", JsonSerializer.Serialize(result));
@@ -243,7 +244,7 @@ public sealed class PostgresNativeObservationTests
     public async Task Malformed_operator_scalars_produce_safe_unavailable_without_unsafe_JSON_access(string shape)
     {
         using var api = new PostgresNativeTestApi(PostgresDeploymentMode.Operator) { Malformed = shape };
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         var result = await ((IResourceDeploymentObserver)Observer(api, client)).ObserveAsync(api.Context.Deployment);
         Assert.Equal("InvalidNativeObservation", Assert.IsType<UnavailableWorkloadObservation>(result).Reason);
         Assert.DoesNotContain("native-canary", JsonSerializer.Serialize(result));
@@ -256,7 +257,7 @@ public sealed class PostgresNativeObservationTests
     public async Task Invalid_operator_condition_shapes_cannot_make_workload_ready(string shape)
     {
         using var api = new PostgresNativeTestApi(PostgresDeploymentMode.Operator) { Malformed = shape };
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         var result = await ((IResourceDeploymentObserver)Observer(api, client)).ObserveAsync(api.Context.Deployment);
         Assert.False(Assert.IsType<ObservedWorkload>(result).Ready);
     }
@@ -268,7 +269,7 @@ public sealed class PostgresNativeObservationTests
         PostgresDeploymentMode mode)
     {
         using var api = new PostgresNativeTestApi(mode);
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(api, client).WatchAsync(api.Context, cancellation.Token).GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
@@ -297,7 +298,7 @@ public sealed class PostgresNativeObservationTests
     public async Task Disabled_or_deleting_target_cannot_open_native_Cluster_requests(bool enabled, bool deleting)
     {
         using var api = new PostgresNativeTestApi(PostgresDeploymentMode.Operator);
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         var reads = 0;
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(api,
@@ -319,7 +320,7 @@ public sealed class PostgresNativeObservationTests
     public async Task Credential_rotation_during_client_acquisition_fails_post_lookup_before_any_native_request()
     {
         using var api = new PostgresNativeTestApi(PostgresDeploymentMode.Operator);
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         var version = 1L;
         var reads = 0;
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -344,8 +345,8 @@ public sealed class PostgresNativeObservationTests
     {
         using var firstApi = new PostgresNativeTestApi(PostgresDeploymentMode.Operator);
         using var secondApi = new PostgresNativeTestApi(PostgresDeploymentMode.Operator);
-        using var firstClient = KubernetesNativeWatchTests.Client(firstApi);
-        using var secondClient = KubernetesNativeWatchTests.Client(secondApi);
+        using var firstClient = NativeWatchTestClient.Create(firstApi);
+        using var secondClient = NativeWatchTestClient.Create(secondApi);
         var version = 1L;
         var reads = 0;
         var source = Source(firstApi,
@@ -566,7 +567,7 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
             "endpointslices" => QueryValue(uri, "kubernetes.io/service-name="),
             _ => null
         };
-        if (KubernetesNativeWatchTests.IsWatch(uri))
+        if (NativeWatchTestClient.IsWatch(uri))
         {
             Assert.Contains(kind, new[] { ControllerKind, "pods", "services", "events", "endpointslices" });
             var stream = new NativeWatchTestStream();

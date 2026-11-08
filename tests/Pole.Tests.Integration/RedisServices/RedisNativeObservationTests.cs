@@ -14,6 +14,7 @@ using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Tests.Integration.ResourceDeployments;
 using Pole.Workloads;
+using Pole.Testing.Kubernetes;
 using Xunit;
 
 namespace Pole.Tests.Integration.RedisServices;
@@ -64,7 +65,7 @@ public sealed class RedisNativeObservationTests
     public async Task Quiet_owned_StatefulSet_watch_covers_all_interests_without_first_frame_or_read_budget_slot()
     {
         using var api = new RedisNativeTestApi();
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         var budget = new Budget();
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(new ClientProvider(() => client), budget).WatchAsync(Context, cancellation.Token)
@@ -72,12 +73,11 @@ public sealed class RedisNativeObservationTests
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
         Assert.Equal("controller", changes.Current.BindingId);
         Assert.Equal(6,
-            api.Requests.Count(KubernetesNativeWatchTests
-                .IsWatch)); // controller, Pod, Service, two UID warnings, slice
+            api.Requests.Count(NativeWatchTestClient.IsWatch)); // controller, Pod, Service, two UID warnings, slice
         Assert.Equal(0, budget.Active);
         Assert.True(budget.Reads >= 6);
         Assert.All(api.Streams, stream => Assert.Equal(0, stream.FramesWritten));
-        foreach (var request in api.Requests.Where(KubernetesNativeWatchTests.IsWatch))
+        foreach (var request in api.Requests.Where(NativeWatchTestClient.IsWatch))
             Assert.Contains("resourceVersion=", request.Query);
         var controllerQuery = Uri.UnescapeDataString(api.Requests.First().Query);
         foreach (var key in Identity.ToDictionary().Keys)
@@ -92,7 +92,7 @@ public sealed class RedisNativeObservationTests
     public async Task Empty_controller_watch_remains_open_and_added_recovers_binding()
     {
         using var api = new RedisNativeTestApi { ControllerPresent = false };
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(new ClientProvider(() => client)).WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
@@ -121,7 +121,7 @@ public sealed class RedisNativeObservationTests
     public async Task Controller_ownership_mismatch_never_opens_dependents(string field)
     {
         using var api = new RedisNativeTestApi { ControllerMismatch = field };
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(new ClientProvider(() => client)).WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
@@ -136,7 +136,7 @@ public sealed class RedisNativeObservationTests
     public async Task Selector_loss_withdraws_controller_binding_before_starting_replacement_reads()
     {
         using var api = new RedisNativeTestApi();
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(new ClientProvider(() => client)).WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
@@ -157,7 +157,7 @@ public sealed class RedisNativeObservationTests
     public async Task Direct_owned_Pods_only_get_at_most_eight_warning_interests_and_parent_change_retires_warning()
     {
         using var api = new RedisNativeTestApi { PodCount = 12, IncludeForeignPod = true };
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(new ClientProvider(() => client)).WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
@@ -165,7 +165,7 @@ public sealed class RedisNativeObservationTests
         Assert.Equal(8,
             api.Requests.Count(uri =>
                 uri.AbsolutePath.EndsWith("/events", StringComparison.Ordinal) &&
-                KubernetesNativeWatchTests.IsWatch(uri)));
+                NativeWatchTestClient.IsWatch(uri)));
         Assert.DoesNotContain(api.Requests.Where(uri => uri.AbsolutePath.EndsWith("/events", StringComparison.Ordinal)),
             uri => uri.Query.Contains("foreign", StringComparison.Ordinal));
         var old = api.Stream("events", "pod-00");
@@ -188,7 +188,7 @@ public sealed class RedisNativeObservationTests
             PodCount = kind == "pods" ? 100 : 1,
             SliceCount = kind == "endpointslices" ? 100 : 1
         };
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(new ClientProvider(() => client)).WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
@@ -211,7 +211,7 @@ public sealed class RedisNativeObservationTests
     public async Task Foreign_slice_cannot_invalidate_even_without_Pole_labels(string mismatch)
     {
         using var api = new RedisNativeTestApi();
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(new ClientProvider(() => client)).WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
@@ -237,7 +237,7 @@ public sealed class RedisNativeObservationTests
     public async Task Service_replacement_retires_old_slice_UID_interest_and_opens_new_independent_RV()
     {
         using var api = new RedisNativeTestApi();
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(new ClientProvider(() => client)).WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
@@ -261,7 +261,7 @@ public sealed class RedisNativeObservationTests
     public async Task Bound_sample_rejects_UID_replacement_before_during_or_after_sampling(int replacement)
     {
         using var api = new RedisNativeTestApi { ReplaceAtRead = replacement };
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         var result =
             await new RedisResourceDeploymentObserver((_, _, _) => Task.FromResult<Redis?>(Resource),
                 new ClientProvider(() => client)).ObserveBoundAsync(Context, "controller");
@@ -274,7 +274,7 @@ public sealed class RedisNativeObservationTests
     public async Task Same_UID_bound_sample_returns_sanitized_readiness_and_runtime_instances()
     {
         using var api = new RedisNativeTestApi();
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         var result =
             await new RedisResourceDeploymentObserver((_, _, _) => Task.FromResult<Redis?>(Resource),
                 new ClientProvider(() => client)).ObserveBoundAsync(Context, "controller");
@@ -292,7 +292,7 @@ public sealed class RedisNativeObservationTests
     public async Task Disabled_or_deleting_target_cannot_open_any_native_request(bool enabled, bool deleting)
     {
         using var api = new RedisNativeTestApi();
-        using var client = KubernetesNativeWatchTests.Client(api);
+        using var client = NativeWatchTestClient.Create(api);
         var provider = new ClientProvider(() => client);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(provider, target: () => Target(1) with { Enabled = enabled, DeletionRequested = deleting })
@@ -309,8 +309,8 @@ public sealed class RedisNativeObservationTests
     {
         using var firstApi = new RedisNativeTestApi();
         using var secondApi = new RedisNativeTestApi { ControllerUid = "replacement" };
-        using var firstClient = KubernetesNativeWatchTests.Client(firstApi);
-        using var secondClient = KubernetesNativeWatchTests.Client(secondApi);
+        using var firstClient = NativeWatchTestClient.Create(firstApi);
+        using var secondClient = NativeWatchTestClient.Create(secondApi);
         var version = 1L;
         var provider = new ClientProvider(() => version == 1 ? firstClient : secondClient);
         var source = Source(provider, target: () => Target(version));
@@ -460,7 +460,7 @@ internal sealed class RedisNativeTestApi : DelegatingHandler
         var uri = request.RequestUri!;
         Requests.Enqueue(uri);
         var kind = uri.AbsolutePath.Split('/').Last();
-        if (KubernetesNativeWatchTests.IsWatch(uri))
+        if (NativeWatchTestClient.IsWatch(uri))
         {
             Assert.Contains(kind, new[] { "statefulsets", "pods", "services", "events", "endpointslices" });
             var stream = new NativeWatchTestStream();

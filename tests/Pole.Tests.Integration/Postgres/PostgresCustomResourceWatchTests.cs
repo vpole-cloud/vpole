@@ -2,7 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using k8s;
 using Pole.Features.Core.Kubernetes;
-using Pole.Tests.Integration.ResourceDeployments;
+using Pole.Testing.Kubernetes;
 using Xunit;
 
 namespace Pole.Tests.Integration.Postgres;
@@ -15,7 +15,7 @@ public sealed class PostgresCustomResourceWatchTests
     {
         using var stream = new NativeWatchTestStream();
         using var handler = new NativeWatchTestHandler(_ => List("collection/opaque"), _ => stream);
-        using var client = KubernetesNativeWatchTests.Client(handler);
+        using var client = NativeWatchTestClient.Create(handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Changes(client, cancellation.Token).GetAsyncEnumerator();
         Assert.True(await changes.MoveNextAsync());
@@ -24,7 +24,7 @@ public sealed class PostgresCustomResourceWatchTests
         Assert.True(await changes.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.Equal(KubernetesListWatchChangeKind.Ready, changes.Current.Kind);
         Assert.Equal(0, stream.FramesWritten);
-        var uri = Assert.Single(handler.Requests, KubernetesNativeWatchTests.IsWatch);
+        var uri = Assert.Single(handler.Requests, NativeWatchTestClient.IsWatch);
         Assert.Equal("/apis/postgresql.cnpg.io/v1/namespaces/owned/clusters", uri.AbsolutePath);
         var query = Uri.UnescapeDataString(uri.Query);
         Assert.Contains("fieldSelector=metadata.name=pg-owned", query);
@@ -55,7 +55,7 @@ public sealed class PostgresCustomResourceWatchTests
         using var second = new NativeWatchTestStream();
         var watches = 0;
         using var handler = new NativeWatchTestHandler(_ => List("collection"), _ => ++watches == 1 ? first : second);
-        using var client = KubernetesNativeWatchTests.Client(handler);
+        using var client = NativeWatchTestClient.Create(handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Changes(client, cancellation.Token).GetAsyncEnumerator();
         await changes.MoveNextAsync();
@@ -68,7 +68,7 @@ public sealed class PostgresCustomResourceWatchTests
         Assert.True(first.Disposed);
         Assert.True(await changes.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.Equal(KubernetesListWatchChangeKind.Listed, changes.Current.Kind);
-        Assert.Equal(2, handler.Requests.Count(uri => !KubernetesNativeWatchTests.IsWatch(uri)));
+        Assert.Equal(2, handler.Requests.Count(uri => !NativeWatchTestClient.IsWatch(uri)));
         cancellation.Cancel();
         await changes.DisposeAsync();
     }
@@ -80,7 +80,7 @@ public sealed class PostgresCustomResourceWatchTests
         using var second = new NativeWatchTestStream();
         var watches = 0;
         using var handler = new NativeWatchTestHandler(_ => List("collection"), _ => ++watches == 1 ? first : second);
-        using var client = KubernetesNativeWatchTests.Client(handler);
+        using var client = NativeWatchTestClient.Create(handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Changes(client, cancellation.Token).GetAsyncEnumerator();
         await changes.MoveNextAsync();
@@ -91,9 +91,9 @@ public sealed class PostgresCustomResourceWatchTests
         Assert.Equal(KubernetesListWatchChangeKind.Unavailable, changes.Current.Kind);
         Assert.True(await changes.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.Equal(KubernetesListWatchChangeKind.Ready, changes.Current.Kind);
-        var uris = handler.Requests.Where(KubernetesNativeWatchTests.IsWatch).ToArray();
+        var uris = handler.Requests.Where(NativeWatchTestClient.IsWatch).ToArray();
         Assert.Contains("resourceVersion=bookmark/opaque", Uri.UnescapeDataString(uris[1].Query));
-        Assert.Single(handler.Requests, uri => !KubernetesNativeWatchTests.IsWatch(uri));
+        Assert.Single(handler.Requests, uri => !NativeWatchTestClient.IsWatch(uri));
         cancellation.Cancel();
         await changes.DisposeAsync();
     }

@@ -10,7 +10,7 @@ using Pole.Features.StorageProfiles.Application.Discovery.Observation;
 using Pole.Features.StorageProfiles.Application.Observation;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Tests.Integration.Infrastructure;
-using Pole.Tests.Integration.ResourceDeployments;
+using Pole.Testing.Kubernetes;
 using Xunit;
 
 namespace Pole.Tests.Integration.StorageProfiles;
@@ -25,7 +25,7 @@ public sealed class StorageObservationNativeTests
     public async Task AllThreeQuietWatchHeadersAreRequiredAndEmptyInventoryIsHealthy(bool empty)
     {
         using var api = new StorageNativeApi(empty);
-        using var client = KubernetesNativeWatchTests.Client(api.Handler);
+        using var client = NativeWatchTestClient.Create(api.Handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         using var budget = new ObservationReadBudget(TimeProvider.System);
         var changes = Source(client, budget).WatchAsync(Context, cancellation.Token).GetAsyncEnumerator();
@@ -34,9 +34,9 @@ public sealed class StorageObservationNativeTests
         Assert.Equal(empty ? 0 : 1, ready.Inventory.StorageClasses.Length);
         Assert.Empty(ready.Inventory.PersistentVolumes);
         Assert.Empty(ready.Inventory.PersistentVolumeClaims);
-        Assert.Equal(3, api.Requests.Count(KubernetesNativeWatchTests.IsWatch));
+        Assert.Equal(3, api.Requests.Count(NativeWatchTestClient.IsWatch));
         Assert.DoesNotContain("native-canary", JsonSerializer.Serialize(ready));
-        foreach (var uri in api.Requests.Where(KubernetesNativeWatchTests.IsWatch))
+        foreach (var uri in api.Requests.Where(NativeWatchTestClient.IsWatch))
         {
             var key = StorageNativeApi.Key(uri.AbsolutePath);
             Assert.Contains($"resourceVersion={key}-list", Uri.UnescapeDataString(uri.Query));
@@ -51,7 +51,7 @@ public sealed class StorageObservationNativeTests
     public async Task MaximumQualifiedProvisionerAllowsAllThreeStreamsToBecomeReady()
     {
         using var api = new StorageNativeApi(false) { Provisioner = StorageNativeApi.MaximumQualifiedProvisioner };
-        using var client = KubernetesNativeWatchTests.Client(api.Handler);
+        using var client = NativeWatchTestClient.Create(api.Handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         using var budget = new ObservationReadBudget(TimeProvider.System);
         await using var changes = Source(client, budget).WatchAsync(Context, cancellation.Token).GetAsyncEnumerator();
@@ -59,7 +59,7 @@ public sealed class StorageObservationNativeTests
         Assert.True(ready.Inventory!.Complete);
         Assert.Equal(317, Assert.Single(ready.Inventory.StorageClasses).Provisioner.Length);
         Assert.Equal(api.Provisioner, Assert.Single(ready.Inventory.StorageClasses).Provisioner);
-        Assert.Equal(3, api.Requests.Count(KubernetesNativeWatchTests.IsWatch));
+        Assert.Equal(3, api.Requests.Count(NativeWatchTestClient.IsWatch));
         Assert.DoesNotContain("native-canary", JsonSerializer.Serialize(ready));
         cancellation.Cancel();
     }
@@ -68,7 +68,7 @@ public sealed class StorageObservationNativeTests
     public async Task UidReplacementFencesOldCutAndLateOldDeleteCannotRemoveReplacement()
     {
         using var api = new StorageNativeApi(false);
-        using var client = KubernetesNativeWatchTests.Client(api.Handler);
+        using var client = NativeWatchTestClient.Create(api.Handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         using var budget = new ObservationReadBudget(TimeProvider.System);
         var changes = Source(client, budget).WatchAsync(Context, cancellation.Token).GetAsyncEnumerator();
@@ -93,7 +93,7 @@ public sealed class StorageObservationNativeTests
     public async Task BrokenStreamImmediatelyWithdrawsCoverageAndRecoveryUsesNewSourceId(bool malformed)
     {
         using var api = new StorageNativeApi(false);
-        using var client = KubernetesNativeWatchTests.Client(api.Handler);
+        using var client = NativeWatchTestClient.Create(api.Handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         using var budget = new ObservationReadBudget(TimeProvider.System);
         var changes = Source(client, budget).WatchAsync(Context, cancellation.Token).GetAsyncEnumerator();
@@ -113,7 +113,7 @@ public sealed class StorageObservationNativeTests
     public async Task ItemOverflowNeverClaimsCoverageOrOpensOverflowedKindWatch()
     {
         using var api = new StorageNativeApi(false) { ExtraClass = true };
-        using var client = KubernetesNativeWatchTests.Client(api.Handler);
+        using var client = NativeWatchTestClient.Create(api.Handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         using var budget = new ObservationReadBudget(TimeProvider.System);
         var changes = Source(client, budget, new()
@@ -124,7 +124,7 @@ public sealed class StorageObservationNativeTests
         var first = await NextAsync(changes, StorageObservationChangeKind.Unavailable);
         Assert.Null(first.Inventory);
         Assert.DoesNotContain(api.Requests,
-            uri => KubernetesNativeWatchTests.IsWatch(uri) && StorageNativeApi.Key(uri.AbsolutePath) == "classes");
+            uri => NativeWatchTestClient.IsWatch(uri) && StorageNativeApi.Key(uri.AbsolutePath) == "classes");
         cancellation.Cancel();
         await changes.DisposeAsync();
     }

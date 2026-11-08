@@ -11,11 +11,11 @@ using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Features.WebServices.Domain;
-using Pole.Tests.Integration.ResourceDeployments;
 using Pole.Workloads;
+using Pole.Testing.Kubernetes;
 using Xunit;
 
-namespace Pole.Tests.Integration.WebServices;
+namespace Pole.Features.WebServices.Tests;
 
 public sealed class WebServiceNativeObservationTests
 {
@@ -42,7 +42,7 @@ public sealed class WebServiceNativeObservationTests
                 "owned",
                 null,
                 null,
-                ResourceDeploymentTestData.ContractCompute("target"))),
+                WebServiceTestData.ComputeForTarget("target"))),
         3,
         1);
 
@@ -122,7 +122,7 @@ public sealed class WebServiceNativeObservationTests
             }
             return json;
         }, _ => throw new InvalidOperationException("Retirement must only sample."));
-        using var client = KubernetesNativeWatchTests.Client(handler);
+        using var client = NativeWatchTestClient.Create(handler);
         var observer = new WebServiceSecretRolloutObserver((_, _, _) => Task.FromResult<WebService?>(Resource),
 (request, _) => Task.FromResult<IReadOnlyList<PlacementSummaryDto>>([new("deployment", ScopeId, "cell", "target", 2, 2,
     ResourceDeploymentStatus.Applied, null, new(new("profile", 1), "test", new(100, 100), new(100, 100), []), [],
@@ -130,7 +130,7 @@ public sealed class WebServiceNativeObservationTests
     DesiredOperation: ResourceDeploymentDesiredOperation.Apply, Isolation: new ResourceDeploymentIsolationDto("Unknown",
     "EnforcementRequired", "EnforcementNotEstablished", null))]),
 (request, _) => Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(new("deployment", ResourceId,
-                "cell", "target", "owned", 3, 2, ResourceDeploymentTestData.ContractCompute("target"),
+                "cell", "target", "owned", 3, 2, WebServiceTestData.ComputeForTarget("target"),
                 ResourceDeploymentStatus.Applied, ResourceDeploymentDesiredOperation.Apply, ScopeId)),
                     new ClientProvider(client));
         Assert.Equal(confirmed, (await observer.ObserveAsync(TenantId, ResourceId,
@@ -141,7 +141,7 @@ public sealed class WebServiceNativeObservationTests
     public async Task Owned_initial_Deployment_binds_before_quiet_watch_ready_and_selector_loss_withdraws_prior_UID()
     {
         using var handler = new NativeObservationTestApi();
-        using var client = KubernetesNativeWatchTests.Client(handler);
+        using var client = NativeWatchTestClient.Create(handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var budget = new ReadBudget();
         var source = Source(client, budget);
@@ -192,14 +192,14 @@ public sealed class WebServiceNativeObservationTests
             foreign.Metadata.Labels[field] = "foreign";
         using var stream = new NativeWatchTestStream();
         using var handler =
-            new NativeWatchTestHandler(_ => KubernetesNativeWatchTests.List("list", null, foreign), _ => stream);
-        using var client = KubernetesNativeWatchTests.Client(handler);
+            new NativeWatchTestHandler(_ => NativeWatchTestClient.DeploymentList("list", null, foreign), _ => stream);
+        using var client = NativeWatchTestClient.Create(handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(client, new ReadBudget()).WatchAsync(Context, cancellation.Token).GetAsyncEnumerator();
         Assert.True(await changes.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.Equal(ResourceDeploymentObservationChangeKind.Unavailable, changes.Current.Kind);
         Assert.Null(changes.Current.BindingId);
-        Assert.Equal(1, handler.Requests.Count(KubernetesNativeWatchTests.IsWatch));
+        Assert.Equal(1, handler.Requests.Count(NativeWatchTestClient.IsWatch));
         cancellation.Cancel();
         await changes.DisposeAsync();
     }
@@ -222,7 +222,7 @@ public sealed class WebServiceNativeObservationTests
                     return controller;
                 }),
             _ => throw new InvalidOperationException("Sampling cannot watch."));
-        using var client = KubernetesNativeWatchTests.Client(handler);
+        using var client = NativeWatchTestClient.Create(handler);
         var observer = new WebServiceResourceDeploymentObserver((tenant, id, _) =>
                 Task.FromResult<WebService?>(Resource),
             new ClientProvider(client));
@@ -240,7 +240,7 @@ public sealed class WebServiceNativeObservationTests
     {
         using var handler = new NativeWatchTestHandler(request => NativeResponse(request, Controller),
             _ => throw new InvalidOperationException("Sampling cannot watch."));
-        using var client = KubernetesNativeWatchTests.Client(handler);
+        using var client = NativeWatchTestClient.Create(handler);
         var observer = new WebServiceResourceDeploymentObserver((tenant, id, _) =>
                 Task.FromResult<WebService?>(Resource),
             new ClientProvider(client));

@@ -204,6 +204,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Pole.Architecture.FSharp/Pole.Architecture.FSharp.fsproj" />
+    <Project Path="tests/Pole.Testing.Kubernetes/Pole.Testing.Kubernetes.csproj" />
     <Project Path="tests/Pole.Tests.Architecture/Pole.Tests.Architecture.csproj" />
     <Project Path="tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj" />
     <Project Path="tests/Pole.Tests.Kubernetes/Pole.Tests.Kubernetes.csproj" />

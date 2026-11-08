@@ -12,7 +12,7 @@ using Pole.Features.StorageProfiles.Application.Observation;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain.Observation;
 using Pole.Tests.Integration.Infrastructure;
-using Pole.Tests.Integration.ResourceDeployments;
+using Pole.Testing.Kubernetes;
 using Xunit;
 
 namespace Pole.Tests.Integration.StorageProfiles;
@@ -49,7 +49,7 @@ public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture) :
         // Each target client receives a fresh owned handler; tests use the real Kubernetes SDK.
         var handler = new NativeWatchTestHandler(Response,
             _ => throw new InvalidOperationException("HTTP discovery cannot open a watch."));
-        var client = KubernetesNativeWatchTests.Client(handler);
+        var client = NativeWatchTestClient.Create(handler);
         clients.Add(client);
         services.RemoveAll<IKubernetesClientProvider>();
         services.AddSingleton<IKubernetesClientProvider>(new FixedKubernetesClientProvider(client));

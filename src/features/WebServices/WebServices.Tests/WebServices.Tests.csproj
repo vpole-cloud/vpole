@@ -19,6 +19,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../../../../tests/Pole.Testing.Kubernetes/Pole.Testing.Kubernetes.csproj" />
+    <ProjectReference Include="..\WebServices.Application\WebServices.Application.csproj" />
     <ProjectReference Include="..\WebServices.Events\WebServices.Events.csproj" />
     <ProjectReference Include="..\WebServices.Domain\WebServices.Domain.csproj" />
   </ItemGroup>

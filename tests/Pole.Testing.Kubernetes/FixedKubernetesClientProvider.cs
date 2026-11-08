@@ -1,9 +1,9 @@
 using k8s;
 using Pole.Features.DeploymentTargets.Contracts;
 
-namespace Pole.Tests.Integration.Infrastructure;
+namespace Pole.Testing.Kubernetes;
 
-internal sealed class FixedKubernetesClientProvider(IKubernetes kubernetes) : IKubernetesClientProvider
+public sealed class FixedKubernetesClientProvider(IKubernetes kubernetes) : IKubernetesClientProvider
 {
     public Task<IKubernetes> GetAsync(
         string deploymentTargetId,

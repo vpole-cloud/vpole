@@ -1,11 +1,11 @@
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
+using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Domain;
-using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
-namespace Pole.Tests.Integration.WebServices;
+namespace Pole.Features.WebServices.Tests;
 
 public sealed class WebServiceSpecValueTests
 {
@@ -96,7 +96,14 @@ public sealed class WebServiceSpecValueTests
 
     private static WebService ConfiguredService()
     {
-        var service = TestData.SeedWebService("507f1f77bcf86cd799439003");
+        var service = WebServiceFactory.Create(
+            "web-api",
+            WebServiceTestData.TenantId,
+            "507f1f77bcf86cd799439003",
+            ObjectId.GenerateNewId().ToString(),
+            WebServiceTestData.CreateSpec().ToDomain(),
+            WebServiceExposure.Create(),
+            WebServiceFactory.DefaultOptions);
         return service with
         {
             Spec = service.Spec with

@@ -1,9 +1,8 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Pole.Observation;
+using Pole.Testing.Kubernetes;
 using Xunit;
-
-using Pole.Tests.Integration.ResourceDeployments;
 
 namespace Pole.Tests.Integration.Observation;
 
