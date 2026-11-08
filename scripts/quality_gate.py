@@ -258,7 +258,7 @@ def sample_host_memory(stop, samples):
             total = int(memory["MemTotal"].split()[0]) * 1024
             available = int(memory["MemAvailable"].split()[0]) * 1024
             samples["peak_used_bytes"] = max(samples.get("peak_used_bytes", 0), total - available)
-            samples["minimum_available_bytes"] = min(samples.get("minimum_available_bytes", available), available)
+            samples["minimum_available_bytes"] = min((samples.get("minimum_available_bytes") or available), available)
         except (OSError, KeyError, ValueError):
             pass
         stop.wait(0.5)
@@ -279,7 +279,7 @@ def run_backend(directory, steps=None, tests=None, profile="full", limits=None):
     limits = limits or dict.fromkeys(GROUPS, 1)
     manifest = {"status": "running", "coverage": True, "profile": profile, "parallelism": limits, "projects": projects, "steps": steps, "tests": tests}
     stop_sampling = threading.Event()
-    manifest["host_memory"] = {}
+    manifest["host_memory"] = {"peak_used_bytes": 0, "minimum_available_bytes": 0}
     sampler = threading.Thread(target=sample_host_memory, args=(stop_sampling, manifest["host_memory"]), daemon=True)
     sampler.start()
     environment = dict(os.environ)

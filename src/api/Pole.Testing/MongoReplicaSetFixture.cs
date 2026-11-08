@@ -62,8 +62,15 @@ public class MongoReplicaSetFixture : IAsyncLifetime
 
     public virtual async Task DisposeAsync()
     {
-        await _outboxServices!.DisposeAsync();
-        await _container.DisposeAsync();
+        try
+        {
+            if (_outboxServices is not null)
+                await _outboxServices.DisposeAsync();
+        }
+        finally
+        {
+            await _container.DisposeAsync();
+        }
     }
 
     public virtual async Task ResetDatabaseAsync()
