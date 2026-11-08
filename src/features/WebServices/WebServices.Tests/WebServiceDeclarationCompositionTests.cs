@@ -1,17 +1,29 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Tests.Integration.Infrastructure;
+using Pole.Features.WebServices.Application;
+using Pole.Features.WebServices.Application.Declarations;
 using Xunit;
 
-namespace Pole.Tests.Integration.WebServices;
+namespace Pole.Features.WebServices.Tests;
 
-public sealed class WebServiceDeclarationCompositionTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+public sealed class WebServiceDeclarationCompositionTests
 {
     [Fact]
     public void Feature_registration_preserves_capability_discovery_and_scoped_identity()
     {
+        var services = new ServiceCollection();
+        services.AddWebServicesFeature();
+        var descriptor = Assert.Single(services.Where(item => item.ServiceType == typeof(DeclarativeWebServiceProvider)));
+        Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime);
+        Assert.Equal(typeof(DeclarativeWebServiceProvider), descriptor.ImplementationType);
+        // Provider operations are unused. Preserve the production aliases while supplying its collaborators.
+        services.Replace(ServiceDescriptor.Scoped<DeclarativeWebServiceProvider>(
+            _ => new(null!, null!, null!, null!, null!, null!, null!)));
+        using var root = services.BuildServiceProvider(validateScopes: true);
+        using var scope = root.CreateScope();
+        var Services = scope.ServiceProvider;
         var provider = Services.GetServices<IDeclarativeResourceProvider>().Single(item => item.Kind == "WebService");
         Assert.IsAssignableFrom<ITransactionalDeclarativeResourceProvider>(provider);
         Assert.IsAssignableFrom<IDeclarativeReferencePreparation>(provider);

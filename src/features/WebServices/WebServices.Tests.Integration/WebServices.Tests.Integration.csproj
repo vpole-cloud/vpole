@@ -20,6 +20,8 @@
 
   <ItemGroup>
     <ProjectReference Include="../../../api/Pole.Testing/Pole.Testing.csproj" />
+    <ProjectReference Include="../../Tenants/Tenants.Testing/Tenants.Testing.csproj" />
+    <ProjectReference Include="../../ResourceGroups/ResourceGroups.Testing/ResourceGroups.Testing.csproj" />
     <ProjectReference Include="../WebServices.Application/WebServices.Application.csproj" />
     <ProjectReference Include="../WebServices.Migrations/WebServices.Migrations.csproj" />
   </ItemGroup>

@@ -7,29 +7,28 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.ResourceGroups.Testing;
+using Pole.Features.ResourceConnections.Contracts;
+using Pole.Features.Secrets.Contracts;
+using Pole.Features.SourceBuilds.Contracts;
 using Pole.Testing;
 using Pole.Workloads;
 
 namespace Pole.Features.WebServices.Tests.Integration;
 
-internal sealed class CreateWebServicePlatform : IResourceRegistrar
+internal sealed class CreateWebServicePlatform(TestResourceGroup group)
 {
-    internal string GroupId { get; } = ObjectId.GenerateNewId().ToString();
-    internal string IsolationScopeId { get; } = ObjectId.GenerateNewId().ToString();
+    internal string GroupId => group.Id;
+    internal string IsolationScopeId => group.DefaultIsolationScopeId;
     internal TestDeploymentTargetLookup Targets { get; } = new();
-    internal List<RegisterResourceRequest> Registrations { get; } = [];
+    internal Dictionary<string, IReadOnlyList<PlacementSummaryDto>> Placements { get; } = [];
+    internal List<ResourceDeploymentSetApplyRequest> ApplyRequests { get; } = [];
     internal List<CreateResourceDeploymentRequest> Deployments { get; } = [];
     internal List<CreateGeneratedHostnameBindingRequest> Bindings { get; } = [];
     internal List<GetOrCreateGeneratedZoneRequest> Zones { get; } = [];
 
     internal void RegisterContracts(IServiceCollection services, IMongoClient client)
     {
-        services.AddSingleton<GetResourceGroupOwnership>((tenant, group, _) =>
-            Task.FromResult<GetResourceGroupOwnershipOutcome>(
-                tenant == TestPlatformDefaults.TenantId && group == GroupId
-                    ? new ResourceGroupOwnership(group, tenant, IsolationScopeId, ResourceGroupOwnershipLifecycle.Active)
-                    : new ResourceGroupOwnershipError(new ResourceGroupOwnershipNotFound(group))));
         services.AddSingleton<ListEligibleDeploymentTargetsForNewWorkload>(Targets.ListEligibleAsync);
         services.AddSingleton<ListEligiblePublicIngressDeploymentTargetsForNewWorkload>(Targets.ListEligiblePublicIngressForNewWorkloadAsync);
         services.AddSingleton<ResolveComputeProfiles>((request, _) =>
@@ -38,7 +37,6 @@ internal sealed class CreateWebServicePlatform : IResourceRegistrar
                     "507f1f77bcf86cd799439097", 1, target.DeploymentTargetId, "General purpose",
                     new(250, 256), new(1000, 1024), ComputeArchitecture.Any, [], [], [], [], [], null)).ToArray())));
         services.AddSingleton<IQuotaAdmissionExecutor>(new AdmittedQuota(new MongoRunTransaction(client)));
-        services.AddSingleton<IResourceRegistrar>(this);
         services.AddSingleton<GetOrCreateGeneratedDomainZones>((requests, _, _) =>
         {
             Zones.AddRange(requests);
@@ -56,11 +54,47 @@ internal sealed class CreateWebServicePlatform : IResourceRegistrar
                     binding.ResourceId, binding.ResourceDeploymentId, binding.RelativeName,
                     binding.RelativeName + ".apps.test.local", "Generated", DateTime.UnixEpoch, null)).ToArray()));
         });
+        services.AddSingleton<LoadResourceDeploymentSets>((request, _) =>
+            Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<PlacementSummaryDto>>>(
+                request.ResourceIds.Where(Placements.ContainsKey).ToDictionary(id => id, id => Placements[id])));
+        services.AddSingleton<LoadResourceDeploymentSet>((request, _) =>
+            Task.FromResult(Placements.GetValueOrDefault(request.ResourceId) ?? (IReadOnlyList<PlacementSummaryDto>)[]));
+        services.AddSingleton<AdmitDeploymentTargetPublicIngressForNewWorkload>(Targets.AdmitForNewWorkloadAsync);
+        services.AddSingleton<LoadHostnameBindingsForDeploymentInTransaction>((_, _, _) =>
+            Task.FromResult<IReadOnlyList<HostnameBindingSnapshot>>([]));
+        services.AddSingleton<ReconcileConnectionsForResource>((_, _, _) =>
+            Task.FromResult<ReconcileConnectionsForResourceOutcome>(new ResourceConnectionTopologyValid(0)));
+        services.AddSingleton<AdmitResourceConnectionReferences>((_, _, _) =>
+            Task.FromResult<AdmitResourceConnectionReferencesOutcome>(new ResourceConnectionReferencesAdmitted()));
+        services.AddSingleton<AdmitConsumerSecretReferences>((_, _, _) =>
+            Task.FromResult<AdmitConsumerSecretReferencesOutcome>(new ConsumerSecretReferencesAdmitted()));
+        services.AddSingleton<LoadHostnameBindingForPlanning>((_, _, _) =>
+            throw new InvalidOperationException("Unexpected hostname planning lookup."));
+        services.AddSingleton<LoadResourceDeploymentPlanningSnapshot>((_, _, _) =>
+            throw new InvalidOperationException("Unexpected placement planning lookup."));
+        services.AddSingleton<BeginSourceBuildPromotion>((_, _, _) =>
+            throw new InvalidOperationException("Unexpected source build promotion."));
+        services.AddSingleton<AdvanceResourceDeploymentRevision>((_, _, _) =>
+            throw new InvalidOperationException("Unexpected metadata-only revision advance."));
+        services.AddSingleton<RequestResourceDeploymentSetApply>((request, _, _) =>
+        {
+            ApplyRequests.Add(request);
+            var updated = Placements[request.ResourceId].Select(placement => placement with
+            {
+                DesiredGeneration = placement.DesiredGeneration + 1,
+                ResourceRevision = request.ResourceRevision,
+                DeploymentRevision = placement.DeploymentRevision + 1,
+                Status = ResourceDeploymentStatus.Pending
+            }).ToArray();
+            Placements[request.ResourceId] = updated;
+            return Task.FromResult<ResourceDeploymentSetMutationOutcome>(new MutatedResourceDeployments(updated));
+        });
         services.AddSingleton<CreateResourceDeploymentSet>((request, _, _) =>
         {
             Deployments.AddRange(request.Deployments);
-            return Task.FromResult<CreateResourceDeploymentSetOutcome>(
-                new CreatedResourceDeployments(request.Deployments.Select(Placement).ToArray()));
+            var placements = request.Deployments.Select(Placement).ToArray();
+            Placements.Add(request.Deployments[0].ResourceId, placements);
+            return Task.FromResult<CreateResourceDeploymentSetOutcome>(new CreatedResourceDeployments(placements));
         });
     }
 
@@ -75,24 +109,6 @@ internal sealed class CreateWebServicePlatform : IResourceRegistrar
             [], request.ResourceRevision, request.FixedReplicas, request.Target.Ingress, 1,
             ResourceDeploymentDesiredOperation.Apply, new("Supported", "Ready", "Test", null));
     }
-
-    public Task<ResourceRegistrationOutcome> RegisterAsync(
-        RegisterResourceRequest request, IClientSessionHandle session, CancellationToken cancellationToken)
-    {
-        Registrations.Add(request);
-        return Task.FromResult<ResourceRegistrationOutcome>(new RegisteredResource(
-            ObjectId.GenerateNewId().ToString(), request.TenantId, request.ResourceGroupId,
-            request.Resource.ResourceTypeId, request.Resource.ResourceId, request.Resource.DisplayName,
-            null, DateTime.UnixEpoch, DateTime.UnixEpoch));
-    }
-
-    public Task<ResourceRegistrationOutcome> UpdateAsync(
-        UpdateRegisteredResourceRequest request, IClientSessionHandle session, CancellationToken cancellationToken) =>
-        throw new InvalidOperationException("Unexpected registration update during creation.");
-
-    public Task<ResourceUnregistrationOutcome> UnregisterAsync(
-        UnregisterResourceRequest request, IClientSessionHandle session, CancellationToken cancellationToken) =>
-        throw new InvalidOperationException("Unexpected unregistration during creation.");
 
     private sealed class AdmittedQuota(MongoRunTransaction transactions) : IQuotaAdmissionExecutor
     {

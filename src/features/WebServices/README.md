@@ -206,3 +206,8 @@ Observation checks HPA identity and declared policy and watches its changes. A m
 HPA is not reported as healthy merely because Deployment replicas are ready. Existing periodic
 ResourceDeployment verification reapplies the policy, including recreating a missing owned HPA;
 live replica counts remain runtime observations and never become desired GitOps configuration.
+
+## Tests
+
+See [test boundaries](docs/test-boundaries.md) for the feature-owned suites, platform testing
+helpers, and the guarantees exercised by the shared integration scenarios.
