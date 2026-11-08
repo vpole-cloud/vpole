@@ -456,7 +456,7 @@ def main():
                     raise GateError("Push the tested commit before opening a PR; remote branch differs")
                 subprocess.run(["gh", "pr", "create", "--base", args.base, "--head", branch, "--title", args.title, "--body-file", str(args.body_file.resolve())], cwd=ROOT, check=True)
             else:
-                print("Full local test evidence matches the current source tree.")
+                print(f"Current {receipt.get('profile', 'full')}-profile evidence matches the source tree.")
     except (GateError, OSError, ValueError, subprocess.CalledProcessError) as error:
         print(f"BLOCKED: {error}", file=sys.stderr)
         return 1

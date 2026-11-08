@@ -211,6 +211,7 @@
     <Project Path="tests/Pole.Architecture.FSharp/Pole.Architecture.FSharp.fsproj" />
     <Project Path="tests/Pole.Testing.Kubernetes/Pole.Testing.Kubernetes.csproj" />
     <Project Path="tests/Pole.Tests.Architecture/Pole.Tests.Architecture.csproj" />
+    <Project Path="tests/Pole.Testing.Tests/Pole.Testing.Tests.csproj" />
     <Project Path="tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj" />
     <Project Path="tests/Pole.Tests.Kubernetes/Pole.Tests.Kubernetes.csproj" />
     <Project Path="tests/Pole.Tests.E2E.GitHubStub/Pole.Tests.E2E.GitHubStub.csproj" />
