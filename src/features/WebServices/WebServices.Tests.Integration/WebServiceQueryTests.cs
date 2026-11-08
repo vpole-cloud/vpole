@@ -36,7 +36,10 @@ public sealed class WebServiceQueryTests(WebServicesMongoFixture fixture) : IAsy
         (await mediator.Send(WebServiceTestData.Create(_platform.GroupId, "api-beta"))).AssertSuccess();
         var result = await mediator.Send(new GetWebServicesRequest
         {
-            TenantId = TestPlatformDefaults.TenantId, Search = "beta", PageNumber = 1, PageSize = 1
+            TenantId = TestPlatformDefaults.TenantId,
+            Search = "beta",
+            PageNumber = 1,
+            PageSize = 1
         });
         var page = result.AssertSuccess();
         var service = Assert.Single(page.Items);
