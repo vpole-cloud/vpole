@@ -14,6 +14,9 @@ public sealed class WebServicesMongoCollection : ICollectionFixture<WebServicesM
 
 public sealed class WebServicesMongoFixture : MongoReplicaSetFixture
 {
+    internal IMongoCollection<WebService> WebServices =>
+        Database.GetCollection<WebService>("WebServices");
+
     internal IMongoCollection<WebServiceRelease> Releases =>
         Database.GetCollection<WebServiceRelease>("WebServiceReleases");
 
@@ -24,7 +27,7 @@ public sealed class WebServicesMongoFixture : MongoReplicaSetFixture
     {
         var complete = new MongoCompleteWebServiceDeployment(
             Releases,
-            Database.GetCollection<WebService>("WebServices"),
+            WebServices,
             new MongoRunTransaction(Client).InvokeOutcomeAsync<CompleteWebServiceDeploymentOutcome>,
             StoreOutboxWrites,
             loadHostnameBindingsForDeployment: (_, _, _) =>
