@@ -4,6 +4,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <IsTestProject>false</IsTestProject>
+    <PoleArchitectureRole>TestSupport</PoleArchitectureRole>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/shared/Kubernetes/Kubernetes.csproj" />
