@@ -15,6 +15,8 @@ public sealed class KubernetesLabCiContractTests
 
         Assert.Contains("--profile \"${{ github.event_name == 'workflow_dispatch' && 'full' || 'pr' }}\"", workflow,
             StringComparison.Ordinal);
+        Assert.Contains("timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 240 || 120 }}", workflow,
+            StringComparison.Ordinal);
         Assert.Contains("Reclaim runner disk space", workflow, StringComparison.Ordinal);
         Assert.Contains("/usr/local/lib/android", workflow, StringComparison.Ordinal);
         Assert.Contains(
