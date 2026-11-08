@@ -19,3 +19,6 @@ aspire.config.json
 .codex/notes/
 /.artifacts/
 /src/api/frontend/coverage/
+
+# Optional host-specific test concurrency.
+.quality-gate.local.json

@@ -106,7 +106,8 @@ public sealed class RawBsonProjectTests
     {
         var root = Path.Combine(Path.GetTempPath(), "pole-project-discovery-" + Guid.NewGuid().ToString("N"));
         var own = new[] { "src/Feature/Feature.fsproj", "tests/Fixture/Fixture.csproj" };
-        var foreign = new[] { ".tmp/worktrees/old/src/Feature/Feature.fsproj", "src/Feature/obj/Probe.csproj" };
+        var foreign = new[] { ".tmp/worktrees/old/src/Feature/Feature.fsproj", "src/Feature/obj/Probe.csproj",
+            "src/Feature/.tmp/Other.csproj", "src/Feature/node_modules/Other.csproj" };
         try
         {
             foreach (var relative in own.Concat(foreign))

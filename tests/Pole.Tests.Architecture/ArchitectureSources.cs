@@ -91,7 +91,7 @@ internal static class ArchitectureSources
 
         foreach (var child in Directory.EnumerateDirectories(directory))
         {
-            if (Path.GetFileName(child) is "bin" or "obj" or ".artifacts")
+            if (Path.GetFileName(child) is "bin" or "obj" or ".artifacts" or ".tmp" or ".git" or "node_modules")
                 continue;
 
             foreach (var path in SourceFiles(child, searchPattern))
