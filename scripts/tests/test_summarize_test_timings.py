@@ -76,6 +76,45 @@ class TimingSummaryTests(unittest.TestCase):
         self.assertEqual(0, report["backend"]["profiled_cases"])
         self.assertEqual(4000, report["fixtures"]["phases"][0]["total_ms"])
 
+    def test_instance_anchor_recovers_boundary_skew_with_explicit_delta(self):
+        self.trx([("Pole.Tests.A", "One", .015, 10, 1)])
+        self.phase("Pole.Tests.A", 0, 2, phase="database.reset", instance="same-case")
+        self.phase("Pole.Tests.A", 3, 4, phase="seed.base", instance="same-case")
+        report = self.summary()["backend"]
+        self.assertEqual(2, report["matched_phase_records"])
+        self.assertEqual(0, report["unmatched_phase_records"])
+        recovered = next(record for record in report["case_records"][0]["phases"] if record["phase"] == "database.reset")
+        self.assertEqual("instance_anchor", recovered["match_method"])
+        self.assertAlmostEqual(15, recovered["boundary_delta_ms"]["before_start"], places=2)
+        self.assertEqual({"instance_anchor": 1, "utc_enclosure": 1}, report["match_methods"])
+
+    def test_near_boundary_without_an_instance_anchor_is_not_nearest_matched(self):
+        self.trx([("Pole.Tests.A", "One", .015, 10, 1)])
+        self.phase("Pole.Tests.A", 0, 2, instance="unanchored")
+        report = self.summary()["backend"]
+        self.assertEqual(0, report["matched_phase_records"])
+        self.assertEqual(1, report["unmatched_phase_records"])
+        self.assertEqual("no_instance_anchor", report["unmatched"][0]["unmatched_reason"])
+
+    def test_same_instance_conflicting_anchors_never_force_assignment(self):
+        self.trx([("Pole.Tests.A", "One", 0, 10, 1), ("Pole.Tests.A", "Two", 10, 20, 1)])
+        self.phase("Pole.Tests.A", 1, 2, instance="conflict")
+        self.phase("Pole.Tests.A", 11, 12, phase="seed.base", instance="conflict")
+        report = self.summary()
+        self.assertEqual(0, report["backend"]["matched_phase_records"])
+        self.assertEqual(2, report["backend"]["ambiguous_phase_records"])
+        self.assertEqual(1, report["diagnostics"]["conflicting_instance_anchors"])
+
+    def test_instance_anchor_rejects_large_boundary_anomaly(self):
+        self.trx([("Pole.Tests.A", "One", 1, 10, 1)])
+        self.phase("Pole.Tests.A", 0, 2, instance="same-case")
+        self.phase("Pole.Tests.A", 3, 4, phase="seed.base", instance="same-case")
+        report = self.summary()
+        self.assertEqual(1, report["backend"]["matched_phase_records"])
+        self.assertEqual(1, report["backend"]["unmatched_phase_records"])
+        self.assertEqual("instance_boundary_limit_exceeded", report["backend"]["unmatched"][0]["unmatched_reason"])
+        self.assertEqual(1, report["diagnostics"]["instance_boundary_limit_exceeded"])
+
     def test_parallel_intervals_and_nested_records_are_not_claimed_as_wall_time(self):
         self.trx([("Pole.Tests.A", "One", 0, 10, 3), ("Pole.Tests.B", "Two", 0, 10, 3)])
         self.phase("Pole.Tests.A", 1, 5, phase="api.host.start")

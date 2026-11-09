@@ -24,6 +24,7 @@ MONGO_COMMANDS = frozenset("""aggregate abortTransaction buildInfo collMod commi
 count create createIndexes delete distinct drop dropDatabase dropIndexes endSessions find
 findAndModify getMore hello insert isMaster killCursors listCollections listDatabases
 listIndexes ping replSetGetStatus serverStatus update renameCollection validate""".split())
+INSTANCE_BOUNDARY_LIMIT_MS = 100.0
 OUTCOMES = frozenset(("Passed", "Failed", "NotExecuted", "Aborted", "Error", "Timeout", "Inconclusive"))
 
 
@@ -249,18 +250,49 @@ def summarize(results_directory, timings_directory):
     by_owner, unmatched, ambiguous, fixtures, matched = defaultdict(list), [], [], [], []
     for case in cases:
         by_owner[case["owner"]].append(case)
+    instances = defaultdict(list)
     for record in records:
         if record["kind"] == "fixture":
             fixtures.append(record)
-            continue
-        candidates = [case for case in by_owner[record["owner"]] if case["started"] <= record["started"] and record["finished"] <= case["finished"]]
-        if len(candidates) == 1:
-            candidates[0]["phases"].append(record)
-            matched.append(record)
-        elif candidates:
-            ambiguous.append(record)
         else:
-            unmatched.append(record)
+            instances[(record["owner"], record["instance"])].append(record)
+    for (owner, _), instance_records in instances.items():
+        candidates_by_record = []
+        anchors = {}
+        for record in instance_records:
+            candidates = [case for case in by_owner[owner] if case["started"] <= record["started"] and record["finished"] <= case["finished"]]
+            candidates_by_record.append((record, candidates))
+            if len(candidates) == 1:
+                anchors[id(candidates[0])] = candidates[0]
+        if len(anchors) > 1:
+            diagnostics["conflicting_instance_anchors"] += 1
+            for record in instance_records:
+                record["ambiguous_reason"] = "conflicting_instance_anchors"
+                ambiguous.append(record)
+            continue
+        anchor = next(iter(anchors.values())) if anchors else None
+        for record, candidates in candidates_by_record:
+            if anchor is None:
+                if candidates:
+                    record["ambiguous_reason"] = "multiple_enclosing_cases"
+                    ambiguous.append(record)
+                else:
+                    record["unmatched_reason"] = "no_instance_anchor"
+                    unmatched.append(record)
+                continue
+            before = max(0.0, (anchor["started"] - record["started"]) * 1000)
+            after = max(0.0, (record["finished"] - anchor["finished"]) * 1000)
+            record["boundary_delta_ms"] = {"before_start": round(before, 6), "after_finish": round(after, 6)}
+            if max(before, after) > INSTANCE_BOUNDARY_LIMIT_MS:
+                diagnostics["instance_boundary_limit_exceeded"] += 1
+                record["unmatched_reason"] = "instance_boundary_limit_exceeded"
+                unmatched.append(record)
+                continue
+            record["match_method"] = "utc_enclosure" if anchor in candidates else "instance_anchor"
+            if record["match_method"] == "instance_anchor":
+                diagnostics["instance_anchor_recovered_records"] += 1
+            anchor["phases"].append(record)
+            matched.append(record)
     classes = []
     for owner, members in by_owner.items():
         class_records = [phase for case in members for phase in case["phases"]]
@@ -286,6 +318,8 @@ def summarize(results_directory, timings_directory):
         "profiled_cases": sum(bool(case["phases"]) for case in cases),
         "unprofiled_cases": sum(not case["phases"] for case in cases),
         "timing_files": phase_file_count, "matched_phase_records": len(matched),
+        "match_methods": dict(Counter(record["match_method"] for record in matched)),
+        "instance_boundary_limit_ms": INSTANCE_BOUNDARY_LIMIT_MS,
         "unmatched_phase_records": len(unmatched), "ambiguous_phase_records": len(ambiguous),
         "inventory": inventory(results_directory, assemblies, diagnostics),
         "classes": classes, "case_records": sorted(cases, key=lambda item: item["interval_ms"], reverse=True),
@@ -300,7 +334,7 @@ def summarize(results_directory, timings_directory):
             "Only explicitly instrumented lifecycle phases have setup detail; all other cases remain visible as unprofiled.",
             "Mongo counters cover explicit measured phases only, not scenario/body commands.",
             "Fixture records are separate from test cases. Existing E2E journals are separate evidence and are not interpreted here.",
-            "Matching requires same class and enclosing UTC interval; no nearest-case or forced assignment is performed."]}
+            "An enclosing UTC phase anchors its class/instance to one case; same-instance phases may cross a TRX boundary by at most 100 ms, with the delta recorded. Conflicting anchors stay ambiguous; no nearest-case matching is performed."]}
     return result
 
 
@@ -322,7 +356,7 @@ def markdown(result):
         for item in values:
             lines.append(f"| `{item['phase']}` | {item['count']} | {item['total_ms']/1000:.3f} | {item['median_ms']:.3f} | {item['p95_ms']:.3f} |")
     lines += ["", "## Cases by interval", "", "Case identifiers distinguish theory rows without exposing argument values.", "",
-              "| Case | Execution ID | Reported ms | Interval ms | Measured setup ms | Unattributed ms |",
+              "| Case | Execution ID | Reported ms | Interval ms | Measured lifecycle ms | Unattributed ms |",
               "| --- | --- | ---: | ---: | ---: | ---: |"]
     for case in backend["case_records"][:40]:
         lines.append(f"| `{case['owner']}.{case['method']}` | `{case['execution_id']}` | {case['reported_ms']:.3f} | {case['interval_ms']:.3f} | {case['measured_setup_ms']:.3f} | {case['unattributed_ms']:.3f} |")
