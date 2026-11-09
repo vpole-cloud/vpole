@@ -15,6 +15,8 @@ namespace Pole.Tests.E2E;
 [Trait("Scope", "FullE2E")]
 public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
 {
+    private readonly TestTimings _timings = new(typeof(SourceBuildE2ETests));
+
     private const string RevisionOneCommitSha = "1111111111111111111111111111111111111111";
     private const string RevisionTwoCommitSha = "2222222222222222222222222222222222222222";
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
@@ -22,12 +24,13 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
     [SourceBuildFact]
     public async Task Browser_git_creation_and_global_search_reach_the_same_source_built_resource()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(Browser_git_creation_and_global_search_reach_the_same_source_built_resource)).Activate();
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMinutes(15));
         var token = cancellation.Token;
         await fixture.EnsureSourceBuildInfrastructureReadyAsync(token);
         await EnsureGitHubConnectionAsync(token);
-        var resources = new TestResourceScope("browser Git source-build E2E");
+        var resources = new TestResourceScope("browser Git source-build E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
             resources.Defer("restore sample source revision", cleanup => SetStubRevisionAsync("v1", cleanup));
@@ -214,6 +217,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
 
     private async Task<JsonElement> WaitForCompletedBuildLogAsync(string serviceId, string jobId, string marker, CancellationToken token)
     {
+        using var timing = _timings.Measure("e2e.readiness.WaitForCompletedBuildLogAsync");
         while (true)
         {
             using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Get, $"/api/v1/source-build-jobs/{jobId}/logs?webServiceId={serviceId}", fixture.Alpha, fixture.Alpha.DefaultTenantId);
@@ -287,6 +291,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
 
     private async Task WaitForBrowserSearchProjectionAsync(string serviceId, string name, CancellationToken token)
     {
+        using var timing = _timings.Measure("e2e.readiness.WaitForBrowserSearchProjectionAsync");
         while (true)
         {
             using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Get, $"/api/v1/search?query={Uri.EscapeDataString(name)}&pageNumber=1&pageSize=20", fixture.Alpha, fixture.Alpha.DefaultTenantId);
@@ -344,11 +349,12 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
     [SourceBuildFact]
     public async Task Source_build_uses_the_exact_repository_commit_pushes_an_artifact_and_records_release_provenance()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(Source_build_uses_the_exact_repository_commit_pushes_an_artifact_and_records_release_provenance)).Activate();
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMinutes(15));
         var cancellationToken = cancellation.Token;
         await fixture.EnsureSourceBuildInfrastructureReadyAsync(cancellationToken);
-        var resources = new TestResourceScope("source-build E2E");
+        var resources = new TestResourceScope("source-build E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
             resources.Defer("restore sample source revision", cleanup => SetStubRevisionAsync("v1", cleanup));
@@ -621,6 +627,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
 
     private async Task<JsonElement> WaitForBuildAsync(string buildJobId, string status, CancellationToken cancellationToken)
     {
+        using var timing = _timings.Measure("e2e.readiness.WaitForBuildAsync");
         while (true)
         {
             using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Get, $"/api/v1/source-build-jobs/{buildJobId}", fixture.Alpha, fixture.Alpha.DefaultTenantId);
@@ -656,6 +663,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
         CancellationToken cancellationToken,
         string? releaseId = null)
     {
+        using var timing = _timings.Measure("e2e.readiness.WaitForReleaseOutcomeAsync");
         while (true)
         {
             var releases = await GetReleasesAsync(webServiceId, cancellationToken);
@@ -758,6 +766,7 @@ public sealed class SourceBuildE2ETests(PoleE2EFixture fixture)
 
     private async Task DeleteAsync(string path, CancellationToken cancellationToken)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteAsync");
         while (true)
         {
             using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Delete, path, fixture.Alpha, fixture.Alpha.DefaultTenantId);

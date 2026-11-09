@@ -125,6 +125,7 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
         CancellationToken ct,
         string timingPhase = "e2e.gitops.lifecycle.wait")
     {
+        using var timing = _timings.Measure("e2e.readiness.WaitForRedisLifecycleRunAsync");
         var current = await WaitAsync(source, item =>
         {
             if (runId is not null && LatestRunId(item) != runId)

@@ -245,6 +245,7 @@ public sealed class RealtimeObservationBrowserE2ETests(
 
     private async Task DeleteServiceAsync(string id, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteServiceAsync");
         await DeleteAsync($"/api/v1/web-services/{id}", ct);
         await WaitUntilAsync(async probeCancellation =>
             {
@@ -262,12 +263,14 @@ public sealed class RealtimeObservationBrowserE2ETests(
 
     private async Task DeleteGroupAsync(string id, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteGroupAsync");
         await DeleteAsync($"/api/v1/resource-groups/{id}", ct);
         await fixture.WaitForNamespaceDeletionAsync(id, ct);
     }
 
     private async Task DeleteAsync(string path, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteAsync");
         using var request =
             fixture.CreateAuthenticatedRequest(HttpMethod.Delete, path, fixture.Alpha, fixture.Alpha.DefaultTenantId);
         using var response = await fixture.Api.SendAsync(request, ct);

@@ -13,13 +13,16 @@ namespace Pole.Tests.E2E;
 [Collection(PoleE2ECollection.Name)]
 public sealed class RealtimeProviderBrowserE2ETests(PoleE2EFixture fixture)
 {
+    private readonly TestTimings _timings = new(typeof(RealtimeProviderBrowserE2ETests));
+
     [Fact]
     public async Task Native_storage_hints_preserve_dirty_draft_coalesce_slow_reads_and_keep_quiet_inventory_current()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(Native_storage_hints_preserve_dirty_draft_coalesce_slow_reads_and_keep_quiet_inventory_current)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(8));
         var ct = budget.Token;
-        var resources = new TestResourceScope("storage observation browser E2E");
+        var resources = new TestResourceScope("storage observation browser E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
             using var request = fixture.CreatePlatformAdminRequest(HttpMethod.Get, "/api/v1/platform/deployment-targets");

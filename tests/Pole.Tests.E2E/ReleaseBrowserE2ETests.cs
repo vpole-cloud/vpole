@@ -11,13 +11,16 @@ namespace Pole.Tests.E2E;
 [Collection(PoleE2ECollection.Name)]
 public sealed class ReleaseBrowserE2ETests(PoleE2EFixture fixture)
 {
+    private readonly TestTimings _timings = new(typeof(ReleaseBrowserE2ETests));
+
     [Fact]
     public async Task Redeploy_pending_survives_reload_and_rollback_restores_spec_with_a_new_ready_release()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(Redeploy_pending_survives_reload_and_rollback_restores_spec_with_a_new_ready_release)).Activate();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = timeout.Token;
-        var resources = new TestResourceScope("release browser E2E");
+        var resources = new TestResourceScope("release browser E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
             var name = $"release-{Guid.NewGuid():N}"[..18];
@@ -143,6 +146,7 @@ public sealed class ReleaseBrowserE2ETests(PoleE2EFixture fixture)
 
     private async Task WaitForPlacementFailureAsync(string id, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.readiness.WaitForPlacementFailureAsync");
         await TestWait.UntilAsync(async phase =>
         {
             var service = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{id}", null, phase);
@@ -154,6 +158,7 @@ public sealed class ReleaseBrowserE2ETests(PoleE2EFixture fixture)
 
     private async Task WaitForReleaseAsync(string id, long revision, string outcome, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.readiness.WaitForReleaseAsync");
         await TestWait.UntilAsync(async phase =>
         {
             var history = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{id}/releases", null, phase);
@@ -165,6 +170,7 @@ public sealed class ReleaseBrowserE2ETests(PoleE2EFixture fixture)
 
     private async Task WaitForReadyAsync(string id, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.readiness.WaitForReadyAsync");
         await TestWait.UntilAsync(async phase =>
         {
             var service = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{id}", null, phase);
@@ -188,12 +194,14 @@ public sealed class ReleaseBrowserE2ETests(PoleE2EFixture fixture)
     }
     private async Task DeleteAsync(string path, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteAsync");
         using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Delete, path, fixture.Alpha, fixture.Alpha.DefaultTenantId);
         using var response = await fixture.Api.SendAsync(request, ct);
         Assert.True(response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound, $"Release cleanup returned HTTP {(int)response.StatusCode}.");
     }
     private async Task DeleteWebServiceAsync(string id, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteWebServiceAsync");
         await DeleteAsync($"/api/v1/web-services/{id}", ct);
         await TestWait.UntilAsync(async phase =>
         {
@@ -206,6 +214,7 @@ public sealed class ReleaseBrowserE2ETests(PoleE2EFixture fixture)
 
     private async Task DeleteGroupAsync(string id, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteGroupAsync");
         await DeleteAsync($"/api/v1/resource-groups/{id}", ct);
         await fixture.WaitForNamespaceDeletionAsync(id, ct);
     }

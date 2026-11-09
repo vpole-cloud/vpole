@@ -12,13 +12,16 @@ namespace Pole.Tests.E2E;
 [Collection(PoleE2ECollection.Name)]
 public sealed class SecretBrowserE2ETests(PoleE2EFixture fixture, ITestOutputHelper output)
 {
+    private readonly TestTimings _timings = new(typeof(SecretBrowserE2ETests));
+
     [Fact]
     public async Task User_can_create_rotate_bind_inspect_and_detach_write_only_Secret_projections()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(User_can_create_rotate_bind_inspect_and_detach_write_only_Secret_projections)).Activate();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var token = timeout.Token;
-        var resources = new TestResourceScope("Secret browser E2E");
+        var resources = new TestResourceScope("Secret browser E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
             var name = $"keys-{Guid.NewGuid():N}"[..18];
@@ -161,6 +164,7 @@ public sealed class SecretBrowserE2ETests(PoleE2EFixture fixture, ITestOutputHel
 
     private async Task<string> WaitForProjectionAsync(string id, int version, string health, CancellationToken token)
     {
+        using var timing = _timings.Measure("e2e.readiness.WaitForProjectionAsync");
         string? deploymentId = null;
         await TestWait.UntilAsync(async probeToken =>
         {
@@ -189,6 +193,7 @@ public sealed class SecretBrowserE2ETests(PoleE2EFixture fixture, ITestOutputHel
 
     private async Task DeleteResourceAsync(string route, string id, CancellationToken token)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteResourceAsync");
         using var bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
         bounded.CancelAfter(TimeSpan.FromMinutes(1));
         using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Delete, $"/api/v1/{route}/{id}", fixture.Alpha, fixture.Alpha.DefaultTenantId);
@@ -204,6 +209,7 @@ public sealed class SecretBrowserE2ETests(PoleE2EFixture fixture, ITestOutputHel
 
     private async Task DeleteGroupAsync(string group, CancellationToken token)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteGroupAsync");
         using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Delete, $"/api/v1/resource-groups/{group}", fixture.Alpha, fixture.Alpha.DefaultTenantId);
         using var response = await fixture.Api.SendAsync(request, token);
         Assert.True(response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound);

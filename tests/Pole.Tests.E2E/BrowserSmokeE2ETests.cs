@@ -15,11 +15,14 @@ public sealed class BrowserSmokeE2ETests(
     PoleE2EFixture fixture,
     ITestOutputHelper output)
 {
+    private readonly TestTimings _timings = new(typeof(BrowserSmokeE2ETests));
+
     [Fact]
     public async Task User_can_manage_image_services_in_separate_workspace_tabs_at_desktop_and_mobile_widths()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(User_can_manage_image_services_in_separate_workspace_tabs_at_desktop_and_mobile_widths)).Activate();
-        var resources = new TestResourceScope("browser smoke E2E");
+        var resources = new TestResourceScope("browser smoke E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
             await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
@@ -401,6 +404,7 @@ public sealed class BrowserSmokeE2ETests(
 
     private async Task DeleteResourceGroupAsync(string resourceGroupId, CancellationToken cancellationToken)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteResourceGroupAsync");
         using var request = fixture.CreateAuthenticatedRequest(
             HttpMethod.Delete,
             $"/api/v1/resource-groups/{resourceGroupId}",
@@ -444,6 +448,7 @@ public sealed class BrowserSmokeE2ETests(
 
     private async Task DeleteWebServiceAsync(string serviceId, CancellationToken cancellationToken)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteWebServiceAsync");
         using (var request = fixture.CreateAuthenticatedRequest(HttpMethod.Delete, $"/api/v1/web-services/{serviceId}", fixture.Alpha, fixture.Alpha.DefaultTenantId))
         using (var response = await fixture.Api.SendAsync(request, cancellationToken))
             if (TestDeletion.IsComplete(response.StatusCode)) return;
