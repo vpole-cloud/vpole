@@ -15,13 +15,19 @@ public delegate void ScheduleGitSourceAt(
 
 public sealed class EnqueueGitSourceOnRequested(
     DispatchGitSource dispatch,
-    ScheduleGitSourceAt schedule) : IConsumer<GitSourceWorkRequested>
+    ScheduleGitSourceAt schedule,
+    ILogger<EnqueueGitSourceOnRequested> logger) : IConsumer<GitSourceWorkRequested>
 {
     public Task Consume(ConsumeContext<GitSourceWorkRequested> context)
     {
         var source = new GitSourceIdentity(context.Message.EventCore.TenantId, context.Message.SourceId);
         if (context.Message.NotBeforeUtc is { } notBeforeUtc)
+        {
             schedule(source, notBeforeUtc);
+            logger.LogInformation(
+                "GitOps work scheduled for source {SourceId}; notBeforeUtc={NotBeforeUtc:O}, scheduledAtUtc={ScheduledAtUtc:O}",
+                source.SourceId, notBeforeUtc, DateTime.UtcNow);
+        }
         else
             dispatch(source);
         return Task.CompletedTask;

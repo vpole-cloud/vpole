@@ -6,6 +6,7 @@ using Hangfire.States;
 using MassTransit;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Jobs;
@@ -24,7 +25,7 @@ public sealed class GitSourceDispatchTests
         var dispatched = new List<GitSourceIdentity>();
         var scheduled = new List<(GitSourceIdentity Source, DateTime Due)>();
         var consumer = new EnqueueGitSourceOnRequested(dispatched.Add,
-            (source, due) => scheduled.Add((source, due)));
+            (source, due) => scheduled.Add((source, due)), NullLogger<EnqueueGitSourceOnRequested>.Instance);
 
         await consumer.Consume(Context(new("source", EventCore.Create("tenant"))));
 
@@ -40,7 +41,7 @@ public sealed class GitSourceDispatchTests
         var dispatched = new List<GitSourceIdentity>();
         var scheduled = new List<(GitSourceIdentity Source, DateTime Due)>();
         var consumer = new EnqueueGitSourceOnRequested(dispatched.Add,
-            (source, due) => scheduled.Add((source, due)));
+            (source, due) => scheduled.Add((source, due)), NullLogger<EnqueueGitSourceOnRequested>.Instance);
         var notBeforeUtc = DateTime.UtcNow.AddMinutes(minuteOffset);
 
         await consumer.Consume(Context(new("source", EventCore.Create("tenant"), notBeforeUtc)));
@@ -56,7 +57,8 @@ public sealed class GitSourceDispatchTests
     {
         var dispatched = new List<GitSourceIdentity>();
         var expected = new InvalidOperationException("The job store is unavailable.");
-        var consumer = new EnqueueGitSourceOnRequested(dispatched.Add, (_, _) => throw expected);
+        var consumer = new EnqueueGitSourceOnRequested(dispatched.Add, (_, _) => throw expected,
+            NullLogger<EnqueueGitSourceOnRequested>.Instance);
 
         var actual = await Assert.ThrowsAsync<InvalidOperationException>(() => consumer.Consume(
             Context(new("source", EventCore.Create("tenant"), DateTime.UtcNow.AddMinutes(1)))));

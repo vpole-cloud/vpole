@@ -171,7 +171,7 @@ public sealed class GitRunStore(
 
     public Task<bool> WaitCleanupAsync(GitRunHandle handle, CancellationToken ct) => TransitionAsync(handle,
         (run, state, now) => new(run.WaitCleanup(handle.Identity, now,
-            now.AddSeconds(options.Value.HeartbeatSeconds)), state), ct);
+            now.AddSeconds(options.Value.CleanupCheckSeconds)), state), ct);
 
     public Task<bool> CompleteAsync(
         GitRunHandle handle,

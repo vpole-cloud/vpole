@@ -41,6 +41,9 @@ public sealed class RepositorySourceJob(
         if (outcome is not GitWorkClaim claim)
             return new(RepositoryExecutionDisposition.NoWork, null, []);
 
+        logger.LogInformation(
+            "GitOps attempt started for source {SourceId}, run {RunId}, attempt {Attempt}; startedAtUtc={StartedAtUtc:O}",
+            source.SourceId, claim.Run.Id, claim.Handle.Identity.Attempt, DateTime.UtcNow);
         using var execution = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var heartbeat = KeepLeaseAsync(claim.Handle, execution);
         try
