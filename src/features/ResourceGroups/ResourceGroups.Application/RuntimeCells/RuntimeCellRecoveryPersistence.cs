@@ -82,14 +82,15 @@ public sealed class RuntimeCellRecoveryPersistence(
                         ct);
                     break;
 
-                case DeletingRuntimeCellState:
+                case DeletingRuntimeCellState deleting when deleting.NextCheckAtUtc is null || deleting.NextCheckAtUtc <= now:
                     await storeOutboxWrites(
                         transaction.Session,
                         [OutboxWrite.Create(
                             current.ToDeletionRequestedEvent(),
-                            RuntimeCellPendingKey.Deletion(
+                            RuntimeCellPendingKey.DeletionCheck(
                                 current.Id,
-                                current.DesiredGeneration))],
+                                current.DesiredGeneration,
+                                deleting.CheckSequence))],
                         ct);
                     break;
 

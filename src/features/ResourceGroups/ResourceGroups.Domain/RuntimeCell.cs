@@ -123,8 +123,30 @@ public sealed record RuntimeCell(
         return this with
         {
             DesiredGeneration = nextGeneration,
-            State = new DeletingRuntimeCellState(nextGeneration, normalizedRequestedAtUtc),
+            State = new DeletingRuntimeCellState(nextGeneration, normalizedRequestedAtUtc, null, 0),
             UpdatedAtUtc = normalizedRequestedAtUtc
+        };
+    }
+
+    public RuntimeCell ScheduleDeletionCheck(
+        long expectedGeneration,
+        DateTime checkedAtUtc,
+        DateTime nextCheckAtUtc)
+    {
+        var deleting = CurrentState<DeletingRuntimeCellState>(expectedGeneration);
+        var checkedAt = ResourceGroupValueGuard.UpdatedUtc(checkedAtUtc, UpdatedAtUtc, nameof(checkedAtUtc));
+        var due = ResourceGroupValueGuard.Utc(nextCheckAtUtc, nameof(nextCheckAtUtc));
+        if (due <= checkedAt)
+            throw new ArgumentException("A deletion check must be scheduled after the current check.", nameof(nextCheckAtUtc));
+
+        return this with
+        {
+            State = deleting with
+            {
+                NextCheckAtUtc = due,
+                CheckSequence = checked(deleting.CheckSequence + 1)
+            },
+            UpdatedAtUtc = checkedAt
         };
     }
 
@@ -221,7 +243,9 @@ public sealed record FailedRuntimeCellState(
 [BsonDiscriminator("deleting")]
 public sealed record DeletingRuntimeCellState(
     long Generation,
-    DateTime RequestedAtUtc)
+    DateTime RequestedAtUtc,
+    DateTime? NextCheckAtUtc,
+    long CheckSequence)
     : RuntimeCellState(Generation);
 
 [BsonDiscriminator("deleted")]

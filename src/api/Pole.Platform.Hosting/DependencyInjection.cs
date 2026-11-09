@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
@@ -133,6 +134,10 @@ public static class DependencyInjection
         public IServiceCollection AddHangfireWithMongo(IConfiguration configuration)
         {
             services.TryAddSingleton(TimeProvider.System);
+            services.AddOptions<HangfireSchedulingOptions>()
+                .Bind(configuration.GetSection(HangfireSchedulingOptions.SectionName))
+                .ValidateDataAnnotations()
+                .ValidateOnStart();
             services.AddHangfire((serviceProvider, config) =>
             {
                 var mongoClient = serviceProvider.GetRequiredService<IMongoClient>();
@@ -154,8 +159,10 @@ public static class DependencyInjection
                     });
             });
 
-            services.AddHangfireServer(options =>
+            services.AddHangfireServer((serviceProvider, options) =>
             {
+                options.SchedulePollingInterval = TimeSpan.FromSeconds(serviceProvider
+                    .GetRequiredService<IOptions<HangfireSchedulingOptions>>().Value.SchedulePollingIntervalSeconds);
                 options.ServerName = $"{Environment.MachineName}:pole-server";
                 options.ServerTimeout = TimeSpan.FromMinutes(5);
                 options.ServerCheckInterval = TimeSpan.FromMinutes(1);

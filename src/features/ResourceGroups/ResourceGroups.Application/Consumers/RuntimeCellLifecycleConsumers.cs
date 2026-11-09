@@ -1,5 +1,6 @@
 using MassTransit;
 using Pole.Features.ResourceGroups.Application.Kubernetes;
+using Pole.Features.ResourceGroups.Application.Jobs;
 using Pole.Features.ResourceGroups.Application.Mongo;
 using Pole.Features.ResourceGroups.Application.References;
 using Pole.Features.ResourceGroups.Application.ResourceGroups;
@@ -46,46 +47,18 @@ public sealed class ReconcileRuntimeCellOnReconciliationRequestedConsumer(
 }
 
 public sealed class DeleteRuntimeCellOnDeletionRequestedConsumer(
-    RuntimeCellLifecyclePersistence persistence,
-    DeleteRuntimeCellNamespace deleteRuntimeCellNamespace,
-    FinalizeResourceGroupDeletion finalizeResourceGroupDeletion)
+    RuntimeCellDeletionProgress progress,
+    ScheduleRuntimeCellDeletionAt schedule)
     : IConsumer<RuntimeCellDeletionRequestedEvent>
 {
-    public Task Consume(ConsumeContext<RuntimeCellDeletionRequestedEvent> context) =>
-        HandleAsync(context.Message, context.CancellationToken);
-
-    public async Task HandleAsync(
-        RuntimeCellDeletionRequestedEvent message,
-        CancellationToken cancellationToken = default)
+    public Task Consume(ConsumeContext<RuntimeCellDeletionRequestedEvent> context)
     {
-        var runtimeCell = await persistence.LoadAsync(
-            message.EventCore.TenantId,
-            message.RuntimeCellId,
-            cancellationToken);
-        if (runtimeCell is null ||
-            runtimeCell.DesiredGeneration != message.Generation ||
-            runtimeCell.State is not DeletingRuntimeCellState deleting ||
-            deleting.Generation != message.Generation)
+        if (context.Message.NotBeforeUtc is { } due)
         {
-            return;
+            schedule(context.Message, due);
+            return Task.CompletedTask;
         }
-
-        var namespaceResult = await deleteRuntimeCellNamespace(
-            runtimeCell,
-            cancellationToken);
-        var finalizationAllowed = await persistence.PersistDeletionAsync(
-            runtimeCell,
-            message.Generation,
-            namespaceResult,
-            cancellationToken);
-        if (finalizationAllowed)
-        {
-            await finalizeResourceGroupDeletion(
-                runtimeCell.TenantId,
-                runtimeCell.ResourceGroupId,
-                runtimeCell.IsolationScopeId,
-                cancellationToken);
-        }
+        return progress.HandleAsync(context.Message, context.CancellationToken);
     }
 }
 

@@ -273,6 +273,20 @@ internal static class RuntimeCellFilters
             Builders<RuntimeCell>.Filter.Eq(cell => cell.DesiredGeneration, generation),
             Builders<RuntimeCell>.Filter.OfType<RuntimeCellState, TState>(cell => cell.State));
 
+    public static FilterDefinition<RuntimeCell> AtDeletionCheck(RuntimeCell runtimeCell)
+    {
+        var deleting = (DeletingRuntimeCellState)runtimeCell.State;
+        var sequence = Builders<RuntimeCell>.Filter.Eq(
+            cell => ((DeletingRuntimeCellState)cell.State).CheckSequence, deleting.CheckSequence);
+        if (deleting.CheckSequence == 0)
+            sequence = Builders<RuntimeCell>.Filter.Or(sequence,
+                Builders<RuntimeCell>.Filter.Exists(cell => ((DeletingRuntimeCellState)cell.State).CheckSequence, false));
+        return Builders<RuntimeCell>.Filter.And(
+            AtDesiredGenerationAndState<DeletingRuntimeCellState>(runtimeCell, runtimeCell.DesiredGeneration),
+            sequence,
+            Builders<RuntimeCell>.Filter.Eq(cell => ((DeletingRuntimeCellState)cell.State).NextCheckAtUtc, deleting.NextCheckAtUtc));
+    }
+
     public static FilterDefinition<RuntimeCell> AtDesiredGeneration(RuntimeCell runtimeCell) =>
         Builders<RuntimeCell>.Filter.And(
             ByTenantAndId(runtimeCell.TenantId, runtimeCell.Id),
@@ -316,7 +330,13 @@ internal static class RuntimeCellFilters
             Builders<RuntimeCell>.Filter.And(
                 Builders<RuntimeCell>.Filter
                     .OfType<RuntimeCellState, DeletingRuntimeCellState>(cell => cell.State),
-                Builders<RuntimeCell>.Filter.Lte(cell => cell.UpdatedAtUtc, staleBefore)),
+                Builders<RuntimeCell>.Filter.Or(
+                    Builders<RuntimeCell>.Filter.And(
+                        Builders<RuntimeCell>.Filter.Eq(cell => ((DeletingRuntimeCellState)cell.State).NextCheckAtUtc, null),
+                        Builders<RuntimeCell>.Filter.Lte(cell => cell.UpdatedAtUtc, staleBefore)),
+                    Builders<RuntimeCell>.Filter.And(
+                        Builders<RuntimeCell>.Filter.Ne(cell => ((DeletingRuntimeCellState)cell.State).NextCheckAtUtc, null),
+                        Builders<RuntimeCell>.Filter.Lte(cell => ((DeletingRuntimeCellState)cell.State).NextCheckAtUtc, now)))),
             Builders<RuntimeCell>.Filter.And(
                 Builders<RuntimeCell>.Filter
                     .OfType<RuntimeCellState, FailedRuntimeCellState>(cell => cell.State),

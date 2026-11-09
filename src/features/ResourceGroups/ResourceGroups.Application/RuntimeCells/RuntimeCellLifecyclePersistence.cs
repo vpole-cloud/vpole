@@ -93,6 +93,23 @@ public sealed class RuntimeCellLifecyclePersistence(
         CancellationToken cancellationToken = default) =>
         runBooleanTransaction(async (transaction, ct) =>
         {
+            if (namespaceOutcome is RuntimeCellNamespaceDeletionPending)
+            {
+                var checkedAt = timeProvider.GetUtcNow().UtcDateTime;
+                var pending = runtimeCell.ScheduleDeletionCheck(generation, checkedAt, checkedAt.AddSeconds(5));
+                var pendingWrite = await runtimeCells.ReplaceOneAsync(
+                    transaction.Session,
+                    RuntimeCellFilters.AtDeletionCheck(runtimeCell),
+                    pending,
+                    cancellationToken: ct);
+                if (pendingWrite.ModifiedCount == 1)
+                    await storeOutboxWrites(transaction.Session,
+                        [OutboxWrite.Create(pending.ToDeletionRequestedEvent(),
+                            RuntimeCellPendingKey.DeletionCheck(pending.Id, generation,
+                                ((DeletingRuntimeCellState)pending.State).CheckSequence))], ct);
+                return transaction.Commit(false);
+            }
+
             if (namespaceOutcome is not Unit)
             {
                 var attemptedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
@@ -105,9 +122,7 @@ public sealed class RuntimeCellLifecyclePersistence(
                     attemptedAtUtc.Add(RetryDelay(generation)));
                 await runtimeCells.ReplaceOneAsync(
                     transaction.Session,
-                    RuntimeCellFilters.AtDesiredGenerationAndState<DeletingRuntimeCellState>(
-                        runtimeCell,
-                        generation),
+                    RuntimeCellFilters.AtDeletionCheck(runtimeCell),
                     failed,
                     cancellationToken: ct);
                 return transaction.Commit(false);
@@ -118,13 +133,11 @@ public sealed class RuntimeCellLifecyclePersistence(
                 timeProvider.GetUtcNow().UtcDateTime);
             var replacement = await runtimeCells.ReplaceOneAsync(
                 transaction.Session,
-                RuntimeCellFilters.AtDesiredGenerationAndState<DeletingRuntimeCellState>(
-                    runtimeCell,
-                    generation),
+                RuntimeCellFilters.AtDeletionCheck(runtimeCell),
                 deleted,
                 cancellationToken: ct);
             if (replacement.ModifiedCount == 0)
-                return transaction.Commit(true);
+                return transaction.Commit(false);
 
             var unregister = await applyDeploymentTargetReferenceChanges(
                 new ApplyDeploymentTargetReferenceChangesRequest(

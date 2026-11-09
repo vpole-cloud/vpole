@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.GitOps.Contracts;
@@ -89,6 +90,16 @@ public static class ResourceGroupApplicationRegistration
         services.TryAddScoped<DeleteRuntimeCellNamespace>(serviceProvider => serviceProvider
             .GetRequiredService<KubernetesRuntimeCellNamespaceManager>()
             .DeleteAsync);
+        services.TryAddScoped<RuntimeCellDeletionProgress>();
+        services.TryAddScoped<RuntimeCellDeletionJob>();
+        services.TryAddScoped<ScheduleRuntimeCellDeletionAt>(provider => (request, due) =>
+        {
+            provider.GetRequiredService<IBackgroundJobClient>().Schedule<RuntimeCellDeletionJob>(job =>
+                job.ExecuteAsync(request, CancellationToken.None), new DateTimeOffset(due));
+            provider.GetService<ILogger<RuntimeCellDeletionJob>>()?.LogInformation(
+                "RuntimeCell deletion check scheduled: TenantId={TenantId}, RuntimeCellId={RuntimeCellId}, Generation={Generation}, CheckSequence={CheckSequence}, NotBeforeUtc={NotBeforeUtc}",
+                request.EventCore.TenantId, request.RuntimeCellId, request.Generation, request.CheckSequence, due);
+        });
         services.TryAddScoped<RuntimeCellLifecyclePersistence>();
         services.TryAddScoped<RuntimeCellRecoveryPersistence>();
         services.TryAddScoped<RuntimeCellRecoveryJob>();

@@ -31,7 +31,9 @@ public sealed record RuntimeCellReconciliationFailedEvent(
 [EntityName("pole.resource-groups/v1/runtime-cell-deletion-requested")]
 public sealed record RuntimeCellDeletionRequestedEvent(
     string RuntimeCellId,
-    long Generation) : IPoleEvent
+    long Generation,
+    DateTime? NotBeforeUtc = null,
+    long CheckSequence = 0) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
