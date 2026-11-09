@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -17,7 +18,7 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = ROOT / ".artifacts" / "quality"
 RECEIPT = ARTIFACTS / "receipt.json"
-MSBUILD = ["--disable-build-servers", "--nologo", "-maxcpucount:1", "-nodeReuse:false"]
+MSBUILD = ["--disable-build-servers", "--nologo", "-nodeReuse:false"]
 
 
 class GateError(RuntimeError):
@@ -90,21 +91,105 @@ def selected_projects(profile, root=ROOT):
     return [project for project in test_projects(root) if project_group(project) in PROFILES[profile]]
 
 
-def parallelism(config=None):
+def gate_settings(config=None):
     defaults = {"fast": 2, "services": 1, "kubernetes": 1, "e2e": 1} if os.environ.get("CI") else {
         "fast": 4, "services": 2, "kubernetes": 1, "e2e": 1}
+    defaults.update(buildMaxCpuCount=2 if os.environ.get("CI") else "auto",
+                    integrationMaxParallelThreads=2 if os.environ.get("CI") else 4)
     path = Path(config) if config else ROOT / ".quality-gate.local.json"
     if path.exists():
         values = json.loads(path.read_text())
-        if not isinstance(values, dict) or set(values) - set(GROUPS):
-            raise GateError("Parallelism config must contain only fast, services, kubernetes and e2e limits")
+        if not isinstance(values, dict) or set(values) - set(defaults):
+            raise GateError("Unknown gate configuration keys")
         for group, value in values.items():
+            if group == "buildMaxCpuCount" and value == "auto":
+                continue
             if type(value) is not int or value < 1:
                 raise GateError(f"Parallelism for {group} must be a positive integer")
         defaults.update(values)
     elif config:
         raise GateError(f"Parallelism config does not exist: {path}")
     return defaults
+
+
+def parallelism(config=None):
+    settings = gate_settings(config)
+    return {group: settings[group] for group in GROUPS}
+
+
+def build_options(max_cpu_count):
+    # The dotnet CLI already supplies -maxcpucount; omitting a number uses the CPU count.
+    return [*MSBUILD, *([] if max_cpu_count == "auto" else [f"-maxcpucount:{max_cpu_count}"])]
+
+
+def project_files(root):
+    ignored = {"bin", "obj", ".artifacts", ".tmp", ".git", "node_modules"}
+    return sorted(path.resolve() for area in ("src", "tests") if (root / area).exists()
+                  for path in (root / area).rglob("*.*proj")
+                  if path.suffix in (".csproj", ".fsproj") and not ignored.intersection(path.relative_to(root).parts))
+
+
+def write_coverage_settings(items, path):
+    """Include evaluated product assemblies, including migrations and non-Pole names."""
+    projects = [item for item in items if item["Kind"] == "Project"]
+    invalid_roles = {item["Role"] for item in projects} - {"Production", "Migration", "TestSupport"}
+    if invalid_roles:
+        raise GateError(f"Unknown architecture roles for coverage: {sorted(invalid_roles)}")
+    assemblies = sorted({item["AssemblyName"] for item in projects
+                         if item["Role"] != "TestSupport" and item["IsTestProject"].lower() != "true"})
+    if not assemblies or any(not name or Path(name).name != name for name in assemblies):
+        raise GateError("Coverage requires evaluated production assembly names")
+    root = ET.Element("RunSettings")
+    collectors = ET.SubElement(ET.SubElement(root, "DataCollectionRunSettings"), "DataCollectors")
+    configuration = ET.SubElement(ET.SubElement(collectors, "DataCollector", friendlyName="Code Coverage"), "Configuration")
+    ET.SubElement(configuration, "Format").text = "Cobertura"
+    ET.SubElement(configuration, "IncludeTestAssembly").text = "False"
+    coverage = ET.SubElement(configuration, "CodeCoverage")
+    includes = ET.SubElement(ET.SubElement(coverage, "ModulePaths"), "Include")
+    for assembly in assemblies:
+        ET.SubElement(includes, "ModulePath").text = r"(^|.*[/\\])" + re.escape(assembly) + r"\.(dll|exe)$"
+    ET.SubElement(coverage, "CollectFromChildProcesses").text = "True"
+    ET.indent(root)
+    ET.ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)
+    return {"settings": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "assemblies": assemblies}
+
+
+def prepare_coverage(directory, steps):
+    paths = project_files(ROOT)
+    list_file = directory / "coverage-projects.txt"
+    list_file.write_text("\n".join(str(path) for path in paths) + "\n")
+    command = ["dotnet", "msbuild", "tests/Pole.Tests.Architecture/ProjectInputs.proj",
+               "-getTargetResult:CollectArchitectureInputs", "-nologo", "-maxcpucount:1", "-nodeReuse:false",
+               f"-property:PoleProjectListFile={list_file}", "-property:PoleCollectCompilerInputs=false"]
+    execute("coverage-metadata", command, directory, steps)
+    try:
+        data = json.loads((directory / "coverage-metadata.log").read_text())
+        items = data["TargetResults"]["CollectArchitectureInputs"]["Items"]
+        observed = [Path(item["ProjectPath"]).resolve() for item in items if item["Kind"] == "Project"]
+    except (ValueError, KeyError, TypeError) as error:
+        raise GateError("Invalid coverage metadata; inspect coverage-metadata.log") from error
+    if sorted(observed) != paths:
+        raise GateError("Coverage metadata inventory differs from the discovered projects")
+    settings = directory / "coverage.runsettings"
+    evidence = write_coverage_settings(items, settings)
+    (directory / "coverage-settings.json").write_text(json.dumps(evidence, indent=2) + "\n")
+    return settings, evidence
+
+
+def read_coverage_reports(directory, allowed_assemblies):
+    reports = list(directory.rglob("*.cobertura.xml"))
+    modules = set()
+    if not reports:
+        raise GateError(f"Missing coverage report for {directory.name}")
+    for report in reports:
+        root = ET.parse(report).getroot()
+        if root.tag != "coverage":
+            raise GateError(f"Invalid coverage report for {directory.name}")
+        modules.update(package.get("name", "") for package in root.findall("./packages/package"))
+    unexpected = modules - set(allowed_assemblies)
+    if unexpected:
+        raise GateError(f"Coverage contains excluded modules: {sorted(unexpected)}")
+    return sorted(modules)
 
 
 def read_trx(path):
@@ -169,9 +254,22 @@ def execute(name, command, directory, steps, environment=None):
     log = directory / f"{name}.log"
     print(f"Running {name}; log: {log.relative_to(ROOT)}", flush=True)
     start = time.monotonic()
-    with log.open("w") as stream:
-        result = subprocess.run(command, cwd=ROOT, stdout=stream, stderr=subprocess.STDOUT, env=environment)
-    steps.append({"name": name, "command": command, "exit_code": result.returncode, "seconds": round(time.monotonic() - start, 2), "log": str(log.relative_to(ROOT))})
+    stop = threading.Event()
+    samples = {"peak_used_bytes": 0, "minimum_available_bytes": 0}
+    sampler = threading.Thread(target=sample_host_memory, args=(stop, samples), daemon=True) if name == "build" else None
+    if sampler:
+        sampler.start()
+    try:
+        with log.open("w") as stream:
+            result = subprocess.run(command, cwd=ROOT, stdout=stream, stderr=subprocess.STDOUT, env=environment)
+    finally:
+        stop.set()
+        if sampler:
+            sampler.join()
+    step = {"name": name, "command": command, "exit_code": result.returncode, "seconds": round(time.monotonic() - start, 2), "log": str(log.relative_to(ROOT))}
+    if sampler:
+        step["host_memory"] = samples
+    steps.append(step)
     if result.returncode:
         raise GateError(f"{name} failed (exit {result.returncode}); inspect {log.relative_to(ROOT)}")
 
@@ -264,7 +362,8 @@ def sample_host_memory(stop, samples):
         stop.wait(0.5)
 
 
-def run_backend(directory, steps=None, tests=None, profile="full", limits=None):
+def run_backend(directory, steps=None, tests=None, profile="full", limits=None,
+                integration_max_parallel_threads=None):
     """Run every selected project with bounded per-group concurrency and coverage."""
     directory = directory.resolve()
     if not directory.is_relative_to(ROOT):
@@ -277,7 +376,10 @@ def run_backend(directory, steps=None, tests=None, profile="full", limits=None):
     tests = tests if tests is not None else {}
     projects = selected_projects(profile)
     limits = limits or dict.fromkeys(GROUPS, 1)
+    if integration_max_parallel_threads is None:
+        integration_max_parallel_threads = gate_settings()["integrationMaxParallelThreads"]
     manifest = {"status": "running", "coverage": True, "profile": profile, "parallelism": limits, "projects": projects, "steps": steps, "tests": tests}
+    manifest["integrationMaxParallelThreads"] = integration_max_parallel_threads
     stop_sampling = threading.Event()
     manifest["host_memory"] = {"peak_used_bytes": 0, "minimum_available_bytes": 0}
     sampler = threading.Thread(target=sample_host_memory, args=(stop_sampling, manifest["host_memory"]), daemon=True)
@@ -285,18 +387,22 @@ def run_backend(directory, steps=None, tests=None, profile="full", limits=None):
     environment = dict(os.environ)
     environment.setdefault("POLE_TEST_EVIDENCE_DIRECTORY", str(directory / "phases"))
     try:
+        coverage_settings, coverage_evidence = prepare_coverage(directory, steps)
+        manifest["coverage_settings"] = coverage_evidence
+        manifest["coverage_modules"] = {}
         capture_headroom(directory, "before-backend", include_lab=profile == "full")
         def run_project(index, project):
             name = f"backend-{index}"
             output = directory / name
             command = ["dotnet", "test", project, "--no-build", "--no-restore", "--nologo", "-maxcpucount:1", "-nodeReuse:false",
-                       "--collect:Code Coverage;Format=Cobertura", "--logger", "trx;LogFileName=results.trx", "--results-directory", str(output)]
+                       "--collect:Code Coverage;Format=Cobertura", "--settings", str(coverage_settings),
+                       "--logger", "trx;LogFileName=results.trx", "--results-directory", str(output)]
+            if Path(project).stem == "Pole.Tests.Integration":
+                command.extend(["--", f"xUnit.MaxParallelThreads={integration_max_parallel_threads}"])
             execute(name, command, directory, steps, environment)
             result = read_trx(output / "results.trx")
-            coverage = list(output.rglob("*.cobertura.xml"))
-            if not coverage or any(ET.parse(report).getroot().tag != "coverage" for report in coverage):
-                raise GateError(f"Missing or invalid coverage report for {project}")
-            return result
+            modules = read_coverage_reports(output, coverage_evidence["assemblies"])
+            return result, modules
 
         for group in GROUPS:
             jobs = [(index, project) for index, project in enumerate(projects) if project_group(project) == group]
@@ -309,7 +415,7 @@ def run_backend(directory, steps=None, tests=None, profile="full", limits=None):
                 for future in as_completed(pending):
                     project = pending[future]
                     try:
-                        tests[project] = future.result()
+                        tests[project], manifest["coverage_modules"][project] = future.result()
                     except Exception as error:
                         failures.append(f"{project}: {error}")
                     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
@@ -345,6 +451,8 @@ def run_full(base, profile="full", config=None):
     save_receipt(receipt)  # An interrupted run invalidates older success evidence.
     steps = receipt["steps"]
     try:
+        settings = gate_settings(config)
+        receipt["configuration"] = settings
         projects = selected_projects(profile)
         receipt["projects"] = projects
         execute("automation", [sys.executable, "scripts/run_script_tests.py", str(directory / "scripts.json")], directory, steps)
@@ -355,12 +463,13 @@ def run_full(base, profile="full", config=None):
             execute("lab-verify", ["bash", "infrastructure/kubernetes-lab/lab.sh", "verify"], directory, steps)
             capture_headroom(directory, "after-lab")
         execute("frontend-install", ["npm", "ci", "--prefix", "src/api/frontend"], directory, steps)
-        execute("restore", ["dotnet", "restore", "Pole.slnx", *MSBUILD], directory, steps)
-        execute("build", ["dotnet", "build", "Pole.slnx", "--no-restore", *MSBUILD], directory, steps)
+        execute("restore", ["dotnet", "restore", "Pole.slnx", *build_options(settings["buildMaxCpuCount"])], directory, steps)
+        execute("build", ["dotnet", "build", "Pole.slnx", "--no-restore", *build_options(settings["buildMaxCpuCount"])], directory, steps)
         command = format_command(base)
         if command:
             execute("format", command, directory, steps)
-        run_backend(directory, steps, receipt["tests"], profile, parallelism(config))
+        run_backend(directory, steps, receipt["tests"], profile,
+                    {group: settings[group] for group in GROUPS}, settings["integrationMaxParallelThreads"])
         frontend_report = directory / "frontend.json"
         execute("frontend-tests", ["npm", "test", "--prefix", "src/api/frontend", "--", "--reporter=json", f"--outputFile={frontend_report}"], directory, steps)
         receipt["tests"]["frontend"] = read_vitest(frontend_report)
@@ -409,6 +518,8 @@ def main():
     backend.add_argument("--profile", choices=PROFILES, default="full")
     frontend = commands.add_parser("check-frontend-report")
     frontend.add_argument("--report", type=Path, required=True)
+    coverage = commands.add_parser("coverage-settings")
+    coverage.add_argument("--results-directory", type=Path, required=True)
     review = commands.add_parser("record-review")
     review.add_argument("--agent", required=True)
     review.add_argument("--summary-file", type=Path, required=True)
@@ -421,7 +532,18 @@ def main():
         if args.command == "run":
             run_full(args.base, args.profile, args.config)
         elif args.command == "backend":
-            run_backend(args.results_directory, profile=args.profile, limits=parallelism(args.config))
+            settings = gate_settings(args.config)
+            run_backend(args.results_directory, profile=args.profile,
+                        limits={group: settings[group] for group in GROUPS},
+                        integration_max_parallel_threads=settings["integrationMaxParallelThreads"])
+        elif args.command == "coverage-settings":
+            directory = args.results_directory.resolve()
+            if not directory.is_relative_to(ROOT):
+                raise GateError("Coverage results must be inside the workspace")
+            directory.mkdir(parents=True, exist_ok=True)
+            if any(directory.iterdir()):
+                raise GateError("Coverage settings require a fresh results directory")
+            prepare_coverage(directory, [])
         elif args.command == "headroom":
             args.results_directory.mkdir(parents=True, exist_ok=True)
             capture_headroom(args.results_directory, args.phase, include_lab=args.phase != "before-lab")

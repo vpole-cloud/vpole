@@ -104,7 +104,10 @@ Both profiles discover projects from Pole.slnx and run restore/build once, follo
 concurrent project execution with coverage. Local defaults are Fast 4, Services 2, Kubernetes 1,
 E2E 1. CI defaults are 2, 1, 1, 1. Groups execute in that order, so heavy groups do not overlap.
 A local ignored `.quality-gate.local.json` or explicit `--config path.json` overrides limits.
-For example `{"fast": 8, "services": 2}`. Limits must be positive integers.
+For example `{"fast": 8, "services": 2, "buildMaxCpuCount": 8, "integrationMaxParallelThreads": 4}`.
+Build workers default to `"auto"` locally and 2 in CI; central Integration xUnit workers default
+to 4 locally and 2 in CI. Numeric limits must be positive integers. Build scheduling remains one
+MSBuild dependency graph; concurrent project tests use existing outputs without rebuilding.
 
 After build, the standalone backend lane is
 `python3 scripts/quality_gate.py backend --profile pr --results-directory .artifacts/backend-new-run`.
