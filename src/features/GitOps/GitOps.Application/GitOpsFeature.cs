@@ -54,7 +54,7 @@ public static class GitOpsFeature
         services.AddScoped<ScheduleGitSourceAt>(sp => (source, notBeforeUtc) =>
             sp.GetRequiredService<IBackgroundJobClient>().Schedule<RepositorySourceJob>(job =>
                 job.ExecuteAsync(source.TenantId, source.SourceId, CancellationToken.None),
-                new DateTimeOffset(notBeforeUtc)));
+                HangfireEnqueueAt(notBeforeUtc)));
         services.AddScoped<GitRunStore>();
         services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>()
             .GetCollection<GitOperationPreview>(RepositoryCollections.Previews));
@@ -94,6 +94,15 @@ public static class GitOpsFeature
         services.AddScoped<IGitOpsMutations, MongoGitOpsMutations>();
 
         return services;
+    }
+
+    private static DateTimeOffset HangfireEnqueueAt(DateTime due)
+    {
+        // Hangfire stores schedule scores in whole seconds; truncation must not precede the durable due fence.
+        var fractionalTicks = due.Ticks % TimeSpan.TicksPerSecond;
+        return new DateTimeOffset(fractionalTicks == 0
+            ? due
+            : due.AddTicks(TimeSpan.TicksPerSecond - fractionalTicks));
     }
 
     public static IEndpointRouteBuilder MapGitOpsEndpoints(this IEndpointRouteBuilder app)

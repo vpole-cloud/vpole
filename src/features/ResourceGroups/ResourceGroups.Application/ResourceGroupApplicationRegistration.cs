@@ -95,7 +95,7 @@ public static class ResourceGroupApplicationRegistration
         services.TryAddScoped<ScheduleRuntimeCellDeletionAt>(provider => (request, due) =>
         {
             provider.GetRequiredService<IBackgroundJobClient>().Schedule<RuntimeCellDeletionJob>(job =>
-                job.ExecuteAsync(request, CancellationToken.None), new DateTimeOffset(due));
+                job.ExecuteAsync(request, CancellationToken.None), HangfireEnqueueAt(due));
             provider.GetService<ILogger<RuntimeCellDeletionJob>>()?.LogInformation(
                 "RuntimeCell deletion check scheduled: TenantId={TenantId}, RuntimeCellId={RuntimeCellId}, Generation={Generation}, CheckSequence={CheckSequence}, NotBeforeUtc={NotBeforeUtc:O}",
                 request.EventCore.TenantId, request.RuntimeCellId, request.Generation, request.CheckSequence, due);
@@ -133,6 +133,15 @@ public static class ResourceGroupApplicationRegistration
             job => job.RecoverAsync(CancellationToken.None),
             Cron.Minutely);
         return services;
+    }
+
+    private static DateTimeOffset HangfireEnqueueAt(DateTime due)
+    {
+        // Hangfire stores schedule scores in whole seconds; truncation must not precede the durable due fence.
+        var fractionalTicks = due.Ticks % TimeSpan.TicksPerSecond;
+        return new DateTimeOffset(fractionalTicks == 0
+            ? due
+            : due.AddTicks(TimeSpan.TicksPerSecond - fractionalTicks));
     }
 
     private static void AddResourceGroupPersistence(this IServiceCollection services)
